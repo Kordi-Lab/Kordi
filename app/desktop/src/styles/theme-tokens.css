@@ -69,6 +69,25 @@
   --app-chat-bubble-user-text: rgb(15 17 21);
   --app-chat-bubble-peer-bg: rgba(255, 255, 255, 0.05);
   --app-chat-bubble-peer-border: rgba(255, 255, 255, 0.1);
+
+  --app-cloud-login-raised-bg: rgba(255, 255, 255, 0.05);
+  --app-cloud-login-sunk-bg: rgba(255, 255, 255, 0.025);
+  --app-cloud-login-input-bg: rgba(255, 255, 255, 0.04);
+  --app-cloud-login-input-focus-bg: rgba(255, 255, 255, 0.07);
+  --app-cloud-login-border: rgba(255, 255, 255, 0.1);
+  --app-cloud-login-inner-border: rgba(255, 255, 255, 0.08);
+  --app-cloud-login-divider: rgba(255, 255, 255, 0.12);
+  --app-cloud-login-focus-border: oklch(0.72 0.16 211 / 0.78);
+  --app-cloud-login-focus-ring: oklch(0.72 0.16 211 / 0.22);
+  --app-cloud-login-focus-ring-visible: oklch(0.72 0.16 211 / 0.55);
+  --app-cloud-login-hint-border: oklch(0.78 0.14 75 / 0.72);
+  --app-cloud-login-hint-ring: oklch(0.78 0.14 75 / 0.18);
+  --app-cloud-login-hint-text: oklch(0.78 0.11 75);
+  --app-cloud-login-danger-border: oklch(0.62 0.20 25 / 0.55);
+  --app-cloud-login-danger-border-strong: oklch(0.62 0.20 25 / 0.78);
+  --app-cloud-login-danger-ring: oklch(0.62 0.20 25 / 0.20);
+  --app-cloud-login-danger-text: oklch(0.78 0.13 25);
+  --app-cloud-login-danger-bg: oklch(0.55 0.20 25 / 0.12);
 }
 
 .bridge-app.theme-light {
@@ -141,4 +160,23 @@
   --app-chat-bubble-user-text: rgb(30 27 25);
   --app-chat-bubble-peer-bg: rgba(255, 255, 255, 0.62);
   --app-chat-bubble-peer-border: rgba(43, 35, 32, 0.18);
+
+  --app-cloud-login-raised-bg: oklch(0.995 0.01 82);
+  --app-cloud-login-sunk-bg: oklch(0.93 0.028 82 / 0.66);
+  --app-cloud-login-input-bg: oklch(0.99 0.014 82 / 0.78);
+  --app-cloud-login-input-focus-bg: oklch(0.995 0.01 82);
+  --app-cloud-login-border: oklch(0.74 0.045 82 / 0.42);
+  --app-cloud-login-inner-border: oklch(0.78 0.035 82 / 0.34);
+  --app-cloud-login-divider: oklch(0.70 0.04 82 / 0.30);
+  --app-cloud-login-focus-border: oklch(0.72 0.16 211 / 0.68);
+  --app-cloud-login-focus-ring: oklch(0.72 0.16 211 / 0.14);
+  --app-cloud-login-focus-ring-visible: oklch(0.72 0.16 211 / 0.45);
+  --app-cloud-login-hint-border: oklch(0.78 0.14 75 / 0.78);
+  --app-cloud-login-hint-ring: oklch(0.78 0.14 75 / 0.16);
+  --app-cloud-login-hint-text: oklch(0.49 0.06 75);
+  --app-cloud-login-danger-border: oklch(0.62 0.20 25 / 0.55);
+  --app-cloud-login-danger-border-strong: oklch(0.62 0.20 25 / 0.78);
+  --app-cloud-login-danger-ring: oklch(0.62 0.20 25 / 0.14);
+  --app-cloud-login-danger-text: oklch(0.42 0.18 25);
+  --app-cloud-login-danger-bg: oklch(0.97 0.04 25 / 0.55);
 }

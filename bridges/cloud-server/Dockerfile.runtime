@@ -1,0 +1,29 @@
+# Runtime-only image. Expects a pre-built linux/amd64 binary at
+# `target/release/kordi-cloud-server`, built on the VM via `cargo build
+# --release -p kordi-cloud-server`. We assemble the OCI image on the VM
+# itself with `buildah bud`, so this Dockerfile doesn't need a Docker
+# daemon and the workspace target/ directory doesn't have to round-trip
+# through gcloud compute scp.
+#
+# Build context is the workspace root so COPY can reach
+# `target/release/kordi-cloud-server` directly.
+
+FROM --platform=linux/amd64 debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1000 kordi \
+    && useradd --system --uid 1000 --gid kordi --home /var/lib/kordi-cloud --shell /usr/sbin/nologin kordi \
+    && install -d -o kordi -g kordi /var/lib/kordi-cloud
+
+COPY target/release/kordi-cloud-server /usr/local/bin/kordi-cloud-server
+
+USER kordi
+WORKDIR /var/lib/kordi-cloud
+
+EXPOSE 17081
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/kordi-cloud-server"]
+CMD ["serve", "--port", "17081"]

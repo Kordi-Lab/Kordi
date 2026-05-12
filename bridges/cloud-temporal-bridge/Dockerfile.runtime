@@ -1,0 +1,12 @@
+# Runtime-only image. Expects a pre-built linux/amd64 static Go binary
+# at `kordi-cloud-temporal-bridge` in the build context.
+#
+# Built on the VM with `go build` and assembled into an OCI image via
+# buildah, matching the cloud-server pattern.
+
+FROM --platform=linux/amd64 gcr.io/distroless/static-debian12:nonroot
+
+COPY kordi-cloud-temporal-bridge /usr/local/bin/kordi-cloud-temporal-bridge
+
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/kordi-cloud-temporal-bridge"]

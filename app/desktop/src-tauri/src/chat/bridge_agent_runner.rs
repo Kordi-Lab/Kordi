@@ -246,10 +246,7 @@ pub(crate) async fn run_bridge_agent_prompt(
 mod tests {
     use super::*;
 
-    fn stored_tool(
-        id: &str,
-        name: &str,
-    ) -> kordi_cli::desktop_runtime::DesktopChatStoredTool {
+    fn stored_tool(id: &str, name: &str) -> kordi_cli::desktop_runtime::DesktopChatStoredTool {
         stored_tool_with_arguments(id, name, "{}")
     }
 
@@ -295,7 +292,11 @@ mod tests {
     #[test]
     fn bridge_agent_task_tools_include_tools_from_earlier_assistant_messages() {
         let messages = vec![
-            chat_message("assistant", "", vec![stored_tool("tool-create", "task_operator")]),
+            chat_message(
+                "assistant",
+                "",
+                vec![stored_tool("tool-create", "task_operator")],
+            ),
             chat_message("assistant", "Created the task.", Vec::new()),
         ];
 
@@ -309,10 +310,26 @@ mod tests {
     fn bridge_agent_task_tools_only_include_latest_turn_tools() {
         let messages = vec![
             chat_message("user", "create old task", Vec::new()),
-            chat_message("assistant", "", vec![stored_tool_with_arguments("tool-old", "task_operator", "{\"taskTitle\":\"Old Task\"}")]),
+            chat_message(
+                "assistant",
+                "",
+                vec![stored_tool_with_arguments(
+                    "tool-old",
+                    "task_operator",
+                    "{\"taskTitle\":\"Old Task\"}",
+                )],
+            ),
             chat_message("assistant", "Created old task.", Vec::new()),
             chat_message("user", "create new task", Vec::new()),
-            chat_message("assistant", "", vec![stored_tool_with_arguments("tool-new", "task_operator", "{\"taskTitle\":\"New Task\"}")]),
+            chat_message(
+                "assistant",
+                "",
+                vec![stored_tool_with_arguments(
+                    "tool-new",
+                    "task_operator",
+                    "{\"taskTitle\":\"New Task\"}",
+                )],
+            ),
             chat_message("assistant", "Created new task.", Vec::new()),
         ];
 

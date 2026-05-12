@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildBridgeMentionTargetsByScope } from '../src/app/useKordiAppModelBridgeMentions';
-import type { DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
+import type { Conversation, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
 
 function bridgeState(): DesktopBridgeState {
   return {
@@ -67,6 +67,46 @@ test('buildBridgeMentionTargetsByScope returns empty targets outside the native 
   });
 
   assert.deepEqual(targets, { chat: [], project: [] });
+});
+
+test('buildBridgeMentionTargetsByScope carries unread count for matching mention participants', () => {
+  const state = bridgeState();
+  state.hosts[0].visiblePeers = [{
+    endpoint: 'https://bob.example',
+    nodeId: 'node-bob',
+    displayName: 'Bob',
+    ownerName: 'Bob',
+    runtime: 'person',
+    humanId: 'human-bob',
+    agentId: null,
+    isContact: true,
+    contactRequestStatus: 'approved',
+    sharedProjects: [],
+  }];
+  const conversations: Conversation[] = [{
+    id: 'bridge:host-1:node-bob:person',
+    canonicalSessionId: 'bridge:host-1:node-bob:person',
+    name: 'Bob',
+    type: 'bridge-person',
+    subtitle: 'Unread hello',
+    unread: 3,
+    bridges: ['Bridge'],
+    trust: 'Bridge',
+    directness: 'Direct chat',
+    participants: ['Alice', 'Bob'],
+    messages: [],
+    bridgeTarget: { hostId: 'host-1', nodeId: 'node-bob', humanId: 'human-bob', runtime: 'person' },
+  }];
+
+  const targets = buildBridgeMentionTargetsByScope({
+    isNativeShell: true,
+    desktopBridgeState: state,
+    desktopChatState: desktopChatState(),
+    activeConvMentionScope: null,
+    conversations,
+  });
+
+  assert.equal(targets.chat.find((target) => target.nodeId === 'node-bob')?.unreadCount, 3);
 });
 
 test('buildBridgeMentionTargetsByScope includes the scoped local Bridge agent', () => {

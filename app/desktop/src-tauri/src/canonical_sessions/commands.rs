@@ -190,13 +190,8 @@ pub(super) fn desktop_canonical_rename_session(
     let conn = open_db()?;
     let session = select_session(&conn, &request.session_id)?
         .ok_or_else(|| "Session not found".to_string())?;
+    let _requested_by_identity_id = request.requested_by_identity_id.as_deref();
     if session.kind == "group" {
-        require_group_admin(
-            &conn,
-            &request.session_id,
-            request.requested_by_identity_id.as_deref(),
-            "rename this group",
-        )?;
         rename_session_in_db(&conn, &request.session_id, &request.title)?;
     } else {
         rename_any_session_title_in_db(&conn, &request.session_id, &request.title)?;

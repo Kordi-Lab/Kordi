@@ -1,0 +1,24 @@
+# Kordi cloud-server reverse-proxy stanza.
+#
+# Drop this into the existing Caddy config on takotako. Caddy auto-provisions
+# a TLS certificate via Let's Encrypt as long as the DNS A record for the
+# domain points at the VM's public IP and ports 80/443 are reachable.
+#
+# Replace `kordi-cloud.example.com` with your real domain before importing.
+
+kordi-cloud.example.com {
+	encode zstd gzip
+
+	# Lock down CORS to your desktop app's origin once it's stable. The cloud
+	# server already issues an `Access-Control-Allow-Origin: *` header from
+	# its tower-http CorsLayer; Caddy passes that through unchanged.
+	@cloud_api path /v1/cloud/* /health
+	reverse_proxy @cloud_api 127.0.0.1:17081 {
+		# Forward client IP to the cloud server's rate-limiter.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	# Anything not under /v1/cloud or /health 404s — keeps the surface tight.
+	respond 404
+}

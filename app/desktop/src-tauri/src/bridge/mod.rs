@@ -1078,6 +1078,28 @@ pub async fn desktop_set_active_bridge_host(
 }
 
 #[tauri::command]
+pub async fn desktop_bridge_register_cloud_host(
+    manager: State<'_, DesktopBridgeManager>,
+    coordination: String,
+    api_key: String,
+    node_id: String,
+    account_id: String,
+    display_name: Option<String>,
+    owner_name: Option<String>,
+) -> Result<DesktopBridgeState, String> {
+    host_commands::desktop_bridge_register_cloud_host_impl(
+        &manager,
+        coordination,
+        api_key,
+        node_id,
+        account_id,
+        display_name,
+        owner_name,
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn desktop_bridge_set_discovery_mode(
     manager: State<'_, DesktopBridgeManager>,
     host_id: String,

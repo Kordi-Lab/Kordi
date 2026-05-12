@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod contacts;
+pub mod db_runner;
 pub mod discovery;
 pub mod endpoints;
 pub mod invites;
@@ -24,6 +25,10 @@ use crate::error::ServerInitError;
 pub struct ServerState {
     pub db_path: PathBuf,
     pub derp_clients: Mutex<HashMap<String, mpsc::UnboundedSender<Message>>>,
+    /// Single-writer SQLite runner used by every cloud-edition handler.
+    /// Lazily initialised on first access so existing tests that construct
+    /// `ServerState` directly (without going through `run`) still work.
+    pub db_runner: tokio::sync::OnceCell<db_runner::DbRunner>,
 }
 
 impl ServerState {
@@ -31,6 +36,7 @@ impl ServerState {
         Self {
             db_path,
             derp_clients: Mutex::new(HashMap::new()),
+            db_runner: tokio::sync::OnceCell::new(),
         }
     }
 
@@ -39,9 +45,18 @@ impl ServerState {
         configure_server_connection(&conn)?;
         Ok(conn)
     }
+
+    /// Get-or-initialise the shared single-writer runner. The first caller
+    /// pays the connection-open cost; subsequent callers reuse the same
+    /// `DbRunner`.
+    pub async fn db_runner(&self) -> Result<&db_runner::DbRunner, db_runner::DbRunnerError> {
+        self.db_runner
+            .get_or_try_init(|| async { db_runner::DbRunner::new(self.db_path.clone()) })
+            .await
+    }
 }
 
-fn configure_server_connection(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(crate) fn configure_server_connection(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.busy_timeout(Duration::from_secs(5))?;
     conn.execute_batch(
         "PRAGMA foreign_keys = ON;\n         PRAGMA journal_mode = WAL;\n         PRAGMA synchronous = NORMAL;",
@@ -86,10 +101,139 @@ pub fn init_server_db(conn: &Connection) -> Result<(), ServerInitError> {
         "agent_reachability_policy",
         "TEXT",
     )?;
+    add_column_if_missing(conn, "registered_nodes", "account_id", "TEXT")?;
+    add_column_if_missing(conn, "registered_nodes", "device_id", "TEXT")?;
+
+    add_column_if_missing(conn, "cloud_accounts", "password_hash", "TEXT")?;
+    add_column_if_missing(conn, "cloud_accounts", "password_algorithm", "TEXT")?;
+    add_column_if_missing(conn, "cloud_accounts", "password_updated_at", "TEXT")?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS cloud_contacts (\n             account_id      TEXT NOT NULL,\n             peer_account_id TEXT NOT NULL,\n             created_at      TEXT NOT NULL,\n             PRIMARY KEY (account_id, peer_account_id),\n             FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE,\n             FOREIGN KEY(peer_account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE\n         );\n         CREATE INDEX IF NOT EXISTS idx_cloud_contacts_account ON cloud_contacts (account_id, created_at);",
+    )
+    .map_err(ServerInitError::Schema)?;
 
     migrate_registered_nodes_to_core(conn)?;
     migrate_server_projects_to_core(conn)?;
     remove_legacy_user_state(conn)?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_registered_nodes_account_device\n         ON registered_nodes (account_id, device_id);\n         CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_accounts_email_lower\n         ON cloud_accounts(LOWER(primary_email)) WHERE primary_email IS NOT NULL;",
+    )
+    .map_err(ServerInitError::Schema)?;
+
+    // Schema-version tracked migrations for #332 Phase 1+. Older idempotent
+    // schema above is intentionally left alone — these only add NEW changes
+    // going forward, recorded in `schema_versions` so each migration runs
+    // exactly once per database.
+    apply_versioned_migrations(conn)?;
+    Ok(())
+}
+
+fn apply_versioned_migrations(conn: &Connection) -> Result<(), ServerInitError> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_versions (\n             version    INTEGER PRIMARY KEY,\n             applied_at TEXT NOT NULL\n         );",
+    )
+    .map_err(ServerInitError::Schema)?;
+
+    apply_migration(
+        conn,
+        1,
+        "server_mailbox covering index for poll/ack",
+        |conn| {
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created_message\n                 ON server_mailbox (target_node_id, created_at, message_id);",
+            )
+        },
+    )?;
+
+    apply_migration(
+        conn,
+        2,
+        "registered_nodes api_key_hash partial index for auth middleware",
+        |conn| {
+            // Partial index on the live (non-revoked) rows only — auth_middleware
+            // and the cloud session lookup never care about revoked nodes, so the
+            // index only carries the rows the planner actually needs.
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_registered_nodes_api_key_hash_live\n                 ON registered_nodes (api_key_hash)\n                 WHERE revoked_at IS NULL;",
+            )
+        },
+    )?;
+
+    apply_migration(
+        conn,
+        3,
+        "registered_nodes (account_id, created_at) for primary_node lookup",
+        |conn| {
+            // primary_node_for_account orders by created_at DESC after filtering
+            // on account_id; the existing (account_id, device_id) composite
+            // covers the filter but not the order. Partial again — revoked rows
+            // are skipped by every consumer.
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_registered_nodes_account_created_live\n                 ON registered_nodes (account_id, created_at)\n                 WHERE revoked_at IS NULL;",
+            )
+        },
+    )?;
+
+    apply_migration(
+        conn,
+        4,
+        "server_mailbox client_message_id idempotency key + partial unique index",
+        |conn| {
+            // Add the column first; ADD COLUMN has its own implicit IF NOT
+            // EXISTS via apply_migration's once-per-version guard. Then the
+            // partial unique index — partial because legacy rows that pre-date
+            // this column have NULL client_message_id and must stay
+            // independent under unique semantics.
+            let _ = conn.execute(
+                "ALTER TABLE server_mailbox ADD COLUMN client_message_id TEXT",
+                [],
+            );
+            conn.execute_batch(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_server_mailbox_target_client_msg\n                 ON server_mailbox (target_node_id, client_message_id)\n                 WHERE client_message_id IS NOT NULL;",
+            )
+        },
+    )?;
+
+    // server_messages / server_message_recipients are owned by the
+    // kordi-cloud-server crate now and live in its own SQLite database.
+
+
+    Ok(())
+}
+
+fn apply_migration<F>(
+    conn: &Connection,
+    version: i64,
+    description: &'static str,
+    runner: F,
+) -> Result<(), ServerInitError>
+where
+    F: FnOnce(&Connection) -> Result<(), rusqlite::Error>,
+{
+    let already: Option<i64> = conn
+        .query_row(
+            "SELECT version FROM schema_versions WHERE version = ?1",
+            rusqlite::params![version],
+            |row| row.get(0),
+        )
+        .ok();
+    if already.is_some() {
+        return Ok(());
+    }
+    runner(conn).map_err(|source| ServerInitError::Migration {
+        version,
+        description,
+        source,
+    })?;
+    conn.execute(
+        "INSERT INTO schema_versions (version, applied_at) VALUES (?1, ?2)",
+        rusqlite::params![version, chrono::Utc::now().to_rfc3339()],
+    )
+    .map_err(|source| ServerInitError::Migration {
+        version,
+        description,
+        source,
+    })?;
     Ok(())
 }
 
@@ -155,6 +299,8 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             human_visibility_policy TEXT,
             contact_approval_policy TEXT,
             agent_reachability_policy TEXT,
+            account_id          TEXT,
+            device_id           TEXT,
             created_at          TEXT NOT NULL
         );
 
@@ -177,6 +323,8 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             human_visibility_policy,
             contact_approval_policy,
             agent_reachability_policy,
+            account_id,
+            device_id,
             created_at
         )
         SELECT
@@ -195,6 +343,8 @@ fn migrate_registered_nodes_to_core(conn: &Connection) -> Result<(), ServerInitE
             revoked_at,
             revocation_reason,
             replacement_node_id,
+            NULL,
+            NULL,
             NULL,
             NULL,
             NULL,
@@ -275,6 +425,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
 
     Router::new()
         .merge(auth::routes(state.clone()))
+        // Cloud-edition auth routes live in the kordi-cloud-server crate now.
         .merge(contacts::routes(state.clone()))
         .merge(discovery::routes(state.clone()))
         .merge(keys::routes(state.clone()))
@@ -298,16 +449,84 @@ pub async fn run(port: u16, db_path: &str) -> Result<(), String> {
     drop(conn);
 
     let state = Arc::new(ServerState::new(Path::new(db_path).to_path_buf()));
+    spawn_mailbox_retention_gc(state.clone());
     let app = router(state);
     let addr = format!("0.0.0.0:{}", port);
     println!("Bridges coordination server on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .map_err(|e| format!("bind: {}", e))?;
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| format!("serve: {}", e))
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .map_err(|e| format!("serve: {}", e))
 }
+
+/// Periodic background sweep that prunes mailbox rows older than
+/// `relay::MAILBOX_RETENTION_DAYS`. Spawned once when `serve::run` boots so
+/// the dead-letter queue can't grow unbounded for offline targets.
+fn spawn_mailbox_retention_gc(state: Arc<ServerState>) {
+    tokio::spawn(async move {
+        // Skip the first tick — give the server a beat to finish booting
+        // before we start contending for the write lock.
+        let mut ticker = tokio::time::interval(relay::MAILBOX_GC_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            let runner = match state.db_runner().await {
+                Ok(runner) => runner.clone(),
+                Err(err) => {
+                    eprintln!("[bridges] mailbox GC: db unavailable: {err}");
+                    continue;
+                }
+            };
+            let result = runner
+                .write::<_, usize, MailboxGcError>(|conn| {
+                    Ok(relay::gc_mailbox_retention(conn, relay::MAILBOX_RETENTION_DAYS)?)
+                })
+                .await;
+            match result {
+                Ok(count) if count > 0 => {
+                    println!("[bridges] mailbox GC: pruned {count} stale row(s)");
+                }
+                Ok(_) => {}
+                Err(err) => eprintln!("[bridges] mailbox GC failed: {err}"),
+            }
+        }
+    });
+}
+
+#[derive(Debug)]
+enum MailboxGcError {
+    Db(db_runner::DbRunnerError),
+    Sqlite(rusqlite::Error),
+}
+
+impl From<db_runner::DbRunnerError> for MailboxGcError {
+    fn from(value: db_runner::DbRunnerError) -> Self {
+        Self::Db(value)
+    }
+}
+
+impl From<rusqlite::Error> for MailboxGcError {
+    fn from(value: rusqlite::Error) -> Self {
+        Self::Sqlite(value)
+    }
+}
+
+impl std::fmt::Display for MailboxGcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Db(err) => write!(f, "{err}"),
+            Self::Sqlite(err) => write!(f, "sqlite: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for MailboxGcError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DirectAccessKind {
@@ -532,6 +751,218 @@ pub(crate) fn nodes_can_directly_reach(
 mod tests {
     use super::*;
 
+    fn table_exists(conn: &Connection, table: &str) -> bool {
+        conn.query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            rusqlite::params![table],
+            |_| Ok(()),
+        )
+        .is_ok()
+    }
+
+    fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+        let sql = format!("PRAGMA table_info({table})");
+        let mut stmt = conn.prepare(&sql).expect("prepare table info");
+        let exists = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query table info")
+            .filter_map(Result::ok)
+            .any(|name| name == column);
+        exists
+    }
+
+    #[test]
+    fn server_schema_creates_cloud_account_foundation() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-cloud-auth-schema-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        for table in [
+            "cloud_accounts",
+            "cloud_account_identities",
+            "cloud_devices",
+            "cloud_refresh_tokens",
+            "cloud_audit_events",
+        ] {
+            assert!(table_exists(&conn, table), "expected {table} table");
+        }
+
+        for column in ["account_id", "device_id"] {
+            assert!(
+                column_exists(&conn, "registered_nodes", column),
+                "expected registered_nodes.{column} column"
+            );
+        }
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn server_schema_adds_cloud_columns_to_existing_registered_nodes() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-cloud-auth-legacy-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE registered_nodes (
+                node_id TEXT PRIMARY KEY,
+                ed25519_pubkey TEXT NOT NULL,
+                x25519_pubkey TEXT NOT NULL,
+                api_key_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .expect("seed legacy schema");
+
+        init_server_db(&conn).expect("init db should migrate old registered_nodes table");
+
+        assert!(column_exists(&conn, "registered_nodes", "account_id"));
+        assert!(column_exists(&conn, "registered_nodes", "device_id"));
+        assert!(
+            conn.query_row(
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_registered_nodes_account_device'",
+                [],
+                |_| Ok(()),
+            )
+            .is_ok(),
+            "expected account/device lookup index"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    fn index_exists(conn: &Connection, name: &str) -> bool {
+        conn.query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            rusqlite::params![name],
+            |_| Ok(()),
+        )
+        .is_ok()
+    }
+
+    /// Run EXPLAIN QUERY PLAN against `sql` and return one joined string of
+    /// every plan-step detail. Tests assert the expected index name appears
+    /// in that joined text — the planner picks it for the query.
+    fn explain_plan(conn: &Connection, sql: &str) -> String {
+        let prepared_sql = format!("EXPLAIN QUERY PLAN {sql}");
+        let mut stmt = conn.prepare(&prepared_sql).expect("prepare explain");
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(3))
+            .expect("query explain rows");
+        let mut details = Vec::new();
+        for row in rows {
+            details.push(row.expect("explain row"));
+        }
+        details.join(" | ")
+    }
+
+    #[test]
+    fn auth_middleware_lookup_uses_api_key_hash_index() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-explain-auth-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        let plan = explain_plan(
+            &conn,
+            "SELECT node_id FROM registered_nodes WHERE api_key_hash = 'x' AND revoked_at IS NULL",
+        );
+        assert!(
+            plan.contains("idx_registered_nodes_api_key_hash_live"),
+            "expected auth lookup to use partial api_key_hash index, got plan: {plan}"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn primary_node_lookup_uses_account_created_index() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-explain-account-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        let plan = explain_plan(
+            &conn,
+            "SELECT node_id FROM registered_nodes WHERE account_id = 'a' AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1",
+        );
+        assert!(
+            plan.contains("idx_registered_nodes_account_created_live"),
+            "expected primary_node lookup to use account_created partial index, got plan: {plan}"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn mailbox_poll_uses_covering_index() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-explain-mailbox-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        let plan = explain_plan(
+            &conn,
+            "SELECT message_id, from_node_id, blob, project_id, created_at \
+             FROM server_mailbox WHERE target_node_id = 't' \
+             ORDER BY created_at ASC, message_id ASC LIMIT 100",
+        );
+        assert!(
+            plan.contains("idx_server_mailbox_target_created"),
+            "expected mailbox poll to use a target_created index, got plan: {plan}"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn schema_versions_records_applied_migrations_and_is_idempotent() {
+        let db_path = std::env::temp_dir().join(format!(
+            "bridges-server-schema-versions-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = Connection::open(&db_path).expect("open db");
+        init_server_db(&conn).expect("init db");
+
+        // Migration 1 lands the covering mailbox index.
+        assert!(index_exists(&conn, "idx_server_mailbox_target_created_message"));
+
+        // schema_versions has migration 1 recorded exactly once.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM schema_versions WHERE version = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count migrations");
+        assert_eq!(count, 1);
+
+        // Re-running init_server_db is a no-op for already-applied versions.
+        init_server_db(&conn).expect("re-init db");
+        let count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM schema_versions WHERE version = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count migrations after re-init");
+        assert_eq!(count_after, 1);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
     #[test]
     fn server_connections_apply_busy_timeout_for_concurrent_mailbox_writes() {
         let db_path = std::env::temp_dir().join(format!(
@@ -581,6 +1012,8 @@ CREATE TABLE IF NOT EXISTS registered_nodes (
     human_visibility_policy TEXT,
     contact_approval_policy TEXT,
     agent_reachability_policy TEXT,
+    account_id          TEXT,
+    device_id           TEXT,
     created_at          TEXT NOT NULL
 );
 
@@ -646,6 +1079,62 @@ CREATE TABLE IF NOT EXISTS server_mailbox (
     created_at      TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cloud_accounts (
+    account_id      TEXT PRIMARY KEY,
+    display_name    TEXT,
+    primary_email   TEXT,
+    avatar_url      TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cloud_account_identities (
+    identity_id      TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    provider         TEXT NOT NULL,
+    provider_subject TEXT NOT NULL,
+    provider_username TEXT,
+    email            TEXT,
+    email_verified   INTEGER NOT NULL DEFAULT 0,
+    avatar_url       TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    UNIQUE(provider, provider_subject),
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_devices (
+    device_id        TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    device_name      TEXT,
+    device_public_key TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    last_seen_at     TEXT NOT NULL,
+    revoked_at       TEXT,
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_refresh_tokens (
+    token_id         TEXT PRIMARY KEY,
+    account_id       TEXT NOT NULL,
+    device_id        TEXT NOT NULL,
+    token_hash       TEXT NOT NULL UNIQUE,
+    created_at       TEXT NOT NULL,
+    expires_at       TEXT NOT NULL,
+    revoked_at       TEXT,
+    FOREIGN KEY(account_id) REFERENCES cloud_accounts(account_id) ON DELETE CASCADE,
+    FOREIGN KEY(device_id) REFERENCES cloud_devices(device_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS cloud_audit_events (
+    event_id         TEXT PRIMARY KEY,
+    account_id       TEXT,
+    device_id        TEXT,
+    event_type       TEXT NOT NULL,
+    metadata_json    TEXT,
+    created_at       TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_server_contacts_node_created
     ON server_contacts (node_id, created_at);
 
@@ -657,4 +1146,10 @@ CREATE INDEX IF NOT EXISTS idx_server_contact_requests_requester_status
 
 CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created
     ON server_mailbox (target_node_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_cloud_account_identities_account
+    ON cloud_account_identities (account_id, provider);
+
+CREATE INDEX IF NOT EXISTS idx_cloud_devices_account
+    ON cloud_devices (account_id, revoked_at, last_seen_at);
 "#;

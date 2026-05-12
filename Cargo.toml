@@ -13,6 +13,7 @@ members = [
     "app/server",
     "app/desktop/src-tauri",
     "bridges/cli",
+    "bridges/cloud-server",
     "shared/rust/protocol",
 ]
 

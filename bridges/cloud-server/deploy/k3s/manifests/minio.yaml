@@ -1,0 +1,163 @@
+# Single-node MinIO for the cloud-server's attachment store. Hand-rolled
+# (no helm) to match the Postgres + Redis pattern — minimal surface, easy
+# to audit. HA / distributed mode is a later session.
+#
+# - Service exposes 9000 (S3 API) + 9001 (console) inside the cluster.
+# - Credentials live in the minio-credentials Secret. The cloud-server
+#   reads the same secret as S3_ACCESS_KEY / S3_SECRET_KEY.
+# - A one-shot Job runs `mc mb` after the StatefulSet comes up to create
+#   the kordi-attachments bucket. Idempotent — re-running the manifest
+#   re-creates the Job but `mc mb --ignore-existing` is a no-op when the
+#   bucket already exists.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: kordi-cloud
+spec:
+  selector:
+    app.kubernetes.io/name: minio
+  clusterIP: None
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+      protocol: TCP
+    - name: console
+      port: 9001
+      targetPort: console
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: object-store
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio
+        app.kubernetes.io/component: object-store
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+          imagePullPolicy: IfNotPresent
+          args:
+            - server
+            - /data
+            - --address
+            - ":9000"
+            - --console-address
+            - ":9001"
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+            - name: MINIO_BROWSER_REDIRECT_URL
+              value: "http://localhost:9001"
+          ports:
+            - name: s3
+              containerPort: 9000
+              protocol: TCP
+            - name: console
+              containerPort: 9001
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: s3
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket-init
+  namespace: kordi-cloud
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: minio-bucket-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+          env:
+            - name: MC_HOST_minio
+              # mc reads the alias from this env var. Format:
+              #   <scheme>://<access>:<secret>@<host>:<port>
+              value: "http://$(ACCESS_KEY):$(SECRET_KEY)@minio.kordi-cloud.svc.cluster.local:9000"
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              # Wait for MinIO to be ready (it's a StatefulSet, may not
+              # be reachable on first run). 30 retries × 2s = 60s ceiling.
+              for i in $(seq 1 30); do
+                if mc alias set local "http://minio.kordi-cloud.svc.cluster.local:9000" "$ACCESS_KEY" "$SECRET_KEY" >/dev/null 2>&1; then
+                  break
+                fi
+                echo "waiting for minio... ($i)"; sleep 2
+              done
+              mc mb --ignore-existing local/kordi-attachments
+              mc anonymous set none local/kordi-attachments
+              echo "bucket ready"
+              mc ls local/

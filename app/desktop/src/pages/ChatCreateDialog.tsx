@@ -21,6 +21,14 @@ export type ChatCreatePopoverAnchor = {
   height: number;
 };
 
+export type AddContactLookupResult = {
+  accountId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  isContact: boolean;
+  isSelf: boolean;
+};
+
 export type ChatCreateDialogProps = {
   isOpen: boolean;
   contacts: Contact[];
@@ -31,6 +39,15 @@ export type ChatCreateDialogProps = {
   onStartAgent: (agent: Agent) => Promise<void> | void;
   onCreateGroup: (request: CreateChatGroupRequest) => Promise<void> | void;
   onAddContact?: (nodeId: string) => Promise<void> | void;
+  /** Optional account lookup. When provided the Add-contacts mode shows
+   * a search-first UX (input → search → profile preview → Add) instead
+   * of the direct-send fallback. Cloud edition wires this through to
+   * the auth client's getProfile call so users see who they're about
+   * to request before sending. */
+  onLookupContact?: (idOrEmail: string) => Promise<AddContactLookupResult | null>;
+  /** Override the placeholder shown in the Add-contacts input. Cloud
+   * uses "acct_…" while local bridge uses "kd_…". */
+  addContactPlaceholder?: string;
   initialMode?: CreateMode;
   anchorRect?: ChatCreatePopoverAnchor | null;
 };
@@ -171,6 +188,8 @@ export function ChatCreateDialog({
   onStartAgent,
   onCreateGroup,
   onAddContact,
+  onLookupContact,
+  addContactPlaceholder,
   initialMode = 'menu',
   anchorRect = null,
 }: ChatCreateDialogProps) {
@@ -182,6 +201,9 @@ export function ChatCreateDialog({
   const [addContactError, setAddContactError] = useState('');
   const [requestingContactNodeId, setRequestingContactNodeId] = useState<string | null>(null);
   const [requestedContactNodeIds, setRequestedContactNodeIds] = useState<string[]>([]);
+  const [lookupState, setLookupState] = useState<'idle' | 'searching' | 'error'>('idle');
+  const [lookupError, setLookupError] = useState('');
+  const [lookupResult, setLookupResult] = useState<AddContactLookupResult | null>(null);
   const personOptions = useMemo(() => buildChatCreatePersonOptions(contacts), [contacts]);
   const groupPersonOptions = useMemo(() => buildChatCreateGroupPersonOptions(contacts), [contacts]);
   const agentOptions = useMemo(() => buildChatCreateAgentOptions(agents), [agents]);
@@ -202,7 +224,32 @@ export function ChatCreateDialog({
     setAddContactError('');
     setRequestingContactNodeId(null);
     setRequestedContactNodeIds([]);
+    setLookupState('idle');
+    setLookupError('');
+    setLookupResult(null);
     onClose();
+  };
+
+  const performLookup = async () => {
+    if (!onLookupContact) return;
+    const trimmed = contactNodeId.trim();
+    if (!trimmed) return;
+    setLookupState('searching');
+    setLookupError('');
+    setLookupResult(null);
+    try {
+      const result = await onLookupContact(trimmed);
+      if (!result) {
+        setLookupState('error');
+        setLookupError('No account found.');
+        return;
+      }
+      setLookupResult(result);
+      setLookupState('idle');
+    } catch (error) {
+      setLookupState('error');
+      setLookupError(error instanceof Error ? error.message : 'Lookup failed.');
+    }
   };
 
   const submitAddContact = async (nodeIdInput: string) => {
@@ -319,7 +366,93 @@ export function ChatCreateDialog({
         </div>
       ) : null}
 
-      {mode === 'add-contact' ? (
+      {mode === 'add-contact' && onLookupContact ? (
+        <form
+          className="space-y-2"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (lookupResult) {
+              await submitAddContact(lookupResult.accountId);
+            } else {
+              await performLookup();
+            }
+          }}
+        >
+          <input
+            value={contactNodeId}
+            onChange={(event) => {
+              setContactNodeId(event.target.value);
+              setLookupResult(null);
+              setLookupState('idle');
+              setLookupError('');
+              if (addContactState !== 'saving') setAddContactState('idle');
+            }}
+            placeholder={addContactPlaceholder ?? 'Account ID, e.g. acct_...'}
+            className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
+            autoFocus
+          />
+
+          {lookupResult ? (
+            <div className="app-chat-create-list-item flex items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2">
+              <span className="min-w-0">
+                <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">
+                  {lookupResult.displayName || lookupResult.accountId}
+                </span>
+                <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">
+                  {lookupResult.accountId}
+                </span>
+              </span>
+              {lookupResult.isSelf ? (
+                <span className="text-[11px] text-[color:var(--utility-muted-text)]">That's you</span>
+              ) : lookupResult.isContact ? (
+                <span className="text-[11px] text-[color:var(--utility-muted-text)]">Already in contacts</span>
+              ) : (
+                <Button
+                  type="button"
+                  className="h-7 shrink-0 rounded-[10px] px-2.5 text-[11px]"
+                  disabled={addContactState === 'saving' || requestedContactNodeIds.includes(lookupResult.accountId)}
+                  onClick={() => {
+                    void submitAddContact(lookupResult.accountId);
+                  }}
+                >
+                  {addContactState === 'saving'
+                    ? 'Sending…'
+                    : requestedContactNodeIds.includes(lookupResult.accountId)
+                      ? 'Requested'
+                      : 'Add'}
+                </Button>
+              )}
+            </div>
+          ) : null}
+
+          <div className="min-h-4 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]" aria-live="polite">
+            {addContactState === 'sent'
+              ? 'Request sent. They will appear in your contacts after they accept.'
+              : lookupState === 'error'
+                ? lookupError || 'Lookup failed.'
+                : addContactState === 'error'
+                  ? addContactError || 'Unable to send contact request.'
+                  : lookupResult
+                    ? 'Tap Add to send a contact request.'
+                    : 'Enter an account ID, then Search to preview the profile.'}
+          </div>
+
+          <div className="flex gap-1.5">
+            <Button type="button" variant="secondary" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+            <Button
+              type="submit"
+              className="h-8 flex-1 rounded-[12px] px-3 text-[12px]"
+              disabled={!contactNodeId.trim() || lookupState === 'searching' || addContactState === 'saving'}
+            >
+              {lookupResult
+                ? (addContactState === 'saving' ? 'Sending…' : 'Send request')
+                : (lookupState === 'searching' ? 'Searching…' : 'Search')}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+
+      {mode === 'add-contact' && !onLookupContact ? (
         <form
           className="space-y-2"
           onSubmit={async (event) => {
@@ -362,7 +495,7 @@ export function ChatCreateDialog({
               setContactNodeId(event.target.value);
               if (addContactState !== 'saving') setAddContactState('idle');
             }}
-            placeholder="Bridge node ID, e.g. kd_..."
+            placeholder={addContactPlaceholder ?? 'Bridge node ID, e.g. kd_...'}
             className="app-input-shell h-8 w-full rounded-[12px] px-2.5 text-[12px] outline-none"
           />
           <div className="min-h-4 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]" aria-live="polite">

@@ -76,18 +76,8 @@ export function sessionMetadata(session: CanonicalSessionState['sessions'][numbe
     : {};
 }
 
-function nonPlaceholderGroupTitle(value: string) {
-  const title = value.trim();
-  if (!title || /^(new session|session|group)$/i.test(title)) return null;
-  return title;
-}
-
 export function sessionViewMetadata(session: CanonicalSessionState['sessions'][number]) {
-  if (session.kind !== 'group') return session.metadata;
-  const metadata = sessionMetadata(session);
-  if (stringValue(metadata.customName)) return session.metadata;
-  const customName = nonPlaceholderGroupTitle(session.title);
-  return customName ? { ...metadata, customName } : session.metadata;
+  return session.metadata;
 }
 
 export function syntheticBridgeTarget(
@@ -166,8 +156,13 @@ function firstMessageTitle(messages: Message[]) {
   return text || null;
 }
 
+function isGenericSessionTitle(value?: string | null) {
+  return /^(#\s*)?(new session|untitled session)$/i.test(value?.trim() ?? '');
+}
+
 export function sessionHasManualTitle(session: CanonicalSessionState['sessions'][number]) {
   const metadata = sessionMetadata(session);
+  if (isGenericSessionTitle(session.title)) return false;
   if (stringValue(metadata.sessionTitleSource) === 'manual') return true;
   if (session.kind === 'group') return false;
   return stringValue(metadata.titleSource) === 'manual';
@@ -221,6 +216,11 @@ export function sessionChatActivityAtMs(session: CanonicalSessionState['sessions
   return session.lastMessageAtMs ?? session.createdAtMs ?? session.updatedAtMs ?? 0;
 }
 
+export function sessionUnreadCount(session: CanonicalSessionState['sessions'][number]) {
+  const value = sessionMetadata(session).cloudUnreadCount;
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
 export function syntheticConversation(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
@@ -248,7 +248,7 @@ export function syntheticConversation(
     name: displayTitle,
     type: syntheticConversationType(session, participants),
     subtitle: buildSubtitle(messages, session.title),
-    unread: 0,
+    unread: sessionUnreadCount(session),
     bridges: bridgeTarget ? ['Bridge'] : ['Local'],
     trust: bridgeTarget ? 'Bridge' : 'Owned',
     directness: 'Direct chat',

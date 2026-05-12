@@ -139,17 +139,18 @@ fn group_agent_response_outreach_tools_replace_request_placeholder_outreach() {
     response_outreach.status = "completed".to_string();
     response_outreach.updated_at_ms = 2_000;
     response_outreach.completed_at_ms = Some(2_000);
-    response_outreach.parent_session_messages = vec![crate::bridge::DesktopBridgeSessionThreadMessage {
-        role: "assistant".to_string(),
-        sender: Some("Remote Kordi".to_string()),
-        text: "Created the task".to_string(),
-        time_label: Some("10:01".to_string()),
-        index: Some(1),
-        tools: vec![serde_json::json!({
-            "name": "task_operator",
-            "arguments": "{\"action\":\"create\",\"taskTitle\":\"Buy A Big House 2\"}",
-        })],
-    }];
+    response_outreach.parent_session_messages =
+        vec![crate::bridge::DesktopBridgeSessionThreadMessage {
+            role: "assistant".to_string(),
+            sender: Some("Remote Kordi".to_string()),
+            text: "Created the task".to_string(),
+            time_label: Some("10:01".to_string()),
+            index: Some(1),
+            tools: vec![serde_json::json!({
+                "name": "task_operator",
+                "arguments": "{\"action\":\"create\",\"taskTitle\":\"Buy A Big House 2\"}",
+            })],
+        }];
 
     let conversation = crate::bridge::DesktopBridgeConversation {
         id: "bridge:local:remote".to_string(),
@@ -764,14 +765,37 @@ fn inbound_group_bridge_agent_request_emits_join_even_when_agent_already_partici
     assert_eq!(join_text, "Testuser6's Kordi joined via @mention");
 }
 
-
 #[test]
 fn group_bridge_agent_session_message_creates_delegated_exchange_task() {
     let conn = test_conn();
     for (id, kind, display_name, human_id, node_id, owner_id, agent_id) in [
-        ("human:local", "human", "Local", Some("kh_local"), Some("kd_local"), None, None),
-        ("human:remote", "human", "Remote", Some("kh_remote"), Some("kd_remote"), None, None),
-        ("agent:remote", "agent", "Remote Kordi", None, Some("kd_remote"), Some("human:remote"), Some("ka_remote")),
+        (
+            "human:local",
+            "human",
+            "Local",
+            Some("kh_local"),
+            Some("kd_local"),
+            None,
+            None,
+        ),
+        (
+            "human:remote",
+            "human",
+            "Remote",
+            Some("kh_remote"),
+            Some("kd_remote"),
+            None,
+            None,
+        ),
+        (
+            "agent:remote",
+            "agent",
+            "Remote Kordi",
+            None,
+            Some("kd_remote"),
+            Some("human:remote"),
+            Some("ka_remote"),
+        ),
     ] {
         upsert_identity_in_db(
             &conn,
@@ -789,7 +813,8 @@ fn group_bridge_agent_session_message_creates_delegated_exchange_task() {
                 profile_image_url: None,
                 metadata: None,
             },
-        ).expect("upsert identity");
+        )
+        .expect("upsert identity");
     }
 
     let parent_session_id = "session:group:task-sync";
@@ -805,10 +830,15 @@ fn group_bridge_agent_session_message_creates_delegated_exchange_task() {
             project_id: None,
             project_name: None,
             relationship_identity_id: None,
-            participant_identity_ids: vec!["human:local".to_string(), "human:remote".to_string(), "agent:remote".to_string()],
+            participant_identity_ids: vec![
+                "human:local".to_string(),
+                "human:remote".to_string(),
+                "agent:remote".to_string(),
+            ],
             metadata: Some(serde_json::json!({ "source": "chat-create-flow" })),
         },
-    ).expect("seed group");
+    )
+    .expect("seed group");
 
     let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
         target_kind: "bridge-agent".to_string(),
@@ -889,7 +919,8 @@ fn group_bridge_agent_session_message_creates_delegated_exchange_task() {
         Some("human:local"),
         "agent:remote",
         true,
-    ).expect("sync group agent task");
+    )
+    .expect("sync group agent task");
 
     let row: (String, String, String, String, Option<String>, String, String) = conn.query_row(
         "SELECT id, session_id, initiator_identity_id, target_identity_id, bridge_request_id, context_policy, status
@@ -898,7 +929,10 @@ fn group_bridge_agent_session_message_creates_delegated_exchange_task() {
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
     ).expect("delegated exchange");
 
-    assert_eq!(row.0, "delegation:bridge-session-message:session:group:task-sync:bridge_req_group_task");
+    assert_eq!(
+        row.0,
+        "delegation:bridge-session-message:session:group:task-sync:bridge_req_group_task"
+    );
     assert_eq!(row.1, parent_session_id);
     assert_eq!(row.2, "human:local");
     assert_eq!(row.3, "agent:remote");
@@ -911,9 +945,33 @@ fn group_bridge_agent_session_message_creates_delegated_exchange_task() {
 fn stale_group_agent_processing_relay_response_is_marked_failed() {
     let conn = test_conn();
     for (id, kind, display_name, human_id, node_id, owner_id, agent_id) in [
-        ("human:local", "human", "Local", Some("kh_local"), Some("kd_local"), None, None),
-        ("human:remote", "human", "Remote", Some("kh_remote"), Some("kd_remote"), None, None),
-        ("agent:remote", "agent", "Remote Kordi", None, Some("kd_remote"), Some("human:remote"), Some("ka_remote")),
+        (
+            "human:local",
+            "human",
+            "Local",
+            Some("kh_local"),
+            Some("kd_local"),
+            None,
+            None,
+        ),
+        (
+            "human:remote",
+            "human",
+            "Remote",
+            Some("kh_remote"),
+            Some("kd_remote"),
+            None,
+            None,
+        ),
+        (
+            "agent:remote",
+            "agent",
+            "Remote Kordi",
+            None,
+            Some("kd_remote"),
+            Some("human:remote"),
+            Some("ka_remote"),
+        ),
     ] {
         upsert_identity_in_db(
             &conn,
@@ -948,7 +1006,11 @@ fn stale_group_agent_processing_relay_response_is_marked_failed() {
             project_id: None,
             project_name: None,
             relationship_identity_id: None,
-            participant_identity_ids: vec!["human:local".to_string(), "human:remote".to_string(), "agent:remote".to_string()],
+            participant_identity_ids: vec![
+                "human:local".to_string(),
+                "human:remote".to_string(),
+                "agent:remote".to_string(),
+            ],
             metadata: Some(serde_json::json!({ "source": "chat-create-flow" })),
         },
     )
@@ -1047,7 +1109,10 @@ fn stale_group_agent_processing_relay_response_is_marked_failed() {
         )
         .expect("stale response row");
 
-    assert_eq!(row.0, crate::bridge::BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT);
+    assert_eq!(
+        row.0,
+        crate::bridge::BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT
+    );
     assert_eq!(row.1, "failed");
     assert_eq!(row.2, "processing_failed");
 }
@@ -1075,7 +1140,8 @@ fn group_person_session_message_does_not_create_delegated_exchange_task() {
                 profile_image_url: None,
                 metadata: None,
             },
-        ).expect("upsert identity");
+        )
+        .expect("upsert identity");
     }
 
     let parent_session_id = "session:group:person-fanout-not-task";
@@ -1158,12 +1224,15 @@ fn group_person_session_message_does_not_create_delegated_exchange_task() {
         Some("human:remote"),
         "human:remote",
         false,
-    ).expect("sync person fanout");
+    )
+    .expect("sync person fanout");
 
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM delegated_exchanges WHERE session_id = ?1",
-        rusqlite::params![parent_session_id],
-        |row| row.get(0),
-    ).expect("exchange count");
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM delegated_exchanges WHERE session_id = ?1",
+            rusqlite::params![parent_session_id],
+            |row| row.get(0),
+        )
+        .expect("exchange count");
     assert_eq!(count, 0);
 }

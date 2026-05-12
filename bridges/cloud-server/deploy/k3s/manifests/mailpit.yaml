@@ -1,0 +1,68 @@
+# Mailpit — modern Mailhog-alternative SMTP sink.
+# Catches every outbound email from the bridge so we can assert
+# delivery in tests without setting up a real relay.
+#
+# - Smtp on port 1025 (mailpit.kordi-cloud.svc.cluster.local:1025)
+# - HTTP UI + JSON API on port 8025 (used by verification scripts)
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  namespace: kordi-cloud
+spec:
+  selector:
+    app.kubernetes.io/name: mailpit
+  ports:
+    - name: smtp
+      port: 1025
+      targetPort: smtp
+      protocol: TCP
+    - name: http
+      port: 8025
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/component: smtp-sink
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mailpit
+        app.kubernetes.io/component: smtp-sink
+    spec:
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.21.5
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: smtp
+              containerPort: 1025
+              protocol: TCP
+            - name: http
+              containerPort: 8025
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /api/v1/info
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

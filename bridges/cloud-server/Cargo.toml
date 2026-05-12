@@ -1,0 +1,53 @@
+[package]
+name = "kordi-cloud-server"
+version = "0.0.1"
+edition = "2021"
+description = "Kordi cloud-native collaboration server (cloud accounts, sessions, message log)"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "kordi-cloud-server"
+path = "src/main.rs"
+
+[lib]
+name = "kordi_cloud_server"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+rand.workspace = true
+base64.workspace = true
+clap.workspace = true
+hex = "0.4"
+bs58 = "0.5"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+curve25519-dalek = "4"
+axum = { version = "0.7", features = ["ws"] }
+futures-util = { version = "0.3", default-features = false }
+tower = { version = "0.4", features = ["limit"] }
+tower-http = { version = "0.5", features = ["cors"] }
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
+async-nats = "0.37"
+bytes = "1"
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "aio", "connection-manager"] }
+rusty-s3 = "0.7"
+url = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Direct driver + core deps (no sqlx umbrella) so sqlx-sqlite doesn't show
+# up in the workspace dep graph and conflict with bridges/cli's rusqlite
+# at the libsqlite3-sys link layer.
+sqlx-core = { version = "0.8", default-features = false, features = ["migrate", "_rt-tokio"] }
+sqlx-postgres = { version = "0.8", default-features = false, features = ["chrono", "uuid", "migrate"] }
+sqlx-macros = { version = "0.8", default-features = false, features = ["migrate", "postgres"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
