@@ -207,26 +207,33 @@ export function useCloudBridgeState({
       : [],
     [account, acceptedContactPeerIds, canonicalSessionState],
   );
-  const cloudBridgeContacts = useMemo(
+  const cloudBridgeContacts = contacts.contacts;
+  const groupParticipantPeerIds = useMemo(
+    () => groupParticipantContacts
+      .map((contact) => contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, ''))
+      .filter((value): value is string => Boolean(value)),
+    [groupParticipantContacts],
+  );
+  const cloudLookupContacts = useMemo(
     () => [...contacts.contacts, ...groupParticipantContacts],
     [contacts.contacts, groupParticipantContacts],
   );
   const contactPeerIds = useMemo(
-    () => cloudBridgeContacts
+    () => contacts.contacts
       .map((contact) => contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, ''))
       .filter((value): value is string => Boolean(value)),
-    [cloudBridgeContacts],
+    [contacts.contacts],
   );
-  const bootstrapPeerIds = useMemo(
-    () => account
+  const bootstrapPeerIds = useMemo(() => {
+    const messagePeerIds = [...new Set([...contactPeerIds, ...groupParticipantPeerIds])];
+    return account
       ? cloudGroupPeerIdsFromContactsAndRequests({
         accountId: account.accountId,
-        contactPeerIds,
+        contactPeerIds: messagePeerIds,
         requests: contacts.requests,
       })
-      : contactPeerIds,
-    [account, contactPeerIds, contacts.requests],
-  );
+      : messagePeerIds;
+  }, [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
   const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
 
   useEffect(() => {
@@ -729,7 +736,7 @@ export function useCloudBridgeState({
         void (async () => {
           const session = await loadSession();
           if (!session?.token) throw new Error('Not signed in.');
-          const contact = cloudBridgeContacts.find((candidate) => (
+          const contact = cloudLookupContacts.find((candidate) => (
             candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
           ) === peerId);
           const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
@@ -778,7 +785,7 @@ export function useCloudBridgeState({
         });
       }
     }
-  }, [account, client, cloudBridgeContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
+  }, [account, client, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account || !activeConversationId) return;

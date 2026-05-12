@@ -13,6 +13,7 @@ import {
 } from '../src/features/cloud/cloudBridgeState';
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -92,6 +93,53 @@ test('cloud group participant contacts include non-contact group members for men
     bridgeContactStatus: 'group-member',
     avatarSeed: 'seed-member',
   }]);
+});
+
+test('cloud group members do not become direct contacts or direct chat peers', () => {
+  const groupMemberContact = {
+    ...cloudContactToContact({
+      accountId: 'acct_member',
+      displayName: 'Group Member',
+      avatarUrl: null,
+      nodeId: 'acct_member',
+      createdAt: '2026-05-11T00:00:00Z',
+    }),
+    bridgeContactStatus: 'group-member',
+  };
+  const body = encodeCloudGroupControl({
+    kind: 'group-update',
+    groupId: 'session:group:one',
+    groupSpaceId: 'session:group:one',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_member', displayName: 'Group Member', avatarUrl: null, role: 'person' },
+    ],
+    message: null,
+  });
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer, groupMemberContact],
+    messagesByPeer: {
+      acct_peer: [message],
+      acct_member: [{
+        messageId: 'msg_group_control',
+        fromAccountId: 'acct_member',
+        toAccountId: 'acct_me',
+        body,
+        createdAt: '2026-05-11T10:00:00Z',
+        deliveredAt: null,
+        readAt: null,
+        direction: 'incoming',
+      }],
+    },
+  });
+
+  assert.equal(state.hosts[0]?.visiblePeers.some((visiblePeer) => visiblePeer.humanId === 'acct_member'), false);
+  assert.equal(state.conversations.some((conversation) => conversation.peerNodeId === 'acct_member'), false);
+  assert.equal(state.conversations.some((conversation) => conversation.peerNodeId === 'acct_peer'), true);
 });
 
 test('cloud contact identity requests preserve account ids, display names, and shared avatar seeds', () => {

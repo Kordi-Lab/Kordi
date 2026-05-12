@@ -260,9 +260,13 @@ function cloudAgentCancelledBridgeMessage({
   };
 }
 
+function isDirectCloudContact(contact: Contact): boolean {
+  return contact.bridgeContactStatus?.trim().toLowerCase() !== 'group-member';
+}
+
 export function buildCloudBridgeHost(account: CloudAccount, contacts: Contact[]): DesktopBridgeHost {
   const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Cloud user';
-  const peers = contacts.flatMap((contact) => [
+  const peers = contacts.filter(isDirectCloudContact).flatMap((contact) => [
     cloudContactToPersonPeer(contact),
     cloudContactToAgentPeer(contact),
   ]);
@@ -552,9 +556,10 @@ export function buildCloudDesktopBridgeState({
   activeConversationId?: string | null;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
 }): DesktopBridgeState {
-  const host = buildCloudBridgeHost(account, contacts);
+  const directContacts = contacts.filter(isDirectCloudContact);
+  const host = buildCloudBridgeHost(account, directContacts);
   const activePeerId = activeConversationId ? cloudPeerAccountIdFromConversationId(activeConversationId) : null;
-  const conversations = contacts
+  const conversations = directContacts
     .flatMap((contact) => {
       const peerId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
       const messages = messagesByPeer[peerId] ?? [];
