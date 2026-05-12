@@ -54,6 +54,7 @@ import {
 import {
   cloudGroupAgentConversationId,
   cloudGroupAgentMentionHasResponse,
+  cloudGroupAgentMentionResponseState,
   cloudGroupAgentOfflineNoticeRequest,
   cloudGroupAgentRequestingNoticeMessage,
   cloudGroupAgentResponseTargetAccountIds,
@@ -139,15 +140,61 @@ function cloudAgentMentionCandidates(state: CanonicalSessionState, accountId: st
   });
 }
 
+function cloudGroupOfflinePlaceholderMatches(message: CanonicalSessionMessage, noticeId: string) {
+  return message.id === noticeId && message.sourceTransport === 'cloud-group-agent-offline';
+}
+
+function cloudGroupAgentResponseMatches(
+  message: CanonicalSessionMessage,
+  candidate: CloudAgentMentionCandidate,
+) {
+  if (message.senderIdentityId !== `agent:cloud:${candidate.targetAccountId}`) return false;
+  if (message.sourceTransport !== 'cloud-group-agent') return false;
+  const content = objectContent(message.content);
+  const linkedRequestId = cleanText(message.parentMessageId)
+    || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+    || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+  return linkedRequestId === candidate.requestMessage.id;
+}
+
 function removeCloudGroupOfflinePlaceholder(
   current: CanonicalSessionState | null,
   noticeId: string,
 ): CanonicalSessionState | null {
   if (!current) return current;
-  const nextMessages = current.messages.filter((message) => !(
-    message.id === noticeId && message.sourceTransport === 'cloud-group-agent-offline'
-  ));
+  const nextMessages = current.messages.filter((message) => !cloudGroupOfflinePlaceholderMatches(message, noticeId));
   return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
+}
+
+function setCloudGroupRequestPlaceholderProcessing(
+  current: CanonicalSessionState | null,
+  candidate: CloudAgentMentionCandidate,
+  noticeId: string,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  let changed = false;
+  const updatedAtMs = Date.now();
+  const nextMessages = current.messages.flatMap((message): CanonicalSessionMessage[] => {
+    if (cloudGroupAgentResponseMatches(message, candidate)) {
+      changed = true;
+      return [];
+    }
+    if (!cloudGroupOfflinePlaceholderMatches(message, noticeId)) return [message];
+    const content = objectContent(message.content);
+    changed = true;
+    return [{
+      ...message,
+      contentText: 'processing...',
+      content: {
+        ...content,
+        deliveryState: 'processing',
+        timestampMs: typeof content.timestampMs === 'number' ? content.timestampMs : updatedAtMs,
+      },
+      status: 'processing',
+      updatedAtMs,
+    }];
+  });
+  return changed ? { ...current, messages: nextMessages } : current;
 }
 
 function appendCloudGroupRequestingPlaceholder(
@@ -460,18 +507,22 @@ export function useCloudBridgeState({
       const noticeId = `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`;
       const key = `${candidate.requestMessage.id}\u001f${candidate.targetAccountId}`;
       activeKeys.add(key);
-      const hasResponse = cloudGroupAgentMentionHasResponse({
+      const responseState = cloudGroupAgentMentionResponseState({
         requestMessageId: candidate.requestMessage.id,
         targetAccountId: candidate.targetAccountId,
         messages: canonicalSessionState.messages,
       });
       const existingNotice = canonicalSessionState.messages.find((message) => message.id === noticeId);
       const hasOfflineNotice = existingNotice?.status === 'failed';
-      if (hasResponse || hasOfflineNotice) {
+      if (responseState || hasOfflineNotice) {
         const timerId = cloudGroupOfflineTimersRef.current.get(key);
         if (timerId !== undefined) window.clearTimeout(timerId);
         cloudGroupOfflineTimersRef.current.delete(key);
-        setCanonicalSessionState((current) => removeCloudGroupOfflinePlaceholder(current, noticeId));
+        setCanonicalSessionState((current) => (
+          responseState === 'processing'
+            ? setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId)
+            : removeCloudGroupOfflinePlaceholder(current, noticeId)
+        ));
         continue;
       }
       if (cloudGroupOfflineTimersRef.current.has(key)) continue;

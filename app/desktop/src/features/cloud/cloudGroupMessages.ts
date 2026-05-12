@@ -446,24 +446,38 @@ export function cloudGroupControlReplayKey(message: CloudMessage): string | null
   return `${envelope.kind}:${envelope.groupId}:${message.body}`;
 }
 
+export type CloudGroupAgentMentionResponseState = 'processing' | 'terminal';
+
+export function cloudGroupAgentMentionResponseState(input: {
+  requestMessageId: string;
+  targetAccountId: string;
+  messages: CanonicalSessionMessage[];
+}): CloudGroupAgentMentionResponseState | null {
+  const requestMessageId = cleanText(input.requestMessageId);
+  const targetAccountId = cleanText(input.targetAccountId);
+  if (!requestMessageId || !targetAccountId) return null;
+  const targetAgentIdentityId = `agent:cloud:${targetAccountId}`;
+  for (const message of input.messages) {
+    if (message.senderIdentityId !== targetAgentIdentityId) continue;
+    if (message.sourceTransport !== 'cloud-group-agent') continue;
+    const content = objectRecord(message.content);
+    const linkedRequestId = cleanText(message.parentMessageId)
+      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+    if (linkedRequestId !== requestMessageId) continue;
+    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+    if (message.status === 'processing' || deliveryState === 'processing') return 'processing';
+    return 'terminal';
+  }
+  return null;
+}
+
 export function cloudGroupAgentMentionHasResponse(input: {
   requestMessageId: string;
   targetAccountId: string;
   messages: CanonicalSessionMessage[];
 }): boolean {
-  const requestMessageId = cleanText(input.requestMessageId);
-  const targetAccountId = cleanText(input.targetAccountId);
-  if (!requestMessageId || !targetAccountId) return false;
-  const targetAgentIdentityId = `agent:cloud:${targetAccountId}`;
-  return input.messages.some((message) => {
-    if (message.senderIdentityId !== targetAgentIdentityId) return false;
-    if (message.sourceTransport !== 'cloud-group-agent') return false;
-    const content = objectRecord(message.content);
-    const linkedRequestId = cleanText(message.parentMessageId)
-      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
-      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
-    return linkedRequestId === requestMessageId;
-  });
+  return cloudGroupAgentMentionResponseState(input) !== null;
 }
 
 export function cloudGroupAgentRequestingNoticeMessage(input: {

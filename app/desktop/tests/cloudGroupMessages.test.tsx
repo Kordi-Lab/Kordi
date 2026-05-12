@@ -30,6 +30,7 @@ import {
   cloudSessionTitleUpdateNoticeRequest,
   shouldRouteMentionThroughCloudGroup,
   cloudGroupAgentMentionHasResponse,
+  cloudGroupAgentMentionResponseState,
   cloudGroupAgentOfflineNoticeRequest,
   cloudGroupAgentRequestingNoticeMessage,
 } from '../src/features/cloud/cloudGroupMessages';
@@ -301,6 +302,20 @@ test('cloud group detects whether an offline candidate already sent an agent res
       { id: 'msg_processing', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { requestId: 'msg_request', deliveryState: 'processing' }, parentMessageId: 'msg_request', status: 'processing', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'cloud-group-agent' },
     ],
   }), true);
+  assert.equal(cloudGroupAgentMentionResponseState({
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_target',
+    messages: [
+      { id: 'msg_processing', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { requestId: 'msg_request', deliveryState: 'processing' }, parentMessageId: 'msg_request', status: 'processing', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'cloud-group-agent' },
+    ],
+  }), 'processing');
+  assert.equal(cloudGroupAgentMentionResponseState({
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_target',
+    messages: [
+      { id: 'msg_final', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'done', content: { requestId: 'msg_request', deliveryState: 'complete' }, parentMessageId: 'msg_request', status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, sourceTransport: 'cloud-group-agent' },
+    ],
+  }), 'terminal');
 
   assert.equal(cloudGroupAgentMentionHasResponse({
     requestMessageId: 'msg_request',
