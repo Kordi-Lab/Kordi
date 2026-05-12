@@ -64,6 +64,57 @@ mod group_agent_responses;
 mod group_message_sync;
 
 #[test]
+fn upsert_identity_preserves_existing_profile_image_when_update_has_none() {
+    let conn = test_conn();
+    let first = upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("human:cloud-acct".to_string()),
+            kind: "human".to_string(),
+            display_name: "Cloud Person".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: Some("cloud".to_string()),
+            bridge_node_id: Some("acct_123".to_string()),
+            human_id: Some("acct_123".to_string()),
+            agent_id: None,
+            avatar_key: Some("acct_123".to_string()),
+            profile_image_url: Some("https://images.test/person.png".to_string()),
+            metadata: None,
+        },
+    )
+    .expect("insert identity with profile image");
+    assert_eq!(
+        first.profile_image_url.as_deref(),
+        Some("https://images.test/person.png"),
+    );
+
+    let updated = upsert_identity_in_db(
+        &conn,
+        UpsertCanonicalIdentityRequest {
+            id: Some("human:cloud-acct".to_string()),
+            kind: "human".to_string(),
+            display_name: "Cloud Person".to_string(),
+            owner_identity_id: None,
+            source: Some("bridge".to_string()),
+            source_host_id: Some("cloud".to_string()),
+            bridge_node_id: Some("acct_123".to_string()),
+            human_id: Some("acct_123".to_string()),
+            agent_id: None,
+            avatar_key: Some("acct_123".to_string()),
+            profile_image_url: None,
+            metadata: None,
+        },
+    )
+    .expect("update identity without profile image");
+
+    assert_eq!(
+        updated.profile_image_url.as_deref(),
+        Some("https://images.test/person.png"),
+    );
+}
+
+#[test]
 fn identity_context_renderer_preserves_people_agents_and_permissions() {
     let rendered = render_multi_participant_identity_context(&IdentityContextRequest {
         self_identity: IdentityContextRole {

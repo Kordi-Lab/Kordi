@@ -222,8 +222,13 @@ function groupParticipantKey(conversation: Conversation) {
     .join('+');
 }
 
+function nonGenericGroupTitle(value: string | undefined | null) {
+  const title = safePreviewText(value);
+  return isBlankSessionLabel(title) ? '' : title;
+}
+
 function groupHasCustomName(conversation: Conversation) {
-  return Boolean(metadataStringValue(metadataRecord(conversation.metadata), 'customName'));
+  return Boolean(nonGenericGroupTitle(metadataStringValue(metadataRecord(conversation.metadata), 'customName')));
 }
 
 function genericBridgeGroupContinuation(conversation: Conversation) {
@@ -292,9 +297,20 @@ function buildSession(conversation: Conversation, updatedAtMs: number): Particip
 
 function addUniqueParticipants(target: ConversationParticipant[], participants: ConversationParticipant[]) {
   for (const participant of participants) {
-    if (!target.some((current) => current.id === participant.id)) {
+    const existingIndex = target.findIndex((current) => current.id === participant.id);
+    if (existingIndex === -1) {
       target.push(participant);
+      continue;
     }
+    const existing = target[existingIndex];
+    target[existingIndex] = {
+      ...existing,
+      avatarKey: existing.avatarKey || participant.avatarKey,
+      profileImageUrl: existing.profileImageUrl ?? participant.profileImageUrl ?? null,
+      humanId: existing.humanId || participant.humanId,
+      bridgeNodeId: existing.bridgeNodeId || participant.bridgeNodeId,
+      bridgeHostId: existing.bridgeHostId || participant.bridgeHostId,
+    };
   }
 }
 
@@ -314,7 +330,7 @@ function customGroupTitle(sessions: ParticipantSpaceSessionViewModel[]) {
   for (const session of sessions) {
     const metadata = metadataRecord(session.conversation.metadata);
     const customName = metadata.customName;
-    const title = typeof customName === 'string' ? safePreviewText(customName) : '';
+    const title = typeof customName === 'string' ? nonGenericGroupTitle(customName) : '';
     if (title) return title;
   }
   return '';

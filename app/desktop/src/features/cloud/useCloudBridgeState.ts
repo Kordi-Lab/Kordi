@@ -54,6 +54,8 @@ import {
   cloudGroupPeerIdsFromMessages,
   cloudGroupSelfParticipant,
   cloudGroupUniqueParticipants,
+  cloudGroupRelatedControlsForSend,
+  cloudGroupNonGenericTitle,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
   fulfilledCloudGroupSends,
@@ -895,17 +897,19 @@ export function useCloudBridgeState({
 
   const sendCloudGroupControl = useCallback(async (input: SendCloudGroupControlInput) => {
     if (!account) throw new Error('Not signed in.');
-    const relatedGroupControls = Object.values(messagesByPeer)
+    const relatedGroupControls = cloudGroupRelatedControlsForSend(Object.values(messagesByPeer)
       .flat()
       .flatMap((cloudMessage) => {
         const envelope = parseCloudGroupControl(cloudMessage.body);
-        if (!envelope || envelope.groupId !== input.groupId) return [];
+        if (!envelope) return [];
         return [{
           envelope,
           createdAtMs: Date.parse(cloudMessage.createdAt) || 0,
         }];
-      })
-      .sort((left, right) => left.createdAtMs - right.createdAtMs);
+      }), {
+      groupId: input.groupId,
+      groupSpaceId: input.groupSpaceId,
+    }).sort((left, right) => left.createdAtMs - right.createdAtMs);
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
     const actor = input.actor ?? cloudGroupSelfParticipant(account, input.kind === 'group-message' ? 'person' : 'admin');
@@ -921,8 +925,9 @@ export function useCloudBridgeState({
       ...participants.map((participant) => participant.accountId.trim()).filter(Boolean),
     ])].filter((accountId) => accountId !== account.accountId);
     if (targetAccountIds.length === 0) return;
-    const groupTitle = input.groupTitle
-      ?? [...relatedGroupControls].reverse().find((control) => control.envelope.groupTitle?.trim())?.envelope.groupTitle
+    const groupTitle = cloudGroupNonGenericTitle(input.groupTitle)
+      ?? [...relatedGroupControls].reverse().map((control) => cloudGroupNonGenericTitle(control.envelope.groupTitle)).find(Boolean)
+      ?? input.groupTitle
       ?? null;
     const message = input.message
       ? {

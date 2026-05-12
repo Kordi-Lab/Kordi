@@ -11,6 +11,7 @@ import {
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantFromContact,
+  cloudGroupRelatedControlsForSend,
   cloudGroupTargetAccountIds,
   cloudGroupUniqueParticipants,
   encodeCloudGroupControl,
@@ -51,6 +52,30 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.text, 'hello group');
   assert.equal(parsed?.message?.replyToMessageId, 'msg_request');
   assert.equal(parsed?.message?.requestId, 'msg_request');
+});
+
+test('cloud group related controls match continuations by shared group space id', () => {
+  const rootEnvelope = {
+    kind: 'group-invite' as const,
+    groupId: 'session:group:root',
+    groupSpaceId: 'session:group:root',
+    groupTitle: '1111',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'https://images.test/alice.png', role: 'admin' as const },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'https://images.test/alice.png', role: 'admin' as const },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'https://images.test/bob.png', role: 'person' as const },
+    ],
+    message: null,
+  };
+
+  const related = cloudGroupRelatedControlsForSend([
+    { envelope: rootEnvelope, createdAtMs: 1 },
+  ], { groupId: 'session:group:child', groupSpaceId: 'session:group:root' });
+
+  assert.equal(related.length, 1);
+  assert.equal(related[0]?.envelope.groupTitle, '1111');
+  assert.equal(related[0]?.envelope.participants[1]?.avatarUrl, 'https://images.test/bob.png');
 });
 
 test('cloud group participant merge preserves later real avatar urls', () => {

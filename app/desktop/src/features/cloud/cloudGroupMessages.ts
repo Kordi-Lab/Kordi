@@ -99,6 +99,31 @@ export function cloudGroupUniqueParticipants(participants: CloudGroupParticipant
   return uniqueByAccount(participants);
 }
 
+export type CloudGroupRelatedControl = {
+  envelope: CloudGroupControlEnvelope;
+  createdAtMs: number;
+};
+
+export function cloudGroupRelatedControlsForSend(
+  controls: CloudGroupRelatedControl[],
+  input: { groupId: string; groupSpaceId?: string | null },
+): CloudGroupRelatedControl[] {
+  const groupId = cleanText(input.groupId);
+  const groupSpaceId = cleanText(input.groupSpaceId);
+  const ids = new Set([groupId, groupSpaceId].filter(Boolean));
+  if (ids.size === 0) return [];
+  return controls.filter(({ envelope }) => {
+    const envelopeGroupId = cleanText(envelope.groupId);
+    const envelopeGroupSpaceId = cleanText(envelope.groupSpaceId);
+    return Boolean((envelopeGroupId && ids.has(envelopeGroupId)) || (envelopeGroupSpaceId && ids.has(envelopeGroupSpaceId)));
+  });
+}
+
+export function cloudGroupNonGenericTitle(value?: string | null) {
+  const title = cleanText(value);
+  return title && !/^(#\s*)?(new session|untitled session)$/i.test(title) ? title : null;
+}
+
 function encodeBase64Url(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = '';
