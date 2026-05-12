@@ -687,14 +687,26 @@ function foldedAssistantAnswerToggleLabel(hiddenLineCount: number) {
   return '— Click to show full response —';
 }
 
-function FoldableAssistantAnswer({ text, foldable = true }: { text: string; foldable?: boolean }) {
+function FoldableAssistantAnswer({
+  text,
+  foldable = true,
+  tone = 'default',
+}: {
+  text: string;
+  foldable?: boolean;
+  tone?: 'default' | 'cancelled';
+}) {
   const [expanded, setExpanded] = useState(false);
   const foldInfo = useMemo(() => assistantAnswerFoldInfo(text), [text]);
   const shouldFold = foldable && foldInfo.shouldFold;
   const folded = shouldFold && !expanded;
+  const cancelled = tone === 'cancelled';
 
   return (
-    <div className="app-live-assistant-answer w-full text-[13px]">
+    <div className={cn(
+      'app-live-assistant-answer w-full text-[13px]',
+      cancelled && 'app-live-assistant-answer-cancelled rounded-xl border border-rose-400/25 bg-rose-500/[0.07] px-3 py-2 text-rose-200',
+    )}>
       <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
         <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
         {shouldFold && folded ? (
@@ -836,7 +848,12 @@ function LiveChatTurnCardView({
         />
       ) : null}
 
-          {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} /> : null}
+          {hasAssistant ? (
+            <FoldableAssistantAnswer
+              text={visibleTurn.assistantText}
+              tone={visibleTurn.status === 'cancelled' ? 'cancelled' : 'default'}
+            />
+          ) : null}
 
           {visibleTurn.error ? (
             <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300">
