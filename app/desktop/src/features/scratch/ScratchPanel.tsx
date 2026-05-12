@@ -98,7 +98,7 @@ function ScratchActionsMenu({
             side="bottom"
             sideOffset={6}
             collisionPadding={8}
-            className="z-50 min-w-[160px] rounded-xl border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] p-1.5 text-[13px] text-slate-200 shadow-2xl backdrop-blur-md"
+            className="z-50 min-w-[160px] rounded-xl border border-[color:var(--app-divider)] bg-zinc-900 p-1.5 text-[13px] text-slate-200 shadow-2xl"
           >
             <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onRename}>
               <Pencil className="h-3.5 w-3.5 opacity-70" />
