@@ -68,6 +68,37 @@ test('buildParticipantSpaces groups direct human sessions by participant identit
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), ['session:bob:new', 'session:bob:old']);
 });
 
+test('buildParticipantSpaces previews latest agent response when message text is empty', () => {
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:bob-agent-reply',
+      canonicalSessionId: 'session:bob-agent-reply',
+      subtitle: 'Bob',
+      messages: [{
+        role: 'owned-agent',
+        sender: 'My Kordi',
+        text: '',
+        time: '10:01',
+        turn: {
+          id: 'turn-1',
+          sessionId: 'session:bob-agent-reply',
+          prompt: 'how are you',
+          status: 'completed',
+          message: '',
+          assistantText: 'I’m doing well — thanks for asking.',
+          thinkingText: '',
+          tools: [],
+          completed: true,
+          succeeded: true,
+        },
+      }],
+    }),
+  ]);
+
+  assert.equal(spaces[0]?.preview, 'I’m doing well — thanks for asking.');
+  assert.equal(spaces[0]?.sessions[0]?.preview, 'I’m doing well — thanks for asking.');
+});
+
 test('buildParticipantSpaces separates direct human and self spaces on same Bridge node', () => {
   const spaces = buildParticipantSpaces([
     conversation({
