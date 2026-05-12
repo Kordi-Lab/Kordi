@@ -123,6 +123,20 @@ export function setActiveScratchId(sessionId: string, scratchId: string | null) 
   notify();
 }
 
+export function touchScratch(sessionId: string, scratchId: string) {
+  if (!sessionId || !scratchId) return;
+  const list = scratchListBySession.get(sessionId);
+  if (!list) return;
+  const idx = list.findIndex((s) => s.id === scratchId);
+  if (idx < 0) return;
+  const updated: ScratchMetadata = { ...list[idx], updatedAt: Date.now() };
+  const next = list.filter((_, i) => i !== idx);
+  next.unshift(updated);
+  scratchListBySession.set(sessionId, next);
+  notify();
+  persistList(sessionId);
+}
+
 export function createScratch(sessionId: string, kind: ScratchKind): ScratchMetadata {
   const now = Date.now();
   const meta: ScratchMetadata = {
