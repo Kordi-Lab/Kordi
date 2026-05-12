@@ -1,5 +1,6 @@
 import { ArrowLeft, Brush, FileText, MoreHorizontal, Pencil } from 'lucide-react';
 
+import { DocEditor } from './DocEditor';
 import { setActiveScratchId, useActiveScratchId, useScratchList } from './scratchStore';
 
 type Props = {
@@ -57,12 +58,14 @@ export function ScratchPanel({ sessionId }: Props) {
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-1 text-center text-[12px] text-slate-500">
-        <div className="font-medium text-slate-400">
-          {active.kind === 'canvas' ? 'Canvas editor' : 'Doc editor'} placeholder
+      {active.kind === 'doc' ? (
+        <DocEditor sessionId={sessionId} scratchId={active.id} />
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-1 text-center text-[12px] text-slate-500">
+          <div className="font-medium text-slate-400">Canvas editor placeholder</div>
+          <div>Coming in PR-03 (#358).</div>
         </div>
-        <div>Coming in {active.kind === 'canvas' ? 'PR-03 (#358)' : 'PR-02 (#357)'}.</div>
-      </div>
+      )}
     </div>
   );
 }
