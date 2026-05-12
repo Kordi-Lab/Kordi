@@ -1,9 +1,10 @@
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowLeft, Brush, Copy, FileText, HelpCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Brush, ChevronRight, Copy, Download, FileText, HelpCircle, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 
-import { DocEditor } from './DocEditor';
+import { DocEditor, type DocEditorHandle } from './DocEditor';
+import type { TiptapNode } from './download/tiptapToPdfmake';
 import {
   createScratch,
   deleteScratch,
@@ -15,6 +16,12 @@ import {
   useScratchList,
 } from './scratchStore';
 import type { ScratchKind, ScratchMetadata } from './types';
+
+type DownloadHandlers = {
+  markdown: () => void | Promise<void>;
+  pdf: () => Promise<void>;
+  docx: () => Promise<void>;
+};
 
 const MENU_ITEM_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-slate-200 outline-none transition data-[highlighted]:bg-white/10 data-[highlighted]:text-white';
 const MENU_ITEM_DESTRUCTIVE_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-red-300 outline-none transition data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-200';
@@ -71,11 +78,13 @@ function ScratchActionsMenu({
   onRename,
   onDuplicate,
   onDelete,
+  onDownload,
 }: {
   scratchName: string;
   onRename: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onDownload?: DownloadHandlers;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   return (
@@ -108,6 +117,36 @@ function ScratchActionsMenu({
               <Copy className="h-3.5 w-3.5 opacity-70" />
               <span>Duplicate</span>
             </DropdownMenu.Item>
+            {onDownload ? (
+              <DropdownMenu.Sub>
+                <DropdownMenu.SubTrigger className={`${MENU_ITEM_CLASS} data-[state=open]:bg-white/10 data-[state=open]:text-white`}>
+                  <Download className="h-3.5 w-3.5 opacity-70" />
+                  <span className="flex-1">Download</span>
+                  <ChevronRight className="h-3 w-3 opacity-60" aria-hidden />
+                </DropdownMenu.SubTrigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.SubContent
+                    sideOffset={4}
+                    alignOffset={-4}
+                    collisionPadding={8}
+                    className="z-50 min-w-[180px] rounded-xl border border-[color:var(--app-divider)] bg-zinc-900 p-1.5 text-[13px] text-slate-200 shadow-2xl"
+                  >
+                    <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => void onDownload.markdown()}>
+                      <span className="flex-1">Markdown</span>
+                      <span className="font-mono text-[11px] text-slate-500">.md</span>
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => void onDownload.pdf()}>
+                      <span className="flex-1">PDF</span>
+                      <span className="font-mono text-[11px] text-slate-500">.pdf</span>
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={() => void onDownload.docx()}>
+                      <span className="flex-1">Word</span>
+                      <span className="font-mono text-[11px] text-slate-500">.docx</span>
+                    </DropdownMenu.Item>
+                  </DropdownMenu.SubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
+            ) : null}
             <DropdownMenu.Separator className="my-1 h-px bg-white/10" />
             <DropdownMenu.Item className={MENU_ITEM_DESTRUCTIVE_CLASS} onSelect={() => setConfirmOpen(true)}>
               <Trash2 className="h-3.5 w-3.5 opacity-80" />
@@ -324,7 +363,32 @@ function NewScratchButton({
 
 function ScratchEditorView({ sessionId, active }: { sessionId: string; active: ScratchMetadata }) {
   const [editingName, setEditingName] = useState(false);
+  const docRef = useRef<DocEditorHandle>(null);
   const KindIcon = active.kind === 'canvas' ? Brush : FileText;
+
+  const downloadHandlers = useMemo<DownloadHandlers | undefined>(() => {
+    if (active.kind !== 'doc') return undefined;
+    return {
+      markdown: async () => {
+        const markdown = docRef.current?.getMarkdown() ?? '';
+        const { exportScratchMarkdown } = await import('./download/exportMarkdown');
+        exportScratchMarkdown(markdown, active.name);
+      },
+      pdf: async () => {
+        const json = docRef.current?.editor?.getJSON() as TiptapNode | undefined;
+        if (!json) return;
+        const { exportScratchPdf } = await import('./download/exportPdf');
+        await exportScratchPdf(json, active.name);
+      },
+      docx: async () => {
+        const json = docRef.current?.editor?.getJSON() as TiptapNode | undefined;
+        if (!json) return;
+        const { exportScratchDocx } = await import('./download/exportDocx');
+        await exportScratchDocx(json, active.name);
+      },
+    };
+  }, [active.kind, active.name]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-[color:var(--app-divider)] pb-2">
@@ -376,10 +440,11 @@ function ScratchEditorView({ sessionId, active }: { sessionId: string; active: S
           onDelete={() => {
             deleteScratch(sessionId, active.id);
           }}
+          onDownload={downloadHandlers}
         />
       </div>
       {active.kind === 'doc' ? (
-        <DocEditor sessionId={sessionId} scratchId={active.id} />
+        <DocEditor ref={docRef} sessionId={sessionId} scratchId={active.id} />
       ) : (
         <Suspense fallback={<div className="scratch-canvas-loading">Loading canvas…</div>}>
           <CanvasEditor sessionId={sessionId} scratchId={active.id} />
