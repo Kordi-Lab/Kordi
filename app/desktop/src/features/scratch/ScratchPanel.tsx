@@ -1,10 +1,11 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowLeft, Brush, FileText, HelpCircle, MoreHorizontal, Pencil, Plus } from 'lucide-react';
+import { ArrowLeft, Brush, Copy, FileText, HelpCircle, MoreHorizontal, Pencil, Plus } from 'lucide-react';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 
 import { DocEditor } from './DocEditor';
 import {
   createScratch,
+  duplicateScratch,
   formatRelativeTime,
   renameScratch,
   setActiveScratchId,
@@ -12,6 +13,50 @@ import {
   useScratchList,
 } from './scratchStore';
 import type { ScratchKind, ScratchMetadata } from './types';
+
+const MENU_ITEM_CLASS = 'flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-slate-200 outline-none transition data-[highlighted]:bg-white/10 data-[highlighted]:text-white';
+
+function ScratchActionsMenu({
+  onRename,
+  onDuplicate,
+}: {
+  onRename: () => void;
+  onDuplicate: () => void;
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          className="grid h-7 w-7 place-items-center rounded-md text-slate-400 transition hover:bg-white/5 hover:text-white"
+          title="More actions"
+          aria-label="More actions"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          side="bottom"
+          sideOffset={6}
+          collisionPadding={8}
+          className="z-50 min-w-[160px] rounded-xl border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] p-1.5 text-[13px] text-slate-200 shadow-2xl backdrop-blur-md"
+        >
+          <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onRename}>
+            <Pencil className="h-3.5 w-3.5 opacity-70" />
+            <span>Rename</span>
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className={MENU_ITEM_CLASS} onSelect={onDuplicate}>
+            <Copy className="h-3.5 w-3.5 opacity-70" />
+            <span>Duplicate</span>
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
 
 const CanvasEditor = lazy(() => import('./CanvasEditor'));
 
@@ -141,11 +186,11 @@ function ScratchListView({ sessionId, scratches }: { sessionId: string; scratche
                 );
               }
               return (
-                <li key={scratch.id}>
+                <li key={scratch.id} className="group flex items-center rounded-md transition hover:bg-white/5">
                   <button
                     type="button"
                     onClick={() => handleSelect(scratch.id)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition hover:bg-white/5"
+                    className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"
                   >
                     <KindIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                     <span
@@ -162,6 +207,14 @@ function ScratchListView({ sessionId, scratches }: { sessionId: string; scratche
                       edited {formatRelativeTime(scratch.updatedAt)}
                     </span>
                   </button>
+                  <div className="shrink-0 pr-1">
+                    <ScratchActionsMenu
+                      onRename={() => setEditingId(scratch.id)}
+                      onDuplicate={() => {
+                        duplicateScratch(sessionId, scratch.id);
+                      }}
+                    />
+                  </div>
                 </li>
               );
             })}
@@ -239,15 +292,12 @@ function ScratchEditorView({ sessionId, active }: { sessionId: string; active: S
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
-        <button
-          type="button"
-          disabled
-          className="grid h-7 w-7 place-items-center rounded-md text-slate-500 opacity-40"
-          title="More (PR-04)"
-          aria-label="More (PR-04)"
-        >
-          <MoreHorizontal className="h-3.5 w-3.5" />
-        </button>
+        <ScratchActionsMenu
+          onRename={() => setEditingName(true)}
+          onDuplicate={() => {
+            duplicateScratch(sessionId, active.id);
+          }}
+        />
       </div>
       {active.kind === 'doc' ? (
         <DocEditor sessionId={sessionId} scratchId={active.id} />
