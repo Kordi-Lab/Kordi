@@ -3,10 +3,27 @@
 }
 
 .app-shell {
+  position: relative;
   background: var(--app-shell-bg);
   border-color: var(--app-shell-border);
   isolation: isolate;
   background-clip: padding-box;
+}
+
+/* Paper-grain overlay — light theme only. The token defaults to transparent
+ * in dark mode so this rule is a no-op there. Applied to the workspace shell
+ * only (not modals or inner panels) so the grain doesn't compound. */
+.app-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    7deg, var(--app-paper-grain) 0 1px, transparent 1px 9px);
+  mix-blend-mode: multiply;
+  opacity: 0.20;
+  border-radius: inherit;
+  z-index: 0;
 }
 
 .app-shell-preview {
@@ -898,4 +915,47 @@
 
 .app-page-header-pills::-webkit-scrollbar {
   display: none;
+}
+
+/* --- Glassmorphism: backdrop-filter on framed surfaces (issue #386) ---
+ *
+ * Two tiers: frame (12px / saturate 1.06) for major panels, float (8px /
+ * saturate 1.04) for popovers and dropdown menus. The tier values come from
+ * theme-tokens.css and flip per theme via the same cascade.
+ *
+ * Wrapped in @supports so environments without backdrop-filter still render
+ * a clean (more opaque) surface from the fallback rules below.
+ */
+
+@supports (backdrop-filter: blur(12px)) {
+  .app-shell,
+  .app-side-shell,
+  .app-main-panel,
+  .app-session-panel,
+  .app-modal-panel,
+  .app-detail-sheet,
+  .app-composer-shell {
+    backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
+    -webkit-backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
+  }
+
+  /* Float tier — popovers and dropdown surfaces. Tighter blur so they read
+   * as a distinct layer above the framed surface beneath. */
+  .app-popover,
+  [role='listbox'].app-popover,
+  [role='menu'].app-popover {
+    backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+    -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  }
+}
+
+/* Inner top highlight on framed surfaces — pairs with the existing
+ * --app-shadow-* tokens. Theme-aware via --app-glass-highlight. */
+.app-shell,
+.app-modal-panel,
+.app-detail-sheet,
+.app-surface-card {
+  box-shadow:
+    inset 0 1px 0 var(--app-glass-highlight),
+    var(--app-shadow-soft);
 }

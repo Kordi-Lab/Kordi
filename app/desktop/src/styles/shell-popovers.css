@@ -3,7 +3,8 @@
   border: 1px solid var(--app-divider);
   background: var(--app-modal-bg);
   box-shadow: var(--app-shadow-float);
-  backdrop-filter: blur(24px);
+  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
 }
 
 .app-composer-popover-title {
@@ -41,8 +42,8 @@
     0 14px 34px rgba(2, 6, 23, 0.2),
     0 2px 10px rgba(2, 6, 23, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.075);
-  backdrop-filter: blur(28px) saturate(155%);
-  -webkit-backdrop-filter: blur(28px) saturate(155%);
+  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
 }
 
 .app-chat-create-popover {

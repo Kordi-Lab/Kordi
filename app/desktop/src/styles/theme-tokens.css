@@ -25,16 +25,23 @@
   --app-page-bg:
     radial-gradient(circle at top left, rgba(132, 122, 196, 0.055), transparent 24%),
     linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
-  --app-shell-bg: rgba(15, 17, 21, 0.88);
+  --app-shell-bg: rgba(15, 17, 21, 0.62);
   --app-shell-border: rgba(255, 255, 255, 0.08);
-  --app-side-bg: rgba(15, 17, 21, 0.72);
+  --app-side-bg: rgba(15, 17, 21, 0.56);
   --app-left-glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.018) 100%);
   --app-left-glass-border: rgba(255, 255, 255, 0.06);
-  --app-session-bg: rgba(15, 17, 21, 0.64);
-  --app-main-bg: rgba(15, 17, 21, 0.78);
+  --app-session-bg: rgba(15, 17, 21, 0.52);
+  --app-main-bg: rgba(15, 17, 21, 0.62);
   --app-card-bg: rgba(255, 255, 255, 0.04);
   --app-overlay-bg: rgba(5, 7, 10, 0.74);
-  --app-modal-bg: rgba(17, 19, 24, 0.88);
+  --app-modal-bg: rgba(17, 19, 24, 0.66);
+
+  --app-glass-blur-frame: 12px;
+  --app-glass-blur-float: 8px;
+  --app-glass-saturate-frame: 1.06;
+  --app-glass-saturate-float: 1.04;
+  --app-glass-highlight: rgba(255, 255, 255, 0.05);
+  --app-paper-grain: transparent;
   --app-code-bg: #0b0d11;
   --app-code-toolbar-bg: rgba(255, 255, 255, 0.035);
   --app-divider: rgba(255, 255, 255, 0.08);
@@ -113,19 +120,23 @@
   --app-motion-slow: 340ms;
   --app-motion-ease: cubic-bezier(0.2, 0.9, 0.22, 1);
   --app-page-bg:
-    radial-gradient(circle at top, rgba(255, 250, 240, 0.74), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(145, 139, 112, 0.08), transparent 30%),
-    linear-gradient(180deg, #f4f1e7 0%, #ebe6da 48%, #dfd8ca 100%);
-  --app-shell-bg: linear-gradient(180deg, rgba(244, 241, 231, 0.96) 0%, rgba(234, 229, 217, 0.94) 100%);
-  --app-shell-border: rgba(68, 58, 52, 0.1);
-  --app-side-bg: rgba(238, 233, 220, 0.92);
-  --app-left-glass-bg: linear-gradient(180deg, rgba(249, 246, 236, 0.7) 0%, rgba(236, 230, 216, 0.8) 100%);
-  --app-left-glass-border: rgba(68, 58, 52, 0.08);
-  --app-session-bg: linear-gradient(180deg, rgba(242, 238, 226, 0.94) 0%, rgba(233, 227, 214, 0.95) 100%);
-  --app-main-bg: linear-gradient(180deg, rgba(246, 243, 233, 0.98) 0%, rgba(239, 234, 222, 0.98) 100%);
-  --app-card-bg: rgba(43, 35, 32, 0.055);
-  --app-overlay-bg: rgba(225, 220, 213, 0.72);
-  --app-modal-bg: linear-gradient(180deg, rgba(247, 244, 239, 0.98) 0%, rgba(240, 236, 230, 0.98) 100%);
+    radial-gradient(circle at 18% 12%, oklch(0.72 0.16 211 / 0.10), transparent 32%),
+    radial-gradient(circle at 82% 18%, oklch(0.66 0.26 355 / 0.08), transparent 28%),
+    radial-gradient(circle at 65% 88%, oklch(0.82 0.16 83 / 0.10), transparent 32%),
+    linear-gradient(180deg, #fbfbfc 0%, #f4f5f7 50%, #eceef2 100%);
+  --app-shell-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.72) 0%, rgba(246, 247, 249, 0.68) 100%);
+  --app-shell-border: rgba(15, 23, 42, 0.08);
+  --app-side-bg: rgba(250, 250, 251, 0.66);
+  --app-left-glass-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.72) 0%, rgba(244, 245, 248, 0.80) 100%);
+  --app-left-glass-border: rgba(15, 23, 42, 0.06);
+  --app-session-bg: rgba(250, 250, 251, 0.70);
+  --app-main-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.74) 0%, rgba(245, 246, 249, 0.70) 100%);
+  --app-card-bg: rgba(15, 23, 42, 0.045);
+  --app-overlay-bg: rgba(225, 226, 230, 0.72);
+  --app-modal-bg: rgba(255, 255, 255, 0.80);
+
+  --app-glass-highlight: rgba(255, 255, 255, 0.55);
+  --app-paper-grain: transparent;
   --app-code-bg: #ede8e1;
   --app-code-toolbar-bg: rgba(43, 35, 32, 0.05);
   --app-divider: rgba(43, 35, 32, 0.15);
@@ -156,10 +167,14 @@
   --app-button-primary-text: rgb(246 242 237);
   --app-badge-primary-bg: rgba(47, 41, 37, 0.88);
   --app-badge-primary-text: rgb(245 240 234);
-  --app-chat-bubble-user-bg: rgba(214, 208, 199, 0.88);
-  --app-chat-bubble-user-text: rgb(30 27 25);
-  --app-chat-bubble-peer-bg: rgba(255, 255, 255, 0.62);
-  --app-chat-bubble-peer-border: rgba(43, 35, 32, 0.18);
+  /* Bubbles use OKLCH for perceptual uniformity. Per the impeccable rule:
+   * chroma drops as lightness approaches the extremes. Sender stays warm
+   * (gold brand hue), peer is neutral slate with a microscopic sky tint
+   * so it cohabits with the page-bg's brand-color highlights. */
+  --app-chat-bubble-user-bg: oklch(0.90 0.07 82 / 0.45);
+  --app-chat-bubble-user-text: oklch(0.34 0.07 80);
+  --app-chat-bubble-peer-bg: oklch(0.93 0.008 240 / 0.88);
+  --app-chat-bubble-peer-border: oklch(0.22 0.015 240 / 0.08);
 
   --app-cloud-login-raised-bg: oklch(0.995 0.01 82);
   --app-cloud-login-sunk-bg: oklch(0.93 0.028 82 / 0.66);

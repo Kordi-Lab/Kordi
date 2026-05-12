@@ -28,6 +28,49 @@ test('chat sidebar timestamps use the tertiary text token', () => {
   assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid transparent;[^}]*box-shadow:\s*0 0 0 1px var\(--app-accent-ring\)/s);
 });
 
+test('glassmorphism tokens are declared in both themes and frame bgs are translucent', () => {
+  const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+
+  // Glass intensity tokens — shared across themes (declared in the base block).
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-blur-frame:\s*12px;/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-blur-float:\s*8px;/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-saturate-frame:\s*1\.06;/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-saturate-float:\s*1\.04;/);
+
+  // Inner-top highlight and paper-grain tokens — declared in both themes.
+  // Light mode is intentionally neutral (transparent grain, white highlight).
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.05\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-paper-grain:\s*transparent;/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.55\);/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-paper-grain:\s*transparent;/);
+
+  // Dark frame bgs lowered so backdrop-filter reads through.
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-shell-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-side-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.56\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-session-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.52\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-main-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-modal-bg:\s*rgba\(17,\s*19,\s*24,\s*0\.66\);/);
+
+  // Light frame bgs are now neutral-white translucent (no paper warmth).
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-shell-bg:\s*linear-gradient\(180deg,\s*rgba\(252,\s*252,\s*253,\s*0\.72\)/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*rgba\(250,\s*250,\s*251,\s*0\.66\);/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
+});
+
+test('shell.css applies backdrop-filter and a paper-grain layer on the workspace shell', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+
+  // @supports query gates the blur so unsupported environments still render.
+  assert.match(shellCss, /@supports\s*\(backdrop-filter:\s*blur\(12px\)\)/);
+  // Frame surfaces share the frame-tier blur token.
+  assert.match(shellCss, /backdrop-filter:\s*blur\(var\(--app-glass-blur-frame\)\)\s+saturate\(var\(--app-glass-saturate-frame\)\)/);
+  // Float surfaces share the float-tier blur token.
+  assert.match(shellCss, /backdrop-filter:\s*blur\(var\(--app-glass-blur-float\)\)\s+saturate\(var\(--app-glass-saturate-float\)\)/);
+  // Paper-grain layer is painted on .app-shell::before with multiply blend.
+  assert.match(shellCss, /\.app-shell::before\s*{[\s\S]*background-image:\s*repeating-linear-gradient\(\s*7deg,\s*var\(--app-paper-grain\)/);
+  assert.match(shellCss, /\.app-shell::before\s*{[\s\S]*mix-blend-mode:\s*multiply/);
+});
+
 test('composer send area keeps the outer surface without an inner input pop or divider', () => {
   const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');

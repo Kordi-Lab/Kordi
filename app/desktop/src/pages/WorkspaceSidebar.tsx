@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   Activity,
@@ -479,6 +480,52 @@ export function WorkspaceSidebar({
   const [cloudProfileSaving, setCloudProfileSaving] = useState(false);
   const [cloudProfileError, setCloudProfileError] = useState('');
   const cloudProfileFileRef = useRef<HTMLInputElement | null>(null);
+  const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const profilePopoverRef = useRef<HTMLDivElement | null>(null);
+  // Computed each time the popover opens, so the surface anchors to the avatar's
+  // actual on-screen position (not just a fixed bottom-left offset).
+  const [profilePopoverAnchor, setProfilePopoverAnchor] = useState<{ left: number; bottom: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!isProfileCardOpen) {
+      setProfilePopoverAnchor(null);
+      return;
+    }
+    const trigger = profileTriggerRef.current;
+    if (!trigger) return;
+    const measure = () => {
+      const rect = trigger.getBoundingClientRect();
+      setProfilePopoverAnchor({
+        left: rect.right + 8,
+        bottom: Math.max(8, window.innerHeight - rect.bottom),
+      });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+    };
+  }, [isProfileCardOpen]);
+
+  useEffect(() => {
+    if (!isProfileCardOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (profilePopoverRef.current?.contains(target)) return;
+      if (profileTriggerRef.current?.contains(target)) return;
+      setIsProfileCardOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsProfileCardOpen(false);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isProfileCardOpen]);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
@@ -903,6 +950,7 @@ export function WorkspaceSidebar({
               <Plus className="h-4 w-4" />
             </Button>
             <button
+              ref={profileTriggerRef}
               type="button"
               className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70"
               onClick={() => setIsProfileCardOpen((open) => !open)}
@@ -920,12 +968,20 @@ export function WorkspaceSidebar({
           </div>
         </div>
 
-        {isProfileCardOpen ? (
+        {isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
           <div
+            ref={profilePopoverRef}
+            role="dialog"
+            aria-label="Profile"
+            style={{
+              position: 'fixed',
+              left: profilePopoverAnchor.left,
+              bottom: profilePopoverAnchor.bottom,
+              zIndex: 160,
+            }}
             className={cn(
-              'fixed bottom-4 left-[calc(var(--app-left-rail-width,5.5rem)+0.75rem)] z-[160]',
-              'w-[21.25rem] rounded-[18px] border border-white/10 bg-[#0d1016]/95 px-4 py-3',
-              'text-slate-100 shadow-[0_24px_80px_rgba(0,0,0,0.46)] backdrop-blur-xl',
+              'app-popover app-profile-popover',
+              'w-[21.25rem] rounded-[18px] border px-4 py-3 text-foreground',
             )}
           >
             <div className="mb-3 flex items-center justify-between gap-3 text-[12px] font-medium text-slate-100">
@@ -1038,7 +1094,8 @@ export function WorkspaceSidebar({
                 </div>
               )}
             </div>
-          </div>
+          </div>,
+          document.querySelector('.bridge-app') ?? document.body,
         ) : null}
 
         {showSessionRail && !collapseChatSessions && (

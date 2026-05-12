@@ -31,22 +31,22 @@
 .bridge-app.theme-light .app-modal-panel,
 .bridge-app.theme-light .app-code-panel {
   box-shadow:
-    0 0 0 1px rgba(131, 112, 93, 0.035),
-    0 10px 24px rgba(147, 128, 109, 0.055),
+    0 0 0 1px rgba(15, 23, 42, 0.035),
+    0 10px 24px rgba(15, 23, 42, 0.055),
     0 -3px 8px rgba(255, 255, 255, 0.46),
     inset 0 1px 0 rgba(255, 255, 255, 0.48),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
 }
 
 .bridge-app.theme-light .app-left-glass,
 .bridge-app.theme-light .app-session-panel,
 .bridge-app.theme-light .app-main-panel {
   box-shadow:
-    0 0 0 1px rgba(131, 112, 93, 0.028),
-    0 8px 20px rgba(147, 128, 109, 0.045),
+    0 0 0 1px rgba(15, 23, 42, 0.028),
+    0 8px 20px rgba(15, 23, 42, 0.045),
     0 -3px 8px rgba(255, 255, 255, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.04);
+    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
 }
 
 .bridge-app.theme-light .app-badge-neutral {
@@ -67,11 +67,84 @@
 
 .bridge-app.theme-light .app-detail-sheet {
   box-shadow:
-    0 0 0 1px rgba(131, 112, 93, 0.035),
-    0 12px 26px rgba(147, 128, 109, 0.055),
+    0 0 0 1px rgba(15, 23, 42, 0.035),
+    0 12px 26px rgba(15, 23, 42, 0.055),
     0 -4px 10px rgba(255, 255, 255, 0.46),
     inset 0 1px 0 rgba(255, 255, 255, 0.44),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+}
+
+/* Light-mode popovers stay neutral-white and soft so they blend with the
+ * surrounding paper shell instead of popping out. Background, border, and
+ * shadow are deliberately quieter than the modal/sheet stack. */
+.bridge-app.theme-light .app-popover {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-color: rgba(15, 23, 42, 0.06) !important;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.03),
+    0 10px 24px rgba(15, 23, 42, 0.06),
+    0 2px 6px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* --- Profile popover (avatar-anchored, glass) ---
+ *
+ * Independent floating surface that pops out beside the avatar trigger.
+ * Uses a more aggressive glass treatment than the generic .app-popover —
+ * the background is intentionally translucent so the page bg's brand-color
+ * highlights diffuse through. Pairs with the @supports backdrop-filter
+ * block in shell.css that targets .app-popover with the float-tier blur. */
+.app-profile-popover {
+  background: var(--app-popover-glass-bg, rgba(20, 24, 32, 0.56));
+  border-color: var(--app-popover-glass-border, rgba(255, 255, 255, 0.08));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.38),
+    0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.bridge-app.theme-light .app-profile-popover {
+  background: rgba(255, 255, 255, 0.62) !important;
+  border-color: rgba(15, 23, 42, 0.07) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 0 0 1px rgba(15, 23, 42, 0.03),
+    0 14px 32px rgba(15, 23, 42, 0.08),
+    0 2px 6px rgba(15, 23, 42, 0.05) !important;
+}
+
+@supports (backdrop-filter: blur(8px)) {
+  .app-profile-popover {
+    /* Stronger blur than the float tier so the diffusion is actually visible
+     * on a fixed overlay. */
+    backdrop-filter: blur(18px) saturate(1.08);
+    -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  }
+}
+
+/* Slide-and-fade entrance from the avatar's anchor corner so the popover
+ * feels emitted by the avatar, not dropped in. transform-origin sits at the
+ * popover's bottom-left because the anchor calc puts that corner adjacent to
+ * the avatar's right edge. */
+@keyframes app-profile-popover-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(-8px, 4px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.app-profile-popover {
+  transform-origin: left bottom;
+  animation: app-profile-popover-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-profile-popover {
+    animation: none;
+  }
 }
 
 .bridge-app.theme-light .app-right-detail-rail .app-detail-sheet {
@@ -355,8 +428,15 @@
 }
 
 .bridge-app.theme-light .text-white,
+.bridge-app.theme-light .text-white\/95,
+.bridge-app.theme-light .text-white\/92,
+.bridge-app.theme-light .text-white\/88,
 .bridge-app.theme-light .text-slate-100 {
   color: rgb(15 23 42) !important;
+}
+
+.bridge-app.theme-light .text-white\/75 {
+  color: rgb(51 65 85) !important;
 }
 
 .bridge-app.theme-light .text-slate-200 {
@@ -380,28 +460,140 @@
   color: rgba(83, 72, 64, 0.68) !important;
 }
 
-.bridge-app.theme-light .border-white\/10 {
+.bridge-app.theme-light .border-white\/6,
+.bridge-app.theme-light .border-white\/8 {
+  border-color: rgba(15, 23, 42, 0.06) !important;
+}
+
+.bridge-app.theme-light .border-white\/10,
+.bridge-app.theme-light .border-white\/12 {
   border-color: rgba(15, 23, 42, 0.08) !important;
 }
 
-.bridge-app.theme-light .border-white\/15 {
+.bridge-app.theme-light .border-white\/14,
+.bridge-app.theme-light .border-white\/15,
+.bridge-app.theme-light .border-white\/16 {
   border-color: rgba(15, 23, 42, 0.12) !important;
 }
 
+.bridge-app.theme-light .border-white\/18,
+.bridge-app.theme-light .border-white\/20 {
+  border-color: rgba(15, 23, 42, 0.15) !important;
+}
+
+.bridge-app.theme-light .border-white\/30 {
+  border-color: rgba(15, 23, 42, 0.20) !important;
+}
+
 .bridge-app.theme-light .bg-white\/5,
+.bridge-app.theme-light .bg-white\/6,
+.bridge-app.theme-light .bg-white\/8,
+.bridge-app.theme-light .bg-white\/\[0\.02\],
+.bridge-app.theme-light .bg-white\/\[0\.025\],
 .bridge-app.theme-light .bg-white\/\[0\.03\],
-.bridge-app.theme-light .bg-white\/\[0\.04\] {
-  background-color: rgba(15, 23, 42, 0.04) !important;
+.bridge-app.theme-light .bg-white\/\[0\.035\],
+.bridge-app.theme-light .bg-white\/\[0\.04\],
+.bridge-app.theme-light .bg-white\/\[0\.045\],
+.bridge-app.theme-light .bg-white\/\[0\.05\],
+.bridge-app.theme-light .bg-white\/\[0\.055\] {
+  background-color: rgba(15, 23, 42, 0.035) !important;
 }
 
 .bridge-app.theme-light .bg-white\/10,
-.bridge-app.theme-light .bg-white\/\[0\.06\] {
-  background-color: rgba(15, 23, 42, 0.08) !important;
+.bridge-app.theme-light .bg-white\/\[0\.06\],
+.bridge-app.theme-light .bg-white\/\[0\.07\] {
+  background-color: rgba(15, 23, 42, 0.06) !important;
 }
 
 .bridge-app.theme-light .bg-white\/12,
+.bridge-app.theme-light .bg-white\/15,
+.bridge-app.theme-light .bg-white\/16,
 .bridge-app.theme-light .bg-white\/\[0\.08\] {
-  background-color: rgba(15, 23, 42, 0.1) !important;
+  background-color: rgba(15, 23, 42, 0.09) !important;
+}
+
+.bridge-app.theme-light .bg-white\/20 {
+  background-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+/* Auth control-centers (LM Studio / Ollama) use bg-black/10 and bg-black/15
+ * as their inner-panel fills. Those darken the surface regardless of theme;
+ * flip them to a subtle slate tint so the panels read on light mode too. */
+.bridge-app.theme-light .bg-black\/10 {
+  background-color: rgba(15, 23, 42, 0.04) !important;
+}
+
+.bridge-app.theme-light .bg-black\/15 {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+}
+
+/* AuthDetailPrimitives buttons & badges — refined light-mode treatment.
+ *
+ * Per the Kordi design language (fast / technical / low-noise surfaces, NOT
+ * toy-like or flashy), accent buttons in light mode use a low-chroma tint of
+ * the brand colour as fill, the same hue darkened as text, and a hairline
+ * border in the matching hue. Mirrors how Linear, GitHub, and macOS settings
+ * treat colour: dense, restrained, immediately readable.
+ *
+ * Dark mode keeps the existing translucent gradient look (defined inline
+ * via Tailwind classes), so this override is scoped to .theme-light only. */
+.bridge-app.theme-light .app-auth-button-neutral {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(15, 23, 42, 0.10) !important;
+  color: rgb(15, 23, 42) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.02),
+    0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+.bridge-app.theme-light .app-auth-button-neutral:hover {
+  background: rgb(248, 250, 252) !important;
+  border-color: rgba(15, 23, 42, 0.18) !important;
+}
+
+.bridge-app.theme-light .app-auth-button-primary {
+  background: rgba(16, 185, 129, 0.10) !important;
+  border-color: rgba(5, 150, 105, 0.28) !important;
+  color: rgb(6, 95, 70) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(5, 150, 105, 0.05),
+    0 1px 2px rgba(5, 150, 105, 0.04) !important;
+}
+
+.bridge-app.theme-light .app-auth-button-primary:hover {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(5, 150, 105, 0.40) !important;
+}
+
+.bridge-app.theme-light .app-auth-button-danger {
+  background: rgba(244, 63, 94, 0.08) !important;
+  border-color: rgba(225, 29, 72, 0.24) !important;
+  color: rgb(159, 18, 57) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(225, 29, 72, 0.04),
+    0 1px 2px rgba(225, 29, 72, 0.04) !important;
+}
+
+.bridge-app.theme-light .app-auth-button-danger:hover {
+  background: rgba(244, 63, 94, 0.14) !important;
+  border-color: rgba(225, 29, 72, 0.36) !important;
+}
+
+.bridge-app.theme-light .app-auth-badge-active {
+  background: rgba(139, 92, 246, 0.10) !important;
+  border-color: rgba(124, 58, 237, 0.24) !important;
+  color: rgb(91, 33, 182) !important;
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.04) !important;
+}
+
+/* Provider glyph avatars carry per-provider dark gradient fills that are
+ * tuned for dark mode. In light mode we neutralize the gradient to a
+ * uniform soft slate disc; the icon inside keeps its color identity via
+ * the text-* overrides further up. */
+.bridge-app.theme-light .app-auth-provider-glyph {
+  background: rgba(15, 23, 42, 0.045) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.02) !important;
 }
 
 .bridge-app.theme-light .bg-slate-800 {
@@ -432,6 +624,9 @@
   background-color: rgba(16, 185, 129, 0.16) !important;
 }
 
+.bridge-app.theme-light .text-emerald-50,
+.bridge-app.theme-light .text-emerald-50\/75,
+.bridge-app.theme-light .text-emerald-50\/80,
 .bridge-app.theme-light .text-emerald-100,
 .bridge-app.theme-light .text-emerald-200,
 .bridge-app.theme-light .text-emerald-200\/80 {
@@ -441,6 +636,34 @@
 .bridge-app.theme-light .text-emerald-300,
 .bridge-app.theme-light .text-emerald-400 {
   color: rgb(4 120 87) !important;
+}
+
+.bridge-app.theme-light .text-amber-50,
+.bridge-app.theme-light .text-amber-50\/90,
+.bridge-app.theme-light .text-amber-100,
+.bridge-app.theme-light .text-amber-100\/90,
+.bridge-app.theme-light .text-amber-200 {
+  color: rgb(120 53 15) !important;
+}
+
+.bridge-app.theme-light .text-yellow-100,
+.bridge-app.theme-light .text-yellow-200 {
+  color: rgb(120 53 15) !important;
+}
+
+.bridge-app.theme-light .text-indigo-100,
+.bridge-app.theme-light .text-indigo-200 {
+  color: rgb(55 48 163) !important;
+}
+
+.bridge-app.theme-light .text-fuchsia-100,
+.bridge-app.theme-light .text-fuchsia-200 {
+  color: rgb(134 25 143) !important;
+}
+
+.bridge-app.theme-light .text-blue-100,
+.bridge-app.theme-light .text-blue-200 {
+  color: rgb(30 58 138) !important;
 }
 
 .bridge-app.theme-light .border-violet-400\/30 {
@@ -482,6 +705,7 @@
   color: rgb(14 116 144) !important;
 }
 
+.bridge-app.theme-light .text-rose-50,
 .bridge-app.theme-light .text-rose-100 {
   color: rgb(159 18 57) !important;
 }
