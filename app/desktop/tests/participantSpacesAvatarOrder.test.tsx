@@ -63,6 +63,28 @@ test('cloud group sessions with the same people collapse into one group space ev
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id).sort(), ['session:group:one', 'session:group:two']);
 });
 
+test('fallback participant spaces preserve per-participant profile image urls', () => {
+  const spaces = buildParticipantSpaces([{
+    id: 'bridge:cloud:acct_peer:person',
+    canonicalSessionId: 'bridge:cloud:acct_peer:person',
+    name: 'Shu Yang',
+    type: 'person',
+    subtitle: 'Direct human chat',
+    unread: 0,
+    bridges: ['cloud'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', 'Shu Yang'],
+    participantAvatarSeeds: { Me: 'acct_me', 'Shu Yang': 'acct_peer' },
+    participantProfileImageUrls: { Me: 'https://images.test/me.png', 'Shu Yang': 'https://images.test/peer.png' },
+    messages: [],
+    updatedAtLabel: 'Now',
+  }]);
+
+  assert.equal(spaces[0]?.avatarStack[0]?.imageUrl, 'https://images.test/peer.png');
+  assert.equal(spaces[0]?.participants.find((participant) => participant.name === 'Me')?.profileImageUrl, 'https://images.test/me.png');
+});
+
 test('group participant avatar stack is stable and uses the first three human participants', () => {
   const alice = participant('acct_a', 'seed-a', 'Alice');
   const bob = participant('acct_b', 'seed-b', 'Bob');

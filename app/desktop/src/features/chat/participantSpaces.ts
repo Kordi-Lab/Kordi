@@ -102,6 +102,8 @@ function fallbackParticipants(conversation: Conversation): ConversationParticipa
     const kind = !self && conversation.type !== 'person' ? 'agent' : 'human';
     const avatarKey = conversation.participantAvatarSeeds?.[name]
       ?? (!self && name === firstNonSelfName ? conversation.avatarSeed ?? null : null);
+    const profileImageUrl = conversation.participantProfileImageUrls?.[name]
+      ?? (!self && name === firstNonSelfName ? conversation.profileImageUrl ?? null : null);
     return {
       id: `label:${kind}:${name}`,
       name,
@@ -109,7 +111,7 @@ function fallbackParticipants(conversation: Conversation): ConversationParticipa
       role: self ? 'self' : kind === 'agent' ? 'delegate' : 'participant',
       source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : null,
       avatarKey,
-      profileImageUrl: !self && name === firstNonSelfName ? conversation.profileImageUrl ?? null : null,
+      profileImageUrl,
     } satisfies ConversationParticipant;
   });
 }
