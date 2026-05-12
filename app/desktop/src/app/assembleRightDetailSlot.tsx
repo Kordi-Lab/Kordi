@@ -5,7 +5,6 @@ import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
 import { RightDetailRail, type DetailTabDescriptor } from '@/pages/RightDetailRail';
 import { navigateToTranscriptMessageOrScrollBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { MoreTabDropdown } from '@/features/scratch/MoreTabDropdown';
-import { ScratchTabDropdown } from '@/features/scratch/ScratchTabDropdown';
 
 import type { RightDetailShellArgs } from '@/app/kordiShellSlots.types';
 
@@ -15,19 +14,10 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
   const navigateToResponse = (messageId: string) => {
     navigateToTranscriptMessageOrScrollBottom(messageId, args.chatTranscriptScrollRef);
   };
-  const scratchSessionId = args.activeNav === 'projects' ? activeProjectSessionId : activeChatSessionId;
   const scratchTab: DetailTabDescriptor & { icon: React.ComponentType<{ className?: string }> } = {
     id: 'scratch',
     label: 'Scratch',
     icon: Pencil,
-    renderTrigger: ({ active, onActivate, className }) => (
-      <ScratchTabDropdown
-        sessionId={scratchSessionId}
-        active={active}
-        onActivateScratchTab={onActivate}
-        triggerClassName={className}
-      />
-    ),
   };
   const moreTab: DetailTabDescriptor & { icon: React.ComponentType<{ className?: string }> } = {
     id: 'scratch',
@@ -36,7 +26,6 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
     narrow: true,
     renderTrigger: ({ active, onActivate, className }) => (
       <MoreTabDropdown
-        sessionId={scratchSessionId}
         active={active}
         onActivateScratchTab={onActivate}
         triggerClassName={className}

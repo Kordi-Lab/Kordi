@@ -39,6 +39,7 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",
     "tiptap-markdown": "^0.9.0",
+    "tldraw": "^5.0.0",
     "typescript": "^6.0.2"
   },
   "devDependencies": {

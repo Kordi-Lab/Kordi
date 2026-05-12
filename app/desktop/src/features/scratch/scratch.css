@@ -107,3 +107,26 @@
 
 .scratch-doc-editor .ProseMirror strong { font-weight: 600; }
 .scratch-doc-editor .ProseMirror em { font-style: italic; }
+
+.scratch-canvas-editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.scratch-canvas-editor > .tl-container,
+.scratch-canvas-editor .tl-container {
+  position: absolute;
+  inset: 0;
+}
+
+.scratch-canvas-loading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: var(--utility-muted-text);
+  font-size: 12px;
+}
