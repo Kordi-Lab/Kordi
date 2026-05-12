@@ -4,7 +4,33 @@ import test from 'node:test';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
+  focusComposerTextareaForNativeInput,
 } from '../src/features/chat/composerController.shared';
+
+test('native composer focus activates the Tauri window before refocusing the textarea', async () => {
+  const events: string[] = [];
+  const textarea = {
+    focus: () => {
+      events.push('textarea-focus');
+    },
+  };
+
+  focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, true, {
+    focusNativeWindow: () => {
+      events.push('window-focus');
+    },
+    requestAnimationFrame: (callback) => {
+      callback(0);
+      return 1;
+    },
+    querySelector: (selector) => (selector === CHAT_COMPOSER_TEXTAREA_SELECTOR ? textarea : null),
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(events, ['window-focus', 'textarea-focus']);
+});
 
 test('focusComposerTextarea restores focus to the chat composer after selector changes', async () => {
   let focused = false;

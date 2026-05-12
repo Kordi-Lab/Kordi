@@ -322,7 +322,7 @@ test('canonical read model keeps receiver group display name and normalizes stal
   const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
   const space = buildParticipantSpaces(conversations).find((candidate) => candidate.id === 'group:session:group:shared');
 
-  assert.equal(space?.title, 'New test group');
+  assert.equal(space?.title, 'Testuser2, Testuser3');
   assert.deepEqual(space?.participants.filter((participant) => participant.role === 'self').map((participant) => participant.id), ['human:user1']);
 });
 

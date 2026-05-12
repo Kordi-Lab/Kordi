@@ -57,6 +57,7 @@ import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/feat
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
+  focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
@@ -676,6 +677,8 @@ export function ChatsPage({
               <textarea
                 rows={1}
                 value={chatComposerText}
+                onPointerDownCapture={() => focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell)}
+                onFocus={() => focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell)}
                 onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
                 onPaste={(event) => {
                   const files = extractClipboardFiles(event.clipboardData);

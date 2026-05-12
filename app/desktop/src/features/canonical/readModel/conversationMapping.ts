@@ -76,18 +76,8 @@ export function sessionMetadata(session: CanonicalSessionState['sessions'][numbe
     : {};
 }
 
-function nonPlaceholderGroupTitle(value: string) {
-  const title = value.trim();
-  if (!title || /^(new session|session|group)$/i.test(title)) return null;
-  return title;
-}
-
 export function sessionViewMetadata(session: CanonicalSessionState['sessions'][number]) {
-  if (session.kind !== 'group') return session.metadata;
-  const metadata = sessionMetadata(session);
-  if (stringValue(metadata.customName)) return session.metadata;
-  const customName = nonPlaceholderGroupTitle(session.title);
-  return customName ? { ...metadata, customName } : session.metadata;
+  return session.metadata;
 }
 
 export function syntheticBridgeTarget(
@@ -208,12 +198,7 @@ export function sessionConversationDisplayTitle(
   fallback: string,
   options: { preferFallback?: boolean } = {},
 ) {
-  const metadata = sessionMetadata(session);
-  const cloudGroupCustomName = session.kind === 'group' && stringValue(metadata.createdFrom) === 'cloud-group-sync'
-    ? stringValue(metadata.customName)
-    : null;
-  return cloudGroupCustomName
-    ?? directPersonContactTitle(session, participants)
+  return directPersonContactTitle(session, participants)
     ?? sessionDisplayTitle(messages, fallback, options);
 }
 
