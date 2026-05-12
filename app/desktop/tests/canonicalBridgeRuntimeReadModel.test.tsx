@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { cloudGroupAgentConversationId } from '../src/features/cloud/cloudGroupMessages';
 
-test('canonical group conversation title prefers synced custom group name over first message', () => {
+test('canonical group conversation title stays on first message when synced cloud group name changes', () => {
   const sessionId = 'session:group:cloud-room';
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
@@ -47,7 +47,9 @@ test('canonical group conversation title prefers synced custom group name over f
   } as never);
 
   const conversations = readModel.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '');
-  assert.equal(conversations.find((conversation) => conversation.id === sessionId)?.name, '1111');
+  const conversation = conversations.find((candidate) => candidate.id === sessionId);
+  assert.equal(conversation?.name, 'hi every');
+  assert.equal((conversation?.metadata as { customName?: string } | undefined)?.customName, '1111');
 });
 
 test('canonical read model keeps shared bridge transcript with local owned-agent tool details', () => {
@@ -1262,7 +1264,8 @@ test('canonical read model anchors cloud group agent progress and replies to the
     messages: [
       { id: 'msg:request', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@MesKordi hello', content: { sender: 'Peer' }, status: 'complete', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-request' },
       { id: 'msg:processing', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { sender: 'My Kordi', deliveryState: 'processing', requestId: 'msg:request', replyToMessageId: 'msg:request' }, parentMessageId: 'msg:request', status: 'processing', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-processing' },
-      { id: 'msg:response', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Hello from Kordi.', content: { sender: 'My Kordi', deliveryState: 'complete', requestId: 'msg:request', replyToMessageId: 'msg:request' }, parentMessageId: 'msg:request', status: 'complete', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-response' },
+      { id: 'msg:duplicate-response', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Earlier duplicate.', content: { sender: 'My Kordi', deliveryState: 'complete', requestId: 'msg:request', replyToMessageId: 'msg:request' }, parentMessageId: 'msg:request', status: 'complete', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-duplicate-response' },
+      { id: 'msg:response', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Hello from Kordi.', content: { sender: 'My Kordi', deliveryState: 'complete', requestId: 'msg:request', replyToMessageId: 'msg:request' }, parentMessageId: 'msg:request', status: 'complete', sequenceNum: 4, createdAtMs: 4, updatedAtMs: 4, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-response' },
     ],
     delegatedExchanges: [],
     presence: [],

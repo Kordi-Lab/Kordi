@@ -370,7 +370,9 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
       aria-label={label}
       data-avatar-kind={kind}
     >
-      {kind === 'agent' ? (
+      {resolvedImageUrl ? (
+        <div className="absolute inset-0 bg-slate-800/60" aria-hidden="true" />
+      ) : kind === 'agent' ? (
         <AgentIdenticonAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
       ) : (
         <PixelHumanAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />

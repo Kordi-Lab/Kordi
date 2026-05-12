@@ -4,8 +4,10 @@ import { test } from 'node:test';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX } from '../src/features/cloud/avatar';
 import {
   cloudGroupIdentityRequest,
+  cloudGroupAgentResponseTargetAccountIds,
   cloudGroupDeliveryStateFromMessages,
   cloudGroupControlMessagesForAccount,
+  cloudGroupLocalAgentRequestAlreadyHandled,
   cloudGroupMessageReadPeerIds,
   cloudGroupMessageSessionId,
   cloudGroupPeerIdsFromContactsAndRequests,
@@ -13,13 +15,16 @@ import {
   cloudGroupParticipantFromContact,
   cloudGroupRelatedControlsForSend,
   cloudGroupTargetAccountIds,
+  cloudGroupTitleForOutgoingControl,
   cloudGroupUniqueParticipants,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
   fulfilledCloudGroupSends,
   nonCloudGroupTargets,
   parseCloudGroupControl,
+  shouldApplyCloudGroupTitleUpdate,
   shouldCountCloudGroupMessageUnread,
+  cloudSessionTitleUpdateTitle,
   shouldRouteMentionThroughCloudGroup,
 } from '../src/features/cloud/cloudGroupMessages';
 import { CLOUD_HOST_SENTINEL } from '../src/features/cloud/useCloudContacts';
@@ -40,6 +45,9 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
       senderAccountId: 'acct_a',
       text: 'hello group',
       createdAtMs: 123,
+      senderKind: 'agent',
+      senderDisplayName: 'Agent',
+      deliveryState: 'processing',
       replyToMessageId: 'msg_request',
       requestId: 'msg_request',
     },
@@ -50,6 +58,9 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.groupId, 'session:group:one');
   assert.equal(parsed?.participants[1]?.avatarUrl, `${CLOUD_PIXEL_AVATAR_URL_PREFIX}bob-seed`);
   assert.equal(parsed?.message?.text, 'hello group');
+  assert.equal(parsed?.message?.senderKind, 'agent');
+  assert.equal(parsed?.message?.senderDisplayName, 'Agent');
+  assert.equal(parsed?.message?.deliveryState, 'processing');
   assert.equal(parsed?.message?.replyToMessageId, 'msg_request');
   assert.equal(parsed?.message?.requestId, 'msg_request');
 });
@@ -197,6 +208,67 @@ test('cloud group replay includes self-authored controls after local reset', () 
   assert.deepEqual(replay.map((message) => message.messageId), ['cloud_self']);
 });
 
+test('cloud group messages do not inherit stale group titles from earlier rename controls', () => {
+  assert.equal(cloudGroupTitleForOutgoingControl({
+    kind: 'group-message',
+    groupTitle: null,
+    relatedGroupTitles: ['Lalla'],
+  }), null);
+  assert.equal(cloudGroupTitleForOutgoingControl({
+    kind: 'group-title-update',
+    groupTitle: 'Lalla',
+    relatedGroupTitles: [],
+  }), 'Lalla');
+});
+
+test('only explicit group title update controls mutate the shared group name', () => {
+  assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'group-message', groupTitle: 'Stale name' }), false);
+  assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'session-title-update', groupTitle: 'Thread title' }), false);
+  assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'group-title-update', groupTitle: 'Lalla' }), true);
+  assert.equal(cloudSessionTitleUpdateTitle({ kind: 'session-title-update', groupTitle: 'Thread title' }), 'Thread title');
+  assert.equal(cloudSessionTitleUpdateTitle({ kind: 'group-title-update', groupTitle: 'Lalla' }), null);
+});
+
+test('cloud group local agent requests are considered handled after a synced processing or final response', () => {
+  const requestId = 'msg_request';
+  const responseBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:one',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_response',
+      senderAccountId: 'acct_a',
+      text: 'done',
+      createdAtMs: 200,
+      senderKind: 'agent',
+      deliveryState: 'complete',
+      requestId,
+      replyToMessageId: requestId,
+    },
+  });
+
+  assert.equal(cloudGroupLocalAgentRequestAlreadyHandled({
+    localAccountId: 'acct_a',
+    requestMessageId: requestId,
+    messages: [{
+      messageId: 'cloud_response',
+      fromAccountId: 'acct_a',
+      toAccountId: 'acct_b',
+      body: responseBody,
+      createdAt: new Date(200).toISOString(),
+      deliveredAt: null,
+      readAt: null,
+      direction: 'outgoing',
+    }],
+  }), true);
+});
+
 test('cloud group replay deduplicates fanout rows for the same canonical message', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',
@@ -221,6 +293,26 @@ test('cloud group replay deduplicates fanout rows for the same canonical message
   });
 
   assert.deepEqual(replay.map((message) => message.messageId), ['cloud_to_a']);
+});
+
+test('cloud group agent response targets include original sender even when participant snapshot is incomplete', () => {
+  const envelope = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:one',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_requester',
+    actor: { accountId: 'acct_requester', displayName: 'Requester', avatarUrl: null, role: 'person' },
+    // Regression: older/incomplete controls may only carry the owner in participants.
+    participants: [{ accountId: 'acct_owner', displayName: 'Owner', avatarUrl: null, role: 'person' }],
+    message: { id: 'msg_request', senderAccountId: 'acct_requester', text: '@OwnersKordi help', createdAtMs: 1 },
+  }));
+
+  assert.ok(envelope);
+  assert.deepEqual(cloudGroupAgentResponseTargetAccountIds({
+    localAccountId: 'acct_owner',
+    envelope,
+    requestCloudMessage: { fromAccountId: 'acct_requester', toAccountId: 'acct_owner' },
+  }), ['acct_requester']);
 });
 
 test('cloud group read helper marks inbound controls read when their group session is open', () => {
@@ -264,6 +356,8 @@ test('cloud agent mentions inside cloud groups stay on cloud group transport', (
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true }), false);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsLocalAgent: true }), true);
+  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: true }), true);
+  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: false }), false);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: false, mentionsLocalAgent: true }), false);
 });
 

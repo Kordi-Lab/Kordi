@@ -13,7 +13,7 @@ import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
 
-export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update';
+export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update';
 
 export type CloudGroupParticipant = {
   accountId: string;
@@ -39,6 +39,7 @@ export type CloudGroupControlEnvelope = {
     createdAtMs: number;
     senderKind?: 'human' | 'agent' | null;
     senderDisplayName?: string | null;
+    deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled' | string | null;
     replyToMessageId?: string | null;
     requestId?: string | null;
   } | null;
@@ -124,6 +125,26 @@ export function cloudGroupNonGenericTitle(value?: string | null) {
   return title && !/^(#\s*)?(new session|untitled session)$/i.test(title) ? title : null;
 }
 
+export function cloudGroupTitleForOutgoingControl(input: {
+  kind: CloudGroupControlKind;
+  groupTitle?: string | null;
+  relatedGroupTitles?: Array<string | null | undefined>;
+}) {
+  const explicitTitle = cloudGroupNonGenericTitle(input.groupTitle) ?? cleanText(input.groupTitle) ?? null;
+  if (input.kind === 'group-message') return null;
+  return explicitTitle
+    ?? [...(input.relatedGroupTitles ?? [])].reverse().map((title) => cloudGroupNonGenericTitle(title)).find(Boolean)
+    ?? null;
+}
+
+export function shouldApplyCloudGroupTitleUpdate(input: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle'>) {
+  return ['group-invite', 'group-update', 'group-title-update'].includes(input.kind) && Boolean(cloudGroupNonGenericTitle(input.groupTitle));
+}
+
+export function cloudSessionTitleUpdateTitle(input: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle'>) {
+  return input.kind === 'session-title-update' ? cloudGroupNonGenericTitle(input.groupTitle) : null;
+}
+
 function encodeBase64Url(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = '';
@@ -155,7 +176,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
   if (!body.startsWith(CLOUD_GROUP_PREFIX)) return null;
   try {
     const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
-    if (!['group-invite', 'group-message', 'group-update', 'group-title-update'].includes(parsed.kind ?? '')) return null;
+    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update'].includes(parsed.kind ?? '')) return null;
     const kind = parsed.kind as CloudGroupControlKind;
     if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;
     if (typeof parsed.createdByAccountId !== 'string' || !parsed.createdByAccountId.trim()) return null;
@@ -179,6 +200,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         createdAtMs,
         senderKind: candidate.senderKind === 'agent' ? 'agent' : 'human',
         senderDisplayName: typeof candidate.senderDisplayName === 'string' && candidate.senderDisplayName.trim() ? candidate.senderDisplayName.trim() : null,
+        deliveryState: typeof candidate.deliveryState === 'string' && candidate.deliveryState.trim() ? candidate.deliveryState.trim() : null,
         replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
       };
@@ -306,6 +328,26 @@ export function shouldCountCloudGroupMessageUnread(input: {
   return active !== sessionId && active !== spaceId && active !== `group:${spaceId}`;
 }
 
+export function cloudGroupAgentResponseTargetAccountIds(input: {
+  localAccountId: string;
+  envelope: CloudGroupControlEnvelope;
+  requestCloudMessage?: Pick<CloudMessage, 'fromAccountId' | 'toAccountId'> | null;
+}): string[] {
+  const localAccountId = cleanText(input.localAccountId);
+  const ids = new Set<string>();
+  const add = (value?: string | null) => {
+    const accountId = cleanText(value);
+    if (accountId && accountId !== localAccountId) ids.add(accountId);
+  };
+  add(input.requestCloudMessage?.fromAccountId);
+  add(input.requestCloudMessage?.toAccountId);
+  add(input.envelope.createdByAccountId);
+  add(input.envelope.actor.accountId);
+  add(input.envelope.message?.senderAccountId);
+  for (const participant of input.envelope.participants) add(participant.accountId);
+  return [...ids].sort();
+}
+
 export function cloudGroupPeerIdsFromMessages(input: {
   accountId: string;
   contactPeerIds: string[];
@@ -335,6 +377,24 @@ export function cloudGroupControlReplayKey(message: CloudMessage): string | null
     return `${envelope.kind}:${envelope.groupId}:${envelope.message.id}`;
   }
   return `${envelope.kind}:${envelope.groupId}:${message.body}`;
+}
+
+export function cloudGroupLocalAgentRequestAlreadyHandled(input: {
+  localAccountId: string;
+  requestMessageId: string;
+  messages: CloudMessage[];
+}): boolean {
+  const localAccountId = cleanText(input.localAccountId);
+  const requestMessageId = cleanText(input.requestMessageId);
+  if (!localAccountId || !requestMessageId) return false;
+  return input.messages.some((message) => {
+    if (message.fromAccountId !== localAccountId) return false;
+    const envelope = parseCloudGroupControl(message.body);
+    const groupMessage = envelope?.kind === 'group-message' ? envelope.message : null;
+    if (!groupMessage || groupMessage.senderAccountId !== localAccountId || groupMessage.senderKind !== 'agent') return false;
+    const linkedRequestId = cleanText(groupMessage.requestId) || cleanText(groupMessage.replyToMessageId);
+    return linkedRequestId === requestMessageId;
+  });
 }
 
 export function cloudGroupControlMessagesForAccount(input: {
@@ -424,8 +484,13 @@ export function shouldRouteMentionThroughCloudGroup(input: {
   mentionedHostId?: string | null;
   activeGroupSessionIsGroup: boolean;
   mentionsLocalAgent?: boolean;
+  mentionsBridgeAgent?: boolean;
+  hasCloudGroupRecipients?: boolean;
 }): boolean {
-  return input.activeGroupSessionIsGroup && (cleanText(input.mentionedHostId) === CLOUD_HOST_SENTINEL || input.mentionsLocalAgent === true);
+  if (!input.activeGroupSessionIsGroup) return false;
+  if (cleanText(input.mentionedHostId) === CLOUD_HOST_SENTINEL) return true;
+  if (input.mentionsLocalAgent === true) return true;
+  return input.mentionsBridgeAgent === true && input.hasCloudGroupRecipients === true;
 }
 
 export function cloudGroupTargetAccountIds<T extends { hostId?: string | null; nodeId?: string | null }>(targets: T[]): string[] {

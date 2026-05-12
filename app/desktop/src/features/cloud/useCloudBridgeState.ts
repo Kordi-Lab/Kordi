@@ -6,6 +6,7 @@ import {
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   openOrCreateCanonicalSession,
+  renameCanonicalSession,
   startDesktopChatMessage,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
@@ -43,16 +44,20 @@ import {
 } from './cloudAgentMessages';
 import {
   cloudGroupAgentConversationId,
+  cloudGroupAgentResponseTargetAccountIds,
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
   cloudGroupDeliveryStateFromMessages,
   cloudGroupIdFromAgentConversationId,
   cloudGroupIdentityRequest,
+  cloudGroupLocalAgentRequestAlreadyHandled,
   cloudGroupMessageReadPeerIds,
   cloudGroupParticipantsForBridgeSessionParticipants,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
   cloudGroupSelfParticipant,
+  cloudGroupTitleForOutgoingControl,
+  cloudSessionTitleUpdateTitle,
   cloudGroupUniqueParticipants,
   cloudGroupRelatedControlsForSend,
   cloudGroupNonGenericTitle,
@@ -60,6 +65,7 @@ import {
   firstCloudGroupSendFailure,
   fulfilledCloudGroupSends,
   parseCloudGroupControl,
+  shouldApplyCloudGroupTitleUpdate,
   shouldCountCloudGroupMessageUnread,
   type CloudGroupControlEnvelope,
   type CloudGroupParticipant,
@@ -85,6 +91,10 @@ function wait(ms: number): Promise<void> {
 function isRecentCloudAgentMention(createdAt: string): boolean {
   const createdAtMs = Date.parse(createdAt);
   return Number.isFinite(createdAtMs) && Date.now() - createdAtMs <= CLOUD_AGENT_MENTION_WINDOW_MS;
+}
+
+function isCloudAgentProcessingPlaceholderText(text: string): boolean {
+  return /^processing[.\s…]*$/iu.test(text.trim());
 }
 
 function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[] = []): boolean {
@@ -320,12 +330,6 @@ export function useCloudBridgeState({
     const localHumanIdentityId = canonicalSessionState.profile.humanIdentityId?.trim();
     if (!localHumanIdentityId) return;
 
-    if (envelope.kind === 'group-message' && envelope.message) {
-      const optimisticMessageExists = canonicalSessionState.messages
-        .some((candidate) => candidate.id === envelope.message?.id);
-      if (optimisticMessageExists) return;
-    }
-
     const participantByAccount = new Map<string, CloudGroupParticipant>();
     for (const participant of [envelope.actor, ...envelope.participants, cloudGroupSelfParticipant(account, 'self')]) {
       const normalized = participant.accountId.trim() ? participant : null;
@@ -348,7 +352,9 @@ export function useCloudBridgeState({
     const participantIdentityIds = [...identityIdByAccount.entries()]
       .filter(([accountId, identityId]) => accountId !== envelope.createdByAccountId && identityId !== createdByIdentityId)
       .map(([, identityId]) => identityId);
-    const groupTitle = envelope.groupTitle?.trim() || 'Cloud group';
+    const sessionTitleUpdateTitle = cloudSessionTitleUpdateTitle(envelope);
+    const explicitGroupTitle = shouldApplyCloudGroupTitleUpdate(envelope) ? cloudGroupNonGenericTitle(envelope.groupTitle) : null;
+    const groupTitle = explicitGroupTitle || 'Cloud group';
     const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
     const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
     nextState = await openOrCreateCanonicalSession({
@@ -363,7 +369,7 @@ export function useCloudBridgeState({
       metadata: {
         schemaVersion: 1,
         kind: 'chat-group',
-        customName: groupTitle,
+        customName: explicitGroupTitle ?? null,
         groupId: groupSpaceId,
         groupSpaceId,
         adminIdentityIds: [createdByIdentityId],
@@ -375,19 +381,23 @@ export function useCloudBridgeState({
     });
     setCanonicalSessionState(nextState);
 
-    if (
-      envelope.kind === 'group-title-update'
-      || envelope.kind === 'group-update'
-      || envelope.kind === 'group-invite'
-      || (envelope.kind === 'group-message' && Boolean(envelope.groupTitle?.trim()))
-    ) {
+    if (sessionTitleUpdateTitle) {
+      nextState = await renameCanonicalSession({
+        sessionId: envelope.groupId,
+        title: sessionTitleUpdateTitle,
+        requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
+      });
+      setCanonicalSessionState(nextState);
+    }
+
+    if (shouldApplyCloudGroupTitleUpdate(envelope)) {
       nextState = await updateCanonicalSessionMetadata({
         sessionId: envelope.groupId,
         requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
         metadata: {
           schemaVersion: 1,
           kind: 'chat-group',
-          customName: groupTitle,
+          customName: explicitGroupTitle ?? null,
           groupId: groupSpaceId,
           groupSpaceId,
           adminIdentityIds: [createdByIdentityId],
@@ -406,13 +416,15 @@ export function useCloudBridgeState({
     const messageAlreadyExists = [canonicalSessionState, nextState]
       .filter((state): state is CanonicalSessionState => Boolean(state))
       .some((state) => state.messages.some((candidate) => candidate.id === envelope.message?.id));
-    if (messageAlreadyExists) return;
 
     const senderIsAgent = envelope.message.senderKind === 'agent';
     const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
     const messageReplyToId = envelope.message.replyToMessageId?.trim()
       || envelope.message.requestId?.trim()
       || null;
+    const agentDeliveryState = senderIsAgent
+      ? (envelope.message.deliveryState?.trim() || (isCloudAgentProcessingPlaceholderText(envelope.message.text) ? 'processing' : 'complete'))
+      : null;
     if (senderIsAgent) {
       const owner = participantByAccount.get(envelope.message.senderAccountId);
       nextState = await upsertCanonicalIdentity({
@@ -431,29 +443,34 @@ export function useCloudBridgeState({
       });
       setCanonicalSessionState(nextState);
     }
-    nextState = await appendCanonicalMessage({
-      id: envelope.message.id,
-      sessionId: envelope.groupId,
-      senderIdentityId,
-      senderRole: senderIsAgent ? 'external-agent' : (envelope.message.senderAccountId === account.accountId ? 'user' : 'person'),
-      messageKind: senderIsAgent ? 'agent-turn' : 'text',
-      contentText: envelope.message.text,
-      content: senderIsAgent ? {
-        sender: envelope.message.senderDisplayName?.trim() || 'Kordi',
-        timestampMs: envelope.message.createdAtMs,
-        deliveryState: 'complete',
-        requestId: messageReplyToId,
-        replyToMessageId: messageReplyToId,
-      } : undefined,
-      createdAtMs: envelope.message.createdAtMs,
-      parentMessageId: senderIsAgent ? messageReplyToId : null,
-      status: envelope.message.senderAccountId === account.accountId ? 'sent' : 'received',
-      sourceTransport: 'cloud-group',
-      sourceEventId: `cloud-group:${cloudMessage.messageId}`,
-    });
-    setCanonicalSessionState(nextState);
-    if (shouldCountCloudGroupMessageUnread({ activeConversationId, groupId: envelope.groupId, groupSpaceId })) {
-      incrementLocalSessionUnread?.(envelope.groupId, 1);
+    if (!messageAlreadyExists) {
+      nextState = await appendCanonicalMessage({
+        id: envelope.message.id,
+        sessionId: envelope.groupId,
+        senderIdentityId,
+        senderRole: senderIsAgent ? 'external-agent' : (envelope.message.senderAccountId === account.accountId ? 'user' : 'person'),
+        messageKind: senderIsAgent ? 'agent-turn' : 'text',
+        contentText: envelope.message.text,
+        content: senderIsAgent ? {
+          sender: envelope.message.senderDisplayName?.trim() || 'Kordi',
+          timestampMs: envelope.message.createdAtMs,
+          deliveryState: agentDeliveryState,
+          bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
+          requestId: messageReplyToId,
+          replyToMessageId: messageReplyToId,
+        } : undefined,
+        createdAtMs: envelope.message.createdAtMs,
+        parentMessageId: senderIsAgent ? messageReplyToId : null,
+        status: senderIsAgent && agentDeliveryState === 'processing'
+          ? 'processing'
+          : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received',
+        sourceTransport: senderIsAgent ? 'cloud-group-agent' : 'cloud-group',
+        sourceEventId: `${senderIsAgent ? 'cloud-group-agent' : 'cloud-group'}:${cloudMessage.messageId}`,
+      });
+      setCanonicalSessionState(nextState);
+      if (shouldCountCloudGroupMessageUnread({ activeConversationId, groupId: envelope.groupId, groupSpaceId })) {
+        incrementLocalSessionUnread?.(envelope.groupId, 1);
+      }
     }
 
     const groupMessageIsOwn = envelope.message.senderAccountId === account.accountId;
@@ -468,6 +485,15 @@ export function useCloudBridgeState({
       && isRecentCloudAgentMention(cloudMessage.createdAt)
       && !processedCloudAgentMentionIdsRef.current.has(envelope.message.id)
     ) {
+      const allCloudMessages = Object.values(messagesByPeer).flat();
+      if (cloudGroupLocalAgentRequestAlreadyHandled({
+        localAccountId: account.accountId,
+        requestMessageId: envelope.message.id,
+        messages: allCloudMessages,
+      })) {
+        processedCloudAgentMentionIdsRef.current.add(envelope.message.id);
+        return;
+      }
       processedCloudAgentMentionIdsRef.current.add(envelope.message.id);
       void (async () => {
         const session = await loadSession();
@@ -511,6 +537,37 @@ export function useCloudBridgeState({
           sourceEventId: `cloud-group-agent:${processingMessageId}`,
         });
         setCanonicalSessionState(processingState);
+        const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
+          localAccountId: account.accountId,
+          envelope,
+          requestCloudMessage: cloudMessage,
+        });
+        const processingBody = encodeCloudGroupControl({
+          kind: 'group-message',
+          groupId: envelope.groupId,
+          groupSpaceId,
+          groupTitle: null,
+          createdByAccountId: envelope.createdByAccountId,
+          actor: cloudGroupSelfParticipant(account, 'person'),
+          participants: [...participantByAccount.values()],
+          message: {
+            id: processingMessageId,
+            senderAccountId: account.accountId,
+            text: 'processing...',
+            createdAtMs: Date.now(),
+            senderKind: 'agent',
+            senderDisplayName: agentDisplayName,
+            deliveryState: 'processing',
+            replyToMessageId: envelope.message!.id,
+            requestId: envelope.message!.id,
+          },
+        });
+        const processingSent = await Promise.allSettled(
+          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, processingBody)),
+        );
+        processingSent.forEach((result) => {
+          if (result.status === 'fulfilled') mergeMessage(result.value);
+        });
         const prompt = promptTextForCloudAgentMention(envelope.message!.text);
         const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
           setLocalAgentTurnsByRequestId((current) => ({ ...current, [envelope.message!.id]: turn }));
@@ -528,7 +585,6 @@ export function useCloudBridgeState({
         const responseText = finalTurn.succeeded && finalTurn.assistantText.trim()
           ? finalTurn.assistantText.trim()
           : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
-        const targetAccountIds = [...participantByAccount.keys()].filter((accountId) => accountId !== account.accountId);
         const responseMessageId = `msg:cloud-agent:${finalTurn.id}`;
         const responseState = await appendCanonicalMessage({
           id: responseMessageId,
@@ -556,7 +612,7 @@ export function useCloudBridgeState({
           kind: 'group-message',
           groupId: envelope.groupId,
           groupSpaceId,
-          groupTitle,
+          groupTitle: null,
           createdByAccountId: envelope.createdByAccountId,
           actor: cloudGroupSelfParticipant(account, 'person'),
           participants: [...participantByAccount.values()],
@@ -567,6 +623,7 @@ export function useCloudBridgeState({
             createdAtMs: Date.now(),
             senderKind: 'agent',
             senderDisplayName: agentDisplayName,
+            deliveryState: 'complete',
             replyToMessageId: envelope.message!.id,
             requestId: envelope.message!.id,
           },
@@ -592,6 +649,7 @@ export function useCloudBridgeState({
     client,
     incrementLocalSessionUnread,
     mergeMessage,
+    messagesByPeer,
     refreshCloudBridgeMessages,
     setCanonicalSessionState,
   ]);
@@ -932,10 +990,11 @@ export function useCloudBridgeState({
       ...participants.map((participant) => participant.accountId.trim()).filter(Boolean),
     ])].filter((accountId) => accountId !== account.accountId);
     if (targetAccountIds.length === 0) return;
-    const groupTitle = cloudGroupNonGenericTitle(input.groupTitle)
-      ?? [...relatedGroupControls].reverse().map((control) => cloudGroupNonGenericTitle(control.envelope.groupTitle)).find(Boolean)
-      ?? input.groupTitle
-      ?? null;
+    const groupTitle = cloudGroupTitleForOutgoingControl({
+      kind: input.kind,
+      groupTitle: input.groupTitle,
+      relatedGroupTitles: relatedGroupControls.map((control) => control.envelope.groupTitle),
+    });
     const message = input.message
       ? {
           ...input.message,

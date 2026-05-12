@@ -4,12 +4,13 @@
 // ContactRequest). This keeps the UI plumbing untouched — cloud rows
 // just look like another data source in the same shape.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { Contact, ContactRequest } from '@/kordi-app/types';
 
 import {
   CloudAuthClient,
+  cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudContactRequest,
@@ -31,104 +32,267 @@ export type UseCloudContactsResult = {
 
 const REFRESH_INTERVAL_MS = 15_000;
 
-export function useCloudContacts(account: CloudAccount | null): UseCloudContactsResult {
-  const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
-  const [contacts, setContacts] = useState<CloudContactSummary[]>([]);
-  const [rawRequests, setRawRequests] = useState<CloudContactRequest[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const cancelledRef = useRef(false);
+export type CloudContactsSnapshot = {
+  contacts: CloudContactSummary[];
+  requests: CloudContactRequest[];
+};
 
-  useEffect(() => {
-    cancelledRef.current = false;
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, []);
+type CloudContactsStoreSnapshot = CloudContactsSnapshot & {
+  loading: boolean;
+  error: string | null;
+};
 
-  const fetchData = useCallback(async () => {
-    if (!account) return;
+type CloudContactsStore = {
+  accountId: string;
+  snapshot: CloudContactsStoreSnapshot;
+  listeners: Set<() => void>;
+  refreshPromise: Promise<void> | null;
+  refreshAgain: boolean;
+  pollTimer: ReturnType<typeof window.setInterval> | null;
+  ws: WebSocket | null;
+  wsOpening: boolean;
+};
+
+const EMPTY_CLOUD_CONTACTS_SNAPSHOT: CloudContactsStoreSnapshot = {
+  contacts: [],
+  requests: [],
+  loading: false,
+  error: null,
+};
+const cloudContactStores = new Map<string, CloudContactsStore>();
+
+export function mergeCloudContactRequestSnapshot(
+  snapshot: CloudContactsSnapshot,
+  request: CloudContactRequest,
+): CloudContactsSnapshot {
+  const nextRequests = snapshot.requests.filter((item) => item.requestId !== request.requestId);
+  if (request.status === 'pending') nextRequests.unshift(request);
+  return { ...snapshot, requests: nextRequests };
+}
+
+export function applyAcceptedCloudContactRequest(
+  snapshot: CloudContactsSnapshot,
+  request: CloudContactRequest,
+): CloudContactsSnapshot {
+  const nextRequests = snapshot.requests.filter((item) => item.requestId !== request.requestId);
+  const counterpart = request.counterpart;
+  if (!counterpart) return { ...snapshot, requests: nextRequests };
+  const existing = snapshot.contacts.find((contact) => contact.accountId === counterpart.accountId);
+  const acceptedContact: CloudContactSummary = {
+    ...counterpart,
+    createdAt: counterpart.createdAt || request.decidedAt || new Date().toISOString(),
+  };
+  const contacts = existing
+    ? snapshot.contacts.map((contact) => (contact.accountId === counterpart.accountId ? { ...contact, ...acceptedContact } : contact))
+    : [acceptedContact, ...snapshot.contacts];
+  return { contacts, requests: nextRequests };
+}
+
+export function removeCloudContactRequestSnapshot(
+  snapshot: CloudContactsSnapshot,
+  requestId: string,
+): CloudContactsSnapshot {
+  return {
+    ...snapshot,
+    requests: snapshot.requests.filter((item) => item.requestId !== requestId),
+  };
+}
+
+export function shouldRefreshCloudContactsForWsSubject(subject: string | undefined | null): boolean {
+  return Boolean(subject?.startsWith('kordi.events.contact.request.') || subject?.startsWith('kordi.events.contact.added.'));
+}
+
+function cloudContactsStoreFor(accountId: string): CloudContactsStore {
+  const existing = cloudContactStores.get(accountId);
+  if (existing) return existing;
+  const store: CloudContactsStore = {
+    accountId,
+    snapshot: EMPTY_CLOUD_CONTACTS_SNAPSHOT,
+    listeners: new Set(),
+    refreshPromise: null,
+    refreshAgain: false,
+    pollTimer: null,
+    ws: null,
+    wsOpening: false,
+  };
+  cloudContactStores.set(accountId, store);
+  return store;
+}
+
+function publishCloudContactsStore(store: CloudContactsStore, patch: Partial<CloudContactsStoreSnapshot>) {
+  store.snapshot = { ...store.snapshot, ...patch };
+  for (const listener of store.listeners) listener();
+}
+
+function applyCloudContactsSnapshot(
+  store: CloudContactsStore,
+  updater: (snapshot: CloudContactsSnapshot) => CloudContactsSnapshot,
+) {
+  const next = updater({ contacts: store.snapshot.contacts, requests: store.snapshot.requests });
+  publishCloudContactsStore(store, next);
+}
+
+async function refreshCloudContactsStore(store: CloudContactsStore, client: CloudAuthClient): Promise<void> {
+  if (store.refreshPromise) {
+    store.refreshAgain = true;
+    return store.refreshPromise;
+  }
+  store.refreshPromise = (async () => {
     const session = await loadSession();
     if (!session?.token) return;
-    if (cancelledRef.current) return;
-    setLoading(true);
-    setError(null);
+    publishCloudContactsStore(store, { loading: true, error: null });
     try {
-      const [list, requests] = await Promise.all([
+      const [contacts, requests] = await Promise.all([
         client.listContacts(session.token),
         client.listContactRequests(session.token),
       ]);
-      if (cancelledRef.current) return;
-      setContacts(list);
-      setRawRequests(requests);
+      publishCloudContactsStore(store, { contacts, requests, loading: false, error: null });
     } catch (err) {
-      if (cancelledRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to load cloud contacts');
+      publishCloudContactsStore(store, {
+        loading: false,
+        error: err instanceof Error ? err.message : 'Failed to load cloud contacts',
+      });
     } finally {
-      if (!cancelledRef.current) setLoading(false);
+      store.refreshPromise = null;
+      if (store.refreshAgain) {
+        store.refreshAgain = false;
+        void refreshCloudContactsStore(store, client);
+      }
     }
-  }, [account, client]);
+  })();
+  return store.refreshPromise;
+}
 
-  // Initial fetch + light polling fallback. Live WS push hooks are
-  // wired separately in a later refresh — the gateway exists, but
-  // adding the subscription here would double the surface change.
+function ensureCloudContactsWebSocket(store: CloudContactsStore, client: CloudAuthClient) {
+  if (store.ws || store.wsOpening || typeof WebSocket === 'undefined') return;
+  store.wsOpening = true;
+  void loadSession()
+    .then((session) => {
+      if (!session?.token || store.ws) return;
+      const ws = new WebSocket(cloudWebSocketUrl(session.token));
+      store.ws = ws;
+      ws.onmessage = (event) => {
+        try {
+          const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
+          if (shouldRefreshCloudContactsForWsSubject(frame?.subject)) {
+            void refreshCloudContactsStore(store, client);
+          }
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-contacts-ws] frame parse failed', error);
+        }
+      };
+      ws.onclose = () => {
+        if (store.ws === ws) store.ws = null;
+      };
+      ws.onerror = () => {
+        ws.close();
+      };
+    })
+    .finally(() => {
+      store.wsOpening = false;
+    });
+}
+
+function startCloudContactsStore(store: CloudContactsStore, client: CloudAuthClient) {
+  void refreshCloudContactsStore(store, client);
+  ensureCloudContactsWebSocket(store, client);
+  if (!store.pollTimer && typeof window !== 'undefined') {
+    store.pollTimer = window.setInterval(() => void refreshCloudContactsStore(store, client), REFRESH_INTERVAL_MS);
+  }
+}
+
+export function useCloudContacts(account: CloudAccount | null): UseCloudContactsResult {
+  const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
+  const store = account ? cloudContactsStoreFor(account.accountId) : null;
+  const [snapshot, setSnapshot] = useState<CloudContactsStoreSnapshot>(() => store?.snapshot ?? EMPTY_CLOUD_CONTACTS_SNAPSHOT);
+
   useEffect(() => {
-    if (!account) {
-      setContacts([]);
-      setRawRequests([]);
+    if (!store || !account) {
+      setSnapshot(EMPTY_CLOUD_CONTACTS_SNAPSHOT);
       return;
     }
-    void fetchData();
-    const interval = window.setInterval(() => void fetchData(), REFRESH_INTERVAL_MS);
+    setSnapshot(store.snapshot);
+    const listener = () => setSnapshot(store.snapshot);
+    store.listeners.add(listener);
+    startCloudContactsStore(store, client);
     return () => {
-      window.clearInterval(interval);
+      store.listeners.delete(listener);
+      if (store.listeners.size === 0) {
+        if (store.pollTimer && typeof window !== 'undefined') window.clearInterval(store.pollTimer);
+        store.pollTimer = null;
+        store.ws?.close();
+        store.ws = null;
+      }
     };
-  }, [account, fetchData]);
+  }, [account, client, store]);
+
+  const fetchData = useCallback(async () => {
+    if (!store) return;
+    await refreshCloudContactsStore(store, client);
+  }, [client, store]);
 
   const sendRequest = useCallback(
     async (peerAccountId: string, message?: string) => {
+      if (!store) throw new Error('Not signed in.');
       const session = await loadSession();
       if (!session?.token) throw new Error('Not signed in.');
-      await client.sendContactRequest(session.token, peerAccountId, message);
-      await fetchData();
+      const request = await client.sendContactRequest(session.token, peerAccountId, message);
+      applyCloudContactsSnapshot(store, (current) => mergeCloudContactRequestSnapshot(current, request));
+      void refreshCloudContactsStore(store, client);
     },
-    [client, fetchData],
+    [client, store],
   );
 
   const acceptRequest = useCallback(
     async (requestId: string) => {
+      if (!store) throw new Error('Not signed in.');
       const session = await loadSession();
       if (!session?.token) throw new Error('Not signed in.');
-      await client.acceptContactRequest(session.token, requestId);
-      await fetchData();
+      applyCloudContactsSnapshot(store, (current) => removeCloudContactRequestSnapshot(current, requestId));
+      try {
+        const request = await client.acceptContactRequest(session.token, requestId);
+        applyCloudContactsSnapshot(store, (current) => applyAcceptedCloudContactRequest(current, request));
+        void refreshCloudContactsStore(store, client);
+      } catch (error) {
+        void refreshCloudContactsStore(store, client);
+        throw error;
+      }
     },
-    [client, fetchData],
+    [client, store],
   );
 
   const rejectRequest = useCallback(
     async (requestId: string) => {
+      if (!store) throw new Error('Not signed in.');
       const session = await loadSession();
       if (!session?.token) throw new Error('Not signed in.');
-      await client.rejectContactRequest(session.token, requestId);
-      await fetchData();
+      applyCloudContactsSnapshot(store, (current) => removeCloudContactRequestSnapshot(current, requestId));
+      try {
+        await client.rejectContactRequest(session.token, requestId);
+        void refreshCloudContactsStore(store, client);
+      } catch (error) {
+        void refreshCloudContactsStore(store, client);
+        throw error;
+      }
     },
-    [client, fetchData],
+    [client, store],
   );
 
   const mappedContacts = useMemo<Contact[]>(
-    () => contacts.map((row) => cloudContactToContact(row)),
-    [contacts],
+    () => snapshot.contacts.map((row) => cloudContactToContact(row)),
+    [snapshot.contacts],
   );
   const mappedRequests = useMemo<ContactRequest[]>(
-    () => rawRequests.map((row) => cloudRequestToContactRequest(row)),
-    [rawRequests],
+    () => snapshot.requests.map((row) => cloudRequestToContactRequest(row)),
+    [snapshot.requests],
   );
 
   return {
     contacts: mappedContacts,
     requests: mappedRequests,
-    loading,
-    error,
+    loading: snapshot.loading,
+    error: snapshot.error,
     refresh: fetchData,
     sendRequest,
     acceptRequest,

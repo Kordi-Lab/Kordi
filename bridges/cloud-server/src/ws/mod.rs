@@ -2,8 +2,7 @@
 //!
 //! `/v1/cloud/ws?token=<session-token>` upgrades the connection, looks
 //! the token up in `cloud_refresh_tokens`, and — if valid — subscribes
-//! to NATS subjects addressed to that account
-//! (`kordi.events.*.*.<account_id>`). Every matching message is
+//! to NATS subjects addressed to that account. Every matching message is
 //! forwarded to the WebSocket as a JSON text frame.
 //!
 //! # Why query-string auth
@@ -92,11 +91,20 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
         return;
     };
 
-    let subject = format!("kordi.events.*.*.{account_id}");
-    let mut sub = match client.subscribe(subject.clone()).await {
+    let subjects = account_event_subjects(&account_id);
+    let mut general_sub = match client.subscribe(subjects[0].clone()).await {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("[ws] subscribe '{subject}': {err}");
+            eprintln!("[ws] subscribe '{}': {err}", subjects[0]);
+            let _ = close_with_message(socket, "subscribe failed").await;
+            return;
+        }
+    };
+    let mut contact_request_sub = match client.subscribe(subjects[1].clone()).await {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("[ws] subscribe '{}': {err}", subjects[1]);
+            let _ = general_sub.unsubscribe().await;
             let _ = close_with_message(socket, "subscribe failed").await;
             return;
         }
@@ -134,20 +142,17 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
                 }
             },
 
-            event = sub.next() => match event {
+            event = general_sub.next() => match event {
                 Some(msg) => {
-                    let payload = parse_json_or_string(&msg.payload);
-                    let frame = EnvelopeFrame {
-                        subject: msg.subject.as_str(),
-                        payload,
-                    };
-                    let body = match serde_json::to_string(&frame) {
-                        Ok(value) => value,
-                        Err(err) => {
-                            eprintln!("[ws] serialize envelope: {err}");
-                            continue;
-                        }
-                    };
+                    let Some(body) = envelope_body(msg.subject.as_str(), &msg.payload) else { continue; };
+                    if sender.send(Message::Text(body)).await.is_err() { break; }
+                }
+                None => break,
+            },
+
+            event = contact_request_sub.next() => match event {
+                Some(msg) => {
+                    let Some(body) = envelope_body(msg.subject.as_str(), &msg.payload) else { continue; };
                     if sender.send(Message::Text(body)).await.is_err() { break; }
                 }
                 None => break,
@@ -157,7 +162,33 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
 
     // Best-effort unsubscribe on the way out so the broker doesn't keep
     // a dangling consumer for a closed socket.
-    let _ = sub.unsubscribe().await;
+    let _ = general_sub.unsubscribe().await;
+    let _ = contact_request_sub.unsubscribe().await;
+}
+
+fn account_event_subjects(account_id: &str) -> Vec<String> {
+    vec![
+        // Three-token lifecycle events: contact.added, message.arrived,
+        // message.read, etc.
+        format!("kordi.events.*.*.{account_id}"),
+        // Four-token contact-request events: contact.request.created,
+        // contact.request.accepted, contact.request.rejected. These did not
+        // match the general subject above, causing recipient request badges to
+        // wait for the 15s polling fallback.
+        format!("kordi.events.contact.request.*.{account_id}"),
+    ]
+}
+
+fn envelope_body(subject: &str, payload_bytes: &[u8]) -> Option<String> {
+    let payload = parse_json_or_string(payload_bytes);
+    let frame = EnvelopeFrame { subject, payload };
+    match serde_json::to_string(&frame) {
+        Ok(value) => Some(value),
+        Err(err) => {
+            eprintln!("[ws] serialize envelope: {err}");
+            None
+        }
+    }
 }
 
 async fn idle_without_nats(mut socket: WebSocket, account_id: &str) {
@@ -186,5 +217,18 @@ fn parse_json_or_string(bytes: &[u8]) -> serde_json::Value {
     match serde_json::from_slice::<serde_json::Value>(bytes) {
         Ok(value) => value,
         Err(_) => serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::account_event_subjects;
+
+    #[test]
+    fn account_event_subjects_include_contact_request_events() {
+        let subjects = account_event_subjects("acct_peer");
+
+        assert!(subjects.contains(&"kordi.events.*.*.acct_peer".to_string()));
+        assert!(subjects.contains(&"kordi.events.contact.request.*.acct_peer".to_string()));
     }
 }

@@ -844,7 +844,7 @@ export function useKordiAppModel() {
     if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
       await sendCloudGroupControl({
         targetAccountIds: cloudTargetAccountIds,
-        kind: 'group-title-update',
+        kind: 'session-title-update',
         groupId: sessionId,
         groupSpaceId: parentGroupSpaceId,
         groupTitle: title,
