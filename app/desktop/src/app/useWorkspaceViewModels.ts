@@ -4,7 +4,7 @@ import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
-import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
+import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -53,6 +53,14 @@ function sanitizeRemotePeerName(
     if (trimmed) return trimmed;
   }
   return 'Bridge user';
+}
+
+function bridgeProfileImageUrl(value: string | null | undefined): string | null {
+  const normalized = cloudAvatarImageUrl(value);
+  if (normalized) return normalized;
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return null;
+  return trimmed;
 }
 import {
   bridgePeerIsApprovedContact,
@@ -510,7 +518,7 @@ export function useWorkspaceViewModels({
             bridgeContactStatus,
             bridgeContactRequestDirection,
             avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId),
-            profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl),
+            profileImageUrl: bridgeProfileImageUrl(peer.profileImageUrl),
           });
         }
 
@@ -539,7 +547,7 @@ export function useWorkspaceViewModels({
             bridgeContactStatus,
             bridgeContactRequestDirection,
             avatarSeed: peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId,
-            profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl),
+            profileImageUrl: bridgeProfileImageUrl(peer.profileImageUrl),
           });
         }
       }
@@ -608,7 +616,7 @@ export function useWorkspaceViewModels({
           bridgeContactStatus: status,
           bridgeContactRequestDirection: direction,
           avatarSeed: peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId,
-          profileImageUrl: cloudAvatarImageUrl(peer.profileImageUrl),
+          profileImageUrl: bridgeProfileImageUrl(peer.profileImageUrl),
         });
       }
     }

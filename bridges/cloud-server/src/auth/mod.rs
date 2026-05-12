@@ -3,6 +3,7 @@
 //! `/v1/cloud/contacts`.
 
 pub mod accounts;
+mod oauth;
 pub mod password;
 pub mod rate_limit;
 pub mod routes;

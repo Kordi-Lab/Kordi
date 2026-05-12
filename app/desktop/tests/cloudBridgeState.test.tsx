@@ -6,13 +6,16 @@ import {
   buildCloudDesktopBridgeState,
   cloudBridgeConversationId,
   cloudContactsToCanonicalIdentityRequests,
+  cloudGroupParticipantContacts,
   cloudMessageToBridgeMessage,
   cloudPeerAccountIdFromConversationId,
   isCloudBridgeConversationId,
 } from '../src/features/cloud/cloudBridgeState';
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
+import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -48,6 +51,95 @@ test('cloud bridge conversation ids use normal bridge ids with cloud host sentin
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer:person'), 'acct_peer');
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer'), 'acct_peer');
   assert.equal(isCloudBridgeConversationId('bridge:local:node:person'), false);
+});
+
+test('cloud group participant contacts include non-contact group members for mentions and sending', () => {
+  const canonicalSessionState = {
+    sessions: [{ id: 'session:group:1', kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 }],
+    identities: [
+      { id: 'human:acct_me', kind: 'human', displayName: 'Me Cloud', source: 'local', humanId: 'acct_me', avatarKey: 'seed-me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:acct_member', kind: 'human', displayName: 'Group Member', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_member', humanId: 'acct_member', avatarKey: 'seed-member', profileImageUrl: null, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [
+      { sessionId: 'session:group:1', identityId: 'human:acct_me', role: 'self', state: 'active', addedAtMs: 1 },
+      { sessionId: 'session:group:1', identityId: 'human:acct_member', role: 'person', state: 'active', addedAtMs: 1 },
+    ],
+    profile: { id: 'profile', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const contacts = cloudGroupParticipantContacts({
+    account,
+    canonicalSessionState,
+    existingPeerIds: [],
+  });
+
+  assert.deepEqual(contacts.map((contact) => ({
+    id: contact.id,
+    name: contact.name,
+    bridgeHostId: contact.bridgeHostId,
+    bridgePeerNodeId: contact.bridgePeerNodeId,
+    bridgeContactStatus: contact.bridgeContactStatus,
+    avatarSeed: contact.avatarSeed,
+  })), [{
+    id: 'cloud:acct_member',
+    name: 'Group Member',
+    bridgeHostId: 'cloud',
+    bridgePeerNodeId: 'acct_member',
+    bridgeContactStatus: 'group-member',
+    avatarSeed: 'seed-member',
+  }]);
+});
+
+test('cloud group members do not become direct contacts or direct chat peers', () => {
+  const groupMemberContact = {
+    ...cloudContactToContact({
+      accountId: 'acct_member',
+      displayName: 'Group Member',
+      avatarUrl: null,
+      nodeId: 'acct_member',
+      createdAt: '2026-05-11T00:00:00Z',
+    }),
+    bridgeContactStatus: 'group-member',
+  };
+  const body = encodeCloudGroupControl({
+    kind: 'group-update',
+    groupId: 'session:group:one',
+    groupSpaceId: 'session:group:one',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_member', displayName: 'Group Member', avatarUrl: null, role: 'person' },
+    ],
+    message: null,
+  });
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer, groupMemberContact],
+    messagesByPeer: {
+      acct_peer: [message],
+      acct_member: [{
+        messageId: 'msg_group_control',
+        fromAccountId: 'acct_member',
+        toAccountId: 'acct_me',
+        body,
+        createdAt: '2026-05-11T10:00:00Z',
+        deliveredAt: null,
+        readAt: null,
+        direction: 'incoming',
+      }],
+    },
+  });
+
+  assert.equal(state.hosts[0]?.visiblePeers.some((visiblePeer) => visiblePeer.humanId === 'acct_member'), false);
+  assert.equal(state.conversations.some((conversation) => conversation.peerNodeId === 'acct_member'), false);
+  assert.equal(state.conversations.some((conversation) => conversation.peerNodeId === 'acct_peer'), true);
 });
 
 test('cloud contact identity requests preserve account ids, display names, and shared avatar seeds', () => {
@@ -349,13 +441,83 @@ test('active cloud agent conversations do not remove the contact conversation', 
   assert.equal(state.conversations.some((conversation) => conversation.id === 'bridge:cloud:acct_peer'), true);
 });
 
+test('cloud parallel agent mentions keep request-specific processing and replies', () => {
+  const firstRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_first_agent_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi check openclaw',
+    direction: 'outgoing',
+    createdAt: '2026-05-11T10:00:00Z',
+  };
+  const secondRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_second_agent_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi are you ok?',
+    direction: 'outgoing',
+    createdAt: '2026-05-11T10:01:00Z',
+  };
+  const firstResponse: CloudMessage = {
+    ...message,
+    messageId: 'msg_first_agent_response',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: 'msg_first_agent_request', text: 'OpenClaw is an agent project.' }),
+    direction: 'incoming',
+    createdAt: '2026-05-11T10:02:00Z',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [firstRequest, secondRequest, firstResponse] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+  const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+  const firstRequestViewId = 'bridge-message:bridge:cloud:acct_peer:person:msg_first_agent_request';
+  const secondRequestViewId = 'bridge-message:bridge:cloud:acct_peer:person:msg_second_agent_request';
+  const firstReply = view.messages.find((candidate) => candidate.id?.includes('msg_first_agent_response'));
+  const pendingReplies = view.messages.filter((candidate) => candidate.turn?.status === 'processing');
+
+  assert.equal(firstReply?.replyToMessageId, firstRequestViewId);
+  assert.equal(pendingReplies.length, 1);
+  assert.equal(pendingReplies[0]?.replyToMessageId, secondRequestViewId);
+  assert.deepEqual(pendingReplies[0]?.turn?.pendingBridgeAgentRequest, {
+    conversationId: 'bridge:cloud:acct_peer:person',
+    requestId: 'msg_second_agent_request',
+  });
+});
+
+test('cloud human mentions do not start cloud-agent processing UI', () => {
+  const humanMention: CloudMessage = {
+    ...message,
+    messageId: 'msg_human_mention',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPerson hi',
+    direction: 'outgoing',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [humanMention] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  assert.equal(state.conversations[0].awaitingReply, false);
+  assert.equal(state.conversations[0].outreach, null);
+  assert.equal(state.conversations[0].messages[0].direction, 'outbound');
+});
+
 test('cloud incoming local-agent mentions expose synced processing UI', () => {
   const request: CloudMessage = {
     ...message,
     messageId: 'msg_local_agent_request',
     fromAccountId: 'acct_peer',
     toAccountId: 'acct_me',
-    body: '@MeCloud who are you?',
+    body: '@MeCloudKordi who are you?',
     direction: 'incoming',
   };
   const state = buildCloudDesktopBridgeState({
@@ -377,7 +539,7 @@ test('cloud outgoing self-agent mentions expose localhost-style local processing
     messageId: 'msg_self_agent_request',
     fromAccountId: 'acct_me',
     toAccountId: 'acct_peer',
-    body: '@MyMeCloud who are you?',
+    body: '@MyMeCloudKordi who are you?',
     direction: 'outgoing',
   };
   const pendingState = buildCloudDesktopBridgeState({
@@ -451,7 +613,7 @@ test('cloud outgoing remote-agent mentions expose localhost-style pending outrea
   assert.equal(answeredState.conversations[0].outreach, null);
 });
 
-test('cloud agent cancel controls are hidden and clear pending processing', () => {
+test('cloud agent cancel controls are hidden and show who cancelled the request', () => {
   const request: CloudMessage = {
     ...message,
     messageId: 'msg_cancel_request',
@@ -475,9 +637,14 @@ test('cloud agent cancel controls are hidden and clear pending processing', () =
     activeConversationId: 'bridge:cloud:acct_peer:person',
   });
 
+  const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+
   assert.equal(state.conversations[0].awaitingReply, false);
-  assert.equal(state.conversations[0].messages.length, 1);
+  assert.equal(state.conversations[0].messages.length, 2);
   assert.equal(state.conversations[0].messages[0].deliveryState, 'cancelled');
+  assert.equal(state.conversations[0].messages[1].deliveryState, 'cancelled');
+  assert.equal(view.messages[1]?.turn?.status, 'cancelled');
+  assert.equal(view.messages[1]?.turn?.assistantText, 'Request canceled by sender.');
 });
 
 test('cloud outgoing messages render as read when the peer read timestamp is present', () => {

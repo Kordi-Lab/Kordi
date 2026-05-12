@@ -6,11 +6,12 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
-import type { CloudAccount, CloudMessage } from './authClient';
+import type { CloudAccount, CloudContactSummary, CloudMessage } from './authClient';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
+export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
 
 export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update';
 
@@ -38,11 +39,28 @@ export type CloudGroupControlEnvelope = {
     createdAtMs: number;
     senderKind?: 'human' | 'agent' | null;
     senderDisplayName?: string | null;
+    replyToMessageId?: string | null;
+    requestId?: string | null;
   } | null;
 };
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
+}
+
+export function cloudGroupAgentConversationId(groupId: string): string {
+  return `${CLOUD_GROUP_AGENT_CONVERSATION_PREFIX}${groupId}`;
+}
+
+export function cloudGroupIdFromAgentConversationId(conversationId: string | null | undefined): string | null {
+  const value = cleanText(conversationId);
+  if (!value.startsWith(CLOUD_GROUP_AGENT_CONVERSATION_PREFIX)) return null;
+  const groupId = value.slice(CLOUD_GROUP_AGENT_CONVERSATION_PREFIX.length).trim();
+  return groupId || null;
+}
+
+export function isCloudGroupAgentConversationId(conversationId: string | null | undefined): boolean {
+  return Boolean(cloudGroupIdFromAgentConversationId(conversationId));
 }
 
 function pixelAvatarUrlFromSeed(seed?: string | null) {
@@ -55,15 +73,55 @@ function uniqueByAccount(participants: CloudGroupParticipant[]) {
   for (const participant of participants) {
     const accountId = cleanText(participant.accountId);
     const displayName = cleanText(participant.displayName) || accountId;
-    if (!accountId || byAccountId.has(accountId)) continue;
+    if (!accountId) continue;
+    const avatarUrl = cleanText(participant.avatarUrl) || null;
+    const existing = byAccountId.get(accountId);
+    if (existing) {
+      byAccountId.set(accountId, {
+        ...existing,
+        displayName: existing.displayName === accountId ? displayName : existing.displayName,
+        avatarUrl: existing.avatarUrl || avatarUrl,
+        role: existing.role ?? participant.role ?? 'person',
+      });
+      continue;
+    }
     byAccountId.set(accountId, {
       accountId,
       displayName,
-      avatarUrl: cleanText(participant.avatarUrl) || null,
+      avatarUrl,
       role: participant.role ?? 'person',
     });
   }
   return [...byAccountId.values()];
+}
+
+export function cloudGroupUniqueParticipants(participants: CloudGroupParticipant[]): CloudGroupParticipant[] {
+  return uniqueByAccount(participants);
+}
+
+export type CloudGroupRelatedControl = {
+  envelope: CloudGroupControlEnvelope;
+  createdAtMs: number;
+};
+
+export function cloudGroupRelatedControlsForSend(
+  controls: CloudGroupRelatedControl[],
+  input: { groupId: string; groupSpaceId?: string | null },
+): CloudGroupRelatedControl[] {
+  const groupId = cleanText(input.groupId);
+  const groupSpaceId = cleanText(input.groupSpaceId);
+  const ids = new Set([groupId, groupSpaceId].filter(Boolean));
+  if (ids.size === 0) return [];
+  return controls.filter(({ envelope }) => {
+    const envelopeGroupId = cleanText(envelope.groupId);
+    const envelopeGroupSpaceId = cleanText(envelope.groupSpaceId);
+    return Boolean((envelopeGroupId && ids.has(envelopeGroupId)) || (envelopeGroupSpaceId && ids.has(envelopeGroupSpaceId)));
+  });
+}
+
+export function cloudGroupNonGenericTitle(value?: string | null) {
+  const title = cleanText(value);
+  return title && !/^(#\s*)?(new session|untitled session)$/i.test(title) ? title : null;
 }
 
 function encodeBase64Url(value: string): string {
@@ -121,6 +179,8 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         createdAtMs,
         senderKind: candidate.senderKind === 'agent' ? 'agent' : 'human',
         senderDisplayName: typeof candidate.senderDisplayName === 'string' && candidate.senderDisplayName.trim() ? candidate.senderDisplayName.trim() : null,
+        replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
+        requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
       };
     }
     return {
@@ -244,6 +304,76 @@ export function shouldCountCloudGroupMessageUnread(input: {
   const spaceId = cleanText(input.groupSpaceId) || sessionId;
   if (!active) return true;
   return active !== sessionId && active !== spaceId && active !== `group:${spaceId}`;
+}
+
+export function cloudGroupPeerIdsFromMessages(input: {
+  accountId: string;
+  contactPeerIds: string[];
+  messages: CloudMessage[];
+}): string[] {
+  const accountId = cleanText(input.accountId);
+  const peerIds = new Set(input.contactPeerIds.map(cleanText).filter(Boolean));
+  if (!accountId) return [...peerIds];
+  for (const message of input.messages) {
+    if (message.fromAccountId !== accountId && message.toAccountId !== accountId) continue;
+    const envelope = parseCloudGroupControl(message.body);
+    if (!envelope) continue;
+    for (const participant of envelope.participants) {
+      const participantId = cleanText(participant.accountId);
+      if (participantId && participantId !== accountId) peerIds.add(participantId);
+    }
+    const actorId = cleanText(envelope.actor.accountId);
+    if (actorId && actorId !== accountId) peerIds.add(actorId);
+  }
+  return [...peerIds].sort();
+}
+
+export function cloudGroupControlReplayKey(message: CloudMessage): string | null {
+  const envelope = parseCloudGroupControl(message.body);
+  if (!envelope) return null;
+  if (envelope.kind === 'group-message' && envelope.message?.id) {
+    return `${envelope.kind}:${envelope.groupId}:${envelope.message.id}`;
+  }
+  return `${envelope.kind}:${envelope.groupId}:${message.body}`;
+}
+
+export function cloudGroupControlMessagesForAccount(input: {
+  accountId: string;
+  messages: CloudMessage[];
+}): CloudMessage[] {
+  const accountId = cleanText(input.accountId);
+  if (!accountId) return [];
+  const seen = new Set<string>();
+  const result: CloudMessage[] = [];
+  for (const message of input.messages) {
+    if (message.fromAccountId !== accountId && message.toAccountId !== accountId) continue;
+    const replayKey = cloudGroupControlReplayKey(message);
+    if (!replayKey || seen.has(replayKey)) continue;
+    seen.add(replayKey);
+    result.push(message);
+  }
+  return result;
+}
+
+export function cloudGroupPeerIdsFromContactsAndRequests(input: {
+  accountId: string;
+  contactPeerIds: string[];
+  contacts?: Array<Pick<CloudContactSummary, 'accountId'>>;
+  requests?: Array<{ requesterNodeId?: string | null; targetNodeId?: string | null }>;
+}): string[] {
+  const accountId = cleanText(input.accountId);
+  const peerIds = new Set(input.contactPeerIds.map(cleanText).filter(Boolean));
+  for (const contact of input.contacts ?? []) {
+    const peerId = cleanText(contact.accountId);
+    if (peerId && peerId !== accountId) peerIds.add(peerId);
+  }
+  for (const request of input.requests ?? []) {
+    const requesterId = cleanText(request.requesterNodeId);
+    const targetId = cleanText(request.targetNodeId);
+    const peerId = requesterId === accountId ? targetId : requesterId;
+    if (peerId && peerId !== accountId) peerIds.add(peerId);
+  }
+  return [...peerIds].sort();
 }
 
 export function cloudGroupMessageReadPeerIds(input: {

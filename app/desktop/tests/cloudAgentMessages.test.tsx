@@ -33,10 +33,10 @@ test('cloud agent runtime session ids are isolated from visible local chat sessi
 });
 
 test('cloud agent mention matching recognizes local Kordi labels', () => {
-  assert.equal(cloudMessageMentionsLocalAgent('@Shuyheres who are you?', account), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@Shuyheres who are you?', account), false);
   assert.equal(cloudMessageMentionsLocalAgent('@ShuyheresKordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@ShuyheressKordi who are you?', account), true);
-  assert.equal(cloudMessageMentionsLocalAgent('@MyShuyheres who are you?', account), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@MyShuyheres who are you?', account), false);
   assert.equal(cloudMessageMentionsLocalAgent('@MyShuyheresKordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@Kordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@OtherKordi who are you?', account), false);
@@ -52,6 +52,7 @@ test('cloud first-person agent mentions are sender-owned, not recipient-owned', 
 });
 
 test('cloud named agent mention matching recognizes remote Kordi labels', () => {
+  assert.equal(cloudMessageMentionsNamedAgent('@PeerPerson who are you?', 'Peer Person'), false);
   assert.equal(cloudMessageMentionsNamedAgent('@PeerPersonKordi who are you?', 'Peer Person'), true);
   assert.equal(cloudMessageMentionsNamedAgent('@PeerPersonsKordi who are you?', 'Peer Person'), true);
   assert.equal(cloudMessageMentionsNamedAgent('@PeerPersonsKordi who are you?', "Peer Person's Kordi"), true);

@@ -105,11 +105,9 @@ function localAgentMentionKeys(account: CloudAccount, options: { allowFirstPerso
   }
   for (const name of names) {
     const normalizedName = normalizedCloudAgentMention(name);
-    keys.add(normalizedName);
     keys.add(`${normalizedName}kordi`);
     keys.add(`${normalizedName}skordi`);
     if (options.allowFirstPerson !== false) {
-      keys.add(`my${normalizedName}`);
       keys.add(`my${normalizedName}kordi`);
       keys.add(`my${normalizedName}skordi`);
     }
@@ -145,11 +143,9 @@ export function cloudMessageMentionsNamedAgent(text: string, ownerOrAgentName: s
   const owner = ownerOrAgentName?.trim();
   if (!owner) return false;
   const normalizedOwner = normalizedCloudAgentMention(owner.replace(/'s\s+Kordi$/i, '').replace(/Kordi$/i, ''));
-  const normalizedFull = normalizedCloudAgentMention(owner);
   return cloudMessageMentionsAnyAgentKey(text, new Set([
     `${normalizedOwner}kordi`,
     `${normalizedOwner}skordi`,
-    normalizedFull,
   ].filter(Boolean)));
 }
 

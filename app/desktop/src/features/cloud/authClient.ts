@@ -25,6 +25,18 @@ export type CloudAuthResult = {
   session: CloudSession;
 };
 
+export type CloudOAuthProvider = 'google' | 'github';
+
+export type CloudOAuthStartResponse = {
+  authUrl: string;
+};
+
+export type CloudProfileUpdateInput = {
+  displayName?: string;
+  avatarSeed?: string;
+  avatarUrl?: string;
+};
+
 export type CloudAuthErrorCode =
   | 'invalid_email'
   | 'weak_password'
@@ -238,6 +250,27 @@ export class CloudAuthClient {
     );
   }
 
+  async startOAuth(provider: CloudOAuthProvider, redirectAfter: string): Promise<CloudOAuthStartResponse> {
+    const params = new URLSearchParams({ redirectAfter });
+    return this.send<CloudOAuthStartResponse>(
+      `/v1/cloud/auth/oauth/${encodeURIComponent(provider)}/start?${params.toString()}`,
+      { method: 'GET' },
+      'Could not start social sign-in.',
+    );
+  }
+
+  async updateProfile(token: string, input: CloudProfileUpdateInput): Promise<CloudAccount> {
+    return this.send<CloudAccount>(
+      '/v1/cloud/auth/me',
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not update profile.',
+    );
+  }
+
   async logout(token: string): Promise<void> {
     await this.send<void>(
       '/v1/cloud/auth/logout',
@@ -396,6 +429,29 @@ export class CloudAuthClient {
     );
     return response?.messages ?? [];
   }
+}
+
+function decodeBase64UrlJson<T>(value: string): T | null {
+  try {
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character: string) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  } catch {
+    return null;
+  }
+}
+
+export function parseCloudOAuthHashResult(hash: string | null | undefined): CloudAuthResult | null {
+  const trimmed = hash?.trim() ?? '';
+  if (!trimmed.startsWith('#')) return null;
+  const params = new URLSearchParams(trimmed.slice(1));
+  const encoded = params.get('kordi_cloud_oauth');
+  if (!encoded) return null;
+  const parsed = decodeBase64UrlJson<CloudAuthResult>(encoded);
+  if (!parsed?.account?.accountId || !parsed.session?.token || !parsed.session?.expiresAt) return null;
+  return parsed;
 }
 
 // Convenience factory for production callers that don't need to inject deps.

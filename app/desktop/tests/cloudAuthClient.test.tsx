@@ -6,6 +6,7 @@ import {
   CloudAuthError,
   cloudApiBaseUrl,
   cloudWebSocketUrl,
+  parseCloudOAuthHashResult,
 } from '../src/features/cloud/authClient';
 
 type FetchCall = { url: string; init: RequestInit | undefined };
@@ -169,6 +170,63 @@ test('markMessagesRead posts peer id to cloud read-receipt route', async () => {
   assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
   assert.equal(headers['content-type'], 'application/json');
   assert.deepEqual(JSON.parse(calls[0].init?.body as string), { peerAccountId: 'acct_peer' });
+});
+
+test('startOAuth requests a provider auth URL with redirectAfter', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, { authUrl: 'https://accounts.example/auth' }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const result = await client.startOAuth('google', 'http://127.0.0.1:1482/');
+
+  assert.equal(result.authUrl, 'https://accounts.example/auth');
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/auth/oauth/google/start?redirectAfter=http%3A%2F%2F127.0.0.1%3A1482%2F');
+  assert.equal(calls[0].init?.method, 'GET');
+});
+
+test('updateProfile patches cloud account profile fields', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    accountId: 'acct_1',
+    displayName: 'Grace',
+    primaryEmail: 'grace@example.com',
+    avatarUrl: 'kordi-pixel-avatar://cloud-profile:1',
+    nodeId: null,
+    passwordSet: false,
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const account = await client.updateProfile('kordi_cs_xyz', {
+    displayName: 'Grace',
+    avatarSeed: 'cloud-profile:1',
+  });
+
+  assert.equal(account.displayName, 'Grace');
+  assert.equal(account.avatarUrl, 'kordi-pixel-avatar://cloud-profile:1');
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/auth/me');
+  assert.equal(calls[0].init?.method, 'PATCH');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+  assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
+    displayName: 'Grace',
+    avatarSeed: 'cloud-profile:1',
+  });
+});
+
+test('parseCloudOAuthHashResult decodes auth result fragments', () => {
+  const payload = {
+    account: {
+      accountId: 'acct_1',
+      displayName: 'Ada',
+      primaryEmail: 'ada@example.com',
+      avatarUrl: null,
+      nodeId: null,
+      passwordSet: false,
+    },
+    session: { token: 'kordi_cs_abc', expiresAt: '2099-01-01T00:00:00Z' },
+  };
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+
+  assert.deepEqual(parseCloudOAuthHashResult(`#kordi_cloud_oauth=${encoded}`), payload);
+  assert.equal(parseCloudOAuthHashResult('#not_oauth=1'), null);
 });
 
 test('unknown server error codes degrade to "unknown"', async () => {

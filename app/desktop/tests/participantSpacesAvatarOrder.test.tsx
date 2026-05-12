@@ -63,14 +63,68 @@ test('cloud group sessions with the same people collapse into one group space ev
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id).sort(), ['session:group:one', 'session:group:two']);
 });
 
-test('group participant avatar stack is stable across instances with different local participant order', () => {
+test('direct contacts with the same display name remain separate participant spaces', () => {
+  const baseConversation = {
+    type: 'person' as const,
+    subtitle: 'Direct human chat',
+    unread: 0,
+    bridges: ['cloud'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', 'Shu Yang'],
+    messages: [],
+    updatedAtLabel: 'Now',
+  };
+  const spaces = buildParticipantSpaces([{
+    ...baseConversation,
+    id: 'bridge:cloud:acct_a:person',
+    canonicalSessionId: 'bridge:cloud:acct_a:person',
+    name: 'Shu Yang',
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_a', humanId: 'acct_a', runtime: 'person' },
+    identity: { bridgeHostId: 'cloud', localHumanId: 'acct_me', localHumanName: 'Me', remoteHumanId: 'acct_a', remoteHumanName: 'Shu Yang' },
+  }, {
+    ...baseConversation,
+    id: 'bridge:cloud:acct_b:person',
+    canonicalSessionId: 'bridge:cloud:acct_b:person',
+    name: 'Shu Yang',
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_b', humanId: 'acct_b', runtime: 'person' },
+    identity: { bridgeHostId: 'cloud', localHumanId: 'acct_me', localHumanName: 'Me', remoteHumanId: 'acct_b', remoteHumanName: 'Shu Yang' },
+  }]);
+
+  assert.equal(spaces.filter((space) => space.kind === 'direct-human').length, 2);
+  assert.deepEqual(spaces.map((space) => space.sessions[0]?.id).sort(), ['bridge:cloud:acct_a:person', 'bridge:cloud:acct_b:person']);
+});
+
+test('fallback participant spaces preserve per-participant profile image urls', () => {
+  const spaces = buildParticipantSpaces([{
+    id: 'bridge:cloud:acct_peer:person',
+    canonicalSessionId: 'bridge:cloud:acct_peer:person',
+    name: 'Shu Yang',
+    type: 'person',
+    subtitle: 'Direct human chat',
+    unread: 0,
+    bridges: ['cloud'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', 'Shu Yang'],
+    participantAvatarSeeds: { Me: 'acct_me', 'Shu Yang': 'acct_peer' },
+    participantProfileImageUrls: { Me: 'https://images.test/me.png', 'Shu Yang': 'https://images.test/peer.png' },
+    messages: [],
+    updatedAtLabel: 'Now',
+  }]);
+
+  assert.equal(spaces[0]?.avatarStack[0]?.imageUrl, 'https://images.test/peer.png');
+  assert.equal(spaces[0]?.participants.find((participant) => participant.name === 'Me')?.profileImageUrl, 'https://images.test/me.png');
+});
+
+test('group participant avatar stack is stable and uses the first three human participants', () => {
   const alice = participant('acct_a', 'seed-a', 'Alice');
   const bob = participant('acct_b', 'seed-b', 'Bob');
   const carol = participant('acct_c', 'seed-c', 'Carol');
-  const localSelf = { ...bob, id: 'human:local-profile', role: 'self', source: 'local' };
+  const dana = participant('acct_d', 'seed-d', 'Dana');
 
-  const first = buildParticipantSpaces([groupConversation([localSelf, alice, carol])])[0];
-  const second = buildParticipantSpaces([groupConversation([carol, alice, localSelf])])[0];
+  const first = buildParticipantSpaces([groupConversation([alice, bob, carol, dana])])[0];
+  const second = buildParticipantSpaces([groupConversation([dana, carol, bob, alice])])[0];
 
   assert.deepEqual(first?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
   assert.deepEqual(second?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);

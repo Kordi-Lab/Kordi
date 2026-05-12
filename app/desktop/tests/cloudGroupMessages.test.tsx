@@ -5,10 +5,15 @@ import { CLOUD_PIXEL_AVATAR_URL_PREFIX } from '../src/features/cloud/avatar';
 import {
   cloudGroupIdentityRequest,
   cloudGroupDeliveryStateFromMessages,
+  cloudGroupControlMessagesForAccount,
   cloudGroupMessageReadPeerIds,
   cloudGroupMessageSessionId,
+  cloudGroupPeerIdsFromContactsAndRequests,
+  cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantFromContact,
+  cloudGroupRelatedControlsForSend,
   cloudGroupTargetAccountIds,
+  cloudGroupUniqueParticipants,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
   fulfilledCloudGroupSends,
@@ -30,7 +35,14 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
       { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
       { accountId: 'acct_b', displayName: 'Bob', avatarUrl: `${CLOUD_PIXEL_AVATAR_URL_PREFIX}bob-seed`, role: 'person' },
     ],
-    message: { id: 'msg_1', senderAccountId: 'acct_a', text: 'hello group', createdAtMs: 123 },
+    message: {
+      id: 'msg_1',
+      senderAccountId: 'acct_a',
+      text: 'hello group',
+      createdAtMs: 123,
+      replyToMessageId: 'msg_request',
+      requestId: 'msg_request',
+    },
   });
 
   const parsed = parseCloudGroupControl(body);
@@ -38,6 +50,43 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.groupId, 'session:group:one');
   assert.equal(parsed?.participants[1]?.avatarUrl, `${CLOUD_PIXEL_AVATAR_URL_PREFIX}bob-seed`);
   assert.equal(parsed?.message?.text, 'hello group');
+  assert.equal(parsed?.message?.replyToMessageId, 'msg_request');
+  assert.equal(parsed?.message?.requestId, 'msg_request');
+});
+
+test('cloud group related controls match continuations by shared group space id', () => {
+  const rootEnvelope = {
+    kind: 'group-invite' as const,
+    groupId: 'session:group:root',
+    groupSpaceId: 'session:group:root',
+    groupTitle: '1111',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'https://images.test/alice.png', role: 'admin' as const },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'https://images.test/alice.png', role: 'admin' as const },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'https://images.test/bob.png', role: 'person' as const },
+    ],
+    message: null,
+  };
+
+  const related = cloudGroupRelatedControlsForSend([
+    { envelope: rootEnvelope, createdAtMs: 1 },
+  ], { groupId: 'session:group:child', groupSpaceId: 'session:group:root' });
+
+  assert.equal(related.length, 1);
+  assert.equal(related[0]?.envelope.groupTitle, '1111');
+  assert.equal(related[0]?.envelope.participants[1]?.avatarUrl, 'https://images.test/bob.png');
+});
+
+test('cloud group participant merge preserves later real avatar urls', () => {
+  assert.deepEqual(cloudGroupUniqueParticipants([
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'https://images.test/a.png', role: 'person' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'https://images.test/b.png', role: 'person' },
+  ]), [
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'https://images.test/a.png', role: 'person' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'https://images.test/b.png', role: 'person' },
+  ]);
 });
 
 test('cloud group messages carry concrete session id separately from shared group space id', () => {
@@ -90,6 +139,88 @@ test('cloud group delivery status follows hidden pairwise cloud read receipts', 
       { messageId: 'cloud_2', fromAccountId: 'acct_me', toAccountId: 'acct_peer_b', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: '2026-05-11T00:00:03Z', direction: 'outgoing' },
     ],
   }), 'read');
+});
+
+test('cloud group peer discovery expands beyond direct contacts from existing controls', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-invite',
+    groupId: 'session:group:one',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_b',
+    actor: { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_c', displayName: 'Carol', avatarUrl: null, role: 'person' },
+    ],
+  });
+
+  assert.deepEqual(cloudGroupPeerIdsFromMessages({
+    accountId: 'acct_me',
+    contactPeerIds: ['acct_b'],
+    messages: [
+      { messageId: 'cloud_1', fromAccountId: 'acct_b', toAccountId: 'acct_me', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), ['acct_b', 'acct_c']);
+});
+
+test('cloud group peer discovery can bootstrap from contact request counterparts', () => {
+  assert.deepEqual(cloudGroupPeerIdsFromContactsAndRequests({
+    accountId: 'acct_me',
+    contactPeerIds: ['acct_b'],
+    contacts: [{ accountId: 'acct_c' }],
+    requests: [{ requesterNodeId: 'acct_d', targetNodeId: 'acct_me' }],
+  }), ['acct_b', 'acct_c', 'acct_d']);
+});
+
+test('cloud group replay includes self-authored controls after local reset', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:self-authored',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    message: { id: 'msg:ui:self', senderAccountId: 'acct_me', text: 'hello from me', createdAtMs: 1 },
+  });
+
+  const replay = cloudGroupControlMessagesForAccount({
+    accountId: 'acct_me',
+    messages: [
+      { messageId: 'cloud_self', fromAccountId: 'acct_me', toAccountId: 'acct_peer', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'outgoing' },
+    ],
+  });
+
+  assert.deepEqual(replay.map((message) => message.messageId), ['cloud_self']);
+});
+
+test('cloud group replay deduplicates fanout rows for the same canonical message', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:fanout',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_a', displayName: 'A', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_b', displayName: 'B', avatarUrl: null, role: 'person' },
+    ],
+    message: { id: 'msg:ui:fanout', senderAccountId: 'acct_me', text: 'hello both', createdAtMs: 1 },
+  });
+
+  const replay = cloudGroupControlMessagesForAccount({
+    accountId: 'acct_me',
+    messages: [
+      { messageId: 'cloud_to_a', fromAccountId: 'acct_me', toAccountId: 'acct_a', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'outgoing' },
+      { messageId: 'cloud_to_b', fromAccountId: 'acct_me', toAccountId: 'acct_b', body, createdAt: '2026-05-11T00:00:01Z', deliveredAt: null, readAt: null, direction: 'outgoing' },
+    ],
+  });
+
+  assert.deepEqual(replay.map((message) => message.messageId), ['cloud_to_a']);
 });
 
 test('cloud group read helper marks inbound controls read when their group session is open', () => {

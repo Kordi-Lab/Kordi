@@ -95,21 +95,52 @@ function isSelfLabel(name: string) {
   return ['me', 'you'].includes(name.trim().toLowerCase());
 }
 
+function fallbackParticipantIdentity(conversation: Conversation, name: string, kind: ConversationParticipant['kind'], self: boolean) {
+  if (self) {
+    const localHumanId = cleanOptionalText(conversation.identity?.localHumanId);
+    return {
+      id: localHumanId ? `human:${localHumanId}` : `label:${kind}:${name}`,
+      humanId: localHumanId || null,
+      bridgeNodeId: null,
+      bridgeHostId: null,
+    };
+  }
+
+  const remoteHumanId = cleanOptionalText(conversation.identity?.remoteHumanId)
+    || (kind === 'human' ? cleanOptionalText(conversation.bridgeTarget?.humanId) : '');
+  const remoteAgentId = cleanOptionalText(conversation.identity?.remoteAgentId)
+    || (kind === 'agent' ? cleanOptionalText(conversation.bridgeTarget?.agentId) : '');
+  const remoteNodeId = cleanOptionalText(conversation.identity?.remoteHumanNodeId)
+    || cleanOptionalText(conversation.identity?.remoteAgentNodeId)
+    || cleanOptionalText(conversation.bridgeTarget?.nodeId);
+  const stableKey = remoteHumanId || remoteAgentId || remoteNodeId;
+  return {
+    id: stableKey ? `${kind}:${stableKey}` : `label:${kind}:${name}`,
+    humanId: remoteHumanId || null,
+    agentId: remoteAgentId || null,
+    bridgeNodeId: remoteNodeId || null,
+    bridgeHostId: cleanOptionalText(conversation.bridgeTarget?.hostId) || cleanOptionalText(conversation.identity?.bridgeHostId) || null,
+  };
+}
+
 function fallbackParticipants(conversation: Conversation): ConversationParticipant[] {
   const firstNonSelfName = conversation.participants.find((name) => !isSelfLabel(name));
   return conversation.participants.map((name) => {
     const self = isSelfLabel(name);
     const kind = !self && conversation.type !== 'person' ? 'agent' : 'human';
+    const identity = fallbackParticipantIdentity(conversation, name, kind, self);
     const avatarKey = conversation.participantAvatarSeeds?.[name]
       ?? (!self && name === firstNonSelfName ? conversation.avatarSeed ?? null : null);
+    const profileImageUrl = conversation.participantProfileImageUrls?.[name]
+      ?? (!self && name === firstNonSelfName ? conversation.profileImageUrl ?? null : null);
     return {
-      id: `label:${kind}:${name}`,
+      ...identity,
       name,
       kind,
       role: self ? 'self' : kind === 'agent' ? 'delegate' : 'participant',
-      source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : null,
+      source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : identity.bridgeHostId ? 'bridge' : null,
       avatarKey,
-      profileImageUrl: !self && name === firstNonSelfName ? conversation.profileImageUrl ?? null : null,
+      profileImageUrl,
     } satisfies ConversationParticipant;
   });
 }
@@ -191,8 +222,13 @@ function groupParticipantKey(conversation: Conversation) {
     .join('+');
 }
 
+function nonGenericGroupTitle(value: string | undefined | null) {
+  const title = safePreviewText(value);
+  return isBlankSessionLabel(title) ? '' : title;
+}
+
 function groupHasCustomName(conversation: Conversation) {
-  return Boolean(metadataStringValue(metadataRecord(conversation.metadata), 'customName'));
+  return Boolean(nonGenericGroupTitle(metadataStringValue(metadataRecord(conversation.metadata), 'customName')));
 }
 
 function genericBridgeGroupContinuation(conversation: Conversation) {
@@ -261,9 +297,20 @@ function buildSession(conversation: Conversation, updatedAtMs: number): Particip
 
 function addUniqueParticipants(target: ConversationParticipant[], participants: ConversationParticipant[]) {
   for (const participant of participants) {
-    if (!target.some((current) => current.id === participant.id)) {
+    const existingIndex = target.findIndex((current) => current.id === participant.id);
+    if (existingIndex === -1) {
       target.push(participant);
+      continue;
     }
+    const existing = target[existingIndex];
+    target[existingIndex] = {
+      ...existing,
+      avatarKey: existing.avatarKey || participant.avatarKey,
+      profileImageUrl: existing.profileImageUrl ?? participant.profileImageUrl ?? null,
+      humanId: existing.humanId || participant.humanId,
+      bridgeNodeId: existing.bridgeNodeId || participant.bridgeNodeId,
+      bridgeHostId: existing.bridgeHostId || participant.bridgeHostId,
+    };
   }
 }
 
@@ -283,7 +330,7 @@ function customGroupTitle(sessions: ParticipantSpaceSessionViewModel[]) {
   for (const session of sessions) {
     const metadata = metadataRecord(session.conversation.metadata);
     const customName = metadata.customName;
-    const title = typeof customName === 'string' ? safePreviewText(customName) : '';
+    const title = typeof customName === 'string' ? nonGenericGroupTitle(customName) : '';
     if (title) return title;
   }
   return '';
@@ -319,7 +366,8 @@ function avatarParticipants(kind: ParticipantSpaceKind, participants: Conversati
   if (kind === 'group') {
     return participants
       .filter((participant) => participant.kind === 'human')
-      .sort((left, right) => avatarParticipantStableKey(left).localeCompare(avatarParticipantStableKey(right)));
+      .sort((left, right) => avatarParticipantStableKey(left).localeCompare(avatarParticipantStableKey(right)))
+      .slice(0, 3);
   }
   const primary = primaryParticipantForKind(kind, participants);
   return primary ? [primary] : [];
@@ -387,7 +435,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
         updatedAtLabel: latest?.updatedAtLabel,
         updatedAtMs: latest?.updatedAtMs ?? 0,
         preview: latest?.preview ?? '',
-        avatarStack: avatarParticipants(group.kind, group.participants).slice(0, 4).map(avatarForParticipant),
+        avatarStack: avatarParticipants(group.kind, group.participants).map(avatarForParticipant),
         sessions,
       } satisfies ParticipantSpaceViewModel;
     })

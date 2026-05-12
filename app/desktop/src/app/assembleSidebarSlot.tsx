@@ -187,6 +187,7 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         activeBridgeHost={args.activeBridgeHost}
         localProfileAvatarSeed={args.localProfileAvatarSeed}
         cloudAccount={isCloud ? cloudSession.account : null}
+        onUpdateCloudProfile={isCloud ? async (input) => { await cloudSession.updateProfile(input); } : undefined}
         isBridgePolling={args.isBridgePolling}
         onRefreshBridge={() => {
           void args.refreshDesktopBridge();

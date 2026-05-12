@@ -424,6 +424,24 @@ test('group update bridge metadata targets every other bridge-backed human and c
   ]);
 });
 
+test('group update targets keep same-name cloud humans separate by account id', () => {
+  const participants = [
+    { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+    { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', bridgeNodeId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a' },
+    { id: 'human:acct_b', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', bridgeNodeId: 'acct_b', humanId: 'acct_b', avatarKey: 'acct_b' },
+  ] satisfies Conversation['canonicalParticipants'];
+
+  assert.deepEqual(buildChatGroupBridgeUpdateTargets({ actorIdentityId: 'human:me', participants }), [
+    { hostId: 'cloud', nodeId: 'acct_a', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_a' },
+    { hostId: 'cloud', nodeId: 'acct_b', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_b' },
+  ]);
+  assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
+    { identityId: 'human:me', displayName: 'Me', role: 'admin', bridgeNodeId: null, humanId: null, agentId: null },
+    { identityId: 'human:acct_a', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_a', humanId: 'acct_a', agentId: null },
+    { identityId: 'human:acct_b', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_b', humanId: 'acct_b', agentId: null },
+  ]);
+});
+
 test('chatSessionIdForParticipantSpaceContinuation keeps Bridge human session ids consistent', () => {
   assert.equal(
     chatSessionIdForParticipantSpaceContinuation(participantSpace(), 'next-id'),

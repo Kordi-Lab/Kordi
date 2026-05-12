@@ -62,10 +62,10 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.match(markup, /Continue/);
   assert.match(markup, /Google/);
   assert.match(markup, /GitHub/);
-  assert.match(markup, /data-provider="x"/);
+  assert.doesNotMatch(markup, /data-provider="x"/);
   assert.doesNotMatch(markup, /Kordi Cloud/);
   assert.doesNotMatch(markup, /Log in to Kordi Cloud/);
-  assert.doesNotMatch(markup, /Continue with GitHub/);
+  assert.match(markup, /Continue with GitHub/);
   assert.doesNotMatch(markup, /Your Kordi account comes first/);
   assert.doesNotMatch(markup, /After account login/);
   assert.doesNotMatch(markup, /Model provider credentials stay local by default/);
@@ -79,7 +79,9 @@ test('signup mode offers avatar upload and random avatar controls', () => {
   assert.match(markup, /Create account/);
   assert.match(markup, /Upload avatar/);
   assert.match(markup, /Random avatar/);
-  assert.match(markup, /Name/);
+  assert.match(markup, /Display name/);
+  assert.match(markup, /Confirm Password/);
+  assert.doesNotMatch(markup, />Name</);
   assert.match(markup, /Create account/);
   assert.doesNotMatch(markup, /Kordi Cloud/);
 });
@@ -95,15 +97,15 @@ test('signup mode renders the IdentityAvatar pixel-character SVG, not a gradient
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.66 0\.26 355\)/);
 });
 
-test('disabled social buttons surface a per-provider coming-soon affordance', () => {
-  const markup = renderToStaticMarkup(createElement(CloudLoginPage));
-  assert.match(markup, /title="Google — coming soon"/);
-  assert.match(markup, /title="GitHub — coming soon"/);
-  assert.match(markup, /title="X — coming soon"/);
-  assert.match(markup, /aria-label="Google sign-in coming soon"/);
-  assert.match(markup, /aria-label="GitHub sign-in coming soon"/);
-  assert.match(markup, /aria-label="X sign-in coming soon"/);
-  // The submit button is a real, validatable control now — no placeholder copy.
+test('social buttons surface provider sign-in affordances', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, { onSocialSignIn: async () => {} }));
+  assert.match(markup, /title="Continue with Google"/);
+  assert.match(markup, /title="Continue with GitHub"/);
+  assert.doesNotMatch(markup, /title="Continue with X"/);
+  assert.match(markup, /aria-label="Continue with Google"/);
+  assert.match(markup, /aria-label="Continue with GitHub"/);
+  assert.doesNotMatch(markup, /aria-label="Continue with X"/);
+  assert.doesNotMatch(markup, /coming soon/i);
   assert.match(markup, /aria-label="Sign in"/);
 });
 
@@ -112,9 +114,9 @@ test('social buttons render icon marks and no provider text label', () => {
   // Buttons exist for each provider with their data attribute.
   assert.match(markup, /data-provider="google"[\s\S]*?<svg/);
   assert.match(markup, /data-provider="github"[\s\S]*?<svg/);
-  assert.match(markup, /data-provider="x"[\s\S]*?<svg/);
+  assert.doesNotMatch(markup, /data-provider="x"/);
   // The Google brand fingerprint (a known fill colour from the canonical 4-color G).
-  assert.match(markup, /fill="#FFC107"/);
+  assert.match(markup, /fill="#FBBC05"/);
   // The visible provider names should NOT appear inside the social buttons themselves.
   assert.doesNotMatch(markup, /<button[^>]*data-provider="google"[^>]*>[^<]*Google/);
   assert.doesNotMatch(markup, /<button[^>]*data-provider="github"[^>]*>[^<]*GitHub/);
@@ -149,7 +151,7 @@ test('cloud login native window uses a compact size instead of the full app fram
   };
 
   assert.deepEqual(cloudLoginWindowSizeForMode('login'), { width: 760, height: 760, minWidth: 620, minHeight: 640 });
-  assert.deepEqual(cloudLoginWindowSizeForMode('signup'), { width: 760, height: 900, minWidth: 620, minHeight: 640 });
+  assert.deepEqual(cloudLoginWindowSizeForMode('signup'), { width: 760, height: 760, minWidth: 620, minHeight: 640 });
   assert.equal(isTauriRuntime({ __TAURI_INTERNALS__: {} } as typeof globalThis), true);
   assert.equal(isTauriRuntime({} as typeof globalThis), false);
 
@@ -158,7 +160,7 @@ test('cloud login native window uses a compact size instead of the full app fram
   assert.deepEqual(calls, [
     { method: 'setResizable', resizable: false },
     { method: 'setMinSize', size: { width: 620, height: 640 } },
-    { method: 'setSize', size: { width: 760, height: 900 } },
+    { method: 'setSize', size: { width: 760, height: 760 } },
     { method: 'center' },
   ]);
 });

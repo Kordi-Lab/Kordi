@@ -132,7 +132,7 @@ fn upsert_identity_in_db(
              human_id = excluded.human_id,
              agent_id = excluded.agent_id,
              avatar_key = excluded.avatar_key,
-             profile_image_url = excluded.profile_image_url,
+             profile_image_url = COALESCE(excluded.profile_image_url, identities.profile_image_url),
              metadata_json = excluded.metadata_json,
              updated_at_ms = excluded.updated_at_ms",
         params![
