@@ -839,7 +839,19 @@ export function useKordiAppModel() {
     });
     const currentMetadata = sessionMetadataRecord(state, sessionId);
     const parentGroupSpaceId = metadataGroupSpaceId(currentMetadata) || sessionId;
-    for (const target of targets) {
+    const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
+    const bridgeTargets = nonCloudGroupTargets(targets);
+    if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
+      await sendCloudGroupControl({
+        targetAccountIds: cloudTargetAccountIds,
+        kind: 'group-title-update',
+        groupId: sessionId,
+        groupSpaceId: parentGroupSpaceId,
+        groupTitle: title,
+        participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, updateParticipants),
+      });
+    }
+    for (const target of bridgeTargets) {
       const bridgeState = await createDesktopBridgeOutreach({
         hostId: target.hostId,
         targetNodeId: target.nodeId,
@@ -866,7 +878,7 @@ export function useKordiAppModel() {
       });
       setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
     }
-  }, [setDesktopBridgeState]);
+  }, [cloudSession.account, sendCloudGroupControl, setDesktopBridgeState]);
 
   const handleRenameChatSession = useCallback(async (sessionId: string, title: string) => {
     if (!isNativeShell || !sessionId.trim()) return;
