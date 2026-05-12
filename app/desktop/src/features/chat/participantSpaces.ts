@@ -28,7 +28,9 @@ function safePreviewText(value: string | undefined | null) {
 }
 
 function latestMessageText(conversation: Conversation) {
-  return safePreviewText(conversation.messages[conversation.messages.length - 1]?.text)
+  const latest = conversation.messages[conversation.messages.length - 1];
+  return safePreviewText(latest?.text)
+    || safePreviewText(latest?.turn?.assistantText)
     || safePreviewText(conversation.subtitle)
     || safePreviewText(conversation.name);
 }
