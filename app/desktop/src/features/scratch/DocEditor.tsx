@@ -1,8 +1,8 @@
 import Placeholder from '@tiptap/extension-placeholder';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { type Editor, EditorContent, useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import { useEffect, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 
 import { touchScratch } from './scratchStore';
 import { kvGet, kvSet, scratchStorageKey } from './storage/indexedDb';
@@ -14,7 +14,14 @@ type Props = {
   scratchId: string;
 };
 
-export function DocEditor({ sessionId, scratchId }: Props) {
+export type DocEditorHandle = {
+  /** Live Tiptap editor instance, or null while initialising. */
+  readonly editor: Editor | null;
+  /** Convenience: returns the current Markdown serialization. */
+  getMarkdown: () => string;
+};
+
+export const DocEditor = forwardRef<DocEditorHandle, Props>(function DocEditor({ sessionId, scratchId }, ref) {
   const storageKey = scratchStorageKey(sessionId, scratchId);
   const storageKeyRef = useRef(storageKey);
   storageKeyRef.current = storageKey;
@@ -73,9 +80,25 @@ export function DocEditor({ sessionId, scratchId }: Props) {
     }
   }, []);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      get editor() {
+        return editor;
+      },
+      getMarkdown: () => {
+        if (!editor) return '';
+        const storage = editor.storage as { markdown?: { getMarkdown?: () => string } };
+        const md = storage.markdown?.getMarkdown?.();
+        return typeof md === 'string' ? md : '';
+      },
+    }),
+    [editor],
+  );
+
   return (
     <div className="scratch-doc-editor">
       <EditorContent editor={editor} />
     </div>
   );
-}
+});
