@@ -529,6 +529,91 @@ pub(super) async fn desktop_set_active_bridge_host_impl(
     .await)
 }
 
+/// Cloud-edition entry point: persist a pre-registered cloud bridge host
+/// using the api_key + node_id we already obtained from the cloud server's
+/// `/v1/cloud/auth/register-device` route. Skips the embedded `/v1/auth/register`
+/// network call that `desktop_save_bridge_host_impl` performs, because that
+/// step has already happened on the cloud side.
+pub(super) async fn desktop_bridge_register_cloud_host_impl(
+    manager: &DesktopBridgeManager,
+    coordination: String,
+    api_key: String,
+    node_id: String,
+    account_id: String,
+    display_name: Option<String>,
+    owner_name: Option<String>,
+) -> Result<DesktopBridgeState, String> {
+    let coordination = normalize_server_url(&coordination)?;
+    let trimmed_account = account_id.trim();
+    if trimmed_account.is_empty() {
+        return Err("Cloud account id is required".to_string());
+    }
+    let trimmed_api_key = api_key.trim();
+    if trimmed_api_key.is_empty() {
+        return Err("Cloud bridges api key is required".to_string());
+    }
+    let trimmed_node_id = node_id.trim();
+    if trimmed_node_id.is_empty() {
+        return Err("Cloud bridges node id is required".to_string());
+    }
+
+    let host_id = format!("cloud:{trimmed_account}");
+    let display_name = display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(default_display_name);
+    let owner_name = owner_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(default_owner_name);
+
+    let mut store = load_bridge_store();
+    let existing_index = store.hosts.iter().position(|host| host.id == host_id);
+    let existing = existing_index
+        .and_then(|index| store.hosts.get(index))
+        .cloned();
+    let mut next = ensure_host_bootstrap(existing.as_ref(), &display_name, &owner_name);
+    next.id = host_id.clone();
+    next.coordination = coordination.clone();
+    next.api_key = trimmed_api_key.to_string();
+    next.node_id = trimmed_node_id.to_string();
+    next.display_name = Some(display_name.clone());
+    next.owner = Some(owner_name.clone());
+    next.api_style = API_STYLE_REGISTRY.to_string();
+
+    let active_agent_index = next
+        .active_agent_id
+        .as_deref()
+        .and_then(|active_id| next.agents.iter().position(|agent| agent.id == active_id))
+        .or_else(|| next.agents.iter().position(|agent| agent.is_default))
+        .unwrap_or(0);
+    if active_agent_index < next.agents.len() {
+        next.agents[active_agent_index].label = display_name.clone();
+        next.agents[active_agent_index].api_key = trimmed_api_key.to_string();
+        next.agents[active_agent_index].node_id = trimmed_node_id.to_string();
+    }
+    sync_host_active_agent_fields(&mut next);
+
+    if let Some(index) = existing_index {
+        store.hosts[index] = next.clone();
+    } else {
+        store.hosts.push(next.clone());
+    }
+    store.active_host_id = Some(next.id.clone());
+    save_bridge_store(&store)?;
+
+    Ok(build_bridge_state(
+        store,
+        load_conversation_store(),
+        current_local_server_status(manager).await,
+    )
+    .await)
+}
+
 pub(super) async fn desktop_bridge_set_discovery_mode_impl(
     manager: &DesktopBridgeManager,
     host_id: String,

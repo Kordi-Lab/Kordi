@@ -1,0 +1,52 @@
+# kordi-cloud-temporal-bridge — bridges NATS lifecycle events into
+# Temporal workflows. Built from bridges/cloud-temporal-bridge/.
+#
+# Single replica is fine for now: each NATS message is delivered to one
+# subscriber by default (queue groups would only matter at higher fan-in,
+# and the workflow ID dedupe means duplicate deliveries are no-ops).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kordi-cloud-temporal-bridge
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-cloud-temporal-bridge
+    app.kubernetes.io/component: workflow-bridge
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kordi-cloud-temporal-bridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kordi-cloud-temporal-bridge
+        app.kubernetes.io/component: workflow-bridge
+    spec:
+      containers:
+        - name: bridge
+          image: kordi-cloud-temporal-bridge:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: "temporal.kordi-cloud.svc.cluster.local:7233"
+            - name: TEMPORAL_NAMESPACE
+              value: "kordi"
+            - name: NATS_URL
+              value: "nats://nats.kordi-cloud.svc.cluster.local:4222"
+            - name: SMTP_HOST
+              value: "mailpit.kordi-cloud.svc.cluster.local"
+            - name: SMTP_PORT
+              value: "1025"
+            - name: SMTP_FROM
+              value: "no-reply@kordi.cloud"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"

@@ -687,6 +687,157 @@
   color: rgb(100 116 139) !important;
 }
 
+/* --- Cloud login (gate + signup + loading splash) ---
+ * The page renders before the shell mounts, so it relies on .bridge-app
+ * being applied by KordiAppRoot. All palette is driven by the
+ * --app-cloud-login-* tokens defined in theme-tokens.css.
+ */
+
+.app-cloud-login-shell {
+  min-height: 100vh;
+  width: 100%;
+}
+
+.app-cloud-login-page,
+.app-cloud-login-loading {
+  background: var(--app-cloud-login-page-bg);
+  color: var(--utility-foreground);
+}
+
+.bridge-app .app-cloud-login-page,
+.bridge-app .app-cloud-login-loading {
+  --app-cloud-login-page-bg:
+    radial-gradient(circle at top left, rgba(132, 122, 196, 0.10), transparent 36%),
+    radial-gradient(circle at 86% 12%, rgba(132, 199, 196, 0.06), transparent 30%),
+    linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
+}
+
+.bridge-app.theme-light .app-cloud-login-page,
+.bridge-app.theme-light .app-cloud-login-loading {
+  --app-cloud-login-page-bg: oklch(0.955 0.026 82);
+}
+
+/* Decorative radial accent layer behind the form. */
+.app-cloud-login-accents {
+  background:
+    radial-gradient(circle at 14% 10%, oklch(0.72 0.16 211 / 0.18), transparent 32%),
+    radial-gradient(circle at 84% 14%, oklch(0.66 0.26 355 / 0.14), transparent 30%),
+    radial-gradient(circle at 74% 82%, oklch(0.82 0.16 83 / 0.18), transparent 34%);
+}
+
+.bridge-app.theme-light .app-cloud-login-accents {
+  background:
+    radial-gradient(circle at 14% 10%, oklch(0.72 0.16 211 / 0.10), transparent 28%),
+    radial-gradient(circle at 84% 14%, oklch(0.66 0.26 355 / 0.08), transparent 26%),
+    radial-gradient(circle at 74% 82%, oklch(0.82 0.16 83 / 0.12), transparent 30%),
+    linear-gradient(90deg, oklch(0.39 0.035 82 / 0.030) 1px, transparent 1px),
+    linear-gradient(0deg, oklch(0.39 0.035 82 / 0.022) 1px, transparent 1px);
+  background-size: auto, auto, auto, 14px 14px, 16px 16px;
+}
+
+/* Paper grain — multiply-blended in light, screen-blended (gentle) in dark. */
+.app-cloud-login-grain {
+  background-image: repeating-linear-gradient(
+    7deg,
+    rgba(255, 255, 255, 0.04) 0 1px,
+    transparent 1px 9px
+  );
+  mix-blend-mode: screen;
+  opacity: 0.30;
+}
+
+.bridge-app.theme-light .app-cloud-login-grain {
+  background-image: repeating-linear-gradient(
+    7deg,
+    oklch(0.35 0.03 82 / 0.05) 0 1px,
+    transparent 1px 9px
+  );
+  mix-blend-mode: multiply;
+  opacity: 0.18;
+}
+
+/* Inputs — placeholder color follows the theme. */
+.app-cloud-login-input::placeholder {
+  color: var(--utility-meta-text);
+}
+
+/* Big signup avatar — themed inset highlight + soft outer drop. */
+.app-cloud-login-avatar {
+  border-color: var(--app-cloud-login-inner-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 6px 14px rgba(0, 0, 0, 0.32);
+}
+
+.bridge-app.theme-light .app-cloud-login-avatar {
+  border-color: oklch(0.62 0.05 82 / 0.28);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.45),
+    0 6px 14px oklch(0.28 0.04 82 / 0.10);
+}
+
+/* Random-avatar dice overlay button (signup avatar corner). */
+.app-cloud-login-dice-button {
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+}
+
+.app-cloud-login-dice-button:hover {
+  color: var(--utility-foreground);
+}
+
+.bridge-app.theme-light .app-cloud-login-dice-button {
+  box-shadow: 0 3px 8px oklch(0.32 0.04 82 / 0.14);
+}
+
+.bridge-app.theme-light .app-cloud-login-dice-button:hover {
+  color: oklch(0.20 0.025 125);
+}
+
+/* Icon-only social provider pills (Google / GitHub). */
+.app-cloud-login-social-pill:hover {
+  color: var(--utility-foreground);
+}
+
+.bridge-app.theme-light .app-cloud-login-social-pill:hover {
+  color: oklch(0.16 0.02 125);
+}
+
+/* Active segment indicator pill behind the Log in / Sign up tabs. */
+.app-cloud-login-tab-pill {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+}
+
+.bridge-app.theme-light .app-cloud-login-tab-pill {
+  box-shadow: 0 4px 12px oklch(0.42 0.04 82 / 0.10);
+}
+
+/* Error banner (per-form submission). */
+.app-cloud-login-error {
+  border-color: var(--app-cloud-login-danger-border);
+  background: var(--app-cloud-login-danger-bg);
+  color: var(--app-cloud-login-danger-text);
+}
+
+/* Primary submit button — inverted ink button that picks up the
+ * shared --app-button-primary-* tokens that flip per theme. */
+.app-cloud-login-submit {
+  background: var(--app-button-primary-bg);
+  color: var(--app-button-primary-text);
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.bridge-app.theme-light .app-cloud-login-submit {
+  background: oklch(0.22 0.02 125);
+  color: oklch(0.985 0.015 82);
+  border-color: oklch(0.27 0.02 125 / 0.10);
+  box-shadow: 0 10px 24px oklch(0.25 0.03 125 / 0.18);
+}
+
+.app-cloud-login-submit:hover:not(:disabled) {
+  background: var(--app-button-primary-hover);
+}
+
 @layer utilities {
   .bg-background {
     background-color: var(--utility-background, rgb(6 16 31));

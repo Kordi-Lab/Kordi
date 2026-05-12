@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
+import { isCloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { BridgeAgentRequestControl, ComposerScope } from '@/kordi-app/types';
 import {
@@ -66,6 +68,10 @@ type UseComposerMessageActionsArgs = Pick<
   | 'setQueuedDesktopMessagesBySession'
   | 'setDesktopLiveTurnsBySession'
   | 'setDesktopBridgeState'
+  | 'setCloudBridgeState'
+  | 'sendCloudBridgeMessage'
+  | 'sendCloudGroupControl'
+  | 'cancelCloudBridgeAgentRequest'
   | 'watchDesktopLiveTurn'
   | 'shouldAutoFollowChatRef'
   | 'setActiveConvId'
@@ -120,6 +126,10 @@ export function useComposerMessageActions({
   setQueuedDesktopMessagesBySession,
   setDesktopLiveTurnsBySession,
   setDesktopBridgeState,
+  setCloudBridgeState,
+  sendCloudBridgeMessage,
+  sendCloudGroupControl,
+  cancelCloudBridgeAgentRequest,
   watchDesktopLiveTurn,
   shouldAutoFollowChatRef,
   setActiveConvId,
@@ -219,6 +229,9 @@ export function useComposerMessageActions({
     setChatComposerAttachments,
     setComposerDrafts,
     setDesktopBridgeState,
+    setCloudBridgeState,
+    sendCloudBridgeMessage,
+    sendCloudGroupControl,
     setDesktopChatError,
     setDesktopChatState,
     setDesktopLiveTurnsBySession,
@@ -286,13 +299,19 @@ export function useComposerMessageActions({
       setIsDesktopChatSending(false);
     }
     try {
+      if (isCloudBridgeConversationId(conversationId) || isCloudGroupAgentConversationId(conversationId)) {
+        if (!requestId?.trim()) throw new Error('Unable to stop cloud agent request');
+        if (!cancelCloudBridgeAgentRequest) throw new Error('Cloud chat is still loading. Try again in a moment.');
+        await cancelCloudBridgeAgentRequest(conversationId, requestId);
+        return;
+      }
       const nextState = await cancelDesktopBridgeOutreach(conversationId, requestId);
       setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop bridge outreach');
       throw error;
     }
-  }, [setDesktopBridgeState, setDesktopChatError, setIsDesktopChatSending, setPendingBridgeOutreach]);
+  }, [cancelCloudBridgeAgentRequest, setDesktopBridgeState, setDesktopChatError, setIsDesktopChatSending, setPendingBridgeOutreach]);
 
   const handleStopBridgeAgentRequest = useCallback(async (request: BridgeAgentRequestControl) => {
     await stopBridgeOutreach(request.conversationId, request.requestId);

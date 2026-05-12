@@ -66,6 +66,7 @@ export type ComposerMentionOption = {
   humanId?: string | null;
   agentId?: string | null;
   ownerName?: string | null;
+  unreadCount?: number;
 };
 
 function slashCommandDisplayConfig(item: DesktopChatSlashCommand) {
@@ -206,6 +207,14 @@ export function ComposerMentionMenu({
                   </div>
                   {item.detail ? <div className={cn('truncate text-[12px]', active ? 'text-slate-300' : 'text-slate-500')}>{item.detail}</div> : null}
                 </div>
+                {item.unreadCount && item.unreadCount > 0 ? (
+                  <span className={cn(
+                    'grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums',
+                    active ? 'bg-sky-300 text-slate-950' : 'bg-sky-400/20 text-sky-200 ring-1 ring-sky-300/30',
+                  )}>
+                    {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                  </span>
+                ) : null}
               </button>
             );
           })}

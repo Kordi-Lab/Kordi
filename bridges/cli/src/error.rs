@@ -229,6 +229,11 @@ pub enum ServerInitError {
     RegisteredNodesMigration(rusqlite::Error),
     ServerProjectsMigration(rusqlite::Error),
     RemoveLegacyUserState(rusqlite::Error),
+    Migration {
+        version: i64,
+        description: &'static str,
+        source: rusqlite::Error,
+    },
 }
 
 impl fmt::Display for ServerInitError {
@@ -253,6 +258,11 @@ impl fmt::Display for ServerInitError {
             Self::RemoveLegacyUserState(source) => {
                 write!(f, "remove legacy user state: {}", source)
             }
+            Self::Migration {
+                version,
+                description,
+                source,
+            } => write!(f, "apply migration v{} ({}): {}", version, description, source),
         }
     }
 }

@@ -4,6 +4,12 @@ use kordi_cli::desktop_runtime::{DesktopChatAgentProfile, DesktopChatSessionDeta
 
 use super::{DesktopChatState, DesktopSessionHandle};
 
+pub(super) const CLOUD_AGENT_RUNTIME_SESSION_PREFIX: &str = "cloud-agent:";
+
+pub(super) fn is_cloud_agent_runtime_session_id(session_id: &str) -> bool {
+    session_id.starts_with(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)
+}
+
 pub(super) fn desktop_chat_message_is_agent(
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
 ) -> bool {
@@ -34,6 +40,10 @@ pub(super) async fn sync_completed_desktop_session_to_canonical(
     active_session_id: &str,
     session: &DesktopSessionHandle,
 ) {
+    if is_cloud_agent_runtime_session_id(active_session_id) {
+        return;
+    }
+
     let snapshot = {
         let session = session.lock().await;
         match session.detail() {
@@ -65,8 +75,12 @@ pub(super) fn desktop_state_for_canonical_sync(
     state: &DesktopChatState,
     active_turn_running: bool,
 ) -> DesktopChatState {
-    if !active_turn_running {
-        return state.clone();
+    let mut next = state.clone();
+    next.sessions
+        .retain(|session| !is_cloud_agent_runtime_session_id(&session.id));
+
+    if is_cloud_agent_runtime_session_id(&next.active_session_id) || !active_turn_running {
+        return next;
     }
 
     let Some(last_user_index) = state
@@ -75,10 +89,9 @@ pub(super) fn desktop_state_for_canonical_sync(
         .iter()
         .rposition(|message| message.role.trim().eq_ignore_ascii_case("user"))
     else {
-        return state.clone();
+        return next;
     };
 
-    let mut next = state.clone();
     next.active_session.messages = state
         .active_session
         .messages

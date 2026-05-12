@@ -1,0 +1,79 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import {
+  __setSessionBackendForTests,
+  clearSession,
+  loadSession,
+  saveSession,
+  type SessionStorageBackend,
+  type StoredSession,
+} from '../src/features/cloud/session';
+
+class FakeBackend implements SessionStorageBackend {
+  cached: StoredSession | null = null;
+  loadCount = 0;
+  saveCount = 0;
+  clearCount = 0;
+
+  async load() {
+    this.loadCount += 1;
+    return this.cached;
+  }
+  async save(session: StoredSession) {
+    this.saveCount += 1;
+    this.cached = { ...session };
+  }
+  async clear() {
+    this.clearCount += 1;
+    this.cached = null;
+  }
+}
+
+test('load/save/clear round-trip through the injected backend', async () => {
+  const fake = new FakeBackend();
+  __setSessionBackendForTests(fake);
+  try {
+    assert.equal(await loadSession(), null);
+    await saveSession({
+      token: 'kordi_cs_abc',
+      accountId: 'acct_1',
+      expiresAt: '2099-01-01T00:00:00Z',
+    });
+    assert.equal(fake.saveCount, 1);
+    const got = await loadSession();
+    assert.deepEqual(got, {
+      token: 'kordi_cs_abc',
+      accountId: 'acct_1',
+      expiresAt: '2099-01-01T00:00:00Z',
+    });
+    await clearSession();
+    assert.equal(fake.clearCount, 1);
+    assert.equal(await loadSession(), null);
+  } finally {
+    __setSessionBackendForTests(null);
+  }
+});
+
+test('memory fallback (no backend override, no Tauri) survives within a process', async () => {
+  __setSessionBackendForTests(null);
+  // No __TAURI_INTERNALS__ in the node test env, so the module picks the
+  // in-memory backend automatically. Patch console.warn to avoid noise.
+  const originalWarn = console.warn;
+  console.warn = () => undefined;
+  try {
+    await clearSession();
+    assert.equal(await loadSession(), null);
+    await saveSession({
+      token: 'kordi_cs_xyz',
+      accountId: 'acct_2',
+      expiresAt: '2099-01-01T00:00:00Z',
+    });
+    const got = await loadSession();
+    assert.equal(got?.token, 'kordi_cs_xyz');
+    await clearSession();
+    assert.equal(await loadSession(), null);
+  } finally {
+    console.warn = originalWarn;
+  }
+});

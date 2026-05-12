@@ -1,0 +1,94 @@
+# Single-pod Temporal in dev mode.
+#
+# Explicitly NOT a production setup — `temporal server start-dev` uses
+# an embedded SQLite store, so there's no HA and persistence is lost on
+# pod replacement. Distributed Temporal with PostgreSQL is a later
+# hardening pass once enough workflows exist to justify the weight.
+#
+# This setup gives us:
+# - Temporal frontend (gRPC) at temporal.kordi-cloud.svc.cluster.local:7233
+# - Web UI (HTTP)        at temporal.kordi-cloud.svc.cluster.local:8080
+# - Pre-created "kordi" namespace ready for the bridge to register workers in
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal
+  namespace: kordi-cloud
+spec:
+  selector:
+    app.kubernetes.io/name: temporal
+  ports:
+    - name: frontend
+      port: 7233
+      targetPort: frontend
+      protocol: TCP
+    - name: ui
+      port: 8080
+      targetPort: ui
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: temporal
+    app.kubernetes.io/component: workflow-engine
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: temporal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: temporal
+        app.kubernetes.io/component: workflow-engine
+    spec:
+      containers:
+        - name: temporal
+          image: temporalio/temporal:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/local/bin/temporal
+          args:
+            - server
+            - start-dev
+            - --ip
+            - "0.0.0.0"
+            - --port
+            - "7233"
+            - --ui-port
+            - "8080"
+            - --namespace
+            - "kordi"
+            - --log-level
+            - "warn"
+          ports:
+            - name: frontend
+              containerPort: 7233
+              protocol: TCP
+            - name: ui
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: frontend
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: frontend
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"

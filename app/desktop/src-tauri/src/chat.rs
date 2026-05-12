@@ -39,7 +39,8 @@ pub(super) fn now_millis() -> i64 {
 
 use bridge_outreach::prepare_desktop_session_for_send;
 use canonical_sync::{
-    desktop_state_for_canonical_sync, sync_completed_desktop_session_to_canonical,
+    desktop_state_for_canonical_sync, is_cloud_agent_runtime_session_id,
+    sync_completed_desktop_session_to_canonical,
 };
 use message_route::apply_desktop_chat_message_route;
 use model_options::{
@@ -370,6 +371,7 @@ async fn build_chat_state(
         .map_err(|err| err.to_string())?
         .into_iter()
         .filter(|session| !is_blank_draft_summary(session))
+        .filter(|session| !is_cloud_agent_runtime_session_id(&session.id))
         .collect::<Vec<_>>();
     let model_options = authenticated_model_options_with_local_runtime(cwd).await;
     let projects = filter_blank_draft_projects(
@@ -417,7 +419,10 @@ async fn build_chat_state(
     let active_exists = summaries
         .iter()
         .any(|session| session.id == active_session_id);
-    if !active_exists && active_session.project.is_none() {
+    if !active_exists
+        && active_session.project.is_none()
+        && !is_cloud_agent_runtime_session_id(&active_session_id)
+    {
         let active_runtime = active_runtime.lock().await;
         let summary = active_runtime.summary().map_err(|err| err.to_string())?;
         if !is_blank_draft_summary(&summary) {
@@ -434,7 +439,9 @@ async fn build_chat_state(
     };
 
     for (session_id, runtime) in session_handles {
-        if summaries.iter().any(|session| session.id == session_id) {
+        if is_cloud_agent_runtime_session_id(&session_id)
+            || summaries.iter().any(|session| session.id == session_id)
+        {
             continue;
         }
         let runtime = runtime.lock().await;
@@ -462,8 +469,10 @@ async fn build_chat_state(
         &state,
         session_has_running_turn(manager, &state.active_session_id).await,
     );
-    if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&sync_state) {
-        eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
+    if !is_cloud_agent_runtime_session_id(&state.active_session_id) {
+        if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&sync_state) {
+            eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
+        }
     }
     Ok(state)
 }

@@ -3,6 +3,8 @@ mod auth;
 mod bridge;
 mod canonical_sessions;
 mod chat;
+mod cloud_oauth_loopback;
+mod cloud_session;
 mod project;
 #[cfg(test)]
 mod test_support;
@@ -60,6 +62,7 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 
 pub fn run() {
     let app = tauri::Builder::default()
+        .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
         .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
@@ -95,6 +98,7 @@ pub fn run() {
             bridge::desktop_save_bridge_host,
             bridge::desktop_remove_bridge_host,
             bridge::desktop_set_active_bridge_host,
+            bridge::desktop_bridge_register_cloud_host,
             bridge::desktop_bridge_set_discovery_mode,
             bridge::desktop_bridge_set_host_privacy_policy,
             bridge::desktop_bridge_set_agent_reachability_policy,
@@ -189,7 +193,15 @@ pub fn run() {
             chat::desktop_chat_start_message,
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
-            chat::desktop_chat_turn_state
+            chat::desktop_chat_turn_state,
+            cloud_oauth_loopback::cloud_oauth_loopback_prepare,
+            cloud_oauth_loopback::cloud_oauth_loopback_wait,
+            cloud_session::cloud_session_store,
+            cloud_session::cloud_session_load,
+            cloud_session::cloud_session_clear,
+            cloud_session::cloud_device_keypair_load_or_create,
+            cloud_session::cloud_bridges_api_key_store,
+            cloud_session::cloud_bridges_api_key_load
         ])
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");

@@ -53,11 +53,13 @@ import type {
 } from '@/kordi-app/types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
+  focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
@@ -326,6 +328,7 @@ export function ChatsPage({
   const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
+  const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
   const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
@@ -789,6 +792,8 @@ export function ChatsPage({
               <textarea
                 rows={1}
                 value={chatComposerText}
+                onPointerDownCapture={() => focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell)}
+                onFocus={() => focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell)}
                 onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
                 onPaste={(event) => {
                   const files = extractClipboardFiles(event.clipboardData);
@@ -865,7 +870,7 @@ export function ChatsPage({
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
                 data-composer-scope="chat"
-                placeholder="Ask your agent…"
+                placeholder={chatComposerPlaceholderText}
               />
             </div>
           </div>

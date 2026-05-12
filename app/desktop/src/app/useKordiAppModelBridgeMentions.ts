@@ -8,7 +8,7 @@ import {
   type MentionScopeConversation,
 } from '@/features/chat/messageActions/mentions';
 import type { ComposerMentionOption } from '@/kordi-app/components';
-import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
+import type { Conversation, DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
 
 import { normalizeMentionSearch } from '@/app/useKordiAppModelHelpers';
@@ -23,6 +23,7 @@ export type BuildBridgeMentionTargetsParams = {
   desktopBridgeState: DesktopBridgeState | null | undefined;
   desktopChatState: DesktopChatState | null | undefined;
   activeConvMentionScope: MentionScopeConversation | null | undefined;
+  conversations?: Conversation[];
 };
 
 export function buildBridgeMentionTargetsByScope({
@@ -30,6 +31,7 @@ export function buildBridgeMentionTargetsByScope({
   desktopBridgeState,
   desktopChatState,
   activeConvMentionScope,
+  conversations = [],
 }: BuildBridgeMentionTargetsParams): BridgeMentionTargetsByScope {
   if (!isNativeShell) return { chat: [], project: [] };
 
@@ -42,6 +44,15 @@ export function buildBridgeMentionTargetsByScope({
     ?? activeHost?.agents.find((agent) => agent.isDefault)
     ?? activeHost?.agents[0]
     ?? null;
+
+  const unreadForTarget = (target: { hostId: string; nodeId: string; humanId?: string | null; agentId?: string | null }) => conversations.reduce((sum, conversation) => {
+    const bridgeTarget = conversation.bridgeTarget;
+    if (!bridgeTarget || bridgeTarget.hostId !== target.hostId) return sum;
+    const matchesNode = bridgeTarget.nodeId === target.nodeId;
+    const matchesHuman = Boolean(target.humanId && bridgeTarget.humanId === target.humanId);
+    const matchesAgent = Boolean(target.agentId && bridgeTarget.agentId === target.agentId);
+    return matchesNode || matchesHuman || matchesAgent ? sum + Math.max(0, conversation.unread ?? 0) : sum;
+  }, 0);
 
   const buildTargets = (conversation: MentionScopeConversation | null | undefined): ComposerMentionOption[] => {
     const options: ComposerMentionOption[] = [];
@@ -82,6 +93,7 @@ export function buildBridgeMentionTargetsByScope({
         humanId: activeHost?.humanId ?? null,
         agentId: activeAgent?.id ?? null,
         ownerName: ownerName ?? null,
+        unreadCount: 0,
       });
     }
 
@@ -99,6 +111,12 @@ export function buildBridgeMentionTargetsByScope({
         humanId: candidate.peer.humanId ?? null,
         agentId: candidate.peer.agentId ?? null,
         ownerName: candidate.peer.ownerName ?? null,
+        unreadCount: unreadForTarget({
+          hostId: candidate.host.id,
+          nodeId: candidate.peer.nodeId,
+          humanId: candidate.peer.humanId ?? null,
+          agentId: candidate.peer.agentId ?? null,
+        }),
       });
     }
 

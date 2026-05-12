@@ -49,7 +49,15 @@ type ActiveConversation = {
   outreachThreads?: OutreachThreadSummary[];
   taskActivities?: SessionTaskActivity[];
   participantAvatarSeeds?: Record<string, string>;
+  participantProfileImageUrls?: Record<string, string | null>;
 };
+
+function participantProfileImageUrl(activeConv: ActiveConversation, participant: string) {
+  const normalizedParticipant = participant.trim();
+  return activeConv.participantProfileImageUrls?.[participant]
+    ?? activeConv.participantProfileImageUrls?.[normalizedParticipant]
+    ?? null;
+}
 
 function participantAvatarSeed(activeConv: ActiveConversation, participant: string, isAgent: boolean, localProfileSeed?: string, localAgentSeed?: string) {
   const normalizedParticipant = participant.trim();
@@ -283,6 +291,7 @@ function ChatDetailPanelView({
                     <IdentityAvatar
                       kind={isAgent ? 'agent' : 'human'}
                       seed={participantAvatarSeed(activeConv, participant, isAgent, currentLocalProfileAvatarSeed, currentLocalAgentAvatarSeed)}
+                      imageUrl={participantProfileImageUrl(activeConv, participant)}
                       name={displayName}
                       className="h-7 w-7 border border-white/10"
                     />

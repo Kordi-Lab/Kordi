@@ -99,15 +99,41 @@ function fallbackRoleAdminIds(members: ConversationParticipant[]) {
 }
 
 function groupAdminIds(space: ParticipantSpaceViewModel | null, members: ConversationParticipant[]) {
-  const metadataAdminIds = (space?.sessions ?? []).flatMap((session) => adminIdentityIdsFromMetadata(session.conversation.metadata));
+  const activeSession = space?.sessions[0] ?? null;
+  const metadataAdminIds = adminIdentityIdsFromMetadata(activeSession?.conversation.metadata);
   const uniqueMetadataAdminIds = [...new Set(metadataAdminIds.map((id) => id.trim()).filter(Boolean))];
   if (uniqueMetadataAdminIds.length > 0) return new Set(uniqueMetadataAdminIds);
   const roleAdminIds = fallbackRoleAdminIds(members);
   if (roleAdminIds.length > 0) return new Set(roleAdminIds);
-  const creatorIds = (space?.sessions ?? [])
-    .map((session) => session.conversation.canonicalCreatedByIdentityId?.trim())
-    .filter((id): id is string => Boolean(id));
-  return new Set(creatorIds);
+  const creatorId = activeSession?.conversation.canonicalCreatedByIdentityId?.trim();
+  return new Set(creatorId ? [creatorId] : []);
+}
+
+function memberStableId(member: ConversationParticipant) {
+  return member.humanId?.trim()
+    || member.bridgeNodeId?.trim()
+    || member.id.trim();
+}
+
+function contactStableId(contact: Contact) {
+  return contact.bridgeHumanId?.trim()
+    || contact.bridgePeerNodeId?.trim()
+    || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length).trim() : '')
+    || contact.id.trim();
+}
+
+function duplicateNameCounts(names: string[]) {
+  const counts = new Map<string, number>();
+  for (const name of names) {
+    const key = name.trim().toLowerCase();
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function hasDuplicateName(name: string, counts: Map<string, number>) {
+  return (counts.get(name.trim().toLowerCase()) ?? 0) > 1;
 }
 
 function displayCreatedLabel(space: ParticipantSpaceViewModel) {
@@ -143,6 +169,10 @@ export function GroupDetailsDialog({
       return !memberIds.has(option.contact.id) && !memberIds.has(option.id) && !memberIds.has(identityId ?? '');
     })
   ), [contacts, memberIds]);
+  const duplicateNames = duplicateNameCounts([
+    ...members.map((member) => member.name),
+    ...addOptions.map((option) => option.label),
+  ]);
   const selectedAddContactIds = addOptions
     .filter((option) => selectedContactIds.includes(option.id))
     .map((option) => option.id);
@@ -238,10 +268,13 @@ export function GroupDetailsDialog({
                 {members.map((member) => {
                   const admin = adminIds.has(member.id);
                   const isLastAdmin = admin && adminCount <= 1;
+                  const identityLabel = memberStableId(member);
+                  const showIdentityLabel = hasDuplicateName(member.name, duplicateNames) && identityLabel && identityLabel !== member.name;
                   return (
                     <div key={member.id} className="app-group-management-member-row flex items-center gap-2 rounded-[13px] border px-2.5 py-2">
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[12.5px] font-medium text-[color:var(--utility-foreground)]">{member.name}</div>
+                        {showIdentityLabel ? <div className="truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{identityLabel}</div> : null}
                         <div className="mt-px flex items-center gap-1.5 text-[10.5px] text-[color:var(--utility-muted-text)]">
                           {admin ? <ShieldCheck className="h-3 w-3 text-emerald-300" /> : null}
                           {admin ? 'Admin' : 'Member'}
@@ -277,6 +310,8 @@ export function GroupDetailsDialog({
               <div className="max-h-36 space-y-1 overflow-auto pr-1">
                 {addOptions.length > 0 ? addOptions.map((option) => {
                   const selected = selectedContactIds.includes(option.id);
+                  const identityLabel = contactStableId(option.contact);
+                  const showIdentityLabel = hasDuplicateName(option.label, duplicateNames) && identityLabel && identityLabel !== option.label;
                   return (
                     <button
                       key={option.id}
@@ -285,7 +320,10 @@ export function GroupDetailsDialog({
                       onClick={() => { if (canManageGroup) toggleAddContact(option.id); }}
                       className={cn('app-group-management-add-row flex w-full items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2 text-left text-[12px] transition', selected && 'app-group-management-add-row-selected')}
                     >
-                      <span>{option.label}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate">{option.label}</span>
+                        {showIdentityLabel ? <span className="block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{identityLabel}</span> : null}
+                      </span>
                       <span
                         data-add-contact-state={selected ? 'selected' : 'idle'}
                         className={selected ? 'text-emerald-300' : 'text-[color:var(--utility-muted-text)]'}
