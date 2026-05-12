@@ -95,21 +95,50 @@ function isSelfLabel(name: string) {
   return ['me', 'you'].includes(name.trim().toLowerCase());
 }
 
+function fallbackParticipantIdentity(conversation: Conversation, name: string, kind: ConversationParticipant['kind'], self: boolean) {
+  if (self) {
+    const localHumanId = cleanOptionalText(conversation.identity?.localHumanId);
+    return {
+      id: localHumanId ? `human:${localHumanId}` : `label:${kind}:${name}`,
+      humanId: localHumanId || null,
+      bridgeNodeId: null,
+      bridgeHostId: null,
+    };
+  }
+
+  const remoteHumanId = cleanOptionalText(conversation.identity?.remoteHumanId)
+    || (kind === 'human' ? cleanOptionalText(conversation.bridgeTarget?.humanId) : '');
+  const remoteAgentId = cleanOptionalText(conversation.identity?.remoteAgentId)
+    || (kind === 'agent' ? cleanOptionalText(conversation.bridgeTarget?.agentId) : '');
+  const remoteNodeId = cleanOptionalText(conversation.identity?.remoteHumanNodeId)
+    || cleanOptionalText(conversation.identity?.remoteAgentNodeId)
+    || cleanOptionalText(conversation.bridgeTarget?.nodeId);
+  const stableKey = remoteHumanId || remoteAgentId || remoteNodeId;
+  return {
+    id: stableKey ? `${kind}:${stableKey}` : `label:${kind}:${name}`,
+    humanId: remoteHumanId || null,
+    agentId: remoteAgentId || null,
+    bridgeNodeId: remoteNodeId || null,
+    bridgeHostId: cleanOptionalText(conversation.bridgeTarget?.hostId) || cleanOptionalText(conversation.identity?.bridgeHostId) || null,
+  };
+}
+
 function fallbackParticipants(conversation: Conversation): ConversationParticipant[] {
   const firstNonSelfName = conversation.participants.find((name) => !isSelfLabel(name));
   return conversation.participants.map((name) => {
     const self = isSelfLabel(name);
     const kind = !self && conversation.type !== 'person' ? 'agent' : 'human';
+    const identity = fallbackParticipantIdentity(conversation, name, kind, self);
     const avatarKey = conversation.participantAvatarSeeds?.[name]
       ?? (!self && name === firstNonSelfName ? conversation.avatarSeed ?? null : null);
     const profileImageUrl = conversation.participantProfileImageUrls?.[name]
       ?? (!self && name === firstNonSelfName ? conversation.profileImageUrl ?? null : null);
     return {
-      id: `label:${kind}:${name}`,
+      ...identity,
       name,
       kind,
       role: self ? 'self' : kind === 'agent' ? 'delegate' : 'participant',
-      source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : null,
+      source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : identity.bridgeHostId ? 'bridge' : null,
       avatarKey,
       profileImageUrl,
     } satisfies ConversationParticipant;

@@ -63,6 +63,38 @@ test('cloud group sessions with the same people collapse into one group space ev
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id).sort(), ['session:group:one', 'session:group:two']);
 });
 
+test('direct contacts with the same display name remain separate participant spaces', () => {
+  const baseConversation = {
+    type: 'person' as const,
+    subtitle: 'Direct human chat',
+    unread: 0,
+    bridges: ['cloud'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', 'Shu Yang'],
+    messages: [],
+    updatedAtLabel: 'Now',
+  };
+  const spaces = buildParticipantSpaces([{
+    ...baseConversation,
+    id: 'bridge:cloud:acct_a:person',
+    canonicalSessionId: 'bridge:cloud:acct_a:person',
+    name: 'Shu Yang',
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_a', humanId: 'acct_a', runtime: 'person' },
+    identity: { bridgeHostId: 'cloud', localHumanId: 'acct_me', localHumanName: 'Me', remoteHumanId: 'acct_a', remoteHumanName: 'Shu Yang' },
+  }, {
+    ...baseConversation,
+    id: 'bridge:cloud:acct_b:person',
+    canonicalSessionId: 'bridge:cloud:acct_b:person',
+    name: 'Shu Yang',
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_b', humanId: 'acct_b', runtime: 'person' },
+    identity: { bridgeHostId: 'cloud', localHumanId: 'acct_me', localHumanName: 'Me', remoteHumanId: 'acct_b', remoteHumanName: 'Shu Yang' },
+  }]);
+
+  assert.equal(spaces.filter((space) => space.kind === 'direct-human').length, 2);
+  assert.deepEqual(spaces.map((space) => space.sessions[0]?.id).sort(), ['bridge:cloud:acct_a:person', 'bridge:cloud:acct_b:person']);
+});
+
 test('fallback participant spaces preserve per-participant profile image urls', () => {
   const spaces = buildParticipantSpaces([{
     id: 'bridge:cloud:acct_peer:person',
