@@ -156,8 +156,13 @@ function firstMessageTitle(messages: Message[]) {
   return text || null;
 }
 
+function isGenericSessionTitle(value?: string | null) {
+  return /^(#\s*)?(new session|untitled session)$/i.test(value?.trim() ?? '');
+}
+
 export function sessionHasManualTitle(session: CanonicalSessionState['sessions'][number]) {
   const metadata = sessionMetadata(session);
+  if (isGenericSessionTitle(session.title)) return false;
   if (stringValue(metadata.sessionTitleSource) === 'manual') return true;
   if (session.kind === 'group') return false;
   return stringValue(metadata.titleSource) === 'manual';

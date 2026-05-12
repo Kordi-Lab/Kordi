@@ -466,6 +466,66 @@ test('canonical read model names chat-created direct and group sessions from the
   assert.equal(groupSpace?.sessions[0]?.title, 'Review launch plan and assign owners before demo');
 });
 
+test('canonical read model ignores inherited manual title metadata when session title is still New session', () => {
+  const sessionId = 'session:group:new-child';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'local', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'New session',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: {
+        createdFrom: 'chat-create-flow',
+        customName: 'Good group',
+        groupId: 'session:group:root',
+        groupSpaceId: 'session:group:root',
+        titleSource: 'manual',
+        sessionTitleSource: 'manual',
+      },
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      lastMessageAtMs: 20,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'HEY GUES', content: { sender: 'Me', timeLabel: '10:47' }, status: 'sent', sequenceNum: 1, createdAtMs: 20, updatedAtMs: 20, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:first' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
+  const groupConversation = conversations.find((conversation) => conversation.id === sessionId);
+  const groupSpace = buildParticipantSpaces(conversations).find((space) => space.id === 'group:session:group:root');
+
+  assert.equal(groupConversation?.name, 'HEY GUES');
+  assert.equal(groupSpace?.title, 'Good group');
+  assert.equal(groupSpace?.sessions[0]?.title, 'HEY GUES');
+});
+
 test('canonical read model prefers a manually renamed session title over the first user message', () => {
   const sessionId = 'session:direct-person:alice-renamed';
   const readModel = createCanonicalSessionReadModel({

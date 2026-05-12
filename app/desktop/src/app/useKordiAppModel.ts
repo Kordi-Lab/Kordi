@@ -1383,6 +1383,9 @@ export function useKordiAppModel() {
         }
 
         const customName = metadataString(sourceMetadata, 'customName') || space.title;
+        const groupSourceMetadata = { ...sourceMetadata };
+        delete groupSourceMetadata.titleSource;
+        delete groupSourceMetadata.sessionTitleSource;
         const participantNames = members.map((member) => member.name);
         const groupSpaceId = metadataGroupSpaceId(sourceMetadata) || normalizeStoredGroupSpaceId(space.id) || sourceSessionId;
         const nextState = await openOrCreateCanonicalSession({
@@ -1395,7 +1398,7 @@ export function useKordiAppModel() {
           relationshipIdentityId: null,
           participantIdentityIds,
           metadata: {
-            ...sourceMetadata,
+            ...groupSourceMetadata,
             schemaVersion: 1,
             kind: 'chat-group',
             customName,
