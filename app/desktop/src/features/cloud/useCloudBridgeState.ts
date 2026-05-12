@@ -13,11 +13,14 @@ import {
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
+  CanonicalIdentity,
+  CanonicalSessionMessage,
   CanonicalSessionState,
   DesktopBridgeSessionParticipant,
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
+import { markOptimisticCanonicalMessageFailed } from '@/features/chat/messageActions/optimistic';
 
 import {
   CloudAuthClient,
@@ -50,6 +53,8 @@ import {
 } from './cloudAgentRuntime';
 import {
   cloudGroupAgentConversationId,
+  cloudGroupAgentMentionHasResponse,
+  cloudGroupAgentOfflineNoticeRequest,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
@@ -80,15 +85,57 @@ import {
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import { loadSession } from './session';
-import { useCloudContacts } from './useCloudContacts';
+import { CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
 export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
 export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
+export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
 
 function objectContent(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function cleanText(value?: string | null) {
+  return (value ?? '').trim();
+}
+
+type CloudAgentMentionCandidate = {
+  requestMessage: CanonicalSessionMessage;
+  targetAccountId: string;
+  targetHumanDisplayName: string;
+  targetAgentDisplayName: string;
+};
+
+function cloudAgentMentionCandidates(state: CanonicalSessionState, accountId: string): CloudAgentMentionCandidate[] {
+  const identityByHumanId = new Map<string, CanonicalIdentity>();
+  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
+  for (const identity of state.identities) {
+    const humanId = cleanText(identity.humanId) || cleanText(identity.bridgeNodeId);
+    if (identity.kind === 'human' && humanId) identityByHumanId.set(humanId, identity);
+  }
+
+  return state.messages.flatMap((message): CloudAgentMentionCandidate[] => {
+    if (message.senderRole !== 'user' || message.status === 'failed') return [];
+    const content = objectContent(message.content);
+    const mentions = Array.isArray(content.mentions) ? content.mentions : [];
+    return mentions.flatMap((rawMention): CloudAgentMentionCandidate[] => {
+      const mention = objectContent(rawMention);
+      if (cleanText(typeof mention.targetKind === 'string' ? mention.targetKind : null) !== 'bridge-agent') return [];
+      if (cleanText(typeof mention.bridgeHostId === 'string' ? mention.bridgeHostId : null) !== CLOUD_HOST_SENTINEL) return [];
+      const targetAccountId = cleanText(typeof mention.humanId === 'string' ? mention.humanId : null)
+        || cleanText(typeof mention.nodeId === 'string' ? mention.nodeId : null);
+      if (!targetAccountId || targetAccountId === accountId) return [];
+      const humanIdentity = identityByHumanId.get(targetAccountId);
+      const agentIdentity = identityById.get(`agent:cloud:${targetAccountId}`);
+      const targetHumanDisplayName = cleanText(humanIdentity?.displayName)
+        || cleanText(typeof mention.label === 'string' ? mention.label.replace(/'?sKordi$/u, '') : null)
+        || targetAccountId;
+      const targetAgentDisplayName = cleanText(agentIdentity?.displayName) || `${targetHumanDisplayName}'s Kordi`;
+      return [{ requestMessage: message, targetAccountId, targetHumanDisplayName, targetAgentDisplayName }];
+    });
+  });
 }
 
 function wait(ms: number): Promise<void> {
@@ -218,6 +265,8 @@ export function useCloudBridgeState({
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
+  const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
+  const cloudGroupOfflineTimersRef = useRef<Map<string, number>>(new Map());
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
   const [localAgentTurnsByRequestId, setLocalAgentTurnsByRequestId] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [cloudBridgeOverride, setCloudBridgeOverrideState] = useState<DesktopBridgeState | null>(null);
@@ -238,6 +287,15 @@ export function useCloudBridgeState({
   useEffect(() => {
     messagesByPeerRef.current = messagesByPeer;
   }, [messagesByPeer]);
+
+  useEffect(() => {
+    canonicalSessionStateRef.current = canonicalSessionState ?? null;
+  }, [canonicalSessionState]);
+
+  useEffect(() => () => {
+    for (const timerId of cloudGroupOfflineTimersRef.current.values()) window.clearTimeout(timerId);
+    cloudGroupOfflineTimersRef.current.clear();
+  }, []);
 
   const acceptedContactPeerIds = useMemo(
     () => contacts.contacts
@@ -351,6 +409,105 @@ export function useCloudBridgeState({
     const interval = window.setInterval(() => void refreshCloudBridgeMessages(), CLOUD_MESSAGES_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [account, refreshCloudBridgeMessages]);
+
+  useEffect(() => {
+    if (!account || !canonicalSessionState || !setCanonicalSessionState) {
+      for (const timerId of cloudGroupOfflineTimersRef.current.values()) window.clearTimeout(timerId);
+      cloudGroupOfflineTimersRef.current.clear();
+      return;
+    }
+
+    const candidates = cloudAgentMentionCandidates(canonicalSessionState, account.accountId);
+    const activeKeys = new Set<string>();
+
+    for (const candidate of candidates) {
+      if (Date.now() - candidate.requestMessage.createdAtMs > CLOUD_AGENT_MENTION_WINDOW_MS) continue;
+      const noticeId = `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`;
+      const key = `${candidate.requestMessage.id}:${candidate.targetAccountId}`;
+      activeKeys.add(key);
+      const hasResponse = cloudGroupAgentMentionHasResponse({
+        requestMessageId: candidate.requestMessage.id,
+        targetAccountId: candidate.targetAccountId,
+        messages: canonicalSessionState.messages,
+      });
+      const hasNotice = canonicalSessionState.messages.some((message) => message.id === noticeId);
+      if (hasResponse || hasNotice) {
+        const timerId = cloudGroupOfflineTimersRef.current.get(key);
+        if (timerId !== undefined) window.clearTimeout(timerId);
+        cloudGroupOfflineTimersRef.current.delete(key);
+        continue;
+      }
+      if (cloudGroupOfflineTimersRef.current.has(key)) continue;
+
+      const delayMs = Math.max(0, candidate.requestMessage.createdAtMs + CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS - Date.now());
+      const timerId = window.setTimeout(() => {
+        cloudGroupOfflineTimersRef.current.delete(key);
+        void (async () => {
+          const current = canonicalSessionStateRef.current;
+          if (!current) return;
+          if (current.messages.some((message) => message.id === noticeId)) return;
+          if (cloudGroupAgentMentionHasResponse({
+            requestMessageId: candidate.requestMessage.id,
+            targetAccountId: candidate.targetAccountId,
+            messages: current.messages,
+          })) return;
+
+          const humanIdentity = current.identities.find((identity) => (
+            identity.kind === 'human'
+            && (identity.humanId === candidate.targetAccountId || identity.bridgeNodeId === candidate.targetAccountId)
+          ));
+          const agentIdentityId = `agent:cloud:${candidate.targetAccountId}`;
+          if (!current.identities.some((identity) => identity.id === agentIdentityId)) {
+            const nextState = await upsertCanonicalIdentity({
+              id: agentIdentityId,
+              kind: 'agent',
+              displayName: candidate.targetAgentDisplayName,
+              ownerIdentityId: humanIdentity?.id ?? null,
+              source: 'bridge',
+              sourceHostId: CLOUD_HOST_SENTINEL,
+              bridgeNodeId: `cloud-agent:${candidate.targetAccountId}`,
+              humanId: candidate.targetAccountId,
+              agentId: `cloud-agent:${candidate.targetAccountId}`,
+              avatarKey: `cloud-agent:${candidate.targetAccountId}`,
+              profileImageUrl: null,
+              metadata: { accountId: candidate.targetAccountId, cloudGroupAgent: true },
+            });
+            canonicalSessionStateRef.current = nextState;
+            setCanonicalSessionState(nextState);
+          }
+
+          const createdAtMs = Date.now();
+          const notice = cloudGroupAgentOfflineNoticeRequest({
+            sessionId: candidate.requestMessage.sessionId,
+            requestMessageId: candidate.requestMessage.id,
+            targetAccountId: candidate.targetAccountId,
+            targetHumanDisplayName: candidate.targetHumanDisplayName,
+            targetAgentDisplayName: candidate.targetAgentDisplayName,
+            createdAtMs,
+          });
+          const afterAppend = await appendCanonicalMessage(notice);
+          const failedState = markOptimisticCanonicalMessageFailed(
+            afterAppend,
+            candidate.requestMessage.sessionId,
+            candidate.requestMessage.id,
+            notice.contentText,
+          );
+          canonicalSessionStateRef.current = failedState;
+          setCanonicalSessionState(failedState);
+        })().catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-group-agent-offline] failed to append offline notice', error);
+        });
+      }, delayMs);
+      cloudGroupOfflineTimersRef.current.set(key, timerId);
+    }
+
+    for (const [key, timerId] of cloudGroupOfflineTimersRef.current.entries()) {
+      if (activeKeys.has(key)) continue;
+      window.clearTimeout(timerId);
+      cloudGroupOfflineTimersRef.current.delete(key);
+    }
+  }, [account, canonicalSessionState, setCanonicalSessionState]);
 
   const mergeMessage = useCallback((message: CloudMessage) => {
     const peerId = message.fromAccountId === account?.accountId ? message.toAccountId : message.fromAccountId;
