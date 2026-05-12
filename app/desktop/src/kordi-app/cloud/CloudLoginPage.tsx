@@ -16,7 +16,7 @@ import {
 import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
-import { GitHubMark, GoogleMark, KordiPaintMark } from './CloudLoginMarks';
+import { GitHubMark, GoogleMark } from './CloudLoginMarks';
 
 // Type scale — one place, applied everywhere. The whole page reads from these.
 const TYPE_DISPLAY = 'text-[34px] leading-[1.1] font-bold tracking-[-0.025em]';
@@ -28,44 +28,34 @@ const TYPE_HINT = 'text-[12px] font-medium tracking-[-0.005em]';
 const TYPE_DIVIDER = 'text-[10px] font-semibold uppercase tracking-[0.18em]';
 const TYPE_TITLEBAR = 'text-[12px] font-semibold tracking-[0.02em]';
 
-const LOGIN_BACKGROUND_STYLE = {
-  backgroundImage: [
-    'radial-gradient(circle at 14% 10%, oklch(0.72 0.16 211 / 0.10), transparent 28%)',
-    'radial-gradient(circle at 84% 14%, oklch(0.66 0.26 355 / 0.08), transparent 26%)',
-    'radial-gradient(circle at 74% 82%, oklch(0.82 0.16 83 / 0.12), transparent 30%)',
-    'linear-gradient(90deg, oklch(0.39 0.035 82 / 0.030) 1px, transparent 1px)',
-    'linear-gradient(0deg, oklch(0.39 0.035 82 / 0.022) 1px, transparent 1px)',
-  ].join(','),
-  backgroundSize: 'auto, auto, auto, 14px 14px, 16px 16px',
-} as const;
-const LOGIN_TEXTURE_STYLE = {
-  backgroundImage: 'repeating-linear-gradient(7deg, oklch(0.35 0.03 82 / 0.05) 0 1px, transparent 1px 9px)',
-} as const;
-
-// Color tokens — paper, ink, borders, focus.
-const INK = 'text-[oklch(0.22_0.02_125)]';
-const INK_MUTED = 'text-[oklch(0.42_0.02_125/0.78)]';
-const INK_SUBTLE = 'text-[oklch(0.52_0.025_82/0.62)]';
-const PAPER_RAISED = 'bg-[oklch(0.995_0.01_82)]';
-const PAPER_SUNK = 'bg-[oklch(0.93_0.028_82/0.66)]';
-const PAPER_INPUT = 'bg-[oklch(0.99_0.014_82/0.78)]';
-const BORDER_SOFT = 'border-[oklch(0.74_0.045_82/0.42)]';
-const BORDER_INNER = 'border-[oklch(0.78_0.035_82/0.34)]';
-const FOCUS_RING = 'focus:border-[oklch(0.72_0.16_211/0.68)] focus:shadow-[0_0_0_3px_oklch(0.72_0.16_211/0.14)]';
+// Color is driven by the shared theme tokens (theme-tokens.css). The page is
+// rendered inside a `.bridge-app` root (CloudGateShell), so
+// `.bridge-app.theme-light` and `.bridge-app.theme-dark` cascades apply
+// automatically. Decorative layers (page bg gradient, paper grain) are themed
+// via `theme-overrides.css` keyed off the same class names used below.
+const INK = 'text-foreground';
+const INK_MUTED = 'text-muted-foreground';
+const INK_SUBTLE = 'text-[var(--utility-meta-text)]';
+const PAPER_RAISED = 'bg-[var(--app-cloud-login-raised-bg)]';
+const PAPER_SUNK = 'bg-[var(--app-cloud-login-sunk-bg)]';
+const PAPER_INPUT = 'bg-[var(--app-cloud-login-input-bg)]';
+const BORDER_SOFT = 'border-[var(--app-cloud-login-border)]';
+const BORDER_INNER = 'border-[var(--app-cloud-login-inner-border)]';
+const FOCUS_RING = 'focus:border-[var(--app-cloud-login-focus-border)] focus:shadow-[0_0_0_3px_var(--app-cloud-login-focus-ring)]';
 const INPUT_BASE_CLASS = [
-  'h-12 rounded-full border px-5 outline-none transition',
-  'placeholder:text-[oklch(0.57_0.024_82/0.62)] focus:bg-[oklch(0.995_0.01_82)]',
+  'app-cloud-login-input h-12 rounded-full border px-5 outline-none transition',
+  'focus:bg-[var(--app-cloud-login-input-focus-bg)]',
 ].join(' ');
 const INPUT_ERROR_CLASS = [
-  'border-[oklch(0.62_0.20_25/0.55)]',
-  'focus:border-[oklch(0.62_0.20_25/0.78)]',
-  'focus:shadow-[0_0_0_3px_oklch(0.62_0.20_25/0.14)]',
+  'border-[var(--app-cloud-login-danger-border)]',
+  'focus:border-[var(--app-cloud-login-danger-border-strong)]',
+  'focus:shadow-[0_0_0_3px_var(--app-cloud-login-danger-ring)]',
 ].join(' ');
 const INPUT_HINT_CLASS = [
-  'focus:border-[oklch(0.78_0.14_75/0.78)]',
-  'focus:shadow-[0_0_0_3px_oklch(0.78_0.14_75/0.16)]',
+  'focus:border-[var(--app-cloud-login-hint-border)]',
+  'focus:shadow-[0_0_0_3px_var(--app-cloud-login-hint-ring)]',
 ].join(' ');
-const SMALL_FOCUS_RING = 'focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.45)]';
+const SMALL_FOCUS_RING = 'focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]';
 
 type SocialProvider = { id: 'google' | 'github'; label: string; Mark: ComponentType };
 const SOCIAL_LOGIN_PROVIDERS: ReadonlyArray<SocialProvider> = [
@@ -155,7 +145,9 @@ function CloudField({
       {hint ? (
         <span
           className={`${TYPE_HINT} normal-case tracking-normal ${
-            validation === 'invalid' ? 'text-[oklch(0.55_0.18_25)]' : 'text-[oklch(0.49_0.06_75)]'
+            validation === 'invalid'
+              ? 'text-[var(--app-cloud-login-danger-text)]'
+              : 'text-[var(--app-cloud-login-hint-text)]'
           }`}
         >
           {hint}
@@ -219,10 +211,7 @@ function AvatarPicker({
             name="Cloud signup avatar"
             imageUrl={imageUrl}
             avatarKey={CLOUD_SIGNUP_AVATAR_KEY}
-            className={[
-              'h-12 w-12 rounded-full border border-[oklch(0.62_0.05_82/0.28)]',
-              'shadow-[inset_0_1px_0_oklch(1_0_0/0.45),0_6px_14px_oklch(0.28_0.04_82/0.10)]',
-            ].join(' ')}
+            className="app-cloud-login-avatar h-12 w-12 rounded-full border"
           />
         </button>
         <button
@@ -231,9 +220,8 @@ function AvatarPicker({
           title="Random avatar"
           aria-label="Random avatar"
           className={[
-            'absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border',
-            'shadow-[0_3px_8px_oklch(0.32_0.04_82/0.14)] transition hover:scale-105',
-            'hover:text-[oklch(0.20_0.025_125)] focus-visible:outline-none',
+            'app-cloud-login-dice-button absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border',
+            'transition hover:scale-105 focus-visible:outline-none',
             BORDER_INNER,
             PAPER_RAISED,
             INK_MUTED,
@@ -256,7 +244,7 @@ function AvatarPicker({
         }}
       />
       {uploadError ? (
-        <span className={`${TYPE_HINT} max-w-20 text-center normal-case tracking-normal text-[oklch(0.55_0.18_25)]`}>{uploadError}</span>
+        <span className={`${TYPE_HINT} max-w-20 text-center normal-case tracking-normal text-[var(--app-cloud-login-danger-text)]`}>{uploadError}</span>
       ) : null}
     </div>
   );
@@ -411,11 +399,11 @@ export function CloudLoginPage({
 
   return (
     <div
-      className={`fixed inset-0 z-[100] grid place-items-center overflow-hidden bg-[oklch(0.955_0.026_82)] p-5 ${INK}`}
+      className={`app-cloud-login-page fixed inset-0 z-[100] grid place-items-center overflow-hidden px-5 py-14 ${INK}`}
       style={{ WebkitAppRegion: 'no-drag' as const }}
     >
-      <div className="pointer-events-none absolute inset-0" style={LOGIN_BACKGROUND_STYLE} />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.18] mix-blend-multiply" style={LOGIN_TEXTURE_STYLE} />
+      <div className="app-cloud-login-accents pointer-events-none absolute inset-0" />
+      <div className="app-cloud-login-grain pointer-events-none absolute inset-0" />
 
       <div className="absolute left-0 right-0 top-0 h-12" style={{ WebkitAppRegion: 'drag' as const }} />
       <div className={`pointer-events-none absolute left-0 right-0 top-3 text-center ${TYPE_TITLEBAR} ${INK_SUBTLE}`}>
@@ -424,12 +412,11 @@ export function CloudLoginPage({
 
       <main className="relative w-full max-w-[440px] px-6">
         <div className="grid justify-items-center text-center">
-          <KordiPaintMark />
-          <h1 className={`mt-7 ${TYPE_DISPLAY} ${INK}`}>
+          <h1 className={`${TYPE_DISPLAY} ${INK}`}>
             {isSignup ? 'Create your account' : 'Welcome to Kordi'}
           </h1>
           <p className={`mt-2 ${TYPE_HINT} normal-case tracking-normal ${INK_MUTED}`}>
-            {isSignup ? 'Sign up to sync your Kordi workspace.' : 'Building Next-generation Supercollaboration'}
+            {isSignup ? 'Sign up for Next-generation Supercollaboration' : 'Building Next-generation Supercollaboration'}
           </p>
         </div>
 
@@ -444,9 +431,9 @@ export function CloudLoginPage({
               data-provider={provider.id}
               onClick={() => void handleSocialSignIn(provider.id)}
               className={[
-                'flex h-10 w-10 items-center justify-center rounded-full transition duration-150',
-                'hover:scale-105 hover:text-[oklch(0.16_0.02_125)] focus-visible:outline-none',
-                'focus-visible:ring-2 focus-visible:ring-[oklch(0.72_0.16_211/0.42)]',
+                'app-cloud-login-social-pill flex h-10 w-10 items-center justify-center rounded-full transition duration-150',
+                'hover:scale-105 focus-visible:outline-none',
+                'focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]',
                 'disabled:cursor-wait disabled:opacity-55',
                 INK,
               ].join(' ')}
@@ -458,17 +445,17 @@ export function CloudLoginPage({
         </div>
 
         <div className={`mt-5 flex items-center gap-3 ${TYPE_DIVIDER} ${INK_SUBTLE}`}>
-          <div className="h-px flex-1 bg-[oklch(0.70_0.04_82/0.30)]" />
+          <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
           or
-          <div className="h-px flex-1 bg-[oklch(0.70_0.04_82/0.30)]" />
+          <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
         </div>
 
         <div className={`relative mt-5 grid grid-cols-2 gap-1 rounded-full border ${BORDER_INNER} ${PAPER_SUNK} p-1`}>
           <span
             aria-hidden="true"
             className={[
-              'pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full',
-              'shadow-[0_4px_12px_oklch(0.42_0.04_82/0.10)] transition-transform duration-200 ease-out',
+              'app-cloud-login-tab-pill pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full',
+              'transition-transform duration-200 ease-out',
               PAPER_RAISED,
             ].join(' ')}
             style={{ transform: isSignup ? 'translateX(calc(100% + 0.25rem))' : 'translateX(0)' }}
@@ -546,9 +533,7 @@ export function CloudLoginPage({
             <div
               role="alert"
               className={[
-                'rounded-[14px] border border-[oklch(0.62_0.20_25/0.30)]',
-                'bg-[oklch(0.97_0.04_25/0.55)] px-4 py-2.5 normal-case tracking-normal',
-                'text-[oklch(0.42_0.18_25)]',
+                'app-cloud-login-error rounded-[14px] border px-4 py-2.5 normal-case tracking-normal',
                 TYPE_HINT,
               ].join(' ')}
             >
@@ -561,9 +546,7 @@ export function CloudLoginPage({
             aria-busy={submitting || undefined}
             aria-label={isSignup ? 'Create account' : 'Sign in'}
             className={[
-              'mt-1 h-12 rounded-full border border-[oklch(0.27_0.02_125/0.10)]',
-              'bg-[oklch(0.22_0.02_125)] text-[oklch(0.985_0.015_82)]',
-              'shadow-[0_10px_24px_oklch(0.25_0.03_125/0.18)] transition',
+              'app-cloud-login-submit mt-1 h-12 rounded-full border transition',
               'disabled:cursor-not-allowed disabled:opacity-70',
               TYPE_ACTION,
             ].join(' ')}

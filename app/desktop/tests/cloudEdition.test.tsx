@@ -51,8 +51,12 @@ test('cloud login gate blocks signed-out Cloud Edition in native and web preview
 test('cloud login page centers a minimal Codex-style Kordi account view before model provider auth', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage));
 
-  assert.match(markup, /kordi-paint-mark/);
-  assert.match(markup, /bg-\[oklch\(0\.955_0\.026_82\)\]/);
+  // The painted brand mark no longer renders on the login surface.
+  assert.doesNotMatch(markup, /kordi-paint-mark/);
+  // Page surface is driven by theme tokens (light/dark follow the active
+  // `.bridge-app.theme-*` class) instead of a hard-coded paper colour.
+  assert.match(markup, /app-cloud-login-page/);
+  assert.doesNotMatch(markup, /bg-\[oklch\(0\.955_0\.026_82\)\]/);
   assert.doesNotMatch(markup, /app-overlay/);
   assert.match(markup, /place-items-center/);
   assert.match(markup, /Welcome to Kordi/);
@@ -151,7 +155,7 @@ test('cloud login native window uses a compact size instead of the full app fram
   };
 
   assert.deepEqual(cloudLoginWindowSizeForMode('login'), { width: 760, height: 760, minWidth: 620, minHeight: 640 });
-  assert.deepEqual(cloudLoginWindowSizeForMode('signup'), { width: 760, height: 760, minWidth: 620, minHeight: 640 });
+  assert.deepEqual(cloudLoginWindowSizeForMode('signup'), { width: 760, height: 860, minWidth: 620, minHeight: 640 });
   assert.equal(isTauriRuntime({ __TAURI_INTERNALS__: {} } as typeof globalThis), true);
   assert.equal(isTauriRuntime({} as typeof globalThis), false);
 
@@ -160,7 +164,7 @@ test('cloud login native window uses a compact size instead of the full app fram
   assert.deepEqual(calls, [
     { method: 'setResizable', resizable: false },
     { method: 'setMinSize', size: { width: 620, height: 640 } },
-    { method: 'setSize', size: { width: 760, height: 760 } },
+    { method: 'setSize', size: { width: 760, height: 860 } },
     { method: 'center' },
   ]);
 });
