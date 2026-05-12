@@ -8,6 +8,7 @@ import type { ConversationParticipant, DesktopBridgeHost, DesktopBridgeInvite, D
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
+import { ScratchPanel } from '@/features/scratch/ScratchPanel';
 
 type ProjectSession = {
   id: string;
@@ -347,6 +348,14 @@ export function ProjectDetailPanel({
             </section>
           }
         />
+      </div>
+    );
+  }
+
+  if (activeDetailTab === 'scratch') {
+    return (
+      <div className="app-detail-sheet flex h-full min-h-0 flex-col overflow-hidden">
+        <ScratchPanel sessionId={activeProjectSession.id} />
       </div>
     );
   }
