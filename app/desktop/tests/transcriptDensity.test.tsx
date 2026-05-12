@@ -481,9 +481,11 @@ test('styles reply attribution surfaces with stronger dark-mode contrast', () =>
   const quoteTextBlock = shellCss.match(/\.app-source-message-quote-text \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(responsePanelBlock, /var\(--app-control-bg\) 74%/);
-  assert.match(responseSurfaceBlock, /var\(--app-divider\) 78%/);
-  assert.match(responseSurfaceBlock, /background:\s*linear-gradient/);
-  assert.match(quoteLinkBlock, /var\(--utility-foreground\) 3\.5%/);
+  // Agent reply surface is intentionally flat: no border, no shadow, subtle fill.
+  assert.match(responseSurfaceBlock, /border:\s*0/);
+  assert.match(responseSurfaceBlock, /box-shadow:\s*none/);
+  assert.match(responseSurfaceBlock, /background:\s*color-mix\(in oklab, var\(--utility-foreground\) 3%, transparent\)/);
+  assert.match(quoteLinkBlock, /var\(--utility-foreground\) 7%/);
   assert.match(quoteLabelBlock, /var\(--utility-foreground\) 92%/);
   assert.match(quoteTextBlock, /var\(--utility-foreground\) 68%/);
 });

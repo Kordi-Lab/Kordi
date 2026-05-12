@@ -25,17 +25,10 @@
 .app-chat-bubble-agent {
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
-  border: 1px solid color-mix(in oklab, var(--app-divider) 72%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--app-control-bg) 68%, transparent),
-      color-mix(in oklab, var(--app-control-bg) 48%, var(--app-main-bg))
-    );
+  border: 0;
+  background: color-mix(in oklab, var(--utility-foreground) 3%, transparent);
   color: var(--utility-foreground);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 8px 22px rgba(2, 6, 23, 0.1);
+  box-shadow: none;
 }
 
 .app-message-bubble {

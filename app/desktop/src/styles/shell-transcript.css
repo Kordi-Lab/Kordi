@@ -718,7 +718,7 @@
   width: 100%;
   border: 0;
   border-radius: 10px;
-  background: color-mix(in oklab, var(--utility-foreground) 3.5%, transparent);
+  background: color-mix(in oklab, var(--utility-foreground) 7%, transparent);
   color: inherit;
   cursor: pointer;
   padding: 0.12rem 0.18rem;
@@ -726,7 +726,7 @@
 }
 
 .app-source-message-quote-link:hover {
-  background: color-mix(in oklab, var(--utility-foreground) 5.5%, transparent);
+  background: color-mix(in oklab, var(--utility-foreground) 9%, transparent);
 }
 
 .app-source-message-quote-rail {
@@ -771,8 +771,8 @@
     color-mix(in oklab, var(--app-live-assistant-answer-bg) 34%, transparent) 48%,
     color-mix(in oklab, var(--app-live-assistant-answer-bg) 68%, transparent) 100%
   );
-  -webkit-backdrop-filter: blur(6px) saturate(1.08);
-  backdrop-filter: blur(6px) saturate(1.08);
+  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
   -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.28) 34%, black 100%);
   mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.28) 34%, black 100%);
 }
@@ -901,12 +901,10 @@
 }
 
 .app-live-assistant-answer-surface {
-  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, var(--utility-muted-text));
-  border-radius: 20px;
-  background: linear-gradient(180deg, color-mix(in oklab, var(--app-control-bg) 78%, var(--app-main-bg)), var(--app-live-assistant-answer-bg));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    0 9px 24px rgba(2, 6, 23, 0.12);
+  border: 0;
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--utility-foreground) 3%, transparent);
+  box-shadow: none;
   padding: 0.78rem 0.9rem 0.68rem;
 }
 
@@ -950,8 +948,8 @@
     color-mix(in oklab, var(--app-live-assistant-answer-bg) 32%, transparent) 42%,
     color-mix(in oklab, var(--app-live-assistant-answer-bg) 70%, transparent) 100%
   );
-  -webkit-backdrop-filter: blur(7px) saturate(1.1);
-  backdrop-filter: blur(7px) saturate(1.1);
+  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
   -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.24) 30%, black 100%);
   mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.24) 30%, black 100%);
 }

@@ -674,7 +674,7 @@ export function LmStudioModelControlCenter({
 
   return (
     <div className="space-y-3.5 px-4 py-3.5">
-      <div className="overflow-hidden rounded-[24px] border border-white/8 bg-[linear-gradient(140deg,rgba(54,49,39,0.72),rgba(22,24,22,0.76)_52%,rgba(16,18,20,0.9))] shadow-[inset_0_1px_0_rgba(255,255,255,0.045),0_18px_36px_rgba(0,0,0,0.18)]">
+      <div className="overflow-hidden rounded-[24px] border border-white/8 bg-white/[0.045] shadow-none">
         <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.06fr)_minmax(280px,0.94fr)]">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-300">

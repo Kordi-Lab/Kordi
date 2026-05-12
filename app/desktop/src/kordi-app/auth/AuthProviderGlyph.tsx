@@ -57,8 +57,9 @@ export function AuthProviderGlyph({ providerId, label, size = 'md' }: AuthProvid
 
   return (
     <div
+      data-provider-glyph={providerId}
       className={cn(
-        'grid shrink-0 place-items-center rounded-[14px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]',
+        'app-auth-provider-glyph grid shrink-0 place-items-center rounded-[14px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]',
         meta.className,
         size === 'sm' && 'h-8 w-8 rounded-[10px]',
         size === 'md' && 'h-9 w-9',
