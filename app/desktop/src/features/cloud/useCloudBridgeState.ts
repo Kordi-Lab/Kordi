@@ -10,6 +10,7 @@ import {
   startDesktopChatMessage,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
+  upsertCanonicalMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
@@ -57,6 +58,7 @@ import {
   cloudGroupAgentMentionResponseState,
   cloudGroupAgentOfflineNoticeRequest,
   cloudGroupAgentRequestingNoticeMessage,
+  cloudGroupAgentRequestingNoticeRequest,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
@@ -140,8 +142,12 @@ function cloudAgentMentionCandidates(state: CanonicalSessionState, accountId: st
   });
 }
 
+function cloudGroupRequestSlotMatches(message: CanonicalSessionMessage, noticeId: string) {
+  return message.id === noticeId;
+}
+
 function cloudGroupOfflinePlaceholderMatches(message: CanonicalSessionMessage, noticeId: string) {
-  return message.id === noticeId && message.sourceTransport === 'cloud-group-agent-offline';
+  return cloudGroupRequestSlotMatches(message, noticeId) && message.sourceTransport === 'cloud-group-agent-offline';
 }
 
 function cloudGroupAgentResponseMatches(
@@ -175,24 +181,26 @@ function setCloudGroupRequestPlaceholderProcessing(
   let changed = false;
   const updatedAtMs = Date.now();
   const nextMessages = current.messages.flatMap((message): CanonicalSessionMessage[] => {
+    if (cloudGroupRequestSlotMatches(message, noticeId)) {
+      const content = objectContent(message.content);
+      changed = true;
+      return [{
+        ...message,
+        contentText: 'processing...',
+        content: {
+          ...content,
+          deliveryState: 'processing',
+          timestampMs: typeof content.timestampMs === 'number' ? content.timestampMs : updatedAtMs,
+        },
+        status: 'processing',
+        updatedAtMs,
+      }];
+    }
     if (cloudGroupAgentResponseMatches(message, candidate)) {
       changed = true;
       return [];
     }
-    if (!cloudGroupOfflinePlaceholderMatches(message, noticeId)) return [message];
-    const content = objectContent(message.content);
-    changed = true;
-    return [{
-      ...message,
-      contentText: 'processing...',
-      content: {
-        ...content,
-        deliveryState: 'processing',
-        timestampMs: typeof content.timestampMs === 'number' ? content.timestampMs : updatedAtMs,
-      },
-      status: 'processing',
-      updatedAtMs,
-    }];
+    return [message];
   });
   return changed ? { ...current, messages: nextMessages } : current;
 }
@@ -528,6 +536,21 @@ export function useCloudBridgeState({
       if (cloudGroupOfflineTimersRef.current.has(key)) continue;
 
       setCanonicalSessionState((current) => appendCloudGroupRequestingPlaceholder(current, candidate, noticeId));
+      void upsertCanonicalMessage(cloudGroupAgentRequestingNoticeRequest({
+        sessionId: candidate.requestMessage.sessionId,
+        requestMessageId: candidate.requestMessage.id,
+        targetAccountId: candidate.targetAccountId,
+        targetAgentDisplayName: candidate.targetAgentDisplayName,
+        createdAtMs: Date.now(),
+      }))
+        .then((nextState) => {
+          canonicalSessionStateRef.current = nextState;
+          setCanonicalSessionState(nextState);
+        })
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-group-agent-requesting] failed to persist requesting notice', error);
+        });
       const delayMs = Math.max(0, candidate.requestMessage.createdAtMs + CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS - Date.now());
       const timerId = window.setTimeout(() => {
         cloudGroupOfflineTimersRef.current.delete(key);
@@ -574,7 +597,7 @@ export function useCloudBridgeState({
             targetAgentDisplayName: candidate.targetAgentDisplayName,
             createdAtMs,
           });
-          const afterAppend = await appendCanonicalMessage(notice);
+          const afterAppend = await upsertCanonicalMessage(notice);
           const failedState = markOptimisticCanonicalMessageFailed(
             afterAppend,
             candidate.requestMessage.sessionId,
@@ -753,8 +776,14 @@ export function useCloudBridgeState({
       setCanonicalSessionState(nextState);
     }
     if (!messageAlreadyExists) {
-      nextState = await appendCanonicalMessage({
-        id: envelope.message.id,
+      const stableAgentNoticeId = senderIsAgent && messageReplyToId
+        ? `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`
+        : null;
+      const shouldUpdateStableAgentSlot = Boolean(stableAgentNoticeId && [canonicalSessionState, nextState].some((state) => (
+        state?.messages.some((message) => message.id === stableAgentNoticeId)
+      )));
+      const messageRequest = {
+        id: shouldUpdateStableAgentSlot ? stableAgentNoticeId : envelope.message.id,
         sessionId: envelope.groupId,
         senderIdentityId,
         senderRole: senderIsAgent ? 'external-agent' : (envelope.message.senderAccountId === account.accountId ? 'user' : 'person'),
@@ -775,7 +804,10 @@ export function useCloudBridgeState({
           : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received',
         sourceTransport: senderIsAgent ? 'cloud-group-agent' : 'cloud-group',
         sourceEventId: `${senderIsAgent ? 'cloud-group-agent' : 'cloud-group'}:${cloudMessage.messageId}`,
-      });
+      };
+      nextState = shouldUpdateStableAgentSlot
+        ? await upsertCanonicalMessage(messageRequest)
+        : await appendCanonicalMessage(messageRequest);
       setCanonicalSessionState(nextState);
       if (shouldCountCloudGroupMessageUnread({ activeConversationId, groupId: envelope.groupId, groupSpaceId })) {
         incrementLocalSessionUnread?.(envelope.groupId, 1);

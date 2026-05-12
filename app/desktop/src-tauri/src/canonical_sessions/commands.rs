@@ -6,12 +6,13 @@ use super::{
     rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
     select_delegated_exchange, select_identity, select_message, select_session,
     set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
-    upsert_identity_in_db, AddCanonicalSessionParticipantsRequest, AppendCanonicalMessageRequest,
-    CanonicalContextSnapshot, CanonicalPresence, CanonicalSessionParticipant,
-    CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest, OpenCanonicalSessionRequest,
-    RemoveCanonicalSessionParticipantRequest, RenameCanonicalSessionRequest,
-    SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalPresenceRequest,
-    UpdateCanonicalSessionMetadataRequest, UpsertCanonicalIdentityRequest,
+    upsert_identity_in_db, upsert_message_in_db, AddCanonicalSessionParticipantsRequest,
+    AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
+    CanonicalSessionParticipant, CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest,
+    OpenCanonicalSessionRequest, RemoveCanonicalSessionParticipantRequest,
+    RenameCanonicalSessionRequest, SetCanonicalSessionParticipantRoleRequest,
+    UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
+    UpsertCanonicalIdentityRequest,
 };
 
 fn query_all<T>(
@@ -158,6 +159,14 @@ pub(super) fn desktop_canonical_append_message(
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
     append_message_in_db(&conn, request)?;
+    load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_upsert_message(
+    request: AppendCanonicalMessageRequest,
+) -> Result<CanonicalSessionState, String> {
+    let conn = open_db()?;
+    upsert_message_in_db(&conn, request)?;
     load_state_from_db(&conn)
 }
 

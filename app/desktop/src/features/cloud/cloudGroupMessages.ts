@@ -480,14 +480,13 @@ export function cloudGroupAgentMentionHasResponse(input: {
   return cloudGroupAgentMentionResponseState(input) !== null;
 }
 
-export function cloudGroupAgentRequestingNoticeMessage(input: {
+export function cloudGroupAgentRequestingNoticeRequest(input: {
   sessionId: string;
   requestMessageId: string;
   targetAccountId: string;
   targetAgentDisplayName?: string | null;
   createdAtMs?: number | null;
-  sequenceNum?: number | null;
-}): CanonicalSessionMessage {
+}): AppendCanonicalMessageRequest {
   const sessionId = cleanText(input.sessionId);
   const requestMessageId = cleanText(input.requestMessageId);
   const targetAccountId = cleanText(input.targetAccountId);
@@ -511,12 +510,38 @@ export function cloudGroupAgentRequestingNoticeMessage(input: {
     },
     parentMessageId: requestMessageId,
     status: 'processing',
+    createdAtMs,
+    sourceTransport: 'cloud-group-agent-offline',
+    sourceEventId: `cloud-group-agent-offline:${requestMessageId}:${targetAccountId}`,
+  };
+}
+
+export function cloudGroupAgentRequestingNoticeMessage(input: {
+  sessionId: string;
+  requestMessageId: string;
+  targetAccountId: string;
+  targetAgentDisplayName?: string | null;
+  createdAtMs?: number | null;
+  sequenceNum?: number | null;
+}): CanonicalSessionMessage {
+  const request = cloudGroupAgentRequestingNoticeRequest(input);
+  const createdAtMs = request.createdAtMs ?? Date.now();
+  return {
+    id: request.id ?? '',
+    sessionId: request.sessionId,
+    senderIdentityId: request.senderIdentityId,
+    senderRole: request.senderRole,
+    messageKind: request.messageKind,
+    contentText: request.contentText,
+    content: request.content,
+    parentMessageId: request.parentMessageId,
+    status: request.status ?? 'processing',
     sequenceNum: typeof input.sequenceNum === 'number' && Number.isFinite(input.sequenceNum) ? input.sequenceNum : 0,
     createdAtMs,
     updatedAtMs: createdAtMs,
     contentHash: null,
-    sourceTransport: 'cloud-group-agent-offline',
-    sourceEventId: `cloud-group-agent-offline:${requestMessageId}:${targetAccountId}`,
+    sourceTransport: request.sourceTransport,
+    sourceEventId: request.sourceEventId,
   };
 }
 
