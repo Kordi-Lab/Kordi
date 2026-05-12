@@ -784,12 +784,31 @@ async fn run_command(
         } else {
             result.stderr.trim()
         };
-        Err(if detail.is_empty() {
-            format!("`{display_command}` failed")
-        } else {
-            format!("`{display_command}` failed: {detail}")
-        })
+        Err(friendly_lms_command_failure(&display_command, detail))
     }
+}
+
+fn lms_output_mentions_invalid_passkey(value: &str) -> bool {
+    let normalized = value.to_lowercase();
+    normalized.contains("invalid passkey")
+        || (normalized.contains("failed to authenticate") && normalized.contains("lms cli client"))
+}
+
+fn friendly_lms_command_failure(display_command: &str, detail: &str) -> String {
+    if detail.trim().is_empty() {
+        return format!("`{display_command}` failed");
+    }
+
+    if lms_output_mentions_invalid_passkey(detail) {
+        return format!(
+            "LM Studio rejected the lms CLI passkey while running `{display_command}`. \
+This usually means the running LM Studio app and the lms CLI/key on disk are out of sync. \
+Quit LM Studio completely. Open LM Studio again, then in Kordi open Authentication → LM Studio and click Check setup / Refresh installed. \
+If it still fails, update LM Studio and click Add lms to PATH so Kordi uses LM Studio's bundled CLI.\n\nOriginal lms output:\n{detail}"
+        );
+    }
+
+    format!("`{display_command}` failed: {detail}")
 }
 
 fn clean_command_output(value: &str) -> String {
@@ -866,8 +885,8 @@ fn truncate_output(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        context_search_step, lm_studio_models_endpoint, load_context_fallbacks,
-        server_status_from_output,
+        context_search_step, friendly_lms_command_failure, lm_studio_models_endpoint,
+        load_context_fallbacks, server_status_from_output,
     };
 
     #[test]
@@ -898,5 +917,23 @@ mod tests {
         let stopped = server_status_from_output("", "The server is not running.\n");
         assert!(!stopped.running);
         assert_eq!(stopped.detail, "The server is not running.");
+    }
+
+    #[test]
+    fn lms_passkey_failure_is_reported_with_recovery_steps() {
+        let raw = "[LMStudioClient][Repository][ClientPort][WsClientTransport:AuthenticatedWsClientTransport] WebSocket error: Error: Failed to authenticate: Invalid passkey for lms CLI client. Please make sure you are using the lms shipped with LM Studio.\nError: WebSocket connection closed";
+        let message = friendly_lms_command_failure("lms ls --json", raw);
+
+        assert!(message.contains("LM Studio rejected the lms CLI passkey"));
+        assert!(message.contains("Quit LM Studio completely"));
+        assert!(message.contains("Open LM Studio again"));
+        assert!(message.contains("Add lms to PATH"));
+        assert!(message.contains("Original lms output"));
+    }
+
+    #[test]
+    fn lms_non_passkey_failure_keeps_command_context() {
+        let message = friendly_lms_command_failure("lms ls --json", "boom");
+        assert_eq!(message, "`lms ls --json` failed: boom");
     }
 }
