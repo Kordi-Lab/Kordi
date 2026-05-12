@@ -1,12 +1,13 @@
-import { CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
+import { CheckCircle2, FolderOpen, Info, Layers3, MoreHorizontal, Pencil } from 'lucide-react';
 
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
 import { ProjectDetailPanel } from '@/pages/ProjectDetailPanel';
-import { RightDetailRail } from '@/pages/RightDetailRail';
+import { RightDetailRail, type DetailTabDescriptor } from '@/pages/RightDetailRail';
 import { navigateToTranscriptMessageOrScrollBottom } from '@/kordi-app/components/transcriptReplyAttribution';
+import { MoreTabDropdown } from '@/features/scratch/MoreTabDropdown';
+import { ScratchTabDropdown } from '@/features/scratch/ScratchTabDropdown';
 
 import type { RightDetailShellArgs } from '@/app/kordiShellSlots.types';
-import type { DetailTab } from '@/kordi-app/types';
 
 export function assembleRightDetailSlot(args: RightDetailShellArgs) {
   const activeChatSessionId = args.activeConv.canonicalSessionId ?? args.activeConv.id;
@@ -14,22 +15,52 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
   const navigateToResponse = (messageId: string) => {
     navigateToTranscriptMessageOrScrollBottom(messageId, args.chatTranscriptScrollRef);
   };
-  const detailTabs: Array<{ id: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }> = args.activeNav === 'chats'
+  const scratchSessionId = args.activeNav === 'projects' ? activeProjectSessionId : activeChatSessionId;
+  const scratchTab: DetailTabDescriptor & { icon: React.ComponentType<{ className?: string }> } = {
+    id: 'scratch',
+    label: 'Scratch',
+    icon: Pencil,
+    renderTrigger: ({ active, onActivate, className }) => (
+      <ScratchTabDropdown
+        sessionId={scratchSessionId}
+        active={active}
+        onActivateScratchTab={onActivate}
+        triggerClassName={className}
+      />
+    ),
+  };
+  const moreTab: DetailTabDescriptor & { icon: React.ComponentType<{ className?: string }> } = {
+    id: 'scratch',
+    label: 'More',
+    icon: MoreHorizontal,
+    narrow: true,
+    renderTrigger: ({ active, onActivate, className }) => (
+      <MoreTabDropdown
+        sessionId={scratchSessionId}
+        active={active}
+        onActivateScratchTab={onActivate}
+        triggerClassName={className}
+      />
+    ),
+  };
+  const detailTabs: Array<DetailTabDescriptor & { icon: React.ComponentType<{ className?: string }> }> = args.activeNav === 'chats'
     ? [
         { id: 'info', label: 'Info', icon: Info },
         { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
         { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
+        scratchTab,
       ]
     : [
         { id: 'info', label: 'Info', icon: Info },
         { id: 'context', label: 'Context', icon: Layers3 },
         { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
         { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
+        moreTab,
       ];
 
   return (
     <RightDetailRail
-      detailTabs={detailTabs.map((tab) => ({ id: tab.id, label: tab.label }))}
+      detailTabs={detailTabs.map((tab) => ({ id: tab.id, label: tab.label, renderTrigger: tab.renderTrigger, narrow: tab.narrow }))}
       activeDetailTab={args.activeDetailTab}
       onSelectDetailTab={(tab) => {
         args.setActiveDetailTab(tab);

@@ -1,11 +1,25 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { Braces, X } from 'lucide-react';
 
 import type { DetailTab, EditFilePreview } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
+export type DetailTabRenderArgs = {
+  active: boolean;
+  onActivate: () => void;
+  className: string;
+};
+
+export type DetailTabDescriptor = {
+  id: DetailTab;
+  label: string;
+  renderTrigger?: (args: DetailTabRenderArgs) => ReactNode;
+  /** When true, this tab's grid track is content-sized instead of 1fr. */
+  narrow?: boolean;
+};
+
 type RightDetailRailProps = {
-  detailTabs: Array<{ id: DetailTab; label: string }>;
+  detailTabs: DetailTabDescriptor[];
   activeDetailTab: DetailTab;
   onSelectDetailTab: (tab: DetailTab) => void;
   activeSourcePreview: EditFilePreview | null;
@@ -25,15 +39,31 @@ export function RightDetailRail({
     <aside className="app-main-panel app-right-detail-rail min-w-0 text-white">
       <div className="flex h-full min-h-0 flex-col px-3 py-3">
         <div className="mb-3 shrink-0">
-          <div className="app-inspector-tabs w-full">
+          <div
+            className="app-inspector-tabs w-full"
+            style={{
+              gridTemplateColumns: detailTabs
+                .map((tab) => (tab.narrow ? 'auto' : 'minmax(0, 1fr)'))
+                .join(' '),
+            }}
+          >
             {detailTabs.map((tab) => {
               const active = activeDetailTab === tab.id;
+              const triggerClassName = cn('app-inspector-tab', active ? 'app-inspector-tab-active' : '');
+              const activate = () => onSelectDetailTab(tab.id);
+              if (tab.renderTrigger) {
+                return (
+                  <Fragment key={tab.id}>
+                    {tab.renderTrigger({ active, onActivate: activate, className: triggerClassName })}
+                  </Fragment>
+                );
+              }
               return (
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => onSelectDetailTab(tab.id)}
-                  className={cn('app-inspector-tab', active ? 'app-inspector-tab-active' : '')}
+                  onClick={activate}
+                  className={triggerClassName}
                   title={tab.label}
                   aria-label={tab.label}
                 >
