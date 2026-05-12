@@ -18,6 +18,7 @@ import {
   sessionHasActiveProcessing,
   sessionHasManualTitle,
   sessionMetadata,
+  sessionUnreadCount,
   sessionViewMetadata,
   shouldUseCanonicalMessages,
   syntheticBridgeTarget,
@@ -346,6 +347,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const scopedUnread = conversation.bridgeUnreadByParentSessionId
         ? conversation.bridgeUnreadByParentSessionId[sessionId] ?? 0
         : conversation.unread ?? 0;
+      const unread = Math.max(scopedUnread, sessionUnreadCount(session));
       const taskActivities = this.taskActivities(sessionId);
 
       return {
@@ -355,7 +357,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         canonicalStoragePath: indexes.storagePath,
         name: displayTitle,
         subtitle: buildSubtitle(messages, conversation.subtitle),
-        unread: scopedUnread,
+        unread,
         bridges: inheritedBridgeTarget ? ['Bridge'] : conversation.bridges,
         trust: inheritedBridgeTarget ? 'Bridge' : conversation.trust,
         participants,

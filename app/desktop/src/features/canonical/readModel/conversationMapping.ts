@@ -216,6 +216,11 @@ export function sessionChatActivityAtMs(session: CanonicalSessionState['sessions
   return session.lastMessageAtMs ?? session.createdAtMs ?? session.updatedAtMs ?? 0;
 }
 
+export function sessionUnreadCount(session: CanonicalSessionState['sessions'][number]) {
+  const value = sessionMetadata(session).cloudUnreadCount;
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
 export function syntheticConversation(
   session: CanonicalSessionState['sessions'][number],
   participants: ConversationParticipant[],
@@ -243,7 +248,7 @@ export function syntheticConversation(
     name: displayTitle,
     type: syntheticConversationType(session, participants),
     subtitle: buildSubtitle(messages, session.title),
-    unread: 0,
+    unread: sessionUnreadCount(session),
     bridges: bridgeTarget ? ['Bridge'] : ['Local'],
     trust: bridgeTarget ? 'Bridge' : 'Owned',
     directness: 'Direct chat',
