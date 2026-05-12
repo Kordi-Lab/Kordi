@@ -244,10 +244,7 @@ fn preserve_manual_session_title_metadata(
     let Some(existing_session) = select_session(conn, session_id)? else {
         return Ok(metadata);
     };
-    if !metadata_has_manual_title(&existing_session.metadata) {
-        return Ok(metadata);
-    }
-
+    let has_manual_title = metadata_has_manual_title(&existing_session.metadata);
     let existing_metadata = existing_session
         .metadata
         .as_ref()
@@ -259,11 +256,7 @@ fn preserve_manual_session_title_metadata(
         Some(other) => return Ok(Some(other)),
         None => Map::new(),
     };
-    next_metadata.insert(
-        "titleSource".to_string(),
-        Value::String("manual".to_string()),
-    );
-    preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "sessionTitleSource");
+
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "customName");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupId");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupSpaceId");
@@ -272,6 +265,14 @@ fn preserve_manual_session_title_metadata(
         &existing_metadata,
         "groupNameUpdatedAtMs",
     );
+
+    if has_manual_title {
+        next_metadata.insert(
+            "titleSource".to_string(),
+            Value::String("manual".to_string()),
+        );
+        preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "sessionTitleSource");
+    }
     Ok(Some(Value::Object(next_metadata)))
 }
 

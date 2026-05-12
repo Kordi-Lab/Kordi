@@ -538,6 +538,62 @@ fn renaming_group_session_preserves_group_name_as_separate_metadata() {
 }
 
 #[test]
+fn opening_existing_group_session_preserves_group_name_when_title_is_not_manual() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let alice = seed_identity(&conn, "human:alice", "Alice", "human");
+    let group = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:group:custom-name-preserve".to_string()),
+            kind: "group".to_string(),
+            title: Some("Original thread".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({
+                "customName": "Good group",
+                "groupId": "group-space:custom-name-preserve",
+                "groupSpaceId": "group-space:custom-name-preserve"
+            })),
+        },
+    )
+    .expect("create group");
+
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(group.id.clone()),
+            kind: "group".to_string(),
+            title: Some("New session".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({
+                "groupId": "group-space:custom-name-preserve",
+                "groupSpaceId": "group-space:custom-name-preserve"
+            })),
+        },
+    )
+    .expect("refresh group shell without custom name");
+
+    let refreshed = select_session(&conn, &group.id)
+        .expect("select refreshed")
+        .expect("session exists");
+    assert_eq!(refreshed.title, "New session");
+    let metadata = refreshed.metadata.expect("metadata preserved");
+    assert_eq!(metadata["customName"], "Good group");
+}
+
+#[test]
 fn opening_existing_manual_group_session_preserves_session_title_and_group_name() {
     let conn = test_conn();
     let creator = seed_identity(&conn, "human:me", "Me", "human");
