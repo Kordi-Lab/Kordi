@@ -234,12 +234,20 @@ export function composerThinkingLabel(value: string) {
         : value);
 }
 
+export function normalizeComposerThinkingLevels(levels: string[]) {
+  const normalized = levels.map((level) => level.trim()).filter(Boolean);
+  if (normalized.length === 1 && normalized[0] === 'off') return ['default'];
+  return normalized;
+}
+
 export function fallbackComposerThinkingValue(levels: string[], requested: string) {
-  if (levels.includes(requested)) return requested;
-  if (levels.includes('off')) return 'off';
-  if (levels.includes('default')) return 'default';
-  if (levels.includes('medium')) return 'medium';
-  return levels[0] ?? requested;
+  const normalizedLevels = normalizeComposerThinkingLevels(levels);
+  if (normalizedLevels.includes(requested)) return requested;
+  if (requested === 'xhigh' && normalizedLevels.includes('high')) return 'high';
+  if (normalizedLevels.includes('medium')) return 'medium';
+  if (normalizedLevels.includes('default')) return 'default';
+  if (normalizedLevels.includes('off')) return 'off';
+  return normalizedLevels[0] ?? requested;
 }
 
 function normalizeComposerProviderId(providerId: string) {
@@ -327,9 +335,9 @@ export function ComposerModelControls({
   const filteredModelOptions = selectedProviderValue
     ? modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue)
     : modelOptions;
-  const selectedThinkingLevels = selectedModelOption?.thinkingLevels?.length
+  const selectedThinkingLevels = normalizeComposerThinkingLevels(selectedModelOption?.thinkingLevels?.length
     ? selectedModelOption.thinkingLevels
-    : composerThinkingOptions.map((option) => option.value);
+    : composerThinkingOptions.map((option) => option.value));
   const thinkingOptions = selectedThinkingLevels.map((value) => ({
     value,
     label: composerThinkingLabel(value),

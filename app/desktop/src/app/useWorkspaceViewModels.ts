@@ -9,6 +9,7 @@ import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
   isCanonicalBridgeSessionId,
+  isCanonicalCloudSessionId,
   normalizeCanonicalProjectGroupId,
   projectRootFromCanonicalProjectGroupId,
   resolveProjectSelection,
@@ -424,6 +425,7 @@ export function useWorkspaceViewModels({
   const activeConversationIsBridge = isNativeShell && (
     activeConv.id.startsWith('bridge:')
     || isCanonicalBridgeSessionId(activeConv.canonicalSessionId ?? activeConv.id)
+    || isCanonicalCloudSessionId(activeConv.canonicalSessionId ?? activeConv.id)
     || Boolean(activeConv.bridgeTarget)
   );
   const activeLastMessage = activeConv.messages[activeConv.messages.length - 1];

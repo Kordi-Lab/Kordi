@@ -5,6 +5,8 @@ import type {
 } from '@/kordi-app/types';
 
 const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
+const CANONICAL_CLOUD_DIRECT_PERSON_SESSION_PREFIX = 'session:direct-person:';
+const CANONICAL_CLOUD_GROUP_SESSION_PREFIX = 'session:group:';
 
 export type CanonicalConversationLookupTarget = {
   humanId?: string | null;
@@ -103,6 +105,12 @@ export function findCanonicalConversationForTarget(
 
 export function isCanonicalBridgeSessionId(value?: string | null) {
   return (value ?? '').trim().startsWith(CANONICAL_BRIDGE_SESSION_PREFIX);
+}
+
+export function isCanonicalCloudSessionId(value?: string | null) {
+  const normalized = (value ?? '').trim();
+  return normalized.startsWith(CANONICAL_CLOUD_DIRECT_PERSON_SESSION_PREFIX)
+    || normalized.startsWith(CANONICAL_CLOUD_GROUP_SESSION_PREFIX);
 }
 
 export function findOwnedAgentConversation(conversations: Conversation[]) {

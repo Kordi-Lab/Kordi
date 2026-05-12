@@ -25,7 +25,8 @@ import {
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { useCloudSession } from '@/features/cloud/useCloudSession';
 import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
-import { cloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
+import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
+import { cloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import {
   buildProjectRoutingGroups,
@@ -73,6 +74,7 @@ import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMe
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
   addCanonicalSessionParticipants,
@@ -124,6 +126,7 @@ export function useKordiAppModel() {
   const isNativeShell = isNativeDesktopShell();
   const kordiEdition = currentKordiEdition();
   const cloudSession = useCloudSession({ enabled: kordiEdition === 'cloud' });
+  const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
   // reached the user is past it, so we deliberately don't carry a duplicate
   // cloudSessionStatus / showCloudLoginGate down through the shell.
@@ -344,6 +347,7 @@ export function useKordiAppModel() {
     canonicalSessionState,
     setCanonicalSessionState,
     incrementLocalSessionUnread: incrementUnreadForSession,
+    cloudAgentRuntimeRoutesBySessionId,
   });
 
   const avatarBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
@@ -619,6 +623,59 @@ export function useKordiAppModel() {
     setDesktopChatError,
     handleCopyBridgeText,
   });
+
+  const handleUpdateBridgeAgentModelRoutingForActiveSession = useCallback(async (
+    hostId: string,
+    agentId: string,
+    defaultModel?: string | null,
+    fallbackModel?: string | null,
+    thinking?: string | null,
+    defaultAuthProvider?: string | null,
+    defaultAuthChoice?: string | null,
+    fallbackAuthProvider?: string | null,
+    fallbackAuthChoice?: string | null,
+  ) => {
+    if (isCloudBridgeHostId(hostId)) {
+      const runtimeSessionId = cloudAgentRuntimeSessionId(
+        cloudSession.account?.accountId,
+        activeConv.canonicalSessionId ?? activeConv.id ?? activeConvId,
+      );
+      if (!runtimeSessionId) {
+        setDesktopChatError('Cloud account is still loading. Try again in a moment.');
+        return;
+      }
+      setCloudAgentRuntimeRoutesBySessionId((current) => ({
+        ...current,
+        [runtimeSessionId]: {
+          model: defaultModel ?? null,
+          authProvider: defaultAuthProvider ?? null,
+          authChoice: defaultAuthChoice ?? null,
+          thinking: thinking ?? null,
+        },
+      }));
+      setDesktopChatError(null);
+      return;
+    }
+
+    await handleUpdateBridgeAgentModelRouting(
+      hostId,
+      agentId,
+      defaultModel,
+      fallbackModel,
+      thinking,
+      defaultAuthProvider,
+      defaultAuthChoice,
+      fallbackAuthProvider,
+      fallbackAuthChoice,
+    );
+  }, [
+    activeConv.canonicalSessionId,
+    activeConv.id,
+    activeConvId,
+    cloudSession.account?.accountId,
+    handleUpdateBridgeAgentModelRouting,
+    setDesktopChatError,
+  ]);
 
   const {
     handleSelectChatSession,
@@ -1915,7 +1972,7 @@ export function useKordiAppModel() {
     handleApproveBridgeContactRequest,
     handleRejectBridgeContactRequest,
     handleSetDefaultBridgeAgent,
-    handleUpdateBridgeAgentModelRouting,
+    handleUpdateBridgeAgentModelRouting: handleUpdateBridgeAgentModelRoutingForActiveSession,
     handleUpdateLocalAgentModelRouting,
     activeAgentId: agentsUi.activeAgentId,
     setActiveAgentId: agentsUi.setActiveAgentId,

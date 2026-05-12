@@ -1,7 +1,8 @@
 import { useCallback } from 'react';
 
-import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
+import { isCanonicalBridgeSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
+import { fallbackComposerThinkingValue } from '@/kordi-app/components';
 import { storeDesktopChatAttachment, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
 
 import { friendlyAttachmentName } from './composerAttachments';
@@ -33,6 +34,7 @@ type UseComposerInputActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'isNativeShell'
   | 'activeConvId'
+  | 'activeConvCanonicalSessionId'
   | 'activeProjectSessionId'
   | 'desktopChatState'
   | 'composerSelections'
@@ -50,6 +52,30 @@ type UseComposerInputActionsArgs = Pick<
   | 'setDesktopChatError'
   | 'shouldAutoFollowChatRef'
 >;
+
+export function composerConfigTargetSessionId({
+  scope,
+  activeConvId,
+  activeConvCanonicalSessionId,
+  activeProjectSessionId,
+  desktopActiveSessionId,
+}: {
+  scope: ComposerScope;
+  activeConvId: string;
+  activeConvCanonicalSessionId?: string | null;
+  activeProjectSessionId: string;
+  desktopActiveSessionId?: string | null;
+}) {
+  if (scope === 'project') return activeProjectSessionId;
+  if (isLocalDraftChatConversationId(activeConvId)) return activeConvId;
+
+  const sessionId = activeConvCanonicalSessionId?.trim() || activeConvId.trim();
+  if (!sessionId) return desktopActiveSessionId ?? null;
+  if (activeConvId.startsWith('bridge:') || isCanonicalBridgeSessionId(sessionId) || isCanonicalCloudSessionId(sessionId)) {
+    return null;
+  }
+  return activeConvId;
+}
 
 function appendOptimisticSessionConfigMessage({
   current,
@@ -172,6 +198,7 @@ function attachmentSummaryTextValue(text: string, attachments: AttachmentItem[])
 export function useComposerInputActions({
   isNativeShell,
   activeConvId,
+  activeConvCanonicalSessionId,
   activeProjectSessionId,
   desktopChatState,
   composerSelections,
@@ -200,8 +227,14 @@ export function useComposerInputActions({
         ? value
         : null;
     const nextModelValue = resolvedModelValue ?? (type === 'model' ? value : undefined);
-    const nextThinkingValue = type === 'thinking' ? value : undefined;
     const currentSelection = composerSelections[scope];
+    const modelThinkingLevels = nextModelValue
+      ? chatModelOptions.find((option) => option.value === nextModelValue)?.thinkingLevels ?? []
+      : [];
+    const nextModelThinkingValue = nextModelValue
+      ? fallbackComposerThinkingValue(modelThinkingLevels, currentSelection.thinking)
+      : undefined;
+    const nextThinkingValue = type === 'thinking' ? value : nextModelThinkingValue;
     const modelChanged = Boolean(nextModelValue && nextModelValue !== currentSelection.model);
     const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== currentSelection.thinking);
 
@@ -210,9 +243,9 @@ export function useComposerInputActions({
       [scope]: {
         ...current[scope],
         ...(type === 'provider'
-          ? (resolvedModelValue ? { model: resolvedModelValue } : {})
+          ? (resolvedModelValue ? { model: resolvedModelValue, ...(nextModelThinkingValue ? { thinking: nextModelThinkingValue } : {}) } : {})
           : type === 'model'
-            ? { model: value }
+            ? { model: value, ...(nextModelThinkingValue ? { thinking: nextModelThinkingValue } : {}) }
             : type === 'thinking'
               ? { thinking: value }
               : { [type]: value }),
@@ -223,13 +256,13 @@ export function useComposerInputActions({
       focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
     }
 
-    const targetSessionId = scope === 'project'
-      ? activeProjectSessionId
-      : isLocalDraftChatConversationId(activeConvId)
-        ? activeConvId
-        : activeConvId && !activeConvId.startsWith('bridge:') && !isCanonicalBridgeSessionId(activeConvId)
-          ? activeConvId
-          : desktopChatState?.activeSessionId;
+    const targetSessionId = composerConfigTargetSessionId({
+      scope,
+      activeConvId,
+      activeConvCanonicalSessionId,
+      activeProjectSessionId,
+      desktopActiveSessionId: desktopChatState?.activeSessionId,
+    });
     if (isNativeShell && targetSessionId && !isProjectDraftSessionId(targetSessionId)) {
       try {
         setDesktopChatError(null);
@@ -261,6 +294,7 @@ export function useComposerInputActions({
     }
   }, [
     activeConvId,
+    activeConvCanonicalSessionId,
     activeProjectSessionId,
     chatModelOptions,
     composerSelections,

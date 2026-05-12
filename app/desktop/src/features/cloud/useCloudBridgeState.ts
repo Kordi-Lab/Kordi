@@ -10,6 +10,7 @@ import {
   startDesktopChatMessage,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
+  type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
   CanonicalSessionState,
@@ -30,6 +31,7 @@ import {
   cloudContactsToCanonicalIdentityRequests,
   cloudGroupParticipantContacts,
   cloudPeerAccountIdFromConversationId,
+  isCloudBridgeHostId,
   mergeCloudBridgeState,
 } from './cloudBridgeState';
 import {
@@ -42,6 +44,10 @@ import {
   parseCloudAgentResponse,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
+import {
+  cloudAgentRuntimeRouteForSession,
+  cloudAgentRuntimeSessionId,
+} from './cloudAgentRuntime';
 import {
   cloudGroupAgentConversationId,
   cloudGroupAgentResponseTargetAccountIds,
@@ -164,6 +170,33 @@ export type UseCloudBridgeStateResult = {
   refreshCloudBridgeMessages(): Promise<void>;
 };
 
+function applyCloudAgentRuntimeRouteToState(
+  state: DesktopBridgeState | null,
+  route: DesktopChatMessageRoute | null,
+): DesktopBridgeState | null {
+  if (!state) return state;
+  return {
+    ...state,
+    hosts: state.hosts.map((host) => {
+      if (!isCloudBridgeHostId(host.id)) return host;
+      return {
+        ...host,
+        agents: host.agents.map((agent) => (
+          agent.id === 'cloud-local-agent'
+            ? {
+                ...agent,
+                defaultModel: route?.model ?? null,
+                defaultAuthProvider: route?.authProvider ?? null,
+                defaultAuthChoice: route?.authChoice ?? null,
+                thinking: route?.thinking ?? null,
+              }
+            : agent
+        )),
+      };
+    }),
+  };
+}
+
 export function useCloudBridgeState({
   account,
   baseBridgeState,
@@ -171,6 +204,7 @@ export function useCloudBridgeState({
   canonicalSessionState,
   setCanonicalSessionState,
   incrementLocalSessionUnread,
+  cloudAgentRuntimeRoutesBySessionId,
 }: {
   account: CloudAccount | null;
   baseBridgeState: DesktopBridgeState | null;
@@ -178,6 +212,7 @@ export function useCloudBridgeState({
   canonicalSessionState?: CanonicalSessionState | null;
   setCanonicalSessionState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   incrementLocalSessionUnread?: (sessionId: string, count?: number) => void;
+  cloudAgentRuntimeRoutesBySessionId?: Record<string, DesktopChatMessageRoute>;
 }): UseCloudBridgeStateResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const contacts = useCloudContacts(account);
@@ -593,9 +628,12 @@ export function useCloudBridgeState({
         const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
           setLocalAgentTurnsByRequestId((current) => ({ ...current, [envelope.message!.id]: turn }));
         };
+        const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${envelope.groupId}`;
         const startedTurn = await startDesktopChatMessage(
-          `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${envelope.groupId}`,
+          runtimeSessionId,
           prompt,
+          [],
+          cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
         );
         rememberLocalTurn(startedTurn);
         cloudAgentTurnIdsByRequestIdRef.current.set(envelope.message!.id, startedTurn.id);
@@ -668,6 +706,7 @@ export function useCloudBridgeState({
     activeConversationId,
     canonicalSessionState,
     client,
+    cloudAgentRuntimeRoutesBySessionId,
     incrementLocalSessionUnread,
     mergeMessage,
     messagesByPeer,
@@ -869,9 +908,12 @@ export function useCloudBridgeState({
           const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
             setLocalAgentTurnsByRequestId((current) => ({ ...current, [message.messageId]: turn }));
           };
+          const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${peerId}`;
           const startedTurn = await startDesktopChatMessage(
-            `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${peerId}`,
+            runtimeSessionId,
             prompt,
+            [],
+            cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
           );
           rememberLocalTurn(startedTurn);
           cloudAgentTurnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
@@ -902,7 +944,7 @@ export function useCloudBridgeState({
         });
       }
     }
-  }, [account, client, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
+  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
@@ -971,6 +1013,8 @@ export function useCloudBridgeState({
 
   const cloudBridgeState = useMemo(() => {
     if (!account) return null;
+    const activeRuntimeSessionId = cloudAgentRuntimeSessionId(account.accountId, activeConversationId);
+    const activeRuntimeRoute = cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, activeRuntimeSessionId);
     const generated = buildCloudDesktopBridgeState({
       account,
       contacts: cloudBridgeContacts,
@@ -978,11 +1022,16 @@ export function useCloudBridgeState({
       readInboundMessageIdsByPeer,
       activeConversationId,
       localAgentTurnsByRequestId,
+      localAgentRuntimeRoute: activeRuntimeRoute,
     });
-    return mergeCloudBridgeState(generated, cloudBridgeOverride);
+    return applyCloudAgentRuntimeRouteToState(
+      mergeCloudBridgeState(generated, cloudBridgeOverride),
+      activeRuntimeRoute,
+    );
   }, [
     account,
     activeConversationId,
+    cloudAgentRuntimeRoutesBySessionId,
     cloudBridgeOverride,
     cloudBridgeContacts,
     localAgentTurnsByRequestId,
