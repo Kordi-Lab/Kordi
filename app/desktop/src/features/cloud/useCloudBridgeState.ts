@@ -55,6 +55,7 @@ import {
   cloudGroupAgentConversationId,
   cloudGroupAgentMentionHasResponse,
   cloudGroupAgentOfflineNoticeRequest,
+  cloudGroupAgentRequestingNoticeMessage,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
@@ -136,6 +137,40 @@ function cloudAgentMentionCandidates(state: CanonicalSessionState, accountId: st
       return [{ requestMessage: message, targetAccountId, targetHumanDisplayName, targetAgentDisplayName }];
     });
   });
+}
+
+function removeCloudGroupOfflinePlaceholder(
+  current: CanonicalSessionState | null,
+  noticeId: string,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  const nextMessages = current.messages.filter((message) => !(
+    message.id === noticeId && message.sourceTransport === 'cloud-group-agent-offline'
+  ));
+  return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
+}
+
+function appendCloudGroupRequestingPlaceholder(
+  current: CanonicalSessionState | null,
+  candidate: CloudAgentMentionCandidate,
+  noticeId: string,
+): CanonicalSessionState | null {
+  if (!current || current.messages.some((message) => message.id === noticeId)) return current;
+  const createdAtMs = Date.now();
+  return {
+    ...current,
+    messages: [
+      ...current.messages,
+      cloudGroupAgentRequestingNoticeMessage({
+        sessionId: candidate.requestMessage.sessionId,
+        requestMessageId: candidate.requestMessage.id,
+        targetAccountId: candidate.targetAccountId,
+        targetAgentDisplayName: candidate.targetAgentDisplayName,
+        createdAtMs,
+        sequenceNum: candidate.requestMessage.sequenceNum + 1,
+      }),
+    ],
+  };
 }
 
 function wait(ms: number): Promise<void> {
@@ -423,22 +458,25 @@ export function useCloudBridgeState({
     for (const candidate of candidates) {
       if (Date.now() - candidate.requestMessage.createdAtMs > CLOUD_AGENT_MENTION_WINDOW_MS) continue;
       const noticeId = `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`;
-      const key = `${candidate.requestMessage.id}:${candidate.targetAccountId}`;
+      const key = `${candidate.requestMessage.id}\u001f${candidate.targetAccountId}`;
       activeKeys.add(key);
       const hasResponse = cloudGroupAgentMentionHasResponse({
         requestMessageId: candidate.requestMessage.id,
         targetAccountId: candidate.targetAccountId,
         messages: canonicalSessionState.messages,
       });
-      const hasNotice = canonicalSessionState.messages.some((message) => message.id === noticeId);
-      if (hasResponse || hasNotice) {
+      const existingNotice = canonicalSessionState.messages.find((message) => message.id === noticeId);
+      const hasOfflineNotice = existingNotice?.status === 'failed';
+      if (hasResponse || hasOfflineNotice) {
         const timerId = cloudGroupOfflineTimersRef.current.get(key);
         if (timerId !== undefined) window.clearTimeout(timerId);
         cloudGroupOfflineTimersRef.current.delete(key);
+        setCanonicalSessionState((current) => removeCloudGroupOfflinePlaceholder(current, noticeId));
         continue;
       }
       if (cloudGroupOfflineTimersRef.current.has(key)) continue;
 
+      setCanonicalSessionState((current) => appendCloudGroupRequestingPlaceholder(current, candidate, noticeId));
       const delayMs = Math.max(0, candidate.requestMessage.createdAtMs + CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS - Date.now());
       const timerId = window.setTimeout(() => {
         cloudGroupOfflineTimersRef.current.delete(key);
@@ -506,6 +544,13 @@ export function useCloudBridgeState({
       if (activeKeys.has(key)) continue;
       window.clearTimeout(timerId);
       cloudGroupOfflineTimersRef.current.delete(key);
+      const [requestMessageId, targetAccountId] = key.split('\u001f');
+      if (requestMessageId && targetAccountId) {
+        setCanonicalSessionState((current) => removeCloudGroupOfflinePlaceholder(
+          current,
+          `msg:cloud-agent-offline:${requestMessageId}:${targetAccountId}`,
+        ));
+      }
     }
   }, [account, canonicalSessionState, setCanonicalSessionState]);
 

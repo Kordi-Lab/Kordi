@@ -466,6 +466,46 @@ export function cloudGroupAgentMentionHasResponse(input: {
   });
 }
 
+export function cloudGroupAgentRequestingNoticeMessage(input: {
+  sessionId: string;
+  requestMessageId: string;
+  targetAccountId: string;
+  targetAgentDisplayName?: string | null;
+  createdAtMs?: number | null;
+  sequenceNum?: number | null;
+}): CanonicalSessionMessage {
+  const sessionId = cleanText(input.sessionId);
+  const requestMessageId = cleanText(input.requestMessageId);
+  const targetAccountId = cleanText(input.targetAccountId);
+  const targetAgentDisplayName = cleanText(input.targetAgentDisplayName) || 'Kordi';
+  const createdAtMs = typeof input.createdAtMs === 'number' && Number.isFinite(input.createdAtMs)
+    ? input.createdAtMs
+    : Date.now();
+  return {
+    id: `msg:cloud-agent-offline:${requestMessageId}:${targetAccountId}`,
+    sessionId,
+    senderIdentityId: `agent:cloud:${targetAccountId}`,
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'Requesting…',
+    content: {
+      sender: targetAgentDisplayName,
+      timestampMs: createdAtMs,
+      deliveryState: 'processing',
+      requestId: requestMessageId,
+      replyToMessageId: requestMessageId,
+    },
+    parentMessageId: requestMessageId,
+    status: 'processing',
+    sequenceNum: typeof input.sequenceNum === 'number' && Number.isFinite(input.sequenceNum) ? input.sequenceNum : 0,
+    createdAtMs,
+    updatedAtMs: createdAtMs,
+    contentHash: null,
+    sourceTransport: 'cloud-group-agent-offline',
+    sourceEventId: `cloud-group-agent-offline:${requestMessageId}:${targetAccountId}`,
+  };
+}
+
 export function cloudGroupAgentOfflineNoticeRequest(input: {
   sessionId: string;
   requestMessageId: string;
@@ -489,7 +529,7 @@ export function cloudGroupAgentOfflineNoticeRequest(input: {
     senderIdentityId: `agent:cloud:${targetAccountId}`,
     senderRole: 'external-agent',
     messageKind: 'agent-turn',
-    contentText: text,
+    contentText: '',
     content: {
       sender: targetAgentDisplayName,
       timestampMs: createdAtMs,

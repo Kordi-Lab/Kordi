@@ -31,6 +31,7 @@ import {
   shouldRouteMentionThroughCloudGroup,
   cloudGroupAgentMentionHasResponse,
   cloudGroupAgentOfflineNoticeRequest,
+  cloudGroupAgentRequestingNoticeMessage,
 } from '../src/features/cloud/cloudGroupMessages';
 import { CLOUD_HOST_SENTINEL } from '../src/features/cloud/useCloudContacts';
 
@@ -310,6 +311,30 @@ test('cloud group detects whether an offline candidate already sent an agent res
   }), false);
 });
 
+test('cloud group requesting notice shows a temporary smooth waiting state', () => {
+  const message = cloudGroupAgentRequestingNoticeMessage({
+    sessionId: 'session:group:one',
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_yang',
+    targetAgentDisplayName: "杨涛's Kordi",
+    createdAtMs: 123,
+    sequenceNum: 9,
+  });
+
+  assert.equal(message.id, 'msg:cloud-agent-offline:msg_request:acct_yang');
+  assert.equal(message.senderIdentityId, 'agent:cloud:acct_yang');
+  assert.equal(message.contentText, 'Requesting…');
+  assert.equal(message.status, 'processing');
+  assert.equal(message.sourceTransport, 'cloud-group-agent-offline');
+  assert.deepEqual(message.content, {
+    sender: "杨涛's Kordi",
+    timestampMs: 123,
+    deliveryState: 'processing',
+    requestId: 'msg_request',
+    replyToMessageId: 'msg_request',
+  });
+});
+
 test('cloud group offline notice replies as the mentioned agent and marks the turn failed', () => {
   const request = cloudGroupAgentOfflineNoticeRequest({
     sessionId: 'session:group:one',
@@ -323,7 +348,7 @@ test('cloud group offline notice replies as the mentioned agent and marks the tu
   assert.equal(request.senderIdentityId, 'agent:cloud:acct_yang');
   assert.equal(request.senderRole, 'external-agent');
   assert.equal(request.messageKind, 'agent-turn');
-  assert.equal(request.contentText, "杨涛 and 杨涛's Kordi are offline.");
+  assert.equal(request.contentText, '');
   assert.equal(request.parentMessageId, 'msg_request');
   assert.equal(request.status, 'failed');
   assert.deepEqual(request.content, {
