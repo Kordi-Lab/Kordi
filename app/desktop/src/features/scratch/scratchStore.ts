@@ -1,12 +1,13 @@
 import { useSyncExternalStore } from 'react';
 
+import { kvGet, kvSet } from './storage/indexedDb';
 import type { ScratchKind, ScratchMetadata } from './types';
 
 const EMPTY: readonly ScratchMetadata[] = Object.freeze([]);
 
 const scratchListBySession = new Map<string, ScratchMetadata[]>();
 const activeScratchBySession = new Map<string, string | null>();
-const seededSessions = new Set<string>();
+const sessionLoadStarted = new Set<string>();
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -27,12 +28,13 @@ function uuid(): string {
   return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
-function ensureSeeded(sessionId: string) {
-  if (!sessionId || seededSessions.has(sessionId)) return;
-  seededSessions.add(sessionId);
-  if (scratchListBySession.has(sessionId)) return;
+function scratchListStorageKey(sessionId: string): string {
+  return `scratch_list:${sessionId}`;
+}
+
+function generateMockList(): ScratchMetadata[] {
   const now = Date.now();
-  const mock: ScratchMetadata[] = [
+  return [
     {
       id: `scratch_${uuid()}`,
       kind: 'canvas',
@@ -55,14 +57,52 @@ function ensureSeeded(sessionId: string) {
       updatedAt: now - 1000 * 60 * 60 * 24,
     },
   ];
-  scratchListBySession.set(sessionId, mock);
+}
+
+function persistList(sessionId: string) {
+  if (!sessionId) return;
+  const list = scratchListBySession.get(sessionId);
+  if (!list) return;
+  void kvSet(scratchListStorageKey(sessionId), list);
+}
+
+function ensureSessionHydrated(sessionId: string) {
+  if (!sessionId || sessionLoadStarted.has(sessionId)) return;
+  sessionLoadStarted.add(sessionId);
+  void kvGet<ScratchMetadata[]>(scratchListStorageKey(sessionId))
+    .then((stored) => {
+      const existing = scratchListBySession.get(sessionId) ?? [];
+      if (Array.isArray(stored) && stored.length > 0) {
+        if (existing.length === 0) {
+          scratchListBySession.set(sessionId, stored);
+        } else {
+          // Merge: anything created locally during the async load wins by id
+          const seen = new Set(existing.map((s) => s.id));
+          const merged = [...existing, ...stored.filter((s) => !seen.has(s.id))];
+          scratchListBySession.set(sessionId, merged);
+          void kvSet(scratchListStorageKey(sessionId), merged);
+        }
+        notify();
+      } else if (existing.length === 0) {
+        const mocks = generateMockList();
+        scratchListBySession.set(sessionId, mocks);
+        void kvSet(scratchListStorageKey(sessionId), mocks);
+        notify();
+      }
+    })
+    .catch(() => {
+      if (!scratchListBySession.has(sessionId)) {
+        scratchListBySession.set(sessionId, generateMockList());
+        notify();
+      }
+    });
 }
 
 export function useScratchList(sessionId: string): readonly ScratchMetadata[] {
   return useSyncExternalStore(
     subscribe,
     () => {
-      ensureSeeded(sessionId);
+      ensureSessionHydrated(sessionId);
       return scratchListBySession.get(sessionId) ?? EMPTY;
     },
     () => EMPTY,
@@ -84,7 +124,6 @@ export function setActiveScratchId(sessionId: string, scratchId: string | null) 
 }
 
 export function createScratch(sessionId: string, kind: ScratchKind): ScratchMetadata {
-  ensureSeeded(sessionId);
   const now = Date.now();
   const meta: ScratchMetadata = {
     id: `scratch_${uuid()}`,
@@ -93,10 +132,12 @@ export function createScratch(sessionId: string, kind: ScratchKind): ScratchMeta
     createdAt: now,
     updatedAt: now,
   };
+  if (!sessionId) return meta;
   const list = scratchListBySession.get(sessionId) ?? [];
   scratchListBySession.set(sessionId, [meta, ...list]);
   activeScratchBySession.set(sessionId, meta.id);
   notify();
+  persistList(sessionId);
   return meta;
 }
 
