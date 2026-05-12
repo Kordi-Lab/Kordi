@@ -57,6 +57,7 @@ import {
   cloudGroupPeerIdsFromMessages,
   cloudGroupSelfParticipant,
   cloudGroupTitleForOutgoingControl,
+  cloudSessionTitleUpdateNoticeRequest,
   cloudSessionTitleUpdateTitle,
   cloudGroupUniqueParticipants,
   cloudGroupRelatedControlsForSend,
@@ -382,12 +383,24 @@ export function useCloudBridgeState({
     setCanonicalSessionState(nextState);
 
     if (sessionTitleUpdateTitle) {
+      const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
       nextState = await renameCanonicalSession({
         sessionId: envelope.groupId,
         title: sessionTitleUpdateTitle,
-        requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
+        requestedByIdentityId: actorIdentityId,
       });
       setCanonicalSessionState(nextState);
+      const parsedControlCreatedAtMs = Date.parse(cloudMessage.createdAt);
+      const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
+        envelope,
+        actorIdentityId,
+        createdAtMs: Number.isFinite(parsedControlCreatedAtMs) ? parsedControlCreatedAtMs : Date.now(),
+        cloudMessageId: cloudMessage.messageId,
+      });
+      if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
+        nextState = await appendCanonicalMessage(noticeRequest);
+        setCanonicalSessionState(nextState);
+      }
     }
 
     if (shouldApplyCloudGroupTitleUpdate(envelope)) {

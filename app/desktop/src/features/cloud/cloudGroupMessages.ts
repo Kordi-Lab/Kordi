@@ -2,6 +2,7 @@ import type {
   Contact,
   Conversation,
   ConversationParticipant,
+  AppendCanonicalMessageRequest,
   DesktopBridgeSessionParticipant,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
@@ -143,6 +144,37 @@ export function shouldApplyCloudGroupTitleUpdate(input: Pick<CloudGroupControlEn
 
 export function cloudSessionTitleUpdateTitle(input: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle'>) {
   return input.kind === 'session-title-update' ? cloudGroupNonGenericTitle(input.groupTitle) : null;
+}
+
+export function cloudSessionTitleUpdateNoticeRequest(input: {
+  envelope: CloudGroupControlEnvelope;
+  actorIdentityId: string;
+  createdAtMs: number;
+  cloudMessageId: string;
+}): AppendCanonicalMessageRequest | null {
+  const title = cloudSessionTitleUpdateTitle(input.envelope);
+  const actorIdentityId = cleanText(input.actorIdentityId);
+  if (!title || !actorIdentityId) return null;
+  const actorDisplayName = cleanText(input.envelope.actor.displayName) || 'Someone';
+  const cloudMessageId = cleanText(input.cloudMessageId) || `${input.envelope.groupId}:${input.createdAtMs}`;
+  return {
+    id: `cloud-session-title-notice:${cloudMessageId}`,
+    sessionId: input.envelope.groupId,
+    senderIdentityId: actorIdentityId,
+    senderRole: 'system',
+    messageKind: 'status',
+    contentText: `${actorDisplayName} changed the session name to ${title}`,
+    content: {
+      kind: 'session-title-update',
+      scope: 'session',
+      title,
+      actorDisplayName,
+    },
+    createdAtMs: input.createdAtMs,
+    status: 'complete',
+    sourceTransport: 'cloud-group-session-title-update',
+    sourceEventId: `cloud-group-session-title-update:${cloudMessageId}`,
+  };
 }
 
 function encodeBase64Url(value: string): string {
