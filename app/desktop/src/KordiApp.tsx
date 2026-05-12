@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
@@ -7,8 +7,41 @@ import { applyKordiMainWindowSize } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import { setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import type { ResolvedThemeMode } from '@/kordi-app/types';
 
 const AVATAR_URL_PREFIX = 'kordi-pixel-avatar://';
+
+function readSystemTheme(): ResolvedThemeMode {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+// The shell's useKordiUiEffects also writes `theme-*` to <body>, but it only
+// runs after KordiAppShell mounts. Before that — on the cloud login gate and
+// the restoring-session splash — nothing else applies a theme class, so the
+// dark/light tokens never reach those screens. This hook syncs the body class
+// to the current system preference while the gate/splash is up; once the
+// shell mounts, its effect takes over with the user's saved preference.
+function useGateThemeClass() {
+  const [theme, setTheme] = useState<ResolvedThemeMode>(() => readSystemTheme());
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
+    const handle = () => setTheme(mediaQuery.matches ? 'light' : 'dark');
+    handle();
+    mediaQuery.addEventListener('change', handle);
+    return () => mediaQuery.removeEventListener('change', handle);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('theme-light', theme === 'light');
+    document.body.classList.toggle('theme-dark', theme === 'dark');
+    document.documentElement.style.colorScheme = theme;
+  }, [theme]);
+
+  return theme;
+}
 
 export type KordiAppRootProps = {
   edition?: KordiEdition;
@@ -32,7 +65,11 @@ export function KordiAppRoot({
   // so existing call sites that relied on the old default keep working.
   if (edition !== 'cloud') {
     if (shouldShowCloudLoginGate({ edition, cloudSessionStatus: cloudSessionStatus ?? 'signed-out' })) {
-      return <CloudLoginPage />;
+      return (
+        <CloudGateShell>
+          <CloudLoginPage />
+        </CloudGateShell>
+      );
     }
     return <KordiAppShell />;
   }
@@ -42,6 +79,19 @@ export function KordiAppRoot({
       cloudSessionStatusOverride={cloudSessionStatus}
       cloudSessionOverride={cloudSession}
     />
+  );
+}
+
+// Hosts whatever gate-time screen is showing (login form or restoring-session
+// splash) inside the same `bridge-app` root the main shell uses, so the
+// theme-tokens.css palette resolves. The wrapping hook installs the system
+// theme class on <body> until the shell takes over.
+function CloudGateShell({ children }: { children: React.ReactNode }) {
+  useGateThemeClass();
+  return (
+    <div className="bridge-app app-cloud-login-shell">
+      {children}
+    </div>
   );
 }
 
@@ -74,15 +124,21 @@ function CloudEditionRoot({
 
   if (shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: status })) {
     return (
-      <CloudLoginPage
-        onSignIn={session.signIn}
-        onSignUp={session.signUp}
-        onSocialSignIn={session.signInWithProvider}
-      />
+      <CloudGateShell>
+        <CloudLoginPage
+          onSignIn={session.signIn}
+          onSignUp={session.signUp}
+          onSocialSignIn={session.signInWithProvider}
+        />
+      </CloudGateShell>
     );
   }
   if (status === 'loading') {
-    return <CloudGateLoading />;
+    return (
+      <CloudGateShell>
+        <CloudGateLoading />
+      </CloudGateShell>
+    );
   }
   return <KordiAppShell />;
 }
@@ -90,7 +146,7 @@ function CloudEditionRoot({
 function CloudGateLoading() {
   return (
     <div
-      className="fixed inset-0 z-[100] grid place-items-center bg-[oklch(0.955_0.026_82)] text-[12px] font-semibold uppercase tracking-[0.18em] text-[oklch(0.52_0.025_82/0.62)]"
+      className="app-cloud-login-loading fixed inset-0 z-[100] grid place-items-center text-[12px] font-semibold uppercase tracking-[0.18em]"
       aria-live="polite"
       aria-busy="true"
     >
