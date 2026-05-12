@@ -705,7 +705,7 @@ function FoldableAssistantAnswer({
   return (
     <div className={cn(
       'app-live-assistant-answer w-full text-[13px]',
-      cancelled && 'app-live-assistant-answer-cancelled rounded-xl border border-rose-400/25 bg-rose-500/[0.07] px-3 py-2 text-rose-200',
+      cancelled && 'app-live-assistant-answer-cancelled text-rose-300',
     )}>
       <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
         <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
