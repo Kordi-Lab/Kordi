@@ -587,37 +587,14 @@ fn inbound_group_local_agent_response_join_uses_response_sender_agent() {
     assert_eq!(response_sender, "Testuser5's Kordi");
 }
 
+
 #[test]
 fn group_local_agent_response_relay_creates_delegated_exchange_task() {
     let conn = test_conn();
     for (id, kind, display_name, human_id, node_id, owner_id, agent_id) in [
-        (
-            "human:local",
-            "human",
-            "Local",
-            Some("kh_local"),
-            Some("kd_local"),
-            None,
-            None,
-        ),
-        (
-            "human:remote",
-            "human",
-            "Remote",
-            Some("kh_remote"),
-            Some("kd_remote"),
-            None,
-            None,
-        ),
-        (
-            "agent:local",
-            "agent",
-            "Local Kordi",
-            None,
-            Some("kd_local"),
-            Some("human:local"),
-            Some("ka_local"),
-        ),
+        ("human:local", "human", "Local", Some("kh_local"), Some("kd_local"), None, None),
+        ("human:remote", "human", "Remote", Some("kh_remote"), Some("kd_remote"), None, None),
+        ("agent:local", "agent", "Local Kordi", None, Some("kd_local"), Some("human:local"), Some("ka_local")),
     ] {
         upsert_identity_in_db(
             &conn,
@@ -635,8 +612,7 @@ fn group_local_agent_response_relay_creates_delegated_exchange_task() {
                 profile_image_url: None,
                 metadata: None,
             },
-        )
-        .expect("upsert identity");
+        ).expect("upsert identity");
     }
 
     let parent_session_id = "session:group:local-agent-task";
@@ -652,15 +628,10 @@ fn group_local_agent_response_relay_creates_delegated_exchange_task() {
             project_id: None,
             project_name: None,
             relationship_identity_id: None,
-            participant_identity_ids: vec![
-                "human:local".to_string(),
-                "human:remote".to_string(),
-                "agent:local".to_string(),
-            ],
+            participant_identity_ids: vec!["human:local".to_string(), "human:remote".to_string(), "agent:local".to_string()],
             metadata: Some(serde_json::json!({ "source": "chat-create-flow" })),
         },
-    )
-    .expect("seed group");
+    ).expect("seed group");
 
     let outreach = crate::bridge::DesktopBridgeOutreachMetadata {
         target_kind: "bridge-person".to_string(),
@@ -741,8 +712,7 @@ fn group_local_agent_response_relay_creates_delegated_exchange_task() {
         Some("human:remote"),
         "human:remote",
         false,
-    )
-    .expect("sync local agent relay task");
+    ).expect("sync local agent relay task");
 
     let row: (String, String, String) = conn.query_row(
         "SELECT initiator_identity_id, target_identity_id, status FROM delegated_exchanges WHERE session_id = ?1",

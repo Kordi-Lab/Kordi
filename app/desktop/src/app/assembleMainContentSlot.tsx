@@ -6,7 +6,6 @@ import {
 } from '@/app/mainContentShellBuilders';
 import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
 import { bridgeAgentForChatStart } from '@/features/chat/chatCreateFlows';
-import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
@@ -72,17 +71,6 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           const contactTargetsAgent = contact.classType === 'other-users-agents';
           args.setContactOverlayMode(null);
           if (!contact.bridgeHostId || !contact.bridgePeerNodeId) return;
-
-          if (contact.bridgeHostId === CLOUD_HOST_SENTINEL) {
-            void args.handleOpenBridgeConversation(
-              contact.bridgeHostId,
-              contact.bridgePeerNodeId,
-              contact.name,
-              contact.owner,
-              contactTargetsAgent ? contact.bridgePeerRuntime : 'person',
-            );
-            return;
-          }
 
           if (!contactTargetsAgent) {
             void args.handleStartBridgePersonSession({

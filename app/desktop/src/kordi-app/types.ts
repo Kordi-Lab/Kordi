@@ -153,7 +153,6 @@ export type Conversation = {
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
   participantAvatarSeeds?: Record<string, string>;
-  participantProfileImageUrls?: Record<string, string | null>;
   participantSpaceId?: string | null;
   metadata?: unknown;
   bridgeTarget?: ConversationBridgeTarget | null;
@@ -721,7 +720,6 @@ export type DesktopBridgePeer = {
   contactRequestStatus?: string | null;
   contactRequestDirection?: string | null;
   profileImageUrl?: string | null;
-  avatarSeed?: string | null;
 };
 
 export type DesktopBridgeProject = {
@@ -774,7 +772,6 @@ export type DesktopBridgeHost = {
   discoveryMode: string;
   humanVisibilityPolicy?: string | null;
   contactApprovalPolicy?: string | null;
-  profileImageUrl?: string | null;
   activeAgentId?: string | null;
   agents: DesktopBridgeAgent[];
   visiblePeers: DesktopBridgePeer[];
@@ -796,7 +793,6 @@ export type DesktopBridgeConversationMessage = {
   detail?: string | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
   attachments?: MessageAttachment[];
-  localTurn?: DesktopChatTurnSnapshot | null;
 };
 
 export type DesktopBridgeSessionThreadMessage = {
@@ -866,7 +862,6 @@ export type DesktopBridgeOutreachMetadata = {
   updatedAtMs: number;
   completedAtMs?: number | null;
   error?: string | null;
-  localTurn?: DesktopChatTurnSnapshot | null;
 };
 
 export type DesktopBridgeIdentitySnapshot = {

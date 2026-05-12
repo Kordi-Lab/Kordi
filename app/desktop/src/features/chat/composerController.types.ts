@@ -1,7 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
-import type { SendCloudGroupControlInput } from '@/features/cloud/useCloudBridgeState';
 import type { ComposerDraftState } from './composerDrafts';
 import type {
   CanonicalSessionState,
@@ -83,10 +82,6 @@ export type UseComposerControllerArgs = {
   setQueuedDesktopMessagesBySession: Dispatch<SetStateAction<Record<string, QueuedDesktopChatMessage[]>>>;
   setDesktopLiveTurnsBySession: Dispatch<SetStateAction<Record<string, DesktopChatTurnSnapshot>>>;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
-  setCloudBridgeState?: Dispatch<SetStateAction<DesktopBridgeState | null>>;
-  sendCloudBridgeMessage?: (conversationId: string, text: string) => Promise<void>;
-  sendCloudGroupControl?: (input: SendCloudGroupControlInput) => Promise<void>;
-  cancelCloudBridgeAgentRequest?: (conversationId: string, requestId: string) => Promise<void>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
   setActiveConvId: Dispatch<SetStateAction<string>>;

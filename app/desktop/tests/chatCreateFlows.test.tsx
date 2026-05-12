@@ -12,7 +12,6 @@ import {
   buildChatGroupBridgeUpdateParticipants,
   buildChatGroupBridgeUpdateTargets,
   buildChatCreatePersonOptions,
-  buildChatCreatePeopleContactLookup,
   buildParticipantSpaceContinuationMetadata,
   canCreateGroup,
   chatSessionIdForAgentStart,
@@ -153,33 +152,16 @@ test('buildChatCreatePersonOptions excludes agent contacts', () => {
   assert.equal(options[0]?.label, 'Alice');
 });
 
-test('cloud contact ids from the create dialog resolve to bridge-shaped contacts for group creation', () => {
-  const cloudContact = contact({
-    id: 'bridge-peer-person:acct_peer:acct_peer',
-    name: 'Cloud Peer',
-    bridgeHostId: 'cloud',
-    bridgePeerNodeId: 'acct_peer',
-    bridgeHumanId: 'acct_peer',
-    bridgeContactStatus: 'accepted',
-  });
-
-  const lookup = buildChatCreatePeopleContactLookup([cloudContact]);
-
-  assert.equal(lookup.get('bridge-peer-person:acct_peer:acct_peer'), cloudContact);
-  assert.equal(lookup.get('cloud:acct_peer'), cloudContact);
-});
-
 test('buildChatCreatePersonOptions includes only approved Bridge contacts', () => {
   const options = buildChatCreatePersonOptions([
     contact({ id: 'contact:approved', name: 'Approved', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved', bridgeContactStatus: 'contact' }),
     contact({ id: 'contact:approved-request', name: 'Approved request', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_approved_request', bridgeContactStatus: 'approved' }),
-    contact({ id: 'contact:cloud-accepted', name: 'Cloud accepted', bridgeHostId: 'cloud', bridgePeerNodeId: 'acct_peer', bridgeContactStatus: 'accepted' }),
     contact({ id: 'contact:pending', name: 'Pending', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_pending', bridgeContactStatus: 'pending' }),
     contact({ id: 'contact:visible', name: 'Visible', bridgeHostId: 'host-1', bridgePeerNodeId: 'kd_visible', bridgeContactStatus: 'none' }),
     contact({ id: 'contact:local-only', name: 'Local' }),
   ]);
 
-  assert.deepEqual(options.map((option) => option.id), ['contact:approved', 'contact:approved-request', 'contact:cloud-accepted', 'contact:local-only']);
+  assert.deepEqual(options.map((option) => option.id), ['contact:approved', 'contact:approved-request', 'contact:local-only']);
 });
 
 test('participant-space continuations inherit bridge target metadata from the source session', () => {
@@ -421,24 +403,6 @@ test('group update bridge metadata targets every other bridge-backed human and c
     { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
     { identityId: 'human:user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null },
     { identityId: 'human:user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null },
-  ]);
-});
-
-test('group update targets keep same-name cloud humans separate by account id', () => {
-  const participants = [
-    { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-    { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', bridgeNodeId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a' },
-    { id: 'human:acct_b', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', bridgeNodeId: 'acct_b', humanId: 'acct_b', avatarKey: 'acct_b' },
-  ] satisfies Conversation['canonicalParticipants'];
-
-  assert.deepEqual(buildChatGroupBridgeUpdateTargets({ actorIdentityId: 'human:me', participants }), [
-    { hostId: 'cloud', nodeId: 'acct_a', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_a' },
-    { hostId: 'cloud', nodeId: 'acct_b', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_b' },
-  ]);
-  assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
-    { identityId: 'human:me', displayName: 'Me', role: 'admin', bridgeNodeId: null, humanId: null, agentId: null },
-    { identityId: 'human:acct_a', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_a', humanId: 'acct_a', agentId: null },
-    { identityId: 'human:acct_b', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_b', humanId: 'acct_b', agentId: null },
   ]);
 });
 

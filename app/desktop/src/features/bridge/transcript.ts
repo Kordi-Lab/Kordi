@@ -8,7 +8,6 @@ import {
   BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/bridge/messages';
 import { isBridgeAgentRuntime, isBridgePersonRuntime } from '@/features/bridge/runtime';
-import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
 type BridgeConversationViewModel = Conversation & {
@@ -17,14 +16,6 @@ type BridgeConversationViewModel = Conversation & {
 
 function bridgeHostLabel(host?: DesktopBridgeHost | null) {
   return host?.serverUrl?.replace(/^https?:\/\//, '') || 'Bridge';
-}
-
-function bridgeProfileImageUrl(value: string | null | undefined): string | null {
-  const normalized = cloudAvatarImageUrl(value);
-  if (normalized) return normalized;
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return null;
-  return trimmed;
 }
 
 function isBridgeConversationPersonChat(conversation: DesktopBridgeConversation) {
@@ -164,25 +155,10 @@ function historicalBridgeProcessingPlaceholderIds(conversation: DesktopBridgeCon
   const staleIds = new Set<string>();
   conversation.messages.forEach((message, index) => {
     if (!isBridgeProcessingResponsePlaceholder(conversation, message)) return;
-    const requestId = message.requestId?.trim();
-    const newerMessages = conversation.messages.slice(index + 1);
-    const hasMatchingRequest = requestId
-      ? conversation.messages.some((candidate) => (
-        candidate.requestId?.trim() === requestId
-        && (candidate.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND || candidate.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND)
-      ))
-      : false;
-    const hasTerminalResponseForSameRequest = requestId
-      ? newerMessages.some((laterMessage) => (
-        laterMessage.requestId?.trim() === requestId
-        && isBridgeAgentResponseDirection(laterMessage)
-        && !isBridgeProcessingResponsePlaceholder(conversation, laterMessage)
-      ))
-      : false;
-    const hasNewerTranscriptActivityWithoutThread = (!requestId || !hasMatchingRequest) && newerMessages.some((laterMessage) => (
+    const hasNewerTranscriptActivity = conversation.messages.slice(index + 1).some((laterMessage) => (
       !isBridgeProcessingResponsePlaceholder(conversation, laterMessage)
     ));
-    if (hasTerminalResponseForSameRequest || hasNewerTranscriptActivityWithoutThread) staleIds.add(message.id);
+    if (hasNewerTranscriptActivity) staleIds.add(message.id);
   });
   return staleIds;
 }
@@ -253,29 +229,21 @@ export function mapBridgeConversationToViewModel(
       ))
     : undefined;
   const localHumanLabel = 'Me';
-  const localBridgeAgentLabel = conversation.identity?.localAgentName?.trim()
-    || firstPersonPossessiveLabel(host?.displayName || localAgentLabel, host?.ownerName);
+  const localBridgeAgentLabel = firstPersonPossessiveLabel(host?.displayName || localAgentLabel, host?.ownerName);
   const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
-  const remoteAgentLabel = conversation.identity?.remoteAgentName?.trim() || conversation.peerDisplayName || conversation.title;
+  const remoteAgentLabel = conversation.peerDisplayName || conversation.title;
   const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
   const localHumanAvatarSeed = host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local';
   const localAgentAvatarSeed = conversation.identity?.localAgentId || host?.activeAgentId || host?.nodeId || 'local-agent';
-  const remoteHumanAvatarSeed = peer?.avatarSeed || conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
+  const remoteHumanAvatarSeed = conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
   const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
   const conversationAvatarSeed = isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
-  const localHumanProfileImageUrl = bridgeProfileImageUrl(host?.profileImageUrl);
-  const remoteHumanProfileImageUrl = bridgeProfileImageUrl(peer?.profileImageUrl);
   const participantAvatarSeeds: Record<string, string> = {
     You: localHumanAvatarSeed,
     [localHumanLabel]: localHumanAvatarSeed,
     [localBridgeAgentLabel]: localAgentAvatarSeed,
     [remoteHumanLabel]: remoteHumanAvatarSeed,
     [remoteAgentLabel]: remoteAgentAvatarSeed,
-  };
-  const participantProfileImageUrls: Record<string, string | null> = {
-    You: localHumanProfileImageUrl,
-    [localHumanLabel]: localHumanProfileImageUrl,
-    [remoteHumanLabel]: remoteHumanProfileImageUrl,
   };
   const bridgeViewMessageId = (message: DesktopBridgeConversationMessage) => `bridge-message:${conversation.id}:${message.id}`;
   const requestMessageIdByRequestId = new Map<string, string>();
@@ -343,11 +311,6 @@ export function mapBridgeConversationToViewModel(
       : message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND
         ? localHumanAvatarSeed
         : remoteHumanAvatarSeed;
-    const senderProfileImageUrl = senderType === 'human'
-      ? isOutboundHuman
-        ? localHumanProfileImageUrl
-        : remoteHumanProfileImageUrl
-      : null;
     const agentHasBegunReply = Boolean(activeAgentReplyMessage) || conversation.peerTyping;
     const outboundStatus = [bridgeOutboundStatusChip(message.deliveryState, agentHasBegunReply)]
       .filter(Boolean);
@@ -357,7 +320,6 @@ export function mapBridgeConversationToViewModel(
       const responseSender = message.sender?.trim()
         || (isRemoteAgentResponse ? remoteAgentLabel : localBridgeAgentLabel);
       const responseCancelled = isCancelledBridgeState(message.deliveryState);
-      const localTurn = message.localTurn ?? null;
       return [{
         id: messageId,
         role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
@@ -370,22 +332,18 @@ export function mapBridgeConversationToViewModel(
         time: message.timeLabel,
         replyToMessageId,
         turn: {
-          id: localTurn?.id ?? `bridge-live-turn:${conversation.id}:${message.id}`,
+          id: `bridge-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
-          prompt: localTurn?.prompt ?? '',
-          status: responseCancelled ? 'cancelled' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing') : localTurn?.status ?? 'complete',
-          message: responseCancelled ? 'Stopped' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…') : localTurn?.message ?? 'Complete',
-          assistantText: responseCancelled && !displayText.trim() ? 'Request stopped' : displayText || localTurn?.assistantText || '',
-          thinkingText: localTurn?.thinkingText ?? '',
-          tools: localTurn?.tools ?? [],
+          prompt: '',
+          status: responseCancelled ? 'cancelled' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing') : 'complete',
+          message: responseCancelled ? 'Stopped' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…') : 'Complete',
+          assistantText: responseCancelled && !displayText.trim() ? 'Request stopped' : displayText,
+          thinkingText: '',
+          tools: [],
           completed: responseCancelled || !isLiveAgentReply,
-          succeeded: responseCancelled ? false : !isLiveAgentReply ? (localTurn?.succeeded ?? true) : false,
-          error: localTurn?.error ?? null,
+          succeeded: !responseCancelled && !isLiveAgentReply,
+          error: null,
           replyToMessageId,
-          pendingBridgeAgentRequest: isLiveAgentReply && message.requestId?.trim() ? {
-            conversationId: conversation.id,
-            requestId: message.requestId.trim(),
-          } : null,
         },
       }];
     }
@@ -406,7 +364,6 @@ export function mapBridgeConversationToViewModel(
       isOwnMessage: isOutboundHuman,
       showSenderMeta: isAgent,
       senderAvatarSeed,
-      senderProfileImageUrl,
       text: displayText,
       time: message.timeLabel,
       statusChips: isOutboundHuman
@@ -457,7 +414,6 @@ export function mapBridgeConversationToViewModel(
     const replyToMessageId = outreachRequestId
       ? requestMessageIdByRequestId.get(outreachRequestId) ?? null
       : requestMessageIds[requestMessageIds.length - 1] ?? null;
-    const localTurn = conversation.outreach?.localTurn ?? null;
     messages.push({
       id: `bridge-live-turn:${conversation.id}:processing`,
       role: 'external-agent',
@@ -470,22 +426,18 @@ export function mapBridgeConversationToViewModel(
       time: conversation.updatedAtLabel,
       replyToMessageId,
       turn: {
-        id: localTurn?.id ?? `bridge-live-turn:${conversation.id}:processing`,
+        id: `bridge-live-turn:${conversation.id}:processing`,
         sessionId: conversation.id,
-        prompt: localTurn?.prompt ?? '',
-        status: localTurn?.status ?? (conversation.peerTyping ? 'typing' : 'processing'),
-        message: localTurn?.message ?? (conversation.peerTyping ? 'Typing…' : 'Processing…'),
-        assistantText: localTurn?.assistantText ?? '',
-        thinkingText: localTurn?.thinkingText ?? '',
-        tools: localTurn?.tools ?? [],
+        prompt: '',
+        status: conversation.peerTyping ? 'typing' : 'processing',
+        message: conversation.peerTyping ? 'Typing…' : 'Processing…',
+        assistantText: '',
+        thinkingText: '',
+        tools: [],
         completed: false,
         succeeded: false,
-        error: localTurn?.error ?? null,
+        error: null,
         replyToMessageId,
-        pendingBridgeAgentRequest: outreachRequestId ? {
-          conversationId: conversation.id,
-          requestId: outreachRequestId,
-        } : null,
       },
     });
   }
@@ -521,9 +473,7 @@ export function mapBridgeConversationToViewModel(
     outreach: conversation.outreach,
     identity: conversation.identity,
     avatarSeed: conversationAvatarSeed,
-    profileImageUrl: isAgent ? null : remoteHumanProfileImageUrl,
     participantAvatarSeeds,
-    participantProfileImageUrls,
     bridgeTarget,
     bridgeUnreadByParentSessionId: bridgeUnreadByParentSessionId(conversation),
     messages,

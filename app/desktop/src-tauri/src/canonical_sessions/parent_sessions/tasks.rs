@@ -57,7 +57,9 @@ fn group_task_delegation_id(parent_session_id: &str, request_key: &str) -> Strin
 
 fn terminal_response_status(delivery_state: Option<&str>) -> Option<&'static str> {
     match delivery_state.map(str::trim) {
-        Some("responded") | Some("read") | Some("complete") | Some("completed") => Some("complete"),
+        Some("responded") | Some("read") | Some("complete") | Some("completed") => {
+            Some("complete")
+        }
         Some("processing_failed") | Some("failed") => Some("failed"),
         Some("cancelled") => Some("cancelled"),
         Some("timeout") => Some("timeout"),
@@ -135,9 +137,7 @@ fn request_message_source_ids(
                 .as_deref()
                 .or(message.request_id.as_deref())
                 .unwrap_or(message.id.as_str());
-            ids.push(format!(
-                "desktop-bridge-parent:{parent_session_id}:{stable}"
-            ));
+            ids.push(format!("desktop-bridge-parent:{parent_session_id}:{stable}"));
             ids.push(format!(
                 "desktop-bridge-session-relay:{parent_session_id}:{}:{}",
                 conversation.id, message.id
@@ -177,9 +177,7 @@ fn response_message_source_ids(
                 .or(outreach.parent_message_id.as_deref())
                 .map(|value| format!("agent-response:{value}"))
                 .unwrap_or_else(|| format!("{}:{}", conversation.id, message.id));
-            ids.push(format!(
-                "desktop-bridge-parent:{parent_session_id}:{stable_id}"
-            ));
+            ids.push(format!("desktop-bridge-parent:{parent_session_id}:{stable_id}"));
             ids.push(format!(
                 "desktop-bridge-session-relay:{parent_session_id}:{stable_id}"
             ));
@@ -262,10 +260,8 @@ pub(super) fn sync_group_agent_task_activity(
 
     let request_key = group_task_request_key(conversation, outreach);
     let delegation_id = group_task_delegation_id(parent_session_id, &request_key);
-    let request_source_ids =
-        request_message_source_ids(parent_session_id, conversation, messages, outreach);
-    let response_source_ids =
-        response_message_source_ids(parent_session_id, conversation, messages, outreach);
+    let request_source_ids = request_message_source_ids(parent_session_id, conversation, messages, outreach);
+    let response_source_ids = response_message_source_ids(parent_session_id, conversation, messages, outreach);
     let request_message_id = first_message_id_for_sources(conn, &request_source_ids)?
         .or_else(|| clean_text(outreach.parent_message_id.as_deref()));
     let response_message_id = first_message_id_for_sources(conn, &response_source_ids)?;

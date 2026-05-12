@@ -134,7 +134,7 @@ fn upsert_identity_in_db(
              human_id = excluded.human_id,
              agent_id = excluded.agent_id,
              avatar_key = excluded.avatar_key,
-             profile_image_url = COALESCE(excluded.profile_image_url, identities.profile_image_url),
+             profile_image_url = excluded.profile_image_url,
              metadata_json = excluded.metadata_json,
              updated_at_ms = excluded.updated_at_ms",
         params![
@@ -207,12 +207,7 @@ fn preserve_string_metadata_key(
     existing: &Map<String, Value>,
     key: &str,
 ) {
-    if target
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty())
-    {
+    if target.get(key).is_some() {
         return;
     }
     if let Some(value) = existing
@@ -246,7 +241,10 @@ fn preserve_manual_session_title_metadata(
     let Some(existing_session) = select_session(conn, session_id)? else {
         return Ok(metadata);
     };
-    let has_manual_title = metadata_has_manual_title(&existing_session.metadata);
+    if !metadata_has_manual_title(&existing_session.metadata) {
+        return Ok(metadata);
+    }
+
     let existing_metadata = existing_session
         .metadata
         .as_ref()
@@ -258,7 +256,11 @@ fn preserve_manual_session_title_metadata(
         Some(other) => return Ok(Some(other)),
         None => Map::new(),
     };
-
+    next_metadata.insert(
+        "titleSource".to_string(),
+        Value::String("manual".to_string()),
+    );
+    preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "sessionTitleSource");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "customName");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupId");
     preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "groupSpaceId");
@@ -267,14 +269,6 @@ fn preserve_manual_session_title_metadata(
         &existing_metadata,
         "groupNameUpdatedAtMs",
     );
-
-    if has_manual_title {
-        next_metadata.insert(
-            "titleSource".to_string(),
-            Value::String("manual".to_string()),
-        );
-        preserve_string_metadata_key(&mut next_metadata, &existing_metadata, "sessionTitleSource");
-    }
     Ok(Some(Value::Object(next_metadata)))
 }
 
@@ -290,13 +284,7 @@ pub(super) fn open_or_create_session_in_db(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| stable_session_id(&request));
-    let default_title = default_session_title(conn, &request)?;
-    let title = match select_session(conn, &id)? {
-        Some(existing_session) if metadata_has_manual_title(&existing_session.metadata) => {
-            existing_session.title
-        }
-        _ => default_title,
-    };
+    let title = default_session_title(conn, &request)?;
     let status = validate_status(request.status, "active");
     let metadata_value = preserve_manual_session_title_metadata(conn, &id, request.metadata)?;
     let metadata = json_to_db(&metadata_value)?;

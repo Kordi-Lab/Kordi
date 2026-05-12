@@ -303,20 +303,6 @@ test('direct remote-human to my-agent Bridge reachouts route to the Agent page, 
   })), false);
 });
 
-test('Cloud self-agent reachouts stay in the contact chat rail instead of routing away to the Agent page', () => {
-  assert.equal(bridgeChatConversationRoutesToLocalAgentPage(bridgeConversation({
-    id: 'bridge:cloud:acct-peer:person',
-    canonicalSessionId: 'session:bridge:bridge:cloud:acct-peer:person',
-    hostId: 'cloud',
-    outreach: {
-      ...bridgeConversation().outreach!,
-      bridgeHostId: 'cloud',
-      bridgeConversationId: 'bridge:cloud:acct-peer:person',
-      targetAgentId: 'agent-local',
-    },
-  })), false);
-});
-
 test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () => {
   const caughtUpConversations = [
     conversation({ id: 'chat-1', name: 'Alice', unread: 0 }),
@@ -684,82 +670,6 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.doesNotMatch(markup, />✓</);
   assert.match(markup, /data-add-contact-state="idle"[^>]*>Add</);
   assert.match(markup, /Rename/);
-});
-
-test('GroupDetailsDialog uses the active/latest session admin set instead of unioning admins across history', () => {
-  const chatConversations = [
-    conversation({
-      id: 'session:group:root',
-      canonicalSessionId: 'session:group:root',
-      canonicalCreatedByIdentityId: 'human:old-admin',
-      name: '1111',
-      metadata: { adminIdentityIds: ['human:old-admin'], groupSpaceId: 'session:group:root', customName: '1111' },
-      participants: ['Me', 'Old Admin', 'Shu Yang'],
-      _updatedAtMs: 1,
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:old-admin', name: 'Old Admin', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'old' },
-        { id: 'human:acct_new', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', bridgeNodeId: 'acct_new', bridgeHostId: 'cloud' },
-      ],
-    }),
-    conversation({
-      id: 'session:group:child',
-      canonicalSessionId: 'session:group:child',
-      canonicalCreatedByIdentityId: 'human:acct_new',
-      name: '1111',
-      metadata: { adminIdentityIds: ['human:acct_new'], groupSpaceId: 'session:group:root', customName: '1111' },
-      participants: ['Me', 'Old Admin', 'Shu Yang'],
-      _updatedAtMs: 2,
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:old-admin', name: 'Old Admin', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'old' },
-        { id: 'human:acct_new', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'new', humanId: 'acct_new', bridgeNodeId: 'acct_new', bridgeHostId: 'cloud' },
-      ],
-    }),
-  ];
-  const [space] = buildParticipantSpaces(chatConversations);
-  const markup = renderToStaticMarkup(createElement(GroupDetailsDialog, {
-    isOpen: true,
-    space,
-    contacts: [],
-    onClose: () => {},
-    onRename: () => {},
-    onAddMembers: () => {},
-    onRemoveMember: () => {},
-    onSetAdmin: () => {},
-  }));
-
-  assert.match(markup, /3 participants • 1 admin/);
-  assert.match(markup, /Shu Yang[\s\S]*?Admin/);
-  assert.match(markup, /Old Admin[\s\S]*?Member/);
-});
-
-test('GroupDetailsDialog disambiguates same-name members and add candidates with ids', () => {
-  const chatConversations = [conversation({
-    id: 'session:group:same-name',
-    canonicalSessionId: 'session:group:same-name',
-    name: 'Same names',
-    metadata: { adminIdentityIds: ['human:me'], groupSpaceId: 'session:group:same-name' },
-    participants: ['Me', 'Shu Yang'],
-    canonicalParticipants: [
-      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-      { id: 'human:acct_a', name: 'Shu Yang', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'a', humanId: 'acct_a', bridgeNodeId: 'acct_a', bridgeHostId: 'cloud' },
-    ],
-  })];
-  const [space] = buildParticipantSpaces(chatConversations);
-  const markup = renderToStaticMarkup(createElement(GroupDetailsDialog, {
-    isOpen: true,
-    space,
-    contacts: [contact({ id: 'cloud:acct_b', name: 'Shu Yang', bridgeHostId: 'cloud', bridgePeerNodeId: 'acct_b', bridgeHumanId: 'acct_b', bridgeContactStatus: 'accepted' })],
-    onClose: () => {},
-    onRename: () => {},
-    onAddMembers: () => {},
-    onRemoveMember: () => {},
-    onSetAdmin: () => {},
-  }));
-
-  assert.match(markup, /acct_a/);
-  assert.match(markup, /acct_b/);
 });
 
 test('GroupDetailsDialog derives admins from group metadata instead of local self role', () => {

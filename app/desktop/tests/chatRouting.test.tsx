@@ -108,72 +108,6 @@ test('workspace view model exposes participant spaces alongside flat chat conver
   assert.equal(totalChannelSpaces, viewModels?.participantSpaces.length);
 });
 
-test('workspace view model hides cloud-agent runtime sessions from local chat UI', () => {
-  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
-  function Probe() {
-    viewModels = useWorkspaceViewModels({
-      isNativeShell: true,
-      isDesktopChatLoading: false,
-      desktopChatState: {
-        cwd: '/tmp',
-        activeSessionId: 'cloud-agent:acct_me:acct_peer',
-        sessions: [
-          { id: 'cloud-agent:acct_me:acct_peer', title: 'Cloud agent runtime', subtitle: 'hidden', updatedAtLabel: '12:00', messageCount: 1, draft: false },
-          { id: 'local-visible', title: 'Visible local chat', subtitle: 'shown', updatedAtLabel: '12:01', messageCount: 1, draft: false },
-        ],
-        projects: [],
-        activeSession: {
-          id: 'cloud-agent:acct_me:acct_peer',
-          title: 'Cloud agent runtime',
-          subtitle: 'hidden',
-          provider: 'openai',
-          providerLabel: 'OpenAI',
-          model: 'gpt',
-          modelLabel: 'GPT',
-          thinking: 'default',
-          thinkingLabel: 'Default',
-          thinkingLevels: [],
-          updatedAtLabel: '12:00',
-          messageCount: 1,
-          draft: false,
-          contextWindowText: '',
-          contextWindowStatus: { contextWindow: 0, usedTokens: 0, percentUsed: 0, status: 'ok' },
-          project: null,
-          messages: [{ role: 'user', text: 'internal prompt', timeLabel: '12:00', timestampMs: 1 }],
-        },
-        localAgent: { label: 'Kordi', systemPrompt: '', loadedSkills: [], loadedTools: [], loadedPlugins: [], identityFiles: [], defaultProvider: 'openai', defaultModel: 'gpt', workspaceRoot: '/tmp', lastActivities: [] },
-        modelOptions: [],
-        slashCommands: [],
-      } as never,
-      desktopBridgeState: null,
-      canonicalSessionState: null,
-      hiddenSessionIds: new Set(),
-      projectWorkspaces: [],
-      projectSelectedSessionIds: {},
-      activeNav: 'chats',
-      activeConvId: 'my-agent',
-      activeProjectId: '',
-      activeProjectSessionId: '',
-      chatSearch: '',
-      projectSearch: '',
-      contactSearch: '',
-      activeContactId: '',
-      activeAgentId: '',
-      cachedChatSessionMessages: {},
-      cachedProjectSessionMessages: {},
-      localSessionUnreadCounts: {},
-      desktopLiveTurnsBySession: {},
-      mapDesktopMessages: (_sessionId, messages) => messages.map((message) => ({ role: message.role === 'assistant' ? 'owned-agent' : 'user', text: message.text, time: message.timeLabel })),
-    });
-    return null;
-  }
-
-  renderToStaticMarkup(createElement(Probe));
-
-  assert.equal(viewModels?.chatConversations.some((conversation) => conversation.id.startsWith('cloud-agent:')), false);
-  assert.equal(viewModels?.activeConv.id, 'local-visible');
-});
-
 test('workspace view model exposes visible non-contact Bridge people for Add contacts only', () => {
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
   function Probe() {
@@ -322,7 +256,7 @@ test('canonical read model keeps receiver group display name and normalizes stal
   const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
   const space = buildParticipantSpaces(conversations).find((candidate) => candidate.id === 'group:session:group:shared');
 
-  assert.equal(space?.title, 'Testuser2, Testuser3');
+  assert.equal(space?.title, 'New test group');
   assert.deepEqual(space?.participants.filter((participant) => participant.role === 'self').map((participant) => participant.id), ['human:user1']);
 });
 
@@ -464,66 +398,6 @@ test('canonical read model names chat-created direct and group sessions from the
   assert.equal(groupConversation?.name, 'Review launch plan and assign owners before demo');
   assert.equal(groupSpace?.title, 'Design crew');
   assert.equal(groupSpace?.sessions[0]?.title, 'Review launch plan and assign owners before demo');
-});
-
-test('canonical read model ignores inherited manual title metadata when session title is still New session', () => {
-  const sessionId = 'session:group:new-child';
-  const readModel = createCanonicalSessionReadModel({
-    storagePath: '/tmp/canonical.sqlite3',
-    profile: {
-      id: 'profile:me',
-      displayName: 'Me',
-      humanIdentityId: 'human:me',
-      activeAgentIdentityId: null,
-      storageRoot: '/tmp',
-      createdAtMs: 1,
-      updatedAtMs: 1,
-    },
-    identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:alice', kind: 'human', displayName: 'Alice', source: 'local', avatarKey: 'alice', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'local', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
-    ],
-    sessions: [{
-      id: sessionId,
-      kind: 'group',
-      title: 'New session',
-      status: 'active',
-      createdByIdentityId: 'human:me',
-      primaryIdentityId: null,
-      relationshipIdentityId: null,
-      metadata: {
-        createdFrom: 'chat-create-flow',
-        customName: 'Good group',
-        groupId: 'session:group:root',
-        groupSpaceId: 'session:group:root',
-        titleSource: 'manual',
-        sessionTitleSource: 'manual',
-      },
-      createdAtMs: 1,
-      updatedAtMs: 1,
-      lastMessageAtMs: 20,
-    }],
-    participants: [
-      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-      { sessionId, identityId: 'human:alice', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-    ],
-    messages: [
-      { id: 'msg:first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'HEY GUES', content: { sender: 'Me', timeLabel: '10:47' }, status: 'sent', sequenceNum: 1, createdAtMs: 20, updatedAtMs: 20, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'group:first' },
-    ],
-    delegatedExchanges: [],
-    contextSnapshots: [],
-    presence: [],
-  } as never);
-
-  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
-  const groupConversation = conversations.find((conversation) => conversation.id === sessionId);
-  const groupSpace = buildParticipantSpaces(conversations).find((space) => space.id === 'group:session:group:root');
-
-  assert.equal(groupConversation?.name, 'HEY GUES');
-  assert.equal(groupSpace?.title, 'Good group');
-  assert.equal(groupSpace?.sessions[0]?.title, 'HEY GUES');
 });
 
 test('canonical read model prefers a manually renamed session title over the first user message', () => {
@@ -1101,55 +975,4 @@ test('workspace view model hydrates hidden bridge outreach unread into its canon
   assert.equal(sessionConversation?.unread, 1);
   assert.equal(viewModels?.chatConversations.find((conversation) => conversation.canonicalSessionId === olderSessionId)?.unread, 1);
   assert.equal(viewModels?.chatConversations.some((conversation) => conversation.id === bridgeConversationId), false);
-});
-
-test('canonical read model exposes transient Cloud group unread counts on synthetic sessions', () => {
-  const readModel = createCanonicalSessionReadModel({
-    storagePath: '/tmp/canonical.sqlite3',
-    profile: {
-      id: 'profile:me',
-      displayName: 'Me',
-      humanIdentityId: 'human:me',
-      activeAgentIdentityId: null,
-      storageRoot: '/tmp',
-      createdAtMs: 1,
-      updatedAtMs: 1,
-    },
-    identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', humanId: 'acct_peer', bridgeNodeId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
-    ],
-    sessions: [{
-      id: 'session:group:cloud-child',
-      kind: 'group',
-      title: 'Cloud child',
-      status: 'active',
-      createdByIdentityId: 'human:me',
-      primaryIdentityId: null,
-      relationshipIdentityId: null,
-      projectId: null,
-      projectName: null,
-      metadata: { source: 'cloud-group', groupSpaceId: 'session:group:cloud-space', customName: 'Cloud group', cloudUnreadCount: 2 },
-      createdAtMs: 1,
-      updatedAtMs: 3,
-      lastMessageAtMs: 3,
-    }],
-    participants: [
-      { sessionId: 'session:group:cloud-child', identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-      { sessionId: 'session:group:cloud-child', identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-    ],
-    messages: [
-      { id: 'msg:peer', sessionId: 'session:group:cloud-child', senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: 'Unread hello', content: { sender: 'Peer', timeLabel: '10:00' }, status: 'sent', sequenceNum: 1, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud_1' },
-    ],
-    delegatedExchanges: [],
-    contextSnapshots: [],
-    presence: [],
-  } as never);
-
-  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
-  const conversation = conversations.find((item) => item.canonicalSessionId === 'session:group:cloud-child');
-  const participantSpaces = buildParticipantSpaces(conversations);
-
-  assert.equal(conversation?.unread, 2);
-  assert.equal(participantSpaces.find((space) => space.id === 'group:session:group:cloud-space')?.unread, 2);
 });

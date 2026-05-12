@@ -68,37 +68,6 @@ test('buildParticipantSpaces groups direct human sessions by participant identit
   assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), ['session:bob:new', 'session:bob:old']);
 });
 
-test('buildParticipantSpaces previews latest agent response when message text is empty', () => {
-  const spaces = buildParticipantSpaces([
-    conversation({
-      id: 'session:bob-agent-reply',
-      canonicalSessionId: 'session:bob-agent-reply',
-      subtitle: 'Bob',
-      messages: [{
-        role: 'owned-agent',
-        sender: 'My Kordi',
-        text: '',
-        time: '10:01',
-        turn: {
-          id: 'turn-1',
-          sessionId: 'session:bob-agent-reply',
-          prompt: 'how are you',
-          status: 'completed',
-          message: '',
-          assistantText: 'I’m doing well — thanks for asking.',
-          thinkingText: '',
-          tools: [],
-          completed: true,
-          succeeded: true,
-        },
-      }],
-    }),
-  ]);
-
-  assert.equal(spaces[0]?.preview, 'I’m doing well — thanks for asking.');
-  assert.equal(spaces[0]?.sessions[0]?.preview, 'I’m doing well — thanks for asking.');
-});
-
 test('buildParticipantSpaces separates direct human and self spaces on same Bridge node', () => {
   const spaces = buildParticipantSpaces([
     conversation({
@@ -275,7 +244,7 @@ test('buildParticipantSpaces builds a true group when a conversation has multipl
   assert.equal(spaces[0]?.kind, 'group');
   assert.equal(spaces[0]?.title, 'shu, Alex');
   assert.equal(spaces[0]?.participantCount, 4);
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['alex', 'me', 'shu']);
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'shu', 'alex']);
 });
 
 test('buildParticipantSpaces collapses duplicate blank sessions in a participant space', () => {
@@ -428,76 +397,6 @@ test('buildParticipantSpaces uses explicit custom group names before inferred pe
   assert.equal(spaces[0]?.title, 'My group');
 });
 
-test('buildParticipantSpaces ignores generic new-session metadata name when preserving shared group name', () => {
-  const spaces = buildParticipantSpaces([
-    conversation({
-      id: 'session:group:latest',
-      canonicalSessionId: 'session:group:latest',
-      type: 'person',
-      name: 'New session',
-      metadata: { customName: 'New session', groupId: 'session:group:latest', groupSpaceId: 'session:group:root' },
-      participants: ['Me', 'Alice', 'Bob'],
-      _updatedAtMs: 2,
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
-        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
-      ],
-    }),
-    conversation({
-      id: 'session:group:root',
-      canonicalSessionId: 'session:group:root',
-      type: 'person',
-      name: '1111',
-      metadata: { customName: '1111', groupId: 'session:group:root', groupSpaceId: 'session:group:root' },
-      participants: ['Me', 'Alice', 'Bob'],
-      _updatedAtMs: 1,
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
-        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
-      ],
-    }),
-  ]);
-
-  assert.equal(spaces[0]?.title, '1111');
-});
-
-test('buildParticipantSpaces merges profile image urls for duplicate group participants', () => {
-  const spaces = buildParticipantSpaces([
-    conversation({
-      id: 'session:group:latest',
-      canonicalSessionId: 'session:group:latest',
-      type: 'person',
-      name: 'Design crew',
-      metadata: { customName: 'Design crew', groupSpaceId: 'session:group:root' },
-      participants: ['Me', 'Alice', 'Bob'],
-      _updatedAtMs: 2,
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice', humanId: 'acct_alice', profileImageUrl: null },
-        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
-      ],
-    }),
-    conversation({
-      id: 'session:group:root',
-      canonicalSessionId: 'session:group:root',
-      type: 'person',
-      name: 'Design crew',
-      metadata: { customName: 'Design crew', groupSpaceId: 'session:group:root' },
-      participants: ['Me', 'Alice', 'Bob'],
-      _updatedAtMs: 1,
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice', humanId: 'acct_alice', profileImageUrl: 'https://images.test/alice.png' },
-        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
-      ],
-    }),
-  ]);
-
-  assert.equal(spaces[0]?.avatarStack.find((avatar) => avatar.seed === 'alice')?.imageUrl, 'https://images.test/alice.png');
-});
-
 test('buildParticipantSpaces uses shared custom group name even when latest session lacks metadata name', () => {
   const spaces = buildParticipantSpaces([
     conversation({
@@ -645,7 +544,7 @@ test('buildParticipantSpaces truncates long inferred group names with a remainin
   ]);
 
   assert.equal(spaces[0]?.title, 'shuyhere1, shuyhere2 +103 more');
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'shuyhere1', 'shuyhere10']);
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'shuyhere1', 'shuyhere2', 'shuyhere3']);
 });
 
 test('buildParticipantSpaces does not expose raw session ids as participant-space previews', () => {

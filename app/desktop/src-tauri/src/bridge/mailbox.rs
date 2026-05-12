@@ -23,9 +23,8 @@ use super::events::{
 pub(super) use super::mailbox_events::parse_mailbox_event;
 use super::mailbox_events::{
     bridge_response_is_done, bridge_response_payload, bridge_response_payload_with_tools,
-    event_session_thread_has_parent_turn, event_session_thread_target_kind,
-    event_targets_group_session, group_session_thread_relay_targets,
-    should_buffer_partial_agent_response,
+    event_session_thread_has_parent_turn, event_session_thread_target_kind, event_targets_group_session,
+    group_session_thread_relay_targets, should_buffer_partial_agent_response,
 };
 use super::outreach::mark_outreach_status;
 use super::realtime::send_realtime_or_relay;

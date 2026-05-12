@@ -687,34 +687,16 @@ function foldedAssistantAnswerToggleLabel(hiddenLineCount: number) {
   return '— Click to show full response —';
 }
 
-function FoldableAssistantAnswer({
-  text,
-  foldable = true,
-  tone = 'default',
-}: {
-  text: string;
-  foldable?: boolean;
-  tone?: 'default' | 'cancelled';
-}) {
+function FoldableAssistantAnswer({ text, foldable = true }: { text: string; foldable?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const foldInfo = useMemo(() => assistantAnswerFoldInfo(text), [text]);
   const shouldFold = foldable && foldInfo.shouldFold;
   const folded = shouldFold && !expanded;
-  const cancelled = tone === 'cancelled';
 
   return (
-    <div className={cn(
-      'app-live-assistant-answer w-full text-[13px]',
-      cancelled && 'app-live-assistant-answer-cancelled text-rose-300',
-    )}>
+    <div className="app-live-assistant-answer w-full text-[13px]">
       <div className={cn('app-live-assistant-answer-content', folded && 'app-live-assistant-answer-folded')}>
-        <MarkdownContent
-          text={text}
-          className={cn(
-            'app-live-assistant-answer-markdown',
-            cancelled && '[&_p]:!text-rose-300 [&_li]:!text-rose-300 [&_blockquote]:!text-rose-300',
-          )}
-        />
+        <MarkdownContent text={text} className="app-live-assistant-answer-markdown" />
         {shouldFold && folded ? (
           <button
             type="button"
@@ -854,12 +836,7 @@ function LiveChatTurnCardView({
         />
       ) : null}
 
-          {hasAssistant ? (
-            <FoldableAssistantAnswer
-              text={visibleTurn.assistantText}
-              tone={visibleTurn.status === 'cancelled' ? 'cancelled' : 'default'}
-            />
-          ) : null}
+          {hasAssistant ? <FoldableAssistantAnswer text={visibleTurn.assistantText} /> : null}
 
           {visibleTurn.error ? (
             <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300">

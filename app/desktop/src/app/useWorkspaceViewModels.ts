@@ -2,9 +2,6 @@ import { useMemo, useRef } from 'react';
 
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
-import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
-import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -54,14 +51,6 @@ function sanitizeRemotePeerName(
   }
   return 'Bridge user';
 }
-
-function bridgeProfileImageUrl(value: string | null | undefined): string | null {
-  const normalized = cloudAvatarImageUrl(value);
-  if (normalized) return normalized;
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return null;
-  return trimmed;
-}
 import {
   bridgePeerIsApprovedContact,
   buildConversationPreview,
@@ -98,9 +87,8 @@ function canonicalLocalAgentAvatarSeed(state: CanonicalSessionState | null | und
 export { findBridgeProjectForWorkspace } from './viewModels/helpers';
 
 export function bridgeChatConversationRoutesToLocalAgentPage(
-  conversation: Pick<DesktopBridgeConversation, 'hostId' | 'outreach' | 'identity' | 'projectId'>,
+  conversation: Pick<DesktopBridgeConversation, 'outreach' | 'identity' | 'projectId'>,
 ) {
-  if (isCloudBridgeHostId(conversation.hostId)) return false;
   const outreach = conversation.outreach;
   if (outreach?.targetKind !== 'bridge-agent') return false;
   if (outreach.parentSessionId?.trim()) return false;
@@ -265,7 +253,6 @@ export function useWorkspaceViewModels({
       || getLocalProfileAvatarSeed();
 
     const activeSessionSummary = !desktopChatState.activeSession.project
-      && !isCloudAgentRuntimeSessionId(desktopChatState.activeSession.id)
       && !isLocalDraftChatConversationId(desktopChatState.activeSession.id)
       && !desktopChatState.sessions.some((session) => session.id === desktopChatState.activeSession.id)
       ? {
@@ -279,10 +266,9 @@ export function useWorkspaceViewModels({
           forkedFromMessageId: desktopChatState.activeSession.forkedFromMessageId ?? null,
         }
       : null;
-    const rawSessionSummaries = activeSessionSummary
+    const sessionSummaries = activeSessionSummary
       ? [activeSessionSummary, ...desktopChatState.sessions]
       : desktopChatState.sessions;
-    const sessionSummaries = rawSessionSummaries.filter((session) => !isCloudAgentRuntimeSessionId(session.id));
 
     return sessionSummaries.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
@@ -521,8 +507,7 @@ export function useWorkspaceViewModels({
             bridgeAgentId: peer.agentId,
             bridgeContactStatus,
             bridgeContactRequestDirection,
-            avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId),
-            profileImageUrl: bridgeProfileImageUrl(peer.profileImageUrl),
+            avatarSeed: isAgent ? (peer.agentId || peer.nodeId) : (peer.humanId || peer.ownerName || peer.nodeId),
           });
         }
 
@@ -550,8 +535,7 @@ export function useWorkspaceViewModels({
             bridgeAgentId: peer.agentId,
             bridgeContactStatus,
             bridgeContactRequestDirection,
-            avatarSeed: peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId,
-            profileImageUrl: bridgeProfileImageUrl(peer.profileImageUrl),
+            avatarSeed: peer.humanId || peer.ownerName || peer.nodeId,
           });
         }
       }
@@ -619,8 +603,7 @@ export function useWorkspaceViewModels({
           bridgeAgentId: peer.agentId,
           bridgeContactStatus: status,
           bridgeContactRequestDirection: direction,
-          avatarSeed: peer.avatarSeed || peer.humanId || peer.ownerName || peer.nodeId,
-          profileImageUrl: bridgeProfileImageUrl(peer.profileImageUrl),
+          avatarSeed: peer.humanId || peer.ownerName || peer.nodeId,
         });
       }
     }

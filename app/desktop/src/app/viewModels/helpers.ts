@@ -126,11 +126,6 @@ export function buildMessagePreview(message: Message) {
     return text;
   }
 
-  const agentResponseText = message.turn?.assistantText.trim() ?? '';
-  if (agentResponseText.length > 0) {
-    return agentResponseText;
-  }
-
   const attachments = message.attachments ?? [];
   if (attachments.length === 0) {
     return '';

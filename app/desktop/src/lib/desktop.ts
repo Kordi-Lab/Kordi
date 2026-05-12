@@ -71,20 +71,6 @@ export async function openDesktopExternalUrl(url: string) {
   return window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-export type DesktopCloudOAuthLoopbackStart = {
-  requestId: string;
-  redirectUrl: string;
-};
-
-export async function prepareDesktopCloudOAuthLoopback(): Promise<DesktopCloudOAuthLoopbackStart | null> {
-  if (!isNativeDesktopShell()) return null;
-  return invokeDesktop<DesktopCloudOAuthLoopbackStart>('cloud_oauth_loopback_prepare');
-}
-
-export async function waitForDesktopCloudOAuthLoopback(requestId: string, timeoutMs = 180_000): Promise<string> {
-  return invokeDesktop<string>('cloud_oauth_loopback_wait', { requestId, timeoutMs });
-}
-
 export async function downloadDesktopAttachment(path: string, name?: string | null) {
   return invokeDesktop<string>('desktop_chat_download_attachment', { path, name: name ?? null });
 }
