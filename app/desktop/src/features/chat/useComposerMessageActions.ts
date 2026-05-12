@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
+import { isCloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { BridgeAgentRequestControl, ComposerScope } from '@/kordi-app/types';
 import {
@@ -297,7 +299,7 @@ export function useComposerMessageActions({
       setIsDesktopChatSending(false);
     }
     try {
-      if (conversationId.startsWith('bridge:cloud:')) {
+      if (isCloudBridgeConversationId(conversationId) || isCloudGroupAgentConversationId(conversationId)) {
         if (!requestId?.trim()) throw new Error('Unable to stop cloud agent request');
         if (!cancelCloudBridgeAgentRequest) throw new Error('Cloud chat is still loading. Try again in a moment.');
         await cancelCloudBridgeAgentRequest(conversationId, requestId);

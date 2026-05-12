@@ -11,6 +11,7 @@ import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl, cloudAvatarSeedForA
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
+export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
 
 export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update';
 
@@ -45,6 +46,21 @@ export type CloudGroupControlEnvelope = {
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
+}
+
+export function cloudGroupAgentConversationId(groupId: string): string {
+  return `${CLOUD_GROUP_AGENT_CONVERSATION_PREFIX}${groupId}`;
+}
+
+export function cloudGroupIdFromAgentConversationId(conversationId: string | null | undefined): string | null {
+  const value = cleanText(conversationId);
+  if (!value.startsWith(CLOUD_GROUP_AGENT_CONVERSATION_PREFIX)) return null;
+  const groupId = value.slice(CLOUD_GROUP_AGENT_CONVERSATION_PREFIX.length).trim();
+  return groupId || null;
+}
+
+export function isCloudGroupAgentConversationId(conversationId: string | null | undefined): boolean {
+  return Boolean(cloudGroupIdFromAgentConversationId(conversationId));
 }
 
 function pixelAvatarUrlFromSeed(seed?: string | null) {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+import { cloudGroupAgentConversationId } from '../src/features/cloud/cloudGroupMessages';
 
 test('canonical read model keeps shared bridge transcript with local owned-agent tool details', () => {
   const sessionId = 'session:bridge:humans:shared';
@@ -1230,4 +1231,72 @@ test('canonical read model anchors cloud group agent progress and replies to the
   assert.equal(agentTurns.length, 1);
   assert.equal(agentTurns[0]?.replyToMessageId, 'msg:request');
   assert.equal(agentTurns[0]?.turn?.replyToMessageId, 'msg:request');
+});
+
+test('canonical read model exposes cloud group agent stop controls to requester and model owner', () => {
+  const sessionId = 'session:group:cloud-stop';
+  const requestId = 'msg:request';
+  const groupConversationId = cloudGroupAgentConversationId(sessionId);
+  const now = Date.now();
+  const baseState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:me',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: "Me's Kordi", source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', sourceHostId: 'cloud', ownerIdentityId: 'human:peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Cloud group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { kind: 'chat-group' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:me', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:peer', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+  const processingContent = {
+    sender: 'My Kordi',
+    deliveryState: 'processing',
+    bridgeConversationId: groupConversationId,
+    requestId,
+    replyToMessageId: requestId,
+  };
+  const ownerState = {
+    ...baseState,
+    messages: [
+      { id: requestId, sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: '@MesKordi stop test', content: { sender: 'Peer' }, status: 'complete', sequenceNum: 1, createdAtMs: now, updatedAtMs: now, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-request' },
+      { id: 'msg:processing', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'processing...', content: processingContent, parentMessageId: requestId, status: 'processing', sequenceNum: 2, createdAtMs: now + 1, updatedAtMs: now + 1, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-processing' },
+    ],
+  };
+  const requesterState = {
+    ...baseState,
+    messages: [
+      { id: requestId, sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@PeersKordi stop test', content: { sender: 'Me' }, status: 'complete', sequenceNum: 1, createdAtMs: now, updatedAtMs: now, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-request' },
+      { id: 'msg:processing', sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: processingContent, parentMessageId: requestId, status: 'processing', sequenceNum: 2, createdAtMs: now + 1, updatedAtMs: now + 1, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-processing' },
+    ],
+  };
+
+  for (const state of [ownerState, requesterState]) {
+    const readModel = createCanonicalSessionReadModel(state as never);
+    const conversation = readModel?.applyConversation({ id: sessionId, canonicalSessionId: sessionId, messages: [] } as never, (messages, fallback) => messages.at(-1)?.turn?.message ?? fallback ?? '');
+    const processingTurn = conversation?.messages.find((message) => message.turn?.status === 'processing')?.turn;
+    assert.deepEqual(processingTurn?.pendingBridgeAgentRequest, {
+      conversationId: groupConversationId,
+      requestId,
+    });
+  }
 });

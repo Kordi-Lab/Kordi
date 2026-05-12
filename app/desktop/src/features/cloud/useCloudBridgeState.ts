@@ -42,9 +42,11 @@ import {
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import {
+  cloudGroupAgentConversationId,
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
   cloudGroupDeliveryStateFromMessages,
+  cloudGroupIdFromAgentConversationId,
   cloudGroupIdentityRequest,
   cloudGroupMessageReadPeerIds,
   cloudGroupParticipantsForBridgeSessionParticipants,
@@ -483,6 +485,7 @@ export function useCloudBridgeState({
             sender: 'My Kordi',
             timestampMs: Date.now(),
             deliveryState: 'processing',
+            bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
             requestId: envelope.message!.id,
             replyToMessageId: envelope.message!.id,
           },
@@ -523,6 +526,7 @@ export function useCloudBridgeState({
             sender: 'My Kordi',
             timestampMs: Date.now(),
             deliveryState: 'complete',
+            bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
             requestId: envelope.message!.id,
             replyToMessageId: envelope.message!.id,
           },
@@ -922,16 +926,80 @@ export function useCloudBridgeState({
   }, [account, client, mergeMessage, refreshCloudBridgeMessages]);
 
   const cancelCloudBridgeAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
-    const peerId = cloudPeerAccountIdFromConversationId(conversationId);
     const trimmedRequestId = requestId.trim();
-    if (!peerId || !trimmedRequestId) throw new Error('Unable to resolve cloud agent request.');
+    if (!trimmedRequestId) throw new Error('Unable to resolve cloud agent request.');
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
+
+    const groupId = cloudGroupIdFromAgentConversationId(conversationId);
+    if (groupId) {
+      processedCloudAgentMentionIdsRef.current.add(trimmedRequestId);
+      const turnId = cloudAgentTurnIdsByRequestIdRef.current.get(trimmedRequestId);
+      if (turnId) {
+        await cancelDesktopChatTurn(turnId).finally(() => {
+          cloudAgentTurnIdsByRequestIdRef.current.delete(trimmedRequestId);
+        });
+      }
+      const processingMessage = canonicalSessionState?.messages.find((message) => {
+        if (message.sessionId !== groupId || message.sourceTransport !== 'cloud-group-agent') return false;
+        const content = objectContent(message.content);
+        return typeof content.requestId === 'string' && content.requestId.trim() === trimmedRequestId;
+      }) ?? null;
+      if (processingMessage && setCanonicalSessionState) {
+        const content = objectContent(processingMessage.content);
+        const cancelledState = await appendCanonicalMessage({
+          id: `msg:cloud-agent-cancelled:${trimmedRequestId}:${account?.accountId ?? 'local'}`,
+          sessionId: groupId,
+          senderIdentityId: processingMessage.senderIdentityId,
+          senderRole: processingMessage.senderRole,
+          messageKind: 'agent-turn',
+          contentText: 'Stopped',
+          content: {
+            sender: typeof content.sender === 'string' ? content.sender : 'Kordi',
+            timestampMs: Date.now(),
+            deliveryState: 'cancelled',
+            bridgeConversationId: conversationId,
+            requestId: trimmedRequestId,
+            replyToMessageId: trimmedRequestId,
+          },
+          createdAtMs: Date.now(),
+          parentMessageId: trimmedRequestId,
+          status: 'cancelled',
+          sourceTransport: 'cloud-group-agent',
+          sourceEventId: `cloud-group-agent-cancel:${trimmedRequestId}`,
+        });
+        setCanonicalSessionState(cancelledState);
+      }
+      const cancelBody = encodeCloudAgentCancel({ requestId: trimmedRequestId });
+      const groupEnvelope = Object.values(messagesByPeer)
+        .flat()
+        .map((message) => parseCloudGroupControl(message.body))
+        .find((envelope) => (
+          envelope?.kind === 'group-message'
+          && envelope.groupId === groupId
+          && envelope.message?.id === trimmedRequestId
+        ));
+      const targetAccountIds = [...new Set((groupEnvelope?.participants ?? [])
+        .map((participant) => participant.accountId.trim())
+        .filter((accountId) => accountId && accountId !== account?.accountId))];
+      const sent = await Promise.allSettled(
+        targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, cancelBody)),
+      );
+      sent.forEach((result) => {
+        if (result.status === 'fulfilled') mergeMessage(result.value);
+      });
+      await refreshCloudBridgeMessages();
+      setCloudBridgeOverrideState(null);
+      return;
+    }
+
+    const peerId = cloudPeerAccountIdFromConversationId(conversationId);
+    if (!peerId) throw new Error('Unable to resolve cloud agent request.');
     const message = await client.sendMessage(session.token, peerId, encodeCloudAgentCancel({ requestId: trimmedRequestId }));
     mergeMessage(message);
     await refreshCloudBridgeMessages();
     setCloudBridgeOverrideState(null);
-  }, [client, mergeMessage, refreshCloudBridgeMessages]);
+  }, [account?.accountId, canonicalSessionState?.messages, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
 
   return {
     cloudBridgeState,
