@@ -158,6 +158,7 @@ pub fn run() {
             auth::lm_studio::desktop_lm_studio_open_app,
             auth::lm_studio::desktop_lm_studio_repair_cli_path,
             auth::lm_studio::desktop_lm_studio_install,
+            auth::lm_studio::desktop_lm_studio_refresh_install,
             auth::lm_studio::desktop_lm_studio_get_model,
             auth::lm_studio::desktop_lm_studio_load_model,
             auth::lm_studio::desktop_lm_studio_stop_model,

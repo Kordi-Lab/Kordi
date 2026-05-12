@@ -12,6 +12,7 @@ import {
   loadLmStudioModelDesktop,
   openDesktopExternalUrl,
   openLmStudioAppDesktop,
+  refreshLmStudioInstallDesktop,
   repairLmStudioCliPathDesktop,
   setDesktopLocalProviderPort,
   startLmStudioServerDesktop,
@@ -41,6 +42,7 @@ type LmStudioModelControlCenterProps = {
 type LmStudioAction =
   | 'catalog'
   | 'install'
+  | 'refresh-install'
   | 'server-start'
   | 'server-stop'
   | `get:${string}`
@@ -49,6 +51,7 @@ type LmStudioAction =
 
 type LmStudioRuntimeActionId = 'refresh' | 'stop-model' | 'start-server' | 'stop-server';
 type LmStudioPageEndActionId = 'save-model' | 'save-enter-chat';
+type LmStudioSetupActionId = 'check-setup' | 'open-app' | 'add-cli-path' | 'refresh-install' | 'details';
 
 export type LmStudioRuntimeAction = {
   id: LmStudioRuntimeActionId;
@@ -57,6 +60,11 @@ export type LmStudioRuntimeAction = {
 
 export type LmStudioPageEndAction = {
   id: LmStudioPageEndActionId;
+  label: string;
+};
+
+export type LmStudioSetupAction = {
+  id: LmStudioSetupActionId;
   label: string;
 };
 
@@ -112,6 +120,36 @@ function resultSummary(result: DesktopLmStudioCommandResult) {
   const output = result.stdout.trim() || result.stderr.trim();
   if (!output) return `${result.command} finished successfully.`;
   return output.split('\n').slice(-3).join(' ');
+}
+
+export function lmStudioNeedsInstallRefresh(message?: string | null) {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('invalid passkey')
+    || normalized.includes('rejected the lms cli passkey')
+    || (normalized.includes('failed to authenticate') && normalized.includes('lms cli client'));
+}
+
+export function lmStudioDisplayError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+  if (!lmStudioNeedsInstallRefresh(message)) return message || fallback;
+  return 'LM Studio rejected the lms CLI passkey. Click Repair lms install to quit LM Studio, remove only stale lms passkey files, reinstall/update the LM Studio helper, reopen LM Studio, then refresh installed models. Your downloaded models are not deleted.';
+}
+
+export function lmStudioSetupActions({
+  hasInvalidPasskeyError,
+  isConfirmingRefreshInstall,
+}: {
+  hasInvalidPasskeyError: boolean;
+  isConfirmingRefreshInstall: boolean;
+}): LmStudioSetupAction[] {
+  return [
+    { id: 'check-setup', label: 'Check setup' },
+    { id: 'open-app', label: 'Open LM Studio' },
+    { id: 'add-cli-path', label: 'Add lms to PATH' },
+    ...(hasInvalidPasskeyError ? [{ id: 'refresh-install' as const, label: isConfirmingRefreshInstall ? 'Confirm repair' : 'Repair lms install' }] : []),
+    { id: 'details', label: 'Details' },
+  ];
 }
 
 function RuntimeStatusPill({ running }: { running: boolean }) {
@@ -246,6 +284,7 @@ export function LmStudioModelControlCenter({
   const [isSetupDetailsExpanded, setIsSetupDetailsExpanded] = useState(false);
   const [runningVariantIds, setRunningVariantIds] = useState<Set<string>>(() => new Set());
   const [confirmInstall, setConfirmInstall] = useState(false);
+  const [confirmRefreshInstall, setConfirmRefreshInstall] = useState(false);
   const [activeAction, setActiveAction] = useState<LmStudioAction | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -259,7 +298,7 @@ export function LmStudioModelControlCenter({
       const models = await fetchLmStudioCatalogModelsDesktop();
       setCatalogModels(models);
     } catch (error) {
-      setCatalogError(error instanceof Error ? error.message : 'Unable to fetch LM Studio catalog.');
+      setCatalogError(lmStudioDisplayError(error, 'Unable to fetch LM Studio catalog.'));
     } finally {
       setActiveAction(null);
     }
@@ -272,7 +311,7 @@ export function LmStudioModelControlCenter({
       const snapshot = await fetchLmStudioEnvironmentDesktop();
       setEnvironment(snapshot);
     } catch (error) {
-      setSetupError(error instanceof Error ? error.message : 'Unable to inspect LM Studio setup.');
+      setSetupError(lmStudioDisplayError(error, 'Unable to inspect LM Studio setup.'));
     } finally {
       setIsCheckingSetup(false);
     }
@@ -284,7 +323,7 @@ export function LmStudioModelControlCenter({
       const models = await fetchLmStudioInstalledModelsDesktop();
       setInstalledModels(models);
     } catch (error) {
-      setInstalledError(error instanceof Error ? error.message : 'Unable to read installed LM Studio models.');
+      setInstalledError(lmStudioDisplayError(error, 'Unable to read installed LM Studio models.'));
     }
   };
 
@@ -296,7 +335,7 @@ export function LmStudioModelControlCenter({
       return status;
     } catch (error) {
       setServerStatus(null);
-      setServerStatusError(error instanceof Error ? error.message : 'Unable to read LM Studio server status.');
+      setServerStatusError(lmStudioDisplayError(error, 'Unable to read LM Studio server status.'));
       return null;
     }
   };
@@ -365,7 +404,7 @@ export function LmStudioModelControlCenter({
       }
     } catch (error) {
       setActionMessage(null);
-      setActionError(error instanceof Error ? error.message : `Unable to run ${successPrefix.toLowerCase()}.`);
+      setActionError(lmStudioDisplayError(error, `Unable to run ${successPrefix.toLowerCase()}.`));
       if (action.startsWith('load:') || action.startsWith('stop:') || action.startsWith('remove:')) {
         void refreshRunningModels();
       }
@@ -389,6 +428,22 @@ export function LmStudioModelControlCenter({
     });
   };
 
+  const refreshLmStudioInstall = async () => {
+    if (!confirmRefreshInstall) {
+      setConfirmRefreshInstall(true);
+      setActionError(null);
+      setActionMessage('Click Confirm repair to quit LM Studio, remove only stale lms passkey files, reinstall/update the LM Studio helper, and reopen LM Studio. Downloaded models are kept.');
+      return;
+    }
+
+    setConfirmRefreshInstall(false);
+    await runLmStudioAction('refresh-install', refreshLmStudioInstallDesktop, 'Repairing LM Studio lms install', async () => {
+      await refreshEnvironment();
+      await refreshInstalledModels();
+      await refreshServerStatus();
+    });
+  };
+
   const openLmStudioApp = async () => {
     try {
       setIsOpeningApp(true);
@@ -401,7 +456,7 @@ export function LmStudioModelControlCenter({
       }, 2000);
     } catch (error) {
       setActionMessage(null);
-      setActionError(error instanceof Error ? error.message : 'Unable to open LM Studio.');
+      setActionError(lmStudioDisplayError(error, 'Unable to open LM Studio.'));
     } finally {
       setIsOpeningApp(false);
     }
@@ -417,7 +472,7 @@ export function LmStudioModelControlCenter({
       await refreshInstalledModels();
     } catch (error) {
       setActionMessage(null);
-      setActionError(error instanceof Error ? error.message : 'Unable to add lms to PATH.');
+      setActionError(lmStudioDisplayError(error, 'Unable to add lms to PATH.'));
     } finally {
       setIsRepairingCliPath(false);
     }
@@ -442,7 +497,7 @@ export function LmStudioModelControlCenter({
       return status;
     } catch (error) {
       setActionMessage(null);
-      setActionError(error instanceof Error ? error.message : 'Unable to start LM Studio local server.');
+      setActionError(lmStudioDisplayError(error, 'Unable to start LM Studio local server.'));
       void refreshServerStatus();
       return null;
     } finally {
@@ -461,7 +516,7 @@ export function LmStudioModelControlCenter({
       return status;
     } catch (error) {
       setActionMessage(null);
-      setActionError(error instanceof Error ? error.message : 'Unable to stop LM Studio local server.');
+      setActionError(lmStudioDisplayError(error, 'Unable to stop LM Studio local server.'));
       void refreshServerStatus();
       return null;
     } finally {
@@ -505,7 +560,7 @@ export function LmStudioModelControlCenter({
       }
     } catch (error) {
       setActionMessage(null);
-      setActionError(error instanceof Error ? error.message : 'Unable to save LM Studio connection.');
+      setActionError(lmStudioDisplayError(error, 'Unable to save LM Studio connection.'));
     } finally {
       setIsSavingConnection(false);
     }
@@ -584,7 +639,10 @@ export function LmStudioModelControlCenter({
     canEnterChat,
   });
   const pageEndAction = lmStudioPageEndAction({ activeRunningModelId, canEnterChat });
+  const setupNeedsInstallRefresh = lmStudioNeedsInstallRefresh(installedError) || lmStudioNeedsInstallRefresh(actionError) || lmStudioNeedsInstallRefresh(serverStatusError) || lmStudioNeedsInstallRefresh(setupError);
+  const setupActions = lmStudioSetupActions({ hasInvalidPasskeyError: setupNeedsInstallRefresh, isConfirmingRefreshInstall: confirmRefreshInstall });
   const hasRuntimeAction = (id: LmStudioRuntimeActionId) => runtimeActions.some((action) => action.id === id);
+  const setupAction = (id: LmStudioSetupActionId) => setupActions.find((action) => action.id === id);
   const readinessSteps = [
     {
       label: 'App + CLI',
@@ -642,6 +700,7 @@ export function LmStudioModelControlCenter({
     || isRepairingCliPath
     || isOpeningApp
     || activeAction === 'install'
+    || activeAction === 'refresh-install'
     || activeAction === 'server-start'
     || Boolean(firstInstalledModelId && activeAction === `load:${firstInstalledModelId}`);
   const runPrimaryAction = () => {
@@ -817,17 +876,22 @@ export function LmStudioModelControlCenter({
           </div>
           <div className="flex flex-wrap gap-1.5">
             <AuthActionButton className={modelControlNeutralClass} onClick={refreshEnvironment} disabled={isCheckingSetup}>
-              <RefreshCw className="h-3.5 w-3.5" /> {isCheckingSetup ? 'Checking…' : 'Check setup'}
+              <RefreshCw className="h-3.5 w-3.5" /> {isCheckingSetup ? 'Checking…' : setupAction('check-setup')?.label}
             </AuthActionButton>
             <AuthActionButton className={modelControlNeutralClass} onClick={openLmStudioApp} disabled={isOpeningApp}>
-              <ExternalLink className="h-3.5 w-3.5" /> {isOpeningApp ? 'Opening…' : 'Open LM Studio'}
+              <ExternalLink className="h-3.5 w-3.5" /> {isOpeningApp ? 'Opening…' : setupAction('open-app')?.label}
             </AuthActionButton>
             <AuthActionButton className={modelControlNeutralClass} onClick={repairCliPath} disabled={isRepairingCliPath}>
-              <Terminal className="h-3.5 w-3.5" /> {isRepairingCliPath ? 'Adding…' : 'Add lms to PATH'}
+              <Terminal className="h-3.5 w-3.5" /> {isRepairingCliPath ? 'Adding…' : setupAction('add-cli-path')?.label}
             </AuthActionButton>
+            {setupAction('refresh-install') ? (
+              <AuthActionButton className={modelControlStopClass} onClick={refreshLmStudioInstall} disabled={activeAction === 'refresh-install'}>
+                <Download className="h-3.5 w-3.5" /> {activeAction === 'refresh-install' ? 'Repairing…' : setupAction('refresh-install')?.label}
+              </AuthActionButton>
+            ) : null}
             <AuthActionButton className={modelControlNeutralClass} onClick={() => setIsSetupDetailsExpanded((value) => !value)}>
               {isSetupDetailsExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              {isSetupDetailsExpanded ? 'Hide details' : 'Details'}
+              {isSetupDetailsExpanded ? 'Hide details' : setupAction('details')?.label}
             </AuthActionButton>
           </div>
         </div>
@@ -858,6 +922,12 @@ export function LmStudioModelControlCenter({
             {environment?.shellConfigPaths.length ? <div className="mt-1 break-all font-mono text-[10px] text-slate-500">{environment.shellConfigPaths.map(compactPath).join(' · ')}</div> : null}
           </div>
         </div>
+        ) : null}
+
+        {setupNeedsInstallRefresh ? (
+          <div className="mt-3 rounded-[16px] border border-rose-300/20 bg-rose-400/[0.08] px-3 py-2 text-[11px] leading-5 text-rose-50/90">
+            Invalid lms passkey detected. Use Repair lms install to quit LM Studio, clean only stale CLI passkey files, reinstall/update the official helper, and reopen LM Studio. Downloaded models are preserved.
+          </div>
         ) : null}
 
         {(setupError || environment?.notes.length) ? (
@@ -900,7 +970,14 @@ export function LmStudioModelControlCenter({
 
         {isInstalledSectionExpanded && installedError ? (
           <div className="mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
-            {installedError}
+            <div>{installedError}</div>
+            {setupNeedsInstallRefresh ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <AuthActionButton className={modelControlStopClass} onClick={refreshLmStudioInstall} disabled={activeAction === 'refresh-install'}>
+                  <Download className="h-3.5 w-3.5" /> {activeAction === 'refresh-install' ? 'Repairing…' : (setupAction('refresh-install')?.label ?? 'Repair lms install')}
+                </AuthActionButton>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
