@@ -6,6 +6,7 @@ import {
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   openOrCreateCanonicalSession,
+  renameCanonicalSession,
   startDesktopChatMessage,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
@@ -56,6 +57,7 @@ import {
   cloudGroupPeerIdsFromMessages,
   cloudGroupSelfParticipant,
   cloudGroupTitleForOutgoingControl,
+  cloudSessionTitleUpdateTitle,
   cloudGroupUniqueParticipants,
   cloudGroupRelatedControlsForSend,
   cloudGroupNonGenericTitle,
@@ -350,7 +352,8 @@ export function useCloudBridgeState({
     const participantIdentityIds = [...identityIdByAccount.entries()]
       .filter(([accountId, identityId]) => accountId !== envelope.createdByAccountId && identityId !== createdByIdentityId)
       .map(([, identityId]) => identityId);
-    const explicitGroupTitle = cloudGroupNonGenericTitle(envelope.groupTitle);
+    const sessionTitleUpdateTitle = cloudSessionTitleUpdateTitle(envelope);
+    const explicitGroupTitle = shouldApplyCloudGroupTitleUpdate(envelope) ? cloudGroupNonGenericTitle(envelope.groupTitle) : null;
     const groupTitle = explicitGroupTitle || 'Cloud group';
     const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
     const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
@@ -378,9 +381,16 @@ export function useCloudBridgeState({
     });
     setCanonicalSessionState(nextState);
 
-    if (
-      shouldApplyCloudGroupTitleUpdate(envelope)
-    ) {
+    if (sessionTitleUpdateTitle) {
+      nextState = await renameCanonicalSession({
+        sessionId: envelope.groupId,
+        title: sessionTitleUpdateTitle,
+        requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
+      });
+      setCanonicalSessionState(nextState);
+    }
+
+    if (shouldApplyCloudGroupTitleUpdate(envelope)) {
       nextState = await updateCanonicalSessionMetadata({
         sessionId: envelope.groupId,
         requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,

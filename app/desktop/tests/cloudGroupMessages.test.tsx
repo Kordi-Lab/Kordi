@@ -24,6 +24,7 @@ import {
   parseCloudGroupControl,
   shouldApplyCloudGroupTitleUpdate,
   shouldCountCloudGroupMessageUnread,
+  cloudSessionTitleUpdateTitle,
   shouldRouteMentionThroughCloudGroup,
 } from '../src/features/cloud/cloudGroupMessages';
 import { CLOUD_HOST_SENTINEL } from '../src/features/cloud/useCloudContacts';
@@ -222,7 +223,10 @@ test('cloud group messages do not inherit stale group titles from earlier rename
 
 test('only explicit group title update controls mutate the shared group name', () => {
   assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'group-message', groupTitle: 'Stale name' }), false);
+  assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'session-title-update', groupTitle: 'Thread title' }), false);
   assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'group-title-update', groupTitle: 'Lalla' }), true);
+  assert.equal(cloudSessionTitleUpdateTitle({ kind: 'session-title-update', groupTitle: 'Thread title' }), 'Thread title');
+  assert.equal(cloudSessionTitleUpdateTitle({ kind: 'group-title-update', groupTitle: 'Lalla' }), null);
 });
 
 test('cloud group local agent requests are considered handled after a synced processing or final response', () => {

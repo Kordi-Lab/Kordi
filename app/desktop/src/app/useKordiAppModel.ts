@@ -839,9 +839,18 @@ export function useKordiAppModel() {
     });
     const currentMetadata = sessionMetadataRecord(state, sessionId);
     const parentGroupSpaceId = metadataGroupSpaceId(currentMetadata) || sessionId;
-    // Session titles and group names are separate concepts. Cloud group-title-update
-    // updates the shared group name, so do not send it for a per-session title rename.
+    const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
     const bridgeTargets = nonCloudGroupTargets(targets);
+    if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
+      await sendCloudGroupControl({
+        targetAccountIds: cloudTargetAccountIds,
+        kind: 'session-title-update',
+        groupId: sessionId,
+        groupSpaceId: parentGroupSpaceId,
+        groupTitle: title,
+        participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, updateParticipants),
+      });
+    }
     for (const target of bridgeTargets) {
       const bridgeState = await createDesktopBridgeOutreach({
         hostId: target.hostId,
@@ -869,7 +878,7 @@ export function useKordiAppModel() {
       });
       setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
     }
-  }, [setDesktopBridgeState]);
+  }, [cloudSession.account, sendCloudGroupControl, setDesktopBridgeState]);
 
   const handleRenameChatSession = useCallback(async (sessionId: string, title: string) => {
     if (!isNativeShell || !sessionId.trim()) return;

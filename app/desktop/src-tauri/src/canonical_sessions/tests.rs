@@ -538,6 +538,54 @@ fn renaming_group_session_preserves_group_name_as_separate_metadata() {
 }
 
 #[test]
+fn canonical_group_session_title_rename_does_not_require_group_admin() {
+    let _storage =
+        crate::test_support::ScopedKordiStorageRoot::new("group-session-title-non-admin");
+    let conn = open_db().expect("open db");
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let alice = seed_identity(&conn, "human:alice", "Alice", "human");
+    let group = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:group:non-admin-title".to_string()),
+            kind: "group".to_string(),
+            title: Some("First group thread".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![alice.id.clone()],
+            metadata: Some(serde_json::json!({
+                "adminIdentityIds": [creator.id.clone()],
+                "customName": "Me, Alice",
+                "groupId": "session:group:non-admin-title",
+                "groupSpaceId": "session:group:non-admin-title"
+            })),
+        },
+    )
+    .expect("create group");
+
+    let state = commands::desktop_canonical_rename_session(RenameCanonicalSessionRequest {
+        session_id: group.id.clone(),
+        title: "Alice's thread title".to_string(),
+        requested_by_identity_id: Some(alice.id.clone()),
+    })
+    .expect("non-admin participant can rename session title");
+
+    let renamed = state
+        .sessions
+        .iter()
+        .find(|session| session.id == group.id)
+        .expect("renamed session exists");
+    assert_eq!(renamed.title, "Alice's thread title");
+    let metadata = renamed.metadata.as_ref().expect("metadata preserved");
+    assert_eq!(metadata["customName"], "Me, Alice");
+    assert_eq!(metadata["sessionTitleSource"], "manual");
+}
+
+#[test]
 fn canonical_group_metadata_and_participant_role_mutations_are_stable() {
     let conn = test_conn();
     let creator = seed_identity(&conn, "human:me", "Me", "human");
