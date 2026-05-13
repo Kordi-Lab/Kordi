@@ -13,7 +13,7 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
-import { cloudAvatarSeedFromUrl } from '@/features/cloud/avatar';
+import { cloudAvatarImageUrl, cloudAvatarSeedFromUrl } from '@/features/cloud/avatar';
 import {
   cloudGroupIdentityRequest,
   cloudGroupParticipantsForBridgeSessionParticipants,
@@ -103,6 +103,7 @@ import {
   canonicalGroupSessionSyncContextForSession,
   canonicalIdentityDisplayName,
   canonicalLocalAgentAvatarSeed,
+  canonicalProfileImageUrl,
   currentMentionQuery,
   filterMentionTargets,
   groupRenameMetadata,
@@ -138,7 +139,7 @@ export function useKordiAppModel() {
   const lastAutoAuthProviderSwitchRef = useRef<string | null>(null);
   const [canonicalSessionState, setCanonicalSessionState] = useState<CanonicalSessionState | null>(null);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
-  const localAvatarSeedsRef = useRef<{ human?: string | null; agent?: string | null }>({});
+  const localAvatarSeedsRef = useRef<{ human?: string | null; humanProfileImageUrl?: string | null; agent?: string | null }>({});
   const canonicalRefreshFlightRef = useRef(createSingleFlightState());
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
 
@@ -370,10 +371,15 @@ export function useKordiAppModel() {
     ?? avatarBridgeHost?.agents[0]
     ?? null;
   const cloudProfileAvatarSeed = kordiEdition === 'cloud' ? cloudAvatarSeedFromUrl(cloudSession.account?.avatarUrl) : null;
+  const cloudProfileImageUrl = kordiEdition === 'cloud' ? cloudAvatarImageUrl(cloudSession.account?.avatarUrl) : null;
   const localProfileAvatarSeed = cloudProfileAvatarSeed
     || canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
     || avatarBridgeHost?.humanId?.trim()
     || canonicalSessionState?.profile.id?.trim()
+    || null;
+  const localProfileImageUrl = cloudProfileImageUrl
+    || canonicalProfileImageUrl(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
+    || avatarBridgeHost?.profileImageUrl?.trim()
     || null;
   const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
     || avatarBridgeAgent?.id?.trim()
@@ -382,6 +388,7 @@ export function useKordiAppModel() {
     || avatarBridgeHost?.nodeId?.trim()
     || null;
   localAvatarSeedsRef.current.human = localProfileAvatarSeed;
+  localAvatarSeedsRef.current.humanProfileImageUrl = localProfileImageUrl;
   localAvatarSeedsRef.current.agent = localAgentAvatarSeed;
 
   const desktopCanonicalRefreshKey = useMemo(
