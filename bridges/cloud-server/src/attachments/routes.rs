@@ -5,8 +5,9 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use chrono::Utc;
@@ -151,6 +152,125 @@ pub async fn initiate(
         object_key,
         upload_url: upload_url.to_string(),
         expires_at,
+    })
+    .into_response()
+}
+
+/// `PUT /v1/cloud/attachments/:attachment_id/upload`
+///
+/// Proxies bytes through the cloud server into the configured object store.
+/// Presigned URLs stay internal to the cluster, so desktop clients don't need
+/// direct network access to MinIO.
+pub async fn upload(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(attachment_id): Path<String>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Response {
+    let s3 = match s3_or_503(&state) {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+    let pool = state.db_pool();
+
+    let row: Option<(String, String)> = match query_as(
+        "SELECT object_key, owner_account_id \
+         FROM cloud_attachments \
+         WHERE attachment_id = $1",
+    )
+    .bind(&attachment_id)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let Some((object_key, owner)) = row else {
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
+    };
+    if owner != session.account_id {
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
+    }
+
+    let upload_url = match presign_upload_url(s3, &object_key) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("[attachments] presign proxy upload: {error}");
+            return err(
+                "server_error",
+                "Could not sign upload URL.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let content_type = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+
+    let mut req = reqwest::Client::new()
+        .put(upload_url.to_string())
+        .body(bytes.clone());
+    if let Some(value) = content_type.as_deref() {
+        req = req.header(reqwest::header::CONTENT_TYPE, value);
+    }
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => {}
+        Ok(resp) => {
+            eprintln!("[attachments] proxy upload failed: {}", resp.status());
+            return err(
+                "server_error",
+                "Could not upload attachment.",
+                StatusCode::BAD_GATEWAY,
+            );
+        }
+        Err(error) => {
+            eprintln!("[attachments] proxy upload request failed: {error}");
+            return err(
+                "server_error",
+                "Could not upload attachment.",
+                StatusCode::BAD_GATEWAY,
+            );
+        }
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let size_bytes = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+    if query(
+        "UPDATE cloud_attachments \
+         SET size_bytes = $1, content_type = $2, finalized_at = $3 \
+         WHERE attachment_id = $4",
+    )
+    .bind(size_bytes)
+    .bind(content_type.as_deref())
+    .bind(&now)
+    .bind(&attachment_id)
+    .execute(pool)
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not finalize attachment.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    Json(AttachmentSummary {
+        attachment_id,
+        object_key,
+        size_bytes: Some(size_bytes),
+        content_type,
+        sha256_hex: None,
+        finalized_at: Some(now),
     })
     .into_response()
 }

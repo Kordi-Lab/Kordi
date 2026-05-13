@@ -1312,7 +1312,7 @@ export function useCloudBridgeState({
           : senderIsAgent && agentDeliveryState === 'cancelled'
             ? 'cancelled'
             : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received';
-      const mappedAttachments = (envelope.message.attachments?.length ? envelope.message.attachments : cloudMessage.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment);
+      const mappedAttachments = (cloudMessage.attachments?.length ? cloudMessage.attachments : envelope.message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment);
       const messageRequest = {
         id: shouldUpdateStableAgentSlot ? stableAgentNoticeId : envelope.message.id,
         sessionId: envelope.groupId,

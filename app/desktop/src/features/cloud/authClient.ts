@@ -482,25 +482,18 @@ export class CloudAuthClient {
 
   async uploadAttachment(token: string, blob: Blob): Promise<CloudAttachmentFinalizeResult> {
     const initiated = await this.initiateAttachment(token);
-    let uploadResponse: Response;
-    try {
-      uploadResponse = await this.fetchImpl(initiated.uploadUrl, {
+    return this.send<CloudAttachmentFinalizeResult>(
+      `/v1/cloud/attachments/${encodeURIComponent(initiated.attachmentId)}/upload`,
+      {
         method: 'PUT',
-        headers: blob.type ? { 'content-type': blob.type } : undefined,
+        headers: {
+          ...(blob.type ? { 'content-type': blob.type } : {}),
+          authorization: `Bearer ${token}`,
+        },
         body: blob,
-      });
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Network request failed.';
-      throw new CloudAuthError('network_error', message, 0);
-    }
-    if (!uploadResponse.ok) {
-      throw new CloudAuthError('server_error', 'Could not upload attachment bytes.', uploadResponse.status);
-    }
-    return this.finalizeAttachment(token, initiated.attachmentId, {
-      sizeBytes: blob.size,
-      contentType: blob.type || null,
-      sha256Hex: null,
-    });
+      },
+      'Could not upload attachment bytes.',
+    );
   }
 
   async downloadAttachmentUrl(token: string, attachmentId: string): Promise<CloudAttachmentDownloadUrlResult> {

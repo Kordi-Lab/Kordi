@@ -505,6 +505,10 @@ pub fn routes_with_config(
             post(crate::attachments::routes::initiate),
         )
         .route(
+            "/v1/cloud/attachments/:attachment_id/upload",
+            axum::routing::put(crate::attachments::routes::upload),
+        )
+        .route(
             "/v1/cloud/attachments/:attachment_id/finalize",
             post(crate::attachments::routes::finalize),
         )
