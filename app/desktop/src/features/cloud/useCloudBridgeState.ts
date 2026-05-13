@@ -171,8 +171,21 @@ export function cloudGroupAgentCancelledNoticeRequest({
   const trimmedCancelledByAccountId = cancelledByAccountId.trim() || 'local';
   const role = cancelledByRole || 'participant';
   const text = `Request canceled by ${role}.`;
+  // Always overwrite the processing row in place. processingMessage is the
+  // current slot holding the "Processing…"/"Requesting…" state for this
+  // request — whether that's the offline-tier placeholder (sourceTransport
+  // 'cloud-group-agent-offline') or the live processing envelope from the
+  // owner instance (sourceTransport 'cloud-group-agent'). Using a separate
+  // cancel-notice id in the latter case leaves two rows for one slot, and
+  // the offline-timer effect's setCloudGroupRequestPlaceholderProcessing
+  // deletes the cancel row via cloudGroupAgentResponseMatches on each render
+  // — producing visible oscillation between "Processing…" and the cancel
+  // notice. cloudGroupAgentProcessingMessageForRequest only returns rows in
+  // a processing state, so reusing this id can never clobber a completed
+  // agent reply.
+  const noticeId = processingMessage.id;
   return {
-    id: `msg:cloud-agent-cancelled:${trimmedRequestId}:${trimmedCancelledByAccountId}`,
+    id: noticeId,
     sessionId: processingMessage.sessionId,
     senderIdentityId: processingMessage.senderIdentityId,
     senderRole: processingMessage.senderRole,
@@ -837,9 +850,20 @@ export function useCloudBridgeState({
             candidate.requestMessage.sessionId,
             account,
           );
+          // The offline-tier notice is the asker's 15-second local timeout
+          // marker, not authoritative state. Send it to the OTHER human
+          // participants so they see the asker gave up waiting — but skip
+          // the target agent's own account. The target's local state is
+          // canonical for itself; delivering this notice there only creates
+          // a phantom "Kordi is offline" row alongside whatever processing/
+          // cancel/reply row the target's instance generates locally.
           const targetAccountIds = participants
             .map((participant) => participant.accountId)
-            .filter((participantAccountId) => participantAccountId && participantAccountId !== account.accountId);
+            .filter((participantAccountId) => (
+              participantAccountId
+              && participantAccountId !== account.accountId
+              && participantAccountId !== candidate.targetAccountId
+            ));
           if (targetAccountIds.length === 0) return;
           const groupSession = snapshotState.sessions.find((sessionCandidate) => sessionCandidate.id === candidate.requestMessage.sessionId);
           const groupMetadata = objectContent(groupSession?.metadata);
@@ -906,8 +930,16 @@ export function useCloudBridgeState({
   }, [account?.accountId]);
 
   const applyCloudGroupControl = useCallback(async (cloudMessage: CloudMessage, envelope: CloudGroupControlEnvelope) => {
-    if (!account || !canonicalSessionState || !setCanonicalSessionState) return;
-    const localHumanIdentityId = canonicalSessionState.profile.humanIdentityId?.trim();
+    // Read state from refs, not closure, so this useCallback's identity stays
+    // stable across canonical updates. Earlier the function was rebuilt on
+    // every canonicalSessionState change, which made the replay useEffect
+    // (deps include applyCloudGroupControl) re-fire on every setState. The
+    // ~11 internal setCanonicalSessionState calls per envelope then compounded
+    // and React tripped "Maximum update depth exceeded" — visible on the
+    // user1 window and via the WS reconnect loop on all three.
+    const canonicalState = canonicalSessionStateRef.current;
+    if (!account || !canonicalState || !setCanonicalSessionState) return;
+    const localHumanIdentityId = canonicalState.profile.humanIdentityId?.trim();
     if (!localHumanIdentityId) return;
 
     const participantByAccount = new Map<string, CloudGroupParticipant>();
@@ -918,12 +950,11 @@ export function useCloudBridgeState({
     }
 
     const identityIdByAccount = new Map<string, string>();
-    let nextState: CanonicalSessionState | null = canonicalSessionState;
+    let nextState: CanonicalSessionState | null = canonicalState;
     for (const participant of participantByAccount.values()) {
       const request = cloudGroupIdentityRequest(participant, account, localHumanIdentityId);
       identityIdByAccount.set(participant.accountId, request.id ?? '');
       nextState = await upsertCanonicalIdentity(request);
-      setCanonicalSessionState(nextState);
     }
 
     const createdByIdentityId = identityIdByAccount.get(envelope.createdByAccountId)
@@ -963,7 +994,6 @@ export function useCloudBridgeState({
       participantIdentityIds,
       metadata: groupMetadata,
     });
-    setCanonicalSessionState(nextState);
 
     if (sessionTitleUpdateTitle) {
       const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
@@ -972,7 +1002,6 @@ export function useCloudBridgeState({
         title: sessionTitleUpdateTitle,
         requestedByIdentityId: actorIdentityId,
       });
-      setCanonicalSessionState(nextState);
       if (!isSelfAuthoredControl) {
         const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
           envelope,
@@ -982,7 +1011,6 @@ export function useCloudBridgeState({
         });
         if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
           nextState = await appendCanonicalMessage(noticeRequest);
-          setCanonicalSessionState(nextState);
         }
       }
     }
@@ -993,7 +1021,6 @@ export function useCloudBridgeState({
         requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
         metadata: groupMetadata,
       });
-      setCanonicalSessionState(nextState);
       if (!isSelfAuthoredControl) {
         const noticeRequest = cloudGroupTitleUpdateNoticeRequest({
           envelope,
@@ -1003,17 +1030,41 @@ export function useCloudBridgeState({
         });
         if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
           nextState = await appendCanonicalMessage(noticeRequest);
-          setCanonicalSessionState(nextState);
         }
       }
     }
 
-    if (envelope.kind !== 'group-message' || !envelope.message) return;
+    if (envelope.kind !== 'group-message' || !envelope.message) {
+      setCanonicalSessionState(nextState);
+      return;
+    }
     const senderHumanIdentityId = identityIdByAccount.get(envelope.message.senderAccountId);
-    if (!senderHumanIdentityId) return;
-    const messageAlreadyExists = [canonicalSessionState, nextState]
+    if (!senderHumanIdentityId) {
+      setCanonicalSessionState(nextState);
+      return;
+    }
+    // Round-trip guard: when the local agent owner broadcasts their own
+    // agent response envelope, it returns via cloud polling. The mention
+    // handler already wrote the canonical row in place of the processing
+    // row (using processingMessageId), so envelope.message.id (a fresh
+    // `msg:cloud-agent:<turnId>`) won't match the existing row — without
+    // this guard, the receive-side block would write a second row and we'd
+    // be back to the duplicate state. Treat the request as already handled
+    // when this envelope is our own agent's response AND a processing row
+    // exists locally for the same request.
+    const isOwnAgentResponseRoundTrip = envelope.message
+      && envelope.message.senderKind === 'agent'
+      && envelope.message.senderAccountId === account.accountId
+      && Boolean((envelope.message.replyToMessageId || envelope.message.requestId)?.trim());
+    const ownAgentProcessingId = isOwnAgentResponseRoundTrip
+      ? `msg:cloud-agent-processing:${(envelope.message!.replyToMessageId || envelope.message!.requestId || '').trim()}:${account.accountId}`
+      : null;
+    const messageAlreadyExists = [canonicalState, nextState]
       .filter((state): state is CanonicalSessionState => Boolean(state))
-      .some((state) => state.messages.some((candidate) => candidate.id === envelope.message?.id));
+      .some((state) => state.messages.some((candidate) => (
+        candidate.id === envelope.message?.id
+        || (ownAgentProcessingId !== null && candidate.id === ownAgentProcessingId)
+      )));
 
     const senderIsAgent = envelope.message.senderKind === 'agent';
     const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
@@ -1039,15 +1090,33 @@ export function useCloudBridgeState({
         profileImageUrl: null,
         metadata: { accountId: envelope.message.senderAccountId, cloudGroupAgent: true },
       });
-      setCanonicalSessionState(nextState);
     }
     if (!messageAlreadyExists) {
       const stableAgentNoticeId = senderIsAgent && messageReplyToId
         ? `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`
         : null;
-      const shouldUpdateStableAgentSlot = Boolean(stableAgentNoticeId && [canonicalSessionState, nextState].some((state) => (
-        state?.messages.some((message) => message.id === stableAgentNoticeId)
-      )));
+      // If the slot already holds a CANCELLED or COMPLETED row, do not let
+      // a late-arriving processing envelope demote it back to "Processing…".
+      // This handles the owner-cancel race (cancel envelope reaches the
+      // sender before the owner's initial processing envelope) and protects
+      // a real completed reply from being clobbered. The 'failed' state is
+      // intentionally NOT blocked here — it's used for the asker's offline
+      // timeout marker, which should be replaceable when the target turns
+      // out to be slow rather than offline and a real processing/response
+      // envelope finally arrives.
+      const existingStableRow = stableAgentNoticeId
+        ? [canonicalState, nextState]
+            .map((state) => state?.messages.find((message) => message.id === stableAgentNoticeId) ?? null)
+            .find((message): message is CanonicalSessionMessage => Boolean(message)) ?? null
+        : null;
+      const existingStableRowTerminalLocked = existingStableRow
+        ? ['cancelled', 'complete'].includes((existingStableRow.status || '').trim().toLowerCase())
+        : false;
+      if (existingStableRowTerminalLocked && agentDeliveryState === 'processing') {
+        setCanonicalSessionState(nextState);
+        return;
+      }
+      const shouldUpdateStableAgentSlot = Boolean(stableAgentNoticeId && existingStableRow);
       const agentStatus = senderIsAgent && agentDeliveryState === 'processing'
         ? 'processing'
         : senderIsAgent && agentDeliveryState === 'failed'
@@ -1080,6 +1149,18 @@ export function useCloudBridgeState({
       nextState = shouldUpdateStableAgentSlot
         ? await upsertCanonicalMessage(messageRequest)
         : await appendCanonicalMessage(messageRequest);
+      // Race guard: if the local offline-timer effect added the offline-tier
+      // placeholder AFTER we captured canonicalSessionState above (which can
+      // happen when the response arrives in the same cloud-poll batch as the
+      // mention), shouldUpdateStableAgentSlot was false and we just wrote a
+      // separate row under envelope.message.id. Strip any orphan offline-tier
+      // placeholder for this request from `nextState` before applying it so
+      // the agent reply slot ends up with a single row instead of two
+      // ("Processing…" + the real response).
+      if (senderIsAgent && messageReplyToId) {
+        const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`;
+        nextState = removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
+      }
       setCanonicalSessionState(nextState);
       if (shouldCountCloudGroupMessageUnread({ activeConversationId, groupId: envelope.groupId, groupSpaceId })) {
         incrementLocalSessionUnread?.(envelope.groupId, 1);
@@ -1098,7 +1179,7 @@ export function useCloudBridgeState({
       && isRecentCloudAgentMention(cloudMessage.createdAt)
       && !processedCloudAgentMentionIdsRef.current.has(envelope.message.id)
     ) {
-      const allCloudMessages = Object.values(messagesByPeer).flat();
+      const allCloudMessages = Object.values(messagesByPeerRef.current).flat();
       if (cloudGroupLocalAgentRequestAlreadyHandled({
         localAccountId: account.accountId,
         requestMessageId: envelope.message.id,
@@ -1198,28 +1279,51 @@ export function useCloudBridgeState({
         rememberLocalTurn(finalTurn);
         cloudAgentTurnIdsByRequestIdRef.current.delete(envelope.message!.id);
         if (finalTurn.status === 'cancelled') return;
-        const responseText = finalTurn.succeeded && finalTurn.assistantText.trim()
-          ? finalTurn.assistantText.trim()
-          : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
+        // When the local agent turn fails (e.g. provider overload after retries),
+        // surface the failure as a structured `failed` agent-turn instead of
+        // wrapping the error as `Failed: <error>` plain text. The receive-side
+        // handler at line 1030 already understands `deliveryState: 'failed'` —
+        // it writes `contentText: ''` + `content.error` so the read model
+        // renders only the red error block. Mirror that here so the agent
+        // owner's view matches the peers' view.
+        const succeeded = finalTurn.succeeded && finalTurn.assistantText.trim().length > 0;
+        const failureMessage = succeeded
+          ? null
+          : (finalTurn.error?.trim()
+              || finalTurn.message?.trim()
+              || 'Cloud agent returned no text response');
+        const responseDeliveryState: 'complete' | 'failed' = succeeded ? 'complete' : 'failed';
+        const responseContentText = succeeded ? finalTurn.assistantText.trim() : '';
+        const responseEnvelopeText = succeeded ? finalTurn.assistantText.trim() : (failureMessage ?? '');
         const responseMessageId = `msg:cloud-agent:${finalTurn.id}`;
-        const responseState = await appendCanonicalMessage({
-          id: responseMessageId,
+        // Overwrite the local "Processing…" row in place rather than appending
+        // a new row at responseMessageId. The previous behavior left a stale
+        // processing row that stayed visible as "Processing…" forever — user1's
+        // DB had accumulated 10+ of these. Reusing processingMessageId via
+        // upsert keeps the agent-owner side as exactly one row per request.
+        // The broadcast envelope still carries responseMessageId so peers can
+        // dedup separately from the intermediate processing envelope; the
+        // own-round-trip guard in the receive-side handler suppresses
+        // duplicate writes when this envelope comes back via cloud polling.
+        const responseState = await upsertCanonicalMessage({
+          id: processingMessageId,
           sessionId: envelope.groupId,
           senderIdentityId: agentIdentityId,
           senderRole: 'owned-agent',
           messageKind: 'agent-turn',
-          contentText: responseText,
+          contentText: responseContentText,
           content: {
             sender: 'My Kordi',
             timestampMs: Date.now(),
-            deliveryState: 'complete',
+            deliveryState: responseDeliveryState,
             bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
             requestId: envelope.message!.id,
             replyToMessageId: envelope.message!.id,
+            ...(failureMessage ? { error: failureMessage } : {}),
           },
           createdAtMs: Date.now(),
           parentMessageId: envelope.message!.id,
-          status: 'complete',
+          status: responseDeliveryState,
           sourceTransport: 'cloud-group-agent',
           sourceEventId: `cloud-group-agent:${responseMessageId}`,
         });
@@ -1235,11 +1339,11 @@ export function useCloudBridgeState({
           message: {
             id: responseMessageId,
             senderAccountId: account.accountId,
-            text: responseText,
+            text: responseEnvelopeText,
             createdAtMs: Date.now(),
             senderKind: 'agent',
             senderDisplayName: agentDisplayName,
-            deliveryState: 'complete',
+            deliveryState: responseDeliveryState,
             replyToMessageId: envelope.message!.id,
             requestId: envelope.message!.id,
           },
@@ -1261,20 +1365,38 @@ export function useCloudBridgeState({
   }, [
     account,
     activeConversationId,
-    canonicalSessionState,
     client,
     cloudAgentRuntimeRoutesBySessionId,
     incrementLocalSessionUnread,
     mergeMessage,
-    messagesByPeer,
     refreshCloudBridgeMessages,
     setCanonicalSessionState,
   ]);
 
+  const mergeMessageRef = useRef(mergeMessage);
+  const refreshCloudBridgeMessagesRef = useRef(refreshCloudBridgeMessages);
+  useEffect(() => { mergeMessageRef.current = mergeMessage; }, [mergeMessage]);
+  useEffect(() => { refreshCloudBridgeMessagesRef.current = refreshCloudBridgeMessages; }, [refreshCloudBridgeMessages]);
+
   useEffect(() => {
     if (!account) return;
+    // Pin the WS lifecycle to `account` only. Earlier the deps included
+    // `mergeMessage` and `refreshCloudBridgeMessages`, both of whose
+    // identities flip transitively when canonicalSessionState updates
+    // (groupParticipantContacts → groupParticipantPeerIds → bootstrapPeerIds
+    // → refreshCloudBridgeMessages). Every canonical update therefore tore
+    // down and reopened the WebSocket; when state churned faster than the
+    // handshake (~200ms), the new socket got closed before "connected" and
+    // the browser logged "WebSocket is closed before the connection is
+    // established" / "network connection was lost" in a tight loop. The
+    // loop in turn re-ran every cloud-side effect, including the canonical
+    // command replay that throws and emits "[cloud-group] sync failed".
+    // Hold the WS open for the lifetime of the account; route message
+    // handling through refs so we always call the latest callbacks without
+    // re-binding the socket.
     let ws: WebSocket | null = null;
     let cancelled = false;
+    const accountIdAtOpen = account.accountId;
     const open = async () => {
       const session = await loadSession();
       if (!session?.token || cancelled) return;
@@ -1284,7 +1406,7 @@ export function useCloudBridgeState({
           const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
           const subject: string | undefined = frame?.subject;
           if (subject?.startsWith('kordi.events.message.read.')) {
-            void refreshCloudBridgeMessages();
+            void refreshCloudBridgeMessagesRef.current?.();
             return;
           }
           if (!subject?.startsWith('kordi.events.message.arrived.')) return;
@@ -1293,7 +1415,7 @@ export function useCloudBridgeState({
           const from = payload.from_account_id as string | undefined;
           const to = payload.to_account_id as string | undefined;
           if (!from || !to) return;
-          mergeMessage({
+          mergeMessageRef.current({
             messageId: payload.message_id,
             fromAccountId: from,
             toAccountId: to,
@@ -1301,7 +1423,7 @@ export function useCloudBridgeState({
             createdAt: payload.created_at,
             deliveredAt: payload.delivered_at ?? payload.created_at ?? null,
             readAt: payload.read_at ?? null,
-            direction: to === account.accountId ? 'incoming' : 'outgoing',
+            direction: to === accountIdAtOpen ? 'incoming' : 'outgoing',
           });
         } catch (error) {
           // eslint-disable-next-line no-console
@@ -1314,7 +1436,7 @@ export function useCloudBridgeState({
       cancelled = true;
       ws?.close();
     };
-  }, [account, mergeMessage, refreshCloudBridgeMessages]);
+  }, [account]);
 
   useEffect(() => {
     if (!account || !setCanonicalSessionState) return;
