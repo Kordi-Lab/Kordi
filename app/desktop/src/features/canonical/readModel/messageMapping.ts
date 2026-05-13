@@ -58,7 +58,7 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
     if (!name || (rawKind !== 'image' && rawKind !== 'file')) return [];
 
     const kind: MessageAttachment['kind'] = rawKind;
-    return [{
+    const attachment: MessageAttachment = {
       kind,
       name,
       formatLabel: stringValue(record.formatLabel) ?? null,
@@ -66,7 +66,12 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
       mimeType: stringValue(record.mimeType) ?? null,
       localPath: stringValue(record.localPath) ?? null,
       sizeBytes: numberValue(record.sizeBytes) ?? null,
-    }];
+    };
+    const downloadUrl = stringValue(record.downloadUrl);
+    const attachmentId = stringValue(record.attachmentId);
+    if (downloadUrl) attachment.downloadUrl = downloadUrl;
+    if (attachmentId) attachment.attachmentId = attachmentId;
+    return [attachment];
   });
 
   return attachments.length > 0 ? attachments : undefined;

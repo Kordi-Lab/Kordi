@@ -826,7 +826,14 @@ export function useCloudBridgeState({
       if (missingPeerIds.length === 0) break;
       const entries = await Promise.all(missingPeerIds.map(async (peerId) => {
         try {
-          return [peerId, await client.listMessages(session.token, peerId)] as const;
+          const messages = await client.listMessages(session.token, peerId);
+          const resolvedMessages = await Promise.all(messages.map(async (message) => ({
+            ...message,
+            attachments: message.attachments?.length
+              ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+              : [],
+          })));
+          return [peerId, resolvedMessages] as const;
         } catch {
           return [peerId, messagesByPeerRef.current[peerId] ?? []] as const;
         }
@@ -1493,6 +1500,9 @@ export function useCloudBridgeState({
           if (result.status === 'fulfilled') mergeMessage(result.value);
         });
         const prompt = promptTextForCloudAgentMention(envelope.message!.text);
+        const agentAttachmentPaths = mappedAttachments
+          .map((attachment) => attachment.localPath?.trim() || '')
+          .filter(Boolean);
         const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
           setLocalAgentTurnsByRequestId((current) => ({ ...current, [envelope.message!.id]: turn }));
         };
@@ -1500,7 +1510,7 @@ export function useCloudBridgeState({
         const startedTurn = await startDesktopChatMessage(
           runtimeSessionId,
           prompt,
-          [],
+          agentAttachmentPaths,
           cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
         );
         rememberLocalTurn(startedTurn);
@@ -1855,6 +1865,13 @@ export function useCloudBridgeState({
             localAgentName: 'My Kordi',
             peerAgentName: `${peerHumanName}'s Kordi`,
           });
+          const currentSession = message.attachments?.length ? await loadSession() : null;
+          const agentAttachments = currentSession?.token && message.attachments?.length
+            ? await resolveCloudMessageAttachments({ token: currentSession.token, client, attachments: message.attachments })
+            : message.attachments ?? [];
+          const agentAttachmentPaths = agentAttachments
+            .map((attachment) => attachment.localPath?.trim() || '')
+            .filter(Boolean);
           const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
             setLocalAgentTurnsByRequestId((current) => ({ ...current, [message.messageId]: turn }));
           };
@@ -1862,7 +1879,7 @@ export function useCloudBridgeState({
           const startedTurn = await startDesktopChatMessage(
             runtimeSessionId,
             prompt,
-            [],
+            agentAttachmentPaths,
             cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
           );
           rememberLocalTurn(startedTurn);

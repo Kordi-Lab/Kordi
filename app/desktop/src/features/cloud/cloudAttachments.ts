@@ -8,6 +8,8 @@ import type {
 
 export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
+const cloudAttachmentLocalPathCache = new Map<string, string>();
+
 export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessageAttachment) {
   return {
     kind: attachment.kind,
@@ -37,6 +39,11 @@ export async function resolveCloudMessageAttachments({
   const resolved = [];
   for (const attachment of attachments) {
     const mapped = cloudMessageAttachmentToMessageAttachment(attachment);
+    const cachedPath = cloudAttachmentLocalPathCache.get(attachment.attachmentId);
+    if (cachedPath) {
+      resolved.push({ ...mapped, localPath: cachedPath });
+      continue;
+    }
     const shouldAutoDownload = typeof mapped.sizeBytes === 'number'
       && mapped.sizeBytes >= 0
       && mapped.sizeBytes <= autoDownloadMaxBytes;
@@ -52,6 +59,7 @@ export async function resolveCloudMessageAttachments({
       }
       const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
       const localPath = await storeAttachment(attachment.name || 'attachment.bin', bytes);
+      cloudAttachmentLocalPathCache.set(attachment.attachmentId, localPath);
       resolved.push({ ...mapped, localPath });
     } catch {
       resolved.push(mapped);
