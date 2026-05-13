@@ -599,7 +599,7 @@ test('cloud outgoing remote-agent mentions become offline replies after timeout'
 
   assert.equal(state.conversations[0].awaitingReply, false);
   assert.equal(state.conversations[0].outreach, null);
-  const offlineMessage = state.conversations[0].messages.find((candidate) => candidate.id === 'cloud-agent-processing:msg_agent_request_offline');
+  const offlineMessage = state.conversations[0].messages.find((candidate) => candidate.id === 'cloud-agent-offline:msg_agent_request_offline');
   assert.equal(offlineMessage?.deliveryState, 'failed');
   assert.equal(offlineMessage?.text, "Peer Person and Peer Person's Kordi are offline.");
 
