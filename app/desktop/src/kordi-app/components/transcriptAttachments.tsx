@@ -4,26 +4,49 @@ import { Download, ExternalLink, FileText, Image, ImageOff } from 'lucide-react'
 
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
-import { downloadDesktopAttachment, openDesktopExternalUrl } from '@/lib/desktop';
+import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { loadSession } from '@/features/cloud/session';
+import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import type { Message, MessageAttachment } from '../types';
 
-const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 50 * 1024 * 1024;
+const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
 }
 
+function isInternalObjectStoreUrl(value?: string | null) {
+  if (!value) return false;
+  try {
+    return new URL(value).hostname === 'minio.kordi-cloud.svc.cluster.local';
+  } catch {
+    return value.includes('minio.kordi-cloud.svc.cluster.local');
+  }
+}
+
+export function attachmentPreviewIdentity(attachment: MessageAttachment) {
+  return [
+    attachment.attachmentId ?? '',
+    attachment.localPath ?? '',
+    attachment.previewUrl ?? '',
+    attachment.name ?? '',
+    attachment.sizeBytes ?? '',
+  ].join(':');
+}
+
 function attachmentPreviewUrl(attachment: MessageAttachment) {
   if (!shouldPreviewAttachmentInline(attachment)) return undefined;
-  if (attachment.previewUrl) return attachment.previewUrl;
-  if (!attachment.localPath || !isNativeShell()) return undefined;
-  try {
-    return convertFileSrc(attachment.localPath);
-  } catch {
-    return undefined;
+  if (attachment.localPath && isNativeShell()) {
+    try {
+      return convertFileSrc(attachment.localPath);
+    } catch {
+      return undefined;
+    }
   }
+  if (attachment.previewUrl && !isInternalObjectStoreUrl(attachment.previewUrl)) return attachment.previewUrl;
+  return undefined;
 }
 
 function attachmentExtension(attachment: MessageAttachment) {
@@ -61,18 +84,30 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const canOpen = Boolean(attachment.localPath && isNativeShell());
+  const canDownload = Boolean((attachment.localPath && isNativeShell()) || attachment.attachmentId);
+  const canOpen = Boolean(((downloadedPath ?? attachment.localPath) && isNativeShell()));
 
-  if (!canOpen) {
+  if (!canDownload && !canOpen) {
     return null;
   }
 
+  async function ensureLocalPath() {
+    if (attachment.localPath) return attachment.localPath;
+    if (!attachment.attachmentId) return null;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const blob = await defaultCloudAuthClient().downloadAttachmentContent(session.token, attachment.attachmentId);
+    const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+    return storeDesktopChatAttachment(attachment.name || 'attachment.bin', bytes);
+  }
+
   async function handleDownload() {
-    if (!attachment.localPath) return;
     setIsDownloading(true);
     setError(null);
     try {
-      const targetPath = await downloadDesktopAttachment(attachment.localPath, attachment.name);
+      const localPath = await ensureLocalPath();
+      if (!localPath) return;
+      const targetPath = await downloadDesktopAttachment(localPath, attachment.name);
       setDownloadedPath(targetPath);
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
@@ -82,10 +117,11 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
   }
 
   async function handleOpen() {
-    if (!attachment.localPath) return;
+    const target = downloadedPath ?? attachment.localPath;
+    if (!target) return;
     setError(null);
     try {
-      await openDesktopExternalUrl(downloadedPath ?? attachment.localPath);
+      await openDesktopExternalUrl(target);
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
     }
@@ -108,17 +144,19 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
         >
           <Download className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={() => void handleOpen()}
-          className={actionButtonClass}
-          aria-label={`Open ${attachment.name} with local app`}
-          title="Open with local app"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
+        {canOpen ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => void handleOpen()}
+            className={actionButtonClass}
+            aria-label={`Open ${attachment.name} with local app`}
+            title="Open with local app"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
       </div>
       {isDownloading ? <span className="text-[10px] text-slate-400">Downloading…</span> : null}
       {downloadedPath && !isDownloading ? <span className="text-[10px] text-slate-400">Downloaded</span> : null}
@@ -207,7 +245,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
       {previewImageAttachments.length > 0 ? (
         <div className={cn('grid gap-2', previewImageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
           {previewImageAttachments.map((attachment, index) => (
-            <AttachmentImageCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} />
+            <AttachmentImageCard key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`} attachment={attachment} index={index} />
           ))}
         </div>
       ) : null}

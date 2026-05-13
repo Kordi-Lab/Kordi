@@ -89,6 +89,10 @@ export async function downloadDesktopAttachment(path: string, name?: string | nu
   return invokeDesktop<string>('desktop_chat_download_attachment', { path, name: name ?? null });
 }
 
+export async function readDesktopChatAttachment(path: string) {
+  return invokeDesktop<number[]>('desktop_chat_read_attachment', { path });
+}
+
 export async function readDesktopWorkspaceTextFile(path: string) {
   return invokeDesktop<string>('desktop_read_workspace_text_file', { path });
 }

@@ -77,6 +77,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud message session ids",
         sql: include_str!("../../migrations/0007_cloud_message_session_ids.sql"),
     },
+    EmbeddedMigration {
+        version: 8,
+        description: "cloud message attachment links",
+        sql: include_str!("../../migrations/0008_cloud_message_attachments.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
@@ -110,13 +115,12 @@ async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
     .map_err(PgPoolError::Migrate)?;
 
     for migration in EMBEDDED_MIGRATIONS {
-        let already: Option<(i64,)> = query_as(
-            "SELECT version FROM cloud_schema_versions WHERE version = $1",
-        )
-        .bind(migration.version)
-        .fetch_optional(pool)
-        .await
-        .map_err(PgPoolError::Migrate)?;
+        let already: Option<(i64,)> =
+            query_as("SELECT version FROM cloud_schema_versions WHERE version = $1")
+                .bind(migration.version)
+                .fetch_optional(pool)
+                .await
+                .map_err(PgPoolError::Migrate)?;
 
         if already.is_some() {
             continue;

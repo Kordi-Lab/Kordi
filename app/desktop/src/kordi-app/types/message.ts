@@ -63,9 +63,11 @@ export type MessageAttachment = {
   name: string;
   formatLabel?: string | null;
   previewUrl?: string | null;
+  downloadUrl?: string | null;
   mimeType?: string | null;
   localPath?: string | null;
   sizeBytes?: number | null;
+  attachmentId?: string | null;
 };
 
 export type MessageMention = {

@@ -763,10 +763,6 @@ export function useChatMessageActions({
         setDesktopChatError('Cloud chat is still loading. Try again in a moment.');
         return;
       }
-      if (chatComposerAttachments.length > 0) {
-        setDesktopChatError('Cloud chat does not support attachments yet. Send text only.');
-        return;
-      }
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = `cloud-pending-${Date.now()}`;
       try {
@@ -776,8 +772,8 @@ export function useChatMessageActions({
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-        setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, [], text));
-        await sendCloudBridgeMessage(activeConvId, text);
+        setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text)));
+        await sendCloudBridgeMessage(activeConvId, text, chatComposerAttachments);
       } catch (error) {
         const failureDetail = bridgeSendFailureDetail(error, 'Unable to send cloud message');
         setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
@@ -801,10 +797,6 @@ export function useChatMessageActions({
       }
       if (!sendCloudGroupControl) {
         setDesktopChatError('Cloud group chat is still loading. Try again in a moment.');
-        return;
-      }
-      if (chatComposerAttachments.length > 0) {
-        setDesktopChatError('Cloud group chat does not support attachments yet. Send text only.');
         return;
       }
       if (cloudGroupTargetIds.length === 0) {
@@ -852,6 +844,7 @@ export function useChatMessageActions({
             text,
             createdAtMs: Date.now(),
           },
+          attachments: chatComposerAttachments,
         });
       } catch (error) {
         const failureDetail = bridgeSendFailureDetail(error, 'Unable to send Cloud group mention');
@@ -1028,10 +1021,6 @@ export function useChatMessageActions({
       const groupSendTargets = nonCloudGroupTargets(allGroupSendTargets);
       const cloudGroupTargetIds = cloudGroupTargetAccountIds(allGroupSendTargets);
       const groupSessionParticipants = isGroupSessionMessage ? activeGroupSessionParticipants : [];
-      if (cloudGroupTargetIds.length > 0 && chatComposerAttachments.length > 0) {
-        setDesktopChatError('Cloud group chat does not support attachments yet. Send text only.');
-        return;
-      }
       const sendPlan = bridgeConversationSendPlan({
         activeConvId,
         hasMaterializedBridgeConversation,
@@ -1152,6 +1141,7 @@ export function useChatMessageActions({
                     text: bridgeMessageText,
                     createdAtMs: Date.now(),
                   },
+                  attachments: chatComposerAttachments,
                 });
               }
               for (const target of groupSendTargets) {

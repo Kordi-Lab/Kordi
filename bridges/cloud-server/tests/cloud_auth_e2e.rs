@@ -16,7 +16,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::{Body, to_bytes};
+use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
@@ -144,12 +144,10 @@ async fn signup_happy_path_returns_session_and_persists_account() {
     let status = response.status();
     let body = read_json(response).await;
     assert_eq!(status, StatusCode::CREATED, "got body {body}");
-    assert!(
-        body["session"]["token"]
-            .as_str()
-            .unwrap()
-            .starts_with("kordi_cs_")
-    );
+    assert!(body["session"]["token"]
+        .as_str()
+        .unwrap()
+        .starts_with("kordi_cs_"));
     assert_eq!(body["account"]["primaryEmail"], email);
     assert_eq!(body["account"]["passwordSet"], true);
 
@@ -349,6 +347,127 @@ async fn cloud_self_messages_are_private_to_the_signed_in_account() {
     assert_eq!(other_list_resp.status(), StatusCode::OK);
     let other_list = read_json(other_list_resp).await;
     assert_eq!(other_list["messages"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn cloud_messages_preserve_attachment_metadata_and_enforce_attachment_ownership() {
+    let Some(pool) = try_pool().await else { return };
+    let email = unique_email("attachments-owner");
+    let other_email = unique_email("attachments-other");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+
+    let owner_signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    let owner_body = read_json(owner_signup).await;
+    let owner_token = owner_body["session"]["token"].as_str().unwrap().to_string();
+    let owner_account_id = owner_body["account"]["accountId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let other_signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&other_email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    let other_body = read_json(other_signup).await;
+    let other_token = other_body["session"]["token"].as_str().unwrap().to_string();
+    let other_account_id = other_body["account"]["accountId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    sqlx_core::query::query(
+        "INSERT INTO cloud_attachments \
+         (attachment_id, owner_account_id, object_key, content_type, size_bytes, created_at, finalized_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $6)",
+    )
+    .bind("att_owner")
+    .bind(&owner_account_id)
+    .bind("attachments/test/att_owner")
+    .bind("image/png")
+    .bind(123_i64)
+    .bind("2026-05-12T00:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let send_resp = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &owner_token,
+            json!({
+                "peerAccountId": owner_account_id,
+                "body": "",
+                "attachments": [{
+                    "attachmentId": "att_owner",
+                    "name": "screen.png",
+                    "kind": "image",
+                    "mimeType": "image/png",
+                    "sizeBytes": 123
+                }]
+            }),
+        ))
+        .await
+        .unwrap();
+    let send_status = send_resp.status();
+    let send_body = read_json(send_resp).await;
+    assert_eq!(send_status, StatusCode::CREATED, "got body {send_body}");
+    assert_eq!(send_body["message"]["body"], "");
+    assert_eq!(
+        send_body["message"]["attachments"][0]["attachmentId"],
+        "att_owner"
+    );
+    assert_eq!(send_body["message"]["attachments"][0]["name"], "screen.png");
+    assert!(send_body["message"]["attachments"][0]["downloadUrl"].is_null());
+    assert!(send_body["message"]["attachments"][0]["previewUrl"].is_null());
+
+    let list_resp = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),
+            &owner_token,
+        ))
+        .await
+        .unwrap();
+    let list_body = read_json(list_resp).await;
+    assert_eq!(
+        list_body["messages"][0]["attachments"][0]["attachmentId"],
+        "att_owner"
+    );
+    assert!(list_body["messages"][0]["attachments"][0]["downloadUrl"].is_null());
+    assert!(list_body["messages"][0]["attachments"][0]["previewUrl"].is_null());
+
+    let forbidden_resp = router
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &other_token,
+            json!({
+                "peerAccountId": other_account_id,
+                "body": "steal",
+                "attachments": [{
+                    "attachmentId": "att_owner",
+                    "name": "screen.png",
+                    "kind": "image"
+                }]
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(forbidden_resp.status(), StatusCode::FORBIDDEN);
+    let forbidden_body = read_json(forbidden_resp).await;
+    assert_eq!(forbidden_body["errorCode"], "invalid_attachment");
 }
 
 #[tokio::test]

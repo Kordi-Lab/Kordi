@@ -74,15 +74,20 @@ export function mapDesktopMessagesForTranscript(
       senderProfileImageUrl: message.role === 'user'
         ? (avatarSeeds?.humanProfileImageUrl?.trim() || null)
         : undefined,
-      attachments: message.attachments?.map((attachment) => ({
-        kind: attachment.kind,
-        name: attachment.name,
-        formatLabel: attachment.formatLabel,
-        previewUrl: attachment.previewUrl,
-        mimeType: attachment.mimeType,
-        localPath: attachment.localPath,
-        sizeBytes: attachment.sizeBytes,
-      })),
+      attachments: message.attachments?.map((attachment) => {
+        const mapped = {
+          kind: attachment.kind,
+          name: attachment.name,
+          formatLabel: attachment.formatLabel,
+          previewUrl: attachment.previewUrl,
+          mimeType: attachment.mimeType,
+          localPath: attachment.localPath,
+          sizeBytes: attachment.sizeBytes,
+        };
+        if (attachment.downloadUrl) Object.assign(mapped, { downloadUrl: attachment.downloadUrl });
+        if (attachment.attachmentId) Object.assign(mapped, { attachmentId: attachment.attachmentId });
+        return mapped;
+      }),
       mentions: message.mentions,
       turn:
         hasHistoricalTurn

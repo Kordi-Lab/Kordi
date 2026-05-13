@@ -5,6 +5,7 @@
 //! `ServerState`. Every handler is straight-line async — no DbRunner
 //! closures, no spawn_blocking — because sqlx is async-native.
 
+use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
@@ -21,18 +22,18 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::auth::oauth::{
-    OAuthProfile, OAuthProvider, clean_profile_avatar_url, clean_profile_display_name,
-    encode_oauth_fragment, exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect,
-    oauth_config, pkce_challenge, random_url_token, redirect_with_oauth_error,
+    clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
+    exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
+    pkce_challenge, random_url_token, redirect_with_oauth_error, OAuthProfile, OAuthProvider,
 };
 use crate::auth::password::{
-    EmailFormatError, PASSWORD_ALGORITHM_ID, PasswordHasherConfig, PasswordPolicyError,
-    hash_password, validate_email, validate_password_strength, verify_password,
+    hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
+    PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::session::{
-    DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX, bump_expiry, issue_session,
-    lookup_session, revoke_session,
+    bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
+    SESSION_TOKEN_PREFIX,
 };
 use crate::server::ServerState;
 
@@ -201,18 +202,48 @@ pub struct ContactRequestResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct SendMessageAttachmentRequest {
+    #[serde(rename = "attachmentId")]
+    pub attachment_id: String,
+    pub name: String,
+    pub kind: String,
+    #[serde(rename = "mimeType")]
+    pub mime_type: Option<String>,
+    #[serde(rename = "sizeBytes")]
+    pub size_bytes: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SendMessageRequest {
     #[serde(rename = "peerAccountId")]
     pub peer_account_id: String,
     pub body: String,
     #[serde(rename = "sessionId")]
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub attachments: Vec<SendMessageAttachmentRequest>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MarkMessagesReadRequest {
     #[serde(rename = "peerAccountId")]
     pub peer_account_id: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct MessageAttachmentSummary {
+    #[serde(rename = "attachmentId")]
+    pub attachment_id: String,
+    pub name: String,
+    pub kind: String,
+    #[serde(rename = "mimeType")]
+    pub mime_type: Option<String>,
+    #[serde(rename = "sizeBytes")]
+    pub size_bytes: Option<i64>,
+    #[serde(rename = "downloadUrl")]
+    pub download_url: Option<String>,
+    #[serde(rename = "previewUrl")]
+    pub preview_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -235,6 +266,7 @@ pub struct MessageSummary {
     /// Direction relative to the caller — "outgoing" if the caller sent
     /// the message, "incoming" otherwise. Saves the client a comparison.
     pub direction: String,
+    pub attachments: Vec<MessageAttachmentSummary>,
 }
 
 #[derive(Debug, Serialize)]
@@ -268,6 +300,54 @@ fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Re
         message: message.into(),
     };
     (status, Json(body)).into_response()
+}
+
+fn normalize_message_attachment(
+    input: &SendMessageAttachmentRequest,
+    attachment_id: &str,
+    db_mime_type: Option<String>,
+    db_size_bytes: Option<i64>,
+    _download_url: Option<String>,
+) -> Result<MessageAttachmentSummary, Response> {
+    let name = input.name.trim().chars().take(255).collect::<String>();
+    if name.is_empty() {
+        return Err(err(
+            "invalid_attachment",
+            "Attachment name is required.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    let kind = match input.kind.trim() {
+        "image" => "image".to_string(),
+        "file" => "file".to_string(),
+        _ => {
+            return Err(err(
+                "invalid_attachment",
+                "Attachment kind must be image or file.",
+                StatusCode::BAD_REQUEST,
+            ))
+        }
+    };
+    let mime_type = input
+        .mime_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(255).collect::<String>())
+        .or(db_mime_type);
+    let size_bytes = input
+        .size_bytes
+        .filter(|value| *value >= 0)
+        .or(db_size_bytes);
+    Ok(MessageAttachmentSummary {
+        attachment_id: attachment_id.to_string(),
+        name,
+        kind,
+        mime_type,
+        size_bytes,
+        preview_url: None,
+        download_url: None,
+    })
 }
 
 fn limited_response(retry_after: std::time::Duration) -> Response {
@@ -418,12 +498,20 @@ pub fn routes_with_config(
             post(crate::attachments::routes::initiate),
         )
         .route(
+            "/v1/cloud/attachments/:attachment_id/upload",
+            axum::routing::put(crate::attachments::routes::upload),
+        )
+        .route(
             "/v1/cloud/attachments/:attachment_id/finalize",
             post(crate::attachments::routes::finalize),
         )
         .route(
             "/v1/cloud/attachments/:attachment_id/download-url",
             get(crate::attachments::routes::download_url),
+        )
+        .route(
+            "/v1/cloud/attachments/:attachment_id/content",
+            get(crate::attachments::routes::content),
         )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -620,13 +708,14 @@ async fn oauth_callback(
         Err(message) => return redirect_with_oauth_error(&redirect_after, &message),
     };
     let http = reqwest::Client::new();
-    let access_token =
-        match exchange_oauth_code(&http, &config, code, code_verifier.as_deref()).await {
-            Ok(token) => token,
-            Err(_) => {
-                return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code.");
-            }
-        };
+    let access_token = match exchange_oauth_code(&http, &config, code, code_verifier.as_deref())
+        .await
+    {
+        Ok(token) => token,
+        Err(_) => {
+            return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code.");
+        }
+    };
     let profile = match fetch_oauth_profile(&http, provider, &access_token).await {
         Ok(profile) if !profile.provider_subject.trim().is_empty() => profile,
         _ => return redirect_with_oauth_error(&redirect_after, "Could not load OAuth profile."),
@@ -2035,7 +2124,14 @@ async fn finalize_request_acceptance(
             // recipient = requester (from_id). The recipient is the
             // one who needs the live WS frame.
             events
-                .publish_message_arrived(&hello_id, &to, &from, &hello_body, &now)
+                .publish_message_arrived(
+                    &hello_id,
+                    &to,
+                    &from,
+                    &hello_body,
+                    &now,
+                    serde_json::json!([]),
+                )
                 .await;
         });
     }
@@ -2129,10 +2225,10 @@ async fn send_message(
     }
     let is_self_message = peer == session.account_id;
     let body = req.body.trim();
-    if body.is_empty() {
+    if body.is_empty() && req.attachments.is_empty() {
         return err(
             "empty_message",
-            "Message body is required.",
+            "Message body or attachment is required.",
             StatusCode::BAD_REQUEST,
         );
     }
@@ -2142,6 +2238,70 @@ async fn send_message(
         .collect::<String>();
 
     let pool = state.db_pool();
+
+    let mut attachments = Vec::new();
+    for input in &req.attachments {
+        let attachment_id = input.attachment_id.trim();
+        if attachment_id.is_empty() {
+            return err(
+                "invalid_attachment",
+                "attachmentId is required.",
+                StatusCode::BAD_REQUEST,
+            );
+        }
+        let row: Option<(String, String, Option<String>, Option<i64>, Option<String>)> =
+            match query_as(
+                "SELECT owner_account_id, object_key, content_type, size_bytes, finalized_at \
+             FROM cloud_attachments \
+             WHERE attachment_id = $1",
+            )
+            .bind(attachment_id)
+            .fetch_optional(pool)
+            .await
+            {
+                Ok(value) => value,
+                Err(_) => {
+                    return err(
+                        "server_error",
+                        "Database error.",
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    );
+                }
+            };
+        let Some((owner_account_id, _object_key, db_mime_type, db_size_bytes, finalized_at)) = row
+        else {
+            return err(
+                "invalid_attachment",
+                "Attachment not found.",
+                StatusCode::BAD_REQUEST,
+            );
+        };
+        if owner_account_id != session.account_id {
+            return err(
+                "invalid_attachment",
+                "Attachment does not belong to the sender.",
+                StatusCode::FORBIDDEN,
+            );
+        }
+        if finalized_at.is_none() {
+            return err(
+                "invalid_attachment",
+                "Attachment upload has not been finalized.",
+                StatusCode::CONFLICT,
+            );
+        }
+        let normalized = match normalize_message_attachment(
+            input,
+            attachment_id,
+            db_mime_type,
+            db_size_bytes,
+            None,
+        ) {
+            Ok(value) => value,
+            Err(resp) => return resp,
+        };
+        attachments.push(normalized);
+    }
 
     // Both directions of the contact must exist. The peer must have
     // accepted you OR you must have accepted them — we enforce mutual
@@ -2204,6 +2364,31 @@ async fn send_message(
         );
     }
 
+    for (position, attachment) in attachments.iter().enumerate() {
+        if query(
+            "INSERT INTO cloud_message_attachments \
+             (message_id, attachment_id, name, kind, mime_type, size_bytes, position) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(&message_id)
+        .bind(&attachment.attachment_id)
+        .bind(&attachment.name)
+        .bind(&attachment.kind)
+        .bind(attachment.mime_type.as_deref())
+        .bind(attachment.size_bytes)
+        .bind(position as i32)
+        .execute(pool)
+        .await
+        .is_err()
+        {
+            return err(
+                "server_error",
+                "Could not record message attachment.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
     // Live fanout to the recipient's open WS.
     {
         let events = state.events().clone();
@@ -2212,9 +2397,18 @@ async fn send_message(
         let to = peer.clone();
         let body_clone = body.clone();
         let created_at = now.clone();
+        let event_attachments =
+            serde_json::to_value(&attachments).unwrap_or_else(|_| serde_json::json!([]));
         tokio::spawn(async move {
             events
-                .publish_message_arrived(&message_id, &from, &to, &body_clone, &created_at)
+                .publish_message_arrived(
+                    &message_id,
+                    &from,
+                    &to,
+                    &body_clone,
+                    &created_at,
+                    event_attachments,
+                )
                 .await;
         });
     }
@@ -2229,6 +2423,7 @@ async fn send_message(
         delivered_at: Some(now),
         read_at: None,
         direction: "outgoing".into(),
+        attachments,
     };
     (
         StatusCode::CREATED,
@@ -2349,6 +2544,58 @@ async fn list_messages(
         }
     };
 
+    let message_ids: Vec<String> = rows.iter().map(|row| row.0.clone()).collect();
+    let attachment_rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<i64>,
+        String,
+    )> = if message_ids.is_empty() {
+        Vec::new()
+    } else {
+        match query_as(
+            "SELECT cma.message_id, cma.attachment_id, cma.name, cma.kind, cma.mime_type, cma.size_bytes, ca.object_key \
+             FROM cloud_message_attachments cma \
+             JOIN cloud_attachments ca ON ca.attachment_id = cma.attachment_id \
+             WHERE cma.message_id = ANY($1) \
+             ORDER BY cma.position ASC",
+        )
+        .bind(&message_ids)
+        .fetch_all(pool)
+        .await
+        {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        }
+    };
+    let mut attachments_by_message_id: HashMap<String, Vec<MessageAttachmentSummary>> =
+        HashMap::new();
+    for (message_id, attachment_id, name, kind, mime_type, size_bytes, _object_key) in
+        attachment_rows
+    {
+        attachments_by_message_id
+            .entry(message_id)
+            .or_default()
+            .push(MessageAttachmentSummary {
+                attachment_id,
+                name,
+                kind,
+                mime_type,
+                size_bytes,
+                preview_url: None,
+                download_url: None,
+            });
+    }
+
     let me = &session.account_id;
     let messages: Vec<MessageSummary> = rows
         .into_iter()
@@ -2359,6 +2606,9 @@ async fn list_messages(
                 } else {
                     "incoming"
                 };
+                let attachments = attachments_by_message_id
+                    .remove(&message_id)
+                    .unwrap_or_default();
                 MessageSummary {
                     message_id,
                     from_account_id: from_id,
@@ -2369,6 +2619,7 @@ async fn list_messages(
                     delivered_at,
                     read_at,
                     direction: direction.into(),
+                    attachments,
                 }
             },
         )

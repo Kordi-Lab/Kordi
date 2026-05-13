@@ -8,7 +8,7 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
-import type { CloudAccount, CloudContactSummary, CloudMessage } from './authClient';
+import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment } from './authClient';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
@@ -44,6 +44,7 @@ export type CloudGroupControlEnvelope = {
     deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled' | string | null;
     replyToMessageId?: string | null;
     requestId?: string | null;
+    attachments?: CloudMessageAttachment[];
   } | null;
 };
 
@@ -68,6 +69,24 @@ export function cloudGroupIdFromAgentConversationId(conversationId: string | nul
 
 export function isCloudGroupAgentConversationId(conversationId: string | null | undefined): boolean {
   return Boolean(cloudGroupIdFromAgentConversationId(conversationId));
+}
+
+function cloudMessageAttachmentFromRecord(value: unknown): CloudMessageAttachment | null {
+  const record = objectRecord(value);
+  const attachmentId = typeof record.attachmentId === 'string' ? record.attachmentId.trim() : '';
+  const name = typeof record.name === 'string' ? record.name.trim() : '';
+  const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
+  if (!attachmentId || !name || !kind) return null;
+  const mimeType = typeof record.mimeType === 'string' && record.mimeType.trim() ? record.mimeType.trim() : null;
+  const sizeBytes = typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) && record.sizeBytes >= 0 ? record.sizeBytes : null;
+  const downloadUrl = typeof record.downloadUrl === 'string' && record.downloadUrl.trim() ? record.downloadUrl.trim() : null;
+  const previewUrl = typeof record.previewUrl === 'string' && record.previewUrl.trim() ? record.previewUrl.trim() : null;
+  return { attachmentId, name, kind, mimeType, sizeBytes, downloadUrl, previewUrl };
+}
+
+function cloudMessageAttachments(value: unknown): CloudMessageAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(cloudMessageAttachmentFromRecord).filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
 }
 
 function pixelAvatarUrlFromSeed(seed?: string | null) {
@@ -270,6 +289,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         deliveryState: typeof candidate.deliveryState === 'string' && candidate.deliveryState.trim() ? candidate.deliveryState.trim() : null,
         replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
+        attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
       };
     }
     return {

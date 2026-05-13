@@ -84,7 +84,7 @@ export type UseComposerControllerArgs = {
   setDesktopLiveTurnsBySession: Dispatch<SetStateAction<Record<string, DesktopChatTurnSnapshot>>>;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   setCloudBridgeState?: Dispatch<SetStateAction<DesktopBridgeState | null>>;
-  sendCloudBridgeMessage?: (conversationId: string, text: string) => Promise<void>;
+  sendCloudBridgeMessage?: (conversationId: string, text: string, attachments?: AttachmentItem[]) => Promise<void>;
   sendCloudGroupControl?: (input: SendCloudGroupControlInput) => Promise<void>;
   cancelCloudBridgeAgentRequest?: (conversationId: string, requestId: string) => Promise<void>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;

@@ -5,8 +5,9 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use chrono::Utc;
@@ -14,9 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
-use crate::attachments::{
-    presign_download_url, presign_upload_url, url_expires_at, S3Config,
-};
+use crate::attachments::{presign_download_url, presign_upload_url, url_expires_at, S3Config};
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
@@ -68,6 +67,8 @@ pub struct DownloadResponse {
     pub expires_at: String,
 }
 
+type AttachmentAccessRow = (String, String, Option<String>, Option<String>, Option<i64>);
+
 #[derive(Debug, Serialize)]
 struct ErrBody<'a> {
     #[serde(rename = "errorCode")]
@@ -76,7 +77,14 @@ struct ErrBody<'a> {
 }
 
 fn err(code: &str, message: &str, status: StatusCode) -> Response {
-    (status, Json(ErrBody { error_code: code, message })).into_response()
+    (
+        status,
+        Json(ErrBody {
+            error_code: code,
+            message,
+        }),
+    )
+        .into_response()
 }
 
 fn s3_or_503<'a>(state: &'a ServerState) -> Result<&'a S3Config, Response> {
@@ -87,6 +95,80 @@ fn s3_or_503<'a>(state: &'a ServerState) -> Result<&'a S3Config, Response> {
             StatusCode::SERVICE_UNAVAILABLE,
         )
     })
+}
+
+async fn attachment_access_row(
+    state: &ServerState,
+    session: &CloudSession,
+    attachment_id: &str,
+) -> Result<AttachmentAccessRow, Response> {
+    let pool = state.db_pool();
+    let row: Option<AttachmentAccessRow> = match query_as(
+        "SELECT object_key, owner_account_id, finalized_at, content_type, size_bytes \
+         FROM cloud_attachments \
+         WHERE attachment_id = $1",
+    )
+    .bind(attachment_id)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return Err(err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    };
+
+    let Some(row) = row else {
+        return Err(err(
+            "not_found",
+            "Attachment not found.",
+            StatusCode::NOT_FOUND,
+        ));
+    };
+    if row.1 != session.account_id {
+        let allowed: Option<(i32,)> = match query_as(
+            "SELECT 1 \
+             FROM cloud_message_attachments cma \
+             JOIN cloud_messages cm ON cm.message_id = cma.message_id \
+             WHERE cma.attachment_id = $1 \
+               AND (cm.from_account_id = $2 OR cm.to_account_id = $2) \
+             LIMIT 1",
+        )
+        .bind(attachment_id)
+        .bind(&session.account_id)
+        .fetch_optional(pool)
+        .await
+        {
+            Ok(value) => value,
+            Err(_) => {
+                return Err(err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                ))
+            }
+        };
+        if allowed.is_none() {
+            return Err(err(
+                "not_found",
+                "Attachment not found.",
+                StatusCode::NOT_FOUND,
+            ));
+        }
+    }
+    if row.2.is_none() {
+        return Err(err(
+            "not_finalized",
+            "Attachment upload has not been finalized.",
+            StatusCode::CONFLICT,
+        ));
+    }
+
+    Ok(row)
 }
 
 /// `POST /v1/cloud/attachments/initiate`
@@ -150,6 +232,125 @@ pub async fn initiate(
     .into_response()
 }
 
+/// `PUT /v1/cloud/attachments/:attachment_id/upload`
+///
+/// Proxies bytes through the cloud server into the configured object store.
+/// Presigned URLs stay internal to the cluster, so desktop clients don't need
+/// direct network access to MinIO.
+pub async fn upload(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(attachment_id): Path<String>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Response {
+    let s3 = match s3_or_503(&state) {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+    let pool = state.db_pool();
+
+    let row: Option<(String, String)> = match query_as(
+        "SELECT object_key, owner_account_id \
+         FROM cloud_attachments \
+         WHERE attachment_id = $1",
+    )
+    .bind(&attachment_id)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    let Some((object_key, owner)) = row else {
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
+    };
+    if owner != session.account_id {
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
+    }
+
+    let upload_url = match presign_upload_url(s3, &object_key) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("[attachments] presign proxy upload: {error}");
+            return err(
+                "server_error",
+                "Could not sign upload URL.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let content_type = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+
+    let mut req = reqwest::Client::new()
+        .put(upload_url.to_string())
+        .body(bytes.clone());
+    if let Some(value) = content_type.as_deref() {
+        req = req.header(reqwest::header::CONTENT_TYPE, value);
+    }
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => {}
+        Ok(resp) => {
+            eprintln!("[attachments] proxy upload failed: {}", resp.status());
+            return err(
+                "server_error",
+                "Could not upload attachment.",
+                StatusCode::BAD_GATEWAY,
+            );
+        }
+        Err(error) => {
+            eprintln!("[attachments] proxy upload request failed: {error}");
+            return err(
+                "server_error",
+                "Could not upload attachment.",
+                StatusCode::BAD_GATEWAY,
+            );
+        }
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let size_bytes = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+    if query(
+        "UPDATE cloud_attachments \
+         SET size_bytes = $1, content_type = $2, finalized_at = $3 \
+         WHERE attachment_id = $4",
+    )
+    .bind(size_bytes)
+    .bind(content_type.as_deref())
+    .bind(&now)
+    .bind(&attachment_id)
+    .execute(pool)
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not finalize attachment.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    Json(AttachmentSummary {
+        attachment_id,
+        object_key,
+        size_bytes: Some(size_bytes),
+        content_type,
+        sha256_hex: None,
+        finalized_at: Some(now),
+    })
+    .into_response()
+}
+
 /// `POST /v1/cloud/attachments/:attachment_id/finalize`
 ///
 /// Records the post-upload metadata reported by the client and stamps
@@ -191,19 +392,11 @@ pub async fn finalize(
     };
 
     let Some((object_key, owner)) = row else {
-        return err(
-            "not_found",
-            "Attachment not found.",
-            StatusCode::NOT_FOUND,
-        );
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
     };
     if owner != session.account_id {
         // Don't leak existence to non-owners.
-        return err(
-            "not_found",
-            "Attachment not found.",
-            StatusCode::NOT_FOUND,
-        );
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
     }
 
     let now = Utc::now().to_rfc3339();
@@ -241,9 +434,11 @@ pub async fn finalize(
 
 /// `GET /v1/cloud/attachments/:attachment_id/download-url`
 ///
-/// Returns a presigned GET URL. Only the attachment owner can request
-/// one for now — when sharing arrives, the access check moves into a
-/// share / acl table.
+/// Returns a presigned GET URL. The attachment owner can always request
+/// one; recipients can request one once the attachment is linked to a
+/// cloud message addressed to them. This route is kept for compatibility;
+/// desktop previews use `/content` so object storage can remain private to
+/// the cluster.
 pub async fn download_url(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -253,48 +448,12 @@ pub async fn download_url(
         Ok(value) => value,
         Err(resp) => return resp,
     };
-    let pool = state.db_pool();
 
-    let row: Option<(String, String, Option<String>)> = match query_as(
-        "SELECT object_key, owner_account_id, finalized_at \
-         FROM cloud_attachments \
-         WHERE attachment_id = $1",
-    )
-    .bind(&attachment_id)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Database error.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-
-    let Some((object_key, owner, finalized_at)) = row else {
-        return err(
-            "not_found",
-            "Attachment not found.",
-            StatusCode::NOT_FOUND,
-        );
-    };
-    if owner != session.account_id {
-        return err(
-            "not_found",
-            "Attachment not found.",
-            StatusCode::NOT_FOUND,
-        );
-    }
-    if finalized_at.is_none() {
-        return err(
-            "not_finalized",
-            "Attachment upload has not been finalized.",
-            StatusCode::CONFLICT,
-        );
-    }
+    let (object_key, _, _, _, _) =
+        match attachment_access_row(&state, &session, &attachment_id).await {
+            Ok(value) => value,
+            Err(resp) => return resp,
+        };
 
     let url = match presign_download_url(s3, &object_key) {
         Ok(value) => value,
@@ -314,4 +473,89 @@ pub async fn download_url(
         expires_at: url_expires_at(SystemTime::now()).to_rfc3339(),
     })
     .into_response()
+}
+
+/// `GET /v1/cloud/attachments/:attachment_id/content`
+///
+/// Streams attachment bytes through the authenticated Cloud API. This keeps
+/// S3/MinIO private and lets desktop clients auto-fetch small previews using
+/// their Bearer token rather than exposing session tokens in image URLs.
+pub async fn content(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(attachment_id): Path<String>,
+) -> Response {
+    let s3 = match s3_or_503(&state) {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+
+    let (object_key, _, _, content_type, size_bytes) =
+        match attachment_access_row(&state, &session, &attachment_id).await {
+            Ok(value) => value,
+            Err(resp) => return resp,
+        };
+
+    let url = match presign_download_url(s3, &object_key) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("[attachments] presign content download: {error}");
+            return err(
+                "server_error",
+                "Could not sign download URL.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+
+    let object_response = match reqwest::Client::new().get(url.to_string()).send().await {
+        Ok(resp) if resp.status().is_success() => resp,
+        Ok(resp) => {
+            eprintln!("[attachments] content fetch failed: {}", resp.status());
+            return err(
+                "server_error",
+                "Could not download attachment.",
+                StatusCode::BAD_GATEWAY,
+            );
+        }
+        Err(error) => {
+            eprintln!("[attachments] content fetch request failed: {error}");
+            return err(
+                "server_error",
+                "Could not download attachment.",
+                StatusCode::BAD_GATEWAY,
+            );
+        }
+    };
+
+    let object_content_type = object_response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let bytes = match object_response.bytes().await {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("[attachments] read content bytes failed: {error}");
+            return err(
+                "server_error",
+                "Could not download attachment.",
+                StatusCode::BAD_GATEWAY,
+            );
+        }
+    };
+
+    let mut headers = HeaderMap::new();
+    if let Some(value) = object_content_type.as_deref().or(content_type.as_deref()) {
+        if let Ok(header_value) = HeaderValue::from_str(value) {
+            headers.insert(header::CONTENT_TYPE, header_value);
+        }
+    }
+    let length = size_bytes.unwrap_or_else(|| i64::try_from(bytes.len()).unwrap_or(0));
+    if length >= 0 {
+        if let Ok(header_value) = HeaderValue::from_str(&length.to_string()) {
+            headers.insert(header::CONTENT_LENGTH, header_value);
+        }
+    }
+    (headers, bytes).into_response()
 }

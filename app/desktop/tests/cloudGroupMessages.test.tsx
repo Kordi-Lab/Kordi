@@ -72,6 +72,43 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.requestId, 'msg_request');
 });
 
+test('cloud group control envelopes round trip attachments', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:attachments',
+    groupTitle: null,
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' }],
+    message: {
+      id: 'msg_1',
+      senderAccountId: 'acct_a',
+      text: '',
+      createdAtMs: 123,
+      attachments: [{
+        attachmentId: 'att_1',
+        name: 'image.png',
+        kind: 'image',
+        mimeType: 'image/png',
+        sizeBytes: 1234,
+        downloadUrl: 'https://files.test/att_1',
+        previewUrl: 'https://files.test/att_1',
+      }],
+    },
+  });
+
+  const parsed = parseCloudGroupControl(body);
+  assert.deepEqual(parsed?.message?.attachments, [{
+    attachmentId: 'att_1',
+    name: 'image.png',
+    kind: 'image',
+    mimeType: 'image/png',
+    sizeBytes: 1234,
+    downloadUrl: 'https://files.test/att_1',
+    previewUrl: 'https://files.test/att_1',
+  }]);
+});
+
 test('cloud group related controls match continuations by shared group space id', () => {
   const rootEnvelope = {
     kind: 'group-invite' as const,

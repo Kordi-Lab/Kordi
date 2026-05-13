@@ -12,6 +12,7 @@ import {
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
+import { resolveCloudMessageAttachments, uploadCloudFiles } from './cloudAttachments';
 import { loadSession } from './session';
 
 const POLL_FALLBACK_MS = 20_000;
@@ -21,7 +22,7 @@ export type UseCloudConversationResult = {
   loading: boolean;
   sending: boolean;
   error: string | null;
-  send(body: string): Promise<void>;
+  send(body: string, attachments?: File[]): Promise<void>;
   refresh(): Promise<void>;
 };
 
@@ -69,8 +70,14 @@ export function useCloudConversation(
     setError(null);
     try {
       const list = await client.listMessages(session.token, peerAccountId);
+      const resolvedList = await Promise.all(list.map(async (message) => ({
+        ...message,
+        attachments: message.attachments?.length
+          ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+          : [],
+      })));
       if (cancelledRef.current) return;
-      setMessages(list);
+      setMessages(resolvedList);
     } catch (err) {
       if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load messages');
@@ -116,16 +123,23 @@ export function useCloudConversation(
           // Only messages in *this* conversation
           if (from !== peerAccountId && to !== peerAccountId) return;
           const direction = to === account.accountId ? 'incoming' : 'outgoing';
-          mergeMessage({
-            messageId: payload.message_id,
-            fromAccountId: from,
-            toAccountId: to,
-            body: payload.body,
-            createdAt: payload.created_at,
-            deliveredAt: null,
-            readAt: null,
-            direction,
-          });
+          void (async () => {
+            const session = await loadSession();
+            const attachments = Array.isArray(payload.attachments) && session?.token
+              ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: payload.attachments })
+              : Array.isArray(payload.attachments) ? payload.attachments : [];
+            mergeMessage({
+              messageId: payload.message_id,
+              fromAccountId: from,
+              toAccountId: to,
+              body: payload.body,
+              createdAt: payload.created_at,
+              deliveredAt: null,
+              readAt: null,
+              direction,
+              attachments,
+            });
+          })();
         } catch (err) {
           // eslint-disable-next-line no-console
           console.warn('[cloud-ws] frame parse failed', err);
@@ -145,9 +159,9 @@ export function useCloudConversation(
   }, [account, peerAccountId, mergeMessage]);
 
   const send = useCallback(
-    async (body: string) => {
+    async (body: string, attachments: File[] = []) => {
       const trimmed = body.trim();
-      if (!trimmed || !account || !peerAccountId) return;
+      if ((!trimmed && attachments.length === 0) || !account || !peerAccountId) return;
       const session = await loadSession();
       if (!session?.token) {
         setError('Not signed in.');
@@ -156,8 +170,24 @@ export function useCloudConversation(
       setSending(true);
       setError(null);
       try {
-        const msg = await client.sendMessage(session.token, peerAccountId, trimmed);
-        mergeMessage(msg);
+        const uploadedAttachments = attachments.length > 0
+          ? await uploadCloudFiles({ token: session.token, client, files: attachments })
+          : [];
+        const sendAttachments = uploadedAttachments.map((attachment) => ({
+          attachmentId: attachment.attachmentId,
+          name: attachment.name,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+        }));
+        const msg = await client.sendMessage(session.token, peerAccountId, trimmed, { attachments: sendAttachments });
+        const attachmentsById = new Map(uploadedAttachments.map((attachment) => [attachment.attachmentId, attachment]));
+        mergeMessage({
+          ...msg,
+          attachments: msg.attachments?.length
+            ? msg.attachments.map((attachment) => ({ ...attachment, localPath: attachmentsById.get(attachment.attachmentId)?.localPath ?? attachment.localPath ?? null }))
+            : uploadedAttachments,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to send');
       } finally {
