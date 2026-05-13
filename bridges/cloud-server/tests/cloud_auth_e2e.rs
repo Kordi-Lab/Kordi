@@ -16,7 +16,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
@@ -135,16 +135,21 @@ async fn signup_happy_path_returns_session_and_persists_account() {
 
     let response = router
         .clone()
-        .oneshot(post("/v1/cloud/auth/signup", signup_body(&email, "correct horse")))
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
         .await
         .unwrap();
     let status = response.status();
     let body = read_json(response).await;
     assert_eq!(status, StatusCode::CREATED, "got body {body}");
-    assert!(body["session"]["token"]
-        .as_str()
-        .unwrap()
-        .starts_with("kordi_cs_"));
+    assert!(
+        body["session"]["token"]
+            .as_str()
+            .unwrap()
+            .starts_with("kordi_cs_")
+    );
     assert_eq!(body["account"]["primaryEmail"], email);
     assert_eq!(body["account"]["passwordSet"], true);
 
@@ -169,11 +174,17 @@ async fn signup_duplicate_email_returns_409() {
 
     let _ = router
         .clone()
-        .oneshot(post("/v1/cloud/auth/signup", signup_body(&email, "correct horse")))
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
         .await
         .unwrap();
     let second = router
-        .oneshot(post("/v1/cloud/auth/signup", signup_body(&email, "another password")))
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "another password"),
+        ))
         .await
         .unwrap();
     assert_eq!(second.status(), StatusCode::CONFLICT);
@@ -191,7 +202,10 @@ async fn login_with_correct_password_returns_session_and_me_works() {
     // signup
     let _ = router
         .clone()
-        .oneshot(post("/v1/cloud/auth/signup", signup_body(&email, "correct horse")))
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
         .await
         .unwrap();
 
@@ -227,7 +241,10 @@ async fn login_with_wrong_password_returns_401() {
 
     let _ = router
         .clone()
-        .oneshot(post("/v1/cloud/auth/signup", signup_body(&email, "correct horse")))
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
         .await
         .unwrap();
 
@@ -253,7 +270,10 @@ async fn cloud_self_messages_are_private_to_the_signed_in_account() {
 
     let signup_resp = router
         .clone()
-        .oneshot(post("/v1/cloud/auth/signup", signup_body(&email, "correct horse")))
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
         .await
         .unwrap();
     let signup_json = read_json(signup_resp).await;
@@ -332,7 +352,10 @@ async fn logout_invalidates_session_token() {
 
     let signup_resp = router
         .clone()
-        .oneshot(post("/v1/cloud/auth/signup", signup_body(&email, "correct horse")))
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
         .await
         .unwrap();
     let token = read_json(signup_resp).await["session"]["token"]
