@@ -786,6 +786,9 @@ export function useCloudBridgeState({
           const groupSpaceId = cleanText(typeof groupMetadata.groupSpaceId === 'string' ? groupMetadata.groupSpaceId : null)
             || cleanText(typeof groupMetadata.groupId === 'string' ? groupMetadata.groupId : null)
             || candidate.requestMessage.sessionId;
+          const noticeContent = objectContent(notice.content);
+          const offlineText = cleanText(typeof noticeContent.error === 'string' ? noticeContent.error : null)
+            || `${candidate.targetHumanDisplayName} and ${candidate.targetAgentDisplayName} are offline.`;
           const synced = await Promise.allSettled(targetAccountIds.map((targetId) => client.sendMessage(session.token, targetId, encodeCloudGroupControl({
             kind: 'group-message',
             groupId: candidate.requestMessage.sessionId,
@@ -797,7 +800,7 @@ export function useCloudBridgeState({
             message: {
               id: notice.id ?? `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`,
               senderAccountId: candidate.targetAccountId,
-              text: notice.contentText,
+              text: offlineText,
               createdAtMs,
               senderKind: 'agent',
               senderDisplayName: candidate.targetAgentDisplayName,
@@ -985,13 +988,20 @@ export function useCloudBridgeState({
       const shouldUpdateStableAgentSlot = Boolean(stableAgentNoticeId && [canonicalSessionState, nextState].some((state) => (
         state?.messages.some((message) => message.id === stableAgentNoticeId)
       )));
+      const agentStatus = senderIsAgent && agentDeliveryState === 'processing'
+        ? 'processing'
+        : senderIsAgent && agentDeliveryState === 'failed'
+          ? 'failed'
+          : senderIsAgent && agentDeliveryState === 'cancelled'
+            ? 'cancelled'
+            : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received';
       const messageRequest = {
         id: shouldUpdateStableAgentSlot ? stableAgentNoticeId : envelope.message.id,
         sessionId: envelope.groupId,
         senderIdentityId,
         senderRole: senderIsAgent ? 'external-agent' : (envelope.message.senderAccountId === account.accountId ? 'user' : 'person'),
         messageKind: senderIsAgent ? 'agent-turn' : 'text',
-        contentText: envelope.message.text,
+        contentText: senderIsAgent && agentDeliveryState === 'failed' ? '' : envelope.message.text,
         content: senderIsAgent ? {
           sender: envelope.message.senderDisplayName?.trim() || 'Kordi',
           timestampMs: envelope.message.createdAtMs,
@@ -999,12 +1009,11 @@ export function useCloudBridgeState({
           bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
           requestId: messageReplyToId,
           replyToMessageId: messageReplyToId,
+          ...(agentDeliveryState === 'failed' ? { error: envelope.message.text || 'Message failed' } : {}),
         } : undefined,
         createdAtMs: envelope.message.createdAtMs,
         parentMessageId: senderIsAgent ? messageReplyToId : null,
-        status: senderIsAgent && agentDeliveryState === 'processing'
-          ? 'processing'
-          : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received',
+        status: agentStatus,
         sourceTransport: senderIsAgent ? 'cloud-group-agent' : 'cloud-group',
         sourceEventId: `${senderIsAgent ? 'cloud-group-agent' : 'cloud-group'}:${cloudMessage.messageId}`,
       };
