@@ -112,6 +112,32 @@ type CloudAgentMentionCandidate = {
   targetAgentDisplayName: string;
 };
 
+function cloudGroupParticipantSnapshotForSession(
+  state: CanonicalSessionState,
+  sessionId: string,
+  account: CloudAccount,
+): CloudGroupParticipant[] {
+  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
+  const participants = state.participants
+    .filter((participant) => participant.sessionId === sessionId && participant.state !== 'left')
+    .flatMap((participant): CloudGroupParticipant[] => {
+      const identity = identityById.get(participant.identityId);
+      if (!identity || identity.kind !== 'human') return [];
+      const accountId = cleanText(identity.humanId) || cleanText(identity.bridgeNodeId);
+      if (!accountId) return [];
+      return [{
+        accountId,
+        displayName: cleanText(identity.displayName) || accountId,
+        avatarUrl: identity.profileImageUrl ?? null,
+        role: participant.role || 'person',
+      }];
+    });
+  return cloudGroupUniqueParticipants([
+    cloudGroupSelfParticipant(account, 'person'),
+    ...participants,
+  ]);
+}
+
 function cloudAgentMentionCandidates(state: CanonicalSessionState, accountId: string): CloudAgentMentionCandidate[] {
   const identityByHumanId = new Map<string, CanonicalIdentity>();
   const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
@@ -608,6 +634,47 @@ export function useCloudBridgeState({
           );
           canonicalSessionStateRef.current = failedState;
           setCanonicalSessionState(failedState);
+
+          const session = await loadSession();
+          if (!session?.token) return;
+          const snapshotState = failedState ?? current;
+          const participants = cloudGroupParticipantSnapshotForSession(
+            snapshotState,
+            candidate.requestMessage.sessionId,
+            account,
+          );
+          const targetAccountIds = participants
+            .map((participant) => participant.accountId)
+            .filter((participantAccountId) => participantAccountId && participantAccountId !== account.accountId);
+          if (targetAccountIds.length === 0) return;
+          const groupSession = snapshotState.sessions.find((sessionCandidate) => sessionCandidate.id === candidate.requestMessage.sessionId);
+          const groupMetadata = objectContent(groupSession?.metadata);
+          const groupSpaceId = cleanText(typeof groupMetadata.groupSpaceId === 'string' ? groupMetadata.groupSpaceId : null)
+            || cleanText(typeof groupMetadata.groupId === 'string' ? groupMetadata.groupId : null)
+            || candidate.requestMessage.sessionId;
+          const synced = await Promise.allSettled(targetAccountIds.map((targetId) => client.sendMessage(session.token, targetId, encodeCloudGroupControl({
+            kind: 'group-message',
+            groupId: candidate.requestMessage.sessionId,
+            groupSpaceId,
+            groupTitle: null,
+            createdByAccountId: account.accountId,
+            actor: cloudGroupSelfParticipant(account, 'person'),
+            participants,
+            message: {
+              id: notice.id ?? `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`,
+              senderAccountId: candidate.targetAccountId,
+              text: notice.contentText,
+              createdAtMs,
+              senderKind: 'agent',
+              senderDisplayName: candidate.targetAgentDisplayName,
+              deliveryState: 'failed',
+              replyToMessageId: candidate.requestMessage.id,
+              requestId: candidate.requestMessage.id,
+            },
+          }))));
+          synced.forEach((result) => {
+            if (result.status === 'fulfilled') mergeMessage(result.value);
+          });
         })().catch((error) => {
           // eslint-disable-next-line no-console
           console.warn('[cloud-group-agent-offline] failed to append offline notice', error);
