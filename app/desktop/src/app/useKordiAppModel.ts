@@ -245,10 +245,20 @@ export function useKordiAppModel() {
     clearDesktopAuthError,
   });
 
+  // The chat draft key must match the value passed as `activeConvId` to
+  // useComposerController below (see the wiring at the useComposerController
+  // call site). Both sides fall back to LOCAL_DRAFT_CHAT_CONVERSATION_ID when
+  // the raw activeConvId state is empty — otherwise reads land at chat['']
+  // (undefined) while writes land at chat[<resolved id>], every keystroke is
+  // dropped silently, and the composer looks unresponsive until the user
+  // switches sessions and back. activeConvId is initialized to '' on native
+  // shell (useWorkspaceController.ts) and can also be transiently empty
+  // after certain session-rename flows.
+  const chatDraftSessionId = activeConvId || LOCAL_DRAFT_CHAT_CONVERSATION_ID;
   const composerDraftsView = useMemo<Record<ComposerScope, string>>(() => ({
-    chat:    composerUi.composerDrafts.chat[activeConvId]?.text                ?? '',
+    chat:    composerUi.composerDrafts.chat[chatDraftSessionId]?.text          ?? '',
     project: composerUi.composerDrafts.project[activeProjectSessionId]?.text   ?? '',
-  }), [composerUi.composerDrafts, activeConvId, activeProjectSessionId]);
+  }), [composerUi.composerDrafts, chatDraftSessionId, activeProjectSessionId]);
 
   const {
     chatModelOptions,
@@ -725,7 +735,13 @@ export function useKordiAppModel() {
   } = useComposerController({
     isNativeShell,
     activeConversationIsBridge,
-    activeConvId: activeConv.id,
+    // Pass the SAME chatDraftSessionId the reader uses (see composerDraftsView
+    // above). Passing `activeConv.id` here while reading under raw activeConvId
+    // was the bug — read/write keys diverged when raw activeConvId was empty
+    // (its initial state on native shell) and activeConv fell back via
+    // chatConversations[0] in useWorkspaceViewModels, so keystrokes landed at
+    // chat[chatConversations[0].id] while the textarea read chat[''] = ''.
+    activeConvId: chatDraftSessionId,
     activeConvCanonicalSessionId: activeConv.canonicalSessionId,
     activeConvMessages: activeConv.messages,
     activeConvBridgeTarget: activeConv.bridgeTarget,
