@@ -16,6 +16,7 @@ import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/feature
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
+  cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentProcessingMessageForRequest,
   optimisticCloudAgentCancelMessage,
 } from '../src/features/cloud/useCloudBridgeState';
@@ -687,6 +688,46 @@ test('cloud group cancel finds requesting placeholders before processing reaches
     cloudGroupAgentProcessingMessageForRequest([requesting], 'session:group', 'msg_request')?.id,
     requesting.id,
   );
+});
+
+test('cloud group cancel notices record who stopped the request', () => {
+  const processing = {
+    id: 'msg:cloud-agent-offline:msg_request:acct_peer',
+    sessionId: 'session:group',
+    senderIdentityId: 'agent:cloud:acct_peer',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'processing...',
+    content: { sender: "Peer's Kordi", requestId: 'msg_request', deliveryState: 'processing' },
+    parentMessageId: 'msg_request',
+    status: 'processing',
+    sequenceNum: 1,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    contentHash: null,
+    sourceTransport: 'cloud-group-agent-offline',
+    sourceEventId: 'cloud-group-agent-offline:msg_request:acct_peer',
+  } as CanonicalSessionMessage;
+
+  const notice = cloudGroupAgentCancelledNoticeRequest({
+    processingMessage: processing,
+    requestId: 'msg_request',
+    conversationId: 'cloud-group-agent:session:group',
+    cancelledByAccountId: 'acct_me',
+    cancelledByDisplayName: 'Me Cloud',
+    now: 1_234,
+  });
+
+  assert.deepEqual(notice.content, {
+    sender: "Peer's Kordi",
+    timestampMs: 1_234,
+    deliveryState: 'cancelled',
+    bridgeConversationId: 'cloud-group-agent:session:group',
+    requestId: 'msg_request',
+    replyToMessageId: 'msg_request',
+    cancelledByAccountId: 'acct_me',
+    cancelledByDisplayName: 'Me Cloud',
+  });
 });
 
 test('cloud agent cancel controls are hidden and show who cancelled the request', () => {

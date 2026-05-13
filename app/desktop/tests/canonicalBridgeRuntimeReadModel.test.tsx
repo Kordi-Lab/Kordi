@@ -1323,6 +1323,40 @@ test('canonical read model renders cloud group requesting placeholders as active
   });
 });
 
+test('canonical read model renders cloud group cancellations as one stopped-by line', () => {
+  const sessionId = 'session:group:cloud-cancelled';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: { id: 'profile:me', displayName: 'Me', humanIdentityId: 'human:me', activeAgentIdentityId: 'agent:me', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'bridge', sourceHostId: 'cloud', ownerIdentityId: 'human:peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{ id: sessionId, kind: 'group', title: 'Cloud group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { kind: 'chat-group' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:peer', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@PeersKordi stop test', content: { sender: 'Me' }, status: 'complete', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-request' },
+      { id: 'msg:cancelled', sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Stopped', content: { sender: "Peer's Kordi", deliveryState: 'cancelled', requestId: 'msg:request', replyToMessageId: 'msg:request', cancelledByDisplayName: 'Me' }, parentMessageId: 'msg:request', status: 'cancelled', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-cancelled' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const conversation = readModel?.applyConversation({ id: sessionId, canonicalSessionId: sessionId, messages: [] } as never, (messages, fallback) => messages.at(-1)?.turn?.message ?? fallback ?? '');
+  const cancelledTurn = conversation?.messages.find((message) => message.turn?.status === 'cancelled')?.turn;
+
+  assert.equal(cancelledTurn?.message, 'Stopped by Me');
+  assert.equal(cancelledTurn?.assistantText, 'Stopped by Me');
+  assert.equal(cancelledTurn?.error, null);
+});
+
 test('canonical read model exposes cloud group agent stop controls to requester and model owner', () => {
   const sessionId = 'session:group:cloud-stop';
   const requestId = 'msg:request';

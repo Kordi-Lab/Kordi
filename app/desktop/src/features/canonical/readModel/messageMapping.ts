@@ -436,6 +436,10 @@ export function mapCanonicalMessage(
     && deliveryState === 'processing'
     && isProcessingPlaceholderText(rawDisplayText);
   const displayText = isProcessingAgentPlaceholder || bridgeAgentFailure ? '' : rawDisplayText;
+  const cancelledByDisplayName = stringValue(content.cancelledByDisplayName)?.trim();
+  const cancelledTurnText = cancelled
+    ? (cancelledByDisplayName ? `Stopped by ${cancelledByDisplayName}` : displayText.trim() || 'Stopped')
+    : '';
 
   if (role === 'system' && !displayText.trim()) return null;
 
@@ -462,13 +466,13 @@ export function mapCanonicalMessage(
           sessionId: message.sessionId,
           prompt: '',
           status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing'),
-          message: completed ? (cancelled ? 'Stopped' : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
-          assistantText: displayText,
+          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          assistantText: cancelled ? cancelledTurnText : displayText,
           thinkingText,
           tools: visibleTools,
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
-          error: cancelled ? 'Request stopped' : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
+          error: cancelled ? null : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
           replyToMessageId,
           pendingBridgeAgentRequest,
         }

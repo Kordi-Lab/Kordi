@@ -14,6 +14,7 @@ import {
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
+  AppendCanonicalMessageRequest,
   CanonicalIdentity,
   CanonicalSessionMessage,
   CanonicalSessionState,
@@ -148,6 +149,49 @@ export function cloudGroupAgentProcessingMessageForRequest(
     const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
     return message.status === 'processing' || deliveryState === 'processing';
   }) ?? null;
+}
+
+export function cloudGroupAgentCancelledNoticeRequest({
+  processingMessage,
+  requestId,
+  conversationId,
+  cancelledByAccountId,
+  cancelledByDisplayName,
+  now = Date.now(),
+}: {
+  processingMessage: CanonicalSessionMessage;
+  requestId: string;
+  conversationId: string;
+  cancelledByAccountId: string;
+  cancelledByDisplayName?: string | null;
+  now?: number;
+}): AppendCanonicalMessageRequest {
+  const content = objectContent(processingMessage.content);
+  const trimmedRequestId = requestId.trim();
+  const trimmedCancelledByAccountId = cancelledByAccountId.trim() || 'local';
+  return {
+    id: `msg:cloud-agent-cancelled:${trimmedRequestId}:${trimmedCancelledByAccountId}`,
+    sessionId: processingMessage.sessionId,
+    senderIdentityId: processingMessage.senderIdentityId,
+    senderRole: processingMessage.senderRole,
+    messageKind: 'agent-turn',
+    contentText: 'Stopped',
+    content: {
+      sender: typeof content.sender === 'string' ? content.sender : 'Kordi',
+      timestampMs: now,
+      deliveryState: 'cancelled',
+      bridgeConversationId: conversationId,
+      requestId: trimmedRequestId,
+      replyToMessageId: trimmedRequestId,
+      cancelledByAccountId: trimmedCancelledByAccountId,
+      cancelledByDisplayName: cleanText(cancelledByDisplayName) || trimmedCancelledByAccountId,
+    },
+    createdAtMs: now,
+    parentMessageId: trimmedRequestId,
+    status: 'cancelled',
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: `cloud-group-agent-cancel:${trimmedRequestId}:${trimmedCancelledByAccountId}`,
+  };
 }
 
 type CloudAgentMentionCandidate = {
@@ -1560,29 +1604,14 @@ export function useCloudBridgeState({
       const processingMessage = canonicalSessionState
         ? cloudGroupAgentProcessingMessageForRequest(canonicalSessionState.messages, groupId, trimmedRequestId)
         : null;
-      if (processingMessage && setCanonicalSessionState) {
-        const content = objectContent(processingMessage.content);
-        const cancelledState = await appendCanonicalMessage({
-          id: `msg:cloud-agent-cancelled:${trimmedRequestId}:${account?.accountId ?? 'local'}`,
-          sessionId: groupId,
-          senderIdentityId: processingMessage.senderIdentityId,
-          senderRole: processingMessage.senderRole,
-          messageKind: 'agent-turn',
-          contentText: 'Stopped',
-          content: {
-            sender: typeof content.sender === 'string' ? content.sender : 'Kordi',
-            timestampMs: Date.now(),
-            deliveryState: 'cancelled',
-            bridgeConversationId: conversationId,
-            requestId: trimmedRequestId,
-            replyToMessageId: trimmedRequestId,
-          },
-          createdAtMs: Date.now(),
-          parentMessageId: trimmedRequestId,
-          status: 'cancelled',
-          sourceTransport: 'cloud-group-agent',
-          sourceEventId: `cloud-group-agent-cancel:${trimmedRequestId}`,
-        });
+      if (processingMessage && setCanonicalSessionState && account) {
+        const cancelledState = await appendCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
+          processingMessage,
+          requestId: trimmedRequestId,
+          conversationId,
+          cancelledByAccountId: account.accountId,
+          cancelledByDisplayName: account.displayName || account.primaryEmail || 'Me',
+        }));
         setCanonicalSessionState(cancelledState);
       }
       const cancelBody = encodeCloudAgentCancel({ requestId: trimmedRequestId });
