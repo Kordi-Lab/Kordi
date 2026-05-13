@@ -511,16 +511,17 @@ export function useCloudBridgeState({
     const activeKeys = new Set<string>();
 
     for (const candidate of candidates) {
-      if (Date.now() - candidate.requestMessage.createdAtMs > CLOUD_AGENT_MENTION_WINDOW_MS) continue;
       const noticeId = `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`;
       const key = `${candidate.requestMessage.id}\u001f${candidate.targetAccountId}`;
+      const existingNotice = canonicalSessionState.messages.find((message) => message.id === noticeId);
+      const hasRequestingNotice = existingNotice?.sourceTransport === 'cloud-group-agent-offline' && existingNotice.status !== 'failed';
+      if (Date.now() - candidate.requestMessage.createdAtMs > CLOUD_AGENT_MENTION_WINDOW_MS && !hasRequestingNotice) continue;
       activeKeys.add(key);
       const responseState = cloudGroupAgentMentionResponseState({
         requestMessageId: candidate.requestMessage.id,
         targetAccountId: candidate.targetAccountId,
         messages: canonicalSessionState.messages,
       });
-      const existingNotice = canonicalSessionState.messages.find((message) => message.id === noticeId);
       const hasOfflineNotice = existingNotice?.status === 'failed';
       if (responseState || hasOfflineNotice) {
         const timerId = cloudGroupOfflineTimersRef.current.get(key);
@@ -557,7 +558,8 @@ export function useCloudBridgeState({
         void (async () => {
           const current = canonicalSessionStateRef.current;
           if (!current) return;
-          if (current.messages.some((message) => message.id === noticeId)) return;
+          const existingTimerNotice = current.messages.find((message) => message.id === noticeId);
+          if (existingTimerNotice?.status === 'failed') return;
           if (cloudGroupAgentMentionHasResponse({
             requestMessageId: candidate.requestMessage.id,
             targetAccountId: candidate.targetAccountId,
