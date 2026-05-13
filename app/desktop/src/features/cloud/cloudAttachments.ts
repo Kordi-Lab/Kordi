@@ -18,7 +18,7 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
     sizeBytes: attachment.sizeBytes ?? null,
     previewUrl: null,
     downloadUrl: null,
-    localPath: null,
+    localPath: attachment.localPath ?? null,
     attachmentId: attachment.attachmentId,
   };
 }

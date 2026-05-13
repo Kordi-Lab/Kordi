@@ -78,6 +78,23 @@ test('cloud message peer equality detects attachment cache updates', () => {
   }), false);
 });
 
+test('cloud bridge messages preserve resolved attachment local paths for inline previews', () => {
+  const mapped = cloudMessageToBridgeMessage(account, {
+    ...message,
+    attachments: [{
+      attachmentId: 'att_1',
+      name: 'Screenshot.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 68 * 1024,
+      localPath: '/tmp/kordi-cache/Screenshot.png',
+    }],
+  }, peer);
+
+  assert.equal(mapped.attachments?.[0]?.attachmentId, 'att_1');
+  assert.equal(mapped.attachments?.[0]?.localPath, '/tmp/kordi-cache/Screenshot.png');
+});
+
 test('cloud bridge conversation ids use normal bridge ids with cloud host sentinel', () => {
   assert.equal(cloudBridgeConversationId('acct_peer'), 'bridge:cloud:acct_peer:person');
   assert.equal(cloudBridgeConversationId('acct_peer', 'kordi-desktop'), 'bridge:cloud:acct_peer');
