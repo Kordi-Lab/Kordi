@@ -261,7 +261,22 @@ function cloudGroupParticipantSnapshotForSession(
   ]);
 }
 
-function cloudAgentMentionCandidates(state: CanonicalSessionState, accountId: string): CloudAgentMentionCandidate[] {
+type CloudAgentMentionCandidateOptions = {
+  /** Lower bound (inclusive) on `createdAtMs` — older messages are skipped. */
+  recentSinceMs?: number;
+  /**
+   * Message IDs that should be kept even if they fall outside `recentSinceMs`.
+   * Used to keep stale-but-still-noticed candidates so existing timers reconcile.
+   */
+  keepStaleIds?: ReadonlySet<string>;
+};
+
+function cloudAgentMentionCandidates(
+  state: CanonicalSessionState,
+  accountId: string,
+  options: CloudAgentMentionCandidateOptions = {},
+): CloudAgentMentionCandidate[] {
+  const { recentSinceMs, keepStaleIds } = options;
   const identityByHumanId = new Map<string, CanonicalIdentity>();
   const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
   for (const identity of state.identities) {
@@ -271,6 +286,11 @@ function cloudAgentMentionCandidates(state: CanonicalSessionState, accountId: st
 
   return state.messages.flatMap((message): CloudAgentMentionCandidate[] => {
     if (message.senderRole !== 'user' || message.status === 'failed') return [];
+    if (
+      recentSinceMs !== undefined
+      && message.createdAtMs < recentSinceMs
+      && !keepStaleIds?.has(message.id)
+    ) return [];
     const content = objectContent(message.content);
     const mentions = Array.isArray(content.mentions) ? content.mentions : [];
     return mentions.flatMap((rawMention): CloudAgentMentionCandidate[] => {
@@ -669,7 +689,21 @@ export function useCloudBridgeState({
       return;
     }
 
-    const candidates = cloudAgentMentionCandidates(canonicalSessionState, account.accountId);
+    // Long sessions can carry thousands of messages; the candidate walk used to
+    // visit every one on every state change. Restrict it to the recency window
+    // and only keep stale messages that still carry an offline / requesting
+    // notice (their `requestMessageId` is embedded in the notice id).
+    const cloudAgentOfflineNoticeIdPattern = /^msg:cloud-agent-offline:(.+?):/;
+    const keepStaleIds = new Set<string>();
+    for (const message of canonicalSessionState.messages) {
+      const match = cloudAgentOfflineNoticeIdPattern.exec(message.id);
+      if (match) keepStaleIds.add(match[1]);
+    }
+
+    const candidates = cloudAgentMentionCandidates(canonicalSessionState, account.accountId, {
+      recentSinceMs: Date.now() - CLOUD_AGENT_MENTION_WINDOW_MS,
+      keepStaleIds,
+    });
     const activeKeys = new Set<string>();
 
     for (const candidate of candidates) {
