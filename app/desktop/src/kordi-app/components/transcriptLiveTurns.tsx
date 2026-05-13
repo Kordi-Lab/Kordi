@@ -756,7 +756,28 @@ function LiveChatTurnCardView({
   onOpenArtifact?: (artifactId: string) => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
-  const hasAssistant = visibleTurn.assistantText.trim().length > 0;
+  // Suppress assistantText when it's just a "Failed: <error>" or duplicate of
+  // visibleTurn.error so the failure surface shows the red error line once,
+  // not twice. Wrappers like cloud-agent response writer at
+  // useCloudBridgeState.ts:1169 store the failure as `Failed: ${error}` in
+  // canonical contentText; the read model surfaces that as assistantText, and
+  // the error field already carries the same message — rendering both is
+  // visually redundant. Retain assistantText whenever it contains additional
+  // content beyond the error (partial streamed reply before the failure).
+  const assistantTextDuplicatesError = (() => {
+    const text = visibleTurn.assistantText.trim();
+    const error = visibleTurn.error?.trim();
+    if (!text || !error) return false;
+    if (text === error) return true;
+    if (text === `Failed: ${error}`) return true;
+    // Near-duplicate: assistantText ends with the error and the prefix is a
+    // short status-like wrapper (e.g. "Failed: ", "Error: ", language variants).
+    // 24 chars is enough to cover any reasonable failure prefix without
+    // swallowing legitimately different streamed content.
+    if (text.endsWith(error) && text.length - error.length <= 24) return true;
+    return false;
+  })();
+  const hasAssistant = visibleTurn.assistantText.trim().length > 0 && !assistantTextDuplicatesError;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
   const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
