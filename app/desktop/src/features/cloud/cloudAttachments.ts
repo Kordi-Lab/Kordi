@@ -85,6 +85,7 @@ export async function uploadComposerAttachments({
     const mimeType = attachment.mimeType?.trim() || null;
     const blob = new Blob([new Uint8Array(bytes)], mimeType ? { type: mimeType } : undefined);
     const summary = await client.uploadAttachment(token, blob);
+    cloudAttachmentLocalPathCache.set(summary.attachmentId, attachment.path);
     uploaded.push({
       attachmentId: summary.attachmentId,
       name: attachment.name,

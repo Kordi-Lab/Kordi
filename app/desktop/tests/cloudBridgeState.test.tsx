@@ -22,6 +22,7 @@ import {
   cloudGroupAgentProcessingMessageForRequest,
   optimisticCloudAgentCancelMessage,
   planCloudSelfAgentSync,
+  cloudMessagesByPeerEqual,
 } from '../src/features/cloud/useCloudBridgeState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -52,6 +53,30 @@ const message: CloudMessage = {
   readAt: null,
   direction: 'incoming',
 };
+
+test('cloud message peer equality detects attachment cache updates', () => {
+  const baseMessage: CloudMessage = {
+    ...message,
+    attachments: [{
+      attachmentId: 'att_1',
+      name: 'Screenshot.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 68 * 1024,
+      localPath: null,
+    }],
+  };
+
+  assert.equal(cloudMessagesByPeerEqual({ acct_peer: [baseMessage] }, {
+    acct_peer: [{
+      ...baseMessage,
+      attachments: [{
+        ...baseMessage.attachments![0]!,
+        localPath: '/tmp/kordi-cache/Screenshot.png',
+      }],
+    }],
+  }), false);
+});
 
 test('cloud bridge conversation ids use normal bridge ids with cloud host sentinel', () => {
   assert.equal(cloudBridgeConversationId('acct_peer'), 'bridge:cloud:acct_peer:person');

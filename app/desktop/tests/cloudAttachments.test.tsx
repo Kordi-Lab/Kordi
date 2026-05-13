@@ -85,6 +85,52 @@ test('resolveCloudMessageAttachments leaves large files for manual download', as
   assert.equal(result[0]?.attachmentId, 'att_large');
 });
 
+test('uploadComposerAttachments seeds local cache so own sent image preview survives cloud refresh', async () => {
+  const client = {
+    async uploadAttachment(_token: string, blob: Blob) {
+      return {
+        attachmentId: 'att_uploaded_preview_cache',
+        objectKey: 'attachments/acct/att_uploaded_preview_cache',
+        sizeBytes: blob.size,
+        contentType: blob.type,
+        sha256Hex: null,
+        finalizedAt: '2026-05-12T00:00:00Z',
+      };
+    },
+    async downloadAttachmentContent() {
+      throw new Error('should reuse the staged local path instead of downloading immediately');
+    },
+  } as Pick<CloudAuthClient, 'uploadAttachment' | 'downloadAttachmentContent'>;
+
+  await uploadComposerAttachments({
+    token: 'kordi_cs_xyz',
+    client,
+    attachments: [{
+      id: 'local-preview',
+      path: '/tmp/local-screenshot.png',
+      name: 'local-screenshot.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 3,
+    }],
+    readAttachment: async () => [1, 2, 3],
+  });
+
+  const result = await resolveCloudMessageAttachments({
+    token: 'kordi_cs_xyz',
+    client,
+    attachments: [{
+      attachmentId: 'att_uploaded_preview_cache',
+      name: 'local-screenshot.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 3,
+    }],
+  });
+
+  assert.equal(result[0]?.localPath, '/tmp/local-screenshot.png');
+});
+
 test('uploadComposerAttachments reads staged local files and preserves display metadata', async () => {
   const readPaths: string[] = [];
   const uploads: Array<{ blob: Blob; name: string; kind: string }> = [];

@@ -485,6 +485,20 @@ function isCloudAgentProcessingPlaceholderText(text: string): boolean {
   return /^processing[.\s…]*$/iu.test(text.trim());
 }
 
+function cloudMessageAttachmentsEqual(left: CloudMessage['attachments'] = [], right: CloudMessage['attachments'] = []): boolean {
+  if ((left?.length ?? 0) !== (right?.length ?? 0)) return false;
+  return (left ?? []).every((attachment, index) => {
+    const other = (right ?? [])[index];
+    return Boolean(other)
+      && attachment.attachmentId === other.attachmentId
+      && attachment.name === other.name
+      && attachment.kind === other.kind
+      && (attachment.mimeType ?? null) === (other.mimeType ?? null)
+      && (attachment.sizeBytes ?? null) === (other.sizeBytes ?? null)
+      && (attachment.localPath ?? null) === (other.localPath ?? null);
+  });
+}
+
 function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[] = []): boolean {
   if (left.length !== right.length) return false;
   return left.every((message, index) => {
@@ -498,11 +512,12 @@ function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[]
       && message.deliveredAt === other.deliveredAt
       && message.readAt === other.readAt
       && message.direction === other.direction
-      && (message.sessionId ?? null) === (other.sessionId ?? null);
+      && (message.sessionId ?? null) === (other.sessionId ?? null)
+      && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
   });
 }
 
-function cloudMessagesByPeerEqual(
+export function cloudMessagesByPeerEqual(
   left: Record<string, CloudMessage[]>,
   right: Record<string, CloudMessage[]>,
 ): boolean {
