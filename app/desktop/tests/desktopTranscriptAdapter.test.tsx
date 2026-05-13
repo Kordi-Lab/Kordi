@@ -88,6 +88,22 @@ test('desktop transcript maps plain completed assistant replies to foldable sour
   assert.match(markup, /— 3 more lines\. Click to show all —/);
 });
 
+test('desktop transcript maps optimistic own messages with the local profile image url immediately', () => {
+  const [mapped] = mapDesktopMessagesForTranscript('session-1', [{
+    role: 'user',
+    sender: 'Me',
+    text: 'hello',
+    timeLabel: '12:00',
+    timestampMs: 1,
+  }], {
+    human: 'human:me',
+    humanProfileImageUrl: 'https://images.test/me.png',
+  });
+
+  assert.equal(mapped.senderAvatarSeed, 'human:me');
+  assert.equal(mapped.senderProfileImageUrl, 'https://images.test/me.png');
+});
+
 test('desktop transcript attachment mapping preserves file size and local preview path metadata', () => {
   const messages: DesktopChatMessage[] = [{
     role: 'user',

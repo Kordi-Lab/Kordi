@@ -21,18 +21,18 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::auth::oauth::{
-    clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
-    exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
-    pkce_challenge, random_url_token, redirect_with_oauth_error, OAuthProfile, OAuthProvider,
+    OAuthProfile, OAuthProvider, clean_profile_avatar_url, clean_profile_display_name,
+    encode_oauth_fragment, exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect,
+    oauth_config, pkce_challenge, random_url_token, redirect_with_oauth_error,
 };
 use crate::auth::password::{
-    hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
-    PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
+    EmailFormatError, PASSWORD_ALGORITHM_ID, PasswordHasherConfig, PasswordPolicyError,
+    hash_password, validate_email, validate_password_strength, verify_password,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::session::{
-    bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
-    SESSION_TOKEN_PREFIX,
+    DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX, bump_expiry, issue_session,
+    lookup_session, revoke_session,
 };
 use crate::server::ServerState;
 
@@ -205,6 +205,8 @@ pub struct SendMessageRequest {
     #[serde(rename = "peerAccountId")]
     pub peer_account_id: String,
     pub body: String,
+    #[serde(rename = "sessionId")]
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,6 +224,8 @@ pub struct MessageSummary {
     #[serde(rename = "toAccountId")]
     pub to_account_id: String,
     pub body: String,
+    #[serde(rename = "sessionId")]
+    pub session_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "deliveredAt")]
@@ -443,7 +447,7 @@ pub async fn cloud_session_middleware(
                 "invalid_session",
                 "Missing or malformed session token.",
                 StatusCode::UNAUTHORIZED,
-            )
+            );
         }
     };
 
@@ -497,7 +501,7 @@ async fn oauth_start(
                 "oauth_not_configured",
                 message,
                 StatusCode::SERVICE_UNAVAILABLE,
-            )
+            );
         }
     };
 
@@ -620,7 +624,7 @@ async fn oauth_callback(
         match exchange_oauth_code(&http, &config, code, code_verifier.as_deref()).await {
             Ok(token) => token,
             Err(_) => {
-                return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code.")
+                return redirect_with_oauth_error(&redirect_after, "Could not exchange OAuth code.");
             }
         };
     let profile = match fetch_oauth_profile(&http, provider, &access_token).await {
@@ -854,7 +858,7 @@ async fn signup(
                     "server_error",
                     "Database error.",
                     StatusCode::INTERNAL_SERVER_ERROR,
-                )
+                );
             }
         };
     if existing.is_some() {
@@ -878,7 +882,7 @@ async fn signup(
                 "server_error",
                 "Could not hash password.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -894,7 +898,7 @@ async fn signup(
                 "server_error",
                 "Could not start transaction.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -957,7 +961,7 @@ async fn signup(
                 "server_error",
                 "Could not issue session.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -1059,7 +1063,7 @@ async fn login(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -1093,7 +1097,7 @@ async fn login(
                 "server_error",
                 "Could not verify password.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
     if !verified {
@@ -1125,7 +1129,7 @@ async fn login(
                 "server_error",
                 "Could not start transaction.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -1164,7 +1168,7 @@ async fn login(
                 "server_error",
                 "Could not issue session.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -1280,7 +1284,7 @@ async fn get_profile(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -1352,7 +1356,7 @@ async fn add_contact(
                     "server_error",
                     "Database error.",
                     StatusCode::INTERNAL_SERVER_ERROR,
-                )
+                );
             }
         };
     if peer_exists.is_none() {
@@ -1429,7 +1433,7 @@ async fn list_contacts(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -1496,14 +1500,14 @@ async fn send_contact_request(
                 "account_missing",
                 "No account found with that id.",
                 StatusCode::NOT_FOUND,
-            )
+            );
         }
         Err(_) => {
             return err(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -1525,7 +1529,7 @@ async fn send_contact_request(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
     if already_contact.is_some() {
@@ -1553,7 +1557,7 @@ async fn send_contact_request(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
     if let Some((request_id, _msg, _created_at)) = inbound_pending {
@@ -1585,7 +1589,7 @@ async fn send_contact_request(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
     if let Some((existing_id, created_at, existing_message)) = outbound_existing {
@@ -1712,7 +1716,7 @@ async fn list_contact_requests(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -1767,7 +1771,7 @@ async fn accept_contact_request(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
     let Some((from_id, to_id, status)) = row else {
@@ -1818,7 +1822,7 @@ async fn reject_contact_request(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
     let Some((from_id, to_id, status)) = row else {
@@ -1915,7 +1919,7 @@ async fn finalize_request_acceptance(
                 "server_error",
                 "Could not start transaction.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -2123,13 +2127,7 @@ async fn send_message(
             StatusCode::BAD_REQUEST,
         );
     }
-    if peer == session.account_id {
-        return err(
-            "self_message",
-            "You cannot message yourself.",
-            StatusCode::BAD_REQUEST,
-        );
-    }
+    let is_self_message = peer == session.account_id;
     let body = req.body.trim();
     if body.is_empty() {
         return err(
@@ -2165,10 +2163,10 @@ async fn send_message(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
-    if mutual.is_none() && cloud_message_requires_accepted_contact(&body) {
+    if !is_self_message && mutual.is_none() && cloud_message_requires_accepted_contact(&body) {
         return err(
             "not_a_contact",
             "You can only message accepted contacts.",
@@ -2177,17 +2175,24 @@ async fn send_message(
     }
 
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    let cloud_session_id = req
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(256).collect::<String>());
     let now = Utc::now().to_rfc3339();
     if query(
         "INSERT INTO cloud_messages \
-         (message_id, from_account_id, to_account_id, body, created_at, delivered_at) \
-         VALUES ($1, $2, $3, $4, $5, $5)",
+         (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6)",
     )
     .bind(&message_id)
     .bind(&session.account_id)
     .bind(&peer)
     .bind(&body)
     .bind(&now)
+    .bind(&cloud_session_id)
     .execute(pool)
     .await
     .is_err()
@@ -2219,6 +2224,7 @@ async fn send_message(
         from_account_id: session.account_id.clone(),
         to_account_id: peer,
         body,
+        session_id: cloud_session_id,
         created_at: now.clone(),
         delivered_at: Some(now),
         read_at: None,
@@ -2248,11 +2254,7 @@ async fn mark_messages_read(
         );
     }
     if peer == session.account_id {
-        return err(
-            "self_message",
-            "You cannot mark self messages read.",
-            StatusCode::BAD_REQUEST,
-        );
+        return StatusCode::NO_CONTENT.into_response();
     }
 
     let now = Utc::now().to_rfc3339();
@@ -2318,11 +2320,12 @@ async fn list_messages(
         String,
         String,
         String,
+        Option<String>,
         String,
         Option<String>,
         Option<String>,
     )> = match query_as(
-        "SELECT message_id, from_account_id, to_account_id, body, created_at, \
+        "SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, \
                 delivered_at, read_at \
          FROM cloud_messages \
          WHERE (from_account_id = $1 AND to_account_id = $2) \
@@ -2342,7 +2345,7 @@ async fn list_messages(
                 "server_error",
                 "Database error.",
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )
+            );
         }
     };
 
@@ -2350,7 +2353,7 @@ async fn list_messages(
     let messages: Vec<MessageSummary> = rows
         .into_iter()
         .map(
-            |(message_id, from_id, to_id, body, created_at, delivered_at, read_at)| {
+            |(message_id, from_id, to_id, body, session_id, created_at, delivered_at, read_at)| {
                 let direction = if from_id == *me {
                     "outgoing"
                 } else {
@@ -2361,6 +2364,7 @@ async fn list_messages(
                     from_account_id: from_id,
                     to_account_id: to_id,
                     body,
+                    session_id,
                     created_at,
                     delivered_at,
                     read_at,

@@ -95,6 +95,7 @@ export type CloudMessage = {
   deliveredAt: string | null;
   readAt: string | null;
   direction: CloudMessageDirection;
+  sessionId?: string | null;
 };
 
 export type RegisterDeviceResult = {
@@ -386,13 +387,14 @@ export class CloudAuthClient {
     );
   }
 
-  async sendMessage(token: string, peerAccountId: string, body: string): Promise<CloudMessage> {
+  async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null } = {}): Promise<CloudMessage> {
+    const trimmedSessionId = options.sessionId?.trim() ?? '';
     const response = await this.send<{ message: CloudMessage }>(
       '/v1/cloud/messages',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ peerAccountId, body }),
+        body: JSON.stringify({ peerAccountId, body, ...(trimmedSessionId ? { sessionId: trimmedSessionId } : {}) }),
       },
       'Could not send message.',
     );

@@ -6,6 +6,7 @@ import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 
 type LocalAvatarSeedsRef = MutableRefObject<{
   human?: string | null;
+  humanProfileImageUrl?: string | null;
   agent?: string | null;
 }>;
 
@@ -15,6 +16,7 @@ type UseDesktopTranscriptAdapterArgs = {
 
 type DesktopTranscriptAvatarSeeds = {
   human?: string | null;
+  humanProfileImageUrl?: string | null;
   agent?: string | null;
 };
 
@@ -69,6 +71,9 @@ export function mapDesktopMessagesForTranscript(
         : message.role === 'user'
           ? (avatarSeeds?.human?.trim() || getLocalProfileAvatarSeed())
           : undefined,
+      senderProfileImageUrl: message.role === 'user'
+        ? (avatarSeeds?.humanProfileImageUrl?.trim() || null)
+        : undefined,
       attachments: message.attachments?.map((attachment) => ({
         kind: attachment.kind,
         name: attachment.name,
