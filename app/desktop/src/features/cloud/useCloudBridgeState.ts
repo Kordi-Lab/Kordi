@@ -5,6 +5,7 @@ import {
   appendCanonicalMessage,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
+  fetchCanonicalSessionState,
   openOrCreateCanonicalSession,
   renameCanonicalSession,
   startDesktopChatMessage,
@@ -34,6 +35,7 @@ import {
   cloudContactsToCanonicalIdentityRequests,
   cloudGroupParticipantContacts,
   cloudPeerAccountIdFromConversationId,
+  cloudSessionIdFromConversationId,
   isCloudBridgeHostId,
   mergeCloudBridgeState,
 } from './cloudBridgeState';
@@ -493,7 +495,8 @@ function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[]
       && message.createdAt === other.createdAt
       && message.deliveredAt === other.deliveredAt
       && message.readAt === other.readAt
-      && message.direction === other.direction;
+      && message.direction === other.direction
+      && (message.sessionId ?? null) === (other.sessionId ?? null);
   });
 }
 
@@ -505,6 +508,123 @@ function cloudMessagesByPeerEqual(
   const rightKeys = Object.keys(right).sort();
   if (leftKeys.length !== rightKeys.length) return false;
   return leftKeys.every((key, index) => key === rightKeys[index] && cloudMessageListsEqual(left[key], right[key]));
+}
+
+const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
+
+type CloudSelfAgentSyncLedgerEntry = {
+  cloudMessageId: string;
+  syncedAtMs: number;
+};
+
+type CloudSelfAgentSyncLedger = Record<string, CloudSelfAgentSyncLedgerEntry>;
+
+type CloudSelfAgentSyncOperation = {
+  localMessageId: string;
+  sessionId: string;
+  role: 'user' | 'agent';
+  text: string;
+  parentLocalMessageId: string | null;
+};
+
+function selfAgentSyncLedgerKey(accountId: string): string {
+  return `${CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX}${accountId}`;
+}
+
+function loadCloudSelfAgentSyncLedger(accountId: string): CloudSelfAgentSyncLedger {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(selfAgentSyncLedgerKey(accountId));
+    const parsed = raw ? JSON.parse(raw) as unknown : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const ledger: CloudSelfAgentSyncLedger = {};
+    for (const [localMessageId, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const cloudMessageId = cleanText(typeof (value as Record<string, unknown>).cloudMessageId === 'string'
+        ? (value as Record<string, unknown>).cloudMessageId as string
+        : null);
+      const syncedAtMs = (value as Record<string, unknown>).syncedAtMs;
+      if (!localMessageId.trim() || !cloudMessageId || typeof syncedAtMs !== 'number' || !Number.isFinite(syncedAtMs)) continue;
+      ledger[localMessageId] = { cloudMessageId, syncedAtMs };
+    }
+    return ledger;
+  } catch {
+    return {};
+  }
+}
+
+function saveCloudSelfAgentSyncLedger(accountId: string, ledger: CloudSelfAgentSyncLedger): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(selfAgentSyncLedgerKey(accountId), JSON.stringify(ledger));
+  } catch {
+    // Best effort. A failed ledger write may cause a future duplicate sync, but
+    // should not block local chat or Cloud refresh.
+  }
+}
+
+function isTerminalSelfAgentMessage(message: CanonicalSessionMessage): boolean {
+  const status = cleanText(message.status).toLowerCase();
+  return !['', 'sending', 'processing', 'failed', 'cancelled'].includes(status);
+}
+
+export function planCloudSelfAgentSync(
+  state: CanonicalSessionState,
+  ledger: CloudSelfAgentSyncLedger,
+): CloudSelfAgentSyncOperation[] {
+  const selfAgentSessionIds = new Set(state.sessions
+    .filter((session) => session.kind === 'self-agent' && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX))
+    .map((session) => session.id));
+  if (selfAgentSessionIds.size === 0) return [];
+
+  const messagesBySession = new Map<string, CanonicalSessionMessage[]>();
+  for (const message of state.messages) {
+    if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
+    const text = cleanText(message.contentText);
+    if (!text) continue;
+    const bucket = messagesBySession.get(message.sessionId) ?? [];
+    bucket.push(message);
+    messagesBySession.set(message.sessionId, bucket);
+  }
+
+  const operations: CloudSelfAgentSyncOperation[] = [];
+  for (const [sessionId, messages] of messagesBySession.entries()) {
+    const sorted = [...messages].sort((left, right) => (
+      left.sequenceNum - right.sequenceNum
+      || left.createdAtMs - right.createdAtMs
+      || left.id.localeCompare(right.id)
+    ));
+    let lastUserMessageId: string | null = null;
+    for (const message of sorted) {
+      if (message.senderRole === 'user') {
+        lastUserMessageId = message.id;
+        if (!ledger[message.id]) {
+          operations.push({
+            localMessageId: message.id,
+            sessionId,
+            role: 'user',
+            text: cleanText(message.contentText),
+            parentLocalMessageId: null,
+          });
+        }
+        continue;
+      }
+      const isAgentMessage = message.messageKind === 'agent-turn' || message.senderRole.includes('agent');
+      if (!isAgentMessage || !lastUserMessageId || ledger[message.id]) continue;
+      operations.push({
+        localMessageId: message.id,
+        sessionId,
+        role: 'agent',
+        text: cleanText(message.contentText),
+        parentLocalMessageId: lastUserMessageId,
+      });
+    }
+  }
+
+  return operations.sort((left, right) => {
+    if (left.sessionId !== right.sessionId) return left.sessionId.localeCompare(right.sessionId);
+    return 0;
+  });
 }
 
 async function waitForCloudAgentTurn(
@@ -603,6 +723,7 @@ export function useCloudBridgeState({
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
+  const syncingSelfAgentHistoryRef = useRef(false);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -941,6 +1062,57 @@ export function useCloudBridgeState({
       return { ...current, [peerId]: next };
     });
   }, [account?.accountId]);
+
+  useEffect(() => {
+    if (!account || syncingSelfAgentHistoryRef.current) return;
+
+    syncingSelfAgentHistoryRef.current = true;
+    void (async () => {
+      const latestState = await fetchCanonicalSessionState().catch(() => canonicalSessionState ?? null);
+      if (!latestState) return;
+      const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
+      const operations = planCloudSelfAgentSync(latestState, initialLedger);
+      if (operations.length === 0) return;
+
+      const session = await loadSession();
+      if (!session?.token) return;
+      const ledger = loadCloudSelfAgentSyncLedger(account.accountId);
+      for (const operation of operations) {
+        if (cancelledRef.current) return;
+        if (ledger[operation.localMessageId]) continue;
+        let body = operation.text;
+        if (operation.role === 'agent') {
+          const parentCloudMessageId = operation.parentLocalMessageId
+            ? ledger[operation.parentLocalMessageId]?.cloudMessageId
+            : null;
+          if (!parentCloudMessageId) continue;
+          body = encodeCloudAgentResponse({ requestId: parentCloudMessageId, text: operation.text });
+        }
+        const message = await client.sendMessage(session.token, account.accountId, body, { sessionId: operation.sessionId });
+        if (operation.role === 'user') {
+          // These are historical local-agent requests, not fresh Cloud asks.
+          // Suppress the direct-agent runner so backfill does not ask My Kordi
+          // to answer old prompts a second time before their historical answer
+          // envelope is uploaded.
+          processedCloudAgentMentionIdsRef.current.add(message.messageId);
+        }
+        ledger[operation.localMessageId] = {
+          cloudMessageId: message.messageId,
+          syncedAtMs: Date.now(),
+        };
+        saveCloudSelfAgentSyncLedger(account.accountId, ledger);
+        mergeMessage(message);
+      }
+      await refreshCloudBridgeMessages();
+    })()
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-self-agent-sync] failed to sync local history', error);
+      })
+      .finally(() => {
+        syncingSelfAgentHistoryRef.current = false;
+      });
+  }, [account, canonicalSessionState, client, mergeMessage, refreshCloudBridgeMessages]);
 
   const applyCloudGroupControl = useCallback(async (cloudMessage: CloudMessage, envelope: CloudGroupControlEnvelope) => {
     // Read state from refs, not closure, so this useCallback's identity stays
@@ -1795,11 +1967,12 @@ export function useCloudBridgeState({
     if (!peerId || !trimmed) throw new Error('Unable to resolve cloud conversation.');
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
-    const message = await client.sendMessage(session.token, peerId, trimmed);
+    const cloudSessionId = peerId === account?.accountId ? cloudSessionIdFromConversationId(conversationId) : null;
+    const message = await client.sendMessage(session.token, peerId, trimmed, { sessionId: cloudSessionId });
     mergeMessage(message);
     await refreshCloudBridgeMessages();
     setCloudBridgeOverrideState(null);
-  }, [client, mergeMessage, refreshCloudBridgeMessages]);
+  }, [account?.accountId, client, mergeMessage, refreshCloudBridgeMessages]);
 
   const sendCloudGroupControl = useCallback(async (input: SendCloudGroupControlInput) => {
     if (!account) throw new Error('Not signed in.');

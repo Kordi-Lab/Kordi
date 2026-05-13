@@ -205,6 +205,8 @@ pub struct SendMessageRequest {
     #[serde(rename = "peerAccountId")]
     pub peer_account_id: String,
     pub body: String,
+    #[serde(rename = "sessionId")]
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,6 +224,8 @@ pub struct MessageSummary {
     #[serde(rename = "toAccountId")]
     pub to_account_id: String,
     pub body: String,
+    #[serde(rename = "sessionId")]
+    pub session_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "deliveredAt")]
@@ -2171,17 +2175,24 @@ async fn send_message(
     }
 
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    let cloud_session_id = req
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(256).collect::<String>());
     let now = Utc::now().to_rfc3339();
     if query(
         "INSERT INTO cloud_messages \
-         (message_id, from_account_id, to_account_id, body, created_at, delivered_at) \
-         VALUES ($1, $2, $3, $4, $5, $5)",
+         (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6)",
     )
     .bind(&message_id)
     .bind(&session.account_id)
     .bind(&peer)
     .bind(&body)
     .bind(&now)
+    .bind(&cloud_session_id)
     .execute(pool)
     .await
     .is_err()
@@ -2213,6 +2224,7 @@ async fn send_message(
         from_account_id: session.account_id.clone(),
         to_account_id: peer,
         body,
+        session_id: cloud_session_id,
         created_at: now.clone(),
         delivered_at: Some(now),
         read_at: None,
@@ -2308,11 +2320,12 @@ async fn list_messages(
         String,
         String,
         String,
+        Option<String>,
         String,
         Option<String>,
         Option<String>,
     )> = match query_as(
-        "SELECT message_id, from_account_id, to_account_id, body, created_at, \
+        "SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, \
                 delivered_at, read_at \
          FROM cloud_messages \
          WHERE (from_account_id = $1 AND to_account_id = $2) \
@@ -2340,7 +2353,7 @@ async fn list_messages(
     let messages: Vec<MessageSummary> = rows
         .into_iter()
         .map(
-            |(message_id, from_id, to_id, body, created_at, delivered_at, read_at)| {
+            |(message_id, from_id, to_id, body, session_id, created_at, delivered_at, read_at)| {
                 let direction = if from_id == *me {
                     "outgoing"
                 } else {
@@ -2351,6 +2364,7 @@ async fn list_messages(
                     from_account_id: from_id,
                     to_account_id: to_id,
                     body,
+                    session_id,
                     created_at,
                     delivered_at,
                     read_at,

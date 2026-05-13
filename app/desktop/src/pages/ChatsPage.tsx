@@ -69,6 +69,11 @@ import { cn } from '@/lib/utils';
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
 
+export function shouldShowConversationTypeBadge(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'type'>): boolean {
+  const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
+  return !sessionId.startsWith('session:group:');
+}
+
 function humanTranscriptGroupKey(message?: Message) {
   if (!message || message.role === 'system' || message.role === 'action' || message.role === 'edit' || message.turn) return null;
   const senderType = message.senderType ?? (message.role === 'user' || message.role === 'person' ? 'human' : 'agent');
@@ -538,7 +543,7 @@ export function ChatsPage({
               ) : (
                 <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold" data-kordi-window-drag="false">{activeConv.name}</h2>
               )}
-              <TypeBadge type={activeConv.type} compact />
+              {shouldShowConversationTypeBadge(activeConv) ? <TypeBadge type={activeConv.type} compact /> : null}
             </div>
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
               {activeSessionSubtitle ? (

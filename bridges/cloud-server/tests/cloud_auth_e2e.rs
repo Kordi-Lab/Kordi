@@ -305,7 +305,11 @@ async fn cloud_self_messages_are_private_to_the_signed_in_account() {
         .oneshot(post_json_with_token(
             "/v1/cloud/messages",
             &token,
-            json!({ "peerAccountId": account_id, "body": "@Kordi remember this private note" }),
+            json!({
+                "peerAccountId": account_id,
+                "body": "@Kordi remember this private note",
+                "sessionId": "f51f7d19-8c8f-4228-9cdd-074ae9b2146e",
+            }),
         ))
         .await
         .unwrap();
@@ -327,6 +331,10 @@ async fn cloud_self_messages_are_private_to_the_signed_in_account() {
     assert_eq!(
         self_list["messages"][0]["body"],
         "@Kordi remember this private note"
+    );
+    assert_eq!(
+        self_list["messages"][0]["sessionId"],
+        "f51f7d19-8c8f-4228-9cdd-074ae9b2146e"
     );
     assert_eq!(self_list["messages"][0]["fromAccountId"], account_id);
     assert_eq!(self_list["messages"][0]["toAccountId"], account_id);

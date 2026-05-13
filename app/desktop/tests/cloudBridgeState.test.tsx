@@ -21,6 +21,7 @@ import {
   cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentProcessingMessageForRequest,
   optimisticCloudAgentCancelMessage,
+  planCloudSelfAgentSync,
 } from '../src/features/cloud/useCloudBridgeState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -58,6 +59,87 @@ test('cloud bridge conversation ids use normal bridge ids with cloud host sentin
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer:person'), 'acct_peer');
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer'), 'acct_peer');
   assert.equal(isCloudBridgeConversationId('bridge:local:node:person'), false);
+});
+
+test('cloud self-agent bridge state preserves one Cloud conversation per local session id', () => {
+  const cloudMessages = [
+    {
+      ...message,
+      messageId: 'msg_s1_u1',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_me',
+      direction: 'outgoing',
+      body: 'session one prompt',
+      sessionId: 'f51f7d19-8c8f-4228-9cdd-074ae9b2146e',
+      createdAt: '2026-05-11T10:00:00Z',
+    },
+    {
+      ...message,
+      messageId: 'msg_s2_u1',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_me',
+      direction: 'outgoing',
+      body: 'session two prompt',
+      sessionId: 'fed8e7f6-fe4a-4598-b83e-3d21a20f978a',
+      createdAt: '2026-05-11T10:01:00Z',
+    },
+    {
+      ...message,
+      messageId: 'msg_legacy_collapsed',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_me',
+      direction: 'outgoing',
+      body: 'old collapsed prompt',
+      sessionId: null,
+      createdAt: '2026-05-11T10:02:00Z',
+    },
+  ] as CloudMessage[];
+
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: cloudMessages },
+  });
+
+  assert.deepEqual(
+    state.conversations.map((conversation) => conversation.canonicalSessionId).sort(),
+    ['f51f7d19-8c8f-4228-9cdd-074ae9b2146e', 'fed8e7f6-fe4a-4598-b83e-3d21a20f978a'].sort(),
+  );
+  const first = state.conversations.find((conversation) => conversation.canonicalSessionId === 'f51f7d19-8c8f-4228-9cdd-074ae9b2146e');
+  assert.ok(first);
+  assert.equal(first.messages.length, 1);
+  assert.equal(first.messages[0].text, 'session one prompt');
+});
+
+test('planCloudSelfAgentSync backfills terminal local self-agent turns without runtime internals', () => {
+  const state = {
+    sessions: [
+      { id: 'local-self-session', kind: 'self-agent', title: 'Hello', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'cloud-agent:acct_me:runtime', kind: 'self-agent', title: 'Runtime', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [
+      { id: 'u1', sessionId: 'local-self-session', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello', status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10 },
+      { id: 'a1', sessionId: 'local-self-session', senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Hi there', status: 'complete', sequenceNum: 2, createdAtMs: 20, updatedAtMs: 20 },
+      { id: 'u2', sessionId: 'local-self-session', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'pending', status: 'sending', sequenceNum: 3, createdAtMs: 30, updatedAtMs: 30 },
+      { id: 'runtime-u1', sessionId: 'cloud-agent:acct_me:runtime', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'internal', status: 'sent', sequenceNum: 1, createdAtMs: 40, updatedAtMs: 40 },
+    ] as CanonicalSessionMessage[],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  assert.deepEqual(planCloudSelfAgentSync(state, {}), [
+    { localMessageId: 'u1', sessionId: 'local-self-session', role: 'user', text: 'hello', parentLocalMessageId: null },
+    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1' },
+  ]);
+
+  assert.deepEqual(planCloudSelfAgentSync(state, { u1: { cloudMessageId: 'msg_remote', syncedAtMs: 123 } }), [
+    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1' },
+  ]);
 });
 
 test('cloud group participant contacts include non-contact group members for mentions and sending', () => {
@@ -300,6 +382,29 @@ test('cloud read markers keep previously read inbound messages from becoming unr
     activeConversationId: null,
   });
 
+  assert.equal(state.conversations[0].unreadCount, 0);
+});
+
+test('cloud self-agent messages never count as unread badges', () => {
+  const selfMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_self_agent_unread_candidate',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: 'private prompt',
+    direction: 'outgoing',
+    readAt: null,
+    sessionId: 'f51f7d19-8c8f-4228-9cdd-074ae9b2146e',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: [selfMessage] },
+    activeConversationId: null,
+  });
+
+  assert.equal(state.conversations.length, 1);
+  assert.equal(state.conversations[0].canonicalSessionId, 'f51f7d19-8c8f-4228-9cdd-074ae9b2146e');
   assert.equal(state.conversations[0].unreadCount, 0);
 });
 

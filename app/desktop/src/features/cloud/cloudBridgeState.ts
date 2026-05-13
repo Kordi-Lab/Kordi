@@ -42,22 +42,41 @@ const CLOUD_SERVER_LABEL = 'kordi.cloud';
 export const CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
 const CLOUD_PERSON_RUNTIME = 'person';
 const CLOUD_AGENT_RUNTIME = 'kordi-desktop';
+const CLOUD_AGENT_SESSION_SUFFIX = ':session:';
 
 export function isCloudBridgeHostId(hostId: string | null | undefined): boolean {
   return hostId === CLOUD_HOST_SENTINEL;
 }
 
-export function cloudBridgeConversationId(peerAccountId: string, runtime: string = CLOUD_PERSON_RUNTIME): string {
+export function cloudBridgeConversationId(peerAccountId: string, runtime: string = CLOUD_PERSON_RUNTIME, sessionId?: string | null): string {
   const suffix = runtime.trim().toLowerCase() === CLOUD_PERSON_RUNTIME ? ':person' : '';
-  return `bridge:${CLOUD_HOST_SENTINEL}:${peerAccountId}${suffix}`;
+  const base = `bridge:${CLOUD_HOST_SENTINEL}:${peerAccountId}${suffix}`;
+  const trimmedSessionId = sessionId?.trim();
+  return trimmedSessionId ? `${base}${CLOUD_AGENT_SESSION_SUFFIX}${encodeURIComponent(trimmedSessionId)}` : base;
 }
 
 export function cloudPeerAccountIdFromConversationId(conversationId: string): string | null {
   const prefix = `bridge:${CLOUD_HOST_SENTINEL}:`;
   if (!conversationId.startsWith(prefix)) return null;
-  const rest = conversationId.slice(prefix.length);
+  let rest = conversationId.slice(prefix.length);
+  const sessionSuffixIndex = rest.indexOf(CLOUD_AGENT_SESSION_SUFFIX);
+  if (sessionSuffixIndex >= 0) rest = rest.slice(0, sessionSuffixIndex);
   if (!rest) return null;
   return rest.endsWith(':person') ? rest.slice(0, -':person'.length) : rest;
+}
+
+export function cloudSessionIdFromConversationId(conversationId: string): string | null {
+  const prefix = `bridge:${CLOUD_HOST_SENTINEL}:`;
+  if (!conversationId.startsWith(prefix)) return null;
+  const sessionSuffixIndex = conversationId.indexOf(CLOUD_AGENT_SESSION_SUFFIX, prefix.length);
+  if (sessionSuffixIndex < 0) return null;
+  const encoded = conversationId.slice(sessionSuffixIndex + CLOUD_AGENT_SESSION_SUFFIX.length);
+  if (!encoded) return null;
+  try {
+    return decodeURIComponent(encoded).trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 export function isCloudBridgeConversationId(conversationId: string | null | undefined): boolean {
@@ -152,6 +171,11 @@ export function cloudContactToAgentPeer(contact: Contact): DesktopBridgePeer {
     profileImageUrl: contact.profileImageUrl,
     avatarSeed: contact.avatarSeed ?? accountId,
   };
+}
+
+function cleanCloudSessionId(value?: string | null): string | null {
+  const trimmed = value?.trim() ?? '';
+  return trimmed || null;
 }
 
 function cloudMessageMentionsContactAgent(message: CloudMessage, contact: Contact | undefined): boolean {
@@ -411,6 +435,7 @@ export function buildCloudBridgeConversation({
   readInboundMessageIds,
   forceRead = false,
   localAgentTurnsByRequestId = {},
+  cloudSessionId = null,
 }: {
   account: CloudAccount;
   contact: Contact;
@@ -419,6 +444,7 @@ export function buildCloudBridgeConversation({
   readInboundMessageIds?: Set<string>;
   forceRead?: boolean;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
+  cloudSessionId?: string | null;
 }): DesktopBridgeConversation {
   const peerAccountId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
   const isPerson = runtime.trim().toLowerCase() === CLOUD_PERSON_RUNTIME;
@@ -508,7 +534,8 @@ export function buildCloudBridgeConversation({
   const pendingAgentRequest = [...pendingAgentRequests].reverse()[0] ?? null;
   const last = bridgeMessages[bridgeMessages.length - 1] ?? null;
   const updatedAtMs = last?.timestampMs ?? Date.now();
-  const conversationId = cloudBridgeConversationId(peerAccountId, runtime);
+  const normalizedCloudSessionId = cleanCloudSessionId(cloudSessionId);
+  const conversationId = cloudBridgeConversationId(peerAccountId, runtime, normalizedCloudSessionId);
   const pendingAgentTargetsLocalAgent = pendingAgentRequest
     ? requestTargetAccountIds.get(pendingAgentRequest.messageId) === account.accountId
     : false;
@@ -558,7 +585,7 @@ export function buildCloudBridgeConversation({
   } : null;
   return {
     id: conversationId,
-    canonicalSessionId: `session:bridge:${conversationId}`,
+    canonicalSessionId: normalizedCloudSessionId ?? `session:bridge:${conversationId}`,
     hostId: CLOUD_HOST_SENTINEL,
     peerNodeId: peerAccountId,
     peerDisplayName: title,
@@ -572,6 +599,7 @@ export function buildCloudBridgeConversation({
       ? 0
       : visibleCloudMessages.filter((message) => (
           message.toAccountId === account.accountId
+          && message.fromAccountId !== account.accountId
           && !message.readAt
           && !readInboundMessageIds?.has(message.messageId)
         )).length,
@@ -673,17 +701,40 @@ export function buildCloudDesktopBridgeState({
             localAgentTurnsByRequestId,
           })]
         : [];
-      const agentConversation = activeConversationId === cloudBridgeConversationId(peerId, CLOUD_AGENT_RUNTIME) || (isSelfPeer && hasMessages)
-        ? [buildCloudBridgeConversation({
+      const activeCloudSessionId = activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null;
+      const agentConversation = (() => {
+        if (isSelfPeer && hasMessages) {
+          const bySession = new Map<string | null, CloudMessage[]>();
+          const hasSessionScopedMessages = messages.some((cloudMessage) => Boolean(cleanCloudSessionId(cloudMessage.sessionId)));
+          for (const cloudMessage of messages) {
+            const sessionId = cleanCloudSessionId(cloudMessage.sessionId);
+            if (hasSessionScopedMessages && !sessionId) continue;
+            const bucket = bySession.get(sessionId) ?? [];
+            bucket.push(cloudMessage);
+            bySession.set(sessionId, bucket);
+          }
+          return [...bySession.entries()].map(([cloudSessionId, sessionMessages]) => buildCloudBridgeConversation({
             account,
             contact,
-            messages,
+            messages: sessionMessages,
             runtime: CLOUD_AGENT_RUNTIME,
             readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
-            forceRead: isActivePeer,
+            forceRead: isActivePeer && (!activeCloudSessionId || activeCloudSessionId === cloudSessionId),
             localAgentTurnsByRequestId,
-          })]
-        : [];
+            cloudSessionId,
+          }));
+        }
+        if (activeConversationId !== cloudBridgeConversationId(peerId, CLOUD_AGENT_RUNTIME)) return [];
+        return [buildCloudBridgeConversation({
+          account,
+          contact,
+          messages,
+          runtime: CLOUD_AGENT_RUNTIME,
+          readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
+          forceRead: isActivePeer,
+          localAgentTurnsByRequestId,
+        })];
+      })();
       return [...personConversation, ...agentConversation];
     })
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
