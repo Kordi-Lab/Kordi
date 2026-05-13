@@ -422,7 +422,8 @@ export function buildCloudBridgeConversation({
 }): DesktopBridgeConversation {
   const peerAccountId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
   const isPerson = runtime.trim().toLowerCase() === CLOUD_PERSON_RUNTIME;
-  const title = isPerson ? cloudPeerDisplayName(contact) : cloudAgentDisplayName(contact);
+  const isSelfPeer = peerAccountId === account.accountId;
+  const title = isPerson ? cloudPeerDisplayName(contact) : isSelfPeer ? 'My Kordi' : cloudAgentDisplayName(contact);
   const cancelMessageByRequestId = new Map<string, CloudMessage>();
   for (const message of messages) {
     const cancel = parseCloudAgentCancel(message.body);
@@ -561,7 +562,7 @@ export function buildCloudBridgeConversation({
     hostId: CLOUD_HOST_SENTINEL,
     peerNodeId: peerAccountId,
     peerDisplayName: title,
-    peerOwnerName: cloudPeerDisplayName(contact),
+    peerOwnerName: isSelfPeer ? (account.displayName || account.primaryEmail || 'Me') : cloudPeerDisplayName(contact),
     peerRuntime: runtime,
     projectId: null,
     projectName: null,
@@ -588,14 +589,40 @@ export function buildCloudBridgeConversation({
       localAgentName: 'My Kordi',
       localAgentNodeId: account.nodeId || account.accountId,
       remoteHumanId: peerAccountId,
-      remoteHumanName: cloudPeerDisplayName(contact),
+      remoteHumanName: isSelfPeer ? (account.displayName || account.primaryEmail || 'Me') : cloudPeerDisplayName(contact),
       remoteHumanNodeId: peerAccountId,
-      remoteAgentId: `cloud-agent:${peerAccountId}`,
-      remoteAgentName: cloudAgentDisplayName(contact),
+      remoteAgentId: isSelfPeer ? 'cloud-local-agent' : `cloud-agent:${peerAccountId}`,
+      remoteAgentName: isSelfPeer ? 'My Kordi' : cloudAgentDisplayName(contact),
       remoteAgentNodeId: peerAccountId,
       remoteAgentRuntime: CLOUD_AGENT_RUNTIME,
     },
     messages: bridgeMessages,
+  };
+}
+
+function cloudSelfContact(account: CloudAccount): Contact {
+  const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Me';
+  return {
+    id: `cloud:${account.accountId}`,
+    name: displayName,
+    initials: displayName.slice(0, 2).toUpperCase(),
+    classType: 'my-agents',
+    entityType: 'My agent',
+    subtitle: 'Private Cloud agent chat',
+    bridges: [CLOUD_HOST_SENTINEL],
+    status: 'Owned',
+    discoverableOn: [CLOUD_HOST_SENTINEL],
+    detail: 'Chat privately with My Kordi',
+    owner: 'Me',
+    bridgeHostId: CLOUD_HOST_SENTINEL,
+    bridgePeerNodeId: account.accountId,
+    bridgePeerRuntime: CLOUD_AGENT_RUNTIME,
+    bridgeHumanId: account.accountId,
+    bridgeAgentId: 'cloud-local-agent',
+    bridgeContactStatus: 'self',
+    bridgeContactRequestDirection: null,
+    avatarSeed: account.accountId,
+    profileImageUrl: cloudAvatarImageUrl(account.avatarUrl),
   };
 }
 
@@ -619,15 +646,23 @@ export function buildCloudDesktopBridgeState({
   const directContacts = contacts.filter(isDirectCloudContact);
   const host = buildCloudBridgeHost(account, directContacts, localAgentRuntimeRoute);
   const activePeerId = activeConversationId ? cloudPeerAccountIdFromConversationId(activeConversationId) : null;
-  const conversations = directContacts
+  const conversationContacts = [cloudSelfContact(account), ...directContacts]
+    .filter((contact, index, list) => {
+      const peerId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
+      return list.findIndex((candidate) => (
+        (candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')) === peerId
+      )) === index;
+    });
+  const conversations = conversationContacts
     .flatMap((contact) => {
       const peerId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
       const messages = messagesByPeer[peerId] ?? [];
       const hasMessages = messages.length > 0;
       const isActivePeer = peerId === activePeerId;
+      const isSelfPeer = peerId === account.accountId;
       if (!hasMessages && !isActivePeer) return [];
 
-      const personConversation = hasMessages || activeConversationId === cloudBridgeConversationId(peerId, CLOUD_PERSON_RUNTIME)
+      const personConversation = !isSelfPeer && (hasMessages || activeConversationId === cloudBridgeConversationId(peerId, CLOUD_PERSON_RUNTIME))
         ? [buildCloudBridgeConversation({
             account,
             contact,
@@ -638,7 +673,7 @@ export function buildCloudDesktopBridgeState({
             localAgentTurnsByRequestId,
           })]
         : [];
-      const agentConversation = activeConversationId === cloudBridgeConversationId(peerId, CLOUD_AGENT_RUNTIME)
+      const agentConversation = activeConversationId === cloudBridgeConversationId(peerId, CLOUD_AGENT_RUNTIME) || (isSelfPeer && hasMessages)
         ? [buildCloudBridgeConversation({
             account,
             contact,

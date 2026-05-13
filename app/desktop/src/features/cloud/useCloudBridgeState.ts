@@ -96,6 +96,23 @@ export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
 
+export function cloudBootstrapPeerIds(
+  account: CloudAccount | null | undefined,
+  contactPeerIds: string[],
+  groupParticipantPeerIds: string[],
+  requests: Parameters<typeof cloudGroupPeerIdsFromContactsAndRequests>[0]['requests'] = [],
+): string[] {
+  const messagePeerIds = [...new Set([...contactPeerIds, ...groupParticipantPeerIds])];
+  if (!account) return messagePeerIds;
+  const selfPeerId = account.accountId.trim();
+  const expandedPeerIds = cloudGroupPeerIdsFromContactsAndRequests({
+    accountId: account.accountId,
+    contactPeerIds: messagePeerIds,
+    requests,
+  });
+  return [...new Set([selfPeerId, ...expandedPeerIds].filter(Boolean))].sort();
+}
+
 function objectContent(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -641,16 +658,12 @@ export function useCloudBridgeState({
       .filter((value): value is string => Boolean(value)),
     [contacts.contacts],
   );
-  const bootstrapPeerIds = useMemo(() => {
-    const messagePeerIds = [...new Set([...contactPeerIds, ...groupParticipantPeerIds])];
-    return account
-      ? cloudGroupPeerIdsFromContactsAndRequests({
-        accountId: account.accountId,
-        contactPeerIds: messagePeerIds,
-        requests: contacts.requests,
-      })
-      : messagePeerIds;
-  }, [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
+  const bootstrapPeerIds = useMemo(() => cloudBootstrapPeerIds(
+    account,
+    contactPeerIds,
+    groupParticipantPeerIds,
+    contacts.requests,
+  ), [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
   const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
 
   useEffect(() => {

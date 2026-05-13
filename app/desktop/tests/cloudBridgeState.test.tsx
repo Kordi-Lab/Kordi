@@ -16,6 +16,7 @@ import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/feature
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
+  cloudBootstrapPeerIds,
   cloudGroupAgentCancelRoleForRequest,
   cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentProcessingMessageForRequest,
@@ -195,6 +196,50 @@ test('cloud contact identity requests preserve account ids, display names, and s
       avatarKey: 'cloud-signup:peer-seed',
       profileImageUrl: null,
     },
+  ]);
+});
+
+test('cloud bootstrap peers include the signed-in account for private self-agent restore', () => {
+  assert.deepEqual(cloudBootstrapPeerIds(account, ['acct_peer'], []), ['acct_me', 'acct_peer']);
+});
+
+test('stored self messages restore a private My Kordi cloud agent conversation', () => {
+  const selfRequest: CloudMessage = {
+    messageId: 'msg_self_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: '@Kordi remember this private note',
+    createdAt: '2026-05-11T10:00:00Z',
+    deliveredAt: '2026-05-11T10:00:00Z',
+    readAt: null,
+    direction: 'outgoing',
+  };
+  const selfResponse: CloudMessage = {
+    messageId: 'msg_self_response',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: 'msg_self_request', text: 'I will remember it.' }),
+    createdAt: '2026-05-11T10:00:01Z',
+    deliveredAt: '2026-05-11T10:00:01Z',
+    readAt: null,
+    direction: 'outgoing',
+  };
+
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: [selfRequest, selfResponse] },
+    activeConversationId: null,
+  });
+
+  assert.equal(state.conversations.length, 1);
+  assert.equal(state.conversations[0].id, 'bridge:cloud:acct_me');
+  assert.equal(state.conversations[0].title, 'My Kordi');
+  assert.equal(state.conversations[0].peerRuntime, 'kordi-desktop');
+  assert.equal(state.conversations[0].identity.remoteAgentId, 'cloud-local-agent');
+  assert.deepEqual(state.conversations[0].messages.map((item) => item.text), [
+    '@Kordi remember this private note',
+    'I will remember it.',
   ]);
 });
 
