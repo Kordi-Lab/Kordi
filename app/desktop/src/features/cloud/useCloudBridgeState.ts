@@ -332,6 +332,32 @@ function removeCloudGroupOfflinePlaceholder(
   return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
 }
 
+/**
+ * After writing a cancel notice for a request, the offline-tier "Requesting…"
+ * placeholder for the same request must disappear in the same render — otherwise
+ * the two coexist briefly, the cancel notice is rendered below the placeholder,
+ * and when the offline-timer effect tidies the placeholder on the next tick the
+ * cancel notice visually shifts up. Users perceive this as the cancel notice
+ * appearing, disappearing, then reappearing.
+ *
+ * Derive the offline placeholder id from the processing message's senderIdentityId
+ * (`agent:cloud:<targetAccountId>`) and apply the existing removal helper to the
+ * post-cancel state so a single setCanonicalSessionState call carries both.
+ */
+function collapseCloudAgentOfflinePlaceholderForRequest(
+  nextState: CanonicalSessionState,
+  processingMessage: CanonicalSessionMessage,
+  requestId: string,
+): CanonicalSessionState {
+  const prefix = 'agent:cloud:';
+  const senderIdentityId = processingMessage.senderIdentityId;
+  if (!senderIdentityId.startsWith(prefix)) return nextState;
+  const targetAccountId = senderIdentityId.slice(prefix.length).trim();
+  if (!targetAccountId) return nextState;
+  const offlinePlaceholderId = `msg:cloud-agent-offline:${requestId.trim()}:${targetAccountId}`;
+  return removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
+}
+
 function setCloudGroupRequestPlaceholderProcessing(
   current: CanonicalSessionState | null,
   candidate: CloudAgentMentionCandidate,
@@ -1390,8 +1416,16 @@ export function useCloudBridgeState({
           }),
         }))
           .then((nextState) => {
-            canonicalSessionStateRef.current = nextState;
-            setCanonicalSessionState(nextState);
+            // See sender-side cancel handler for rationale: collapse the
+            // cancel write and the offline-placeholder removal so the cancel
+            // notice replaces the "Processing…" bubble in one render.
+            const collapsedState = collapseCloudAgentOfflinePlaceholderForRequest(
+              nextState,
+              processingMessage,
+              cancel.requestId,
+            );
+            canonicalSessionStateRef.current = collapsedState;
+            setCanonicalSessionState(collapsedState);
           })
           .catch((error) => {
             // eslint-disable-next-line no-console
@@ -1691,8 +1725,18 @@ export function useCloudBridgeState({
             cancelledByAccountId: account.accountId,
           }),
         }));
-        canonicalSessionStateRef.current = cancelledState;
-        setCanonicalSessionState(cancelledState);
+        // Collapse the cancel write and the offline-placeholder removal into a
+        // single render so the cancel notice replaces the "Processing…" bubble
+        // atomically. Without this, the offline-timer effect removes the
+        // offline-tier placeholder on the next tick, which visually shifts the
+        // cancel notice up and reads as a flicker (appear → disappear → appear).
+        const collapsedState = collapseCloudAgentOfflinePlaceholderForRequest(
+          cancelledState,
+          processingMessage,
+          trimmedRequestId,
+        );
+        canonicalSessionStateRef.current = collapsedState;
+        setCanonicalSessionState(collapsedState);
       }
       const cancelBody = encodeCloudAgentCancel({ requestId: trimmedRequestId });
       const groupEnvelope = Object.values(messagesByPeer)
