@@ -7,9 +7,14 @@ import type {
   MessageAttachment,
   MessageMention,
 } from '@/kordi-app/types';
+import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/bridge/agentPlaceholderText';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
+
+// Re-exported so external importers that previously pulled these from
+// messageMapping (none today, but the exports were public API) keep working.
+export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 
 export function contentRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -201,15 +206,6 @@ export function canonicalUserStatusChip(message: CanonicalSessionMessage, conten
   }
 
   return message.status !== 'sent' ? message.status : undefined;
-}
-
-export function stripOutreachContextEnvelope(text: string) {
-  const match = /^Context:\s*[\s\S]*?\n\s*Request:\s*\n?([\s\S]*)$/i.exec(text.trim());
-  return match?.[1]?.trim() || text;
-}
-
-export function isProcessingPlaceholderText(text: string) {
-  return /^(?:processing|requesting)(?:\.{0,3}|…)?$/i.test(text.trim());
 }
 
 export function restoreMentionTriggerText(text: string, content: Record<string, unknown>) {

@@ -8,6 +8,7 @@ import {
   BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/bridge/messages';
 import { isBridgeAgentRuntime, isBridgePersonRuntime } from '@/features/bridge/runtime';
+import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/bridge/agentPlaceholderText';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
@@ -45,15 +46,6 @@ function bridgeOutboundStatusChip(deliveryState: string | null | undefined, agen
     return 'read';
   }
   return deliveryState || 'sent';
-}
-
-function stripOutreachContextEnvelope(text: string) {
-  const match = /^Context:\s*[\s\S]*?\n\s*Request:\s*\n?([\s\S]*)$/i.exec(text.trim());
-  return match?.[1]?.trim() || text;
-}
-
-function isProcessingPlaceholderText(text: string) {
-  return /^(?:processing|requesting)(?:\.{0,3}|…)?$/i.test(text.trim());
 }
 
 function isImplicitDirectPersonSessionMessage(outreach: DesktopBridgeOutreachMetadata) {
