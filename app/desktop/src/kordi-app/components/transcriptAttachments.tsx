@@ -61,19 +61,25 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const canOpen = Boolean(attachment.localPath && isNativeShell());
+  const remoteUrl = attachment.previewUrl?.trim() || null;
+  const canOpen = Boolean((attachment.localPath && isNativeShell()) || remoteUrl);
 
   if (!canOpen) {
     return null;
   }
 
   async function handleDownload() {
-    if (!attachment.localPath) return;
     setIsDownloading(true);
     setError(null);
     try {
-      const targetPath = await downloadDesktopAttachment(attachment.localPath, attachment.name);
-      setDownloadedPath(targetPath);
+      if (attachment.localPath) {
+        const targetPath = await downloadDesktopAttachment(attachment.localPath, attachment.name);
+        setDownloadedPath(targetPath);
+        return;
+      }
+      if (remoteUrl) {
+        await openDesktopExternalUrl(remoteUrl);
+      }
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
     } finally {
@@ -82,10 +88,11 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
   }
 
   async function handleOpen() {
-    if (!attachment.localPath) return;
     setError(null);
     try {
-      await openDesktopExternalUrl(downloadedPath ?? attachment.localPath);
+      const target = downloadedPath ?? attachment.localPath ?? remoteUrl;
+      if (!target) return;
+      await openDesktopExternalUrl(target);
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
     }

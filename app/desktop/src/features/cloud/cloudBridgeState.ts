@@ -20,6 +20,7 @@ import type {
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 import type { CloudAccount, CloudMessage } from './authClient';
+import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { cloudAvatarImageUrl } from './avatar';
 import {
   cloudGroupIdentityRequest,
@@ -217,7 +218,7 @@ export function cloudMessageToBridgeMessage(
         ? (message.readAt ? 'read' : 'delivered')
         : null,
     detail: undefined,
-    attachments: [],
+    attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
     localTurn: agentResponse?.requestId ? options.localAgentTurnsByRequestId?.[agentResponse.requestId] ?? null : null,
   };
 }

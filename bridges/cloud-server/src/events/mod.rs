@@ -164,7 +164,9 @@ impl EventBus {
         }
         let recipient = match event_kind {
             ContactRequestEventKind::Created => to_account_id,
-            ContactRequestEventKind::Accepted | ContactRequestEventKind::Rejected => from_account_id,
+            ContactRequestEventKind::Accepted | ContactRequestEventKind::Rejected => {
+                from_account_id
+            }
         };
         let payload = ContactRequestEvent {
             event_type: match event_kind {
@@ -214,6 +216,7 @@ impl EventBus {
         to_account_id: &str,
         body: &str,
         created_at: &str,
+        attachments: serde_json::Value,
     ) {
         if self.inner.is_none() {
             return;
@@ -225,6 +228,7 @@ impl EventBus {
             to_account_id,
             body,
             created_at,
+            attachments,
         };
         let body = match serde_json::to_vec(&payload) {
             Ok(value) => Bytes::from(value),
@@ -274,6 +278,7 @@ struct MessageArrivedEvent<'a> {
     to_account_id: &'a str,
     body: &'a str,
     created_at: &'a str,
+    attachments: serde_json::Value,
 }
 
 #[derive(Serialize)]

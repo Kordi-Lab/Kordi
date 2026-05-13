@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 
 import {
   appendCanonicalMessage,
@@ -89,6 +90,7 @@ import {
   type CloudGroupControlEnvelope,
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
+import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { loadSession } from './session';
 import { CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
@@ -653,13 +655,14 @@ export type SendCloudGroupControlInput = {
   participants?: CloudGroupParticipant[];
   bridgeParticipants?: DesktopBridgeSessionParticipant[];
   message?: CloudGroupControlEnvelope['message'];
+  attachments?: AttachmentItem[];
 };
 
 export type UseCloudBridgeStateResult = {
   cloudBridgeState: DesktopBridgeState | null;
   setCloudBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   mergedBridgeState: DesktopBridgeState | null;
-  sendCloudBridgeMessage(conversationId: string, text: string): Promise<void>;
+  sendCloudBridgeMessage(conversationId: string, text: string, attachments?: AttachmentItem[]): Promise<void>;
   sendCloudGroupControl(input: SendCloudGroupControlInput): Promise<void>;
   cancelCloudBridgeAgentRequest(conversationId: string, requestId: string): Promise<void>;
   refreshCloudBridgeMessages(): Promise<void>;
@@ -1309,6 +1312,7 @@ export function useCloudBridgeState({
           : senderIsAgent && agentDeliveryState === 'cancelled'
             ? 'cancelled'
             : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received';
+      const mappedAttachments = (envelope.message.attachments?.length ? envelope.message.attachments : cloudMessage.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment);
       const messageRequest = {
         id: shouldUpdateStableAgentSlot ? stableAgentNoticeId : envelope.message.id,
         sessionId: envelope.groupId,
@@ -1324,7 +1328,7 @@ export function useCloudBridgeState({
           requestId: messageReplyToId,
           replyToMessageId: messageReplyToId,
           ...(agentDeliveryState === 'failed' ? { error: envelope.message.text || 'Message failed' } : {}),
-        } : undefined,
+        } : mappedAttachments.length > 0 ? { attachments: mappedAttachments } : undefined,
         createdAtMs: envelope.message.createdAtMs,
         parentMessageId: senderIsAgent ? messageReplyToId : null,
         status: agentStatus,
@@ -1961,14 +1965,17 @@ export function useCloudBridgeState({
     [baseBridgeState, cloudBridgeState],
   );
 
-  const sendCloudBridgeMessage = useCallback(async (conversationId: string, text: string) => {
+  const sendCloudBridgeMessage = useCallback(async (conversationId: string, text: string, attachments: AttachmentItem[] = []) => {
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);
     const trimmed = text.trim();
-    if (!peerId || !trimmed) throw new Error('Unable to resolve cloud conversation.');
+    if (!peerId || (!trimmed && attachments.length === 0)) throw new Error('Unable to resolve cloud conversation.');
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
+    const uploadedAttachments = attachments.length > 0
+      ? await uploadComposerAttachments({ token: session.token, client, attachments })
+      : [];
     const cloudSessionId = peerId === account?.accountId ? cloudSessionIdFromConversationId(conversationId) : null;
-    const message = await client.sendMessage(session.token, peerId, trimmed, { sessionId: cloudSessionId });
+    const message = await client.sendMessage(session.token, peerId, trimmed, { sessionId: cloudSessionId, attachments: uploadedAttachments });
     mergeMessage(message);
     await refreshCloudBridgeMessages();
     setCloudBridgeOverrideState(null);
@@ -2009,10 +2016,20 @@ export function useCloudBridgeState({
       groupTitle: input.groupTitle,
       relatedGroupTitles: relatedGroupControls.map((control) => control.envelope.groupTitle),
     });
+    const uploadedAttachments = input.attachments?.length
+      ? await uploadComposerAttachments({ token: session.token, client, attachments: input.attachments })
+      : [];
     const message = input.message
       ? {
           ...input.message,
           senderAccountId: input.message.senderAccountId?.trim() || account.accountId,
+          attachments: uploadedAttachments.length > 0 ? uploadedAttachments.map((attachment) => ({
+            attachmentId: attachment.attachmentId,
+            name: attachment.name,
+            kind: attachment.kind,
+            mimeType: attachment.mimeType ?? null,
+            sizeBytes: attachment.sizeBytes ?? null,
+          })) : input.message.attachments,
         }
       : null;
     const envelope = encodeCloudGroupControl({
@@ -2025,7 +2042,7 @@ export function useCloudBridgeState({
       participants,
       message,
     });
-    const results = await Promise.allSettled(targetAccountIds.map((peerId) => client.sendMessage(session.token, peerId, envelope)));
+    const results = await Promise.allSettled(targetAccountIds.map((peerId) => client.sendMessage(session.token, peerId, envelope, { attachments: uploadedAttachments })));
     const sent = fulfilledCloudGroupSends(results);
     sent.forEach(mergeMessage);
     if (sent.length > 0) {

@@ -14,9 +14,7 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
-use crate::attachments::{
-    presign_download_url, presign_upload_url, url_expires_at, S3Config,
-};
+use crate::attachments::{presign_download_url, presign_upload_url, url_expires_at, S3Config};
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 
@@ -76,7 +74,14 @@ struct ErrBody<'a> {
 }
 
 fn err(code: &str, message: &str, status: StatusCode) -> Response {
-    (status, Json(ErrBody { error_code: code, message })).into_response()
+    (
+        status,
+        Json(ErrBody {
+            error_code: code,
+            message,
+        }),
+    )
+        .into_response()
 }
 
 fn s3_or_503<'a>(state: &'a ServerState) -> Result<&'a S3Config, Response> {
@@ -191,19 +196,11 @@ pub async fn finalize(
     };
 
     let Some((object_key, owner)) = row else {
-        return err(
-            "not_found",
-            "Attachment not found.",
-            StatusCode::NOT_FOUND,
-        );
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
     };
     if owner != session.account_id {
         // Don't leak existence to non-owners.
-        return err(
-            "not_found",
-            "Attachment not found.",
-            StatusCode::NOT_FOUND,
-        );
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
     }
 
     let now = Utc::now().to_rfc3339();
@@ -241,9 +238,9 @@ pub async fn finalize(
 
 /// `GET /v1/cloud/attachments/:attachment_id/download-url`
 ///
-/// Returns a presigned GET URL. Only the attachment owner can request
-/// one for now — when sharing arrives, the access check moves into a
-/// share / acl table.
+/// Returns a presigned GET URL. The attachment owner can always request
+/// one; recipients can request one once the attachment is linked to a
+/// cloud message addressed to them.
 pub async fn download_url(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -275,18 +272,34 @@ pub async fn download_url(
     };
 
     let Some((object_key, owner, finalized_at)) = row else {
-        return err(
-            "not_found",
-            "Attachment not found.",
-            StatusCode::NOT_FOUND,
-        );
+        return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
     };
     if owner != session.account_id {
-        return err(
-            "not_found",
-            "Attachment not found.",
-            StatusCode::NOT_FOUND,
-        );
+        let allowed: Option<(i32,)> = match query_as(
+            "SELECT 1 \
+             FROM cloud_message_attachments cma \
+             JOIN cloud_messages cm ON cm.message_id = cma.message_id \
+             WHERE cma.attachment_id = $1 \
+               AND (cm.from_account_id = $2 OR cm.to_account_id = $2) \
+             LIMIT 1",
+        )
+        .bind(&attachment_id)
+        .bind(&session.account_id)
+        .fetch_optional(pool)
+        .await
+        {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            }
+        };
+        if allowed.is_none() {
+            return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND);
+        }
     }
     if finalized_at.is_none() {
         return err(

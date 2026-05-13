@@ -11,10 +11,11 @@
 // agent chat path).
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Send, X } from 'lucide-react';
+import { Paperclip, Send, X } from 'lucide-react';
 
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
-import type { Contact } from '@/kordi-app/types';
+import { AttachmentPreview } from '@/kordi-app/components/transcriptAttachments';
+import type { Contact, Message } from '@/kordi-app/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -32,8 +33,10 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
   const peerAccountId = contact.bridgePeerNodeId ?? null;
   const conversation = useCloudConversation(account, peerAccountId);
   const [draft, setDraft] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Stick the scroll to the bottom whenever new messages arrive.
   useLayoutEffect(() => {
@@ -51,9 +54,11 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
 
   const submit = async () => {
     const body = draft.trim();
-    if (!body || conversation.sending) return;
+    if ((!body && attachments.length === 0) || conversation.sending) return;
+    const stagedAttachments = attachments;
     setDraft('');
-    await conversation.send(body);
+    setAttachments([]);
+    await conversation.send(body, stagedAttachments);
   };
 
   const messages = useMemo(() => conversation.messages, [conversation.messages]);
@@ -117,7 +122,12 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
                           : 'border border-white/10 bg-white/5 text-slate-100',
                       )}
                     >
-                      <div className="whitespace-pre-wrap break-words">{msg.body}</div>
+                      {msg.body.trim() ? <div className="whitespace-pre-wrap break-words">{msg.body}</div> : null}
+                      {msg.attachments?.length ? (
+                        <div className={msg.body.trim() ? 'mt-2' : ''}>
+                          <AttachmentPreview msg={cloudAttachmentPreviewMessage(msg, mine)} />
+                        </div>
+                      ) : null}
                       <div
                         className={cn(
                           'mt-1 text-[9.5px] uppercase tracking-[0.08em]',
@@ -141,6 +151,20 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
               {conversation.error}
             </div>
           ) : null}
+          {attachments.length > 0 ? (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {attachments.map((attachment, index) => (
+                <button
+                  key={`${attachment.name}-${attachment.lastModified}-${index}`}
+                  type="button"
+                  onClick={() => setAttachments((current) => current.filter((_, candidateIndex) => candidateIndex !== index))}
+                  className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10.5px] text-slate-200 hover:bg-white/10"
+                >
+                  {attachment.name} <span className="text-slate-500">×</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -148,6 +172,27 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
             }}
             className="flex items-end gap-2"
           >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                const selected = Array.from(event.currentTarget.files ?? []);
+                if (selected.length > 0) setAttachments((current) => [...current, ...selected]);
+                event.currentTarget.value = '';
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={conversation.sending}
+              onClick={() => fileInputRef.current?.click()}
+              className="h-9 w-9 shrink-0 rounded-[12px] border-white/10 bg-white/5 p-0 text-slate-200 hover:bg-white/10"
+              aria-label="Attach files"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
             <textarea
               ref={composerRef}
               value={draft}
@@ -164,7 +209,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
             />
             <Button
               type="submit"
-              disabled={!draft.trim() || conversation.sending}
+              disabled={(!draft.trim() && attachments.length === 0) || conversation.sending}
               className="h-9 w-9 shrink-0 rounded-[12px] p-0"
               aria-label="Send"
             >
@@ -175,6 +220,25 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
       </div>
     </div>
   );
+}
+
+function cloudAttachmentPreviewMessage(
+  msg: { attachments?: Array<{ kind: 'image' | 'file'; name: string; mimeType?: string | null; sizeBytes?: number | null; previewUrl?: string | null; downloadUrl?: string | null }> },
+  mine: boolean,
+): Message {
+  return {
+    role: mine ? 'user' : 'person',
+    text: '',
+    time: '',
+    attachments: (msg.attachments ?? []).map((attachment) => ({
+      kind: attachment.kind,
+      name: attachment.name,
+      mimeType: attachment.mimeType ?? null,
+      sizeBytes: attachment.sizeBytes ?? null,
+      previewUrl: attachment.previewUrl ?? attachment.downloadUrl ?? null,
+      localPath: null,
+    })),
+  };
 }
 
 function formatTime(value: string): string {

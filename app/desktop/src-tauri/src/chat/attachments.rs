@@ -242,6 +242,13 @@ pub async fn desktop_chat_store_attachment_path(
 }
 
 #[tauri::command]
+pub async fn desktop_chat_read_attachment(path: String) -> Result<Vec<u8>, String> {
+    let source = ensure_attachment_file_path(Path::new(&path))?;
+    std::fs::read(&source)
+        .map_err(|err| format!("Unable to read attachment {}: {err}", source.display()))
+}
+
+#[tauri::command]
 pub async fn desktop_chat_download_attachment(
     path: String,
     name: Option<String>,
@@ -293,6 +300,27 @@ mod tests {
         assert_eq!(attachment.kind, "folder");
         assert_eq!(attachment.format_label.as_deref(), Some("Folder"));
         assert_eq!(attachment.size_bytes, None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn read_attachment_reads_file_bytes_and_rejects_directories() {
+        let dir =
+            std::env::temp_dir().join(format!("kordi-attachment-read-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create temp attachment dir");
+        let file = dir.join("report.txt");
+        std::fs::write(&file, b"hello").expect("write temp attachment");
+
+        let bytes = desktop_chat_read_attachment(file.display().to_string())
+            .await
+            .expect("read attachment bytes");
+        assert_eq!(bytes, b"hello");
+
+        let dir_error = desktop_chat_read_attachment(dir.display().to_string())
+            .await
+            .expect_err("directories are rejected");
+        assert!(dir_error.contains("Attachment is not a file"));
 
         std::fs::remove_dir_all(&dir).ok();
     }

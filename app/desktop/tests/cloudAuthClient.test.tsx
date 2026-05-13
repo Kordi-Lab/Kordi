@@ -157,6 +157,97 @@ test('network failures surface as CloudAuthError with code network_error', async
   );
 });
 
+test('sendMessage posts attachment metadata and parses returned attachments', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(201, {
+    message: {
+      messageId: 'msg_1',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_peer',
+      body: 'see file',
+      createdAt: '2026-05-12T00:00:00Z',
+      deliveredAt: null,
+      readAt: null,
+      direction: 'outgoing',
+      attachments: [{
+        attachmentId: 'att_1',
+        name: 'report.pdf',
+        kind: 'file',
+        mimeType: 'application/pdf',
+        sizeBytes: 1000,
+        downloadUrl: 'https://files.test/att_1',
+        previewUrl: null,
+      }],
+    },
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const sent = await client.sendMessage('kordi_cs_xyz', 'acct_peer', 'see file', {
+    sessionId: 'session-1',
+    attachments: [{
+      attachmentId: 'att_1',
+      name: 'report.pdf',
+      kind: 'file',
+      mimeType: 'application/pdf',
+      sizeBytes: 1000,
+    }],
+  });
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/messages');
+  assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
+    peerAccountId: 'acct_peer',
+    body: 'see file',
+    sessionId: 'session-1',
+    attachments: [{
+      attachmentId: 'att_1',
+      name: 'report.pdf',
+      kind: 'file',
+      mimeType: 'application/pdf',
+      sizeBytes: 1000,
+    }],
+  });
+  assert.equal(sent.attachments?.[0]?.downloadUrl, 'https://files.test/att_1');
+});
+
+test('uploadAttachment uses the presigned initiate, PUT, finalize flow', async () => {
+  const { calls, fetchImpl } = recordingFetch((call) => {
+    if (call.url === 'http://srv/v1/cloud/attachments/initiate') {
+      return jsonResponse(200, {
+        attachmentId: 'att_1',
+        objectKey: 'attachments/acct/att_1',
+        uploadUrl: 'https://s3.test/upload-att-1',
+        expiresAt: '2026-05-12T00:15:00Z',
+      });
+    }
+    if (call.url === 'https://s3.test/upload-att-1') {
+      return new Response(null, { status: 200 });
+    }
+    if (call.url === 'http://srv/v1/cloud/attachments/att_1/finalize') {
+      return jsonResponse(200, {
+        attachmentId: 'att_1',
+        objectKey: 'attachments/acct/att_1',
+        sizeBytes: 4,
+        contentType: 'text/plain',
+        sha256Hex: null,
+        finalizedAt: '2026-05-12T00:01:00Z',
+      });
+    }
+    throw new Error(`unexpected ${call.url}`);
+  });
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const uploaded = await client.uploadAttachment('kordi_cs_xyz', new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'text/plain' }));
+
+  assert.equal(uploaded.attachmentId, 'att_1');
+  assert.equal(calls[0].init?.method, 'POST');
+  assert.equal(calls[1].init?.method, 'PUT');
+  assert.equal(calls[2].init?.method, 'POST');
+  assert.deepEqual(JSON.parse(calls[2].init?.body as string), {
+    sizeBytes: 4,
+    contentType: 'text/plain',
+    sha256Hex: null,
+  });
+});
+
 test('markMessagesRead posts peer id to cloud read-receipt route', async () => {
   const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });

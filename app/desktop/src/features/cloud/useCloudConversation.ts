@@ -21,7 +21,7 @@ export type UseCloudConversationResult = {
   loading: boolean;
   sending: boolean;
   error: string | null;
-  send(body: string): Promise<void>;
+  send(body: string, attachments?: File[]): Promise<void>;
   refresh(): Promise<void>;
 };
 
@@ -125,6 +125,7 @@ export function useCloudConversation(
             deliveredAt: null,
             readAt: null,
             direction,
+            attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
           });
         } catch (err) {
           // eslint-disable-next-line no-console
@@ -145,9 +146,9 @@ export function useCloudConversation(
   }, [account, peerAccountId, mergeMessage]);
 
   const send = useCallback(
-    async (body: string) => {
+    async (body: string, attachments: File[] = []) => {
       const trimmed = body.trim();
-      if (!trimmed || !account || !peerAccountId) return;
+      if ((!trimmed && attachments.length === 0) || !account || !peerAccountId) return;
       const session = await loadSession();
       if (!session?.token) {
         setError('Not signed in.');
@@ -156,7 +157,18 @@ export function useCloudConversation(
       setSending(true);
       setError(null);
       try {
-        const msg = await client.sendMessage(session.token, peerAccountId, trimmed);
+        const uploadedAttachments = [];
+        for (const file of attachments) {
+          const uploaded = await client.uploadAttachment(session.token, file);
+          uploadedAttachments.push({
+            attachmentId: uploaded.attachmentId,
+            name: file.name || 'attachment',
+            kind: file.type.startsWith('image/') ? 'image' as const : 'file' as const,
+            mimeType: file.type || null,
+            sizeBytes: file.size,
+          });
+        }
+        const msg = await client.sendMessage(session.token, peerAccountId, trimmed, { attachments: uploadedAttachments });
         mergeMessage(msg);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to send');

@@ -86,6 +86,46 @@ export type CloudContactRequest = {
 
 export type CloudMessageDirection = 'incoming' | 'outgoing';
 
+export type CloudMessageAttachment = {
+  attachmentId: string;
+  name: string;
+  kind: 'image' | 'file';
+  mimeType: string | null;
+  sizeBytes: number | null;
+  downloadUrl?: string | null;
+  previewUrl?: string | null;
+};
+
+export type SendCloudMessageAttachmentInput = {
+  attachmentId: string;
+  name: string;
+  kind: 'image' | 'file';
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+};
+
+export type CloudAttachmentInitiateResult = {
+  attachmentId: string;
+  objectKey: string;
+  uploadUrl: string;
+  expiresAt: string;
+};
+
+export type CloudAttachmentFinalizeResult = {
+  attachmentId: string;
+  objectKey: string;
+  sizeBytes: number | null;
+  contentType: string | null;
+  sha256Hex: string | null;
+  finalizedAt: string | null;
+};
+
+export type CloudAttachmentDownloadUrlResult = {
+  attachmentId: string;
+  downloadUrl: string;
+  expiresAt: string;
+};
+
 export type CloudMessage = {
   messageId: string;
   fromAccountId: string;
@@ -96,6 +136,7 @@ export type CloudMessage = {
   readAt: string | null;
   direction: CloudMessageDirection;
   sessionId?: string | null;
+  attachments?: CloudMessageAttachment[];
 };
 
 export type RegisterDeviceResult = {
@@ -387,19 +428,90 @@ export class CloudAuthClient {
     );
   }
 
-  async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null } = {}): Promise<CloudMessage> {
+  async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[] } = {}): Promise<CloudMessage> {
     const trimmedSessionId = options.sessionId?.trim() ?? '';
+    const attachments = options.attachments ?? [];
     const response = await this.send<{ message: CloudMessage }>(
       '/v1/cloud/messages',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ peerAccountId, body, ...(trimmedSessionId ? { sessionId: trimmedSessionId } : {}) }),
+        body: JSON.stringify({
+          peerAccountId,
+          body,
+          ...(trimmedSessionId ? { sessionId: trimmedSessionId } : {}),
+          ...(attachments.length > 0 ? { attachments } : {}),
+        }),
       },
       'Could not send message.',
     );
     if (!response) throw new Error('Empty response from cloud server.');
-    return response.message;
+    return { ...response.message, attachments: response.message.attachments ?? [] };
+  }
+
+  async initiateAttachment(token: string): Promise<CloudAttachmentInitiateResult> {
+    return this.send<CloudAttachmentInitiateResult>(
+      '/v1/cloud/attachments/initiate',
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not start attachment upload.',
+    );
+  }
+
+  async finalizeAttachment(
+    token: string,
+    attachmentId: string,
+    input: { sizeBytes: number; contentType?: string | null; sha256Hex?: string | null },
+  ): Promise<CloudAttachmentFinalizeResult> {
+    return this.send<CloudAttachmentFinalizeResult>(
+      `/v1/cloud/attachments/${encodeURIComponent(attachmentId)}/finalize`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          sizeBytes: input.sizeBytes,
+          contentType: input.contentType ?? null,
+          sha256Hex: input.sha256Hex ?? null,
+        }),
+      },
+      'Could not finish attachment upload.',
+    );
+  }
+
+  async uploadAttachment(token: string, blob: Blob): Promise<CloudAttachmentFinalizeResult> {
+    const initiated = await this.initiateAttachment(token);
+    let uploadResponse: Response;
+    try {
+      uploadResponse = await this.fetchImpl(initiated.uploadUrl, {
+        method: 'PUT',
+        headers: blob.type ? { 'content-type': blob.type } : undefined,
+        body: blob,
+      });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Network request failed.';
+      throw new CloudAuthError('network_error', message, 0);
+    }
+    if (!uploadResponse.ok) {
+      throw new CloudAuthError('server_error', 'Could not upload attachment bytes.', uploadResponse.status);
+    }
+    return this.finalizeAttachment(token, initiated.attachmentId, {
+      sizeBytes: blob.size,
+      contentType: blob.type || null,
+      sha256Hex: null,
+    });
+  }
+
+  async downloadAttachmentUrl(token: string, attachmentId: string): Promise<CloudAttachmentDownloadUrlResult> {
+    return this.send<CloudAttachmentDownloadUrlResult>(
+      `/v1/cloud/attachments/${encodeURIComponent(attachmentId)}/download-url`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not download attachment.',
+    );
   }
 
   async markMessagesRead(token: string, peerAccountId: string): Promise<void> {
@@ -429,7 +541,7 @@ export class CloudAuthClient {
       },
       'Could not load messages.',
     );
-    return response?.messages ?? [];
+    return (response?.messages ?? []).map((message) => ({ ...message, attachments: message.attachments ?? [] }));
   }
 }
 
