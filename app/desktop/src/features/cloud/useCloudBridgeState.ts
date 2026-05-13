@@ -22,8 +22,6 @@ import type {
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
-import { markOptimisticCanonicalMessageFailed } from '@/features/chat/messageActions/optimistic';
-
 import {
   CloudAuthClient,
   cloudWebSocketUrl,
@@ -151,31 +149,35 @@ export function cloudGroupAgentProcessingMessageForRequest(
   }) ?? null;
 }
 
+export type CloudGroupAgentCancelRole = 'sender' | 'agent owner' | 'participant';
+
 export function cloudGroupAgentCancelledNoticeRequest({
   processingMessage,
   requestId,
   conversationId,
   cancelledByAccountId,
-  cancelledByDisplayName,
+  cancelledByRole,
   now = Date.now(),
 }: {
   processingMessage: CanonicalSessionMessage;
   requestId: string;
   conversationId: string;
   cancelledByAccountId: string;
-  cancelledByDisplayName?: string | null;
+  cancelledByRole: CloudGroupAgentCancelRole;
   now?: number;
 }): AppendCanonicalMessageRequest {
   const content = objectContent(processingMessage.content);
   const trimmedRequestId = requestId.trim();
   const trimmedCancelledByAccountId = cancelledByAccountId.trim() || 'local';
+  const role = cancelledByRole || 'participant';
+  const text = `Request canceled by ${role}.`;
   return {
     id: `msg:cloud-agent-cancelled:${trimmedRequestId}:${trimmedCancelledByAccountId}`,
     sessionId: processingMessage.sessionId,
     senderIdentityId: processingMessage.senderIdentityId,
     senderRole: processingMessage.senderRole,
     messageKind: 'agent-turn',
-    contentText: 'Stopped',
+    contentText: text,
     content: {
       sender: typeof content.sender === 'string' ? content.sender : 'Kordi',
       timestampMs: now,
@@ -184,7 +186,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
       requestId: trimmedRequestId,
       replyToMessageId: trimmedRequestId,
       cancelledByAccountId: trimmedCancelledByAccountId,
-      cancelledByDisplayName: cleanText(cancelledByDisplayName) || trimmedCancelledByAccountId,
+      cancelledByRole: role,
     },
     createdAtMs: now,
     parentMessageId: trimmedRequestId,
@@ -200,6 +202,38 @@ type CloudAgentMentionCandidate = {
   targetHumanDisplayName: string;
   targetAgentDisplayName: string;
 };
+
+function accountIdForHumanIdentity(state: CanonicalSessionState, identityId?: string | null): string | null {
+  const identity = identityId ? state.identities.find((candidate) => candidate.id === identityId) : null;
+  if (!identity || identity.kind !== 'human') return null;
+  const metadata = objectContent(identity.metadata);
+  return cleanText(identity.humanId)
+    || cleanText(identity.bridgeNodeId)
+    || cleanText(typeof metadata.accountId === 'string' ? metadata.accountId : null)
+    || null;
+}
+
+export function cloudGroupAgentCancelRoleForRequest({
+  state,
+  requestId,
+  processingMessage,
+  cancelledByAccountId,
+}: {
+  state: CanonicalSessionState;
+  requestId: string;
+  processingMessage: CanonicalSessionMessage;
+  cancelledByAccountId: string;
+}): CloudGroupAgentCancelRole {
+  const trimmedCancelledByAccountId = cancelledByAccountId.trim();
+  const requestMessage = state.messages.find((message) => message.id === requestId.trim()) ?? null;
+  const requestSenderAccountId = accountIdForHumanIdentity(state, requestMessage?.senderIdentityId);
+  if (requestSenderAccountId && requestSenderAccountId === trimmedCancelledByAccountId) return 'sender';
+  const agentOwnerAccountId = processingMessage.senderIdentityId.startsWith('agent:cloud:')
+    ? processingMessage.senderIdentityId.slice('agent:cloud:'.length)
+    : null;
+  if (agentOwnerAccountId && agentOwnerAccountId === trimmedCancelledByAccountId) return 'agent owner';
+  return 'participant';
+}
 
 function cloudGroupParticipantSnapshotForSession(
   state: CanonicalSessionState,
@@ -269,7 +303,11 @@ function cloudAgentRequestReachedCloud(message: CanonicalSessionMessage): boolea
 }
 
 function cloudGroupOfflinePlaceholderMatches(message: CanonicalSessionMessage, noticeId: string) {
-  return cloudGroupRequestSlotMatches(message, noticeId) && message.sourceTransport === 'cloud-group-agent-offline';
+  if (!cloudGroupRequestSlotMatches(message, noticeId) || message.sourceTransport !== 'cloud-group-agent-offline') return false;
+  const content = objectContent(message.content);
+  const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+  const status = message.status.trim().toLowerCase();
+  return !['failed', 'cancelled'].includes(status) && !['failed', 'cancelled'].includes(deliveryState);
 }
 
 function cloudGroupAgentResponseMatches(
@@ -728,18 +766,12 @@ export function useCloudBridgeState({
             createdAtMs,
           });
           const afterAppend = await upsertCanonicalMessage(notice);
-          const failedState = markOptimisticCanonicalMessageFailed(
-            afterAppend,
-            candidate.requestMessage.sessionId,
-            candidate.requestMessage.id,
-            notice.contentText,
-          );
-          canonicalSessionStateRef.current = failedState;
-          setCanonicalSessionState(failedState);
+          canonicalSessionStateRef.current = afterAppend;
+          setCanonicalSessionState(afterAppend);
 
           const session = await loadSession();
           if (!session?.token) return;
-          const snapshotState = failedState ?? current;
+          const snapshotState = afterAppend ?? current;
           const participants = cloudGroupParticipantSnapshotForSession(
             snapshotState,
             candidate.requestMessage.sessionId,
@@ -1314,14 +1346,47 @@ export function useCloudBridgeState({
         if (!cancel) continue;
         processedCloudAgentMentionIdsRef.current.add(cancel.requestId);
         const turnId = cloudAgentTurnIdsByRequestIdRef.current.get(cancel.requestId);
-        if (!turnId) continue;
-        void cancelDesktopChatTurn(turnId)
+        if (turnId) {
+          void cancelDesktopChatTurn(turnId)
+            .catch((error) => {
+              // eslint-disable-next-line no-console
+              console.warn('[cloud-agent-mention] local agent cancel failed', error);
+            })
+            .finally(() => {
+              cloudAgentTurnIdsByRequestIdRef.current.delete(cancel.requestId);
+            });
+        }
+        const currentCanonicalState = canonicalSessionStateRef.current;
+        if (!currentCanonicalState || !setCanonicalSessionState) continue;
+        const processingMessage = currentCanonicalState.messages
+          .map((candidate) => cloudGroupAgentProcessingMessageForRequest([candidate], candidate.sessionId, cancel.requestId))
+          .find((candidate): candidate is CanonicalSessionMessage => Boolean(candidate));
+        if (!processingMessage) continue;
+        if (currentCanonicalState.messages.some((candidate) => {
+          const content = objectContent(candidate.content);
+          return candidate.status === 'cancelled'
+            && candidate.sourceTransport === 'cloud-group-agent'
+            && cleanText(typeof content.requestId === 'string' ? content.requestId : null) === cancel.requestId;
+        })) continue;
+        void upsertCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
+          processingMessage,
+          requestId: cancel.requestId,
+          conversationId: cloudGroupAgentConversationId(processingMessage.sessionId),
+          cancelledByAccountId: message.fromAccountId,
+          cancelledByRole: cloudGroupAgentCancelRoleForRequest({
+            state: currentCanonicalState,
+            requestId: cancel.requestId,
+            processingMessage,
+            cancelledByAccountId: message.fromAccountId,
+          }),
+        }))
+          .then((nextState) => {
+            canonicalSessionStateRef.current = nextState;
+            setCanonicalSessionState(nextState);
+          })
           .catch((error) => {
             // eslint-disable-next-line no-console
-            console.warn('[cloud-agent-mention] local agent cancel failed', error);
-          })
-          .finally(() => {
-            cloudAgentTurnIdsByRequestIdRef.current.delete(cancel.requestId);
+            console.warn('[cloud-agent-mention] group cancel notice failed', error);
           });
       }
     }
@@ -1400,7 +1465,7 @@ export function useCloudBridgeState({
         });
       }
     }
-  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
+  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
@@ -1604,14 +1669,20 @@ export function useCloudBridgeState({
       const processingMessage = canonicalSessionState
         ? cloudGroupAgentProcessingMessageForRequest(canonicalSessionState.messages, groupId, trimmedRequestId)
         : null;
-      if (processingMessage && setCanonicalSessionState && account) {
-        const cancelledState = await appendCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
+      if (processingMessage && setCanonicalSessionState && account && canonicalSessionState) {
+        const cancelledState = await upsertCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
           processingMessage,
           requestId: trimmedRequestId,
           conversationId,
           cancelledByAccountId: account.accountId,
-          cancelledByDisplayName: account.displayName || account.primaryEmail || 'Me',
+          cancelledByRole: cloudGroupAgentCancelRoleForRequest({
+            state: canonicalSessionState,
+            requestId: trimmedRequestId,
+            processingMessage,
+            cancelledByAccountId: account.accountId,
+          }),
         }));
+        canonicalSessionStateRef.current = cancelledState;
         setCanonicalSessionState(cancelledState);
       }
       const cancelBody = encodeCloudAgentCancel({ requestId: trimmedRequestId });

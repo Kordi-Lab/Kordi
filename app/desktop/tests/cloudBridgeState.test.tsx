@@ -16,6 +16,7 @@ import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/feature
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
+  cloudGroupAgentCancelRoleForRequest,
   cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentProcessingMessageForRequest,
   optimisticCloudAgentCancelMessage,
@@ -690,7 +691,7 @@ test('cloud group cancel finds requesting placeholders before processing reaches
   );
 });
 
-test('cloud group cancel notices record who stopped the request', () => {
+test('cloud group cancel notices record sender or agent owner role', () => {
   const processing = {
     id: 'msg:cloud-agent-offline:msg_request:acct_peer',
     sessionId: 'session:group',
@@ -708,16 +709,37 @@ test('cloud group cancel notices record who stopped the request', () => {
     sourceTransport: 'cloud-group-agent-offline',
     sourceEventId: 'cloud-group-agent-offline:msg_request:acct_peer',
   } as CanonicalSessionMessage;
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: { id: 'profile', displayName: 'Me', humanIdentityId: 'human:me', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', humanId: 'acct_me', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'bridge', humanId: 'acct_peer', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [],
+    participants: [],
+    messages: [
+      { id: 'msg_request', sessionId: 'session:group', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@PeerKordi hi', content: {}, status: 'sent', sequenceNum: 0, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'request' },
+      processing,
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  } as CanonicalSessionState;
+
+  assert.equal(cloudGroupAgentCancelRoleForRequest({ state: canonicalState, requestId: 'msg_request', processingMessage: processing, cancelledByAccountId: 'acct_me' }), 'sender');
+  assert.equal(cloudGroupAgentCancelRoleForRequest({ state: canonicalState, requestId: 'msg_request', processingMessage: processing, cancelledByAccountId: 'acct_peer' }), 'agent owner');
 
   const notice = cloudGroupAgentCancelledNoticeRequest({
     processingMessage: processing,
     requestId: 'msg_request',
     conversationId: 'cloud-group-agent:session:group',
     cancelledByAccountId: 'acct_me',
-    cancelledByDisplayName: 'Me Cloud',
+    cancelledByRole: 'sender',
     now: 1_234,
   });
 
+  assert.equal(notice.contentText, 'Request canceled by sender.');
   assert.deepEqual(notice.content, {
     sender: "Peer's Kordi",
     timestampMs: 1_234,
@@ -726,7 +748,7 @@ test('cloud group cancel notices record who stopped the request', () => {
     requestId: 'msg_request',
     replyToMessageId: 'msg_request',
     cancelledByAccountId: 'acct_me',
-    cancelledByDisplayName: 'Me Cloud',
+    cancelledByRole: 'sender',
   });
 });
 

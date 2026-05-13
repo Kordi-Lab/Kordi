@@ -1323,7 +1323,7 @@ test('canonical read model renders cloud group requesting placeholders as active
   });
 });
 
-test('canonical read model renders cloud group cancellations as one stopped-by line', () => {
+test('canonical read model renders cloud group cancellations as one request-canceled line', () => {
   const sessionId = 'session:group:cloud-cancelled';
   const canonicalState = {
     storagePath: '/tmp/canonical.sqlite3',
@@ -1341,7 +1341,7 @@ test('canonical read model renders cloud group cancellations as one stopped-by l
     ],
     messages: [
       { id: 'msg:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@PeersKordi stop test', content: { sender: 'Me' }, status: 'complete', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-request' },
-      { id: 'msg:cancelled', sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Stopped', content: { sender: "Peer's Kordi", deliveryState: 'cancelled', requestId: 'msg:request', replyToMessageId: 'msg:request', cancelledByDisplayName: 'Me' }, parentMessageId: 'msg:request', status: 'cancelled', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-cancelled' },
+      { id: 'msg:cancelled', sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Request canceled by sender.', content: { sender: "Peer's Kordi", deliveryState: 'cancelled', requestId: 'msg:request', replyToMessageId: 'msg:request', cancelledByRole: 'sender' }, parentMessageId: 'msg:request', status: 'cancelled', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-cancelled' },
     ],
     delegatedExchanges: [],
     presence: [],
@@ -1352,8 +1352,8 @@ test('canonical read model renders cloud group cancellations as one stopped-by l
   const conversation = readModel?.applyConversation({ id: sessionId, canonicalSessionId: sessionId, messages: [] } as never, (messages, fallback) => messages.at(-1)?.turn?.message ?? fallback ?? '');
   const cancelledTurn = conversation?.messages.find((message) => message.turn?.status === 'cancelled')?.turn;
 
-  assert.equal(cancelledTurn?.message, 'Stopped by Me');
-  assert.equal(cancelledTurn?.assistantText, 'Stopped by Me');
+  assert.equal(cancelledTurn?.message, 'Request canceled by sender.');
+  assert.equal(cancelledTurn?.assistantText, 'Request canceled by sender.');
   assert.equal(cancelledTurn?.error, null);
 });
 

@@ -436,9 +436,9 @@ export function mapCanonicalMessage(
     && deliveryState === 'processing'
     && isProcessingPlaceholderText(rawDisplayText);
   const displayText = isProcessingAgentPlaceholder || bridgeAgentFailure ? '' : rawDisplayText;
-  const cancelledByDisplayName = stringValue(content.cancelledByDisplayName)?.trim();
+  const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
   const cancelledTurnText = cancelled
-    ? (cancelledByDisplayName ? `Stopped by ${cancelledByDisplayName}` : displayText.trim() || 'Stopped')
+    ? (displayText.trim() || (cancelledByRole ? `Request canceled by ${cancelledByRole}.` : 'Request canceled.'))
     : '';
 
   if (role === 'system' && !displayText.trim()) return null;
