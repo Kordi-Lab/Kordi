@@ -15,7 +15,11 @@ import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcr
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
-import type { CanonicalSessionState } from '../src/kordi-app/types';
+import {
+  cloudGroupAgentProcessingMessageForRequest,
+  optimisticCloudAgentCancelMessage,
+} from '../src/features/cloud/useCloudBridgeState';
+import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -643,6 +647,46 @@ test('cloud outgoing remote-agent mentions expose localhost-style pending outrea
 
   assert.equal(answeredState.conversations[0].awaitingReply, false);
   assert.equal(answeredState.conversations[0].outreach, null);
+});
+
+test('cloud agent optimistic cancel controls have the same shape as server cancel controls', () => {
+  const cancel = optimisticCloudAgentCancelMessage({
+    account,
+    peerAccountId: 'acct_peer',
+    requestId: 'msg_cancel_request',
+    now: 1_234,
+  });
+
+  assert.equal(cancel.fromAccountId, 'acct_me');
+  assert.equal(cancel.toAccountId, 'acct_peer');
+  assert.equal(cancel.direction, 'outgoing');
+  assert.equal(cancel.body, encodeCloudAgentCancel({ requestId: 'msg_cancel_request' }));
+  assert.equal(cancel.createdAt, new Date(1_234).toISOString());
+});
+
+test('cloud group cancel finds requesting placeholders before processing reaches the agent', () => {
+  const requesting = {
+    id: 'msg:cloud-agent-offline:msg_request:acct_peer',
+    sessionId: 'session:group',
+    senderIdentityId: 'agent:cloud:acct_peer',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'Requesting…',
+    content: { requestId: 'msg_request', deliveryState: 'processing' },
+    parentMessageId: 'msg_request',
+    status: 'processing',
+    sequenceNum: 1,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    contentHash: null,
+    sourceTransport: 'cloud-group-agent-offline',
+    sourceEventId: 'cloud-group-agent-offline:msg_request:acct_peer',
+  } as CanonicalSessionMessage;
+
+  assert.equal(
+    cloudGroupAgentProcessingMessageForRequest([requesting], 'session:group', 'msg_request')?.id,
+    requesting.id,
+  );
 });
 
 test('cloud agent cancel controls are hidden and show who cancelled the request', () => {

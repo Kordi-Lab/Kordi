@@ -105,6 +105,51 @@ function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
 
+export function optimisticCloudAgentCancelMessage({
+  account,
+  peerAccountId,
+  requestId,
+  now = Date.now(),
+}: {
+  account: CloudAccount;
+  peerAccountId: string;
+  requestId: string;
+  now?: number;
+}): CloudMessage {
+  const trimmedRequestId = requestId.trim();
+  const trimmedPeerAccountId = peerAccountId.trim();
+  return {
+    messageId: `local-cloud-agent-cancel:${trimmedRequestId}:${trimmedPeerAccountId}`,
+    fromAccountId: account.accountId,
+    toAccountId: trimmedPeerAccountId,
+    body: encodeCloudAgentCancel({ requestId: trimmedRequestId }),
+    createdAt: new Date(now).toISOString(),
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+  };
+}
+
+export function cloudGroupAgentProcessingMessageForRequest(
+  messages: CanonicalSessionMessage[],
+  groupId: string,
+  requestId: string,
+): CanonicalSessionMessage | null {
+  const trimmedGroupId = groupId.trim();
+  const trimmedRequestId = requestId.trim();
+  if (!trimmedGroupId || !trimmedRequestId) return null;
+  return messages.find((message) => {
+    if (message.sessionId !== trimmedGroupId || !message.sourceTransport?.startsWith('cloud-group-agent')) return false;
+    const content = objectContent(message.content);
+    const linkedRequestId = cleanText(message.parentMessageId)
+      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+    if (linkedRequestId !== trimmedRequestId) return false;
+    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+    return message.status === 'processing' || deliveryState === 'processing';
+  }) ?? null;
+}
+
 type CloudAgentMentionCandidate = {
   requestMessage: CanonicalSessionMessage;
   targetAccountId: string;
@@ -1512,11 +1557,9 @@ export function useCloudBridgeState({
           cloudAgentTurnIdsByRequestIdRef.current.delete(trimmedRequestId);
         });
       }
-      const processingMessage = canonicalSessionState?.messages.find((message) => {
-        if (message.sessionId !== groupId || message.sourceTransport !== 'cloud-group-agent') return false;
-        const content = objectContent(message.content);
-        return typeof content.requestId === 'string' && content.requestId.trim() === trimmedRequestId;
-      }) ?? null;
+      const processingMessage = canonicalSessionState
+        ? cloudGroupAgentProcessingMessageForRequest(canonicalSessionState.messages, groupId, trimmedRequestId)
+        : null;
       if (processingMessage && setCanonicalSessionState) {
         const content = objectContent(processingMessage.content);
         const cancelledState = await appendCanonicalMessage({
@@ -1566,12 +1609,17 @@ export function useCloudBridgeState({
     }
 
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);
-    if (!peerId) throw new Error('Unable to resolve cloud agent request.');
+    if (!peerId || !account) throw new Error('Unable to resolve cloud agent request.');
+    mergeMessage(optimisticCloudAgentCancelMessage({
+      account,
+      peerAccountId: peerId,
+      requestId: trimmedRequestId,
+    }));
     const message = await client.sendMessage(session.token, peerId, encodeCloudAgentCancel({ requestId: trimmedRequestId }));
     mergeMessage(message);
     await refreshCloudBridgeMessages();
     setCloudBridgeOverrideState(null);
-  }, [account?.accountId, canonicalSessionState?.messages, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
+  }, [account, canonicalSessionState?.messages, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
 
   return {
     cloudBridgeState,
