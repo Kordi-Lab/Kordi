@@ -223,7 +223,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
 }
 
 function cloudAttachmentPreviewMessage(
-  msg: { attachments?: Array<{ attachmentId?: string | null; kind: 'image' | 'file'; name: string; mimeType?: string | null; sizeBytes?: number | null; previewUrl?: string | null; downloadUrl?: string | null }> },
+  msg: { attachments?: Array<{ attachmentId?: string | null; kind: 'image' | 'file'; name: string; mimeType?: string | null; sizeBytes?: number | null; previewUrl?: string | null; downloadUrl?: string | null; localPath?: string | null }> },
   mine: boolean,
 ): Message {
   return {
@@ -237,7 +237,7 @@ function cloudAttachmentPreviewMessage(
       sizeBytes: attachment.sizeBytes ?? null,
       previewUrl: attachment.previewUrl ?? attachment.downloadUrl ?? null,
       downloadUrl: attachment.downloadUrl ?? null,
-      localPath: null,
+      localPath: attachment.localPath ?? null,
       attachmentId: attachment.attachmentId ?? null,
     })),
   };

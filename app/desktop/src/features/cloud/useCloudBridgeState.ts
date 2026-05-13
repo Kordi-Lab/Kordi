@@ -90,7 +90,7 @@ import {
   type CloudGroupControlEnvelope,
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
-import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
+import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
 import { loadSession } from './session';
 import { CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
@@ -1247,12 +1247,14 @@ export function useCloudBridgeState({
     const ownAgentProcessingId = isOwnAgentResponseRoundTrip
       ? `msg:cloud-agent-processing:${(envelope.message!.replyToMessageId || envelope.message!.requestId || '').trim()}:${account.accountId}`
       : null;
-    const messageAlreadyExists = [canonicalState, nextState]
+    const existingCloudGroupMessage = [canonicalState, nextState]
       .filter((state): state is CanonicalSessionState => Boolean(state))
-      .some((state) => state.messages.some((candidate) => (
+      .flatMap((state) => state.messages)
+      .find((candidate) => (
         candidate.id === envelope.message?.id
         || (ownAgentProcessingId !== null && candidate.id === ownAgentProcessingId)
-      )));
+      )) ?? null;
+    const messageAlreadyExists = Boolean(existingCloudGroupMessage);
 
     const senderIsAgent = envelope.message.senderKind === 'agent';
     const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
@@ -1279,6 +1281,46 @@ export function useCloudBridgeState({
         metadata: { accountId: envelope.message.senderAccountId, cloudGroupAgent: true },
       });
     }
+    const cloudAttachments = cloudMessage.attachments?.length ? cloudMessage.attachments : envelope.message.attachments ?? [];
+    const currentSession = cloudAttachments.length > 0 ? await loadSession() : null;
+    const mappedAttachments = currentSession?.token
+      ? await resolveCloudMessageAttachments({ token: currentSession.token, client, attachments: cloudAttachments })
+      : cloudAttachments.map(cloudMessageAttachmentToMessageAttachment);
+
+    if (messageAlreadyExists && existingCloudGroupMessage && mappedAttachments.some((attachment) => attachment.localPath)) {
+      const content = objectContent(existingCloudGroupMessage.content);
+      const existingAttachments = Array.isArray(content.attachments) ? content.attachments : [];
+      const shouldUpdateCachedAttachments = existingAttachments.some((attachment) => {
+        const record = objectContent(attachment);
+        return typeof record.attachmentId === 'string'
+          && !record.localPath
+          && mappedAttachments.some((mapped) => mapped.attachmentId === record.attachmentId && mapped.localPath);
+      });
+      if (shouldUpdateCachedAttachments) {
+        const mergedAttachments = existingAttachments.map((attachment) => {
+          const record = objectContent(attachment);
+          const attachmentId = typeof record.attachmentId === 'string' ? record.attachmentId : null;
+          const cached = attachmentId ? mappedAttachments.find((mapped) => mapped.attachmentId === attachmentId && mapped.localPath) : null;
+          return cached ? { ...record, localPath: cached.localPath } : attachment;
+        });
+        nextState = await upsertCanonicalMessage({
+          id: existingCloudGroupMessage.id,
+          sessionId: existingCloudGroupMessage.sessionId,
+          senderIdentityId: existingCloudGroupMessage.senderIdentityId,
+          senderRole: existingCloudGroupMessage.senderRole,
+          messageKind: existingCloudGroupMessage.messageKind,
+          contentText: existingCloudGroupMessage.contentText,
+          content: { ...content, attachments: mergedAttachments },
+          createdAtMs: existingCloudGroupMessage.createdAtMs,
+          parentMessageId: existingCloudGroupMessage.parentMessageId ?? null,
+          status: existingCloudGroupMessage.status,
+          sourceTransport: existingCloudGroupMessage.sourceTransport,
+          sourceEventId: existingCloudGroupMessage.sourceEventId,
+        });
+        setCanonicalSessionState(nextState);
+      }
+    }
+
     if (!messageAlreadyExists) {
       const stableAgentNoticeId = senderIsAgent && messageReplyToId
         ? `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`
@@ -1312,7 +1354,6 @@ export function useCloudBridgeState({
           : senderIsAgent && agentDeliveryState === 'cancelled'
             ? 'cancelled'
             : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received';
-      const mappedAttachments = (cloudMessage.attachments?.length ? cloudMessage.attachments : envelope.message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment);
       const messageRequest = {
         id: shouldUpdateStableAgentSlot ? stableAgentNoticeId : envelope.message.id,
         sessionId: envelope.groupId,

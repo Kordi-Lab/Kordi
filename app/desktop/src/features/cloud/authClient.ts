@@ -94,6 +94,7 @@ export type CloudMessageAttachment = {
   sizeBytes: number | null;
   downloadUrl?: string | null;
   previewUrl?: string | null;
+  localPath?: string | null;
 };
 
 export type SendCloudMessageAttachmentInput = {

@@ -12,6 +12,7 @@ import {
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
+import { resolveCloudMessageAttachments } from './cloudAttachments';
 import { loadSession } from './session';
 
 const POLL_FALLBACK_MS = 20_000;
@@ -69,8 +70,14 @@ export function useCloudConversation(
     setError(null);
     try {
       const list = await client.listMessages(session.token, peerAccountId);
+      const resolvedList = await Promise.all(list.map(async (message) => ({
+        ...message,
+        attachments: message.attachments?.length
+          ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+          : [],
+      })));
       if (cancelledRef.current) return;
-      setMessages(list);
+      setMessages(resolvedList);
     } catch (err) {
       if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load messages');
@@ -116,17 +123,23 @@ export function useCloudConversation(
           // Only messages in *this* conversation
           if (from !== peerAccountId && to !== peerAccountId) return;
           const direction = to === account.accountId ? 'incoming' : 'outgoing';
-          mergeMessage({
-            messageId: payload.message_id,
-            fromAccountId: from,
-            toAccountId: to,
-            body: payload.body,
-            createdAt: payload.created_at,
-            deliveredAt: null,
-            readAt: null,
-            direction,
-            attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
-          });
+          void (async () => {
+            const session = await loadSession();
+            const attachments = Array.isArray(payload.attachments) && session?.token
+              ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: payload.attachments })
+              : Array.isArray(payload.attachments) ? payload.attachments : [];
+            mergeMessage({
+              messageId: payload.message_id,
+              fromAccountId: from,
+              toAccountId: to,
+              body: payload.body,
+              createdAt: payload.created_at,
+              deliveredAt: null,
+              readAt: null,
+              direction,
+              attachments,
+            });
+          })();
         } catch (err) {
           // eslint-disable-next-line no-console
           console.warn('[cloud-ws] frame parse failed', err);

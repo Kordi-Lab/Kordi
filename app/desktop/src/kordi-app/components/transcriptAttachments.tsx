@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { Download, ExternalLink, FileText, Image, ImageOff } from 'lucide-react';
 
@@ -10,8 +10,7 @@ import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAtta
 import { cn } from '@/lib/utils';
 import type { Message, MessageAttachment } from '../types';
 
-const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 20 * 1024 * 1024;
-const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024;
+const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
 
 function isNativeShell() {
@@ -21,17 +20,10 @@ function isNativeShell() {
 function isInternalObjectStoreUrl(value?: string | null) {
   if (!value) return false;
   try {
-    const url = new URL(value);
-    return url.hostname === 'minio.kordi-cloud.svc.cluster.local';
+    return new URL(value).hostname === 'minio.kordi-cloud.svc.cluster.local';
   } catch {
     return value.includes('minio.kordi-cloud.svc.cluster.local');
   }
-}
-
-function safeRemoteAttachmentUrl(value?: string | null) {
-  const trimmed = value?.trim() || null;
-  if (!trimmed || isInternalObjectStoreUrl(trimmed)) return null;
-  return trimmed;
 }
 
 function attachmentPreviewUrl(attachment: MessageAttachment) {
@@ -40,10 +32,11 @@ function attachmentPreviewUrl(attachment: MessageAttachment) {
     try {
       return convertFileSrc(attachment.localPath);
     } catch {
-      // fall through to a safe remote URL if one exists
+      return undefined;
     }
   }
-  return safeRemoteAttachmentUrl(attachment.previewUrl) ?? undefined;
+  if (attachment.previewUrl && !isInternalObjectStoreUrl(attachment.previewUrl)) return attachment.previewUrl;
+  return undefined;
 }
 
 function attachmentExtension(attachment: MessageAttachment) {
@@ -64,52 +57,6 @@ function shouldPreviewAttachmentInline(attachment: MessageAttachment) {
   return attachment.kind === 'image' && !isArchiveAttachment(attachment) && !isLargeAttachment(attachment);
 }
 
-function shouldAutoDownloadCloudAttachment(attachment: MessageAttachment) {
-  if (!attachment.attachmentId || attachment.localPath || !isNativeShell()) return false;
-  if (typeof attachment.sizeBytes === 'number' && attachment.sizeBytes > CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES) return false;
-  return true;
-}
-
-function useAutoDownloadedCloudAttachment(attachment: MessageAttachment) {
-  const [localPath, setLocalPath] = useState<string | null>(attachment.localPath ?? null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLocalPath(attachment.localPath ?? null);
-  }, [attachment.attachmentId, attachment.localPath]);
-
-  useEffect(() => {
-    if (!shouldAutoDownloadCloudAttachment(attachment)) return;
-    let cancelled = false;
-    const attachmentId = attachment.attachmentId!;
-
-    async function download() {
-      setError(null);
-      try {
-        const session = await loadSession();
-        if (!session?.token || cancelled) return;
-        const blob = await defaultCloudAuthClient().downloadAttachmentContent(session.token, attachmentId);
-        if (blob.size > CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES) return;
-        const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
-        if (cancelled) return;
-        const storedPath = await storeDesktopChatAttachment(attachment.name || 'attachment.bin', bytes);
-        if (!cancelled) setLocalPath(storedPath);
-      } catch (downloadError) {
-        if (!cancelled) {
-          setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
-        }
-      }
-    }
-
-    void download();
-    return () => {
-      cancelled = true;
-    };
-  }, [attachment.attachmentId, attachment.localPath, attachment.name, attachment.sizeBytes]);
-
-  return useMemo(() => ({ localPath, error }), [localPath, error]);
-}
-
 function formatAttachmentSize(sizeBytes?: number | null) {
   if (typeof sizeBytes !== 'number' || !Number.isFinite(sizeBytes) || sizeBytes < 0) return null;
   if (sizeBytes < 1024) return `${sizeBytes} B`;
@@ -127,18 +74,30 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const canOpen = Boolean(attachment.localPath && isNativeShell());
+  const canDownload = Boolean((attachment.localPath && isNativeShell()) || attachment.attachmentId);
+  const canOpen = Boolean(((downloadedPath ?? attachment.localPath) && isNativeShell()));
 
-  if (!canOpen) {
+  if (!canDownload && !canOpen) {
     return null;
   }
 
+  async function ensureLocalPath() {
+    if (attachment.localPath) return attachment.localPath;
+    if (!attachment.attachmentId) return null;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const blob = await defaultCloudAuthClient().downloadAttachmentContent(session.token, attachment.attachmentId);
+    const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+    return storeDesktopChatAttachment(attachment.name || 'attachment.bin', bytes);
+  }
+
   async function handleDownload() {
-    if (!attachment.localPath) return;
     setIsDownloading(true);
     setError(null);
     try {
-      const targetPath = await downloadDesktopAttachment(attachment.localPath, attachment.name);
+      const localPath = await ensureLocalPath();
+      if (!localPath) return;
+      const targetPath = await downloadDesktopAttachment(localPath, attachment.name);
       setDownloadedPath(targetPath);
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
@@ -148,10 +107,11 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
   }
 
   async function handleOpen() {
-    if (!attachment.localPath) return;
+    const target = downloadedPath ?? attachment.localPath;
+    if (!target) return;
     setError(null);
     try {
-      await openDesktopExternalUrl(downloadedPath ?? attachment.localPath);
+      await openDesktopExternalUrl(target);
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
     }
@@ -174,17 +134,19 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
         >
           <Download className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={() => void handleOpen()}
-          className={actionButtonClass}
-          aria-label={`Open ${attachment.name} with local app`}
-          title="Open with local app"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
+        {canOpen ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => void handleOpen()}
+            className={actionButtonClass}
+            aria-label={`Open ${attachment.name} with local app`}
+            title="Open with local app"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
       </div>
       {isDownloading ? <span className="text-[10px] text-slate-400">Downloading…</span> : null}
       {downloadedPath && !isDownloading ? <span className="text-[10px] text-slate-400">Downloaded</span> : null}
@@ -194,29 +156,24 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
 }
 
 function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachment; index: number }) {
-  const autoDownload = useAutoDownloadedCloudAttachment(attachment);
-  const effectiveAttachment = useMemo(
-    () => ({ ...attachment, localPath: autoDownload.localPath ?? attachment.localPath ?? null }),
-    [attachment, autoDownload.localPath],
-  );
-  const sizeLabel = formatAttachmentSize(effectiveAttachment.sizeBytes);
-  const label = [effectiveAttachment.formatLabel || (isArchiveAttachment(effectiveAttachment) ? 'ARCHIVE' : 'FILE'), sizeLabel]
+  const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+  const label = [attachment.formatLabel || (isArchiveAttachment(attachment) ? 'ARCHIVE' : 'FILE'), sizeLabel]
     .filter(Boolean)
     .join(' • ');
-  const Icon = effectiveAttachment.kind === 'image' ? Image : FileText;
+  const Icon = attachment.kind === 'image' ? Image : FileText;
 
   return (
-    <div key={`${effectiveAttachment.name}-${index}`} className="flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
+    <div key={`${attachment.name}-${index}`} className="flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[12px] font-medium text-white/92">{effectiveAttachment.name}</div>
+        <div className="truncate text-[12px] font-medium text-white/92">{attachment.name}</div>
         <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
           {label || 'FILE'}
         </div>
       </div>
-      <AttachmentActions attachment={effectiveAttachment} />
+      <AttachmentActions attachment={attachment} />
     </div>
   );
 }
@@ -237,33 +194,28 @@ function BrokenImagePreview({ attachment }: { attachment: MessageAttachment }) {
 
 function AttachmentImageCard({ attachment, index }: { attachment: MessageAttachment; index: number }) {
   const [previewFailed, setPreviewFailed] = useState(false);
-  const autoDownload = useAutoDownloadedCloudAttachment(attachment);
-  const effectiveAttachment = useMemo(
-    () => ({ ...attachment, localPath: autoDownload.localPath ?? attachment.localPath ?? null }),
-    [attachment, autoDownload.localPath],
-  );
-  const previewUrl = attachmentPreviewUrl(effectiveAttachment);
-  const sizeLabel = formatAttachmentSize(effectiveAttachment.sizeBytes);
-  const metadataLabel = [sizeLabel, effectiveAttachment.formatLabel].filter(Boolean).join(' • ');
+  const previewUrl = attachmentPreviewUrl(attachment);
+  const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+  const metadataLabel = [sizeLabel, attachment.formatLabel].filter(Boolean).join(' • ');
   const showImage = Boolean(previewUrl && !previewFailed);
 
   return (
-    <div key={`${effectiveAttachment.name}-${index}`} className="app-attachment-image-card overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
+    <div key={`${attachment.name}-${index}`} className="app-attachment-image-card overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
       {showImage ? (
         <img
           src={previewUrl}
-          alt={effectiveAttachment.name || 'Attached image'}
+          alt={attachment.name || 'Attached image'}
           className="block max-h-[320px] w-full object-cover"
           onError={() => setPreviewFailed(true)}
         />
       ) : (
-        <BrokenImagePreview attachment={effectiveAttachment} />
+        <BrokenImagePreview attachment={attachment} />
       )}
       <div className="app-attachment-image-footer flex items-center justify-between gap-2 px-3 py-2 text-[11px]">
         <span className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.14em]">
           {metadataLabel || 'IMAGE'}
         </span>
-        <AttachmentActions attachment={effectiveAttachment} />
+        <AttachmentActions attachment={attachment} />
       </div>
     </div>
   );

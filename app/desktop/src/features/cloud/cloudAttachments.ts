@@ -1,10 +1,12 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
-import { readDesktopChatAttachment } from '@/lib/desktop';
+import { readDesktopChatAttachment, storeDesktopChatAttachment } from '@/lib/desktop';
 import type {
   CloudAuthClient,
   CloudMessageAttachment,
   SendCloudMessageAttachmentInput,
 } from './authClient';
+
+export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
 export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessageAttachment) {
   return {
@@ -17,6 +19,45 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
     localPath: null,
     attachmentId: attachment.attachmentId,
   };
+}
+
+export async function resolveCloudMessageAttachments({
+  token,
+  client,
+  attachments,
+  autoDownloadMaxBytes = CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES,
+  storeAttachment = storeDesktopChatAttachment,
+}: {
+  token: string;
+  client: Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+  attachments: CloudMessageAttachment[];
+  autoDownloadMaxBytes?: number;
+  storeAttachment?: (name: string, data: number[]) => Promise<string>;
+}) {
+  const resolved = [];
+  for (const attachment of attachments) {
+    const mapped = cloudMessageAttachmentToMessageAttachment(attachment);
+    const shouldAutoDownload = typeof mapped.sizeBytes === 'number'
+      && mapped.sizeBytes >= 0
+      && mapped.sizeBytes <= autoDownloadMaxBytes;
+    if (!shouldAutoDownload) {
+      resolved.push(mapped);
+      continue;
+    }
+    try {
+      const blob = await client.downloadAttachmentContent(token, attachment.attachmentId);
+      if (blob.size > autoDownloadMaxBytes) {
+        resolved.push(mapped);
+        continue;
+      }
+      const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+      const localPath = await storeAttachment(attachment.name || 'attachment.bin', bytes);
+      resolved.push({ ...mapped, localPath });
+    } catch {
+      resolved.push(mapped);
+    }
+  }
+  return resolved;
 }
 
 export async function uploadComposerAttachments({
