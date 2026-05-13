@@ -2123,13 +2123,7 @@ async fn send_message(
             StatusCode::BAD_REQUEST,
         );
     }
-    if peer == session.account_id {
-        return err(
-            "self_message",
-            "You cannot message yourself.",
-            StatusCode::BAD_REQUEST,
-        );
-    }
+    let is_self_message = peer == session.account_id;
     let body = req.body.trim();
     if body.is_empty() {
         return err(
@@ -2168,7 +2162,7 @@ async fn send_message(
             )
         }
     };
-    if mutual.is_none() && cloud_message_requires_accepted_contact(&body) {
+    if !is_self_message && mutual.is_none() && cloud_message_requires_accepted_contact(&body) {
         return err(
             "not_a_contact",
             "You can only message accepted contacts.",
@@ -2248,11 +2242,7 @@ async fn mark_messages_read(
         );
     }
     if peer == session.account_id {
-        return err(
-            "self_message",
-            "You cannot mark self messages read.",
-            StatusCode::BAD_REQUEST,
-        );
+        return StatusCode::NO_CONTENT.into_response();
     }
 
     let now = Utc::now().to_rfc3339();
