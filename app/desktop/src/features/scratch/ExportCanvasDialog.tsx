@@ -49,7 +49,7 @@ export function ExportCanvasDialog({ open, onOpenChange, scratchName, onExport }
           <div className="space-y-4">
             <Field label="Format">
               <div className="flex gap-4">
-                {(['png', 'svg'] as const).map((value) => (
+                {(['png', 'svg', 'pdf'] as const).map((value) => (
                   <label key={value} className={RADIO_LABEL}>
                     <input
                       type="radio"
@@ -63,6 +63,11 @@ export function ExportCanvasDialog({ open, onOpenChange, scratchName, onExport }
                   </label>
                 ))}
               </div>
+              {format === 'pdf' ? (
+                <div className="mt-1.5 text-[11px] text-slate-500">
+                  PDF wraps the rendered PNG into a single-page document (bitmap).
+                </div>
+              ) : null}
             </Field>
 
             <Field label="Background">
