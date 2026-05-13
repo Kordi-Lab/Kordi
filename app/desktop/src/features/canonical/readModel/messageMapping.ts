@@ -209,7 +209,7 @@ export function stripOutreachContextEnvelope(text: string) {
 }
 
 export function isProcessingPlaceholderText(text: string) {
-  return /^processing(?:\.{0,3}|…)?$/i.test(text.trim());
+  return /^(?:processing|requesting)(?:\.{0,3}|…)?$/i.test(text.trim());
 }
 
 export function restoreMentionTriggerText(text: string, content: Record<string, unknown>) {
@@ -386,7 +386,7 @@ export function mapCanonicalMessage(
     && Boolean(trimmedProfileIdentityId)
     && Boolean(initiatorIdentityId)
     && initiatorIdentityId === trimmedProfileIdentityId;
-  const cloudGroupAgentRequestConversationId = message.sourceTransport === 'cloud-group-agent'
+  const cloudGroupAgentRequestConversationId = message.sourceTransport?.startsWith('cloud-group-agent')
     ? (bridgeConversationId || cloudGroupAgentConversationId(message.sessionId))
     : null;
   const pendingBridgeAgentRequest = isAgentTurn

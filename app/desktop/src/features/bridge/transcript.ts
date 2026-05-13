@@ -53,7 +53,7 @@ function stripOutreachContextEnvelope(text: string) {
 }
 
 function isProcessingPlaceholderText(text: string) {
-  return /^processing(?:\.{0,3}|…)?$/i.test(text.trim());
+  return /^(?:processing|requesting)(?:\.{0,3}|…)?$/i.test(text.trim());
 }
 
 function isImplicitDirectPersonSessionMessage(outreach: DesktopBridgeOutreachMetadata) {
