@@ -246,7 +246,7 @@ function cloudAgentOfflineBridgeMessage({
 }): DesktopBridgeConversationMessage {
   const timestampMs = Math.max((Date.parse(request.createdAt) || Date.now()) + CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS, Date.now());
   return {
-    id: `cloud-agent-processing:${request.messageId}`,
+    id: `cloud-agent-offline:${request.messageId}`,
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
     sender: null,
     text: `${targetOwnerName} and ${targetAgentName} are offline.`,

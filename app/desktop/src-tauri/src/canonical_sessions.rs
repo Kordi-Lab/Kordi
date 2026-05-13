@@ -412,6 +412,12 @@ fn select_session(conn: &Connection, id: &str) -> Result<Option<CanonicalSession
     .map_err(|err| err.to_string())
 }
 
+/// Trust boundary: this helper does not authorize the (session_id, message_id)
+/// tuple against any caller identity. It trusts whatever id and content the
+/// renderer supplies via the canonical-sessions Tauri surface. The renderer is
+/// assumed to be the sole writer; do not call this from code paths that take
+/// untrusted input. If an `id` is provided and already exists, the row is
+/// upserted in place — meaning a bad id could overwrite an unrelated message.
 fn append_message_in_db(
     conn: &Connection,
     request: AppendCanonicalMessageRequest,
@@ -1070,6 +1076,13 @@ pub fn desktop_canonical_append_message(
     commands::desktop_canonical_append_message(request)
 }
 
+/// Trust boundary: this command writes (or overwrites, when the supplied id
+/// already exists) a canonical session message based purely on what the
+/// renderer sends via IPC. The whole canonical-sessions Tauri surface
+/// currently assumes the renderer is the sole writer — there is no
+/// per-command authorization. A renderer bug or a code path that picks up an
+/// untrusted message id could therefore replace an unrelated message. Do not
+/// expose this command to callers outside the renderer process.
 #[tauri::command]
 pub fn desktop_canonical_upsert_message(
     request: AppendCanonicalMessageRequest,
