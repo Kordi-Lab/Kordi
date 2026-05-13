@@ -172,6 +172,13 @@ function cloudGroupRequestSlotMatches(message: CanonicalSessionMessage, noticeId
   return message.id === noticeId;
 }
 
+function cloudAgentRequestReachedCloud(message: CanonicalSessionMessage): boolean {
+  const content = objectContent(message.content);
+  const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+  return ['sent', 'delivered', 'read'].includes(message.status.trim().toLowerCase())
+    || ['sent', 'delivered', 'read'].includes(deliveryState);
+}
+
 function cloudGroupOfflinePlaceholderMatches(message: CanonicalSessionMessage, noticeId: string) {
   return cloudGroupRequestSlotMatches(message, noticeId) && message.sourceTransport === 'cloud-group-agent-offline';
 }
@@ -209,6 +216,8 @@ function setCloudGroupRequestPlaceholderProcessing(
   const nextMessages = current.messages.flatMap((message): CanonicalSessionMessage[] => {
     if (cloudGroupRequestSlotMatches(message, noticeId)) {
       const content = objectContent(message.content);
+      const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+      if (message.status === 'processing' && deliveryState === 'processing' && message.contentText === 'processing...') return [message];
       changed = true;
       return [{
         ...message,
@@ -548,6 +557,7 @@ export function useCloudBridgeState({
         targetAccountId: candidate.targetAccountId,
         messages: canonicalSessionState.messages,
       });
+      const requestReachedCloud = cloudAgentRequestReachedCloud(candidate.requestMessage);
       const hasOfflineNotice = existingNotice?.status === 'failed';
       if (responseState || hasOfflineNotice) {
         const timerId = cloudGroupOfflineTimersRef.current.get(key);
@@ -559,6 +569,9 @@ export function useCloudBridgeState({
             : removeCloudGroupOfflinePlaceholder(current, noticeId)
         ));
         continue;
+      }
+      if (hasRequestingNotice && requestReachedCloud) {
+        setCanonicalSessionState((current) => setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId));
       }
       if (cloudGroupOfflineTimersRef.current.has(key)) continue;
 
