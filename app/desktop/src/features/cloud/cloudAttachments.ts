@@ -7,14 +7,15 @@ import type {
 } from './authClient';
 
 export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessageAttachment) {
-  const url = attachment.previewUrl?.trim() || attachment.downloadUrl?.trim() || null;
   return {
     kind: attachment.kind,
     name: attachment.name,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
-    previewUrl: url,
+    previewUrl: null,
+    downloadUrl: null,
     localPath: null,
+    attachmentId: attachment.attachmentId,
   };
 }
 

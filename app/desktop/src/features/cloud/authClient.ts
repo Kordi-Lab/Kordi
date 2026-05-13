@@ -507,6 +507,24 @@ export class CloudAuthClient {
     );
   }
 
+  async downloadAttachmentContent(token: string, attachmentId: string): Promise<Blob> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}/v1/cloud/attachments/${encodeURIComponent(attachmentId)}/content`, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Network request failed.';
+      throw new CloudAuthError('network_error', message, 0);
+    }
+    if (!response.ok) {
+      const body = await readJsonSafe(response);
+      throw buildError(response.status, body, 'Could not download attachment.');
+    }
+    return response.blob();
+  }
+
   async markMessagesRead(token: string, peerAccountId: string): Promise<void> {
     await this.send<void>(
       '/v1/cloud/messages/read',

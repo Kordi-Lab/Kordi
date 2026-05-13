@@ -302,19 +302,12 @@ fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Re
     (status, Json(body)).into_response()
 }
 
-fn attachment_download_url(state: &ServerState, object_key: &str) -> Option<String> {
-    let s3 = state.s3()?;
-    crate::attachments::presign_download_url(s3, object_key)
-        .ok()
-        .map(|url| url.to_string())
-}
-
 fn normalize_message_attachment(
     input: &SendMessageAttachmentRequest,
     attachment_id: &str,
     db_mime_type: Option<String>,
     db_size_bytes: Option<i64>,
-    download_url: Option<String>,
+    _download_url: Option<String>,
 ) -> Result<MessageAttachmentSummary, Response> {
     let name = input.name.trim().chars().take(255).collect::<String>();
     if name.is_empty() {
@@ -352,8 +345,8 @@ fn normalize_message_attachment(
         kind,
         mime_type,
         size_bytes,
-        preview_url: download_url.clone(),
-        download_url,
+        preview_url: None,
+        download_url: None,
     })
 }
 
@@ -515,6 +508,10 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/attachments/:attachment_id/download-url",
             get(crate::attachments::routes::download_url),
+        )
+        .route(
+            "/v1/cloud/attachments/:attachment_id/content",
+            get(crate::attachments::routes::content),
         )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -2271,7 +2268,7 @@ async fn send_message(
                     );
                 }
             };
-        let Some((owner_account_id, object_key, db_mime_type, db_size_bytes, finalized_at)) = row
+        let Some((owner_account_id, _object_key, db_mime_type, db_size_bytes, finalized_at)) = row
         else {
             return err(
                 "invalid_attachment",
@@ -2293,13 +2290,12 @@ async fn send_message(
                 StatusCode::CONFLICT,
             );
         }
-        let download_url = attachment_download_url(&state, &object_key);
         let normalized = match normalize_message_attachment(
             input,
             attachment_id,
             db_mime_type,
             db_size_bytes,
-            download_url,
+            None,
         ) {
             Ok(value) => value,
             Err(resp) => return resp,
@@ -2583,10 +2579,9 @@ async fn list_messages(
     };
     let mut attachments_by_message_id: HashMap<String, Vec<MessageAttachmentSummary>> =
         HashMap::new();
-    for (message_id, attachment_id, name, kind, mime_type, size_bytes, object_key) in
+    for (message_id, attachment_id, name, kind, mime_type, size_bytes, _object_key) in
         attachment_rows
     {
-        let download_url = attachment_download_url(&state, &object_key);
         attachments_by_message_id
             .entry(message_id)
             .or_default()
@@ -2596,8 +2591,8 @@ async fn list_messages(
                 kind,
                 mime_type,
                 size_bytes,
-                preview_url: download_url.clone(),
-                download_url,
+                preview_url: None,
+                download_url: None,
             });
     }
 

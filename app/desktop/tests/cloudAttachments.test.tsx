@@ -7,7 +7,7 @@ import {
 } from '../src/features/cloud/cloudAttachments';
 import type { CloudAuthClient } from '../src/features/cloud/authClient';
 
-test('cloud attachment metadata maps to transcript attachment metadata', () => {
+test('cloud attachment metadata maps to transcript attachment metadata without exposing object-store URLs', () => {
   assert.deepEqual(cloudMessageAttachmentToMessageAttachment({
     attachmentId: 'att_1',
     name: 'Screenshot.png',
@@ -21,8 +21,10 @@ test('cloud attachment metadata maps to transcript attachment metadata', () => {
     name: 'Screenshot.png',
     mimeType: 'image/png',
     sizeBytes: 2048,
-    previewUrl: 'https://files.test/att_1',
+    previewUrl: null,
+    downloadUrl: null,
     localPath: null,
+    attachmentId: 'att_1',
   });
 });
 

@@ -244,6 +244,24 @@ test('uploadAttachment initiates then proxies bytes through the cloud API', asyn
   assert.equal(headers['content-type'], 'text/plain');
 });
 
+test('downloadAttachmentContent fetches bytes through authenticated cloud API', async () => {
+  const { calls, fetchImpl } = recordingFetch((call) => {
+    assert.equal(call.url, 'http://srv/v1/cloud/attachments/att_1/content');
+    return new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { 'content-type': 'image/png' },
+    });
+  });
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const blob = await client.downloadAttachmentContent('kordi_cs_xyz', 'att_1');
+
+  assert.equal(blob.type, 'image/png');
+  assert.deepEqual(Array.from(new Uint8Array(await blob.arrayBuffer())), [1, 2, 3]);
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+});
+
 test('markMessagesRead posts peer id to cloud read-receipt route', async () => {
   const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });

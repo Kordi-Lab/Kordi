@@ -430,6 +430,8 @@ async fn cloud_messages_preserve_attachment_metadata_and_enforce_attachment_owne
         "att_owner"
     );
     assert_eq!(send_body["message"]["attachments"][0]["name"], "screen.png");
+    assert!(send_body["message"]["attachments"][0]["downloadUrl"].is_null());
+    assert!(send_body["message"]["attachments"][0]["previewUrl"].is_null());
 
     let list_resp = router
         .clone()
@@ -444,6 +446,8 @@ async fn cloud_messages_preserve_attachment_metadata_and_enforce_attachment_owne
         list_body["messages"][0]["attachments"][0]["attachmentId"],
         "att_owner"
     );
+    assert!(list_body["messages"][0]["attachments"][0]["downloadUrl"].is_null());
+    assert!(list_body["messages"][0]["attachments"][0]["previewUrl"].is_null());
 
     let forbidden_resp = router
         .oneshot(post_json_with_token(
