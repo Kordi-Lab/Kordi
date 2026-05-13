@@ -47,6 +47,19 @@ pnpm dev:web
 pnpm dev:desktop
 ```
 
+### Cloud Edition desktop
+
+To run the account-based Cloud Edition desktop app against the hosted Cloud API:
+
+```bash
+VITE_KORDI_EDITION=cloud \
+KORDI_EDITION=cloud \
+VITE_KORDI_CLOUD_API_BASE=https://kordi.cloud \
+pnpm dev:desktop
+```
+
+See [../../docs/run-cloud-desktop.md](../../docs/run-cloud-desktop.md) for the full Cloud Desktop guide, including packaged builds and multi-user Cloud development.
+
 To run multiple desktop dev shells at the same time, use a unique port + profile for each instance:
 
 ```bash
@@ -221,6 +234,7 @@ pnpm prepare:sidecars
 
 - [../../README.md](../../README.md)
 - [../../docs/development.md](../../docs/development.md)
+- [../../docs/run-cloud-desktop.md](../../docs/run-cloud-desktop.md)
 - [../../docs/architecture.md](../../docs/architecture.md)
 - [../../docs/app-server.md](../../docs/app-server.md)
 - [../../docs/release.md](../../docs/release.md)

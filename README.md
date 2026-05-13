@@ -39,6 +39,8 @@ pnpm install
 
 ## Development entrypoints
 
+> **Cloud Desktop:** to run the account-based Cloud Edition desktop app, use `VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud VITE_KORDI_CLOUD_API_BASE=https://kordi.cloud pnpm dev:desktop`. See [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) for the full guide.
+
 Run all of these from the monorepo root:
 
 | Task | Command | Description |
@@ -101,6 +103,7 @@ Use `shared/rust/protocol` and `shared/typescript/protocol` for types or contrac
 ## Documentation map
 
 - [docs/development.md](docs/development.md) — root command map and day-to-day development entrypoints
+- [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) — quick start for running and building the Cloud Edition desktop app
 - [docs/cloud-edition.md](docs/cloud-edition.md) — hosted Cloud Edition architecture, launch, sync, and deployment notes
 - [docs/architecture.md](docs/architecture.md) — structural view of the app, server, agent, and bridges layers
 - [docs/app-server.md](docs/app-server.md) — app-facing local server contract and integration plan

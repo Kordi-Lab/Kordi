@@ -11,6 +11,8 @@ Cloud Edition is the hosted, account-based Kordi desktop mode. It keeps the exis
 
 ## Launching Cloud Edition locally
 
+For a user-focused quick start, see [Run Kordi Cloud Desktop](run-cloud-desktop.md).
+
 ### Single instance
 
 ```bash
