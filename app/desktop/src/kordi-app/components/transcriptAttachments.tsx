@@ -26,6 +26,16 @@ function isInternalObjectStoreUrl(value?: string | null) {
   }
 }
 
+export function attachmentPreviewIdentity(attachment: MessageAttachment) {
+  return [
+    attachment.attachmentId ?? '',
+    attachment.localPath ?? '',
+    attachment.previewUrl ?? '',
+    attachment.name ?? '',
+    attachment.sizeBytes ?? '',
+  ].join(':');
+}
+
 function attachmentPreviewUrl(attachment: MessageAttachment) {
   if (!shouldPreviewAttachmentInline(attachment)) return undefined;
   if (attachment.localPath && isNativeShell()) {
@@ -235,7 +245,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
       {previewImageAttachments.length > 0 ? (
         <div className={cn('grid gap-2', previewImageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
           {previewImageAttachments.map((attachment, index) => (
-            <AttachmentImageCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} />
+            <AttachmentImageCard key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`} attachment={attachment} index={index} />
           ))}
         </div>
       ) : null}
