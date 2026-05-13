@@ -1,7 +1,7 @@
 import 'tldraw/tldraw.css';
 
 import { Tldraw, getSnapshot, loadSnapshot, type Editor } from 'tldraw';
-import { useCallback, useEffect, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 
 import { touchScratch } from './scratchStore';
 import { kvGet, kvSet, scratchStorageKey } from './storage/indexedDb';
@@ -15,15 +15,32 @@ type Props = {
 
 type StoredSnapshot = Parameters<typeof loadSnapshot>[1];
 
-export function CanvasEditor({ sessionId, scratchId }: Props) {
+export type CanvasEditorHandle = {
+  /** Live tldraw Editor instance, or null while initialising / unmounted. */
+  readonly editor: Editor | null;
+};
+
+export const CanvasEditor = forwardRef<CanvasEditorHandle, Props>(function CanvasEditor({ sessionId, scratchId }, ref) {
   const storageKey = scratchStorageKey(sessionId, scratchId);
   const storageKeyRef = useRef(storageKey);
   storageKeyRef.current = storageKey;
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const editorRef = useRef<Editor | null>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      get editor() {
+        return editorRef.current;
+      },
+    }),
+    [],
+  );
 
   const handleMount = useCallback(
     (editor: Editor) => {
+      editorRef.current = editor;
       let cancelled = false;
       void kvGet<StoredSnapshot>(storageKey).then((stored) => {
         if (cancelled || !stored) return;
@@ -54,9 +71,10 @@ export function CanvasEditor({ sessionId, scratchId }: Props) {
       cleanupRef.current = () => {
         cancelled = true;
         unlisten();
+        editorRef.current = null;
       };
     },
-    [storageKey],
+    [storageKey, sessionId, scratchId],
   );
 
   useEffect(
@@ -76,6 +94,6 @@ export function CanvasEditor({ sessionId, scratchId }: Props) {
       <Tldraw key={storageKey} onMount={handleMount} />
     </div>
   );
-}
+});
 
 export default CanvasEditor;
