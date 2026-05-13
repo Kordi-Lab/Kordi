@@ -3,6 +3,7 @@ import type {
   Conversation,
   ConversationParticipant,
   AppendCanonicalMessageRequest,
+  CanonicalSessionMessage,
   DesktopBridgeSessionParticipant,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
@@ -48,6 +49,10 @@ export type CloudGroupControlEnvelope = {
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 export function cloudGroupAgentConversationId(groupId: string): string {
@@ -439,6 +444,145 @@ export function cloudGroupControlReplayKey(message: CloudMessage): string | null
     return `${envelope.kind}:${envelope.groupId}:${envelope.message.id}`;
   }
   return `${envelope.kind}:${envelope.groupId}:${message.body}`;
+}
+
+export type CloudGroupAgentMentionResponseState = 'processing' | 'terminal';
+
+export function cloudGroupAgentMentionResponseState(input: {
+  requestMessageId: string;
+  targetAccountId: string;
+  messages: CanonicalSessionMessage[];
+}): CloudGroupAgentMentionResponseState | null {
+  const requestMessageId = cleanText(input.requestMessageId);
+  const targetAccountId = cleanText(input.targetAccountId);
+  if (!requestMessageId || !targetAccountId) return null;
+  const targetAgentIdentityId = `agent:cloud:${targetAccountId}`;
+  for (const message of input.messages) {
+    if (message.senderIdentityId !== targetAgentIdentityId) continue;
+    if (message.sourceTransport !== 'cloud-group-agent') continue;
+    const content = objectRecord(message.content);
+    const linkedRequestId = cleanText(message.parentMessageId)
+      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+    if (linkedRequestId !== requestMessageId) continue;
+    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+    if (message.status === 'processing' || deliveryState === 'processing') return 'processing';
+    return 'terminal';
+  }
+  return null;
+}
+
+export function cloudGroupAgentMentionHasResponse(input: {
+  requestMessageId: string;
+  targetAccountId: string;
+  messages: CanonicalSessionMessage[];
+}): boolean {
+  return cloudGroupAgentMentionResponseState(input) !== null;
+}
+
+export function cloudGroupAgentRequestingNoticeRequest(input: {
+  sessionId: string;
+  requestMessageId: string;
+  targetAccountId: string;
+  targetAgentDisplayName?: string | null;
+  createdAtMs?: number | null;
+}): AppendCanonicalMessageRequest {
+  const sessionId = cleanText(input.sessionId);
+  const requestMessageId = cleanText(input.requestMessageId);
+  const targetAccountId = cleanText(input.targetAccountId);
+  const targetAgentDisplayName = cleanText(input.targetAgentDisplayName) || 'Kordi';
+  const createdAtMs = typeof input.createdAtMs === 'number' && Number.isFinite(input.createdAtMs)
+    ? input.createdAtMs
+    : Date.now();
+  return {
+    id: `msg:cloud-agent-offline:${requestMessageId}:${targetAccountId}`,
+    sessionId,
+    senderIdentityId: `agent:cloud:${targetAccountId}`,
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'Requesting…',
+    content: {
+      sender: targetAgentDisplayName,
+      timestampMs: createdAtMs,
+      deliveryState: 'processing',
+      requestId: requestMessageId,
+      replyToMessageId: requestMessageId,
+    },
+    parentMessageId: requestMessageId,
+    status: 'processing',
+    createdAtMs,
+    sourceTransport: 'cloud-group-agent-offline',
+    sourceEventId: `cloud-group-agent-offline:${requestMessageId}:${targetAccountId}`,
+  };
+}
+
+export function cloudGroupAgentRequestingNoticeMessage(input: {
+  sessionId: string;
+  requestMessageId: string;
+  targetAccountId: string;
+  targetAgentDisplayName?: string | null;
+  createdAtMs?: number | null;
+  sequenceNum?: number | null;
+}): CanonicalSessionMessage {
+  const request = cloudGroupAgentRequestingNoticeRequest(input);
+  const createdAtMs = request.createdAtMs ?? Date.now();
+  return {
+    id: request.id ?? '',
+    sessionId: request.sessionId,
+    senderIdentityId: request.senderIdentityId,
+    senderRole: request.senderRole,
+    messageKind: request.messageKind,
+    contentText: request.contentText,
+    content: request.content,
+    parentMessageId: request.parentMessageId,
+    status: request.status ?? 'processing',
+    sequenceNum: typeof input.sequenceNum === 'number' && Number.isFinite(input.sequenceNum) ? input.sequenceNum : 0,
+    createdAtMs,
+    updatedAtMs: createdAtMs,
+    contentHash: null,
+    sourceTransport: request.sourceTransport,
+    sourceEventId: request.sourceEventId,
+  };
+}
+
+export function cloudGroupAgentOfflineNoticeRequest(input: {
+  sessionId: string;
+  requestMessageId: string;
+  targetAccountId: string;
+  targetHumanDisplayName?: string | null;
+  targetAgentDisplayName?: string | null;
+  createdAtMs?: number | null;
+}): AppendCanonicalMessageRequest {
+  const sessionId = cleanText(input.sessionId);
+  const requestMessageId = cleanText(input.requestMessageId);
+  const targetAccountId = cleanText(input.targetAccountId);
+  const targetHumanDisplayName = cleanText(input.targetHumanDisplayName) || 'The user';
+  const targetAgentDisplayName = cleanText(input.targetAgentDisplayName) || `${targetHumanDisplayName}'s Kordi`;
+  const createdAtMs = typeof input.createdAtMs === 'number' && Number.isFinite(input.createdAtMs)
+    ? input.createdAtMs
+    : Date.now();
+  const text = `${targetHumanDisplayName} and ${targetAgentDisplayName} are offline.`;
+  return {
+    id: `msg:cloud-agent-offline:${requestMessageId}:${targetAccountId}`,
+    sessionId,
+    senderIdentityId: `agent:cloud:${targetAccountId}`,
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: '',
+    content: {
+      sender: targetAgentDisplayName,
+      timestampMs: createdAtMs,
+      deliveryState: 'failed',
+      requestId: requestMessageId,
+      replyToMessageId: requestMessageId,
+      error: text,
+    },
+    parentMessageId: requestMessageId,
+    status: 'failed',
+    createdAtMs,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: `cloud-group-agent-offline:${requestMessageId}:${targetAccountId}`,
+  };
 }
 
 export function cloudGroupLocalAgentRequestAlreadyHandled(input: {

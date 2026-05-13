@@ -564,6 +564,10 @@ export async function appendCanonicalMessage(request: AppendCanonicalMessageRequ
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_append_message', { request });
 }
 
+export async function upsertCanonicalMessage(request: AppendCanonicalMessageRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_upsert_message', { request });
+}
+
 export async function appendCanonicalMessageFast(request: AppendCanonicalMessageRequest) {
   return invokeDesktop<string>('desktop_canonical_append_message_fast', { request });
 }

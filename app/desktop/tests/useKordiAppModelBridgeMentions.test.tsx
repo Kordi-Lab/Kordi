@@ -123,3 +123,97 @@ test('buildBridgeMentionTargetsByScope includes the scoped local Bridge agent', 
   assert.equal(targets.chat[0]?.nodeId, 'node-agent-local');
   assert.equal(targets.project[0]?.label, 'My Kordi');
 });
+
+test('buildBridgeMentionTargetsByScope hides chat mentions in direct agent sessions', () => {
+  const targets = buildBridgeMentionTargetsByScope({
+    isNativeShell: true,
+    desktopBridgeState: bridgeState(),
+    desktopChatState: desktopChatState(),
+    activeConvMentionScope: {
+      id: 'session:agent',
+      canonicalSessionId: 'session:agent',
+      name: 'My Kordi',
+      type: 'owned-agent',
+      subtitle: '',
+      unread: 0,
+      bridges: ['Local'],
+      trust: 'Owned',
+      directness: 'Direct chat',
+      participants: ['Me', 'My Kordi'],
+      messages: [],
+    } as Conversation,
+  });
+
+  assert.deepEqual(targets.chat, []);
+  assert.equal(targets.project[0]?.label, 'My Kordi');
+});
+
+test('buildBridgeMentionTargetsByScope includes group-only people but only reachable agents', () => {
+  const state = bridgeState();
+  state.activeHostId = 'cloud';
+  state.hosts = [{
+    ...state.hosts[0],
+    id: 'cloud',
+    nodeId: 'acct_me',
+    humanId: 'acct_me',
+    ownerName: 'Me Cloud',
+    displayName: 'Me Cloud',
+    agents: [{
+      ...state.hosts[0].agents[0],
+      id: 'cloud-local-agent',
+      nodeId: 'acct_me',
+      runtime: 'kordi-desktop',
+    }],
+    visiblePeers: [{
+      endpoint: 'cloud',
+      nodeId: 'acct_alice',
+      displayName: "Alice's Kordi",
+      ownerName: 'Alice',
+      runtime: 'kordi-desktop',
+      humanId: 'acct_alice',
+      agentId: 'cloud-agent:acct_alice',
+      isDefaultAgent: true,
+      isContact: true,
+      contactRequestStatus: 'approved',
+      sharedProjects: [],
+    }],
+    visiblePeerCount: 1,
+  }];
+  const group = {
+    id: 'session:group:cloud',
+    canonicalSessionId: 'session:group:cloud',
+    name: 'Cloud group',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    bridges: ['cloud'],
+    trust: 'Cloud',
+    directness: 'Group chat',
+    participantSpaceId: 'group:cloud',
+    participants: ['Me Cloud', 'Alice', 'Bob'],
+    canonicalParticipants: [
+      { id: 'human:acct_me', name: 'Me Cloud', kind: 'human', role: 'self', source: 'local', humanId: 'acct_me', bridgeNodeId: 'acct_me' },
+      { id: 'human:acct_alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', humanId: 'acct_alice', bridgeNodeId: 'acct_alice' },
+      { id: 'human:acct_bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', humanId: 'acct_bob', bridgeNodeId: 'acct_bob' },
+    ],
+    messages: [],
+  } as Conversation;
+
+  const targets = buildBridgeMentionTargetsByScope({
+    isNativeShell: true,
+    desktopBridgeState: state,
+    desktopChatState: desktopChatState(),
+    activeConvMentionScope: group,
+  });
+
+  assert.deepEqual(
+    targets.chat.map((target) => `${target.targetKind}:${target.label}:${target.nodeId}`),
+    [
+      'bridge-agent:My Kordi:acct_me',
+      'bridge-person:Alice:acct_alice',
+      "bridge-agent:Alice's Kordi:acct_alice",
+      'bridge-person:Bob:acct_bob',
+    ],
+  );
+  assert.equal(targets.chat.some((target) => target.label === "Bob's Kordi"), false);
+});

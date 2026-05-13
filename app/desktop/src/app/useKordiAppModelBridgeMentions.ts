@@ -1,6 +1,7 @@
 import {
   bridgeMentionCandidateOptionText,
   buildBridgeMentionCandidates,
+  conversationHasGroupMentionScope,
   filterBridgeMentionCandidatesForConversation,
   filterBridgeMentionCandidatesForHost,
   mentionHandleForLabel,
@@ -25,6 +26,27 @@ export type BuildBridgeMentionTargetsParams = {
   activeConvMentionScope: MentionScopeConversation | null | undefined;
   conversations?: Conversation[];
 };
+
+function cleanText(value?: string | null) {
+  return (value ?? '').trim();
+}
+
+function participantIsLocalSelf(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
+  return participant.role === 'self' || participant.source === 'local';
+}
+
+function participantNodeId(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {
+  const id = cleanText(participant.humanId)
+    || cleanText(participant.bridgeNodeId)
+    || cleanText(participant.id).replace(/^human:/, '');
+  return id || null;
+}
+
+function directAgentConversationSuppressesMentions(conversation: MentionScopeConversation | null | undefined) {
+  if (!conversation || conversationHasGroupMentionScope(conversation)) return false;
+  const type = cleanText((conversation as Pick<Conversation, 'type'>).type).toLowerCase();
+  return type === 'owned-agent' || type === 'external-agent' || type === 'agent';
+}
 
 export function buildBridgeMentionTargetsByScope({
   isNativeShell,
@@ -55,6 +77,8 @@ export function buildBridgeMentionTargetsByScope({
   }, 0);
 
   const buildTargets = (conversation: MentionScopeConversation | null | undefined): ComposerMentionOption[] => {
+    if (directAgentConversationSuppressesMentions(conversation)) return [];
+
     const options: ComposerMentionOption[] = [];
     const seen = new Set<string>();
     const pushOption = (option: ComposerMentionOption) => {
@@ -118,6 +142,30 @@ export function buildBridgeMentionTargetsByScope({
           agentId: candidate.peer.agentId ?? null,
         }),
       });
+    }
+
+    if (conversationHasGroupMentionScope(conversation)) {
+      for (const participant of conversation?.canonicalParticipants ?? []) {
+        if (participant.kind !== 'human' || participantIsLocalSelf(participant)) continue;
+        const label = cleanText(participant.name);
+        const nodeId = participantNodeId(participant);
+        if (!label || !nodeId) continue;
+        const hostId = cleanText(participant.bridgeHostId) || activeHost?.id || 'conversation';
+        const handle = mentionHandleForLabel(label, nodeId);
+        pushOption({
+          value: handle,
+          label,
+          detail: ['Group person', label !== handle ? `@${handle}` : null].filter((value): value is string => Boolean(value)).join(' • '),
+          targetKind: 'bridge-person',
+          bridgeHostId: hostId,
+          nodeId,
+          runtime: 'person',
+          humanId: cleanText(participant.humanId) || nodeId,
+          agentId: null,
+          ownerName: label,
+          unreadCount: 0,
+        });
+      }
     }
 
     return options;

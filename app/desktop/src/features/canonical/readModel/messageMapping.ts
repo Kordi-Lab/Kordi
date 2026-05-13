@@ -209,7 +209,7 @@ export function stripOutreachContextEnvelope(text: string) {
 }
 
 export function isProcessingPlaceholderText(text: string) {
-  return /^processing(?:\.{0,3}|…)?$/i.test(text.trim());
+  return /^(?:processing|requesting)(?:\.{0,3}|…)?$/i.test(text.trim());
 }
 
 export function restoreMentionTriggerText(text: string, content: Record<string, unknown>) {
@@ -386,7 +386,7 @@ export function mapCanonicalMessage(
     && Boolean(trimmedProfileIdentityId)
     && Boolean(initiatorIdentityId)
     && initiatorIdentityId === trimmedProfileIdentityId;
-  const cloudGroupAgentRequestConversationId = message.sourceTransport === 'cloud-group-agent'
+  const cloudGroupAgentRequestConversationId = message.sourceTransport?.startsWith('cloud-group-agent')
     ? (bridgeConversationId || cloudGroupAgentConversationId(message.sessionId))
     : null;
   const pendingBridgeAgentRequest = isAgentTurn
@@ -436,6 +436,10 @@ export function mapCanonicalMessage(
     && deliveryState === 'processing'
     && isProcessingPlaceholderText(rawDisplayText);
   const displayText = isProcessingAgentPlaceholder || bridgeAgentFailure ? '' : rawDisplayText;
+  const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
+  const cancelledTurnText = cancelled
+    ? (displayText.trim() || (cancelledByRole ? `Request canceled by ${cancelledByRole}.` : 'Request canceled.'))
+    : '';
 
   if (role === 'system' && !displayText.trim()) return null;
 
@@ -462,13 +466,13 @@ export function mapCanonicalMessage(
           sessionId: message.sessionId,
           prompt: '',
           status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing'),
-          message: completed ? (cancelled ? 'Stopped' : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
-          assistantText: displayText,
+          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          assistantText: cancelled ? cancelledTurnText : displayText,
           thinkingText,
           tools: visibleTools,
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
-          error: cancelled ? 'Request stopped' : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
+          error: cancelled ? null : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
           replyToMessageId,
           pendingBridgeAgentRequest,
         }

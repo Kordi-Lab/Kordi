@@ -29,6 +29,10 @@ import {
   cloudGroupTitleUpdateNoticeRequest,
   cloudSessionTitleUpdateNoticeRequest,
   shouldRouteMentionThroughCloudGroup,
+  cloudGroupAgentMentionHasResponse,
+  cloudGroupAgentMentionResponseState,
+  cloudGroupAgentOfflineNoticeRequest,
+  cloudGroupAgentRequestingNoticeMessage,
 } from '../src/features/cloud/cloudGroupMessages';
 import { CLOUD_HOST_SENTINEL } from '../src/features/cloud/useCloudContacts';
 
@@ -287,6 +291,88 @@ test('session title updates build a remote visible rename notice without changin
     scope: 'session',
     title: 'Sprint follow-up',
     actorDisplayName: '杨谢',
+  });
+});
+
+test('cloud group detects whether an offline candidate already sent an agent response', () => {
+  assert.equal(cloudGroupAgentMentionHasResponse({
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_target',
+    messages: [
+      { id: 'msg_processing', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { requestId: 'msg_request', deliveryState: 'processing' }, parentMessageId: 'msg_request', status: 'processing', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'cloud-group-agent' },
+    ],
+  }), true);
+  assert.equal(cloudGroupAgentMentionResponseState({
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_target',
+    messages: [
+      { id: 'msg_processing', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { requestId: 'msg_request', deliveryState: 'processing' }, parentMessageId: 'msg_request', status: 'processing', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'cloud-group-agent' },
+    ],
+  }), 'processing');
+  assert.equal(cloudGroupAgentMentionResponseState({
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_target',
+    messages: [
+      { id: 'msg_final', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'done', content: { requestId: 'msg_request', deliveryState: 'complete' }, parentMessageId: 'msg_request', status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, sourceTransport: 'cloud-group-agent' },
+    ],
+  }), 'terminal');
+
+  assert.equal(cloudGroupAgentMentionHasResponse({
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_target',
+    messages: [
+      { id: 'msg_other', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_other', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { requestId: 'msg_request', deliveryState: 'processing' }, parentMessageId: 'msg_request', status: 'processing', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'cloud-group-agent' },
+    ],
+  }), false);
+});
+
+test('cloud group requesting notice shows a temporary smooth waiting state', () => {
+  const message = cloudGroupAgentRequestingNoticeMessage({
+    sessionId: 'session:group:one',
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_yang',
+    targetAgentDisplayName: "杨涛's Kordi",
+    createdAtMs: 123,
+    sequenceNum: 9,
+  });
+
+  assert.equal(message.id, 'msg:cloud-agent-offline:msg_request:acct_yang');
+  assert.equal(message.senderIdentityId, 'agent:cloud:acct_yang');
+  assert.equal(message.contentText, 'Requesting…');
+  assert.equal(message.status, 'processing');
+  assert.equal(message.sourceTransport, 'cloud-group-agent-offline');
+  assert.deepEqual(message.content, {
+    sender: "杨涛's Kordi",
+    timestampMs: 123,
+    deliveryState: 'processing',
+    requestId: 'msg_request',
+    replyToMessageId: 'msg_request',
+  });
+});
+
+test('cloud group offline notice replies as the mentioned agent and marks the turn failed', () => {
+  const request = cloudGroupAgentOfflineNoticeRequest({
+    sessionId: 'session:group:one',
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_yang',
+    targetHumanDisplayName: '杨涛',
+    createdAtMs: 123,
+  });
+
+  assert.equal(request.id, 'msg:cloud-agent-offline:msg_request:acct_yang');
+  assert.equal(request.senderIdentityId, 'agent:cloud:acct_yang');
+  assert.equal(request.senderRole, 'external-agent');
+  assert.equal(request.messageKind, 'agent-turn');
+  assert.equal(request.contentText, '');
+  assert.equal(request.parentMessageId, 'msg_request');
+  assert.equal(request.status, 'failed');
+  assert.deepEqual(request.content, {
+    sender: "杨涛's Kordi",
+    timestampMs: 123,
+    deliveryState: 'failed',
+    requestId: 'msg_request',
+    replyToMessageId: 'msg_request',
+    error: "杨涛 and 杨涛's Kordi are offline.",
   });
 });
 

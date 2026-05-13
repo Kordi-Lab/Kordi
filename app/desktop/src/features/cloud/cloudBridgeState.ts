@@ -39,6 +39,7 @@ import {
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
 const CLOUD_SERVER_LABEL = 'kordi.cloud';
+export const CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
 const CLOUD_PERSON_RUNTIME = 'person';
 const CLOUD_AGENT_RUNTIME = 'kordi-desktop';
 
@@ -227,6 +228,35 @@ function cloudAgentProcessingBridgeMessage({
     detail: undefined,
     attachments: [],
     localTurn: localAgentTurnsByRequestId[request.messageId] ?? null,
+  };
+}
+
+function cloudAgentOfflineBridgeMessage({
+  account,
+  request,
+  targetAccountId,
+  targetOwnerName,
+  targetAgentName,
+}: {
+  account: CloudAccount;
+  request: CloudMessage;
+  targetAccountId: string;
+  targetOwnerName: string;
+  targetAgentName: string;
+}): DesktopBridgeConversationMessage {
+  const timestampMs = Math.max((Date.parse(request.createdAt) || Date.now()) + CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS, Date.now());
+  return {
+    id: `cloud-agent-processing:${request.messageId}`,
+    direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
+    sender: null,
+    text: `${targetOwnerName} and ${targetAgentName} are offline.`,
+    timeLabel: formatCloudBridgeTime(timestampMs),
+    timestampMs,
+    requestId: request.messageId,
+    deliveryState: 'failed',
+    detail: undefined,
+    attachments: [],
+    localTurn: null,
   };
 }
 
@@ -429,7 +459,16 @@ export function buildCloudBridgeConversation({
     .filter((value): value is string => Boolean(value)));
   const answeredRequestIds = new Set(responseRequestIds);
   for (const requestId of cancelledRequestIds) answeredRequestIds.add(requestId);
-  const pendingAgentRequests = agentRequests.filter((message) => !answeredRequestIds.has(message.messageId));
+  const timedOutAgentRequestIds = new Set(agentRequests
+    .filter((message) => {
+      if (answeredRequestIds.has(message.messageId)) return false;
+      const targetAccountId = requestTargetAccountIds.get(message.messageId);
+      if (!targetAccountId || targetAccountId === account.accountId) return false;
+      const createdAtMs = Date.parse(message.createdAt);
+      return Number.isFinite(createdAtMs) && Date.now() - createdAtMs >= CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS;
+    })
+    .map((message) => message.messageId));
+  const pendingAgentRequests = agentRequests.filter((message) => !answeredRequestIds.has(message.messageId) && !timedOutAgentRequestIds.has(message.messageId));
   const pendingAgentRequestIds = new Set(pendingAgentRequests.map((message) => message.messageId));
   const bridgeMessages = visibleCloudMessages.flatMap((message) => {
     const mapped = cloudMessageToBridgeMessage(account, message, contact, { cancelledRequestIds, localAgentTurnsByRequestId });
@@ -442,6 +481,19 @@ export function buildCloudBridgeConversation({
         request: message,
         cancel,
         targetAccountId,
+      })];
+    }
+    if (timedOutAgentRequestIds.has(message.messageId)) {
+      const targetOwnerName = targetAccountId === account.accountId
+        ? (account.displayName || account.primaryEmail || 'Me')
+        : cloudPeerDisplayName(contact);
+      const targetAgentName = targetAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact);
+      return [mapped, cloudAgentOfflineBridgeMessage({
+        account,
+        request: message,
+        targetAccountId,
+        targetOwnerName,
+        targetAgentName,
       })];
     }
     if (!pendingAgentRequestIds.has(message.messageId)) return [mapped];

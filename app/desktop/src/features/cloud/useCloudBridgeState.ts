@@ -10,15 +10,18 @@ import {
   startDesktopChatMessage,
   updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
+  upsertCanonicalMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
+  AppendCanonicalMessageRequest,
+  CanonicalIdentity,
+  CanonicalSessionMessage,
   CanonicalSessionState,
   DesktopBridgeSessionParticipant,
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
-
 import {
   CloudAuthClient,
   cloudWebSocketUrl,
@@ -50,6 +53,11 @@ import {
 } from './cloudAgentRuntime';
 import {
   cloudGroupAgentConversationId,
+  cloudGroupAgentMentionHasResponse,
+  cloudGroupAgentMentionResponseState,
+  cloudGroupAgentOfflineNoticeRequest,
+  cloudGroupAgentRequestingNoticeMessage,
+  cloudGroupAgentRequestingNoticeRequest,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
@@ -80,15 +88,306 @@ import {
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import { loadSession } from './session';
-import { useCloudContacts } from './useCloudContacts';
+import { CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
 export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
 export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
+export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
 
 function objectContent(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function cleanText(value?: string | null) {
+  return (value ?? '').trim();
+}
+
+export function optimisticCloudAgentCancelMessage({
+  account,
+  peerAccountId,
+  requestId,
+  now = Date.now(),
+}: {
+  account: CloudAccount;
+  peerAccountId: string;
+  requestId: string;
+  now?: number;
+}): CloudMessage {
+  const trimmedRequestId = requestId.trim();
+  const trimmedPeerAccountId = peerAccountId.trim();
+  return {
+    messageId: `local-cloud-agent-cancel:${trimmedRequestId}:${trimmedPeerAccountId}`,
+    fromAccountId: account.accountId,
+    toAccountId: trimmedPeerAccountId,
+    body: encodeCloudAgentCancel({ requestId: trimmedRequestId }),
+    createdAt: new Date(now).toISOString(),
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+  };
+}
+
+export function cloudGroupAgentProcessingMessageForRequest(
+  messages: CanonicalSessionMessage[],
+  groupId: string,
+  requestId: string,
+): CanonicalSessionMessage | null {
+  const trimmedGroupId = groupId.trim();
+  const trimmedRequestId = requestId.trim();
+  if (!trimmedGroupId || !trimmedRequestId) return null;
+  return messages.find((message) => {
+    if (message.sessionId !== trimmedGroupId || !message.sourceTransport?.startsWith('cloud-group-agent')) return false;
+    const content = objectContent(message.content);
+    const linkedRequestId = cleanText(message.parentMessageId)
+      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+    if (linkedRequestId !== trimmedRequestId) return false;
+    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+    return message.status === 'processing' || deliveryState === 'processing';
+  }) ?? null;
+}
+
+export type CloudGroupAgentCancelRole = 'sender' | 'agent owner' | 'participant';
+
+export function cloudGroupAgentCancelledNoticeRequest({
+  processingMessage,
+  requestId,
+  conversationId,
+  cancelledByAccountId,
+  cancelledByRole,
+  now = Date.now(),
+}: {
+  processingMessage: CanonicalSessionMessage;
+  requestId: string;
+  conversationId: string;
+  cancelledByAccountId: string;
+  cancelledByRole: CloudGroupAgentCancelRole;
+  now?: number;
+}): AppendCanonicalMessageRequest {
+  const content = objectContent(processingMessage.content);
+  const trimmedRequestId = requestId.trim();
+  const trimmedCancelledByAccountId = cancelledByAccountId.trim() || 'local';
+  const role = cancelledByRole || 'participant';
+  const text = `Request canceled by ${role}.`;
+  return {
+    id: `msg:cloud-agent-cancelled:${trimmedRequestId}:${trimmedCancelledByAccountId}`,
+    sessionId: processingMessage.sessionId,
+    senderIdentityId: processingMessage.senderIdentityId,
+    senderRole: processingMessage.senderRole,
+    messageKind: 'agent-turn',
+    contentText: text,
+    content: {
+      sender: typeof content.sender === 'string' ? content.sender : 'Kordi',
+      timestampMs: now,
+      deliveryState: 'cancelled',
+      bridgeConversationId: conversationId,
+      requestId: trimmedRequestId,
+      replyToMessageId: trimmedRequestId,
+      cancelledByAccountId: trimmedCancelledByAccountId,
+      cancelledByRole: role,
+    },
+    createdAtMs: now,
+    parentMessageId: trimmedRequestId,
+    status: 'cancelled',
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: `cloud-group-agent-cancel:${trimmedRequestId}:${trimmedCancelledByAccountId}`,
+  };
+}
+
+type CloudAgentMentionCandidate = {
+  requestMessage: CanonicalSessionMessage;
+  targetAccountId: string;
+  targetHumanDisplayName: string;
+  targetAgentDisplayName: string;
+};
+
+function accountIdForHumanIdentity(state: CanonicalSessionState, identityId?: string | null): string | null {
+  const identity = identityId ? state.identities.find((candidate) => candidate.id === identityId) : null;
+  if (!identity || identity.kind !== 'human') return null;
+  const metadata = objectContent(identity.metadata);
+  return cleanText(identity.humanId)
+    || cleanText(identity.bridgeNodeId)
+    || cleanText(typeof metadata.accountId === 'string' ? metadata.accountId : null)
+    || null;
+}
+
+export function cloudGroupAgentCancelRoleForRequest({
+  state,
+  requestId,
+  processingMessage,
+  cancelledByAccountId,
+}: {
+  state: CanonicalSessionState;
+  requestId: string;
+  processingMessage: CanonicalSessionMessage;
+  cancelledByAccountId: string;
+}): CloudGroupAgentCancelRole {
+  const trimmedCancelledByAccountId = cancelledByAccountId.trim();
+  const requestMessage = state.messages.find((message) => message.id === requestId.trim()) ?? null;
+  const requestSenderAccountId = accountIdForHumanIdentity(state, requestMessage?.senderIdentityId);
+  if (requestSenderAccountId && requestSenderAccountId === trimmedCancelledByAccountId) return 'sender';
+  const agentOwnerAccountId = processingMessage.senderIdentityId.startsWith('agent:cloud:')
+    ? processingMessage.senderIdentityId.slice('agent:cloud:'.length)
+    : null;
+  if (agentOwnerAccountId && agentOwnerAccountId === trimmedCancelledByAccountId) return 'agent owner';
+  return 'participant';
+}
+
+function cloudGroupParticipantSnapshotForSession(
+  state: CanonicalSessionState,
+  sessionId: string,
+  account: CloudAccount,
+): CloudGroupParticipant[] {
+  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
+  const participants = state.participants
+    .filter((participant) => participant.sessionId === sessionId && participant.state !== 'left')
+    .flatMap((participant): CloudGroupParticipant[] => {
+      const identity = identityById.get(participant.identityId);
+      if (!identity || identity.kind !== 'human') return [];
+      const accountId = cleanText(identity.humanId) || cleanText(identity.bridgeNodeId);
+      if (!accountId) return [];
+      return [{
+        accountId,
+        displayName: cleanText(identity.displayName) || accountId,
+        avatarUrl: identity.profileImageUrl ?? null,
+        role: participant.role || 'person',
+      }];
+    });
+  return cloudGroupUniqueParticipants([
+    cloudGroupSelfParticipant(account, 'person'),
+    ...participants,
+  ]);
+}
+
+function cloudAgentMentionCandidates(state: CanonicalSessionState, accountId: string): CloudAgentMentionCandidate[] {
+  const identityByHumanId = new Map<string, CanonicalIdentity>();
+  const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
+  for (const identity of state.identities) {
+    const humanId = cleanText(identity.humanId) || cleanText(identity.bridgeNodeId);
+    if (identity.kind === 'human' && humanId) identityByHumanId.set(humanId, identity);
+  }
+
+  return state.messages.flatMap((message): CloudAgentMentionCandidate[] => {
+    if (message.senderRole !== 'user' || message.status === 'failed') return [];
+    const content = objectContent(message.content);
+    const mentions = Array.isArray(content.mentions) ? content.mentions : [];
+    return mentions.flatMap((rawMention): CloudAgentMentionCandidate[] => {
+      const mention = objectContent(rawMention);
+      if (cleanText(typeof mention.targetKind === 'string' ? mention.targetKind : null) !== 'bridge-agent') return [];
+      if (cleanText(typeof mention.bridgeHostId === 'string' ? mention.bridgeHostId : null) !== CLOUD_HOST_SENTINEL) return [];
+      const targetAccountId = cleanText(typeof mention.humanId === 'string' ? mention.humanId : null)
+        || cleanText(typeof mention.nodeId === 'string' ? mention.nodeId : null);
+      if (!targetAccountId || targetAccountId === accountId) return [];
+      const humanIdentity = identityByHumanId.get(targetAccountId);
+      const agentIdentity = identityById.get(`agent:cloud:${targetAccountId}`);
+      const targetHumanDisplayName = cleanText(humanIdentity?.displayName)
+        || cleanText(typeof mention.label === 'string' ? mention.label.replace(/'?sKordi$/u, '') : null)
+        || targetAccountId;
+      const targetAgentDisplayName = cleanText(agentIdentity?.displayName) || `${targetHumanDisplayName}'s Kordi`;
+      return [{ requestMessage: message, targetAccountId, targetHumanDisplayName, targetAgentDisplayName }];
+    });
+  });
+}
+
+function cloudGroupRequestSlotMatches(message: CanonicalSessionMessage, noticeId: string) {
+  return message.id === noticeId;
+}
+
+function cloudAgentRequestReachedCloud(message: CanonicalSessionMessage): boolean {
+  const content = objectContent(message.content);
+  const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+  return ['sent', 'delivered', 'read'].includes(message.status.trim().toLowerCase())
+    || ['sent', 'delivered', 'read'].includes(deliveryState);
+}
+
+function cloudGroupOfflinePlaceholderMatches(message: CanonicalSessionMessage, noticeId: string) {
+  if (!cloudGroupRequestSlotMatches(message, noticeId) || message.sourceTransport !== 'cloud-group-agent-offline') return false;
+  const content = objectContent(message.content);
+  const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+  const status = message.status.trim().toLowerCase();
+  return !['failed', 'cancelled'].includes(status) && !['failed', 'cancelled'].includes(deliveryState);
+}
+
+function cloudGroupAgentResponseMatches(
+  message: CanonicalSessionMessage,
+  candidate: CloudAgentMentionCandidate,
+) {
+  if (message.senderIdentityId !== `agent:cloud:${candidate.targetAccountId}`) return false;
+  if (message.sourceTransport !== 'cloud-group-agent') return false;
+  const content = objectContent(message.content);
+  const linkedRequestId = cleanText(message.parentMessageId)
+    || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+    || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+  return linkedRequestId === candidate.requestMessage.id;
+}
+
+function removeCloudGroupOfflinePlaceholder(
+  current: CanonicalSessionState | null,
+  noticeId: string,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  const nextMessages = current.messages.filter((message) => !cloudGroupOfflinePlaceholderMatches(message, noticeId));
+  return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
+}
+
+function setCloudGroupRequestPlaceholderProcessing(
+  current: CanonicalSessionState | null,
+  candidate: CloudAgentMentionCandidate,
+  noticeId: string,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  let changed = false;
+  const updatedAtMs = Date.now();
+  const nextMessages = current.messages.flatMap((message): CanonicalSessionMessage[] => {
+    if (cloudGroupRequestSlotMatches(message, noticeId)) {
+      const content = objectContent(message.content);
+      const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+      if (message.status === 'processing' && deliveryState === 'processing' && message.contentText === 'processing...') return [message];
+      changed = true;
+      return [{
+        ...message,
+        contentText: 'processing...',
+        content: {
+          ...content,
+          deliveryState: 'processing',
+          timestampMs: typeof content.timestampMs === 'number' ? content.timestampMs : updatedAtMs,
+        },
+        status: 'processing',
+        updatedAtMs,
+      }];
+    }
+    if (cloudGroupAgentResponseMatches(message, candidate)) {
+      changed = true;
+      return [];
+    }
+    return [message];
+  });
+  return changed ? { ...current, messages: nextMessages } : current;
+}
+
+function appendCloudGroupRequestingPlaceholder(
+  current: CanonicalSessionState | null,
+  candidate: CloudAgentMentionCandidate,
+  noticeId: string,
+): CanonicalSessionState | null {
+  if (!current || current.messages.some((message) => message.id === noticeId)) return current;
+  const createdAtMs = Date.now();
+  return {
+    ...current,
+    messages: [
+      ...current.messages,
+      cloudGroupAgentRequestingNoticeMessage({
+        sessionId: candidate.requestMessage.sessionId,
+        requestMessageId: candidate.requestMessage.id,
+        targetAccountId: candidate.targetAccountId,
+        targetAgentDisplayName: candidate.targetAgentDisplayName,
+        createdAtMs,
+        sequenceNum: candidate.requestMessage.sequenceNum + 1,
+      }),
+    ],
+  };
 }
 
 function wait(ms: number): Promise<void> {
@@ -218,6 +517,8 @@ export function useCloudBridgeState({
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
+  const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
+  const cloudGroupOfflineTimersRef = useRef<Map<string, number>>(new Map());
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
   const [localAgentTurnsByRequestId, setLocalAgentTurnsByRequestId] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [cloudBridgeOverride, setCloudBridgeOverrideState] = useState<DesktopBridgeState | null>(null);
@@ -238,6 +539,15 @@ export function useCloudBridgeState({
   useEffect(() => {
     messagesByPeerRef.current = messagesByPeer;
   }, [messagesByPeer]);
+
+  useEffect(() => {
+    canonicalSessionStateRef.current = canonicalSessionState ?? null;
+  }, [canonicalSessionState]);
+
+  useEffect(() => () => {
+    for (const timerId of cloudGroupOfflineTimersRef.current.values()) window.clearTimeout(timerId);
+    cloudGroupOfflineTimersRef.current.clear();
+  }, []);
 
   const acceptedContactPeerIds = useMemo(
     () => contacts.contacts
@@ -351,6 +661,178 @@ export function useCloudBridgeState({
     const interval = window.setInterval(() => void refreshCloudBridgeMessages(), CLOUD_MESSAGES_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [account, refreshCloudBridgeMessages]);
+
+  useEffect(() => {
+    if (!account || !canonicalSessionState || !setCanonicalSessionState) {
+      for (const timerId of cloudGroupOfflineTimersRef.current.values()) window.clearTimeout(timerId);
+      cloudGroupOfflineTimersRef.current.clear();
+      return;
+    }
+
+    const candidates = cloudAgentMentionCandidates(canonicalSessionState, account.accountId);
+    const activeKeys = new Set<string>();
+
+    for (const candidate of candidates) {
+      const noticeId = `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`;
+      const key = `${candidate.requestMessage.id}\u001f${candidate.targetAccountId}`;
+      const existingNotice = canonicalSessionState.messages.find((message) => message.id === noticeId);
+      const hasRequestingNotice = existingNotice?.sourceTransport === 'cloud-group-agent-offline' && existingNotice.status !== 'failed';
+      if (Date.now() - candidate.requestMessage.createdAtMs > CLOUD_AGENT_MENTION_WINDOW_MS && !hasRequestingNotice) continue;
+      activeKeys.add(key);
+      const responseState = cloudGroupAgentMentionResponseState({
+        requestMessageId: candidate.requestMessage.id,
+        targetAccountId: candidate.targetAccountId,
+        messages: canonicalSessionState.messages,
+      });
+      const requestReachedCloud = cloudAgentRequestReachedCloud(candidate.requestMessage);
+      const hasOfflineNotice = existingNotice?.status === 'failed';
+      if (responseState || hasOfflineNotice) {
+        const timerId = cloudGroupOfflineTimersRef.current.get(key);
+        if (timerId !== undefined) window.clearTimeout(timerId);
+        cloudGroupOfflineTimersRef.current.delete(key);
+        setCanonicalSessionState((current) => (
+          responseState === 'processing'
+            ? setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId)
+            : removeCloudGroupOfflinePlaceholder(current, noticeId)
+        ));
+        continue;
+      }
+      if (hasRequestingNotice && requestReachedCloud) {
+        setCanonicalSessionState((current) => setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId));
+      }
+      if (cloudGroupOfflineTimersRef.current.has(key)) continue;
+
+      setCanonicalSessionState((current) => appendCloudGroupRequestingPlaceholder(current, candidate, noticeId));
+      void upsertCanonicalMessage(cloudGroupAgentRequestingNoticeRequest({
+        sessionId: candidate.requestMessage.sessionId,
+        requestMessageId: candidate.requestMessage.id,
+        targetAccountId: candidate.targetAccountId,
+        targetAgentDisplayName: candidate.targetAgentDisplayName,
+        createdAtMs: Date.now(),
+      }))
+        .then((nextState) => {
+          canonicalSessionStateRef.current = nextState;
+          setCanonicalSessionState(nextState);
+        })
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-group-agent-requesting] failed to persist requesting notice', error);
+        });
+      const delayMs = Math.max(0, candidate.requestMessage.createdAtMs + CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS - Date.now());
+      const timerId = window.setTimeout(() => {
+        cloudGroupOfflineTimersRef.current.delete(key);
+        void (async () => {
+          const current = canonicalSessionStateRef.current;
+          if (!current) return;
+          const existingTimerNotice = current.messages.find((message) => message.id === noticeId);
+          if (existingTimerNotice?.status === 'failed') return;
+          if (cloudGroupAgentMentionHasResponse({
+            requestMessageId: candidate.requestMessage.id,
+            targetAccountId: candidate.targetAccountId,
+            messages: current.messages,
+          })) return;
+
+          const humanIdentity = current.identities.find((identity) => (
+            identity.kind === 'human'
+            && (identity.humanId === candidate.targetAccountId || identity.bridgeNodeId === candidate.targetAccountId)
+          ));
+          const agentIdentityId = `agent:cloud:${candidate.targetAccountId}`;
+          if (!current.identities.some((identity) => identity.id === agentIdentityId)) {
+            const nextState = await upsertCanonicalIdentity({
+              id: agentIdentityId,
+              kind: 'agent',
+              displayName: candidate.targetAgentDisplayName,
+              ownerIdentityId: humanIdentity?.id ?? null,
+              source: 'bridge',
+              sourceHostId: CLOUD_HOST_SENTINEL,
+              bridgeNodeId: `cloud-agent:${candidate.targetAccountId}`,
+              humanId: candidate.targetAccountId,
+              agentId: `cloud-agent:${candidate.targetAccountId}`,
+              avatarKey: `cloud-agent:${candidate.targetAccountId}`,
+              profileImageUrl: null,
+              metadata: { accountId: candidate.targetAccountId, cloudGroupAgent: true },
+            });
+            canonicalSessionStateRef.current = nextState;
+            setCanonicalSessionState(nextState);
+          }
+
+          const createdAtMs = Date.now();
+          const notice = cloudGroupAgentOfflineNoticeRequest({
+            sessionId: candidate.requestMessage.sessionId,
+            requestMessageId: candidate.requestMessage.id,
+            targetAccountId: candidate.targetAccountId,
+            targetHumanDisplayName: candidate.targetHumanDisplayName,
+            targetAgentDisplayName: candidate.targetAgentDisplayName,
+            createdAtMs,
+          });
+          const afterAppend = await upsertCanonicalMessage(notice);
+          canonicalSessionStateRef.current = afterAppend;
+          setCanonicalSessionState(afterAppend);
+
+          const session = await loadSession();
+          if (!session?.token) return;
+          const snapshotState = afterAppend ?? current;
+          const participants = cloudGroupParticipantSnapshotForSession(
+            snapshotState,
+            candidate.requestMessage.sessionId,
+            account,
+          );
+          const targetAccountIds = participants
+            .map((participant) => participant.accountId)
+            .filter((participantAccountId) => participantAccountId && participantAccountId !== account.accountId);
+          if (targetAccountIds.length === 0) return;
+          const groupSession = snapshotState.sessions.find((sessionCandidate) => sessionCandidate.id === candidate.requestMessage.sessionId);
+          const groupMetadata = objectContent(groupSession?.metadata);
+          const groupSpaceId = cleanText(typeof groupMetadata.groupSpaceId === 'string' ? groupMetadata.groupSpaceId : null)
+            || cleanText(typeof groupMetadata.groupId === 'string' ? groupMetadata.groupId : null)
+            || candidate.requestMessage.sessionId;
+          const noticeContent = objectContent(notice.content);
+          const offlineText = cleanText(typeof noticeContent.error === 'string' ? noticeContent.error : null)
+            || `${candidate.targetHumanDisplayName} and ${candidate.targetAgentDisplayName} are offline.`;
+          const synced = await Promise.allSettled(targetAccountIds.map((targetId) => client.sendMessage(session.token, targetId, encodeCloudGroupControl({
+            kind: 'group-message',
+            groupId: candidate.requestMessage.sessionId,
+            groupSpaceId,
+            groupTitle: null,
+            createdByAccountId: account.accountId,
+            actor: cloudGroupSelfParticipant(account, 'person'),
+            participants,
+            message: {
+              id: notice.id ?? `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`,
+              senderAccountId: candidate.targetAccountId,
+              text: offlineText,
+              createdAtMs,
+              senderKind: 'agent',
+              senderDisplayName: candidate.targetAgentDisplayName,
+              deliveryState: 'failed',
+              replyToMessageId: candidate.requestMessage.id,
+              requestId: candidate.requestMessage.id,
+            },
+          }))));
+          synced.forEach((result) => {
+            if (result.status === 'fulfilled') mergeMessage(result.value);
+          });
+        })().catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-group-agent-offline] failed to append offline notice', error);
+        });
+      }, delayMs);
+      cloudGroupOfflineTimersRef.current.set(key, timerId);
+    }
+
+    for (const [key, timerId] of cloudGroupOfflineTimersRef.current.entries()) {
+      if (activeKeys.has(key)) continue;
+      window.clearTimeout(timerId);
+      cloudGroupOfflineTimersRef.current.delete(key);
+      const [requestMessageId, targetAccountId] = key.split('\u001f');
+      if (requestMessageId && targetAccountId) {
+        setCanonicalSessionState((current) => removeCloudGroupOfflinePlaceholder(
+          current,
+          `msg:cloud-agent-offline:${requestMessageId}:${targetAccountId}`,
+        ));
+      }
+    }
+  }, [account, canonicalSessionState, setCanonicalSessionState]);
 
   const mergeMessage = useCallback((message: CloudMessage) => {
     const peerId = message.fromAccountId === account?.accountId ? message.toAccountId : message.fromAccountId;
@@ -500,13 +982,26 @@ export function useCloudBridgeState({
       setCanonicalSessionState(nextState);
     }
     if (!messageAlreadyExists) {
-      nextState = await appendCanonicalMessage({
-        id: envelope.message.id,
+      const stableAgentNoticeId = senderIsAgent && messageReplyToId
+        ? `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`
+        : null;
+      const shouldUpdateStableAgentSlot = Boolean(stableAgentNoticeId && [canonicalSessionState, nextState].some((state) => (
+        state?.messages.some((message) => message.id === stableAgentNoticeId)
+      )));
+      const agentStatus = senderIsAgent && agentDeliveryState === 'processing'
+        ? 'processing'
+        : senderIsAgent && agentDeliveryState === 'failed'
+          ? 'failed'
+          : senderIsAgent && agentDeliveryState === 'cancelled'
+            ? 'cancelled'
+            : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received';
+      const messageRequest = {
+        id: shouldUpdateStableAgentSlot ? stableAgentNoticeId : envelope.message.id,
         sessionId: envelope.groupId,
         senderIdentityId,
         senderRole: senderIsAgent ? 'external-agent' : (envelope.message.senderAccountId === account.accountId ? 'user' : 'person'),
         messageKind: senderIsAgent ? 'agent-turn' : 'text',
-        contentText: envelope.message.text,
+        contentText: senderIsAgent && agentDeliveryState === 'failed' ? '' : envelope.message.text,
         content: senderIsAgent ? {
           sender: envelope.message.senderDisplayName?.trim() || 'Kordi',
           timestampMs: envelope.message.createdAtMs,
@@ -514,15 +1009,17 @@ export function useCloudBridgeState({
           bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
           requestId: messageReplyToId,
           replyToMessageId: messageReplyToId,
+          ...(agentDeliveryState === 'failed' ? { error: envelope.message.text || 'Message failed' } : {}),
         } : undefined,
         createdAtMs: envelope.message.createdAtMs,
         parentMessageId: senderIsAgent ? messageReplyToId : null,
-        status: senderIsAgent && agentDeliveryState === 'processing'
-          ? 'processing'
-          : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received',
+        status: agentStatus,
         sourceTransport: senderIsAgent ? 'cloud-group-agent' : 'cloud-group',
         sourceEventId: `${senderIsAgent ? 'cloud-group-agent' : 'cloud-group'}:${cloudMessage.messageId}`,
-      });
+      };
+      nextState = shouldUpdateStableAgentSlot
+        ? await upsertCanonicalMessage(messageRequest)
+        : await appendCanonicalMessage(messageRequest);
       setCanonicalSessionState(nextState);
       if (shouldCountCloudGroupMessageUnread({ activeConversationId, groupId: envelope.groupId, groupSpaceId })) {
         incrementLocalSessionUnread?.(envelope.groupId, 1);
@@ -858,14 +1355,47 @@ export function useCloudBridgeState({
         if (!cancel) continue;
         processedCloudAgentMentionIdsRef.current.add(cancel.requestId);
         const turnId = cloudAgentTurnIdsByRequestIdRef.current.get(cancel.requestId);
-        if (!turnId) continue;
-        void cancelDesktopChatTurn(turnId)
+        if (turnId) {
+          void cancelDesktopChatTurn(turnId)
+            .catch((error) => {
+              // eslint-disable-next-line no-console
+              console.warn('[cloud-agent-mention] local agent cancel failed', error);
+            })
+            .finally(() => {
+              cloudAgentTurnIdsByRequestIdRef.current.delete(cancel.requestId);
+            });
+        }
+        const currentCanonicalState = canonicalSessionStateRef.current;
+        if (!currentCanonicalState || !setCanonicalSessionState) continue;
+        const processingMessage = currentCanonicalState.messages
+          .map((candidate) => cloudGroupAgentProcessingMessageForRequest([candidate], candidate.sessionId, cancel.requestId))
+          .find((candidate): candidate is CanonicalSessionMessage => Boolean(candidate));
+        if (!processingMessage) continue;
+        if (currentCanonicalState.messages.some((candidate) => {
+          const content = objectContent(candidate.content);
+          return candidate.status === 'cancelled'
+            && candidate.sourceTransport === 'cloud-group-agent'
+            && cleanText(typeof content.requestId === 'string' ? content.requestId : null) === cancel.requestId;
+        })) continue;
+        void upsertCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
+          processingMessage,
+          requestId: cancel.requestId,
+          conversationId: cloudGroupAgentConversationId(processingMessage.sessionId),
+          cancelledByAccountId: message.fromAccountId,
+          cancelledByRole: cloudGroupAgentCancelRoleForRequest({
+            state: currentCanonicalState,
+            requestId: cancel.requestId,
+            processingMessage,
+            cancelledByAccountId: message.fromAccountId,
+          }),
+        }))
+          .then((nextState) => {
+            canonicalSessionStateRef.current = nextState;
+            setCanonicalSessionState(nextState);
+          })
           .catch((error) => {
             // eslint-disable-next-line no-console
-            console.warn('[cloud-agent-mention] local agent cancel failed', error);
-          })
-          .finally(() => {
-            cloudAgentTurnIdsByRequestIdRef.current.delete(cancel.requestId);
+            console.warn('[cloud-agent-mention] group cancel notice failed', error);
           });
       }
     }
@@ -944,7 +1474,7 @@ export function useCloudBridgeState({
         });
       }
     }
-  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
+  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
@@ -1145,34 +1675,23 @@ export function useCloudBridgeState({
           cloudAgentTurnIdsByRequestIdRef.current.delete(trimmedRequestId);
         });
       }
-      const processingMessage = canonicalSessionState?.messages.find((message) => {
-        if (message.sessionId !== groupId || message.sourceTransport !== 'cloud-group-agent') return false;
-        const content = objectContent(message.content);
-        return typeof content.requestId === 'string' && content.requestId.trim() === trimmedRequestId;
-      }) ?? null;
-      if (processingMessage && setCanonicalSessionState) {
-        const content = objectContent(processingMessage.content);
-        const cancelledState = await appendCanonicalMessage({
-          id: `msg:cloud-agent-cancelled:${trimmedRequestId}:${account?.accountId ?? 'local'}`,
-          sessionId: groupId,
-          senderIdentityId: processingMessage.senderIdentityId,
-          senderRole: processingMessage.senderRole,
-          messageKind: 'agent-turn',
-          contentText: 'Stopped',
-          content: {
-            sender: typeof content.sender === 'string' ? content.sender : 'Kordi',
-            timestampMs: Date.now(),
-            deliveryState: 'cancelled',
-            bridgeConversationId: conversationId,
+      const processingMessage = canonicalSessionState
+        ? cloudGroupAgentProcessingMessageForRequest(canonicalSessionState.messages, groupId, trimmedRequestId)
+        : null;
+      if (processingMessage && setCanonicalSessionState && account && canonicalSessionState) {
+        const cancelledState = await upsertCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
+          processingMessage,
+          requestId: trimmedRequestId,
+          conversationId,
+          cancelledByAccountId: account.accountId,
+          cancelledByRole: cloudGroupAgentCancelRoleForRequest({
+            state: canonicalSessionState,
             requestId: trimmedRequestId,
-            replyToMessageId: trimmedRequestId,
-          },
-          createdAtMs: Date.now(),
-          parentMessageId: trimmedRequestId,
-          status: 'cancelled',
-          sourceTransport: 'cloud-group-agent',
-          sourceEventId: `cloud-group-agent-cancel:${trimmedRequestId}`,
-        });
+            processingMessage,
+            cancelledByAccountId: account.accountId,
+          }),
+        }));
+        canonicalSessionStateRef.current = cancelledState;
         setCanonicalSessionState(cancelledState);
       }
       const cancelBody = encodeCloudAgentCancel({ requestId: trimmedRequestId });
@@ -1199,12 +1718,17 @@ export function useCloudBridgeState({
     }
 
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);
-    if (!peerId) throw new Error('Unable to resolve cloud agent request.');
+    if (!peerId || !account) throw new Error('Unable to resolve cloud agent request.');
+    mergeMessage(optimisticCloudAgentCancelMessage({
+      account,
+      peerAccountId: peerId,
+      requestId: trimmedRequestId,
+    }));
     const message = await client.sendMessage(session.token, peerId, encodeCloudAgentCancel({ requestId: trimmedRequestId }));
     mergeMessage(message);
     await refreshCloudBridgeMessages();
     setCloudBridgeOverrideState(null);
-  }, [account?.accountId, canonicalSessionState?.messages, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
+  }, [account, canonicalSessionState?.messages, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
 
   return {
     cloudBridgeState,

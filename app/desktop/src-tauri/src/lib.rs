@@ -129,6 +129,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_upsert_identity,
             canonical_sessions::desktop_canonical_open_or_create_session,
             canonical_sessions::desktop_canonical_append_message,
+            canonical_sessions::desktop_canonical_upsert_message,
             canonical_sessions::desktop_canonical_append_message_fast,
             canonical_sessions::desktop_canonical_create_delegated_exchange,
             canonical_sessions::desktop_canonical_update_presence,
