@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   cloudMessageAttachmentToMessageAttachment,
   resolveCloudMessageAttachments,
+  uploadCloudFiles,
   uploadComposerAttachments,
 } from '../src/features/cloud/cloudAttachments';
 import type { CloudAuthClient } from '../src/features/cloud/authClient';
@@ -83,6 +84,52 @@ test('resolveCloudMessageAttachments leaves large files for manual download', as
   assert.equal(downloaded, false);
   assert.equal(result[0]?.localPath, null);
   assert.equal(result[0]?.attachmentId, 'att_large');
+});
+
+test('uploadCloudFiles stores browser file attachments locally so direct chat sender previews immediately', async () => {
+  const stored: Array<{ name: string; data: number[] }> = [];
+  const client = {
+    async uploadAttachment(_token: string, blob: Blob) {
+      return {
+        attachmentId: 'att_direct_uploaded',
+        objectKey: 'attachments/acct/att_direct_uploaded',
+        sizeBytes: blob.size,
+        contentType: blob.type,
+        sha256Hex: null,
+        finalizedAt: '2026-05-12T00:00:00Z',
+      };
+    },
+    async downloadAttachmentContent() {
+      throw new Error('should reuse stored direct-chat file path');
+    },
+  } as Pick<CloudAuthClient, 'uploadAttachment' | 'downloadAttachmentContent'>;
+
+  const uploaded = await uploadCloudFiles({
+    token: 'kordi_cs_xyz',
+    client,
+    files: [new File([new Uint8Array([7, 8, 9])], 'direct.png', { type: 'image/png' })],
+    storeAttachment: async (name, data) => {
+      stored.push({ name, data });
+      return '/tmp/kordi-cache/direct.png';
+    },
+  });
+
+  assert.deepEqual(stored, [{ name: 'direct.png', data: [7, 8, 9] }]);
+  assert.equal(uploaded[0]?.localPath, '/tmp/kordi-cache/direct.png');
+
+  const resolved = await resolveCloudMessageAttachments({
+    token: 'kordi_cs_xyz',
+    client,
+    attachments: [{
+      attachmentId: 'att_direct_uploaded',
+      name: 'direct.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 3,
+    }],
+  });
+
+  assert.equal(resolved[0]?.localPath, '/tmp/kordi-cache/direct.png');
 });
 
 test('uploadComposerAttachments seeds local cache so own sent image preview survives cloud refresh', async () => {

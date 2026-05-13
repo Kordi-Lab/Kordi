@@ -68,6 +68,44 @@ export async function resolveCloudMessageAttachments({
   return resolved;
 }
 
+export async function uploadCloudFiles({
+  token,
+  client,
+  files,
+  storeAttachment = storeDesktopChatAttachment,
+}: {
+  token: string;
+  client: Pick<CloudAuthClient, 'uploadAttachment'>;
+  files: File[];
+  storeAttachment?: (name: string, data: number[]) => Promise<string>;
+}): Promise<CloudMessageAttachment[]> {
+  const uploaded: CloudMessageAttachment[] = [];
+  for (const file of files) {
+    const summary = await client.uploadAttachment(token, file);
+    const mimeType = file.type?.trim() || null;
+    const kind = mimeType?.startsWith('image/') ? 'image' : 'file';
+    let localPath: string | null = null;
+    try {
+      const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+      localPath = await storeAttachment(file.name || 'attachment.bin', bytes);
+      cloudAttachmentLocalPathCache.set(summary.attachmentId, localPath);
+    } catch {
+      localPath = null;
+    }
+    uploaded.push({
+      attachmentId: summary.attachmentId,
+      name: file.name || 'attachment',
+      kind,
+      mimeType,
+      sizeBytes: file.size,
+      downloadUrl: null,
+      previewUrl: null,
+      localPath,
+    });
+  }
+  return uploaded;
+}
+
 export async function uploadComposerAttachments({
   token,
   client,

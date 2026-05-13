@@ -12,7 +12,7 @@ import {
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
-import { resolveCloudMessageAttachments } from './cloudAttachments';
+import { resolveCloudMessageAttachments, uploadCloudFiles } from './cloudAttachments';
 import { loadSession } from './session';
 
 const POLL_FALLBACK_MS = 20_000;
@@ -170,19 +170,24 @@ export function useCloudConversation(
       setSending(true);
       setError(null);
       try {
-        const uploadedAttachments = [];
-        for (const file of attachments) {
-          const uploaded = await client.uploadAttachment(session.token, file);
-          uploadedAttachments.push({
-            attachmentId: uploaded.attachmentId,
-            name: file.name || 'attachment',
-            kind: file.type.startsWith('image/') ? 'image' as const : 'file' as const,
-            mimeType: file.type || null,
-            sizeBytes: file.size,
-          });
-        }
-        const msg = await client.sendMessage(session.token, peerAccountId, trimmed, { attachments: uploadedAttachments });
-        mergeMessage(msg);
+        const uploadedAttachments = attachments.length > 0
+          ? await uploadCloudFiles({ token: session.token, client, files: attachments })
+          : [];
+        const sendAttachments = uploadedAttachments.map((attachment) => ({
+          attachmentId: attachment.attachmentId,
+          name: attachment.name,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+        }));
+        const msg = await client.sendMessage(session.token, peerAccountId, trimmed, { attachments: sendAttachments });
+        const attachmentsById = new Map(uploadedAttachments.map((attachment) => [attachment.attachmentId, attachment]));
+        mergeMessage({
+          ...msg,
+          attachments: msg.attachments?.length
+            ? msg.attachments.map((attachment) => ({ ...attachment, localPath: attachmentsById.get(attachment.attachmentId)?.localPath ?? attachment.localPath ?? null }))
+            : uploadedAttachments,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to send');
       } finally {
