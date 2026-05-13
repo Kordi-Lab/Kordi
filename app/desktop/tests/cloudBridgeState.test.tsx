@@ -458,7 +458,7 @@ test('cloud parallel agent mentions keep request-specific processing and replies
     toAccountId: 'acct_peer',
     body: '@PeerPersonKordi are you ok?',
     direction: 'outgoing',
-    createdAt: '2026-05-11T10:01:00Z',
+    createdAt: new Date().toISOString(),
   };
   const firstResponse: CloudMessage = {
     ...message,
@@ -574,6 +574,37 @@ test('cloud outgoing self-agent mentions expose localhost-style local processing
   assert.equal(answeredState.conversations[0].messages[1].direction, 'outbound-response');
 });
 
+test('cloud outgoing remote-agent mentions become offline replies after timeout', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_agent_request_offline',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi hello',
+    direction: 'outgoing',
+    createdAt: '2026-05-11T08:00:00Z',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  assert.equal(state.conversations[0].awaitingReply, false);
+  assert.equal(state.conversations[0].outreach, null);
+  const offlineMessage = state.conversations[0].messages.find((candidate) => candidate.id === 'cloud-agent-processing:msg_agent_request_offline');
+  assert.equal(offlineMessage?.deliveryState, 'failed');
+  assert.equal(offlineMessage?.text, "Peer Person and Peer Person's Kordi are offline.");
+
+  const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+  const offlineTurn = view.messages.find((candidate) => candidate.role === 'external-agent')?.turn;
+  assert.equal(offlineTurn?.status, 'failed');
+  assert.equal(offlineTurn?.assistantText, '');
+  assert.equal(offlineTurn?.error, "Peer Person and Peer Person's Kordi are offline.");
+  assert.equal(offlineTurn?.pendingBridgeAgentRequest, null);
+});
+
 test('cloud outgoing remote-agent mentions expose localhost-style pending outreach UI', () => {
   const request: CloudMessage = {
     ...message,
@@ -582,6 +613,7 @@ test('cloud outgoing remote-agent mentions expose localhost-style pending outrea
     toAccountId: 'acct_peer',
     body: '@PeerPersonKordi who are you?',
     direction: 'outgoing',
+    createdAt: new Date().toISOString(),
   };
   const pendingState = buildCloudDesktopBridgeState({
     account,

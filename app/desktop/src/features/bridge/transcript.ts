@@ -142,6 +142,10 @@ function isCancelledBridgeState(value: string | null | undefined) {
   return normalizedBridgeState(value) === 'cancelled';
 }
 
+function isFailedBridgeState(value: string | null | undefined) {
+  return ['failed', 'processing_failed', 'no_response'].includes(normalizedBridgeState(value));
+}
+
 function isTerminalAgentRequestState(value: string | null | undefined) {
   return ['responded', 'cancelled', 'failed', 'processing_failed', 'no_response'].includes(normalizedBridgeState(value));
 }
@@ -357,6 +361,7 @@ export function mapBridgeConversationToViewModel(
       const responseSender = message.sender?.trim()
         || (isRemoteAgentResponse ? remoteAgentLabel : localBridgeAgentLabel);
       const responseCancelled = isCancelledBridgeState(message.deliveryState);
+      const responseFailed = isFailedBridgeState(message.deliveryState);
       const localTurn = message.localTurn ?? null;
       return [{
         id: messageId,
@@ -373,14 +378,14 @@ export function mapBridgeConversationToViewModel(
           id: localTurn?.id ?? `bridge-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
           prompt: localTurn?.prompt ?? '',
-          status: responseCancelled ? 'cancelled' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing') : localTurn?.status ?? 'complete',
-          message: responseCancelled ? 'Stopped' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…') : localTurn?.message ?? 'Complete',
-          assistantText: responseCancelled && !displayText.trim() ? 'Request stopped' : displayText || localTurn?.assistantText || '',
+          status: responseCancelled ? 'cancelled' : responseFailed ? 'failed' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing') : localTurn?.status ?? 'complete',
+          message: responseCancelled ? 'Stopped' : responseFailed ? 'Failed' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…') : localTurn?.message ?? 'Complete',
+          assistantText: responseFailed ? '' : responseCancelled && !displayText.trim() ? 'Request stopped' : displayText || localTurn?.assistantText || '',
           thinkingText: localTurn?.thinkingText ?? '',
           tools: localTurn?.tools ?? [],
-          completed: responseCancelled || !isLiveAgentReply,
-          succeeded: responseCancelled ? false : !isLiveAgentReply ? (localTurn?.succeeded ?? true) : false,
-          error: localTurn?.error ?? null,
+          completed: responseCancelled || responseFailed || !isLiveAgentReply,
+          succeeded: responseCancelled || responseFailed ? false : !isLiveAgentReply ? (localTurn?.succeeded ?? true) : false,
+          error: responseFailed ? (displayText || localTurn?.error || 'Message failed') : localTurn?.error ?? null,
           replyToMessageId,
           pendingBridgeAgentRequest: isLiveAgentReply && message.requestId?.trim() ? {
             conversationId: conversation.id,
