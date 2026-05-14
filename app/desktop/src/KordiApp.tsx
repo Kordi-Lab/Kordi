@@ -155,12 +155,51 @@ function CloudGateLoading() {
   );
 }
 
+export function CloudStartingScreen({
+  status = 'syncing',
+  onRetry,
+}: {
+  status?: 'syncing' | 'error';
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      className={`app-cloud-starting-screen ${status === 'error' ? 'app-cloud-starting-screen-error' : ''}`}
+      aria-live="polite"
+      aria-busy={status === 'syncing'}
+      aria-label={status === 'error' ? 'Cloud sync timed out' : 'Preparing Kordi Cloud'}
+    >
+      <div className="app-cloud-starting-dots" aria-hidden="true">
+        <span className="app-cloud-starting-dot app-cloud-starting-dot-1" />
+        <span className="app-cloud-starting-dot app-cloud-starting-dot-2" />
+        <span className="app-cloud-starting-dot app-cloud-starting-dot-3" />
+      </div>
+      {status === 'error' ? (
+        <button type="button" className="app-cloud-starting-retry" onClick={onRetry}>
+          Retry
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function KordiAppShell() {
   useEffect(() => {
     void applyKordiMainWindowSize();
   }, []);
 
   const appShellFrameProps = useKordiAppModel();
+  const { cloudInitialSync } = appShellFrameProps;
+  if (cloudInitialSync.status !== 'ready') {
+    return (
+      <div className={`bridge-app ${appShellFrameProps.rootThemeClass}`}>
+        <CloudStartingScreen
+          status={cloudInitialSync.status === 'error' ? 'error' : 'syncing'}
+          onRetry={cloudInitialSync.onRetry}
+        />
+      </div>
+    );
+  }
   return <AppShellFrame {...appShellFrameProps} />;
 }
 

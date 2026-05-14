@@ -681,6 +681,9 @@ export type UseCloudBridgeStateResult = {
   sendCloudGroupControl(input: SendCloudGroupControlInput): Promise<void>;
   cancelCloudBridgeAgentRequest(conversationId: string, requestId: string): Promise<void>;
   refreshCloudBridgeMessages(): Promise<void>;
+  refreshCloudContacts(): Promise<void>;
+  initialContactsSettled: boolean;
+  initialMessagesSettled: boolean;
 };
 
 function applyCloudAgentRuntimeRouteToState(
@@ -731,6 +734,7 @@ export function useCloudBridgeState({
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
+  const [initialMessagesSettled, setInitialMessagesSettled] = useState(false);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
   const cloudGroupOfflineTimersRef = useRef<Map<string, number>>(new Map());
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
@@ -804,6 +808,15 @@ export function useCloudBridgeState({
     contacts.requests,
   ), [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
   const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
+  const bootstrapPeerKey = useMemo(() => bootstrapPeerIds.join('|'), [bootstrapPeerIds]);
+
+  useEffect(() => {
+    if (!account) {
+      setInitialMessagesSettled(true);
+      return;
+    }
+    setInitialMessagesSettled(false);
+  }, [account?.accountId, bootstrapPeerKey]);
 
   useEffect(() => {
     if (!account || !localHumanIdentityId || !setCanonicalSessionState) return;
@@ -829,10 +842,14 @@ export function useCloudBridgeState({
     const initialPeerIds = [...new Set([...bootstrapPeerIds, ...retainedPeerIds])];
     if (!account || initialPeerIds.length === 0) {
       setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
+      setInitialMessagesSettled(true);
       return;
     }
     const session = await loadSession();
-    if (!session?.token) return;
+    if (!session?.token) {
+      setInitialMessagesSettled(true);
+      return;
+    }
 
     const byPeer: Record<string, CloudMessage[]> = {};
     let peerIds = initialPeerIds;
@@ -865,6 +882,7 @@ export function useCloudBridgeState({
 
     if (cancelledRef.current) return;
     setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, byPeer) ? current : byPeer));
+    setInitialMessagesSettled(true);
   }, [account, bootstrapPeerIds, client]);
 
   useEffect(() => {
@@ -873,6 +891,7 @@ export function useCloudBridgeState({
       setReadInboundMessageIdsByPeer({});
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
+      setInitialMessagesSettled(true);
       return;
     }
     void refreshCloudBridgeMessages();
@@ -2214,5 +2233,8 @@ export function useCloudBridgeState({
     sendCloudGroupControl,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
+    refreshCloudContacts: contacts.refresh,
+    initialContactsSettled: contacts.initialLoadSettled,
+    initialMessagesSettled,
   };
 }

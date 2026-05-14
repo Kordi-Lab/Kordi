@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { KordiAppRoot } from '../src/KordiApp';
+import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
 import { CloudLoginPage } from '../src/kordi-app/cloud/CloudLoginPage';
 import {
   kordiEditionFromEnv,
@@ -191,6 +191,16 @@ test('main app shell restores the normal app window size after login', async () 
     { method: 'setSize', size: { width: 1480, height: 980 } },
     { method: 'center' },
   ]);
+});
+
+test('cloud starting screen renders only the quiet watercolor dots', () => {
+  const markup = renderToStaticMarkup(createElement(CloudStartingScreen));
+
+  assert.match(markup, /app-cloud-starting-screen/);
+  assert.match(markup, /app-cloud-starting-dots/);
+  assert.equal((markup.match(/<span class="app-cloud-starting-dot/g) ?? []).length, 3);
+  assert.doesNotMatch(markup, /Starting/);
+  assert.doesNotMatch(markup, /Restoring session/);
 });
 
 test('cloud edition app root renders account login before the chat shell', () => {
