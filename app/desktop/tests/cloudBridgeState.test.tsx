@@ -13,13 +13,15 @@ import {
 } from '../src/features/cloud/cloudBridgeState';
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
-import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { cloudGroupForkPayloadFromSessionMetadata, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
+  cloudAgentMentionCandidates,
   cloudBootstrapPeerIds,
   cloudGroupAgentCancelRoleForRequest,
   cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentProcessingMessageForRequest,
+  cloudGroupAgentProcessingSlotForResponse,
   optimisticCloudAgentCancelMessage,
   planCloudSelfAgentSync,
   cloudMessagesByPeerEqual,
@@ -135,6 +137,57 @@ test('cloud bridge messages preserve resolved attachment local paths for inline 
   assert.equal(mapped.attachments?.[0]?.localPath, '/tmp/kordi-cache/Screenshot.png');
 });
 
+test('cloud group agent mention candidates ignore inherited fork snapshot rows', () => {
+  const state = {
+    profile: { humanIdentityId: 'human:me', displayName: 'Me' },
+    sessions: [],
+    identities: [
+      { id: 'human:peer', kind: 'human', displayName: 'Peer Person', source: 'bridge', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', ownerIdentityId: null, sourceHostId: 'cloud', agentId: null, avatarKey: 'peer', profileImageUrl: null, metadata: null, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:cloud:acct_peer', kind: 'agent', displayName: "Peer Person's Kordi", source: 'bridge', bridgeNodeId: 'cloud-agent:acct_peer', humanId: 'acct_peer', ownerIdentityId: 'human:peer', sourceHostId: 'cloud', agentId: 'cloud-agent:acct_peer', avatarKey: 'peer-agent', profileImageUrl: null, metadata: null, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [],
+    messages: [{
+      id: 'msg_snapshot_request',
+      sessionId: 'session:fork:abc',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: '@PeerPersonKordi hello',
+      content: { mentions: [{ targetKind: 'bridge-agent', bridgeHostId: 'cloud', humanId: 'acct_peer', label: "PeerPerson's Kordi" }] },
+      parentMessageId: null,
+      delegatedExchangeId: null,
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+      contentHash: null,
+      sourceTransport: 'canonical-fork-snapshot',
+      sourceEventId: 'fork-snapshot:msg_snapshot_request',
+    }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: null,
+  } satisfies CanonicalSessionState;
+
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'acct_me'), []);
+});
+
+test('cloud group fork payload is recovered from canonical fork metadata', () => {
+  assert.deepEqual(cloudGroupForkPayloadFromSessionMetadata({
+    fork: {
+      forkedFromSessionId: 'session:group:source',
+      forkedFromMessageId: 'msg:source',
+      createdAtMs: 1234,
+    },
+  }, 'session:fork:abc'), {
+    forkSessionId: 'session:fork:abc',
+    parentSessionId: 'session:group:source',
+    parentMessageId: 'msg:source',
+    createdAtMs: 1234,
+  });
+});
+
 test('cloud bridge conversation ids use normal bridge ids with cloud host sentinel', () => {
   assert.equal(cloudBridgeConversationId('acct_peer'), 'bridge:cloud:acct_peer:person');
   assert.equal(cloudBridgeConversationId('acct_peer', 'kordi-desktop'), 'bridge:cloud:acct_peer');
@@ -244,6 +297,37 @@ test('cloud self-agent bridge state falls back to the first prompt as restored t
   assert.equal(state.conversations[0]?.peerDisplayName, 'waht is open claw');
 });
 
+test('cloud self-agent bridge state suppresses local canonical fork sessions', () => {
+  const forkSessionId = 'session:fork:abc123';
+  const cloudMessages = [
+    {
+      ...message,
+      messageId: 'msg_fork_prompt',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_me',
+      direction: 'outgoing',
+      body: 'historical fork prompt',
+      sessionId: forkSessionId,
+      createdAt: '2026-05-11T10:00:00Z',
+    },
+  ] as CloudMessage[];
+
+  const visibleState = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: cloudMessages },
+  });
+  assert.equal(visibleState.conversations.some((conversation) => conversation.canonicalSessionId === forkSessionId), true);
+
+  const suppressedState = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: cloudMessages },
+    hiddenCloudSessionIds: new Set([forkSessionId]),
+  });
+  assert.equal(suppressedState.conversations.some((conversation) => conversation.canonicalSessionId === forkSessionId), false);
+});
+
 test('cloud self-agent plain messages show local processing and match session-scoped replies', () => {
   const sessionId = 'e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83';
   const request = {
@@ -315,6 +399,33 @@ test('planCloudSelfAgentSync backfills terminal local self-agent turns without r
 
   assert.deepEqual(planCloudSelfAgentSync(state, { u1: { cloudMessageId: 'msg_remote', syncedAtMs: 123 } }), [
     { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1' },
+  ]);
+});
+
+test('planCloudSelfAgentSync skips inherited fork snapshot rows but keeps new fork turns', () => {
+  const forkSessionId = 'session:fork:abc123';
+  const state = {
+    sessions: [
+      { id: forkSessionId, kind: 'self-agent', title: 'Fork', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', metadata: { fork: { forkedFromSessionId: 'session:group:1' } }, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [
+      { id: 'snap-u1', sessionId: forkSessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi old prompt', status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, sourceTransport: 'canonical-fork-snapshot' },
+      { id: 'snap-a1', sessionId: forkSessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'old answer', status: 'complete', sequenceNum: 2, createdAtMs: 20, updatedAtMs: 20, sourceTransport: 'canonical-fork-snapshot' },
+      { id: 'new-u1', sessionId: forkSessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'new fork prompt', status: 'sent', sequenceNum: 3, createdAtMs: 30, updatedAtMs: 30, sourceTransport: 'desktop-chat' },
+      { id: 'new-a1', sessionId: forkSessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'new answer', status: 'complete', sequenceNum: 4, createdAtMs: 40, updatedAtMs: 40, sourceTransport: 'desktop-chat' },
+    ] as CanonicalSessionMessage[],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  assert.deepEqual(planCloudSelfAgentSync(state, {}), [
+    { localMessageId: 'new-u1', sessionId: forkSessionId, role: 'user', text: 'new fork prompt', parentLocalMessageId: null },
+    { localMessageId: 'new-a1', sessionId: forkSessionId, role: 'agent', text: 'new answer', parentLocalMessageId: 'new-u1' },
   ]);
 });
 
@@ -1085,6 +1196,41 @@ test('cloud group cancel finds requesting placeholders before processing reaches
   assert.equal(
     cloudGroupAgentProcessingMessageForRequest([requesting], 'session:group', 'msg_request')?.id,
     requesting.id,
+  );
+});
+
+test('cloud group terminal responses reuse an existing peer processing slot', () => {
+  const processing = {
+    id: 'msg:cloud-agent-processing:msg_request:acct_peer',
+    sessionId: 'session:group',
+    senderIdentityId: 'agent:cloud:acct_peer',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'processing...',
+    content: { sender: "Peer's Kordi", requestId: 'msg_request', deliveryState: 'processing' },
+    parentMessageId: 'msg_request',
+    status: 'processing',
+    sequenceNum: 1,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    contentHash: null,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: 'cloud-group-agent:msg:cloud-agent-processing:msg_request:acct_peer',
+  } as CanonicalSessionMessage;
+  const unrelatedOtherAgentProcessing = {
+    ...processing,
+    id: 'msg:cloud-agent-processing:msg_request:acct_other',
+    senderIdentityId: 'agent:cloud:acct_other',
+  } as CanonicalSessionMessage;
+
+  assert.equal(
+    cloudGroupAgentProcessingSlotForResponse(
+      [unrelatedOtherAgentProcessing, processing],
+      'session:group',
+      'msg_request',
+      'acct_peer',
+    )?.id,
+    processing.id,
   );
 });
 

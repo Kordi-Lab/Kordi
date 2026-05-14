@@ -1058,6 +1058,88 @@ fn bridge_fallback_node_identity_can_be_reconciled_to_human_id() {
 }
 
 #[test]
+fn open_group_session_preserves_existing_fork_metadata_when_reopened_by_cloud_sync() {
+    let conn = test_conn();
+    let initial = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:fork:abc".to_string()),
+            kind: "group".to_string(),
+            title: Some("New session".to_string()),
+            status: None,
+            created_by_identity_id: "human:me".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["human:peer".to_string()],
+            metadata: Some(serde_json::json!({
+                "schemaVersion": 1,
+                "kind": "chat-group",
+                "groupId": "session:fork:abc",
+                "groupSpaceId": "session:fork:abc",
+                "createdFrom": "cloud-group-fork",
+                "fork": {
+                    "forkedFromSessionId": "session:group:source",
+                    "forkedFromMessageId": "msg:source",
+                    "forkMode": "cloud-group"
+                }
+            })),
+        },
+    )
+    .expect("open fork group");
+    assert_eq!(
+        initial
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("fork"))
+            .and_then(|fork| fork.get("forkedFromSessionId"))
+            .and_then(|value| value.as_str()),
+        Some("session:group:source")
+    );
+
+    let reopened = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:fork:abc".to_string()),
+            kind: "group".to_string(),
+            title: Some("New session".to_string()),
+            status: None,
+            created_by_identity_id: "human:me".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["human:peer".to_string()],
+            metadata: Some(serde_json::json!({
+                "schemaVersion": 1,
+                "kind": "chat-group",
+                "groupId": "session:fork:abc",
+                "groupSpaceId": "session:fork:abc",
+                "createdFrom": "cloud-group-sync"
+            })),
+        },
+    )
+    .expect("reopen fork group");
+
+    let metadata = reopened.metadata.expect("metadata");
+    assert_eq!(
+        metadata
+            .get("fork")
+            .and_then(|fork| fork.get("forkedFromSessionId"))
+            .and_then(|value| value.as_str()),
+        Some("session:group:source")
+    );
+    assert_eq!(
+        metadata
+            .get("fork")
+            .and_then(|fork| fork.get("forkedFromMessageId"))
+            .and_then(|value| value.as_str()),
+        Some("msg:source")
+    );
+}
+
+#[test]
 fn open_session_is_deterministic_and_adds_participants() {
     let conn = test_conn();
     let request = OpenCanonicalSessionRequest {

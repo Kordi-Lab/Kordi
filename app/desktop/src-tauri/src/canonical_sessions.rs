@@ -267,6 +267,17 @@ fn preserve_manual_session_title_metadata(
         &existing_metadata,
         "groupNameUpdatedAtMs",
     );
+    preserve_metadata_key(&mut next_metadata, &existing_metadata, "fork");
+    if next_metadata.get("fork").is_some() {
+        if let Some(Value::String(existing_created_from)) = existing_metadata.get("createdFrom") {
+            if existing_created_from.contains("fork") {
+                next_metadata.insert(
+                    "createdFrom".to_string(),
+                    Value::String(existing_created_from.clone()),
+                );
+            }
+        }
+    }
 
     if has_manual_title {
         next_metadata.insert(
@@ -1066,6 +1077,15 @@ pub(crate) fn canonical_session_message_exists(
 ) -> Result<bool, String> {
     let conn = open_db()?;
     canonical_message_exists(&conn, session_id, message_id)
+}
+
+pub(crate) fn canonical_session_is_group_chat(session_id: &str) -> Result<bool, String> {
+    let trimmed = session_id.trim();
+    if trimmed.is_empty() {
+        return Ok(false);
+    }
+    let conn = open_db()?;
+    Ok(select_session(&conn, trimmed)?.is_some_and(|session| session.kind == "group"))
 }
 
 #[tauri::command]

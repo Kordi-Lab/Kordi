@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use kordi_cli::desktop_runtime::DesktopForkSessionOutcome;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
 use super::models::{
@@ -61,9 +61,11 @@ fn list_canonical_messages(
 
 #[derive(Debug, Clone)]
 struct SourceSessionInfo {
+    kind: String,
     title: Option<String>,
     project_id: Option<String>,
     project_name: Option<String>,
+    metadata: Option<serde_json::Value>,
 }
 
 fn select_source_session_info(
@@ -71,13 +73,16 @@ fn select_source_session_info(
     session_id: &str,
 ) -> Result<Option<SourceSessionInfo>, String> {
     conn.query_row(
-        "SELECT title, project_id, project_name FROM sessions WHERE id = ?1",
+        "SELECT kind, title, project_id, project_name, metadata_json FROM sessions WHERE id = ?1",
         params![session_id],
         |row| {
+            let metadata_raw: Option<String> = row.get(4)?;
             Ok(SourceSessionInfo {
-                title: row.get(0)?,
-                project_id: row.get(1)?,
-                project_name: row.get(2)?,
+                kind: row.get(0)?,
+                title: row.get(1)?,
+                project_id: row.get(2)?,
+                project_name: row.get(3)?,
+                metadata: metadata_raw.and_then(|raw| serde_json::from_str(&raw).ok()),
             })
         },
     )
@@ -85,26 +90,24 @@ fn select_source_session_info(
     .map_err(|err| err.to_string())
 }
 
-fn select_source_agent_participants(
+fn select_source_participants(
     conn: &Connection,
     session_id: &str,
+    include_humans: bool,
 ) -> Result<Vec<String>, String> {
-    // Only agent identities are carried into the fork's participant
-    // list. Including other humans would push the participant-space
-    // classifier into "group" and make the fork render as a brand
-    // new group conversation in the sidebar — we want it to live as
-    // a private continuation that nests under the source via fork
-    // lineage instead. Other humans don't see the private fork
-    // anyway, so dropping them from @-mention targets is correct.
-    let mut stmt = conn
-        .prepare(
-            "SELECT sp.identity_id
-             FROM session_participants sp
-             JOIN identities idn ON idn.id = sp.identity_id
-             WHERE sp.session_id = ?1 AND sp.state = 'active' AND idn.kind = 'agent'
-             ORDER BY sp.added_at_ms ASC",
-        )
-        .map_err(|err| err.to_string())?;
+    let kind_filter = if include_humans {
+        "('human','agent')"
+    } else {
+        "('agent')"
+    };
+    let sql = format!(
+        "SELECT sp.identity_id
+         FROM session_participants sp
+         JOIN identities idn ON idn.id = sp.identity_id
+         WHERE sp.session_id = ?1 AND sp.state = 'active' AND idn.kind IN {kind_filter}
+         ORDER BY sp.added_at_ms ASC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|err| err.to_string())?;
     let rows = stmt
         .query_map(params![session_id], |row| row.get::<_, String>(0))
         .map_err(|err| err.to_string())?;
@@ -113,6 +116,115 @@ fn select_source_agent_participants(
         out.push(row.map_err(|err| err.to_string())?);
     }
     Ok(out)
+}
+
+fn message_content_string(message: &CanonicalSessionMessage, key: &str) -> Option<String> {
+    message
+        .content
+        .as_ref()
+        .and_then(|value| value.get(key))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn linked_agent_request_id(message: &CanonicalSessionMessage) -> Option<String> {
+    message
+        .parent_message_id
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| message_content_string(message, "requestId"))
+        .or_else(|| message_content_string(message, "replyToMessageId"))
+}
+
+fn cloud_group_agent_delivery_state(message: &CanonicalSessionMessage) -> Option<String> {
+    message_content_string(message, "deliveryState").map(|value| value.to_ascii_lowercase())
+}
+
+fn is_cloud_group_agent_message(message: &CanonicalSessionMessage) -> bool {
+    message
+        .source_transport
+        .as_deref()
+        .is_some_and(|transport| transport.starts_with("cloud-group-agent"))
+        && message.sender_identity_id.starts_with("agent:cloud:")
+        && linked_agent_request_id(message).is_some()
+}
+
+fn is_processing_cloud_group_agent_message(message: &CanonicalSessionMessage) -> bool {
+    if !is_cloud_group_agent_message(message) {
+        return false;
+    }
+    message.status.trim().eq_ignore_ascii_case("processing")
+        || cloud_group_agent_delivery_state(message).as_deref() == Some("processing")
+}
+
+fn is_terminal_cloud_group_agent_response_for(
+    message: &CanonicalSessionMessage,
+    request_id: &str,
+    sender_identity_id: &str,
+) -> bool {
+    is_cloud_group_agent_message(message)
+        && message.sender_identity_id == sender_identity_id
+        && linked_agent_request_id(message).as_deref() == Some(request_id)
+        && !is_processing_cloud_group_agent_message(message)
+}
+
+fn terminalize_fork_processing_message(
+    message: &CanonicalSessionMessage,
+) -> CanonicalSessionMessage {
+    let mut cloned = message.clone();
+    cloned.status = "cancelled".to_string();
+    cloned.content_text = "Request was still processing when this fork was created.".to_string();
+    match cloned.content.as_mut() {
+        Some(serde_json::Value::Object(object)) => {
+            object.insert(
+                "deliveryState".to_string(),
+                serde_json::Value::String("cancelled".to_string()),
+            );
+            object.insert(
+                "forkSnapshotTerminalized".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+        _ => {
+            cloned.content = Some(serde_json::json!({
+                "deliveryState": "cancelled",
+                "forkSnapshotTerminalized": true,
+            }));
+        }
+    }
+    cloned
+}
+
+fn prepare_fork_snapshot_messages(
+    path: &[CanonicalSessionMessage],
+) -> Vec<CanonicalSessionMessage> {
+    path.iter()
+        .enumerate()
+        .filter_map(|(index, message)| {
+            if !is_processing_cloud_group_agent_message(message) {
+                return Some(message.clone());
+            }
+            let Some(request_id) = linked_agent_request_id(message) else {
+                return Some(terminalize_fork_processing_message(message));
+            };
+            let has_later_terminal_response = path[index + 1..].iter().any(|candidate| {
+                is_terminal_cloud_group_agent_response_for(
+                    candidate,
+                    &request_id,
+                    &message.sender_identity_id,
+                )
+            });
+            if has_later_terminal_response {
+                None
+            } else {
+                Some(terminalize_fork_processing_message(message))
+            }
+        })
+        .collect()
 }
 
 /// Fork a canonical (group/bridge) session into a new private canonical
@@ -140,56 +252,114 @@ pub fn fork_canonical_session_into_local_chat(
             "Canonical message not found in session: {canonical_message_id}"
         ));
     };
-    let path = messages[..=anchor_index].to_vec();
+    let path = prepare_fork_snapshot_messages(&messages[..=anchor_index]);
 
-    let source_info = select_source_session_info(&conn, canonical_session_id)?;
+    let source_info =
+        select_source_session_info(&conn, canonical_session_id)?.unwrap_or(SourceSessionInfo {
+            kind: "self-agent".to_string(),
+            title: None,
+            project_id: None,
+            project_name: None,
+            metadata: None,
+        });
     let source_title = source_info
-        .as_ref()
-        .and_then(|info| info.title.clone())
+        .title
+        .clone()
         .filter(|value| !value.trim().is_empty());
+    let source_is_group = source_info.kind == "group";
 
     let local_human_id = local_profile_human_identity_id(&conn, "You")?;
     let local_agent_id = local_agent_identity_id(&conn, &local_human_id, "Kordi", cwd)?;
 
-    // Carry only the source's agent identities into the fork so the
-    // user can still @-mention any agent that was in the group. We
-    // intentionally skip other humans: including them would flip the
-    // participant-space classifier to "group" and render the fork as
-    // a duplicate group entry instead of a private continuation.
-    let mut participant_ids = vec![local_agent_id.clone()];
-    for identity in select_source_agent_participants(&conn, canonical_session_id)? {
-        if identity == local_agent_id {
+    let mut participant_ids = if source_is_group {
+        Vec::new()
+    } else {
+        vec![local_agent_id.clone()]
+    };
+    for identity in select_source_participants(&conn, canonical_session_id, source_is_group)? {
+        if !source_is_group && identity == local_agent_id {
             continue;
         }
         if !participant_ids.iter().any(|existing| existing == &identity) {
             participant_ids.push(identity);
         }
     }
+    if source_is_group
+        && !participant_ids
+            .iter()
+            .any(|existing| existing == &local_human_id)
+    {
+        participant_ids.push(local_human_id.clone());
+    }
+    if !source_is_group
+        && !participant_ids
+            .iter()
+            .any(|existing| existing == &local_agent_id)
+    {
+        participant_ids.insert(0, local_agent_id.clone());
+    }
 
-    // Mint a fresh canonical session id distinct from the source so the
-    // sidebar and canonical store treat the fork as an independent
-    // self-agent conversation.
     let new_session_id = format!("session:fork:{}", Uuid::new_v4().simple());
-    let metadata = serde_json::json!({
-        "source": "canonical-fork-snapshot",
-        "fork": {
-            "forkedFromSessionId": canonical_session_id,
-            "forkedFromMessageId": canonical_message_id,
-            "forkMode": "private-local",
-            "contextPolicy": "prefix-through-message",
-            "boundary": "inherited-history-reference-only",
-        },
-    });
+    let source_metadata = source_info
+        .metadata
+        .as_ref()
+        .and_then(|value| value.as_object());
+    let continued_from_space_id = source_metadata
+        .and_then(|object| object.get("groupSpaceId"))
+        .and_then(|value| value.as_str())
+        .unwrap_or(canonical_session_id);
+    let fork_mode = if source_is_group {
+        "cloud-group"
+    } else {
+        "private-local"
+    };
+    let metadata = if source_is_group {
+        serde_json::json!({
+            "source": "canonical-fork-snapshot",
+            "kind": "chat-group",
+            "createdFrom": "cloud-group-fork",
+            "groupId": new_session_id,
+            "groupSpaceId": new_session_id,
+            "continuedFromSpaceId": continued_from_space_id,
+            "fork": {
+                "forkedFromSessionId": canonical_session_id,
+                "forkedFromMessageId": canonical_message_id,
+                "forkMode": fork_mode,
+                "contextPolicy": "prefix-through-message",
+                "boundary": "inherited-history-reference-only",
+            },
+        })
+    } else {
+        serde_json::json!({
+            "source": "canonical-fork-snapshot",
+            "fork": {
+                "forkedFromSessionId": canonical_session_id,
+                "forkedFromMessageId": canonical_message_id,
+                "forkMode": fork_mode,
+                "contextPolicy": "prefix-through-message",
+                "boundary": "inherited-history-reference-only",
+            },
+        })
+    };
 
     let request = OpenCanonicalSessionRequest {
         id: Some(new_session_id.clone()),
-        kind: "self-agent".to_string(),
+        kind: if source_is_group {
+            "group"
+        } else {
+            "self-agent"
+        }
+        .to_string(),
         title: source_title.clone(),
         status: Some("active".to_string()),
         created_by_identity_id: local_human_id.clone(),
-        primary_identity_id: Some(local_agent_id.clone()),
-        project_id: source_info.as_ref().and_then(|info| info.project_id.clone()),
-        project_name: source_info.and_then(|info| info.project_name.clone()),
+        primary_identity_id: if source_is_group {
+            None
+        } else {
+            Some(local_agent_id.clone())
+        },
+        project_id: source_info.project_id.clone(),
+        project_name: source_info.project_name.clone(),
         relationship_identity_id: None,
         participant_identity_ids: participant_ids,
         metadata: Some(metadata),
@@ -270,4 +440,97 @@ pub fn fork_canonical_session_into_local_chat(
         branch_leaf_id: last_message_id,
         cwd: cwd.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn message(
+        id: &str,
+        sender_identity_id: &str,
+        status: &str,
+        delivery_state: &str,
+        request_id: Option<&str>,
+    ) -> CanonicalSessionMessage {
+        let mut content = serde_json::json!({ "deliveryState": delivery_state });
+        if let Some(request_id) = request_id {
+            content["requestId"] = serde_json::Value::String(request_id.to_string());
+            content["replyToMessageId"] = serde_json::Value::String(request_id.to_string());
+        }
+        CanonicalSessionMessage {
+            id: id.to_string(),
+            session_id: "session:group".to_string(),
+            sender_identity_id: sender_identity_id.to_string(),
+            sender_role: "external-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: if delivery_state == "processing" {
+                "processing..."
+            } else {
+                "answer"
+            }
+            .to_string(),
+            content: Some(content),
+            parent_message_id: request_id.map(str::to_string),
+            delegated_exchange_id: None,
+            status: status.to_string(),
+            sequence_num: 1,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+            content_hash: None,
+            source_transport: Some("cloud-group-agent".to_string()),
+            source_event_id: Some(id.to_string()),
+        }
+    }
+
+    #[test]
+    fn fork_snapshot_drops_cloud_group_processing_row_when_terminal_response_is_present() {
+        let processing = message(
+            "msg:cloud-agent-processing:req1:acct_peer",
+            "agent:cloud:acct_peer",
+            "processing",
+            "processing",
+            Some("req1"),
+        );
+        let complete = message(
+            "msg:cloud-agent:turn1",
+            "agent:cloud:acct_peer",
+            "received",
+            "complete",
+            Some("req1"),
+        );
+
+        let snapshot = prepare_fork_snapshot_messages(&[processing, complete.clone()]);
+
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].id, complete.id);
+    }
+
+    #[test]
+    fn fork_snapshot_terminalizes_unanswered_cloud_group_processing_row() {
+        let processing = message(
+            "msg:cloud-agent-processing:req1:acct_peer",
+            "agent:cloud:acct_peer",
+            "processing",
+            "processing",
+            Some("req1"),
+        );
+
+        let snapshot = prepare_fork_snapshot_messages(&[processing]);
+
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].status, "cancelled");
+        assert_eq!(
+            snapshot[0].content_text,
+            "Request was still processing when this fork was created."
+        );
+        assert_eq!(
+            snapshot[0]
+                .content
+                .as_ref()
+                .and_then(|value| value.get("deliveryState"))
+                .and_then(|value| value.as_str()),
+            Some("cancelled"),
+        );
+    }
 }

@@ -60,6 +60,7 @@ type UseDesktopSessionControllerArgs = {
   setOpenComposerSelector: Dispatch<SetStateAction<{ scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null>>;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
+  onForkCreated?: (result: Awaited<ReturnType<typeof forkDesktopChatSessionFromMessage>>) => Promise<void> | void;
 };
 
 export function useDesktopSessionController({
@@ -81,6 +82,7 @@ export function useDesktopSessionController({
   setOpenComposerSelector,
   setDesktopSessionRenameDraft,
   setIsEditingDesktopSessionTitle,
+  onForkCreated,
 }: UseDesktopSessionControllerArgs) {
   const handleSelectChatSession = useCallback(async (sessionId: string) => {
     shouldAutoFollowChatRef.current = true;
@@ -187,10 +189,19 @@ export function useDesktopSessionController({
     try {
       setDesktopChatError(null);
       const result = await forkDesktopChatSessionFromMessage(sessionId, messageEntryId);
-      setDesktopChatState(result.state);
+      if (!result.canonicalOnly) {
+        setDesktopChatState(result.state);
+      }
       setActiveConvId(result.forkedSessionId);
       setChatComposerAttachments([]);
       setPendingUserChatMessage(null);
+      try {
+        await onForkCreated?.(result);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('[desktop-session-controller] post-fork sync failed', error);
+        setDesktopChatError(`Fork created, but Cloud fork sync failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to fork session');
     }
@@ -202,6 +213,7 @@ export function useDesktopSessionController({
     setDesktopChatState,
     setPendingUserChatMessage,
     shouldAutoFollowChatRef,
+    onForkCreated,
   ]);
 
   return {

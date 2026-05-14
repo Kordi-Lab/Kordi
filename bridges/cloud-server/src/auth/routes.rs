@@ -15,6 +15,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
@@ -2355,44 +2356,52 @@ async fn sync_cloud_events(
     let cursor = q.cursor.unwrap_or(0).max(0);
     let limit = q.limit.unwrap_or(500).clamp(1, 1000);
     let fetch_limit = limit + 1;
-    let rows: Vec<(i64, String, Option<String>, Option<String>, serde_json::Value, String)> =
-        match query_as(
-            "SELECT event_id, event_type, peer_account_id, message_id, payload_json, occurred_at \
+    let rows: Vec<(
+        i64,
+        String,
+        Option<String>,
+        Option<String>,
+        serde_json::Value,
+        String,
+    )> = match query_as(
+        "SELECT event_id, event_type, peer_account_id, message_id, payload_json, occurred_at \
              FROM cloud_sync_events \
              WHERE account_id = $1 AND event_id > $2 \
              ORDER BY event_id ASC \
              LIMIT $3",
-        )
-        .bind(&session.account_id)
-        .bind(cursor)
-        .bind(fetch_limit)
-        .fetch_all(state.db_pool())
-        .await
-        {
-            Ok(rows) => rows,
-            Err(_) => {
-                return err(
-                    "server_error",
-                    "Database error.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                );
-            }
-        };
+    )
+    .bind(&session.account_id)
+    .bind(cursor)
+    .bind(fetch_limit)
+    .fetch_all(state.db_pool())
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
 
     let has_more = rows.len() as i64 > limit;
     let events: Vec<CloudSyncEventSummary> = rows
         .into_iter()
         .take(limit as usize)
-        .map(|(event_id, event_type, peer_account_id, message_id, payload, occurred_at)| {
-            CloudSyncEventSummary {
-                event_id: event_id.to_string(),
-                event_type,
-                peer_account_id,
-                message_id,
-                payload,
-                occurred_at,
-            }
-        })
+        .map(
+            |(event_id, event_type, peer_account_id, message_id, payload, occurred_at)| {
+                CloudSyncEventSummary {
+                    event_id: event_id.to_string(),
+                    event_type,
+                    peer_account_id,
+                    message_id,
+                    payload,
+                    occurred_at,
+                }
+            },
+        )
         .collect();
     let next_cursor = events
         .last()
@@ -2943,11 +2952,35 @@ pub struct ListCloudSessionForksResponse {
     pub forks: Vec<CloudSessionForkSummary>,
 }
 
+#[derive(Debug, Deserialize)]
+struct CloudGroupControlParticipantForAuth {
+    #[serde(rename = "accountId")]
+    account_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CloudGroupControlForAuth {
+    #[serde(rename = "groupId")]
+    group_id: String,
+    #[serde(rename = "groupSpaceId")]
+    group_space_id: Option<String>,
+    #[serde(rename = "createdByAccountId")]
+    created_by_account_id: String,
+    actor: CloudGroupControlParticipantForAuth,
+    participants: Vec<CloudGroupControlParticipantForAuth>,
+}
+
+fn parse_cloud_group_control_for_auth(body: &str) -> Option<CloudGroupControlForAuth> {
+    let encoded = body.strip_prefix(CLOUD_GROUP_CONTROL_PREFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    serde_json::from_slice::<CloudGroupControlForAuth>(&bytes).ok()
+}
+
 async fn cloud_session_participants(
     pool: &PgPool,
     session_id: &str,
 ) -> Result<Vec<String>, sqlx_core::error::Error> {
-    let rows: Vec<(String,)> = query_as(
+    let mut participants: Vec<String> = query_as::<_, (String,)>(
         "SELECT DISTINCT account_id FROM (\
             SELECT from_account_id AS account_id FROM cloud_messages WHERE session_id = $1 \
             UNION \
@@ -2956,8 +2989,39 @@ async fn cloud_session_participants(
     )
     .bind(session_id)
     .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|(account_id,)| account_id)
+    .collect();
+
+    let group_rows: Vec<(String, String, String)> = query_as(
+        "SELECT from_account_id, to_account_id, body FROM cloud_messages WHERE body LIKE $1",
+    )
+    .bind(format!("{}%", CLOUD_GROUP_CONTROL_PREFIX))
+    .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(|(account_id,)| account_id).collect())
+    for (from_account_id, to_account_id, body) in group_rows {
+        let Some(control) = parse_cloud_group_control_for_auth(&body) else {
+            continue;
+        };
+        let group_space_id = control.group_space_id.as_deref().unwrap_or_default().trim();
+        if control.group_id.trim() != session_id && group_space_id != session_id {
+            continue;
+        }
+        participants.push(from_account_id);
+        participants.push(to_account_id);
+        participants.push(control.created_by_account_id);
+        participants.push(control.actor.account_id);
+        participants.extend(
+            control
+                .participants
+                .into_iter()
+                .map(|participant| participant.account_id),
+        );
+    }
+    participants.sort();
+    participants.dedup();
+    Ok(participants)
 }
 
 async fn create_cloud_session_fork(
@@ -3131,7 +3195,13 @@ async fn list_cloud_session_forks(
     let forks = rows
         .into_iter()
         .map(
-            |(fork_session_id, parent_session_id, parent_message_id, created_by_account_id, created_at)| {
+            |(
+                fork_session_id,
+                parent_session_id,
+                parent_message_id,
+                created_by_account_id,
+                created_at,
+            )| {
                 CloudSessionForkSummary {
                     fork_session_id,
                     parent_session_id,

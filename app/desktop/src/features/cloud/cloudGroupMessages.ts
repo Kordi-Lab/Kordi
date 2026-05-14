@@ -15,7 +15,7 @@ import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
 
-export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update';
+export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update' | 'session-fork';
 
 export type CloudGroupParticipant = {
   accountId: string;
@@ -34,6 +34,12 @@ export type CloudGroupControlEnvelope = {
   createdByAccountId: string;
   actor: CloudGroupActor;
   participants: CloudGroupParticipant[];
+  fork?: {
+    forkSessionId: string;
+    parentSessionId: string;
+    parentMessageId?: string | null;
+    createdAtMs?: number | null;
+  } | null;
   message?: {
     id: string;
     senderAccountId: string;
@@ -44,6 +50,7 @@ export type CloudGroupControlEnvelope = {
     deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled' | string | null;
     replyToMessageId?: string | null;
     requestId?: string | null;
+    forkSnapshot?: boolean | null;
     attachments?: CloudMessageAttachment[];
   } | null;
 };
@@ -54,6 +61,26 @@ function cleanText(value?: string | null) {
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+export function cloudGroupForkPayloadFromSessionMetadata(
+  metadata: unknown,
+  forkSessionId: string,
+): NonNullable<CloudGroupControlEnvelope['fork']> | null {
+  const forkSessionIdValue = cleanText(forkSessionId);
+  const forkRecord = objectRecord(objectRecord(metadata).fork);
+  const parentSessionId = cleanText(typeof forkRecord.forkedFromSessionId === 'string' ? forkRecord.forkedFromSessionId : null);
+  if (!forkSessionIdValue || !parentSessionId) return null;
+  const parentMessageId = cleanText(typeof forkRecord.forkedFromMessageId === 'string' ? forkRecord.forkedFromMessageId : null);
+  const createdAtMs = typeof forkRecord.createdAtMs === 'number' && Number.isFinite(forkRecord.createdAtMs)
+    ? forkRecord.createdAtMs
+    : null;
+  return {
+    forkSessionId: forkSessionIdValue,
+    parentSessionId,
+    parentMessageId: parentMessageId || null,
+    createdAtMs,
+  };
 }
 
 export function cloudGroupAgentConversationId(groupId: string): string {
@@ -262,7 +289,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
   if (!body.startsWith(CLOUD_GROUP_PREFIX)) return null;
   try {
     const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
-    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update'].includes(parsed.kind ?? '')) return null;
+    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update', 'session-fork'].includes(parsed.kind ?? '')) return null;
     const kind = parsed.kind as CloudGroupControlKind;
     if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;
     if (typeof parsed.createdByAccountId !== 'string' || !parsed.createdByAccountId.trim()) return null;
@@ -289,9 +316,17 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         deliveryState: typeof candidate.deliveryState === 'string' && candidate.deliveryState.trim() ? candidate.deliveryState.trim() : null,
         replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
+        forkSnapshot: candidate.forkSnapshot === true,
         attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
       };
     }
+    const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);
+    const fork = forkRecord.forkSessionId && forkRecord.parentSessionId ? {
+      forkSessionId: cleanText(typeof forkRecord.forkSessionId === 'string' ? forkRecord.forkSessionId : null),
+      parentSessionId: cleanText(typeof forkRecord.parentSessionId === 'string' ? forkRecord.parentSessionId : null),
+      parentMessageId: cleanText(typeof forkRecord.parentMessageId === 'string' ? forkRecord.parentMessageId : null) || null,
+      createdAtMs: typeof forkRecord.createdAtMs === 'number' && Number.isFinite(forkRecord.createdAtMs) ? forkRecord.createdAtMs : null,
+    } : null;
     return {
       kind,
       groupId: parsed.groupId.trim(),
@@ -300,6 +335,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       createdByAccountId: parsed.createdByAccountId.trim(),
       actor,
       participants,
+      fork,
       message,
     };
   } catch {

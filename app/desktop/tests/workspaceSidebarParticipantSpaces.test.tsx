@@ -298,6 +298,87 @@ test('WorkspaceSidebar renders an Agent tab shortcut for new My agent sessions',
   assert.match(markup, /New session/);
 });
 
+test('WorkspaceSidebar does not show an Agent tab unread badge for hidden canonical parent forks', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:fork:hidden-contact-child',
+      canonicalSessionId: 'session:fork:hidden-contact-child',
+      name: 'Forked group continuation',
+      type: 'owned-agent',
+      subtitle: 'Unread hidden fork',
+      unread: 1,
+      forkedFromSessionId: 'session:group:cloud-parent',
+      forkedFromMessageId: 'msg:source',
+      participants: ['Me', 'My agent'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
+      ],
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: [],
+    agentParticipantSpaces: participantSpaces,
+    activeConvId: '',
+    initialChatChannel: 'agent',
+  }) as never));
+
+  assert.match(markup, /No agent conversations yet/);
+  assert.doesNotMatch(markup, /data-unread-scope="channel-tab" data-unread-count="1"/);
+});
+
+test('WorkspaceSidebar rolls hidden fork unread up to the contact tab and folded group row', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:group:cloud-parent',
+      canonicalSessionId: 'session:group:cloud-parent',
+      name: 'Cloud group',
+      type: 'group',
+      subtitle: 'Parent group',
+      unread: 0,
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+      _updatedAtMs: 2,
+    }),
+    conversation({
+      id: 'session:fork:hidden-contact-child',
+      canonicalSessionId: 'session:fork:hidden-contact-child',
+      name: 'Forked group continuation',
+      type: 'owned-agent',
+      subtitle: 'Unread hidden fork',
+      unread: 1,
+      forkedFromSessionId: 'session:group:cloud-parent',
+      forkedFromMessageId: 'msg:source',
+      participants: ['Me', 'My agent'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
+      ],
+      _updatedAtMs: 1,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const contactParticipantSpaces = participantSpaces.filter((space) => space.kind === 'group');
+  const agentParticipantSpaces = participantSpaces.filter((space) => space.kind === 'self');
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces,
+    agentParticipantSpaces,
+    activeConvId: 'session:outside-active',
+  }) as never));
+
+  assert.match(markup, /data-unread-scope="channel-tab" data-unread-count="1"/);
+  assert.match(markup, /data-unread-scope="participant-space" data-unread-count="1"/);
+});
+
 function countMatches(value: string, pattern: RegExp) {
   return value.match(pattern)?.length ?? 0;
 }

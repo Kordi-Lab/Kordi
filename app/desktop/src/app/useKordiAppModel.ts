@@ -15,6 +15,7 @@ import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import {
+  type CloudGroupParticipant,
   cloudGroupIdentityRequest,
   cloudGroupParticipantsForBridgeSessionParticipants,
   cloudGroupParticipantsForContacts,
@@ -362,6 +363,7 @@ export function useKordiAppModel() {
     mergedBridgeState: desktopBridgeState,
     sendCloudBridgeMessage,
     sendCloudGroupControl,
+    recordCloudSessionFork,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
     refreshCloudContacts,
@@ -744,6 +746,117 @@ export function useKordiAppModel() {
     setDesktopChatError,
   ]);
 
+  const syncCloudGroupFork = useCallback(async (result: { forkedSessionId: string; sourceSessionId: string; sourceMessageId: string }) => {
+    if (!cloudSession.account) return;
+    const state = await fetchCanonicalSessionState();
+    if (!state) return;
+    setCanonicalSessionState(state);
+    const forkSession = state.sessions.find((session) => session.id === result.forkedSessionId);
+    if (!forkSession || forkSession.kind !== 'group') return;
+    const forkMetadata = forkSession.metadata && typeof forkSession.metadata === 'object' && !Array.isArray(forkSession.metadata)
+      ? (forkSession.metadata as Record<string, unknown>).fork
+      : null;
+    const forkRecord = forkMetadata && typeof forkMetadata === 'object' && !Array.isArray(forkMetadata)
+      ? forkMetadata as Record<string, unknown>
+      : null;
+    const parentSessionId = typeof forkRecord?.forkedFromSessionId === 'string' && forkRecord.forkedFromSessionId.trim()
+      ? forkRecord.forkedFromSessionId.trim()
+      : result.sourceSessionId;
+    const parentMessageId = typeof forkRecord?.forkedFromMessageId === 'string' && forkRecord.forkedFromMessageId.trim()
+      ? forkRecord.forkedFromMessageId.trim()
+      : result.sourceMessageId;
+    const participants = canonicalGroupParticipantsForSession(state, result.forkedSessionId)
+      .filter((participant) => participant.kind === 'human');
+    const cloudParticipants: CloudGroupParticipant[] = participants.flatMap((participant) => {
+      const accountId = participant.humanId?.trim() || participant.bridgeNodeId?.trim() || '';
+      if (!accountId) return [];
+      return [{
+        accountId,
+        displayName: participant.name?.trim() || accountId,
+        avatarUrl: participant.profileImageUrl ?? null,
+        role: participant.role ?? 'person',
+      }];
+    });
+    if (!cloudParticipants.some((participant) => participant.accountId === cloudSession.account?.accountId)) {
+      cloudParticipants.push(cloudGroupSelfParticipant(cloudSession.account, 'self'));
+    }
+    const targetAccountIds = [...new Set(cloudParticipants.map((participant) => participant.accountId).filter((accountId) => accountId && accountId !== cloudSession.account?.accountId))];
+    if (targetAccountIds.length === 0) return;
+
+    await recordCloudSessionFork({
+      sourceSessionId: parentSessionId,
+      forkSessionId: result.forkedSessionId,
+      parentMessageId,
+    }).catch((error) => {
+      if (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 409) return;
+      // Best effort: the session-fork control below still materializes the fork
+      // for peers. The server lineage row becomes available after Cloud server
+      // rollout, and a failed lineage write must not turn a local fork into a UI
+      // error.
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-group-fork] failed to record cloud fork lineage', error);
+    });
+
+    const fork = {
+      forkSessionId: result.forkedSessionId,
+      parentSessionId,
+      parentMessageId,
+      createdAtMs: forkSession.createdAtMs,
+    };
+    await sendCloudGroupControl({
+      targetAccountIds,
+      kind: 'session-fork',
+      groupId: result.forkedSessionId,
+      groupSpaceId: result.forkedSessionId,
+      groupTitle: forkSession.title,
+      participants: cloudParticipants,
+      fork,
+    });
+
+    const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
+    const accountIdForIdentity = (identityId: string) => {
+      const identity = identityById.get(identityId);
+      if (!identity) return cloudSession.account?.accountId ?? '';
+      if (identity.kind === 'human') return identity.humanId?.trim() || identity.bridgeNodeId?.trim() || cloudSession.account?.accountId || '';
+      if (identity.humanId?.trim()) return identity.humanId.trim();
+      if (identity.id.startsWith('agent:cloud:')) return identity.id.slice('agent:cloud:'.length);
+      const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : null;
+      return owner?.humanId?.trim() || owner?.bridgeNodeId?.trim() || cloudSession.account?.accountId || '';
+    };
+    const snapshotMessages = state.messages
+      .filter((message) => message.sessionId === result.forkedSessionId && message.sourceTransport === 'canonical-fork-snapshot')
+      .sort((left, right) => left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs);
+    for (const message of snapshotMessages) {
+      const identity = identityById.get(message.senderIdentityId);
+      const senderIsAgent = message.messageKind === 'agent-turn' || identity?.kind === 'agent' || message.senderRole.includes('agent');
+      const content = message.content && typeof message.content === 'object' && !Array.isArray(message.content) ? message.content as Record<string, unknown> : {};
+      const deliveryState = typeof content.deliveryState === 'string' && content.deliveryState.trim()
+        ? content.deliveryState.trim()
+        : message.status;
+      await sendCloudGroupControl({
+        targetAccountIds,
+        kind: 'group-message',
+        groupId: result.forkedSessionId,
+        groupSpaceId: result.forkedSessionId,
+        groupTitle: forkSession.title,
+        participants: cloudParticipants,
+        fork,
+        message: {
+          id: message.id,
+          senderAccountId: accountIdForIdentity(message.senderIdentityId),
+          text: message.contentText,
+          createdAtMs: message.createdAtMs,
+          senderKind: senderIsAgent ? 'agent' : 'human',
+          senderDisplayName: identity?.displayName ?? null,
+          deliveryState,
+          replyToMessageId: message.parentMessageId ?? null,
+          requestId: typeof content.requestId === 'string' ? content.requestId : null,
+          forkSnapshot: true,
+        },
+      });
+    }
+  }, [cloudSession.account, recordCloudSessionFork, sendCloudGroupControl, setCanonicalSessionState]);
+
   const {
     handleSelectChatSession,
     handleCreateChatSession,
@@ -769,6 +882,7 @@ export function useKordiAppModel() {
     setOpenComposerSelector: composerUi.setOpenComposerSelector,
     setDesktopSessionRenameDraft: sessionUi.setDesktopSessionRenameDraft,
     setIsEditingDesktopSessionTitle: sessionUi.setIsEditingDesktopSessionTitle,
+    onForkCreated: syncCloudGroupFork,
   });
 
   const {

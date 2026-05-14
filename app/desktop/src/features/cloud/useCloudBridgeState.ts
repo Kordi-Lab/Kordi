@@ -10,7 +10,6 @@ import {
   openOrCreateCanonicalSession,
   renameCanonicalSession,
   startDesktopChatMessage,
-  updateCanonicalSessionMetadata,
   upsertCanonicalIdentity,
   upsertCanonicalMessage,
   type DesktopChatMessageRoute,
@@ -57,11 +56,10 @@ import {
 } from './cloudAgentRuntime';
 import {
   cloudGroupAgentConversationId,
-  cloudGroupAgentMentionHasResponse,
   cloudGroupAgentMentionResponseState,
-  cloudGroupAgentOfflineNoticeRequest,
   cloudGroupAgentRequestingNoticeMessage,
   cloudGroupAgentRequestingNoticeRequest,
+  cloudGroupForkPayloadFromSessionMetadata,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
@@ -162,6 +160,30 @@ export function cloudGroupAgentProcessingMessageForRequest(
   if (!trimmedGroupId || !trimmedRequestId) return null;
   return messages.find((message) => {
     if (message.sessionId !== trimmedGroupId || !message.sourceTransport?.startsWith('cloud-group-agent')) return false;
+    const content = objectContent(message.content);
+    const linkedRequestId = cleanText(message.parentMessageId)
+      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+    if (linkedRequestId !== trimmedRequestId) return false;
+    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+    return message.status === 'processing' || deliveryState === 'processing';
+  }) ?? null;
+}
+
+export function cloudGroupAgentProcessingSlotForResponse(
+  messages: CanonicalSessionMessage[],
+  groupId: string,
+  requestId: string,
+  senderAccountId: string,
+): CanonicalSessionMessage | null {
+  const trimmedGroupId = groupId.trim();
+  const trimmedRequestId = requestId.trim();
+  const trimmedSenderAccountId = senderAccountId.trim();
+  if (!trimmedGroupId || !trimmedRequestId || !trimmedSenderAccountId) return null;
+  const senderIdentityId = `agent:cloud:${trimmedSenderAccountId}`;
+  return messages.find((message) => {
+    if (message.sessionId !== trimmedGroupId || message.senderIdentityId !== senderIdentityId) return false;
+    if (!message.sourceTransport?.startsWith('cloud-group-agent')) return false;
     const content = objectContent(message.content);
     const linkedRequestId = cleanText(message.parentMessageId)
       || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
@@ -307,7 +329,7 @@ type CloudAgentMentionCandidateOptions = {
   keepStaleIds?: ReadonlySet<string>;
 };
 
-function cloudAgentMentionCandidates(
+export function cloudAgentMentionCandidates(
   state: CanonicalSessionState,
   accountId: string,
   options: CloudAgentMentionCandidateOptions = {},
@@ -321,6 +343,7 @@ function cloudAgentMentionCandidates(
   }
 
   return state.messages.flatMap((message): CloudAgentMentionCandidate[] => {
+    if (message.sourceTransport === 'canonical-fork-snapshot') return [];
     if (message.senderRole !== 'user' || message.status === 'failed') return [];
     if (
       recentSinceMs !== undefined
@@ -385,6 +408,15 @@ function removeCloudGroupOfflinePlaceholder(
 ): CanonicalSessionState | null {
   if (!current) return current;
   const nextMessages = current.messages.filter((message) => !cloudGroupOfflinePlaceholderMatches(message, noticeId));
+  return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
+}
+
+function removeCanonicalMessageById(
+  current: CanonicalSessionState | null,
+  messageId: string,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  const nextMessages = current.messages.filter((message) => message.id !== messageId);
   return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
 }
 
@@ -754,6 +786,7 @@ export function planCloudSelfAgentSync(
   const messagesBySession = new Map<string, CanonicalSessionMessage[]>();
   for (const message of state.messages) {
     if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
+    if (message.sourceTransport === 'canonical-fork-snapshot') continue;
     const text = cleanText(message.contentText);
     if (!text) continue;
     const bucket = messagesBySession.get(message.sessionId) ?? [];
@@ -826,6 +859,7 @@ export type SendCloudGroupControlInput = {
   actor?: CloudGroupParticipant | null;
   participants?: CloudGroupParticipant[];
   bridgeParticipants?: DesktopBridgeSessionParticipant[];
+  fork?: CloudGroupControlEnvelope['fork'];
   message?: CloudGroupControlEnvelope['message'];
   attachments?: AttachmentItem[];
 };
@@ -836,6 +870,7 @@ export type UseCloudBridgeStateResult = {
   mergedBridgeState: DesktopBridgeState | null;
   sendCloudBridgeMessage(conversationId: string, text: string, attachments?: AttachmentItem[]): Promise<void>;
   sendCloudGroupControl(input: SendCloudGroupControlInput): Promise<void>;
+  recordCloudSessionFork(input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }): Promise<void>;
   cancelCloudBridgeAgentRequest(conversationId: string, requestId: string): Promise<void>;
   refreshCloudBridgeMessages(): Promise<void>;
   refreshCloudContacts(): Promise<void>;
@@ -896,6 +931,7 @@ export function useCloudBridgeState({
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
   const cloudGroupOfflineTimersRef = useRef<Map<string, number>>(new Map());
+  const bootstrapPeerIdsRef = useRef<string[]>([]);
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
   const [localAgentTurnsByRequestId, setLocalAgentTurnsByRequestId] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [cloudBridgeOverride, setCloudBridgeOverrideState] = useState<DesktopBridgeState | null>(null);
@@ -906,6 +942,7 @@ export function useCloudBridgeState({
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const syncingSelfAgentHistoryRef = useRef(false);
   const syncingCloudDiffRef = useRef(false);
+  const syncedContactIdentitySignatureRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -982,10 +1019,32 @@ export function useCloudBridgeState({
   ), [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
   const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
   const bootstrapPeerKey = useMemo(() => bootstrapPeerIds.join('|'), [bootstrapPeerIds]);
+  useEffect(() => {
+    bootstrapPeerIdsRef.current = bootstrapPeerIds;
+  }, [bootstrapPeerKey]);
+  const contactIdentitySignature = useMemo(() => JSON.stringify({
+    accountId: account?.accountId ?? null,
+    localHumanIdentityId,
+    contacts: contacts.contacts
+      .map((contact) => ({
+        id: contact.id,
+        name: contact.name,
+        bridgePeerNodeId: contact.bridgePeerNodeId ?? null,
+        bridgeHumanId: contact.bridgeHumanId ?? null,
+        profileImageUrl: contact.profileImageUrl ?? null,
+        avatarSeed: contact.avatarSeed ?? null,
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  }), [account?.accountId, contacts.contacts, localHumanIdentityId]);
 
 
   useEffect(() => {
-    if (!account || !localHumanIdentityId || !setCanonicalSessionState) return;
+    if (!account || !localHumanIdentityId || !setCanonicalSessionState) {
+      syncedContactIdentitySignatureRef.current = null;
+      return;
+    }
+    if (syncedContactIdentitySignatureRef.current === contactIdentitySignature) return;
+    syncedContactIdentitySignatureRef.current = contactIdentitySignature;
     let cancelled = false;
     void (async () => {
       for (const request of cloudContactsToCanonicalIdentityRequests({
@@ -997,15 +1056,17 @@ export function useCloudBridgeState({
         const nextState = await upsertCanonicalIdentity(request);
         if (!cancelled) setCanonicalSessionState(nextState);
       }
-    })();
+    })().catch(() => {
+      syncedContactIdentitySignatureRef.current = null;
+    });
     return () => {
       cancelled = true;
     };
-  }, [account, contacts.contacts, localHumanIdentityId, setCanonicalSessionState]);
+  }, [account, contactIdentitySignature, contacts.contacts, localHumanIdentityId, setCanonicalSessionState]);
 
   const refreshCloudBridgeMessages = useCallback(async () => {
     const retainedPeerIds = Object.keys(messagesByPeerRef.current);
-    const initialPeerIds = [...new Set([...bootstrapPeerIds, ...retainedPeerIds])];
+    const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
     if (!account || initialPeerIds.length === 0) {
       setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
@@ -1033,7 +1094,7 @@ export function useCloudBridgeState({
     if (cancelledRef.current) return;
     setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, loaded.messagesByPeer) ? current : loaded.messagesByPeer));
     setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
-  }, [account, bootstrapPeerIds, bootstrapPeerKey, client]);
+  }, [account, bootstrapPeerKey, client]);
 
   const syncCloudBridgeDiff = useCallback(async () => {
     if (!account) return false;
@@ -1140,7 +1201,10 @@ export function useCloudBridgeState({
         continue;
       }
       if (hasRequestingNotice && requestReachedCloud) {
-        setCanonicalSessionState((current) => setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId));
+        // Reaching Cloud only proves delivery, not target availability. Do not
+        // continuously rewrite local placeholder state here; the target
+        // instance's real processing/terminal group control is authoritative.
+        continue;
       }
       if (cloudGroupOfflineTimersRef.current.has(key)) continue;
 
@@ -1160,117 +1224,7 @@ export function useCloudBridgeState({
           // eslint-disable-next-line no-console
           console.warn('[cloud-group-agent-requesting] failed to persist requesting notice', error);
         });
-      const delayMs = Math.max(0, candidate.requestMessage.createdAtMs + CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS - Date.now());
-      const timerId = window.setTimeout(() => {
-        cloudGroupOfflineTimersRef.current.delete(key);
-        void (async () => {
-          const current = canonicalSessionStateRef.current;
-          if (!current) return;
-          const existingTimerNotice = current.messages.find((message) => message.id === noticeId);
-          if (existingTimerNotice?.status === 'failed') return;
-          if (cloudGroupAgentMentionHasResponse({
-            requestMessageId: candidate.requestMessage.id,
-            targetAccountId: candidate.targetAccountId,
-            messages: current.messages,
-          })) return;
-
-          const humanIdentity = current.identities.find((identity) => (
-            identity.kind === 'human'
-            && (identity.humanId === candidate.targetAccountId || identity.bridgeNodeId === candidate.targetAccountId)
-          ));
-          const agentIdentityId = `agent:cloud:${candidate.targetAccountId}`;
-          if (!current.identities.some((identity) => identity.id === agentIdentityId)) {
-            const nextState = await upsertCanonicalIdentity({
-              id: agentIdentityId,
-              kind: 'agent',
-              displayName: candidate.targetAgentDisplayName,
-              ownerIdentityId: humanIdentity?.id ?? null,
-              source: 'bridge',
-              sourceHostId: CLOUD_HOST_SENTINEL,
-              bridgeNodeId: `cloud-agent:${candidate.targetAccountId}`,
-              humanId: candidate.targetAccountId,
-              agentId: `cloud-agent:${candidate.targetAccountId}`,
-              avatarKey: `cloud-agent:${candidate.targetAccountId}`,
-              profileImageUrl: null,
-              metadata: { accountId: candidate.targetAccountId, cloudGroupAgent: true },
-            });
-            canonicalSessionStateRef.current = nextState;
-            setCanonicalSessionState(nextState);
-          }
-
-          const createdAtMs = Date.now();
-          const notice = cloudGroupAgentOfflineNoticeRequest({
-            sessionId: candidate.requestMessage.sessionId,
-            requestMessageId: candidate.requestMessage.id,
-            targetAccountId: candidate.targetAccountId,
-            targetHumanDisplayName: candidate.targetHumanDisplayName,
-            targetAgentDisplayName: candidate.targetAgentDisplayName,
-            createdAtMs,
-          });
-          const afterAppend = await upsertCanonicalMessage(notice);
-          canonicalSessionStateRef.current = afterAppend;
-          setCanonicalSessionState(afterAppend);
-
-          const session = await loadSession();
-          if (!session?.token) return;
-          const snapshotState = afterAppend ?? current;
-          const participants = cloudGroupParticipantSnapshotForSession(
-            snapshotState,
-            candidate.requestMessage.sessionId,
-            account,
-          );
-          // The offline-tier notice is the asker's 15-second local timeout
-          // marker, not authoritative state. Send it to the OTHER human
-          // participants so they see the asker gave up waiting — but skip
-          // the target agent's own account. The target's local state is
-          // canonical for itself; delivering this notice there only creates
-          // a phantom "Kordi is offline" row alongside whatever processing/
-          // cancel/reply row the target's instance generates locally.
-          const targetAccountIds = participants
-            .map((participant) => participant.accountId)
-            .filter((participantAccountId) => (
-              participantAccountId
-              && participantAccountId !== account.accountId
-              && participantAccountId !== candidate.targetAccountId
-            ));
-          if (targetAccountIds.length === 0) return;
-          const groupSession = snapshotState.sessions.find((sessionCandidate) => sessionCandidate.id === candidate.requestMessage.sessionId);
-          const groupMetadata = objectContent(groupSession?.metadata);
-          const groupSpaceId = cleanText(typeof groupMetadata.groupSpaceId === 'string' ? groupMetadata.groupSpaceId : null)
-            || cleanText(typeof groupMetadata.groupId === 'string' ? groupMetadata.groupId : null)
-            || candidate.requestMessage.sessionId;
-          const noticeContent = objectContent(notice.content);
-          const offlineText = cleanText(typeof noticeContent.error === 'string' ? noticeContent.error : null)
-            || `${candidate.targetHumanDisplayName} and ${candidate.targetAgentDisplayName} are offline.`;
-          const synced = await Promise.allSettled(targetAccountIds.map((targetId) => client.sendMessage(session.token, targetId, encodeCloudGroupControl({
-            kind: 'group-message',
-            groupId: candidate.requestMessage.sessionId,
-            groupSpaceId,
-            groupTitle: null,
-            createdByAccountId: account.accountId,
-            actor: cloudGroupSelfParticipant(account, 'person'),
-            participants,
-            message: {
-              id: notice.id ?? `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`,
-              senderAccountId: candidate.targetAccountId,
-              text: offlineText,
-              createdAtMs,
-              senderKind: 'agent',
-              senderDisplayName: candidate.targetAgentDisplayName,
-              deliveryState: 'failed',
-              replyToMessageId: candidate.requestMessage.id,
-              requestId: candidate.requestMessage.id,
-            },
-          }))));
-          synced.forEach((result) => {
-            if (result.status === 'fulfilled') mergeMessage(result.value);
-          });
-        })().catch((error) => {
-          // eslint-disable-next-line no-console
-          console.warn('[cloud-group-agent-offline] failed to append offline notice', error);
-        });
-      }, delayMs);
-      cloudGroupOfflineTimersRef.current.set(key, timerId);
+      continue;
     }
 
     for (const [key, timerId] of cloudGroupOfflineTimersRef.current.entries()) {
@@ -1389,6 +1343,14 @@ export function useCloudBridgeState({
     const groupTitle = explicitGroupTitle || 'Cloud group';
     const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
     const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
+    const forkMetadata = envelope.fork ? {
+      forkedFromSessionId: envelope.fork.parentSessionId,
+      forkedFromMessageId: envelope.fork.parentMessageId ?? null,
+      forkMode: 'cloud-group',
+      contextPolicy: 'prefix-through-message',
+      boundary: 'inherited-history-reference-only',
+      createdAtMs: envelope.fork.createdAtMs ?? null,
+    } : null;
     const groupMetadata = {
       schemaVersion: 1,
       kind: 'chat-group',
@@ -1399,7 +1361,8 @@ export function useCloudBridgeState({
       initialContactIds: [...participantByAccount.keys()].map((accountId) => `cloud:${accountId}`),
       initialParticipantNames: participantNames,
       memberApprovalPolicy: 'under-50-open',
-      createdFrom: 'cloud-group-sync',
+      createdFrom: envelope.kind === 'session-fork' || forkMetadata ? 'cloud-group-fork-sync' : 'cloud-group-sync',
+      ...(forkMetadata ? { fork: forkMetadata } : {}),
     };
     const parsedControlCreatedAtMs = Date.parse(cloudMessage.createdAt);
     const controlCreatedAtMs = Number.isFinite(parsedControlCreatedAtMs) ? parsedControlCreatedAtMs : Date.now();
@@ -1436,11 +1399,10 @@ export function useCloudBridgeState({
     }
 
     if (shouldApplyCloudGroupTitleUpdate(envelope)) {
-      nextState = await updateCanonicalSessionMetadata({
-        sessionId: envelope.groupId,
-        requestedByIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
-        metadata: groupMetadata,
-      });
+      // openOrCreateCanonicalSession above already applied the replicated Cloud
+      // group metadata. Do not route incoming Cloud sync through the local UI
+      // admin guard; otherwise valid remote updates warn/fail on peers whose
+      // local admin identity ids differ from the sender's local identity id.
       if (!isSelfAuthoredControl) {
         const noticeRequest = cloudGroupTitleUpdateNoticeRequest({
           envelope,
@@ -1553,6 +1515,22 @@ export function useCloudBridgeState({
       }
     }
 
+    const responseProcessingSlot = senderIsAgent && messageReplyToId && agentDeliveryState !== 'processing'
+      ? [canonicalState, nextState]
+          .map((state) => state ? cloudGroupAgentProcessingSlotForResponse(
+            state.messages,
+            envelope.groupId,
+            messageReplyToId,
+            envelope.message!.senderAccountId,
+          ) : null)
+          .find((message): message is CanonicalSessionMessage => Boolean(message)) ?? null
+      : null;
+
+    if (messageAlreadyExists && responseProcessingSlot && responseProcessingSlot.id !== existingCloudGroupMessage?.id) {
+      nextState = removeCanonicalMessageById(nextState, responseProcessingSlot.id) ?? nextState;
+      setCanonicalSessionState(nextState);
+    }
+
     if (!messageAlreadyExists) {
       const stableAgentNoticeId = senderIsAgent && messageReplyToId
         ? `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`
@@ -1578,7 +1556,8 @@ export function useCloudBridgeState({
         setCanonicalSessionState(nextState);
         return;
       }
-      const shouldUpdateStableAgentSlot = Boolean(stableAgentNoticeId && existingStableRow);
+      const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
+      const shouldUpdateStableAgentSlot = Boolean(replacementAgentSlot);
       const agentStatus = senderIsAgent && agentDeliveryState === 'processing'
         ? 'processing'
         : senderIsAgent && agentDeliveryState === 'failed'
@@ -1587,7 +1566,7 @@ export function useCloudBridgeState({
             ? 'cancelled'
             : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received';
       const messageRequest = {
-        id: shouldUpdateStableAgentSlot ? stableAgentNoticeId : envelope.message.id,
+        id: replacementAgentSlot?.id ?? envelope.message.id,
         sessionId: envelope.groupId,
         senderIdentityId,
         senderRole: senderIsAgent ? 'external-agent' : (envelope.message.senderAccountId === account.accountId ? 'user' : 'person'),
@@ -1605,8 +1584,10 @@ export function useCloudBridgeState({
         createdAtMs: envelope.message.createdAtMs,
         parentMessageId: senderIsAgent ? messageReplyToId : null,
         status: agentStatus,
-        sourceTransport: senderIsAgent ? 'cloud-group-agent' : 'cloud-group',
-        sourceEventId: `${senderIsAgent ? 'cloud-group-agent' : 'cloud-group'}:${cloudMessage.messageId}`,
+        sourceTransport: envelope.message.forkSnapshot
+          ? 'cloud-group-fork-snapshot'
+          : senderIsAgent ? 'cloud-group-agent' : 'cloud-group',
+        sourceEventId: `${envelope.message.forkSnapshot ? 'cloud-group-fork-snapshot' : senderIsAgent ? 'cloud-group-agent' : 'cloud-group'}:${cloudMessage.messageId}`,
       };
       nextState = shouldUpdateStableAgentSlot
         ? await upsertCanonicalMessage(messageRequest)
@@ -1630,7 +1611,7 @@ export function useCloudBridgeState({
     }
 
     const groupMessageIsOwn = envelope.message.senderAccountId === account.accountId;
-    const groupMessageMentionsLocalAgent = cloudMessageMentionsLocalAgent(
+    const groupMessageMentionsLocalAgent = envelope.message.forkSnapshot === true ? false : cloudMessageMentionsLocalAgent(
       envelope.message.text,
       account,
       { allowFirstPerson: groupMessageIsOwn },
@@ -2210,9 +2191,13 @@ export function useCloudBridgeState({
     if (!account) return null;
     const activeRuntimeSessionId = cloudAgentRuntimeSessionId(account.accountId, activeConversationId);
     const activeRuntimeRoute = cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, activeRuntimeSessionId);
-    const cloudSessionTitlesById = Object.fromEntries((canonicalSessionState?.sessions ?? [])
-      .filter((session) => session.kind === 'self-agent')
+    const canonicalSelfAgentSessions = (canonicalSessionState?.sessions ?? [])
+      .filter((session) => session.kind === 'self-agent');
+    const cloudSessionTitlesById = Object.fromEntries(canonicalSelfAgentSessions
       .map((session) => [session.id, session.title]));
+    const hiddenCloudSessionIds = new Set(canonicalSelfAgentSessions
+      .map((session) => session.id.trim())
+      .filter((sessionId) => sessionId.startsWith('session:fork:')));
     const generated = buildCloudDesktopBridgeState({
       account,
       contacts: cloudBridgeContacts,
@@ -2222,6 +2207,7 @@ export function useCloudBridgeState({
       localAgentTurnsByRequestId,
       localAgentRuntimeRoute: activeRuntimeRoute,
       cloudSessionTitlesById,
+      hiddenCloudSessionIds,
     });
     return applyCloudAgentRuntimeRouteToState(
       mergeCloudBridgeState(generated, cloudBridgeOverride),
@@ -2323,6 +2309,12 @@ export function useCloudBridgeState({
           })) : input.message.attachments,
         }
       : null;
+    const forkFromSessionMetadata = input.kind === 'group-message'
+      ? cloudGroupForkPayloadFromSessionMetadata(
+          canonicalSessionStateRef.current?.sessions.find((sessionCandidate) => sessionCandidate.id === input.groupId)?.metadata,
+          input.groupId,
+        )
+      : null;
     const envelope = encodeCloudGroupControl({
       kind: input.kind,
       groupId: input.groupId,
@@ -2331,6 +2323,7 @@ export function useCloudBridgeState({
       createdByAccountId: input.createdByAccountId?.trim() || account.accountId,
       actor,
       participants,
+      fork: input.fork ?? forkFromSessionMetadata,
       message,
     });
     const results = await Promise.allSettled(targetAccountIds.map((peerId) => client.sendMessage(session.token, peerId, envelope, { attachments: uploadedAttachments })));
@@ -2343,6 +2336,19 @@ export function useCloudBridgeState({
     const firstFailure = firstCloudGroupSendFailure(results);
     throw firstFailure instanceof Error ? firstFailure : new Error(String(firstFailure || 'Cloud group message failed.'));
   }, [account, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
+
+  const recordCloudSessionFork = useCallback(async (input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }) => {
+    if (!account) throw new Error('Not signed in.');
+    const sourceSessionId = input.sourceSessionId.trim();
+    const forkSessionId = input.forkSessionId.trim();
+    if (!sourceSessionId || !forkSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.createSessionFork(session.token, sourceSessionId, {
+      forkSessionId,
+      parentMessageId: input.parentMessageId ?? null,
+    });
+  }, [account, client]);
 
   const cancelCloudBridgeAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
     const trimmedRequestId = requestId.trim();
@@ -2430,6 +2436,7 @@ export function useCloudBridgeState({
     mergedBridgeState,
     sendCloudBridgeMessage,
     sendCloudGroupControl,
+    recordCloudSessionFork,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
     refreshCloudContacts: contacts.refresh,
