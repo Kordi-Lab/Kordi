@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  CLOUD_SESSION_SIGNED_OUT_EVENT,
   __setSessionBackendForTests,
   clearSession,
+  clearSessionAndNotifySignedOut,
   loadSession,
   saveSession,
   type SessionStorageBackend,
@@ -75,5 +77,34 @@ test('memory fallback (no backend override, no Tauri) survives within a process'
     assert.equal(await loadSession(), null);
   } finally {
     console.warn = originalWarn;
+  }
+});
+
+test('clearSessionAndNotifySignedOut clears storage and broadcasts logout for other Cloud session hooks', async () => {
+  const fake = new FakeBackend();
+  __setSessionBackendForTests(fake);
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const fakeWindow = new EventTarget();
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: fakeWindow });
+  let eventCount = 0;
+  fakeWindow.addEventListener(CLOUD_SESSION_SIGNED_OUT_EVENT, () => {
+    eventCount += 1;
+  });
+  try {
+    await saveSession({
+      token: 'kordi_cs_logout',
+      accountId: 'acct_logout',
+      expiresAt: '2099-01-01T00:00:00Z',
+    });
+
+    await clearSessionAndNotifySignedOut();
+
+    assert.equal(fake.clearCount, 1);
+    assert.equal(await loadSession(), null);
+    assert.equal(eventCount, 1);
+  } finally {
+    __setSessionBackendForTests(null);
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
   }
 });

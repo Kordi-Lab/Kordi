@@ -17,7 +17,9 @@ import {
 } from './authClient';
 import { ensureCloudDeviceRegistered } from './deviceRegistration';
 import {
+  CLOUD_SESSION_SIGNED_OUT_EVENT,
   clearSession,
+  clearSessionAndNotifySignedOut,
   loadSession,
   saveSession,
   type StoredSession,
@@ -78,9 +80,14 @@ export function useCloudSession({
       const next = (event as CustomEvent<CloudAccount>).detail;
       if (next?.accountId) setAuthenticated(next);
     };
+    const handleSignedOut = () => setSignedOut();
     window.addEventListener('kordi-cloud-profile-updated', handleProfileUpdated);
-    return () => window.removeEventListener('kordi-cloud-profile-updated', handleProfileUpdated);
-  }, [enabled, setAuthenticated]);
+    window.addEventListener(CLOUD_SESSION_SIGNED_OUT_EVENT, handleSignedOut);
+    return () => {
+      window.removeEventListener('kordi-cloud-profile-updated', handleProfileUpdated);
+      window.removeEventListener(CLOUD_SESSION_SIGNED_OUT_EVENT, handleSignedOut);
+    };
+  }, [enabled, setAuthenticated, setSignedOut]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -310,7 +317,7 @@ export function useCloudSession({
         }
       }
     } finally {
-      await clearSession();
+      await clearSessionAndNotifySignedOut();
       setSignedOut();
     }
   }, [authClient, setSignedOut]);
