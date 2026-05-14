@@ -13,7 +13,7 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
-import { cloudAvatarImageUrl, cloudAvatarSeedFromUrl } from '@/features/cloud/avatar';
+import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import {
   cloudGroupIdentityRequest,
   cloudGroupParticipantsForBridgeSessionParticipants,
@@ -23,6 +23,7 @@ import {
   nonCloudGroupTargets,
 } from '@/features/cloud/cloudGroupMessages';
 import { currentKordiEdition } from '@/features/cloud/edition';
+import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
 import { useCloudSession } from '@/features/cloud/useCloudSession';
 import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
@@ -138,6 +139,17 @@ export function useKordiAppModel() {
   const lastSeenArtifactByContextRef = useRef<Record<string, string | null>>({});
   const lastAutoAuthProviderSwitchRef = useRef<string | null>(null);
   const [canonicalSessionState, setCanonicalSessionState] = useState<CanonicalSessionState | null>(null);
+  const [canonicalInitialRefreshSettled, setCanonicalInitialRefreshSettled] = useState(!isNativeShell);
+  const [canonicalInitialRefreshError, setCanonicalInitialRefreshError] = useState(false);
+  const [cloudInitialSyncStartedAt, setCloudInitialSyncStartedAt] = useState(() => Date.now());
+  const [cloudInitialSyncNow, setCloudInitialSyncNow] = useState(() => Date.now());
+  const completedCloudInitialSyncAccountRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    setCloudInitialSyncStartedAt(now);
+    setCloudInitialSyncNow(now);
+  }, [cloudSession.account?.accountId]);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const localAvatarSeedsRef = useRef<{ human?: string | null; humanProfileImageUrl?: string | null; agent?: string | null }>({});
   const canonicalRefreshFlightRef = useRef(createSingleFlightState());
@@ -351,6 +363,11 @@ export function useKordiAppModel() {
     sendCloudBridgeMessage,
     sendCloudGroupControl,
     cancelCloudBridgeAgentRequest,
+    refreshCloudBridgeMessages,
+    refreshCloudContacts,
+    initialContactsSettled,
+    initialMessagesSettled,
+    cachedMessagesReady,
   } = useCloudBridgeState({
     account: kordiEdition === 'cloud' ? cloudSession.account : null,
     baseBridgeState: baseDesktopBridgeState,
@@ -370,17 +387,23 @@ export function useKordiAppModel() {
     ?? avatarBridgeHost?.agents.find((agent) => agent.isDefault)
     ?? avatarBridgeHost?.agents[0]
     ?? null;
-  const cloudProfileAvatarSeed = kordiEdition === 'cloud' ? cloudAvatarSeedFromUrl(cloudSession.account?.avatarUrl) : null;
-  const cloudProfileImageUrl = kordiEdition === 'cloud' ? cloudAvatarImageUrl(cloudSession.account?.avatarUrl) : null;
-  const localProfileAvatarSeed = cloudProfileAvatarSeed
-    || canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
+  const canonicalLocalProfileAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
     || avatarBridgeHost?.humanId?.trim()
     || canonicalSessionState?.profile.id?.trim()
     || null;
-  const localProfileImageUrl = cloudProfileImageUrl
-    || canonicalProfileImageUrl(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
+  const canonicalLocalProfileImageUrl = canonicalProfileImageUrl(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
     || avatarBridgeHost?.profileImageUrl?.trim()
     || null;
+  const cloudLocalProfileAvatar = kordiEdition === 'cloud'
+    ? resolveCloudLocalProfileAvatar({
+      accountId: cloudSession.account?.accountId,
+      avatarUrl: cloudSession.account?.avatarUrl,
+      canonicalAvatarSeed: canonicalLocalProfileAvatarSeed,
+      canonicalProfileImageUrl: canonicalLocalProfileImageUrl,
+    })
+    : null;
+  const localProfileAvatarSeed = cloudLocalProfileAvatar?.seed ?? canonicalLocalProfileAvatarSeed;
+  const localProfileImageUrl = cloudLocalProfileAvatar?.imageUrl ?? canonicalLocalProfileImageUrl;
   const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
     || avatarBridgeAgent?.id?.trim()
     || avatarBridgeHost?.activeAgentId?.trim()
@@ -410,14 +433,21 @@ export function useKordiAppModel() {
   );
 
   const refreshCanonicalState = useCallback(async () => {
-    if (!isNativeShell) return;
+    if (!isNativeShell) {
+      setCanonicalInitialRefreshSettled(true);
+      return;
+    }
     const flight = canonicalRefreshFlightRef.current;
     const run = requestSingleFlightRun(flight, async () => {
       try {
         const fetchedCanonicalState = await fetchCanonicalSessionState();
         setCanonicalSessionState((current) => mergeCanonicalStatePreservingBridgeUiMessages(fetchedCanonicalState, current));
+        setCanonicalInitialRefreshError(false);
       } catch {
+        setCanonicalInitialRefreshError(true);
         // Canonical state is additive during migration; legacy UI remains usable if it is unavailable.
+      } finally {
+        setCanonicalInitialRefreshSettled(true);
       }
     });
     await (run ?? flight.currentPromise ?? Promise.resolve());
@@ -426,6 +456,25 @@ export function useKordiAppModel() {
   useEffect(() => {
     void refreshCanonicalState();
   }, [bridgeCanonicalRefreshKey, desktopCanonicalRefreshKey, refreshCanonicalState]);
+
+  useEffect(() => {
+    if (kordiEdition !== 'cloud') return;
+    const timeoutId = window.setTimeout(() => {
+      setCloudInitialSyncNow(Date.now());
+    }, CLOUD_INITIAL_SYNC_TIMEOUT_MS + 25);
+    return () => window.clearTimeout(timeoutId);
+  }, [cloudInitialSyncStartedAt, kordiEdition]);
+
+  const retryCloudInitialSync = useCallback(() => {
+    setCanonicalInitialRefreshSettled(false);
+    setCanonicalInitialRefreshError(false);
+    const now = Date.now();
+    setCloudInitialSyncStartedAt(now);
+    setCloudInitialSyncNow(now);
+    void refreshCanonicalState();
+    void refreshCloudContacts();
+    void refreshCloudBridgeMessages();
+  }, [refreshCanonicalState, refreshCloudBridgeMessages, refreshCloudContacts]);
 
   const {
     chatConversations,
@@ -510,8 +559,9 @@ export function useKordiAppModel() {
   }, [participantSpaces]);
 
   useEffect(() => {
+    if (kordiEdition === 'cloud' && !cloudLocalProfileAvatar?.shouldPersistSeed) return;
     setLocalProfileAvatarSeed(localProfileAvatarSeed);
-  }, [localProfileAvatarSeed]);
+  }, [cloudLocalProfileAvatar?.shouldPersistSeed, kordiEdition, localProfileAvatarSeed]);
 
   useEffect(() => {
     setLocalAgentAvatarSeed(localAgentAvatarSeed);
@@ -2137,6 +2187,35 @@ export function useKordiAppModel() {
   });
 
   const shellSlots = assembleKordiShellSlots(shellArgs);
+  const cloudInitialSync = useMemo(() => {
+    const accountKey = kordiEdition === 'cloud' ? (cloudSession.account?.accountId ?? '__pending__') : '__local__';
+    const rawStatus = cloudInitialSyncStatus({
+      isCloudEdition: kordiEdition === 'cloud',
+      accountReady: Boolean(cloudSession.account),
+      canonicalSettled: canonicalInitialRefreshSettled,
+      canonicalReady: !canonicalInitialRefreshError,
+      contactsSettled: initialContactsSettled,
+      messagesSettled: initialMessagesSettled,
+      localBackupReady: cachedMessagesReady || canonicalStateHasCloudLocalBackup(canonicalSessionState, cloudSession.account?.accountId),
+      startedAtMs: cloudInitialSyncStartedAt,
+      nowMs: cloudInitialSyncNow,
+    });
+    if (rawStatus === 'ready') completedCloudInitialSyncAccountRef.current = accountKey;
+    const status = completedCloudInitialSyncAccountRef.current === accountKey ? 'ready' : rawStatus;
+    return { status, onRetry: retryCloudInitialSync };
+  }, [
+    canonicalInitialRefreshError,
+    canonicalInitialRefreshSettled,
+    cloudInitialSyncNow,
+    cloudInitialSyncStartedAt,
+    canonicalSessionState,
+    cloudSession.account,
+    cachedMessagesReady,
+    initialContactsSettled,
+    initialMessagesSettled,
+    kordiEdition,
+    retryCloudInitialSync,
+  ]);
 
   return {
     rootThemeClass,
@@ -2158,5 +2237,6 @@ export function useKordiAppModel() {
     authGate: shellSlots.authGate,
     inlineAuthDialog: shellSlots.inlineAuthDialog,
     windowResizeHandles: shellSlots.windowResizeHandles,
+    cloudInitialSync,
   };
 }

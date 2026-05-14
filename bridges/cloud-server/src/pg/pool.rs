@@ -82,6 +82,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud message attachment links",
         sql: include_str!("../../migrations/0008_cloud_message_attachments.sql"),
     },
+    EmbeddedMigration {
+        version: 9,
+        description: "cloud sync events",
+        sql: include_str!("../../migrations/0009_cloud_sync_events.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

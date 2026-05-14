@@ -91,6 +91,7 @@ import {
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
+import { syncCloudDiffOnce } from './cloudDiffSync';
 import { loadSession } from './session';
 import { CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
@@ -527,6 +528,161 @@ export function cloudMessagesByPeerEqual(
   return leftKeys.every((key, index) => key === rightKeys[index] && cloudMessageListsEqual(left[key], right[key]));
 }
 
+export const CLOUD_MESSAGE_DISCOVERY_MAX_PASSES = 50;
+export const CLOUD_MESSAGES_LOCAL_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
+
+function uniqueSortedPeerIds(values: Iterable<string>): string[] {
+  return [...new Set([...values].map((value) => value.trim()).filter(Boolean))].sort();
+}
+
+function peerIdListsEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function cloudMessagesCacheKey(accountId: string): string {
+  return `${CLOUD_MESSAGES_LOCAL_CACHE_PREFIX}${accountId.trim()}`;
+}
+
+function browserLocalStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCachedCloudMessage(value: unknown): CloudMessage | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const messageId = cleanText(typeof record.messageId === 'string' ? record.messageId : null);
+  const fromAccountId = cleanText(typeof record.fromAccountId === 'string' ? record.fromAccountId : null);
+  const toAccountId = cleanText(typeof record.toAccountId === 'string' ? record.toAccountId : null);
+  const createdAt = cleanText(typeof record.createdAt === 'string' ? record.createdAt : null);
+  if (!messageId || !fromAccountId || !toAccountId || !createdAt) return null;
+  const direction = record.direction === 'outgoing' ? 'outgoing' : 'incoming';
+  const attachments = Array.isArray(record.attachments) ? record.attachments as CloudMessage['attachments'] : undefined;
+  return {
+    messageId,
+    fromAccountId,
+    toAccountId,
+    body: typeof record.body === 'string' ? record.body : '',
+    createdAt,
+    deliveredAt: typeof record.deliveredAt === 'string' ? record.deliveredAt : null,
+    readAt: typeof record.readAt === 'string' ? record.readAt : null,
+    direction,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
+  };
+}
+
+export function loadCachedCloudMessagesByPeer(accountId: string | null | undefined, storage: Storage | null = browserLocalStorage()): Record<string, CloudMessage[]> {
+  const trimmedAccountId = accountId?.trim() ?? '';
+  if (!trimmedAccountId || !storage) return {};
+  try {
+    const raw = storage.getItem(cloudMessagesCacheKey(trimmedAccountId));
+    const parsed = raw ? JSON.parse(raw) as unknown : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const byPeer: Record<string, CloudMessage[]> = {};
+    for (const [peerId, messages] of Object.entries(parsed)) {
+      const trimmedPeerId = peerId.trim();
+      if (!trimmedPeerId || !Array.isArray(messages)) continue;
+      const normalized = messages.map(normalizeCachedCloudMessage).filter((item): item is CloudMessage => Boolean(item));
+      if (normalized.length > 0) byPeer[trimmedPeerId] = normalized;
+    }
+    return byPeer;
+  } catch {
+    return {};
+  }
+}
+
+export function saveCachedCloudMessagesByPeer(accountId: string | null | undefined, messagesByPeer: Record<string, CloudMessage[]>, storage: Storage | null = browserLocalStorage()): void {
+  const trimmedAccountId = accountId?.trim() ?? '';
+  if (!trimmedAccountId || !storage) return;
+  const byPeer: Record<string, CloudMessage[]> = {};
+  for (const [peerId, messages] of Object.entries(messagesByPeer)) {
+    const trimmedPeerId = peerId.trim();
+    if (!trimmedPeerId || messages.length === 0) continue;
+    byPeer[trimmedPeerId] = messages;
+  }
+  try {
+    if (Object.keys(byPeer).length === 0) storage.removeItem(cloudMessagesCacheKey(trimmedAccountId));
+    else storage.setItem(cloudMessagesCacheKey(trimmedAccountId), JSON.stringify(byPeer));
+  } catch {
+    // Best effort local backup. Cloud remains authoritative if disk storage is unavailable.
+  }
+}
+
+export function cachedCloudMessagesByPeerHasMessages(accountId: string | null | undefined, storage: Storage | null = browserLocalStorage()): boolean {
+  return Object.values(loadCachedCloudMessagesByPeer(accountId, storage)).some((messages) => messages.length > 0);
+}
+
+export function cloudInitialMessagesSettledForPeerKey({
+  accountReady,
+  contactsSettled,
+  currentPeerKey,
+  settledPeerKey,
+}: {
+  accountReady: boolean;
+  contactsSettled: boolean;
+  currentPeerKey: string;
+  settledPeerKey: string | null;
+}): boolean {
+  if (!accountReady) return true;
+  if (!contactsSettled) return false;
+  return Boolean(settledPeerKey) && settledPeerKey === currentPeerKey;
+}
+
+export async function loadCloudMessagesByPeerUntilStable({
+  accountId,
+  initialPeerIds,
+  existingMessagesByPeer,
+  listMessages,
+  resolveMessageAttachments = async (messages) => messages,
+  maxPasses = CLOUD_MESSAGE_DISCOVERY_MAX_PASSES,
+}: {
+  accountId: string;
+  initialPeerIds: string[];
+  existingMessagesByPeer: Record<string, CloudMessage[]>;
+  listMessages(peerId: string): Promise<CloudMessage[]>;
+  resolveMessageAttachments?: (messages: CloudMessage[], peerId: string) => Promise<CloudMessage[]>;
+  maxPasses?: number;
+}): Promise<{ messagesByPeer: Record<string, CloudMessage[]>; peerIds: string[]; complete: boolean }> {
+  const byPeer: Record<string, CloudMessage[]> = {};
+  let peerIds = uniqueSortedPeerIds(initialPeerIds);
+  let hadError = false;
+
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    const missingPeerIds = peerIds.filter((peerId) => !(peerId in byPeer));
+    if (missingPeerIds.length === 0) {
+      return { messagesByPeer: byPeer, peerIds, complete: !hadError };
+    }
+
+    const entries = await Promise.all(missingPeerIds.map(async (peerId) => {
+      try {
+        const messages = await listMessages(peerId);
+        return [peerId, await resolveMessageAttachments(messages, peerId)] as const;
+      } catch {
+        hadError = true;
+        return [peerId, existingMessagesByPeer[peerId] ?? []] as const;
+      }
+    }));
+    for (const [peerId, messages] of entries) byPeer[peerId] = messages;
+
+    const expandedPeerIds = uniqueSortedPeerIds(cloudGroupPeerIdsFromMessages({
+      accountId,
+      contactPeerIds: peerIds,
+      messages: Object.values(byPeer).flat(),
+    }));
+    if (peerIdListsEqual(expandedPeerIds, peerIds)) {
+      return { messagesByPeer: byPeer, peerIds, complete: !hadError };
+    }
+    peerIds = expandedPeerIds;
+  }
+
+  return { messagesByPeer: byPeer, peerIds, complete: false };
+}
+
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
 
 type CloudSelfAgentSyncLedgerEntry = {
@@ -681,6 +837,10 @@ export type UseCloudBridgeStateResult = {
   sendCloudGroupControl(input: SendCloudGroupControlInput): Promise<void>;
   cancelCloudBridgeAgentRequest(conversationId: string, requestId: string): Promise<void>;
   refreshCloudBridgeMessages(): Promise<void>;
+  refreshCloudContacts(): Promise<void>;
+  initialContactsSettled: boolean;
+  initialMessagesSettled: boolean;
+  cachedMessagesReady: boolean;
 };
 
 function applyCloudAgentRuntimeRouteToState(
@@ -729,8 +889,10 @@ export function useCloudBridgeState({
 }): UseCloudBridgeStateResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const contacts = useCloudContacts(account);
-  const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
+  const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>(() => loadCachedCloudMessagesByPeer(account?.accountId));
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
+  const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
+  const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
   const cloudGroupOfflineTimersRef = useRef<Map<string, number>>(new Map());
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
@@ -742,6 +904,7 @@ export function useCloudBridgeState({
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const syncingSelfAgentHistoryRef = useRef(false);
+  const syncingCloudDiffRef = useRef(false);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -753,7 +916,20 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     messagesByPeerRef.current = messagesByPeer;
-  }, [messagesByPeer]);
+    if (account && messagesCacheAccountRef.current === account.accountId) saveCachedCloudMessagesByPeer(account.accountId, messagesByPeer);
+  }, [account, messagesByPeer]);
+
+  useEffect(() => {
+    setMessagesByPeer((current) => {
+      if (!account) {
+        messagesCacheAccountRef.current = null;
+        return Object.keys(current).length === 0 ? current : {};
+      }
+      const cached = loadCachedCloudMessagesByPeer(account.accountId);
+      messagesCacheAccountRef.current = account.accountId;
+      return cloudMessagesByPeerEqual(current, cached) ? current : cached;
+    });
+  }, [account?.accountId]);
 
   useEffect(() => {
     canonicalSessionStateRef.current = canonicalSessionState ?? null;
@@ -804,6 +980,8 @@ export function useCloudBridgeState({
     contacts.requests,
   ), [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
   const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
+  const bootstrapPeerKey = useMemo(() => bootstrapPeerIds.join('|'), [bootstrapPeerIds]);
+
 
   useEffect(() => {
     if (!account || !localHumanIdentityId || !setCanonicalSessionState) return;
@@ -829,43 +1007,67 @@ export function useCloudBridgeState({
     const initialPeerIds = [...new Set([...bootstrapPeerIds, ...retainedPeerIds])];
     if (!account || initialPeerIds.length === 0) {
       setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
+      setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return;
     }
     const session = await loadSession();
-    if (!session?.token) return;
-
-    const byPeer: Record<string, CloudMessage[]> = {};
-    let peerIds = initialPeerIds;
-    for (let pass = 0; pass < 3; pass += 1) {
-      const missingPeerIds = peerIds.filter((peerId) => !(peerId in byPeer));
-      if (missingPeerIds.length === 0) break;
-      const entries = await Promise.all(missingPeerIds.map(async (peerId) => {
-        try {
-          const messages = await client.listMessages(session.token, peerId);
-          const resolvedMessages = await Promise.all(messages.map(async (message) => ({
-            ...message,
-            attachments: message.attachments?.length
-              ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
-              : [],
-          })));
-          return [peerId, resolvedMessages] as const;
-        } catch {
-          return [peerId, messagesByPeerRef.current[peerId] ?? []] as const;
-        }
-      }));
-      for (const [peerId, messages] of entries) byPeer[peerId] = messages;
-      const expandedPeerIds = cloudGroupPeerIdsFromMessages({
-        accountId: account.accountId,
-        contactPeerIds: peerIds,
-        messages: Object.values(byPeer).flat(),
-      });
-      if (expandedPeerIds.length === peerIds.length) break;
-      peerIds = expandedPeerIds;
+    if (!session?.token) {
+      setInitialMessagesSettledPeerKey(null);
+      return;
     }
 
+    const loaded = await loadCloudMessagesByPeerUntilStable({
+      accountId: account.accountId,
+      initialPeerIds,
+      existingMessagesByPeer: messagesByPeerRef.current,
+      listMessages: (peerId) => client.listMessages(session.token, peerId),
+      resolveMessageAttachments: async (messages) => Promise.all(messages.map(async (message) => ({
+        ...message,
+        attachments: message.attachments?.length
+          ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+          : [],
+      }))),
+    });
+
     if (cancelledRef.current) return;
-    setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, byPeer) ? current : byPeer));
-  }, [account, bootstrapPeerIds, client]);
+    setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, loaded.messagesByPeer) ? current : loaded.messagesByPeer));
+    setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
+  }, [account, bootstrapPeerIds, bootstrapPeerKey, client]);
+
+  const syncCloudBridgeDiff = useCallback(async () => {
+    if (!account) return false;
+    if (syncingCloudDiffRef.current) return true;
+    const session = await loadSession();
+    if (!session?.token) return false;
+    syncingCloudDiffRef.current = true;
+    try {
+      let messagesByPeer = messagesByPeerRef.current;
+      let fallbackRequired = false;
+      for (let pass = 0; pass < 20; pass += 1) {
+        const result = await syncCloudDiffOnce({
+          accountId: account.accountId,
+          messagesByPeer,
+          fetchEvents: (cursor) => client.syncCloudEvents(session.token, cursor, 500),
+        });
+        if (result.fallbackRequired) {
+          fallbackRequired = true;
+          break;
+        }
+        messagesByPeer = result.messagesByPeer;
+        if (!result.hasMore) break;
+      }
+      if (cancelledRef.current) return false;
+      if (fallbackRequired) {
+        await refreshCloudBridgeMessages();
+        return false;
+      }
+      setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, messagesByPeer) ? current : messagesByPeer));
+      setInitialMessagesSettledPeerKey(bootstrapPeerKey);
+      return true;
+    } finally {
+      syncingCloudDiffRef.current = false;
+    }
+  }, [account, bootstrapPeerKey, client, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account) {
@@ -873,12 +1075,19 @@ export function useCloudBridgeState({
       setReadInboundMessageIdsByPeer({});
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
+      setInitialMessagesSettledPeerKey(null);
       return;
     }
-    void refreshCloudBridgeMessages();
-    const interval = window.setInterval(() => void refreshCloudBridgeMessages(), CLOUD_MESSAGES_REFRESH_MS);
+    void syncCloudBridgeDiff().then((diffSynced) => {
+      if (!diffSynced) void refreshCloudBridgeMessages();
+    });
+    const interval = window.setInterval(() => {
+      void syncCloudBridgeDiff().then((diffSynced) => {
+        if (!diffSynced) void refreshCloudBridgeMessages();
+      });
+    }, CLOUD_MESSAGES_REFRESH_MS);
     return () => window.clearInterval(interval);
-  }, [account, refreshCloudBridgeMessages]);
+  }, [account, refreshCloudBridgeMessages, syncCloudBridgeDiff]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState || !setCanonicalSessionState) {
@@ -1629,9 +1838,9 @@ export function useCloudBridgeState({
   ]);
 
   const mergeMessageRef = useRef(mergeMessage);
-  const refreshCloudBridgeMessagesRef = useRef(refreshCloudBridgeMessages);
+  const syncCloudBridgeDiffRef = useRef(syncCloudBridgeDiff);
   useEffect(() => { mergeMessageRef.current = mergeMessage; }, [mergeMessage]);
-  useEffect(() => { refreshCloudBridgeMessagesRef.current = refreshCloudBridgeMessages; }, [refreshCloudBridgeMessages]);
+  useEffect(() => { syncCloudBridgeDiffRef.current = syncCloudBridgeDiff; }, [syncCloudBridgeDiff]);
 
   useEffect(() => {
     if (!account) return;
@@ -1661,7 +1870,7 @@ export function useCloudBridgeState({
           const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
           const subject: string | undefined = frame?.subject;
           if (subject?.startsWith('kordi.events.message.read.')) {
-            void refreshCloudBridgeMessagesRef.current?.();
+            void syncCloudBridgeDiffRef.current?.();
             return;
           }
           if (!subject?.startsWith('kordi.events.message.arrived.')) return;
@@ -1680,6 +1889,7 @@ export function useCloudBridgeState({
             readAt: payload.read_at ?? null,
             direction: to === accountIdAtOpen ? 'incoming' : 'outgoing',
           });
+          void syncCloudBridgeDiffRef.current?.();
         } catch (error) {
           // eslint-disable-next-line no-console
           console.warn('[cloud-bridge-ws] frame parse failed', error);
@@ -2214,5 +2424,14 @@ export function useCloudBridgeState({
     sendCloudGroupControl,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
+    refreshCloudContacts: contacts.refresh,
+    initialContactsSettled: contacts.initialLoadSettled,
+    initialMessagesSettled: cloudInitialMessagesSettledForPeerKey({
+      accountReady: Boolean(account),
+      contactsSettled: contacts.initialLoadSettled,
+      currentPeerKey: bootstrapPeerKey,
+      settledPeerKey: initialMessagesSettledPeerKey,
+    }),
+    cachedMessagesReady: Object.values(messagesByPeer).some((messages) => messages.length > 0),
   };
 }

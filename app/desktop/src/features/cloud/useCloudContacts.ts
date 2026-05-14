@@ -24,6 +24,7 @@ export type UseCloudContactsResult = {
   requests: ContactRequest[];
   loading: boolean;
   error: string | null;
+  initialLoadSettled: boolean;
   refresh(): Promise<void>;
   sendRequest(peerAccountId: string, message?: string): Promise<void>;
   acceptRequest(requestId: string): Promise<void>;
@@ -40,6 +41,7 @@ export type CloudContactsSnapshot = {
 type CloudContactsStoreSnapshot = CloudContactsSnapshot & {
   loading: boolean;
   error: string | null;
+  initialLoadSettled: boolean;
 };
 
 type CloudContactsStore = {
@@ -58,6 +60,7 @@ const EMPTY_CLOUD_CONTACTS_SNAPSHOT: CloudContactsStoreSnapshot = {
   requests: [],
   loading: false,
   error: null,
+  initialLoadSettled: true,
 };
 const cloudContactStores = new Map<string, CloudContactsStore>();
 
@@ -107,7 +110,7 @@ function cloudContactsStoreFor(accountId: string): CloudContactsStore {
   if (existing) return existing;
   const store: CloudContactsStore = {
     accountId,
-    snapshot: EMPTY_CLOUD_CONTACTS_SNAPSHOT,
+    snapshot: { ...EMPTY_CLOUD_CONTACTS_SNAPSHOT, initialLoadSettled: false },
     listeners: new Set(),
     refreshPromise: null,
     refreshAgain: false,
@@ -139,18 +142,22 @@ async function refreshCloudContactsStore(store: CloudContactsStore, client: Clou
   }
   store.refreshPromise = (async () => {
     const session = await loadSession();
-    if (!session?.token) return;
+    if (!session?.token) {
+      publishCloudContactsStore(store, { loading: false, initialLoadSettled: true });
+      return;
+    }
     publishCloudContactsStore(store, { loading: true, error: null });
     try {
       const [contacts, requests] = await Promise.all([
         client.listContacts(session.token),
         client.listContactRequests(session.token),
       ]);
-      publishCloudContactsStore(store, { contacts, requests, loading: false, error: null });
+      publishCloudContactsStore(store, { contacts, requests, loading: false, error: null, initialLoadSettled: true });
     } catch (err) {
       publishCloudContactsStore(store, {
         loading: false,
         error: err instanceof Error ? err.message : 'Failed to load cloud contacts',
+        initialLoadSettled: true,
       });
     } finally {
       store.refreshPromise = null;
@@ -293,6 +300,7 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     requests: mappedRequests,
     loading: snapshot.loading,
     error: snapshot.error,
+    initialLoadSettled: snapshot.initialLoadSettled,
     refresh: fetchData,
     sendRequest,
     acceptRequest,

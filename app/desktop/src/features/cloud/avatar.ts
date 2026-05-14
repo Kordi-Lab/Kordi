@@ -18,3 +18,31 @@ export function cloudAvatarSeedForAccount(
 ): string {
   return cloudAvatarSeedFromUrl(avatarUrl) || accountId?.trim() || 'cloud-account';
 }
+
+export function resolveCloudLocalProfileAvatar({
+  accountId,
+  avatarUrl,
+  canonicalAvatarSeed,
+  canonicalProfileImageUrl,
+}: {
+  accountId: string | null | undefined;
+  avatarUrl: string | null | undefined;
+  canonicalAvatarSeed?: string | null;
+  canonicalProfileImageUrl?: string | null;
+}): { seed: string | null; imageUrl: string | null; shouldPersistSeed: boolean } {
+  const cloudSeed = cloudAvatarSeedFromUrl(avatarUrl);
+  if (cloudSeed) {
+    return { seed: cloudSeed, imageUrl: null, shouldPersistSeed: true };
+  }
+
+  const imageUrl = cloudAvatarImageUrl(avatarUrl);
+  if (imageUrl) {
+    return { seed: accountId?.trim() || null, imageUrl, shouldPersistSeed: false };
+  }
+
+  return {
+    seed: accountId?.trim() || canonicalAvatarSeed?.trim() || null,
+    imageUrl: canonicalProfileImageUrl?.trim() || null,
+    shouldPersistSeed: false,
+  };
+}

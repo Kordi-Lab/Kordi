@@ -40,6 +40,44 @@ use crate::server::ServerState;
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
 
+#[cfg(test)]
+mod oauth_avatar_policy_tests {
+    use super::oauth_account_avatar_url;
+
+    #[test]
+    fn oauth_provider_avatar_replaces_generated_signup_avatar() {
+        assert_eq!(
+            oauth_account_avatar_url(
+                Some("kordi-pixel-avatar://cloud-signup:stable"),
+                Some("https://avatars.example/provider.png"),
+            ),
+            Some("https://avatars.example/provider.png".to_string()),
+        );
+    }
+
+    #[test]
+    fn oauth_provider_avatar_preserves_custom_uploaded_avatar() {
+        assert_eq!(
+            oauth_account_avatar_url(
+                Some("data:image/png;base64,custom"),
+                Some("https://avatars.example/provider.png"),
+            ),
+            Some("data:image/png;base64,custom".to_string()),
+        );
+    }
+
+    #[test]
+    fn oauth_provider_avatar_refreshes_existing_provider_avatar() {
+        assert_eq!(
+            oauth_account_avatar_url(
+                Some("https://avatars.example/old-provider.png"),
+                Some("https://avatars.example/new-provider.png"),
+            ),
+            Some("https://avatars.example/new-provider.png".to_string()),
+        );
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CloudSession {
     pub token_id: String,
@@ -287,6 +325,37 @@ pub struct MessagesQuery {
     pub limit: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CloudSyncQuery {
+    /// Last successfully applied sync event id. `0` means from the beginning.
+    pub cursor: Option<i64>,
+    /// Optional cap, default 500, max 1000.
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CloudSyncEventSummary {
+    #[serde(rename = "eventId")]
+    pub event_id: String,
+    #[serde(rename = "eventType")]
+    pub event_type: String,
+    #[serde(rename = "peerAccountId")]
+    pub peer_account_id: Option<String>,
+    #[serde(rename = "messageId")]
+    pub message_id: Option<String>,
+    pub payload: serde_json::Value,
+    #[serde(rename = "occurredAt")]
+    pub occurred_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CloudSyncResponse {
+    pub cursor: String,
+    #[serde(rename = "hasMore")]
+    pub has_more: bool,
+    pub events: Vec<CloudSyncEventSummary>,
+}
+
 #[derive(Debug, Serialize)]
 struct ErrorBody {
     #[serde(rename = "errorCode")]
@@ -493,6 +562,7 @@ pub fn routes_with_config(
         )
         .route("/v1/cloud/messages", get(list_messages).post(send_message))
         .route("/v1/cloud/messages/read", post(mark_messages_read))
+        .route("/v1/cloud/sync", get(sync_cloud_events))
         .route(
             "/v1/cloud/attachments/initiate",
             post(crate::attachments::routes::initiate),
@@ -734,6 +804,30 @@ async fn oauth_callback(
     }
 }
 
+fn oauth_account_avatar_url(
+    existing_avatar_url: Option<&str>,
+    provider_avatar_url: Option<&str>,
+) -> Option<String> {
+    let existing = existing_avatar_url.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    });
+    let provider = provider_avatar_url.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    });
+
+    if provider.is_some()
+        && existing.as_deref().is_none_or(|value| {
+            value.starts_with(AVATAR_SEED_PREFIX) || !value.starts_with("data:")
+        })
+    {
+        return provider;
+    }
+
+    existing.or(provider)
+}
+
 async fn complete_oauth_login(
     pool: &PgPool,
     provider: OAuthProvider,
@@ -770,7 +864,18 @@ async fn complete_oauth_login(
         .unwrap_or_else(|| format!("acct_{}", uuid::Uuid::new_v4().simple()));
     let display_name = clean_profile_display_name(profile.display_name.as_deref())
         .or_else(|| profile.username.clone());
-    let avatar_url = clean_profile_avatar_url(None, profile.avatar_url.as_deref());
+    let provider_avatar_url = clean_profile_avatar_url(None, profile.avatar_url.as_deref());
+    let existing_account_avatar_url: Option<(Option<String>,)> =
+        query_as("SELECT avatar_url FROM cloud_accounts WHERE account_id = $1")
+            .bind(&account_id)
+            .fetch_optional(pool)
+            .await?;
+    let avatar_url = oauth_account_avatar_url(
+        existing_account_avatar_url
+            .as_ref()
+            .and_then(|row| row.0.as_deref()),
+        provider_avatar_url.as_deref(),
+    );
 
     let mut tx = pool.begin().await?;
     query(
@@ -779,7 +884,7 @@ async fn complete_oauth_login(
          ON CONFLICT (account_id) DO UPDATE SET \
            display_name = COALESCE(cloud_accounts.display_name, excluded.display_name), \
            primary_email = COALESCE(cloud_accounts.primary_email, excluded.primary_email), \
-           avatar_url = COALESCE(cloud_accounts.avatar_url, excluded.avatar_url), \
+           avatar_url = excluded.avatar_url, \
            updated_at = excluded.updated_at",
     )
     .bind(&account_id)
@@ -2207,6 +2312,97 @@ mod cloud_message_policy_tests {
     }
 }
 
+fn message_sync_payload(message: &MessageSummary) -> serde_json::Value {
+    serde_json::json!({ "message": message })
+}
+
+async fn append_cloud_sync_event(
+    pool: &PgPool,
+    account_id: &str,
+    event_type: &str,
+    peer_account_id: Option<&str>,
+    message_id: Option<&str>,
+    payload: serde_json::Value,
+    occurred_at: &str,
+) -> Result<(), sqlx_core::error::Error> {
+    query(
+        "INSERT INTO cloud_sync_events \
+         (account_id, event_type, peer_account_id, message_id, payload_json, occurred_at) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(account_id)
+    .bind(event_type)
+    .bind(peer_account_id)
+    .bind(message_id)
+    .bind(payload)
+    .bind(occurred_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// `GET /v1/cloud/sync?cursor=...&limit=...` — return account-scoped
+/// ordered Cloud changes after the caller's last successfully applied cursor.
+async fn sync_cloud_events(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Query(q): axum::extract::Query<CloudSyncQuery>,
+) -> Response {
+    let cursor = q.cursor.unwrap_or(0).max(0);
+    let limit = q.limit.unwrap_or(500).clamp(1, 1000);
+    let fetch_limit = limit + 1;
+    let rows: Vec<(i64, String, Option<String>, Option<String>, serde_json::Value, String)> =
+        match query_as(
+            "SELECT event_id, event_type, peer_account_id, message_id, payload_json, occurred_at \
+             FROM cloud_sync_events \
+             WHERE account_id = $1 AND event_id > $2 \
+             ORDER BY event_id ASC \
+             LIMIT $3",
+        )
+        .bind(&session.account_id)
+        .bind(cursor)
+        .bind(fetch_limit)
+        .fetch_all(state.db_pool())
+        .await
+        {
+            Ok(rows) => rows,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        };
+
+    let has_more = rows.len() as i64 > limit;
+    let events: Vec<CloudSyncEventSummary> = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(|(event_id, event_type, peer_account_id, message_id, payload, occurred_at)| {
+            CloudSyncEventSummary {
+                event_id: event_id.to_string(),
+                event_type,
+                peer_account_id,
+                message_id,
+                payload,
+                occurred_at,
+            }
+        })
+        .collect();
+    let next_cursor = events
+        .last()
+        .map(|event| event.event_id.clone())
+        .unwrap_or_else(|| cursor.to_string());
+
+    Json(CloudSyncResponse {
+        cursor: next_cursor,
+        has_more,
+        events,
+    })
+    .into_response()
+}
+
 /// `POST /v1/cloud/messages` — send a 1:1 message to a peer the caller
 /// already has in their contacts. Body is plain UTF-8 for now; E2EE
 /// is a later session (it'll migrate writes to `server_messages`).
@@ -2416,15 +2612,60 @@ async fn send_message(
     let summary = MessageSummary {
         message_id,
         from_account_id: session.account_id.clone(),
-        to_account_id: peer,
+        to_account_id: peer.clone(),
         body,
         session_id: cloud_session_id,
         created_at: now.clone(),
-        delivered_at: Some(now),
+        delivered_at: Some(now.clone()),
         read_at: None,
         direction: "outgoing".into(),
         attachments,
     };
+
+    if append_cloud_sync_event(
+        pool,
+        &session.account_id,
+        "message.upsert",
+        Some(&peer),
+        Some(&summary.message_id),
+        message_sync_payload(&summary),
+        &now,
+    )
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record sync event.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    if peer != session.account_id {
+        let recipient_summary = MessageSummary {
+            direction: "incoming".into(),
+            ..summary.clone()
+        };
+        if append_cloud_sync_event(
+            pool,
+            &peer,
+            "message.upsert",
+            Some(&session.account_id),
+            Some(&summary.message_id),
+            message_sync_payload(&recipient_summary),
+            &now,
+        )
+        .await
+        .is_err()
+        {
+            return err(
+                "server_error",
+                "Could not record sync event.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
     (
         StatusCode::CREATED,
         Json(MessageResponse { message: summary }),
@@ -2454,18 +2695,19 @@ async fn mark_messages_read(
 
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();
-    let update_result = query(
+    let read_rows: Result<Vec<(String,)>, _> = query_as(
         "UPDATE cloud_messages \
          SET read_at = COALESCE(read_at, $1), \
              delivered_at = COALESCE(delivered_at, $1) \
-         WHERE from_account_id = $2 AND to_account_id = $3 AND read_at IS NULL",
+         WHERE from_account_id = $2 AND to_account_id = $3 AND read_at IS NULL \
+         RETURNING message_id",
     )
     .bind(&now)
     .bind(&peer)
     .bind(&session.account_id)
-    .execute(pool)
+    .fetch_all(pool)
     .await;
-    let Ok(update_result) = update_result else {
+    let Ok(read_rows) = read_rows else {
         return err(
             "server_error",
             "Could not mark messages read.",
@@ -2473,7 +2715,31 @@ async fn mark_messages_read(
         );
     };
 
-    if update_result.rows_affected() > 0 {
+    let message_ids: Vec<String> = read_rows.into_iter().map(|row| row.0).collect();
+    if !message_ids.is_empty() {
+        if append_cloud_sync_event(
+            pool,
+            &peer,
+            "message.read",
+            Some(&session.account_id),
+            None,
+            serde_json::json!({
+                "readerAccountId": &session.account_id,
+                "messageIds": &message_ids,
+                "readAt": &now,
+            }),
+            &now,
+        )
+        .await
+        .is_err()
+        {
+            return err(
+                "server_error",
+                "Could not record sync event.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+
         let events = state.events().clone();
         let reader = session.account_id.clone();
         let sender = peer.clone();

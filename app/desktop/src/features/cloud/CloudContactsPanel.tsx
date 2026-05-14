@@ -10,7 +10,7 @@ import {
 } from './authClient';
 import { loadSession } from './session';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
-import { cloudAvatarSeedForAccount } from './avatar';
+import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 
 function avatarSeedFor(profile: { accountId: string; avatarUrl: string | null }): string {
   return cloudAvatarSeedForAccount(profile.accountId, profile.avatarUrl);
@@ -157,7 +157,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
               kind="human"
               seed={avatarSeedFor({ accountId: account.accountId, avatarUrl: account.avatarUrl })}
               name={account.displayName ?? account.primaryEmail ?? 'You'}
-              imageUrl={null}
+              imageUrl={cloudAvatarImageUrl(account.avatarUrl)}
               avatarKey={`cloud-self:${account.accountId}`}
               className="h-10 w-10 shrink-0 rounded-full border border-white/10"
             />
@@ -218,7 +218,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
                 kind="human"
                 seed={avatarSeedFor(lookup.profile)}
                 name={lookup.profile.displayName ?? lookup.profile.accountId}
-                imageUrl={null}
+                imageUrl={cloudAvatarImageUrl(lookup.profile.avatarUrl)}
                 avatarKey={`cloud-peer:${lookup.profile.accountId}`}
                 className="h-10 w-10 shrink-0 rounded-full border border-white/10"
               />
@@ -277,7 +277,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
                   kind="human"
                   seed={avatarSeedFor(contact)}
                   name={contact.displayName ?? contact.accountId}
-                  imageUrl={null}
+                  imageUrl={cloudAvatarImageUrl(contact.avatarUrl)}
                   avatarKey={`cloud-contact:${contact.accountId}`}
                   className="h-9 w-9 shrink-0 rounded-full border border-white/10"
                 />
