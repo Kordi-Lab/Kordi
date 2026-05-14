@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { bridgeChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
+import type { CloudAccount } from '../src/features/cloud/authClient';
 import type { Agent, Contact, Conversation, DesktopBridgeConversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
@@ -202,6 +203,27 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+test('WorkspaceSidebar cloud profile uses the provider image avatar instead of a generated pixel fallback', () => {
+  const cloudAccount: CloudAccount = {
+    accountId: 'acct_provider',
+    displayName: 'Provider User',
+    primaryEmail: 'provider@example.com',
+    avatarUrl: 'https://lh3.googleusercontent.com/a/provider-avatar',
+    nodeId: 'node-provider',
+    passwordSet: false,
+  };
+
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    cloudAccount,
+    onUpdateCloudProfile: async () => cloudAccount,
+    localProfileAvatarSeed: 'stale-generated-local-seed',
+  }) as never));
+
+  const profileAvatarMarkup = markup.slice(markup.indexOf('aria-label="Provider User avatar"'), markup.indexOf('aria-label="Provider User avatar"') + 500);
+  assert.match(profileAvatarMarkup, /src="https:\/\/lh3\.googleusercontent\.com\/a\/provider-avatar"/);
+  assert.doesNotMatch(profileAvatarMarkup, /shape-rendering="crispEdges"/);
+});
 
 test('WorkspaceSidebar renders direct human participant spaces as one flat chat row without session actions', () => {
   const participantSpaces = buildParticipantSpaces(baseSidebarProps().chatConversations);
