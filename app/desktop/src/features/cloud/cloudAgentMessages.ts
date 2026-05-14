@@ -139,6 +139,13 @@ export function cloudMessageMentionsLocalAgent(
   return cloudMessageMentionsAnyAgentKey(text, localAgentMentionKeys(account, options));
 }
 
+export function cloudMessageIsSelfAgentRequest(message: CloudMessage, account: CloudAccount): boolean {
+  if (message.fromAccountId !== account.accountId || message.toAccountId !== account.accountId) return false;
+  if (!message.body.trim()) return false;
+  if (isCloudGroupControlMessage(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
+  return true;
+}
+
 export function cloudMessageMentionsNamedAgent(text: string, ownerOrAgentName: string | null | undefined): boolean {
   const owner = ownerOrAgentName?.trim();
   if (!owner) return false;

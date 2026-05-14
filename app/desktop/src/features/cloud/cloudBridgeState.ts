@@ -29,6 +29,7 @@ import {
   isCloudGroupControlMessage,
 } from './cloudGroupMessages';
 import {
+  cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsFirstPersonAgent,
   cloudMessageMentionsLocalAgent,
   cloudMessageMentionsNamedAgent,
@@ -41,6 +42,7 @@ import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
 const CLOUD_SERVER_LABEL = 'kordi.cloud';
 export const CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
+const CLOUD_LOCAL_AGENT_PENDING_WINDOW_MS = 10 * 60_000;
 const CLOUD_PERSON_RUNTIME = 'person';
 const CLOUD_AGENT_RUNTIME = 'kordi-desktop';
 const CLOUD_AGENT_SESSION_SUFFIX = ':session:';
@@ -479,7 +481,9 @@ export function buildCloudBridgeConversation({
   const requestTargetAccountIds = new Map<string, string>();
   for (const message of messages) {
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
-    if (cloudMessageMentionsFirstPersonAgent(message.body)) {
+    if (isSelfPeer && cloudMessageIsSelfAgentRequest(message, account)) {
+      requestTargetAccountIds.set(message.messageId, account.accountId);
+    } else if (cloudMessageMentionsFirstPersonAgent(message.body)) {
       requestTargetAccountIds.set(message.messageId, message.fromAccountId);
     } else if (cloudMessageMentionsContactAgent(message, contact)) {
       requestTargetAccountIds.set(message.messageId, peerAccountId);
@@ -512,7 +516,14 @@ export function buildCloudBridgeConversation({
       return Number.isFinite(createdAtMs) && Date.now() - createdAtMs >= CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS;
     })
     .map((message) => message.messageId));
-  const pendingAgentRequests = agentRequests.filter((message) => !answeredRequestIds.has(message.messageId) && !timedOutAgentRequestIds.has(message.messageId));
+  const pendingAgentRequests = agentRequests.filter((message) => {
+    if (answeredRequestIds.has(message.messageId) || timedOutAgentRequestIds.has(message.messageId)) return false;
+    if (requestTargetAccountIds.get(message.messageId) !== account.accountId) return true;
+    if (localAgentTurnsByRequestId[message.messageId]) return true;
+    if (cloudMessageMentionsFirstPersonAgent(message.body) || cloudMessageMentionsLocalAgent(message.body, account, { allowFirstPerson: message.fromAccountId === account.accountId })) return true;
+    const createdAtMs = Date.parse(message.createdAt);
+    return Number.isFinite(createdAtMs) && Date.now() - createdAtMs < CLOUD_LOCAL_AGENT_PENDING_WINDOW_MS;
+  });
   const pendingAgentRequestIds = new Set(pendingAgentRequests.map((message) => message.messageId));
   const bridgeMessages = visibleCloudMessages.flatMap((message) => {
     const mapped = cloudMessageToBridgeMessage(account, message, contact, { cancelledRequestIds, localAgentTurnsByRequestId });

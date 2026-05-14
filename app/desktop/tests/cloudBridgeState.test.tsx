@@ -244,6 +244,49 @@ test('cloud self-agent bridge state falls back to the first prompt as restored t
   assert.equal(state.conversations[0]?.peerDisplayName, 'waht is open claw');
 });
 
+test('cloud self-agent plain messages show local processing and match session-scoped replies', () => {
+  const sessionId = 'e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83';
+  const request = {
+    ...message,
+    messageId: 'msg_plain_self_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    direction: 'outgoing',
+    body: 'are you here',
+    sessionId,
+    createdAt: new Date().toISOString(),
+  } as CloudMessage;
+  const pendingState = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: [request] },
+    activeConversationId: cloudBridgeConversationId('acct_me', 'kordi-desktop', sessionId),
+  });
+
+  assert.equal(pendingState.conversations[0]?.awaitingReply, true);
+  assert.equal(pendingState.conversations[0]?.outreach?.bridgeRequestId, 'msg_plain_self_request');
+
+  const answeredState = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: [request, {
+      ...message,
+      messageId: 'msg_plain_self_response',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_me',
+      direction: 'outgoing',
+      body: encodeCloudAgentResponse({ requestId: 'msg_plain_self_request', text: 'Yes, I can see it.' }),
+      sessionId,
+      createdAt: new Date(Date.now() + 1_000).toISOString(),
+    }] },
+    activeConversationId: cloudBridgeConversationId('acct_me', 'kordi-desktop', sessionId),
+  });
+
+  assert.equal(answeredState.conversations[0]?.awaitingReply, false);
+  assert.equal(answeredState.conversations[0]?.outreach, null);
+  assert.equal(answeredState.conversations[0]?.messages.at(-1)?.text, 'Yes, I can see it.');
+});
+
 test('planCloudSelfAgentSync backfills terminal local self-agent turns without runtime internals', () => {
   const state = {
     sessions: [

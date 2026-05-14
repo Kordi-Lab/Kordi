@@ -43,6 +43,7 @@ import {
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
   buildCloudAgentPromptWithSharedContext,
+  cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsLocalAgent,
   encodeCloudAgentCancel,
   encodeCloudAgentResponse,
@@ -2059,7 +2060,8 @@ export function useCloudBridgeState({
       for (const message of messages) {
         if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) continue;
         if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
-        if (!cloudMessageMentionsLocalAgent(message.body, account, {
+        const isSelfAgentRequest = peerId === account.accountId && cloudMessageIsSelfAgentRequest(message, account);
+        if (!isSelfAgentRequest && !cloudMessageMentionsLocalAgent(message.body, account, {
           allowFirstPerson: message.fromAccountId === account.accountId,
         })) continue;
         if (!isRecentCloudAgentMention(message.createdAt)) continue;
@@ -2125,6 +2127,7 @@ export function useCloudBridgeState({
             session.token,
             peerId,
             encodeCloudAgentResponse({ requestId: message.messageId, text: responseText }),
+            { sessionId: message.sessionId ?? null },
           );
           mergeMessage(response);
           void refreshCloudBridgeMessages();
