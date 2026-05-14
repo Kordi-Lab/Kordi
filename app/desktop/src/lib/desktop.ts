@@ -671,6 +671,7 @@ export type DesktopChatForkSessionResult = {
   sourceSessionId: string;
   sourceMessageId: string;
   selectedText: string;
+  canonicalOnly?: boolean;
 };
 
 export async function forkDesktopChatSessionFromMessage(sessionId: string, messageEntryId: string) {

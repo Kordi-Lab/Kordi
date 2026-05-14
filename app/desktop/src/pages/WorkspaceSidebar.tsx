@@ -479,8 +479,6 @@ export function WorkspaceSidebar({
   onCreateBridgeDraft,
 }: WorkspaceSidebarProps) {
   const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
-  const contactUnread = contactParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
-  const agentUnread = agentParticipantSpaces.reduce((sum, space) => sum + Math.max(0, space.unread), 0);
   const pendingContactRequestCount = Math.max(0, contactRequestCount);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
   const bridgeSyncStatus = isBridgePolling ? 'syncing' : 'idle';
@@ -685,6 +683,9 @@ export function WorkspaceSidebar({
     const childForks = globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
     const hasForks = childForks.length > 0;
     const expanded = hasForks && isForkListExpanded(session.id);
+    const rowUnreadCount = expanded
+      ? session.unread
+      : (unreadBySessionIdWithForkDescendants.get(session.id) ?? session.unread);
     // Mirror the agent-tab tree behavior: when a parent is collapsed,
     // keep only the active session's path visible (the user shouldn't
     // lose sight of where they currently are) and hide every other
@@ -785,7 +786,7 @@ export function WorkspaceSidebar({
           </div>
           <SidebarSessionMetaColumn
             timeLabel={sessionRowTimeLabel}
-            unreadCount={session.unread}
+            unreadCount={rowUnreadCount}
             unreadScope="participant-session"
             indicator={session.statusIndicator}
             active={isActive}
@@ -822,6 +823,7 @@ export function WorkspaceSidebar({
       ? space.sessions.filter((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
       : space.sessions;
     const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
+    const spaceUnreadCount = unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread;
     const toggleSpace = () => {
       if (isDirectHuman) {
         if (latestSession) onSelectChatSession(latestSession.id);
@@ -913,7 +915,7 @@ export function WorkspaceSidebar({
             <div className="app-participant-space-row-meta">
               <SidebarSessionMetaColumn
                 timeLabel={rowTimeLabel}
-                unreadCount={isExpanded ? 0 : space.unread}
+                unreadCount={isExpanded ? 0 : spaceUnreadCount}
                 unreadScope="participant-space"
                 indicator={isExpanded ? undefined : latestSession?.statusIndicator}
                 active={isActiveSpace || isExpanded}
@@ -977,6 +979,46 @@ export function WorkspaceSidebar({
     () => new Map(allSidebarSessions.map((row) => [row.session.id, row])),
     [allSidebarSessions],
   );
+  const unreadBySessionIdWithForkDescendants = useMemo(() => {
+    const cache = new Map<string, number>();
+    const visit = (sessionId: string, seen: Set<string>): number => {
+      if (cache.has(sessionId)) return cache.get(sessionId) ?? 0;
+      if (seen.has(sessionId)) return 0;
+      const nextSeen = new Set(seen);
+      nextSeen.add(sessionId);
+      const ownUnread = Math.max(0, allSidebarSessionRowsById.get(sessionId)?.session.unread ?? 0);
+      const forkUnread = (globalForkLineage.forksByParentSessionId.get(sessionId) ?? [])
+        .reduce((sum, fork) => sum + visit(fork.id, nextSeen), 0);
+      const total = ownUnread + forkUnread;
+      cache.set(sessionId, total);
+      return total;
+    };
+    for (const sessionId of allSidebarSessionRowsById.keys()) visit(sessionId, new Set());
+    return cache;
+  }, [allSidebarSessionRowsById, globalForkLineage]);
+  const unreadByParticipantSpaceIdWithForkDescendants = useMemo(() => {
+    const collect = (sessionId: string, target: Set<string>, seen: Set<string>) => {
+      if (seen.has(sessionId)) return;
+      seen.add(sessionId);
+      target.add(sessionId);
+      for (const fork of globalForkLineage.forksByParentSessionId.get(sessionId) ?? []) {
+        collect(fork.id, target, seen);
+      }
+    };
+    const unreadBySpaceId = new Map<string, number>();
+    for (const space of participantSpaces) {
+      const sessionIds = new Set<string>();
+      for (const session of space.sessions) collect(session.id, sessionIds, new Set());
+      const unread = [...sessionIds].reduce((sum, sessionId) => (
+        sum + Math.max(0, allSidebarSessionRowsById.get(sessionId)?.session.unread ?? 0)
+      ), 0);
+      unreadBySpaceId.set(space.id, unread);
+    }
+    return unreadBySpaceId;
+  }, [allSidebarSessionRowsById, globalForkLineage, participantSpaces]);
+  const contactUnread = contactParticipantSpaces.reduce((sum, space) => (
+    sum + Math.max(0, unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread)
+  ), 0);
 
   const flatAgentSessions = agentParticipantSpaces
     .flatMap((space) => space.sessions.map((session) => ({ session, space })))
@@ -1004,6 +1046,21 @@ export function WorkspaceSidebar({
     () => new Map(flatAgentSessions.map((row) => [row.session.id, row])),
     [flatAgentSessions],
   );
+  const renderableAgentSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    const visit = (sessionId: string) => {
+      if (ids.has(sessionId)) return;
+      ids.add(sessionId);
+      for (const fork of agentForkLineage.forksByParentSessionId.get(sessionId) ?? []) {
+        visit(fork.id);
+      }
+    };
+    for (const { session } of topLevelAgentSessions) visit(session.id);
+    return ids;
+  }, [agentForkLineage, topLevelAgentSessions]);
+  const agentUnread = flatAgentSessions.reduce((sum, { session }) => (
+    renderableAgentSessionIds.has(session.id) ? sum + Math.max(0, session.unread) : sum
+  ), 0);
 
   // Track which parent rows have their fork list expanded. Default to
   // expanded so the user immediately sees children; toggling collapses.

@@ -698,6 +698,7 @@ export function buildCloudDesktopBridgeState({
   localAgentTurnsByRequestId = {},
   localAgentRuntimeRoute = null,
   cloudSessionTitlesById = {},
+  hiddenCloudSessionIds = new Set<string>(),
 }: {
   account: CloudAccount;
   contacts: Contact[];
@@ -707,6 +708,7 @@ export function buildCloudDesktopBridgeState({
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
   localAgentRuntimeRoute?: DesktopChatMessageRoute | null;
   cloudSessionTitlesById?: Record<string, string | null | undefined>;
+  hiddenCloudSessionIds?: ReadonlySet<string>;
 }): DesktopBridgeState {
   const directContacts = contacts.filter(isDirectCloudContact);
   const host = buildCloudBridgeHost(account, directContacts, localAgentRuntimeRoute);
@@ -745,6 +747,7 @@ export function buildCloudDesktopBridgeState({
           const hasSessionScopedMessages = messages.some((cloudMessage) => Boolean(cleanCloudSessionId(cloudMessage.sessionId)));
           for (const cloudMessage of messages) {
             const sessionId = cleanCloudSessionId(cloudMessage.sessionId);
+            if (sessionId && hiddenCloudSessionIds.has(sessionId)) continue;
             if (hasSessionScopedMessages && !sessionId) continue;
             const bucket = bySession.get(sessionId) ?? [];
             bucket.push(cloudMessage);

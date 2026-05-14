@@ -465,11 +465,13 @@ async fn build_chat_state(
         model_options,
         slash_commands,
     };
+    let active_is_canonical_group = crate::canonical_sessions::canonical_session_is_group_chat(&state.active_session_id)
+        .unwrap_or(false);
     let sync_state = desktop_state_for_canonical_sync(
         &state,
         session_has_running_turn(manager, &state.active_session_id).await,
     );
-    if !is_cloud_agent_runtime_session_id(&state.active_session_id) {
+    if !is_cloud_agent_runtime_session_id(&state.active_session_id) && !active_is_canonical_group {
         if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&sync_state) {
             eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
         }
@@ -714,6 +716,7 @@ pub struct DesktopChatForkSessionResult {
     pub source_session_id: String,
     pub source_message_id: String,
     pub selected_text: String,
+    pub canonical_only: bool,
 }
 
 #[tauri::command]
@@ -750,6 +753,8 @@ pub async fn desktop_chat_fork_session_from_message(
             trimmed_session_id,
             trimmed_entry_id,
         )?;
+    let source_is_canonical_group = canonical_entry_match
+        && crate::canonical_sessions::canonical_session_is_group_chat(trimmed_session_id)?;
     let local_session_exists =
         !canonical_entry_match && session_exists_globally(trimmed_session_id)?;
     if !canonical_entry_match && !local_session_exists {
@@ -775,6 +780,23 @@ pub async fn desktop_chat_fork_session_from_message(
         .map_err(|err| err.to_string())?
     };
 
+    if source_is_canonical_group {
+        // Cloud/contact/group forks are canonical Cloud sessions. Do not create
+        // or resume a localhost desktop runtime for the fork id; doing so mirrors
+        // the fork back as a self-agent session, creates fake Processing rows,
+        // and prevents peers from seeing the Cloud fork lineage consistently.
+        let fallback_session_id = ensure_loaded_session(&manager, &cwd, None).await?;
+        let state = build_chat_state(&manager, &cwd, fallback_session_id).await?;
+        return Ok(DesktopChatForkSessionResult {
+            state,
+            forked_session_id: outcome.session_id,
+            source_session_id: outcome.source_session_id,
+            source_message_id: outcome.source_entry_id,
+            selected_text: outcome.selected_text,
+            canonical_only: true,
+        });
+    }
+
     let runtime = kordi_cli::desktop_runtime::DesktopRuntimeSession::resume(
         std::path::PathBuf::from(&outcome.cwd),
         &outcome.session_id,
@@ -797,6 +819,7 @@ pub async fn desktop_chat_fork_session_from_message(
         source_session_id: outcome.source_session_id,
         source_message_id: outcome.source_entry_id,
         selected_text: outcome.selected_text,
+        canonical_only: false,
     })
 }
 

@@ -157,6 +157,14 @@ export type CloudSyncResponse = {
   events: CloudSyncEvent[];
 };
 
+export type CloudSessionForkSummary = {
+  forkSessionId: string;
+  parentSessionId: string;
+  parentMessageId?: string | null;
+  createdByAccountId: string;
+  createdAt: string;
+};
+
 export type RegisterDeviceResult = {
   nodeId: string;
   apiKey: string;
@@ -553,6 +561,23 @@ export class CloudAuthClient {
       },
       'Could not mark messages read.',
     );
+  }
+
+  async createSessionFork(token: string, sourceSessionId: string, input: { forkSessionId: string; parentMessageId?: string | null }): Promise<CloudSessionForkSummary> {
+    const response = await this.send<{ fork: CloudSessionForkSummary }>(
+      `/v1/cloud/sessions/${encodeURIComponent(sourceSessionId)}/forks`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          forkSessionId: input.forkSessionId,
+          parentMessageId: input.parentMessageId ?? null,
+        }),
+      },
+      'Could not create cloud session fork.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.fork;
   }
 
   async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> {
