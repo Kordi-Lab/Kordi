@@ -2207,6 +2207,9 @@ export function useCloudBridgeState({
     if (!account) return null;
     const activeRuntimeSessionId = cloudAgentRuntimeSessionId(account.accountId, activeConversationId);
     const activeRuntimeRoute = cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, activeRuntimeSessionId);
+    const cloudSessionTitlesById = Object.fromEntries((canonicalSessionState?.sessions ?? [])
+      .filter((session) => session.kind === 'self-agent')
+      .map((session) => [session.id, session.title]));
     const generated = buildCloudDesktopBridgeState({
       account,
       contacts: cloudBridgeContacts,
@@ -2215,6 +2218,7 @@ export function useCloudBridgeState({
       activeConversationId,
       localAgentTurnsByRequestId,
       localAgentRuntimeRoute: activeRuntimeRoute,
+      cloudSessionTitlesById,
     });
     return applyCloudAgentRuntimeRouteToState(
       mergeCloudBridgeState(generated, cloudBridgeOverride),
@@ -2224,6 +2228,7 @@ export function useCloudBridgeState({
     account,
     activeConversationId,
     cloudAgentRuntimeRoutesBySessionId,
+    canonicalSessionState,
     cloudBridgeOverride,
     cloudBridgeContacts,
     localAgentTurnsByRequestId,

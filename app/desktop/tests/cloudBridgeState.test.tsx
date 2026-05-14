@@ -193,6 +193,57 @@ test('cloud self-agent bridge state preserves one Cloud conversation per local s
   assert.equal(first.messages[0].text, 'session one prompt');
 });
 
+test('cloud self-agent bridge state restores session titles instead of naming every thread My Kordi', () => {
+  const sessionId = 'e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83';
+  const cloudMessages = [
+    {
+      ...message,
+      messageId: 'msg_prompt',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_me',
+      direction: 'outgoing',
+      body: 'what is open claw',
+      sessionId,
+      createdAt: '2026-05-11T10:00:00Z',
+    },
+  ] as CloudMessage[];
+
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: cloudMessages },
+    cloudSessionTitlesById: { [sessionId]: 'OpenClaw notes' },
+  });
+
+  assert.equal(state.conversations[0]?.title, 'OpenClaw notes');
+  assert.equal(state.conversations[0]?.peerDisplayName, 'OpenClaw notes');
+});
+
+test('cloud self-agent bridge state falls back to the first prompt as restored title', () => {
+  const sessionId = 'e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83';
+  const cloudMessages = [
+    {
+      ...message,
+      messageId: 'msg_prompt',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_me',
+      direction: 'outgoing',
+      body: 'waht is open claw',
+      sessionId,
+      createdAt: '2026-05-11T10:00:00Z',
+    },
+  ] as CloudMessage[];
+
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: cloudMessages },
+  });
+
+  assert.equal(state.conversations[0]?.title, 'waht is open claw');
+  assert.equal(state.conversations[0]?.peerDisplayName, 'waht is open claw');
+});
+
 test('planCloudSelfAgentSync backfills terminal local self-agent turns without runtime internals', () => {
   const state = {
     sessions: [
