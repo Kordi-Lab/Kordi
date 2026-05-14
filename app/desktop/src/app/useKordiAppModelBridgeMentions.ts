@@ -44,6 +44,14 @@ function participantNodeId(participant: NonNullable<Conversation['canonicalParti
 
 function directAgentConversationSuppressesMentions(conversation: MentionScopeConversation | null | undefined) {
   if (!conversation || conversationHasGroupMentionScope(conversation)) return false;
+  // Canonical forks of a group/contact session are minted as
+  // kind='self-agent' (which surfaces as type='owned-agent') so the
+  // sidebar nests them under their source rather than rendering as a
+  // brand-new group. But the fork's participant list deliberately
+  // carries every agent from the source for @-mention continuity —
+  // suppressing the picker entirely defeats that. Detect a fork via
+  // forkedFromSessionId and let the @-mention picker through.
+  if (cleanText((conversation as { forkedFromSessionId?: string | null }).forkedFromSessionId)) return false;
   const type = cleanText((conversation as Pick<Conversation, 'type'>).type).toLowerCase();
   return type === 'owned-agent' || type === 'external-agent' || type === 'agent';
 }

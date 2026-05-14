@@ -115,7 +115,7 @@ function conversationParticipantNameKeys(participants: string[] | undefined) {
     .filter((key) => key && !['me', 'you', 'my kordi', 'kordi'].includes(key));
 }
 
-export type MentionScopeConversation = object & Partial<Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>>;
+export type MentionScopeConversation = object & Partial<Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness' | 'forkedFromSessionId'>>;
 
 function conversationHumanOwnerKeys(conversation: MentionScopeConversation | null | undefined) {
   const keys = new Set<string>();
