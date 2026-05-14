@@ -125,6 +125,8 @@ mod tests {
                 updated_at_label: "Now".to_string(),
                 message_count: 2,
                 draft: false,
+                forked_from_session_id: None,
+                forked_from_message_id: None,
             }],
             projects: Vec::new(),
             active_session: DesktopChatSessionDetail {
@@ -152,6 +154,8 @@ mod tests {
                 },
                 project: None,
                 reflection_lesson_artifacts: Vec::new(),
+                forked_from_session_id: None,
+                forked_from_message_id: None,
                 messages: vec![
                     DesktopChatMessage {
                         role: "user".to_string(),
@@ -164,6 +168,7 @@ mod tests {
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
+                        entry_id: None,
                     },
                     DesktopChatMessage {
                         role: "assistant".to_string(),
@@ -176,6 +181,7 @@ mod tests {
                         attachments: Vec::new(),
                         thinking_text: Some("Checking disk usage".to_string()),
                         tools: Vec::new(),
+                        entry_id: None,
                     },
                 ],
             },
@@ -210,6 +216,7 @@ mod tests {
             attachments: Vec::new(),
             thinking_text: None,
             tools: Vec::new(),
+            entry_id: None,
         });
         let completed_sync_state = desktop_state_for_canonical_sync(&state, false);
         assert_eq!(completed_sync_state.active_session.messages.len(), 3);
@@ -242,6 +249,8 @@ mod tests {
             },
             project: None,
             reflection_lesson_artifacts: Vec::new(),
+            forked_from_session_id: None,
+            forked_from_message_id: None,
             messages: vec![
                 DesktopChatMessage {
                     role: "user".to_string(),
@@ -254,6 +263,7 @@ mod tests {
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
+                    entry_id: None,
                 },
                 DesktopChatMessage {
                     role: "assistant".to_string(),
@@ -277,6 +287,7 @@ mod tests {
                         tool_layer: Some("observation".to_string()),
                         is_error: false,
                     }],
+                    entry_id: None,
                 },
             ],
         };

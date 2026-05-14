@@ -242,6 +242,8 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
             updated_at_label: "Now".to_string(),
             message_count: 1,
             draft: false,
+            forked_from_session_id: None,
+            forked_from_message_id: None,
         }],
         projects: Vec::new(),
         active_session: kordi_cli::desktop_runtime::DesktopChatSessionDetail {
@@ -275,6 +277,8 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
                 shared_sources: Vec::new(),
             }),
             reflection_lesson_artifacts: Vec::new(),
+            forked_from_session_id: None,
+            forked_from_message_id: None,
             messages: vec![kordi_cli::desktop_runtime::DesktopChatMessage {
                 role: "user".to_string(),
                 sender: Some("You".to_string()),
@@ -286,6 +290,7 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
                 tools: Vec::new(),
                 attachments: Vec::new(),
                 failed: false,
+                entry_id: None,
             }],
         },
         local_agent: kordi_cli::desktop_runtime::DesktopChatAgentProfile {
@@ -319,6 +324,8 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
         updated_at_label: "Draft".to_string(),
         message_count: 0,
         draft: true,
+        forked_from_session_id: None,
+        forked_from_message_id: None,
     };
     let blank_detail = kordi_cli::desktop_runtime::DesktopChatSessionDetail {
         id: "draft:local-chat".to_string(),
@@ -345,6 +352,8 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
         },
         project: None,
         reflection_lesson_artifacts: Vec::new(),
+        forked_from_session_id: None,
+        forked_from_message_id: None,
         messages: Vec::new(),
     };
 
@@ -365,6 +374,7 @@ fn shared_bridge_local_agent_runtime_prompt_is_not_synced_as_extra_user_message(
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     assert!(should_skip_shared_local_agent_runtime_prompt(
@@ -400,6 +410,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
     let model_notice = kordi_cli::desktop_runtime::DesktopChatMessage {
         role: "system".to_string(),
@@ -412,6 +423,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
     let assistant = kordi_cli::desktop_runtime::DesktopChatMessage {
         role: "assistant".to_string(),
@@ -424,6 +436,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     let user_id = sync_desktop_chat_message(
@@ -526,6 +539,7 @@ fn desktop_sync_enriches_similar_bridge_agent_message_with_local_runtime_details
         }],
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     assert!(enrich_similar_bridge_agent_message_with_desktop_runtime(
@@ -603,6 +617,7 @@ fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() 
         }],
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     assert!(enrich_similar_bridge_agent_message_with_desktop_runtime(
@@ -682,6 +697,7 @@ fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_
         }],
         attachments: Vec::new(),
         failed: false,
+        entry_id: None,
     };
 
     assert!(

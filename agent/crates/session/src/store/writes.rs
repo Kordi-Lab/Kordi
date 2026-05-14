@@ -27,7 +27,7 @@ pub(super) fn open_memory() -> Result<Connection> {
 /// Create a new session.
 pub(super) fn create_session(conn: &Connection, cwd: &str) -> Result<String> {
     let session_id = Uuid::new_v4().to_string();
-    create_session_with_id_and_parent(conn, &session_id, cwd, None)?;
+    create_session_with_id_and_parent(conn, &session_id, cwd, None, None)?;
     Ok(session_id)
 }
 
@@ -35,15 +35,22 @@ pub(super) fn create_session_with_parent(
     conn: &Connection,
     cwd: &str,
     parent_session_id: Option<&str>,
+    parent_session_message_id: Option<&str>,
 ) -> Result<String> {
     let session_id = Uuid::new_v4().to_string();
-    create_session_with_id_and_parent(conn, &session_id, cwd, parent_session_id)?;
+    create_session_with_id_and_parent(
+        conn,
+        &session_id,
+        cwd,
+        parent_session_id,
+        parent_session_message_id,
+    )?;
     Ok(session_id)
 }
 
 /// Create a session with a specific ID (for lazy creation).
 pub(super) fn create_session_with_id(conn: &Connection, session_id: &str, cwd: &str) -> Result<()> {
-    create_session_with_id_and_parent(conn, session_id, cwd, None)
+    create_session_with_id_and_parent(conn, session_id, cwd, None, None)
 }
 
 pub(super) fn create_session_with_id_and_parent(
@@ -51,14 +58,22 @@ pub(super) fn create_session_with_id_and_parent(
     session_id: &str,
     cwd: &str,
     parent_session_id: Option<&str>,
+    parent_session_message_id: Option<&str>,
 ) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO sessions (
              session_id, cwd, created_at, updated_at, name, leaf_id, entry_count,
-             parent_session_id, session_scope, project_root
-         ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, ?5, 'chat', NULL)",
-        params![session_id, cwd, now, now, parent_session_id],
+             parent_session_id, parent_session_message_id, session_scope, project_root
+         ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, ?5, ?6, 'chat', NULL)",
+        params![
+            session_id,
+            cwd,
+            now,
+            now,
+            parent_session_id,
+            parent_session_message_id
+        ],
     )?;
     Ok(())
 }

@@ -87,6 +87,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud sync events",
         sql: include_str!("../../migrations/0009_cloud_sync_events.sql"),
     },
+    EmbeddedMigration {
+        version: 10,
+        description: "cloud session forks lineage",
+        sql: include_str!("../../migrations/0010_cloud_session_forks.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

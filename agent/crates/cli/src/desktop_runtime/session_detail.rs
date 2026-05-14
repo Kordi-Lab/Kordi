@@ -203,6 +203,8 @@ pub(super) fn build_summary_from_setup(
         updated_at_label: detail.updated_at_label,
         message_count: detail.message_count,
         draft: detail.draft,
+        forked_from_session_id: detail.forked_from_session_id.clone(),
+        forked_from_message_id: detail.forked_from_message_id.clone(),
     })
 }
 
@@ -244,6 +246,13 @@ pub(super) fn build_detail_from_setup(
         .as_deref()
         .and_then(load_project_info);
 
+    let forked_from_session_id = session_row
+        .as_ref()
+        .and_then(|row| row.parent_session_id.clone());
+    let forked_from_message_id = session_row
+        .as_ref()
+        .and_then(|row| row.parent_session_message_id.clone());
+
     Ok(DesktopChatSessionDetail {
         id: setup.session_id.clone(),
         title,
@@ -271,6 +280,8 @@ pub(super) fn build_detail_from_setup(
         project,
         reflection_lesson_artifacts,
         messages,
+        forked_from_session_id,
+        forked_from_message_id,
     })
 }
 

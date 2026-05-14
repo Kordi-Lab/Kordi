@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
@@ -33,6 +33,8 @@ import type {
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { randomAvatarSeed } from '@/features/cloud/avatarPreference';
+import { buildForkLineage } from '@/features/chat/forkLineage';
+import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
 import {
@@ -655,6 +657,160 @@ export function WorkspaceSidebar({
     setRenameSessionTarget(null);
   };
 
+  // Render a participant-space session row plus, recursively, every
+  // local fork that descends from it. Lets a fork of a group / contact
+  // canonical session show up nested under its parent in the same tab
+  // instead of being exiled to a different list.
+  const ParticipantSpaceSessionRow = ({
+    session,
+    depth,
+    seen,
+  }: {
+    session: ParticipantSpaceItem['sessions'][number];
+    depth: number;
+    seen: Set<string>;
+  }) => {
+    if (seen.has(session.id)) return null;
+    const nextSeen = new Set(seen);
+    nextSeen.add(session.id);
+    const conversation = session.conversation;
+    const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
+    const sessionRowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
+    const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
+    const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
+    const sessionMessageCount = participantSpaceSessionMessageCount(session);
+    const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
+    const sessionIdLabel = participantSpaceSessionIdLabel(session);
+    const isFork = depth > 0;
+    const childForks = globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
+    const hasForks = childForks.length > 0;
+    const expanded = hasForks && isForkListExpanded(session.id);
+    // Mirror the agent-tab tree behavior: when a parent is collapsed,
+    // keep only the active session's path visible (the user shouldn't
+    // lose sight of where they currently are) and hide every other
+    // sibling branch.
+    const visibleChildren = expanded
+      ? childForks
+      : childForks.filter((fork) => activeSessionPathIds.has(fork.id));
+    const visualDepth = Math.min(depth, 4);
+    const indentPaddingLeft = visualDepth > 0 ? `${0.625 + visualDepth * 0.875}rem` : undefined;
+    return (
+      <>
+        <button
+          type="button"
+          data-testid="participant-space-session-row"
+          data-agent-session-row={session.id}
+          data-session-preview={sessionPreview}
+          data-session-preview-line={sessionPreviewLine}
+          data-session-id-label={sessionIdLabel}
+          data-session-message-count={sessionMessageCount}
+          data-session-updated-at={sessionRowTimeLabel}
+          data-session-fork-depth={visualDepth || undefined}
+          onClick={() => onSelectChatSession(session.id)}
+          onContextMenu={(event) => {
+            const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
+            if (!target) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setSessionContextMenu(target);
+          }}
+          style={indentPaddingLeft ? { paddingLeft: indentPaddingLeft } : undefined}
+          className={cn(
+            'app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white',
+            isActive && 'app-session-row-active',
+            isFork && 'app-session-row-fork',
+          )}
+        >
+          <div className="flex min-w-0 items-start gap-1.5">
+            {hasForks ? (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleForkParent(session.id);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleForkParent(session.id);
+                }}
+                className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
+                aria-label={expanded ? 'Hide forks' : 'Show forks'}
+                title={expanded ? 'Hide forks' : 'Show forks'}
+              >
+                <ChevronRightIcon
+                  className={cn('h-3 w-3 transition-transform', expanded && 'rotate-90')}
+                />
+              </span>
+            ) : isFork ? (
+              <span
+                className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-slate-500"
+                aria-hidden="true"
+                title="Forked session"
+              >
+                <Split className="h-3 w-3" />
+              </span>
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</span>
+                {hasForks ? (
+                  <span
+                    className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-full bg-white/[0.06] px-1.5 text-[9.5px] font-medium tabular-nums text-slate-300"
+                    title={`${childForks.length} fork${childForks.length === 1 ? '' : 's'} of this session`}
+                    aria-label={`${childForks.length} forks`}
+                  >
+                    <Split className="h-2.5 w-2.5" />
+                    <span>{childForks.length}</span>
+                  </span>
+                ) : null}
+              </div>
+              {sessionIdLabel ? (
+                <div className="app-participant-space-session-id mt-px truncate text-[9.5px] leading-[0.9rem] text-slate-500" title={sessionIdLabel}>{sessionIdLabel}</div>
+              ) : null}
+              <div
+                className={cn(
+                  'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
+                  isActive ? 'text-slate-300' : 'text-slate-500',
+                  session.statusIndicator?.live && 'app-participant-space-session-preview-live',
+                )}
+                title={sessionPreviewLine}
+              >
+                {sessionPreviewLine}
+              </div>
+            </div>
+          </div>
+          <SidebarSessionMetaColumn
+            timeLabel={sessionRowTimeLabel}
+            unreadCount={session.unread}
+            unreadScope="participant-session"
+            indicator={session.statusIndicator}
+            active={isActive}
+          />
+        </button>
+        {visibleChildren.length > 0 ? (
+          <div className="app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2">
+            {visibleChildren.map((fork) => {
+              const forkRow = allSidebarSessionRowsById.get(fork.id);
+              if (!forkRow) return null;
+              return (
+                <ParticipantSpaceSessionRow
+                  key={fork.id}
+                  session={forkRow.session}
+                  depth={depth + 1}
+                  seen={nextSeen}
+                />
+              );
+            })}
+          </div>
+        ) : null}
+      </>
+    );
+  };
+
   const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {
     const latestSession = space.sessions[0];
     const isDirectHuman = space.kind === 'direct-human';
@@ -769,61 +925,14 @@ export function WorkspaceSidebar({
 
         {isExpanded ? (
           <div className="app-participant-space-inline-sessions mt-0.5 space-y-px">
-            {visibleSessions.map((session) => {
-              const conversation = session.conversation;
-              const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
-              const sessionRowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
-              const sessionPreview = participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
-              const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
-              const sessionMessageCount = participantSpaceSessionMessageCount(session);
-              const sessionPreviewLine = participantSpaceSessionPreviewLine(sessionPreview, sessionMessageCount);
-              const sessionIdLabel = participantSpaceSessionIdLabel(session);
-              return (
-                <button
-                  key={session.id}
-                  type="button"
-                  data-testid="participant-space-session-row"
-                  data-session-preview={sessionPreview}
-                  data-session-preview-line={sessionPreviewLine}
-                  data-session-id-label={sessionIdLabel}
-                  data-session-message-count={sessionMessageCount}
-                  data-session-updated-at={sessionRowTimeLabel}
-                  onClick={() => onSelectChatSession(session.id)}
-                  onContextMenu={(event) => {
-                    const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
-                    if (!target) return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setSessionContextMenu(target);
-                  }}
-                  className={cn('app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
-                >
-                  <div className="min-w-0">
-                    <div className="app-participant-space-session-title truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</div>
-                    {sessionIdLabel ? (
-                      <div className="app-participant-space-session-id mt-px truncate text-[9.5px] leading-[0.9rem] text-slate-500" title={sessionIdLabel}>{sessionIdLabel}</div>
-                    ) : null}
-                    <div
-                      className={cn(
-                        'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
-                        isActive ? 'text-slate-300' : 'text-slate-500',
-                        session.statusIndicator?.live && 'app-participant-space-session-preview-live',
-                      )}
-                      title={sessionPreviewLine}
-                    >
-                      {sessionPreviewLine}
-                    </div>
-                  </div>
-                  <SidebarSessionMetaColumn
-                    timeLabel={sessionRowTimeLabel}
-                    unreadCount={session.unread}
-                    unreadScope="participant-session"
-                    indicator={session.statusIndicator}
-                    active={isActive}
-                  />
-                </button>
-              );
-            })}
+            {visibleSessions.map((session) => (
+              <ParticipantSpaceSessionRow
+                key={session.id}
+                session={session}
+                depth={0}
+                seen={new Set()}
+              />
+            ))}
           </div>
         ) : null}
       </div>
@@ -842,12 +951,119 @@ export function WorkspaceSidebar({
     </ScrollArea>
   );
 
+  // Build a sidebar-wide fork lineage that spans every visible space:
+  // forks of agent chats live in agentParticipantSpaces, forks of
+  // canonical group / contact conversations also live there but their
+  // parent rows live in contactParticipantSpaces. Walking both lists
+  // lets us nest a fork under its parent regardless of which tab the
+  // parent shows in.
+  const allSidebarSessions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }> = [];
+    for (const space of [...agentParticipantSpaces, ...contactParticipantSpaces, ...participantSpaces]) {
+      for (const session of space.sessions) {
+        if (seen.has(session.id)) continue;
+        seen.add(session.id);
+        out.push({ session, space });
+      }
+    }
+    return out;
+  }, [agentParticipantSpaces, contactParticipantSpaces, participantSpaces]);
+  const globalForkLineage = useMemo(
+    () => buildForkLineage(allSidebarSessions.map(({ session }) => session)),
+    [allSidebarSessions],
+  );
+  const allSidebarSessionRowsById = useMemo(
+    () => new Map(allSidebarSessions.map((row) => [row.session.id, row])),
+    [allSidebarSessions],
+  );
+
   const flatAgentSessions = agentParticipantSpaces
     .flatMap((space) => space.sessions.map((session) => ({ session, space })))
     .sort((left, right) => right.session.updatedAtMs - left.session.updatedAtMs
       || left.session.title.localeCompare(right.session.title));
 
-  const renderAgentSessionRow = ({ session, space }: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }) => {
+  // Group forks under their source session in the agent tab. Forks
+  // whose parent is a canonical (group/contact) session are excluded
+  // here — they are rendered nested under the parent in the Contact
+  // tab so they live with the conversation they branched from.
+  const agentForkLineage = useMemo(
+    () => buildForkLineage(flatAgentSessions.map(({ session }) => session)),
+    [flatAgentSessions],
+  );
+  const topLevelAgentSessions = useMemo(
+    () => flatAgentSessions.filter(({ session }) => {
+      if (agentForkLineage.forkSessionIds.has(session.id)) return false;
+      const parent = session.forkedFromSessionId?.trim();
+      if (parent && parent.startsWith('session:')) return false;
+      return true;
+    }),
+    [agentForkLineage, flatAgentSessions],
+  );
+  const agentSessionRowsById = useMemo(
+    () => new Map(flatAgentSessions.map((row) => [row.session.id, row])),
+    [flatAgentSessions],
+  );
+
+  // Track which parent rows have their fork list expanded. Default to
+  // expanded so the user immediately sees children; toggling collapses.
+  const [collapsedForkParents, setCollapsedForkParents] = useState<Set<string>>(new Set());
+  const toggleForkParent = (parentSessionId: string) => {
+    setCollapsedForkParents((current) => {
+      const next = new Set(current);
+      if (next.has(parentSessionId)) next.delete(parentSessionId);
+      else next.add(parentSessionId);
+      return next;
+    });
+  };
+  const isForkListExpanded = (parentSessionId: string) => !collapsedForkParents.has(parentSessionId);
+
+  // The full ancestor chain of the active session, including itself.
+  // Used to keep the active session always visible even when the user
+  // collapses an ancestor: collapsing then only hides the *sibling*
+  // sub-trees, never the active path.
+  const activeSessionPathIds = useMemo(() => {
+    const path = new Set<string>();
+    if (!activeConvId) return path;
+    let cursor: string | null = activeConvId;
+    while (cursor) {
+      if (path.has(cursor)) break;
+      path.add(cursor);
+      const parent: string | null = agentSessionRowsById.get(cursor)?.session.forkedFromSessionId ?? null;
+      cursor = parent && parent.trim() ? parent : null;
+    }
+    return path;
+  }, [activeConvId, agentSessionRowsById]);
+
+  // No auto-expand effect needed: the recursive renderer always keeps
+  // the active session's path visible even when an ancestor is
+  // collapsed, so the user retains full control over collapse state
+  // for sibling branches.
+
+  // Auto-scroll the active session row into view (parent or fork) so
+  // navigating to a deeply nested fork doesn't leave it off-screen.
+  const agentScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!activeConvId) return;
+    const container = agentScrollContainerRef.current;
+    if (!container) return;
+    const row = container.querySelector<HTMLElement>(
+      `[data-agent-session-row="${activeConvId.replace(/"/g, '\\"')}"]`,
+    );
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeConvId]);
+
+  const renderAgentSessionRow = (
+    { session, space }: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem },
+    options: {
+      isFork?: boolean;
+      depth?: number;
+      forkCount?: number;
+      expanded?: boolean;
+      onToggleExpanded?: () => void;
+    } = {},
+  ) => {
     const conversation = session.conversation;
     const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
     const rowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
@@ -858,15 +1074,21 @@ export function WorkspaceSidebar({
     const agentIdentity = primaryAgentForConversation(conversation);
     const agentName = agentIdentity?.name ?? space.title;
     const subtitleLine = agentName ? `${agentName} · ${sessionPreviewLine}` : sessionPreviewLine;
+    const forkCount = options.forkCount ?? 0;
+    const hasForks = forkCount > 0;
+    const depth = Math.min(options.depth ?? 0, 4);
     return (
       <button
         key={session.id}
         type="button"
         data-testid="agent-session-row"
+        data-agent-session-row={session.id}
         data-session-preview={sessionPreview}
         data-session-preview-line={sessionPreviewLine}
         data-session-message-count={sessionMessageCount}
         data-session-updated-at={rowTimeLabel}
+        data-session-fork-of={options.isFork ? session.forkedFromSessionId ?? '' : undefined}
+        data-session-fork-depth={depth || undefined}
         onClick={() => onSelectChatSession(session.id)}
         onContextMenu={(event) => {
           const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
@@ -875,12 +1097,58 @@ export function WorkspaceSidebar({
           event.stopPropagation();
           setSessionContextMenu(target);
         }}
-        className={cn('app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1.5 text-left text-white', isActive && 'app-session-row-active')}
+        className={cn(
+          'app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1.5 text-left text-white',
+          isActive && 'app-session-row-active',
+          options.isFork && 'app-session-row-fork',
+        )}
       >
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-center gap-1.5">
+            {hasForks && options.onToggleExpanded ? (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  options.onToggleExpanded?.();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  options.onToggleExpanded?.();
+                }}
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
+                aria-label={options.expanded ? 'Hide forks' : 'Show forks'}
+                title={options.expanded ? 'Hide forks' : 'Show forks'}
+              >
+                <ChevronRightIcon
+                  className={cn('h-3 w-3 transition-transform', options.expanded && 'rotate-90')}
+                />
+              </span>
+            ) : options.isFork ? (
+              <span
+                className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-slate-500"
+                aria-hidden="true"
+                title="Forked session"
+              >
+                <Split className="h-3 w-3" />
+              </span>
+            ) : null}
             <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</span>
             <div className="inline-flex shrink-0 items-center gap-1.5">
+              {hasForks ? (
+                <span
+                  className="inline-flex h-4 items-center gap-0.5 rounded-full bg-white/[0.06] px-1.5 text-[9.5px] font-medium tabular-nums text-slate-300"
+                  title={`${forkCount} fork${forkCount === 1 ? '' : 's'} of this session`}
+                  aria-label={`${forkCount} forks`}
+                >
+                  <Split className="h-2.5 w-2.5" />
+                  <span>{forkCount}</span>
+                </span>
+              ) : null}
               <SidebarUnreadBadge count={session.unread} scope="agent-session" />
               <SidebarSessionStatusIndicator indicator={session.statusIndicator} />
               <span className={cn('app-session-meta-time whitespace-nowrap text-[10px] font-medium leading-none tabular-nums tracking-[0.03em] text-slate-400', isActive && 'app-session-meta-time-active')}>
@@ -903,8 +1171,58 @@ export function WorkspaceSidebar({
     );
   };
 
-  const renderAgentSessionList = (rows: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }>, emptyMessage: string) => (
-    <ScrollArea className="app-workspace-session-scroll min-h-0 flex-1" data-chat-sidebar-mode="agent-sessions-flat">
+  // Render a single session row plus, recursively, every fork that
+  // descends from it. The seen set guards against pathological cycles
+  // that could otherwise stack-overflow if data is corrupt.
+  const renderAgentSessionTreeNode = (
+    row: { session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem },
+    depth: number,
+    seen: Set<string>,
+  ): React.ReactNode => {
+    if (seen.has(row.session.id)) return null;
+    const nextSeen = new Set(seen);
+    nextSeen.add(row.session.id);
+    const forks = agentForkLineage.forksByParentSessionId.get(row.session.id) ?? [];
+    const expanded = forks.length === 0 ? false : isForkListExpanded(row.session.id);
+    // Even when collapsed, keep showing fork branches that lead to the
+    // active session so the user never loses sight of where they are.
+    const childrenToRender = expanded
+      ? forks
+      : forks.filter((fork) => activeSessionPathIds.has(fork.id));
+    return (
+      <div key={row.session.id} className="app-session-row-group">
+        {renderAgentSessionRow(row, {
+          isFork: depth > 0,
+          depth,
+          forkCount: forks.length,
+          expanded,
+          onToggleExpanded: forks.length > 0 ? () => toggleForkParent(row.session.id) : undefined,
+        })}
+        {childrenToRender.length > 0 ? (
+          <div
+            className="app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2"
+            data-session-fork-depth={depth + 1}
+          >
+            {childrenToRender.map((forkSession) => {
+              const forkRow = agentSessionRowsById.get(forkSession.id);
+              if (!forkRow) return null;
+              return renderAgentSessionTreeNode(forkRow, depth + 1, nextSeen);
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderAgentSessionList = (
+    rows: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }>,
+    emptyMessage: string,
+  ) => (
+    <ScrollArea
+      ref={agentScrollContainerRef}
+      className="app-workspace-session-scroll min-h-0 flex-1"
+      data-chat-sidebar-mode="agent-sessions-flat"
+    >
       <div className="w-full space-y-0.5">
         <div className="mb-1 flex justify-center px-1">
           <button
@@ -920,7 +1238,7 @@ export function WorkspaceSidebar({
             <span>New session</span>
           </button>
         </div>
-        {rows.length > 0 ? rows.map(renderAgentSessionRow) : (
+        {rows.length > 0 ? rows.map((row) => renderAgentSessionTreeNode(row, 0, new Set())) : (
           <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-3 text-[11px] text-slate-400">
             {emptyMessage}
           </div>
@@ -1228,7 +1546,7 @@ export function WorkspaceSidebar({
 
                   {chatChannel === 'contact'
                     ? renderParticipantSpaceList(contactParticipantSpaces, 'No conversations yet. Start a chat to see it here.')
-                    : renderAgentSessionList(flatAgentSessions, 'No agent conversations yet. Start one to see it here.')}
+                    : renderAgentSessionList(topLevelAgentSessions, 'No agent conversations yet. Start one to see it here.')}
                 </div>
               )}
 

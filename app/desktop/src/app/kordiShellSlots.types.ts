@@ -293,6 +293,7 @@ export type AssembleKordiShellSlotsArgs = {
   handleStopBridgeAgentRequest: (request: BridgeAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
   handleSendChatMessage: (draftOverride?: string) => void;
+  handleForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   showChatDetailRail: boolean;
   activeDetailTab: DetailTab;
   setActiveDetailTab: Dispatch<SetStateAction<DetailTab>>;
@@ -546,6 +547,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'
   | 'handleSendChatMessage'
+  | 'handleForkChatMessage'
   | 'activeQueuedDesktopMessages'
   | 'activeBridgeConversationHost'
   | 'activeBridgeConversation'

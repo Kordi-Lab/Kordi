@@ -421,6 +421,49 @@ pub(super) fn explicit_desktop_project_membership(
     })
 }
 
+fn fork_metadata_value(
+    forked_from_session_id: Option<&str>,
+    forked_from_message_id: Option<&str>,
+) -> Option<serde_json::Value> {
+    let session = forked_from_session_id?.trim();
+    if session.is_empty() {
+        return None;
+    }
+    let mut value = serde_json::json!({
+        "forkedFromSessionId": session,
+        "forkMode": "private-local",
+        "contextPolicy": "prefix-through-message",
+        "boundary": "inherited-history-reference-only",
+    });
+    if let Some(message_id) = forked_from_message_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "forkedFromMessageId".to_string(),
+                serde_json::Value::String(message_id.to_string()),
+            );
+        }
+    }
+    Some(value)
+}
+
+fn metadata_with_fork(
+    base: serde_json::Value,
+    forked_from_session_id: Option<&str>,
+    forked_from_message_id: Option<&str>,
+) -> serde_json::Value {
+    let Some(fork) = fork_metadata_value(forked_from_session_id, forked_from_message_id) else {
+        return base;
+    };
+    let mut combined = base;
+    if let Some(object) = combined.as_object_mut() {
+        object.insert("fork".to_string(), fork);
+    }
+    combined
+}
+
 pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> Result<(), String> {
     let conn = open_db()?;
     let human_identity_id = local_profile_human_identity_id(&conn, "You")?;
@@ -439,6 +482,16 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         if !should_update_desktop_session_shell(&conn, &summary.id)? {
             continue;
         }
+        let metadata = metadata_with_fork(
+            serde_json::json!({
+                "source": "desktop-chat-summary",
+                "subtitle": summary.subtitle,
+                "updatedAtLabel": summary.updated_at_label,
+                "messageCount": summary.message_count,
+            }),
+            summary.forked_from_session_id.as_deref(),
+            summary.forked_from_message_id.as_deref(),
+        );
         open_or_create_session_in_db(
             &conn,
             OpenCanonicalSessionRequest {
@@ -452,12 +505,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                 project_name: None,
                 relationship_identity_id: None,
                 participant_identity_ids: vec![agent_identity_id.clone()],
-                metadata: Some(serde_json::json!({
-                    "source": "desktop-chat-summary",
-                    "subtitle": summary.subtitle,
-                    "updatedAtLabel": summary.updated_at_label,
-                    "messageCount": summary.message_count,
-                })),
+                metadata: Some(metadata),
             },
         )?;
     }
@@ -468,6 +516,17 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             .iter()
             .filter(|summary| should_sync_desktop_chat_summary(summary))
         {
+            let metadata = metadata_with_fork(
+                serde_json::json!({
+                    "source": "desktop-project-summary",
+                    "projectRoot": project.root,
+                    "subtitle": summary.subtitle,
+                    "updatedAtLabel": summary.updated_at_label,
+                    "messageCount": summary.message_count,
+                }),
+                summary.forked_from_session_id.as_deref(),
+                summary.forked_from_message_id.as_deref(),
+            );
             open_or_create_session_in_db(
                 &conn,
                 OpenCanonicalSessionRequest {
@@ -481,13 +540,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                     project_name: Some(project.name.clone()),
                     relationship_identity_id: None,
                     participant_identity_ids: vec![agent_identity_id.clone()],
-                    metadata: Some(serde_json::json!({
-                        "source": "desktop-project-summary",
-                        "projectRoot": project.root,
-                        "subtitle": summary.subtitle,
-                        "updatedAtLabel": summary.updated_at_label,
-                        "messageCount": summary.message_count,
-                    })),
+                    metadata: Some(metadata),
                 },
             )?;
         }
@@ -508,6 +561,21 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             .unwrap_or((None, None, None));
         let workspace_root = active.project.as_ref().map(|project| project.root.clone());
         if should_update_desktop_session_shell(&conn, &active.id)? {
+            let metadata = metadata_with_fork(
+                serde_json::json!({
+                    "source": "desktop-chat-detail",
+                    "provider": active.provider,
+                    "providerLabel": active.provider_label,
+                    "model": active.model,
+                    "modelLabel": active.model_label,
+                    "thinking": active.thinking,
+                    "thinkingLabel": active.thinking_label,
+                    "projectRoot": project_root,
+                    "workspaceRoot": workspace_root,
+                }),
+                active.forked_from_session_id.as_deref(),
+                active.forked_from_message_id.as_deref(),
+            );
             open_or_create_session_in_db(
                 &conn,
                 OpenCanonicalSessionRequest {
@@ -525,17 +593,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                     project_name,
                     relationship_identity_id: None,
                     participant_identity_ids: vec![agent_identity_id.clone()],
-                    metadata: Some(serde_json::json!({
-                        "source": "desktop-chat-detail",
-                        "provider": active.provider,
-                        "providerLabel": active.provider_label,
-                        "model": active.model,
-                        "modelLabel": active.model_label,
-                        "thinking": active.thinking,
-                        "thinkingLabel": active.thinking_label,
-                        "projectRoot": project_root,
-                        "workspaceRoot": workspace_root,
-                    })),
+                    metadata: Some(metadata),
                 },
             )?;
         }
@@ -563,4 +621,53 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod fork_metadata_tests {
+    use super::{fork_metadata_value, metadata_with_fork};
+
+    #[test]
+    fn fork_metadata_value_includes_session_message_and_policy_defaults() {
+        let value = fork_metadata_value(Some("session:source"), Some("entry:42"))
+            .expect("fork metadata is emitted when source session is present");
+        assert_eq!(value["forkedFromSessionId"], "session:source");
+        assert_eq!(value["forkedFromMessageId"], "entry:42");
+        assert_eq!(value["forkMode"], "private-local");
+        assert_eq!(value["contextPolicy"], "prefix-through-message");
+        assert_eq!(value["boundary"], "inherited-history-reference-only");
+    }
+
+    #[test]
+    fn fork_metadata_value_omits_message_id_when_unknown() {
+        let value = fork_metadata_value(Some("session:source"), None)
+            .expect("fork metadata is emitted when source session is present");
+        assert!(value.get("forkedFromMessageId").is_none());
+    }
+
+    #[test]
+    fn fork_metadata_value_returns_none_without_source_session() {
+        assert!(fork_metadata_value(None, Some("entry:42")).is_none());
+        assert!(fork_metadata_value(Some("   "), Some("entry:42")).is_none());
+    }
+
+    #[test]
+    fn metadata_with_fork_appends_fork_subobject_without_clobbering_base_keys() {
+        let base = serde_json::json!({
+            "source": "desktop-chat-detail",
+            "subtitle": "talking about forks",
+        });
+        let combined = metadata_with_fork(base, Some("session:source"), Some("entry:42"));
+        assert_eq!(combined["source"], "desktop-chat-detail");
+        assert_eq!(combined["subtitle"], "talking about forks");
+        assert_eq!(combined["fork"]["forkedFromSessionId"], "session:source");
+        assert_eq!(combined["fork"]["forkedFromMessageId"], "entry:42");
+    }
+
+    #[test]
+    fn metadata_with_fork_returns_base_when_no_fork_lineage() {
+        let base = serde_json::json!({"source": "desktop-chat-summary"});
+        let combined = metadata_with_fork(base.clone(), None, None);
+        assert_eq!(combined, base);
+    }
 }

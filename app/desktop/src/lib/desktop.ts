@@ -665,6 +665,21 @@ export async function moveDesktopChatSessionToProject(sessionId: string, project
   return invokeDesktop<DesktopChatState>('desktop_chat_move_session_to_project', { sessionId, projectRoot });
 }
 
+export type DesktopChatForkSessionResult = {
+  state: DesktopChatState;
+  forkedSessionId: string;
+  sourceSessionId: string;
+  sourceMessageId: string;
+  selectedText: string;
+};
+
+export async function forkDesktopChatSessionFromMessage(sessionId: string, messageEntryId: string) {
+  return invokeDesktop<DesktopChatForkSessionResult>('desktop_chat_fork_session_from_message', {
+    sessionId,
+    messageEntryId,
+  });
+}
+
 export async function sendDesktopChatMessage(sessionId: string, text: string) {
   return invokeDesktop<DesktopChatState>('desktop_chat_send_message', { sessionId, text });
 }

@@ -30,6 +30,7 @@ pub struct SessionRow {
     pub leaf_id: Option<String>,
     pub entry_count: i64,
     pub parent_session_id: Option<String>,
+    pub parent_session_message_id: Option<String>,
     pub session_scope: String,
     pub project_root: Option<String>,
 }
@@ -49,6 +50,8 @@ pub struct ForkSessionResult {
     pub session_id: String,
     pub selected_text: String,
     pub branch_leaf_id: Option<String>,
+    pub source_session_id: String,
+    pub source_entry_id: String,
 }
 
 pub fn open_db(path: &std::path::Path) -> Result<Connection> {
@@ -68,7 +71,16 @@ pub fn create_session_with_parent(
     cwd: &str,
     parent_session_id: Option<&str>,
 ) -> Result<String> {
-    writes::create_session_with_parent(conn, cwd, parent_session_id)
+    writes::create_session_with_parent(conn, cwd, parent_session_id, None)
+}
+
+pub fn create_session_with_parent_and_message(
+    conn: &Connection,
+    cwd: &str,
+    parent_session_id: Option<&str>,
+    parent_session_message_id: Option<&str>,
+) -> Result<String> {
+    writes::create_session_with_parent(conn, cwd, parent_session_id, parent_session_message_id)
 }
 
 pub fn create_session_with_id(conn: &Connection, session_id: &str, cwd: &str) -> Result<()> {
@@ -81,7 +93,23 @@ pub fn create_session_with_id_and_parent(
     cwd: &str,
     parent_session_id: Option<&str>,
 ) -> Result<()> {
-    writes::create_session_with_id_and_parent(conn, session_id, cwd, parent_session_id)
+    writes::create_session_with_id_and_parent(conn, session_id, cwd, parent_session_id, None)
+}
+
+pub fn create_session_with_id_parent_and_message(
+    conn: &Connection,
+    session_id: &str,
+    cwd: &str,
+    parent_session_id: Option<&str>,
+    parent_session_message_id: Option<&str>,
+) -> Result<()> {
+    writes::create_session_with_id_and_parent(
+        conn,
+        session_id,
+        cwd,
+        parent_session_id,
+        parent_session_message_id,
+    )
 }
 
 pub fn append_entry(

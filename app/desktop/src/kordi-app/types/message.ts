@@ -95,6 +95,9 @@ export type MessageReplySummary = {
 
 export type Message = {
   id?: string;
+  /** Stable id of the underlying session entry, when the message maps
+   * 1:1 to a desktop session entry. Required for actions like fork. */
+  entryId?: string | null;
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
   senderType?: 'human' | 'agent';
@@ -116,6 +119,11 @@ export type Message = {
   edit?: {
     files: EditFilePreview[];
   };
+  /** True for messages cloned from a canonical fork's source session
+   * (everything before the first post-fork user message). Lets the
+   * transcript draw a "Forked from conversation" divider between the
+   * inherited snapshot and the user's own continuation. */
+  isForkSnapshot?: boolean;
 };
 
 export type SessionStatusIndicator = {

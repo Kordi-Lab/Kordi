@@ -749,6 +749,7 @@ export function useKordiAppModel() {
     handleCreateChatSession,
     handleSelectProjectSession,
     handleRenameDesktopSession,
+    handleForkChatMessage,
   } = useDesktopSessionController({
     isNativeShell,
     activeConversationIsBridge,
@@ -2161,6 +2162,7 @@ export function useKordiAppModel() {
     handleStopBridgeAgentRequest,
     handleSendProjectMessage: wrappedSendProjectMessage,
     handleSendChatMessage: wrappedSendChatMessage,
+    handleForkChatMessage,
     showChatDetailRail,
     activeDetailTab,
     setActiveDetailTab,
