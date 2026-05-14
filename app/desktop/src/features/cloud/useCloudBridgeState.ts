@@ -758,6 +758,19 @@ function isTerminalSelfAgentMessage(message: CanonicalSessionMessage): boolean {
   return !['', 'sending', 'processing', 'failed', 'cancelled'].includes(status);
 }
 
+/** Messages cloned into a canonical fork session by
+ * `fork_canonical_session_into_local_chat` carry this tag. They are
+ * already synced upstream as part of their original session and must
+ * not be re-sent to the cloud as if they were fresh self-agent turns
+ * — re-sending would (a) duplicate the message server-side under the
+ * fork's session id and (b) auto-trigger an agent reply against any
+ * @-mention in the cloned message, which is exactly the "Replying…
+ * then offline" symptom users see right after forking. The fork
+ * stays inert until the forker types something new themselves. */
+function isCanonicalForkSnapshotMessage(message: CanonicalSessionMessage): boolean {
+  return cleanText(message.sourceTransport) === 'canonical-fork-snapshot';
+}
+
 export function planCloudSelfAgentSync(
   state: CanonicalSessionState,
   ledger: CloudSelfAgentSyncLedger,
@@ -770,6 +783,7 @@ export function planCloudSelfAgentSync(
   const messagesBySession = new Map<string, CanonicalSessionMessage[]>();
   for (const message of state.messages) {
     if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
+    if (isCanonicalForkSnapshotMessage(message)) continue;
     const text = cleanText(message.contentText);
     if (!text) continue;
     const bucket = messagesBySession.get(message.sessionId) ?? [];
