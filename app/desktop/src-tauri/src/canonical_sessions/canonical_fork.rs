@@ -220,13 +220,18 @@ pub fn fork_canonical_session_into_local_chat(
             delegated_exchange_id: source_msg.delegated_exchange_id.clone(),
             status: Some(source_msg.status.clone()),
             created_at_ms: Some(source_msg.created_at_ms),
-            // Stable dedup key keeps a re-fork from the same anchor
-            // idempotent: re-running the fork would no-op on existing
-            // snapshot rows rather than duplicating them.
+            // Stable dedup key, scoped by the TARGET fork session id so
+            // re-forking the same anchor a second time produces an
+            // independent snapshot (its own target id) instead of being
+            // silently emptied by append_message_in_db's
+            // (source_transport, source_event_id) dedup against the first
+            // fork's rows. Re-running the apply for the *same* target
+            // (e.g., HMR re-trigger) still no-ops because new_session_id
+            // is stable for that fork.
             source_transport: Some("canonical-fork-snapshot".to_string()),
             source_event_id: Some(format!(
-                "fork-snapshot:{}:{}",
-                canonical_session_id, source_msg.id
+                "fork-snapshot:{}:{}:{}",
+                new_session_id, canonical_session_id, source_msg.id
             )),
         };
         let inserted = append_message_in_db(&conn, request)?;
