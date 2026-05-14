@@ -40,6 +40,44 @@ use crate::server::ServerState;
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
 
+#[cfg(test)]
+mod oauth_avatar_policy_tests {
+    use super::oauth_account_avatar_url;
+
+    #[test]
+    fn oauth_provider_avatar_replaces_generated_signup_avatar() {
+        assert_eq!(
+            oauth_account_avatar_url(
+                Some("kordi-pixel-avatar://cloud-signup:stable"),
+                Some("https://avatars.example/provider.png"),
+            ),
+            Some("https://avatars.example/provider.png".to_string()),
+        );
+    }
+
+    #[test]
+    fn oauth_provider_avatar_preserves_custom_uploaded_avatar() {
+        assert_eq!(
+            oauth_account_avatar_url(
+                Some("data:image/png;base64,custom"),
+                Some("https://avatars.example/provider.png"),
+            ),
+            Some("data:image/png;base64,custom".to_string()),
+        );
+    }
+
+    #[test]
+    fn oauth_provider_avatar_refreshes_existing_provider_avatar() {
+        assert_eq!(
+            oauth_account_avatar_url(
+                Some("https://avatars.example/old-provider.png"),
+                Some("https://avatars.example/new-provider.png"),
+            ),
+            Some("https://avatars.example/new-provider.png".to_string()),
+        );
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CloudSession {
     pub token_id: String,
@@ -734,6 +772,30 @@ async fn oauth_callback(
     }
 }
 
+fn oauth_account_avatar_url(
+    existing_avatar_url: Option<&str>,
+    provider_avatar_url: Option<&str>,
+) -> Option<String> {
+    let existing = existing_avatar_url.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    });
+    let provider = provider_avatar_url.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    });
+
+    if provider.is_some()
+        && existing.as_deref().is_none_or(|value| {
+            value.starts_with(AVATAR_SEED_PREFIX) || !value.starts_with("data:")
+        })
+    {
+        return provider;
+    }
+
+    existing.or(provider)
+}
+
 async fn complete_oauth_login(
     pool: &PgPool,
     provider: OAuthProvider,
@@ -770,7 +832,18 @@ async fn complete_oauth_login(
         .unwrap_or_else(|| format!("acct_{}", uuid::Uuid::new_v4().simple()));
     let display_name = clean_profile_display_name(profile.display_name.as_deref())
         .or_else(|| profile.username.clone());
-    let avatar_url = clean_profile_avatar_url(None, profile.avatar_url.as_deref());
+    let provider_avatar_url = clean_profile_avatar_url(None, profile.avatar_url.as_deref());
+    let existing_account_avatar_url: Option<(Option<String>,)> =
+        query_as("SELECT avatar_url FROM cloud_accounts WHERE account_id = $1")
+            .bind(&account_id)
+            .fetch_optional(pool)
+            .await?;
+    let avatar_url = oauth_account_avatar_url(
+        existing_account_avatar_url
+            .as_ref()
+            .and_then(|row| row.0.as_deref()),
+        provider_avatar_url.as_deref(),
+    );
 
     let mut tx = pool.begin().await?;
     query(
@@ -779,7 +852,7 @@ async fn complete_oauth_login(
          ON CONFLICT (account_id) DO UPDATE SET \
            display_name = COALESCE(cloud_accounts.display_name, excluded.display_name), \
            primary_email = COALESCE(cloud_accounts.primary_email, excluded.primary_email), \
-           avatar_url = COALESCE(cloud_accounts.avatar_url, excluded.avatar_url), \
+           avatar_url = excluded.avatar_url, \
            updated_at = excluded.updated_at",
     )
     .bind(&account_id)

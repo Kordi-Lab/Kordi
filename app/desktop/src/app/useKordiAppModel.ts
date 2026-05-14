@@ -13,7 +13,7 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
-import { cloudAvatarImageUrl, cloudAvatarSeedFromUrl } from '@/features/cloud/avatar';
+import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import {
   cloudGroupIdentityRequest,
   cloudGroupParticipantsForBridgeSessionParticipants,
@@ -386,17 +386,23 @@ export function useKordiAppModel() {
     ?? avatarBridgeHost?.agents.find((agent) => agent.isDefault)
     ?? avatarBridgeHost?.agents[0]
     ?? null;
-  const cloudProfileAvatarSeed = kordiEdition === 'cloud' ? cloudAvatarSeedFromUrl(cloudSession.account?.avatarUrl) : null;
-  const cloudProfileImageUrl = kordiEdition === 'cloud' ? cloudAvatarImageUrl(cloudSession.account?.avatarUrl) : null;
-  const localProfileAvatarSeed = cloudProfileAvatarSeed
-    || canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
+  const canonicalLocalProfileAvatarSeed = canonicalAvatarSeed(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
     || avatarBridgeHost?.humanId?.trim()
     || canonicalSessionState?.profile.id?.trim()
     || null;
-  const localProfileImageUrl = cloudProfileImageUrl
-    || canonicalProfileImageUrl(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
+  const canonicalLocalProfileImageUrl = canonicalProfileImageUrl(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
     || avatarBridgeHost?.profileImageUrl?.trim()
     || null;
+  const cloudLocalProfileAvatar = kordiEdition === 'cloud'
+    ? resolveCloudLocalProfileAvatar({
+      accountId: cloudSession.account?.accountId,
+      avatarUrl: cloudSession.account?.avatarUrl,
+      canonicalAvatarSeed: canonicalLocalProfileAvatarSeed,
+      canonicalProfileImageUrl: canonicalLocalProfileImageUrl,
+    })
+    : null;
+  const localProfileAvatarSeed = cloudLocalProfileAvatar?.seed ?? canonicalLocalProfileAvatarSeed;
+  const localProfileImageUrl = cloudLocalProfileAvatar?.imageUrl ?? canonicalLocalProfileImageUrl;
   const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
     || avatarBridgeAgent?.id?.trim()
     || avatarBridgeHost?.activeAgentId?.trim()
@@ -552,8 +558,9 @@ export function useKordiAppModel() {
   }, [participantSpaces]);
 
   useEffect(() => {
+    if (kordiEdition === 'cloud' && !cloudLocalProfileAvatar?.shouldPersistSeed) return;
     setLocalProfileAvatarSeed(localProfileAvatarSeed);
-  }, [localProfileAvatarSeed]);
+  }, [cloudLocalProfileAvatar?.shouldPersistSeed, kordiEdition, localProfileAvatarSeed]);
 
   useEffect(() => {
     setLocalAgentAvatarSeed(localAgentAvatarSeed);
