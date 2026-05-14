@@ -527,6 +527,67 @@ export function cloudMessagesByPeerEqual(
   return leftKeys.every((key, index) => key === rightKeys[index] && cloudMessageListsEqual(left[key], right[key]));
 }
 
+export const CLOUD_MESSAGE_DISCOVERY_MAX_PASSES = 50;
+
+function uniqueSortedPeerIds(values: Iterable<string>): string[] {
+  return [...new Set([...values].map((value) => value.trim()).filter(Boolean))].sort();
+}
+
+function peerIdListsEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+export async function loadCloudMessagesByPeerUntilStable({
+  accountId,
+  initialPeerIds,
+  existingMessagesByPeer,
+  listMessages,
+  resolveMessageAttachments = async (messages) => messages,
+  maxPasses = CLOUD_MESSAGE_DISCOVERY_MAX_PASSES,
+}: {
+  accountId: string;
+  initialPeerIds: string[];
+  existingMessagesByPeer: Record<string, CloudMessage[]>;
+  listMessages(peerId: string): Promise<CloudMessage[]>;
+  resolveMessageAttachments?: (messages: CloudMessage[], peerId: string) => Promise<CloudMessage[]>;
+  maxPasses?: number;
+}): Promise<{ messagesByPeer: Record<string, CloudMessage[]>; peerIds: string[]; complete: boolean }> {
+  const byPeer: Record<string, CloudMessage[]> = {};
+  let peerIds = uniqueSortedPeerIds(initialPeerIds);
+  let hadError = false;
+
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    const missingPeerIds = peerIds.filter((peerId) => !(peerId in byPeer));
+    if (missingPeerIds.length === 0) {
+      return { messagesByPeer: byPeer, peerIds, complete: !hadError };
+    }
+
+    const entries = await Promise.all(missingPeerIds.map(async (peerId) => {
+      try {
+        const messages = await listMessages(peerId);
+        return [peerId, await resolveMessageAttachments(messages, peerId)] as const;
+      } catch {
+        hadError = true;
+        return [peerId, existingMessagesByPeer[peerId] ?? []] as const;
+      }
+    }));
+    for (const [peerId, messages] of entries) byPeer[peerId] = messages;
+
+    const expandedPeerIds = uniqueSortedPeerIds(cloudGroupPeerIdsFromMessages({
+      accountId,
+      contactPeerIds: peerIds,
+      messages: Object.values(byPeer).flat(),
+    }));
+    if (peerIdListsEqual(expandedPeerIds, peerIds)) {
+      return { messagesByPeer: byPeer, peerIds, complete: !hadError };
+    }
+    peerIds = expandedPeerIds;
+  }
+
+  return { messagesByPeer: byPeer, peerIds, complete: false };
+}
+
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
 
 type CloudSelfAgentSyncLedgerEntry = {
@@ -851,38 +912,22 @@ export function useCloudBridgeState({
       return;
     }
 
-    const byPeer: Record<string, CloudMessage[]> = {};
-    let peerIds = initialPeerIds;
-    for (let pass = 0; pass < 3; pass += 1) {
-      const missingPeerIds = peerIds.filter((peerId) => !(peerId in byPeer));
-      if (missingPeerIds.length === 0) break;
-      const entries = await Promise.all(missingPeerIds.map(async (peerId) => {
-        try {
-          const messages = await client.listMessages(session.token, peerId);
-          const resolvedMessages = await Promise.all(messages.map(async (message) => ({
-            ...message,
-            attachments: message.attachments?.length
-              ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
-              : [],
-          })));
-          return [peerId, resolvedMessages] as const;
-        } catch {
-          return [peerId, messagesByPeerRef.current[peerId] ?? []] as const;
-        }
-      }));
-      for (const [peerId, messages] of entries) byPeer[peerId] = messages;
-      const expandedPeerIds = cloudGroupPeerIdsFromMessages({
-        accountId: account.accountId,
-        contactPeerIds: peerIds,
-        messages: Object.values(byPeer).flat(),
-      });
-      if (expandedPeerIds.length === peerIds.length) break;
-      peerIds = expandedPeerIds;
-    }
+    const loaded = await loadCloudMessagesByPeerUntilStable({
+      accountId: account.accountId,
+      initialPeerIds,
+      existingMessagesByPeer: messagesByPeerRef.current,
+      listMessages: (peerId) => client.listMessages(session.token, peerId),
+      resolveMessageAttachments: async (messages) => Promise.all(messages.map(async (message) => ({
+        ...message,
+        attachments: message.attachments?.length
+          ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+          : [],
+      }))),
+    });
 
     if (cancelledRef.current) return;
-    setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, byPeer) ? current : byPeer));
-    setInitialMessagesSettled(true);
+    setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, loaded.messagesByPeer) ? current : loaded.messagesByPeer));
+    setInitialMessagesSettled(loaded.complete);
   }, [account, bootstrapPeerIds, client]);
 
   useEffect(() => {
