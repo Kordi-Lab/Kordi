@@ -735,17 +735,33 @@ pub async fn desktop_chat_fork_session_from_message(
     }
 
     let cwd = chat_cwd()?;
-    let is_canonical_session = trimmed_session_id.starts_with("session:");
-    let is_local_session = !is_canonical_session && session_exists_globally(trimmed_session_id)?;
-    if !is_canonical_session && !is_local_session {
+    // Route by where the clicked entry actually lives. We can't infer
+    // this from the session id alone: in the cloud edition the local
+    // kordi_session store mirrors self-agent chats into the canonical
+    // `session_messages` table for sync, so a plain-uuid session id
+    // can still surface canonical-format message ids in the
+    // transcript. The old `starts_with("session:")` heuristic only
+    // matched canonical group/bridge ids and silently routed those
+    // mirrored sessions through the local fork path, where the
+    // canonical `msg:*` entry id is never present and the operation
+    // failed with "Entry not found".
+    let canonical_entry_match =
+        crate::canonical_sessions::canonical_session_message_exists(
+            trimmed_session_id,
+            trimmed_entry_id,
+        )?;
+    let local_session_exists =
+        !canonical_entry_match && session_exists_globally(trimmed_session_id)?;
+    if !canonical_entry_match && !local_session_exists {
         return Err(format!("Session not found: {trimmed_session_id}"));
     }
 
-    // Local sessions read from the kordi_session store; canonical
-    // sessions (group / bridge / direct-agent) are translated from
-    // canonical messages into a fresh local snapshot. Both produce a
-    // local fork the user continues from.
-    let outcome = if is_canonical_session {
+    // Canonical-rooted entries (group / bridge / direct-agent and
+    // cloud-mirrored self-agent chats) snapshot through the canonical
+    // path. Purely-local sessions without canonical mirroring use the
+    // kordi_session fork-from-entry path. Both produce a local fork
+    // the user continues from.
+    let outcome = if canonical_entry_match {
         crate::canonical_sessions::fork_canonical_session_into_local_chat(
             trimmed_session_id,
             trimmed_entry_id,

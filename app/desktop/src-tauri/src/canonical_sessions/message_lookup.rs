@@ -90,6 +90,27 @@ pub(crate) fn session_message_count(conn: &Connection, session_id: &str) -> Resu
     .map_err(|err| err.to_string())
 }
 
+/// Returns true if a row exists in `session_messages` for the given
+/// (session_id, message_id) pair. Used to route fork dispatch: if the
+/// clicked entry lives in the canonical store, the fork has to go
+/// through the canonical-snapshot path even when the session id itself
+/// is a plain local uuid (which happens for self-agent chats that are
+/// mirrored into the canonical store for cloud sync).
+pub(crate) fn canonical_message_exists(
+    conn: &Connection,
+    session_id: &str,
+    message_id: &str,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT 1 FROM session_messages WHERE session_id = ?1 AND id = ?2 LIMIT 1",
+        params![session_id, message_id],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|row| row.is_some())
+    .map_err(|err| err.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

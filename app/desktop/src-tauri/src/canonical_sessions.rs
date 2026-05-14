@@ -74,8 +74,8 @@ pub(crate) use self::identity_helpers::{
     sanitize_remote_peer_display_name, shared_agent_display_name, validate_status,
 };
 pub(crate) use self::message_lookup::{
-    existing_delegation_join_message_id, session_message_count, similar_agent_message_exists,
-    similar_agent_message_text,
+    canonical_message_exists, existing_delegation_join_message_id, session_message_count,
+    similar_agent_message_exists, similar_agent_message_text,
 };
 #[cfg(test)]
 use self::parent_sessions::{
@@ -1050,6 +1050,22 @@ pub(super) fn local_agent_identity_id(
     reassign_stale_local_agent_identities(conn, human_identity_id, workspace_root, &identity.id)?;
     update_local_profile_identities(conn, None, Some(identity.id.as_str()), None)?;
     Ok(identity.id)
+}
+
+/// Open the canonical sessions DB and check whether the given
+/// (session_id, message_id) pair has a row in `session_messages`.
+///
+/// Used by the fork dispatcher to detect canonical-mirrored sessions
+/// that don't carry the `session:` prefix (notably self-agent chats
+/// that are mirrored into the canonical store for cloud sync). Returns
+/// `Ok(false)` when the canonical DB has no row matching the entry,
+/// so callers can fall back to the local kordi_session fork path.
+pub(crate) fn canonical_session_message_exists(
+    session_id: &str,
+    message_id: &str,
+) -> Result<bool, String> {
+    let conn = open_db()?;
+    canonical_message_exists(&conn, session_id, message_id)
 }
 
 #[tauri::command]
