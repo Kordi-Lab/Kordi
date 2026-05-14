@@ -41,11 +41,11 @@ use self::bridge_routing::{
     bridge_conversation_has_unrouted_direct_messages, message_scoped_outreach_groups,
 };
 pub(crate) use self::bridge_sync::{sync_bridge_state_identities, sync_bridge_state_sessions};
+pub(crate) use self::canonical_fork::fork_canonical_session_into_local_chat;
 pub(crate) use self::core::canonical_bridge_session_id;
 use self::core::{
     canonical_sessions_db_path, canonical_storage_root, hash_hex, now_ms, stable_profile_id,
 };
-pub(crate) use self::canonical_fork::fork_canonical_session_into_local_chat;
 pub(crate) use self::desktop_sync::sync_desktop_chat_state;
 #[cfg(test)]
 use self::desktop_sync::{

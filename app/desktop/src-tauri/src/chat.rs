@@ -189,8 +189,18 @@ fn is_placeholder_session_title(title: &str) -> bool {
     trimmed.is_empty() || trimmed.eq_ignore_ascii_case("New session") || trimmed == "Session"
 }
 
+fn is_default_agent_session_title(title: &str) -> bool {
+    matches!(
+        title.trim().to_lowercase().as_str(),
+        "kordi" | "my kordi" | "my agent" | "my kordi session" | "my agent session"
+    )
+}
+
 fn is_blank_draft_summary(summary: &DesktopChatSessionSummary) -> bool {
-    summary.message_count == 0 && (summary.draft || is_placeholder_session_title(&summary.title))
+    summary.message_count == 0
+        && (summary.draft
+            || is_placeholder_session_title(&summary.title)
+            || is_default_agent_session_title(&summary.title))
 }
 
 fn filter_blank_draft_projects(
@@ -465,8 +475,9 @@ async fn build_chat_state(
         model_options,
         slash_commands,
     };
-    let active_is_canonical_group = crate::canonical_sessions::canonical_session_is_group_chat(&state.active_session_id)
-        .unwrap_or(false);
+    let active_is_canonical_group =
+        crate::canonical_sessions::canonical_session_is_group_chat(&state.active_session_id)
+            .unwrap_or(false);
     let sync_state = desktop_state_for_canonical_sync(
         &state,
         session_has_running_turn(manager, &state.active_session_id).await,
@@ -748,11 +759,10 @@ pub async fn desktop_chat_fork_session_from_message(
     // mirrored sessions through the local fork path, where the
     // canonical `msg:*` entry id is never present and the operation
     // failed with "Entry not found".
-    let canonical_entry_match =
-        crate::canonical_sessions::canonical_session_message_exists(
-            trimmed_session_id,
-            trimmed_entry_id,
-        )?;
+    let canonical_entry_match = crate::canonical_sessions::canonical_session_message_exists(
+        trimmed_session_id,
+        trimmed_entry_id,
+    )?;
     let source_is_canonical_group = canonical_entry_match
         && crate::canonical_sessions::canonical_session_is_group_chat(trimmed_session_id)?;
     let local_session_exists =
@@ -773,11 +783,8 @@ pub async fn desktop_chat_fork_session_from_message(
             &cwd.display().to_string(),
         )?
     } else {
-        kordi_cli::desktop_runtime::fork_session_from_message(
-            trimmed_session_id,
-            trimmed_entry_id,
-        )
-        .map_err(|err| err.to_string())?
+        kordi_cli::desktop_runtime::fork_session_from_message(trimmed_session_id, trimmed_entry_id)
+            .map_err(|err| err.to_string())?
     };
 
     if source_is_canonical_group {

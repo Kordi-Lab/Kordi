@@ -11,6 +11,7 @@ export function cloudInitialSyncStatus({
   canonicalReady,
   contactsSettled,
   messagesSettled,
+  desktopChatSettled = true,
   localBackupReady = false,
   startedAtMs,
   nowMs = Date.now(),
@@ -21,12 +22,13 @@ export function cloudInitialSyncStatus({
   canonicalReady: boolean;
   contactsSettled: boolean;
   messagesSettled: boolean;
+  desktopChatSettled?: boolean;
   localBackupReady?: boolean;
   startedAtMs: number;
   nowMs?: number;
 }): CloudInitialSyncStatus {
   if (!isCloudEdition) return 'ready';
-  if (!accountReady || !canonicalSettled || !canonicalReady) {
+  if (!accountReady || !canonicalSettled || !canonicalReady || !desktopChatSettled) {
     return nowMs - startedAtMs >= CLOUD_INITIAL_SYNC_TIMEOUT_MS ? 'error' : 'syncing';
   }
   if (localBackupReady) return 'ready';

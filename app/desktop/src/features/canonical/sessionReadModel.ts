@@ -9,7 +9,7 @@ import type {
 import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import { formatDesktopClockTime } from '@/lib/time';
+import { formatDesktopLastActiveLabel } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
@@ -338,9 +338,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         ? canonicalParticipants.map((participant) => participant.name)
         : conversation.participants;
       const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
-      const latestTime = messages[messages.length - 1]?.time
-        ?? conversation.updatedAtLabel
-        ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
+      const latestTime = formatDesktopLastActiveLabel(sessionChatActivityAtMs(session, indexes.rawMessagesBySessionId.get(sessionId) ?? []));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
       const directBridgeTarget = conversation.bridgeTarget ?? syntheticBridgeTarget(session, rawCanonicalParticipants);
       const bridgeTarget = directBridgeTarget ?? bridgeTargetForSession(session, rawCanonicalParticipants, indexes);
@@ -430,8 +428,8 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         .sort((left, right) => {
           const leftSession = left[0];
           const rightSession = right[0];
-          return (rightSession ? sessionChatActivityAtMs(rightSession) : 0)
-            - (leftSession ? sessionChatActivityAtMs(leftSession) : 0);
+          return (rightSession ? sessionChatActivityAtMs(rightSession, indexes.rawMessagesBySessionId.get(rightSession.id) ?? []) : 0)
+            - (leftSession ? sessionChatActivityAtMs(leftSession, indexes.rawMessagesBySessionId.get(leftSession.id) ?? []) : 0);
         })
         .flatMap((sessions) => {
           const representativeWithMessages = sessions.find((session) => (indexes.rawMessageCountBySessionId.get(session.id) ?? 0) > 0);
@@ -449,7 +447,13 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
                   canonicalSessionId: representative.id,
                 }, representative.id, mergedUnread), buildSubtitle)]
               : [this.applyConversation(
-                syntheticConversation(representative, this.participantDetails(representative.id), this.messages(representative.id), buildSubtitle),
+                syntheticConversation(
+                  representative,
+                  this.participantDetails(representative.id),
+                  this.messages(representative.id),
+                  buildSubtitle,
+                  indexes.rawMessagesBySessionId.get(representative.id) ?? [],
+                ),
                 buildSubtitle,
               )];
           }
@@ -466,7 +470,13 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
             return [];
           }
           return [this.applyConversation(
-            syntheticConversation(fallbackSession, fallbackParticipants, fallbackMessages, buildSubtitle),
+            syntheticConversation(
+              fallbackSession,
+              fallbackParticipants,
+              fallbackMessages,
+              buildSubtitle,
+              indexes.rawMessagesBySessionId.get(fallbackSession.id) ?? [],
+            ),
             buildSubtitle,
           )];
         });

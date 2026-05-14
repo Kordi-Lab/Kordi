@@ -5,6 +5,7 @@ import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
+import { currentKordiEdition } from '@/features/cloud/edition';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -395,14 +396,17 @@ export function useWorkspaceViewModels({
   }, [activeConvId, bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
-    () => ({
+    () => {
+      const suppressLoadingCopy = currentKordiEdition() === 'cloud';
+      const placeholderText = isDesktopChatLoading && !suppressLoadingCopy
+        ? 'Opening my local chat history…'
+        : 'Blank drafts stay local until the first real send.';
+      return {
       id: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
       canonicalSessionId: undefined,
       name: 'New session',
       type: 'owned-agent' as const,
-      subtitle: isDesktopChatLoading
-        ? 'Opening my local chat history…'
-        : 'Blank drafts stay local until the first real send.',
+      subtitle: placeholderText,
       unread: 0,
       bridges: ['Local'],
       trust: 'Owned',
@@ -411,12 +415,11 @@ export function useWorkspaceViewModels({
       bridgeTarget: undefined,
       messages: [{
         role: 'system' as const,
-        text: isDesktopChatLoading
-          ? 'Opening my local chat history…'
-          : 'Type a message to start a new chat. Blank drafts disappear until you send something.',
+        text: placeholderText,
         time: '--:--',
       }],
-    }),
+    };
+    },
     [isDesktopChatLoading],
   );
 

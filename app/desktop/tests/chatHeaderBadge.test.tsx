@@ -11,6 +11,15 @@ test('chat header hides the My agent badge for canonical group sessions', () => 
   }), false);
 });
 
+test('chat header hides the My agent badge for forks of canonical group sessions', () => {
+  assert.equal(shouldShowConversationTypeBadge({
+    id: 'session:fork:606437914b634d4490e509a7916fbb72',
+    canonicalSessionId: 'session:fork:606437914b634d4490e509a7916fbb72',
+    type: 'owned-agent',
+    forkedFromSessionId: 'session:group:c0865259-a991-48bf-9752-56daf674e4f9',
+  }), false);
+});
+
 test('chat header keeps the My agent badge for true self-agent sessions', () => {
   assert.equal(shouldShowConversationTypeBadge({
     id: '4367e286-afb4-4941-b0cb-7d644b0f6ce6',

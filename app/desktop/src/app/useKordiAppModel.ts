@@ -2312,6 +2312,7 @@ export function useKordiAppModel() {
       canonicalReady: !canonicalInitialRefreshError,
       contactsSettled: initialContactsSettled,
       messagesSettled: initialMessagesSettled,
+      desktopChatSettled: !isDesktopChatLoading,
       localBackupReady: cachedMessagesReady || canonicalStateHasCloudLocalBackup(canonicalSessionState, cloudSession.account?.accountId),
       startedAtMs: cloudInitialSyncStartedAt,
       nowMs: cloudInitialSyncNow,
@@ -2329,6 +2330,7 @@ export function useKordiAppModel() {
     cachedMessagesReady,
     initialContactsSettled,
     initialMessagesSettled,
+    isDesktopChatLoading,
     kordiEdition,
     retryCloudInitialSync,
   ]);

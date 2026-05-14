@@ -30,6 +30,7 @@ export type CanonicalIndexes = {
   participantsBySessionId: Map<string, CanonicalSessionParticipant[]>;
   canonicalParticipantsBySessionId: Map<string, ConversationParticipant[]>;
   canonicalMessagesBySessionId: Map<string, Message[]>;
+  rawMessagesBySessionId: Map<string, CanonicalSessionMessage[]>;
   rawMessageCountBySessionId: Map<string, number>;
   delegatedExchangeCountBySessionId: Map<string, number>;
   taskActivitiesBySessionId: Map<string, SessionTaskActivity[]>;
@@ -47,6 +48,7 @@ function emptyIndexes(): CanonicalIndexes {
     participantsBySessionId: new Map(),
     canonicalParticipantsBySessionId: new Map(),
     canonicalMessagesBySessionId: new Map(),
+    rawMessagesBySessionId: new Map(),
     rawMessageCountBySessionId: new Map(),
     delegatedExchangeCountBySessionId: new Map(),
     taskActivitiesBySessionId: new Map(),
@@ -856,6 +858,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     participantsBySessionId,
     canonicalParticipantsBySessionId,
     canonicalMessagesBySessionId,
+    rawMessagesBySessionId,
     rawMessageCountBySessionId,
     delegatedExchangeCountBySessionId,
     taskActivitiesBySessionId,

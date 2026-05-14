@@ -393,12 +393,12 @@ test('planCloudSelfAgentSync backfills terminal local self-agent turns without r
   } as CanonicalSessionState;
 
   assert.deepEqual(planCloudSelfAgentSync(state, {}), [
-    { localMessageId: 'u1', sessionId: 'local-self-session', role: 'user', text: 'hello', parentLocalMessageId: null },
-    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1' },
+    { localMessageId: 'u1', sessionId: 'local-self-session', role: 'user', text: 'hello', parentLocalMessageId: null, createdAtMs: 10 },
+    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1', createdAtMs: 20 },
   ]);
 
   assert.deepEqual(planCloudSelfAgentSync(state, { u1: { cloudMessageId: 'msg_remote', syncedAtMs: 123 } }), [
-    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1' },
+    { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1', createdAtMs: 20 },
   ]);
 });
 
@@ -424,8 +424,8 @@ test('planCloudSelfAgentSync skips inherited fork snapshot rows but keeps new fo
   } as CanonicalSessionState;
 
   assert.deepEqual(planCloudSelfAgentSync(state, {}), [
-    { localMessageId: 'new-u1', sessionId: forkSessionId, role: 'user', text: 'new fork prompt', parentLocalMessageId: null },
-    { localMessageId: 'new-a1', sessionId: forkSessionId, role: 'agent', text: 'new answer', parentLocalMessageId: 'new-u1' },
+    { localMessageId: 'new-u1', sessionId: forkSessionId, role: 'user', text: 'new fork prompt', parentLocalMessageId: null, createdAtMs: 30 },
+    { localMessageId: 'new-a1', sessionId: forkSessionId, role: 'agent', text: 'new answer', parentLocalMessageId: 'new-u1', createdAtMs: 40 },
   ]);
 });
 
@@ -681,6 +681,39 @@ test('stored self messages restore a private My Kordi cloud agent conversation',
     '@Kordi remember this private note',
     'I will remember it.',
   ]);
+});
+
+test('unscoped self-agent cloud cache is hidden when local canonical self-agent history exists', () => {
+  const selfRequest: CloudMessage = {
+    messageId: 'msg_self_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: 'hwllo',
+    createdAt: '2026-05-11T10:00:00Z',
+    deliveredAt: '2026-05-11T10:00:00Z',
+    readAt: null,
+    direction: 'outgoing',
+  };
+  const selfResponse: CloudMessage = {
+    messageId: 'msg_self_response',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: 'msg_self_request', text: 'Hello! How can I help?' }),
+    createdAt: '2026-05-11T10:00:01Z',
+    deliveredAt: '2026-05-11T10:00:01Z',
+    readAt: null,
+    direction: 'outgoing',
+  };
+
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [],
+    messagesByPeer: { acct_me: [selfRequest, selfResponse] },
+    activeConversationId: null,
+    suppressUnscopedSelfAgentConversation: true,
+  });
+
+  assert.equal(state.conversations.length, 0);
 });
 
 test('cloud contacts and messages become normal desktop bridge state', () => {
@@ -943,7 +976,7 @@ test('cloud remote-agent responses render with the remote owner agent identity',
   assert.equal(agentMessage?.sender, "Peer Person's Kordi");
 });
 
-test('active cloud agent conversations do not remove the contact conversation', () => {
+test('active cloud agent bridge placeholders are not materialized as duplicate sessions', () => {
   const state = buildCloudDesktopBridgeState({
     account,
     contacts: [peer],
@@ -952,7 +985,7 @@ test('active cloud agent conversations do not remove the contact conversation', 
   });
 
   assert.equal(state.conversations.some((conversation) => conversation.id === 'bridge:cloud:acct_peer:person'), true);
-  assert.equal(state.conversations.some((conversation) => conversation.id === 'bridge:cloud:acct_peer'), true);
+  assert.equal(state.conversations.some((conversation) => conversation.id === 'bridge:cloud:acct_peer'), false);
 });
 
 test('cloud parallel agent mentions keep request-specific processing and replies', () => {

@@ -136,23 +136,11 @@ function CloudEditionRoot({
   if (status === 'loading') {
     return (
       <CloudGateShell>
-        <CloudGateLoading />
+        <CloudStartingScreen />
       </CloudGateShell>
     );
   }
   return <KordiAppShell />;
-}
-
-function CloudGateLoading() {
-  return (
-    <div
-      className="app-cloud-login-loading fixed inset-0 z-[100] grid place-items-center text-[12px] font-semibold uppercase tracking-[0.18em]"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      Restoring session…
-    </div>
-  );
 }
 
 export function CloudStartingScreen({
