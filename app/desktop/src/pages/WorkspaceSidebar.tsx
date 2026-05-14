@@ -234,6 +234,7 @@ type WorkspaceSidebarProps = {
   localProfileAvatarSeed?: string | null;
   cloudAccount?: CloudAccount | null;
   onUpdateCloudProfile?: (input: { displayName?: string; avatarSeed?: string; avatarUrl?: string }) => Promise<void>;
+  onCloudSignOut?: () => Promise<void> | void;
   isBridgePolling: boolean;
   onRefreshBridge: () => void;
   onCopyBridgeHostUrl: () => void;
@@ -257,6 +258,30 @@ const SIDEBAR_STATUS_DOT_TONE: Record<SessionStatusIndicator['tone'], string> = 
   error: 'app-session-status-light-error',
   stopped: 'app-session-status-light-stopped',
 };
+
+export function CloudProfileLogoutAction({
+  onSignOut,
+  disabled = false,
+}: {
+  onSignOut: () => Promise<void> | void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-semibold text-red-200',
+        'transition hover:bg-red-400/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-60',
+      )}
+      aria-label="Logout of Cloud account"
+      disabled={disabled}
+      onClick={() => void onSignOut()}
+    >
+      <span>Logout</span>
+      <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-red-200/70">Cloud</span>
+    </button>
+  );
+}
 
 export function SidebarSessionStatusIndicator({
   indicator,
@@ -445,6 +470,7 @@ export function WorkspaceSidebar({
   localProfileAvatarSeed,
   cloudAccount,
   onUpdateCloudProfile,
+  onCloudSignOut,
   isBridgePolling,
   onRefreshBridge,
   onCopyBridgeHostUrl,
@@ -479,6 +505,7 @@ export function WorkspaceSidebar({
   const [cloudProfileAvatarUrlDraft, setCloudProfileAvatarUrlDraft] = useState('');
   const [cloudProfileSaving, setCloudProfileSaving] = useState(false);
   const [cloudProfileError, setCloudProfileError] = useState('');
+  const [cloudSignOutBusy, setCloudSignOutBusy] = useState(false);
   const cloudProfileFileRef = useRef<HTMLInputElement | null>(null);
   const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
   const profilePopoverRef = useRef<HTMLDivElement | null>(null);
@@ -574,6 +601,20 @@ export function WorkspaceSidebar({
       })
       .catch((caught) => setCloudProfileError(caught instanceof Error ? caught.message : 'Could not use that image.'));
   };
+
+  const handleCloudSignOut = async () => {
+    if (!onCloudSignOut || cloudSignOutBusy) return;
+    setCloudSignOutBusy(true);
+    setCloudProfileError('');
+    try {
+      await onCloudSignOut();
+      setIsProfileCardOpen(false);
+    } catch (caught) {
+      setCloudProfileError(caught instanceof Error ? caught.message : 'Could not log out.');
+      setCloudSignOutBusy(false);
+    }
+  };
+
   const activeParticipantSpaceId = participantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
   ))?.id ?? null;
@@ -1093,6 +1134,11 @@ export function WorkspaceSidebar({
                   Profile details are stored locally.
                 </div>
               )}
+              {cloudAccount && onCloudSignOut ? (
+                <div className="mt-2 border-t border-white/10 pt-2">
+                  <CloudProfileLogoutAction onSignOut={handleCloudSignOut} disabled={cloudSignOutBusy} />
+                </div>
+              ) : null}
             </div>
           </div>,
           document.querySelector('.bridge-app') ?? document.body,

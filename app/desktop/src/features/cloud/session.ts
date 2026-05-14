@@ -17,6 +17,8 @@ export interface SessionStorageBackend {
   clear(): Promise<void>;
 }
 
+export const CLOUD_SESSION_SIGNED_OUT_EVENT = 'kordi-cloud-session-signed-out';
+
 function isTauriRuntime(): boolean {
   if (typeof window === 'undefined') return false;
   return Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
@@ -99,4 +101,14 @@ export async function saveSession(session: StoredSession): Promise<void> {
 
 export async function clearSession(): Promise<void> {
   await backend().clear();
+}
+
+export function notifyCloudSessionSignedOut(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(CLOUD_SESSION_SIGNED_OUT_EVENT));
+}
+
+export async function clearSessionAndNotifySignedOut(): Promise<void> {
+  await clearSession();
+  notifyCloudSessionSignedOut();
 }

@@ -11,7 +11,7 @@ import type { CloudAccount } from '../src/features/cloud/authClient';
 import type { Agent, Contact, Conversation, DesktopBridgeConversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '../src/pages/GroupDetailsDialog';
-import { participantSpaceSessionIdLabel, participantSpaceSessionRowTitle, sessionContextMenuTargetForConversation, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
+import { CloudProfileLogoutAction, participantSpaceSessionIdLabel, participantSpaceSessionRowTitle, sessionContextMenuTargetForConversation, WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 
 type ConversationFixture = Conversation & { _updatedAtMs?: number };
 
@@ -223,6 +223,13 @@ test('WorkspaceSidebar cloud profile uses the provider image avatar instead of a
   const profileAvatarMarkup = markup.slice(markup.indexOf('aria-label="Provider User avatar"'), markup.indexOf('aria-label="Provider User avatar"') + 500);
   assert.match(profileAvatarMarkup, /src="https:\/\/lh3\.googleusercontent\.com\/a\/provider-avatar"/);
   assert.doesNotMatch(profileAvatarMarkup, /shape-rendering="crispEdges"/);
+});
+
+test('CloudProfileLogoutAction renders a Cloud-only logout menu item', () => {
+  const markup = renderToStaticMarkup(createElement(CloudProfileLogoutAction, { onSignOut: async () => undefined }));
+
+  assert.match(markup, /Logout/);
+  assert.match(markup, /aria-label="Logout of Cloud account"/);
 });
 
 test('WorkspaceSidebar renders direct human participant spaces as one flat chat row without session actions', () => {

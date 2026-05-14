@@ -5,6 +5,7 @@ import type { CloudAccount } from '../src/features/cloud/authClient';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
   buildCloudAgentPromptWithSharedContext,
+  cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsFirstPersonAgent,
   cloudMessageMentionsLocalAgent,
   cloudMessageMentionsNamedAgent,
@@ -93,6 +94,42 @@ test('cloud first-person agent mentions are sender-owned, not recipient-owned', 
   assert.equal(cloudMessageMentionsFirstPersonAgent('@MyKordi what is agentic?'), true);
   assert.equal(cloudMessageMentionsFirstPersonAgent('@Kordi what is agentic?'), true);
   assert.equal(cloudMessageMentionsFirstPersonAgent('@ShuyheresKordi what is agentic?'), false);
+});
+
+test('cloud self-agent direct messages trigger the local agent without requiring an @ mention', () => {
+  assert.equal(cloudMessageIsSelfAgentRequest({
+    messageId: 'msg_self_plain',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: 'are you here',
+    createdAt: '2026-05-11T10:00:00Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+    sessionId: 'session-self',
+  }, account), true);
+  assert.equal(cloudMessageIsSelfAgentRequest({
+    messageId: 'msg_peer_plain',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: 'are you here',
+    createdAt: '2026-05-11T10:00:00Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: 'session-self',
+  }, account), false);
+  assert.equal(cloudMessageIsSelfAgentRequest({
+    messageId: 'msg_self_response',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: 'msg_self_plain', text: 'Yes.' }),
+    createdAt: '2026-05-11T10:00:01Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+    sessionId: 'session-self',
+  }, account), false);
 });
 
 test('cloud named agent mention matching recognizes remote Kordi labels', () => {
