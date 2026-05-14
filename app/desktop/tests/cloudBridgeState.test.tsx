@@ -24,6 +24,7 @@ import {
   planCloudSelfAgentSync,
   cloudMessagesByPeerEqual,
   loadCloudMessagesByPeerUntilStable,
+  cloudInitialMessagesSettledForPeerKey,
 } from '../src/features/cloud/useCloudBridgeState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -326,6 +327,22 @@ test('cloud contact identity requests preserve account ids, display names, and s
 
 test('cloud bootstrap peers include the signed-in account for private self-agent restore', () => {
   assert.deepEqual(cloudBootstrapPeerIds(account, ['acct_peer'], []), ['acct_me', 'acct_peer']);
+});
+
+test('cloud initial message readiness waits for the post-contact peer set', () => {
+  assert.equal(cloudInitialMessagesSettledForPeerKey({
+    accountReady: true,
+    contactsSettled: true,
+    currentPeerKey: 'acct_me|acct_peer',
+    settledPeerKey: 'acct_me',
+  }), false);
+
+  assert.equal(cloudInitialMessagesSettledForPeerKey({
+    accountReady: true,
+    contactsSettled: true,
+    currentPeerKey: 'acct_me|acct_peer',
+    settledPeerKey: 'acct_me|acct_peer',
+  }), true);
 });
 
 test('cloud initial message sync follows group peer discovery until stable', async () => {

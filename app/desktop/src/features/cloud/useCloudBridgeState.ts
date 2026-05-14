@@ -538,6 +538,22 @@ function peerIdListsEqual(left: string[], right: string[]): boolean {
   return left.every((value, index) => value === right[index]);
 }
 
+export function cloudInitialMessagesSettledForPeerKey({
+  accountReady,
+  contactsSettled,
+  currentPeerKey,
+  settledPeerKey,
+}: {
+  accountReady: boolean;
+  contactsSettled: boolean;
+  currentPeerKey: string;
+  settledPeerKey: string | null;
+}): boolean {
+  if (!accountReady) return true;
+  if (!contactsSettled) return false;
+  return Boolean(settledPeerKey) && settledPeerKey === currentPeerKey;
+}
+
 export async function loadCloudMessagesByPeerUntilStable({
   accountId,
   initialPeerIds,
@@ -795,7 +811,7 @@ export function useCloudBridgeState({
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
-  const [initialMessagesSettled, setInitialMessagesSettled] = useState(false);
+  const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
   const cloudGroupOfflineTimersRef = useRef<Map<string, number>>(new Map());
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
@@ -871,13 +887,6 @@ export function useCloudBridgeState({
   const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
   const bootstrapPeerKey = useMemo(() => bootstrapPeerIds.join('|'), [bootstrapPeerIds]);
 
-  useEffect(() => {
-    if (!account) {
-      setInitialMessagesSettled(true);
-      return;
-    }
-    setInitialMessagesSettled(false);
-  }, [account?.accountId, bootstrapPeerKey]);
 
   useEffect(() => {
     if (!account || !localHumanIdentityId || !setCanonicalSessionState) return;
@@ -903,12 +912,12 @@ export function useCloudBridgeState({
     const initialPeerIds = [...new Set([...bootstrapPeerIds, ...retainedPeerIds])];
     if (!account || initialPeerIds.length === 0) {
       setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
-      setInitialMessagesSettled(true);
+      setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return;
     }
     const session = await loadSession();
     if (!session?.token) {
-      setInitialMessagesSettled(true);
+      setInitialMessagesSettledPeerKey(null);
       return;
     }
 
@@ -927,8 +936,8 @@ export function useCloudBridgeState({
 
     if (cancelledRef.current) return;
     setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, loaded.messagesByPeer) ? current : loaded.messagesByPeer));
-    setInitialMessagesSettled(loaded.complete);
-  }, [account, bootstrapPeerIds, client]);
+    setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
+  }, [account, bootstrapPeerIds, bootstrapPeerKey, client]);
 
   useEffect(() => {
     if (!account) {
@@ -936,7 +945,7 @@ export function useCloudBridgeState({
       setReadInboundMessageIdsByPeer({});
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
-      setInitialMessagesSettled(true);
+      setInitialMessagesSettledPeerKey(null);
       return;
     }
     void refreshCloudBridgeMessages();
@@ -2280,6 +2289,11 @@ export function useCloudBridgeState({
     refreshCloudBridgeMessages,
     refreshCloudContacts: contacts.refresh,
     initialContactsSettled: contacts.initialLoadSettled,
-    initialMessagesSettled,
+    initialMessagesSettled: cloudInitialMessagesSettledForPeerKey({
+      accountReady: Boolean(account),
+      contactsSettled: contacts.initialLoadSettled,
+      currentPeerKey: bootstrapPeerKey,
+      settledPeerKey: initialMessagesSettledPeerKey,
+    }),
   };
 }
