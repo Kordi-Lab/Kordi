@@ -263,6 +263,12 @@ type ChatsPageProps = {
   onSendChatMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
+  /** Fork lineage rows broadcast from the cloud server, keyed by
+   * source (parent) session id. Used to show a 'N forks' chip on
+   * the source session for participants who are not the forker —
+   * they don't have access to the fork content but can see that
+   * a fork was created. */
+  cloudForkLineageByParentSessionId?: import('@/features/cloud/cloudDiffSync').CloudForkLineageByParentSessionId;
 };
 
 export function ChatsPage({
@@ -325,6 +331,7 @@ export function ChatsPage({
   onSendChatMessage,
   hasAnyAuth,
   onOpenAuthSettings,
+  cloudForkLineageByParentSessionId,
 }: ChatsPageProps) {
   const visibleDesktopLiveTurn = desktopLiveTurn ?? (!isNativeShell ? activeConv.previewLiveTurn ?? null : null);
   const isCompressionActive = visibleDesktopLiveTurn?.status === 'compacting';
@@ -371,6 +378,16 @@ export function ChatsPage({
   // Build a per-message lookup of forks anchored at each entry id of
   // the active session, so the transcript can render a "N forks" chip
   // and a popover listing them next to the message they branched from.
+  //
+  // The local session list (`desktopChatState.sessions`) only contains
+  // forks this account itself created. Forks made by *other*
+  // participants of the source session arrive as cloud-broadcast
+  // lineage rows in `cloudForkLineageByParentSessionId` — we merge
+  // those in so non-forker participants also see the count chip.
+  // Remote-fork entries get a placeholder title because the fork
+  // content is private to the forker; clicking is currently a no-op
+  // (the fork session does not exist locally and the user has no
+  // access).
   const messageForksByEntryId = useMemo(() => {
     const summaries = desktopChatState?.sessions ?? [];
     const lineage = buildForkLineage(
@@ -380,23 +397,56 @@ export function ChatsPage({
         forkedFromMessageId: summary.forkedFromMessageId ?? null,
       })),
     );
-    const forksAtMessage = lineage.forksByParentMessageIdBySession.get(activeConv.id);
-    if (!forksAtMessage) return new Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>();
     const summaryById = new Map(summaries.map((summary) => [summary.id, summary]));
     const result = new Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>();
-    for (const [messageId, forks] of forksAtMessage) {
-      const entries = forks
-        .map((fork) => summaryById.get(fork.id))
-        .filter((summary): summary is NonNullable<typeof summary> => Boolean(summary))
-        .map((summary) => ({
-          sessionId: summary.id,
-          title: summary.title || 'Untitled fork',
-          updatedAtLabel: summary.updatedAtLabel,
-        }));
-      if (entries.length > 0) result.set(messageId, entries);
+    const seenForkIdsByMessage = new Map<string, Set<string>>();
+    const recordEntry = (messageId: string, entry: { sessionId: string; title: string; updatedAtLabel?: string }) => {
+      const seen = seenForkIdsByMessage.get(messageId) ?? new Set<string>();
+      if (seen.has(entry.sessionId)) return;
+      seen.add(entry.sessionId);
+      seenForkIdsByMessage.set(messageId, seen);
+      const bucket = result.get(messageId);
+      if (bucket) bucket.push(entry);
+      else result.set(messageId, [entry]);
+    };
+
+    const forksAtMessage = lineage.forksByParentMessageIdBySession.get(activeConv.id);
+    if (forksAtMessage) {
+      for (const [messageId, forks] of forksAtMessage) {
+        for (const fork of forks) {
+          const summary = summaryById.get(fork.id);
+          if (!summary) continue;
+          recordEntry(messageId, {
+            sessionId: summary.id,
+            title: summary.title || 'Untitled fork',
+            updatedAtLabel: summary.updatedAtLabel,
+          });
+        }
+      }
     }
+
+    // Merge in remote forks (forks created by other source-session
+    // participants). Their fork session ids never appear in the local
+    // sessions list, so we feed them through directly.
+    const remoteForks = cloudForkLineageByParentSessionId?.[activeConv.id];
+    if (remoteForks && remoteForks.length > 0) {
+      for (const fork of remoteForks) {
+        // Skip if this account created the fork — we already have a
+        // richer local summary for it from the loop above. The remote
+        // copy would otherwise duplicate the chip count.
+        if (summaryById.has(fork.forkSessionId)) continue;
+        const messageId = fork.parentMessageId?.trim();
+        if (!messageId) continue;
+        recordEntry(messageId, {
+          sessionId: fork.forkSessionId,
+          title: 'Private fork',
+          updatedAtLabel: fork.createdAt,
+        });
+      }
+    }
+
     return result;
-  }, [activeConv.id, desktopChatState?.sessions]);
+  }, [activeConv.id, cloudForkLineageByParentSessionId, desktopChatState?.sessions]);
   const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
     defaultModel?: string | null;
     defaultAuthProvider?: string | null;

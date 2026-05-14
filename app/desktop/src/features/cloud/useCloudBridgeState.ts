@@ -92,7 +92,7 @@ import {
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
-import { syncCloudDiffOnce } from './cloudDiffSync';
+import { syncCloudDiffOnce, type CloudForkLineageByParentSessionId } from './cloudDiffSync';
 import { loadSession } from './session';
 import { CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
@@ -857,6 +857,11 @@ export type UseCloudBridgeStateResult = {
   initialContactsSettled: boolean;
   initialMessagesSettled: boolean;
   cachedMessagesReady: boolean;
+  /** Fork lineage rows the server has broadcast to this account,
+   * grouped by source (parent) session id. Lets non-forker
+   * participants render a 'N forks' chip on the source session
+   * even though the fork content itself stays private to the forker. */
+  cloudForkLineageByParentSessionId: CloudForkLineageByParentSessionId;
 };
 
 function applyCloudAgentRuntimeRouteToState(
@@ -907,6 +912,8 @@ export function useCloudBridgeState({
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>(() => loadCachedCloudMessagesByPeer(account?.accountId));
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
+  const [cloudForkLineageByParentSessionId, setCloudForkLineageByParentSessionId] = useState<CloudForkLineageByParentSessionId>({});
+  const forkLineageRef = useRef<CloudForkLineageByParentSessionId>({});
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
@@ -934,6 +941,10 @@ export function useCloudBridgeState({
     messagesByPeerRef.current = messagesByPeer;
     if (account && messagesCacheAccountRef.current === account.accountId) saveCachedCloudMessagesByPeer(account.accountId, messagesByPeer);
   }, [account, messagesByPeer]);
+
+  useEffect(() => {
+    forkLineageRef.current = cloudForkLineageByParentSessionId;
+  }, [cloudForkLineageByParentSessionId]);
 
   useEffect(() => {
     setMessagesByPeer((current) => {
@@ -1058,11 +1069,13 @@ export function useCloudBridgeState({
     syncingCloudDiffRef.current = true;
     try {
       let messagesByPeer = messagesByPeerRef.current;
+      let forkLineageByParentSessionId = forkLineageRef.current;
       let fallbackRequired = false;
       for (let pass = 0; pass < 20; pass += 1) {
         const result = await syncCloudDiffOnce({
           accountId: account.accountId,
           messagesByPeer,
+          forkLineageByParentSessionId,
           fetchEvents: (cursor) => client.syncCloudEvents(session.token, cursor, 500),
         });
         if (result.fallbackRequired) {
@@ -1070,6 +1083,7 @@ export function useCloudBridgeState({
           break;
         }
         messagesByPeer = result.messagesByPeer;
+        forkLineageByParentSessionId = result.forkLineageByParentSessionId;
         if (!result.hasMore) break;
       }
       if (cancelledRef.current) return false;
@@ -1078,6 +1092,7 @@ export function useCloudBridgeState({
         return false;
       }
       setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, messagesByPeer) ? current : messagesByPeer));
+      setCloudForkLineageByParentSessionId((current) => (current === forkLineageByParentSessionId ? current : forkLineageByParentSessionId));
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
@@ -1092,6 +1107,7 @@ export function useCloudBridgeState({
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
       setInitialMessagesSettledPeerKey(null);
+      setCloudForkLineageByParentSessionId({});
       return;
     }
     void syncCloudBridgeDiff().then((diffSynced) => {
@@ -2456,5 +2472,6 @@ export function useCloudBridgeState({
       settledPeerKey: initialMessagesSettledPeerKey,
     }),
     cachedMessagesReady: Object.values(messagesByPeer).some((messages) => messages.length > 0),
+    cloudForkLineageByParentSessionId,
   };
 }

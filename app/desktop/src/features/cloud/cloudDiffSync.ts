@@ -1,4 +1,9 @@
-import type { CloudMessage, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse } from './authClient';
+import type {
+  CloudMessage,
+  CloudSessionFork,
+  CloudSyncEvent as AuthCloudSyncEvent,
+  CloudSyncResponse,
+} from './authClient';
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
 
@@ -112,6 +117,60 @@ function readReceiptPayload(event: CloudSyncEvent): { messageIds: string[]; read
   return { messageIds, readAt };
 }
 
+/** Fork lineage seen by the local account, keyed by source (parent)
+ * session id. Each entry is the list of forks that have been
+ * registered against that source — ordered by createdAt so the
+ * sidebar / chip popovers render newest-first if they choose. */
+export type CloudForkLineageByParentSessionId = Record<string, CloudSessionFork[]>;
+
+function normalizeCloudSessionFork(value: unknown): CloudSessionFork | null {
+  const record = objectRecord(value);
+  if (!record) return null;
+  const forkSessionId = cleanText(record.forkSessionId);
+  const parentSessionId = cleanText(record.parentSessionId);
+  const createdByAccountId = cleanText(record.createdByAccountId);
+  const createdAt = cleanText(record.createdAt);
+  if (!forkSessionId || !parentSessionId || !createdByAccountId || !createdAt) return null;
+  const parentMessageId = typeof record.parentMessageId === 'string' && record.parentMessageId.trim().length > 0
+    ? record.parentMessageId.trim()
+    : null;
+  return { forkSessionId, parentSessionId, parentMessageId, createdByAccountId, createdAt };
+}
+
+function payloadFork(event: CloudSyncEvent): CloudSessionFork | null {
+  // The server publishes `session-forked` with payload =
+  // CloudSessionForkSummary directly (no envelope object).
+  return normalizeCloudSessionFork(event.payload);
+}
+
+function upsertFork(forks: CloudSessionFork[], next: CloudSessionFork): CloudSessionFork[] {
+  const index = forks.findIndex((fork) => fork.forkSessionId === next.forkSessionId);
+  const merged = index >= 0
+    ? [...forks.slice(0, index), { ...forks[index], ...next }, ...forks.slice(index + 1)]
+    : [...forks, next];
+  return merged.sort((left, right) => (
+    left.createdAt.localeCompare(right.createdAt)
+    || left.forkSessionId.localeCompare(right.forkSessionId)
+  ));
+}
+
+export function applyCloudSyncEventsToForkLineage(
+  currentLineage: CloudForkLineageByParentSessionId,
+  events: CloudSyncEvent[],
+): CloudForkLineageByParentSessionId {
+  let next = currentLineage;
+  for (const event of events) {
+    if (event.eventType !== 'session-forked') continue;
+    const fork = payloadFork(event);
+    if (!fork) continue;
+    next = {
+      ...next,
+      [fork.parentSessionId]: upsertFork(next[fork.parentSessionId] ?? [], fork),
+    };
+  }
+  return next;
+}
+
 export function applyCloudSyncEventsToMessagesByPeer(
   accountId: string,
   currentMessagesByPeer: Record<string, CloudMessage[]>,
@@ -152,12 +211,16 @@ export function applyCloudSyncEventsToMessagesByPeer(
 export type SyncCloudDiffOnceInput = {
   accountId: string;
   messagesByPeer: Record<string, CloudMessage[]>;
+  /** Fork lineage observed so far. Optional for backward compatibility
+   * with callers that don't yet track lineage state. */
+  forkLineageByParentSessionId?: CloudForkLineageByParentSessionId;
   cursorStorage?: Storage | null;
   fetchEvents(cursor: string): Promise<CloudSyncResponse>;
 };
 
 export type SyncCloudDiffOnceResult = {
   messagesByPeer: Record<string, CloudMessage[]>;
+  forkLineageByParentSessionId: CloudForkLineageByParentSessionId;
   cursor: string;
   fallbackRequired: boolean;
   hasMore: boolean;
@@ -174,23 +237,44 @@ function cursorWentBackwards(previous: string, next: string): boolean {
 export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<SyncCloudDiffOnceResult> {
   const storage = input.cursorStorage ?? browserLocalStorage();
   const previousCursor = loadCloudSyncCursor(input.accountId, storage);
+  const previousLineage = input.forkLineageByParentSessionId ?? {};
   let response: CloudSyncResponse;
   try {
     response = await input.fetchEvents(previousCursor);
   } catch {
-    return { messagesByPeer: input.messagesByPeer, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return {
+      messagesByPeer: input.messagesByPeer,
+      forkLineageByParentSessionId: previousLineage,
+      cursor: previousCursor,
+      fallbackRequired: true,
+      hasMore: false,
+    };
   }
 
   const nextCursor = normalizeCursor(response.cursor);
   if (cursorWentBackwards(previousCursor, nextCursor)) {
-    return { messagesByPeer: input.messagesByPeer, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return {
+      messagesByPeer: input.messagesByPeer,
+      forkLineageByParentSessionId: previousLineage,
+      cursor: previousCursor,
+      fallbackRequired: true,
+      hasMore: false,
+    };
   }
 
+  const events = response.events ?? [];
   const messagesByPeer = applyCloudSyncEventsToMessagesByPeer(
     input.accountId,
     input.messagesByPeer,
-    response.events ?? [],
+    events,
   );
+  const forkLineageByParentSessionId = applyCloudSyncEventsToForkLineage(previousLineage, events);
   saveCloudSyncCursor(input.accountId, nextCursor, storage);
-  return { messagesByPeer, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
+  return {
+    messagesByPeer,
+    forkLineageByParentSessionId,
+    cursor: nextCursor,
+    fallbackRequired: false,
+    hasMore: Boolean(response.hasMore),
+  };
 }

@@ -1,6 +1,7 @@
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import type { CloudForkLineageByParentSessionId } from '@/features/cloud/cloudDiffSync';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   Agent,
@@ -55,6 +56,12 @@ export type CreateChatGroupRequest = {
 export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
+  /** Fork-lineage rows the cloud server has broadcast to this
+   * account, keyed by source (parent) session id. Used to surface
+   * a 'N forks' chip on the source session for participants who
+   * are not themselves the forker (they don't see the fork content,
+   * only the lineage). */
+  cloudForkLineageByParentSessionId: CloudForkLineageByParentSessionId;
   windowWidth: number;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
   activeConvId: string;
@@ -465,6 +472,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'authSettingsLayoutWidth'
   | 'isNativeShell'
   | 'desktopChatState'
+  | 'cloudForkLineageByParentSessionId'
   | 'desktopAuthState'
   | 'isDesktopAuthLoading'
   | 'desktopAuthError'

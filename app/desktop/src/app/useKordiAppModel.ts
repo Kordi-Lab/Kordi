@@ -370,6 +370,7 @@ export function useKordiAppModel() {
     initialContactsSettled,
     initialMessagesSettled,
     cachedMessagesReady,
+    cloudForkLineageByParentSessionId,
   } = useCloudBridgeState({
     account: kordiEdition === 'cloud' ? cloudSession.account : null,
     baseBridgeState: baseDesktopBridgeState,
@@ -2004,6 +2005,7 @@ export function useKordiAppModel() {
   const shellArgs = useKordiShellArgs({
     isNativeShell,
     desktopChatState,
+    cloudForkLineageByParentSessionId,
     windowWidth: windowSize.width,
     activeNav,
     setActiveNav,

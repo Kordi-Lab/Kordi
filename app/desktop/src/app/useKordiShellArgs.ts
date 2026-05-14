@@ -144,6 +144,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       authSettingsLayoutWidth: args.authSettingsLayoutWidth,
       isNativeShell: args.isNativeShell,
       desktopChatState: args.desktopChatState,
+      cloudForkLineageByParentSessionId: args.cloudForkLineageByParentSessionId,
       desktopAuthState: args.desktopAuthState,
       isDesktopAuthLoading: args.isDesktopAuthLoading,
       desktopAuthError: args.desktopAuthError,

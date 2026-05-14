@@ -169,6 +169,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       ?? args.desktopBridgeState?.hosts.find((host) => host.id === args.activeConv.bridgeTarget?.hostId)
       ?? args.activeBridgeHost,
     desktopChatState: args.desktopChatState,
+    cloudForkLineageByParentSessionId: args.cloudForkLineageByParentSessionId,
     onUpdateBridgeAgentModelRouting: args.handleUpdateBridgeAgentModelRouting,
     isEditingDesktopSessionTitle: args.isEditingDesktopSessionTitle,
     setIsEditingDesktopSessionTitle: args.setIsEditingDesktopSessionTitle,
