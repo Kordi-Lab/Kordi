@@ -30,6 +30,7 @@ import {
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudMessage,
+  type CloudSessionFork,
 } from './authClient';
 import {
   buildCloudDesktopBridgeState,
@@ -914,6 +915,7 @@ export function useCloudBridgeState({
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
   const [cloudForkLineageByParentSessionId, setCloudForkLineageByParentSessionId] = useState<CloudForkLineageByParentSessionId>({});
   const forkLineageRef = useRef<CloudForkLineageByParentSessionId>({});
+  const backfilledForkSessionIdsRef = useRef<Set<string>>(new Set());
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
@@ -1108,6 +1110,7 @@ export function useCloudBridgeState({
       setCloudBridgeOverrideState(null);
       setInitialMessagesSettledPeerKey(null);
       setCloudForkLineageByParentSessionId({});
+      backfilledForkSessionIdsRef.current = new Set();
       return;
     }
     void syncCloudBridgeDiff().then((diffSynced) => {
@@ -1120,6 +1123,70 @@ export function useCloudBridgeState({
     }, CLOUD_MESSAGES_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [account, refreshCloudBridgeMessages, syncCloudBridgeDiff]);
+
+  // Backfill fork lineage for every cloud-rooted canonical session
+  // the account participates in. The session-forked event stream
+  // (diff-sync) keeps lineage current for live forks, but events
+  // can be missed across logout/login or after server-side pruning
+  // — without backfill, users wouldn't see lineage for forks
+  // created while they were offline. The GET endpoint is idempotent
+  // and per-session; we cache the session ids we've already asked
+  // about so the effect only fires once per session per account.
+  useEffect(() => {
+    if (!account || !canonicalSessionState) return;
+    const token = (async () => (await loadSession())?.token ?? null);
+    const cloudRootedSessionIds = canonicalSessionState.sessions
+      .map((session) => session.id.trim())
+      .filter((id) => id.startsWith('session:group:') || id.startsWith('session:direct-person:') || id.startsWith('session:bridge:'));
+    const pending = cloudRootedSessionIds.filter((id) => !backfilledForkSessionIdsRef.current.has(id));
+    if (pending.length === 0) return;
+    // Mark before issuing the calls so a re-render during the await
+    // doesn't double-fire.
+    for (const id of pending) backfilledForkSessionIdsRef.current.add(id);
+    let cancelled = false;
+    void (async () => {
+      const sessionToken = await token();
+      if (!sessionToken || cancelled) return;
+      const fetched = await Promise.allSettled(
+        pending.map(async (sessionId) => ({
+          sessionId,
+          forks: await client.listCloudSessionForks(sessionToken, sessionId),
+        })),
+      );
+      if (cancelled) return;
+      const collected: { sessionId: string; forks: CloudSessionFork[] }[] = [];
+      for (const outcome of fetched) {
+        if (outcome.status === 'fulfilled') collected.push(outcome.value);
+      }
+      if (collected.length === 0) return;
+      setCloudForkLineageByParentSessionId((current) => {
+        let next = current;
+        let mutated = false;
+        for (const { sessionId, forks } of collected) {
+          if (forks.length === 0) continue;
+          const merged = forks.reduce<CloudSessionFork[]>(
+            (acc, fork) => {
+              const without = acc.filter((existing) => existing.forkSessionId !== fork.forkSessionId);
+              return [...without, fork];
+            },
+            next[sessionId] ?? [],
+          ).sort((left, right) => (
+            left.createdAt.localeCompare(right.createdAt)
+            || left.forkSessionId.localeCompare(right.forkSessionId)
+          ));
+          if (!mutated) {
+            next = { ...next };
+            mutated = true;
+          }
+          next[sessionId] = merged;
+        }
+        return mutated ? next : current;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [account, canonicalSessionState, client]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState || !setCanonicalSessionState) {

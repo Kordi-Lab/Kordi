@@ -499,6 +499,19 @@ export class CloudAuthClient {
     return response.fork;
   }
 
+  async listCloudSessionForks(token: string, sourceSessionId: string): Promise<CloudSessionFork[]> {
+    const response = await this.send<{ forks: CloudSessionFork[] }>(
+      `/v1/cloud/sessions/${encodeURIComponent(sourceSessionId)}/forks`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not list fork lineage.',
+    );
+    if (!response) return [];
+    return Array.isArray(response.forks) ? response.forks : [];
+  }
+
   async initiateAttachment(token: string): Promise<CloudAttachmentInitiateResult> {
     return this.send<CloudAttachmentInitiateResult>(
       '/v1/cloud/attachments/initiate',
