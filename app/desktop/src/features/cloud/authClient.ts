@@ -140,7 +140,18 @@ export type CloudMessage = {
   attachments?: CloudMessageAttachment[];
 };
 
-export type CloudSyncEventType = 'message.upsert' | 'message.read' | string;
+export type CloudSyncEventType = 'message.upsert' | 'message.read' | 'session-forked' | string;
+
+/** Lineage record for a fork of a cloud session. Visible to every
+ * participant of the source session; fork content stays private to
+ * the forker. Mirrors `CloudSessionForkSummary` on the server. */
+export type CloudSessionFork = {
+  forkSessionId: string;
+  parentSessionId: string;
+  parentMessageId: string | null;
+  createdByAccountId: string;
+  createdAt: string;
+};
 
 export type CloudSyncEvent = {
   eventId: string;
@@ -465,6 +476,27 @@ export class CloudAuthClient {
     );
     if (!response) throw new Error('Empty response from cloud server.');
     return { ...response.message, attachments: response.message.attachments ?? [] };
+  }
+
+  async createCloudSessionFork(
+    token: string,
+    sourceSessionId: string,
+    input: { forkSessionId: string; parentMessageId?: string | null },
+  ): Promise<CloudSessionFork> {
+    const response = await this.send<{ fork: CloudSessionFork }>(
+      `/v1/cloud/sessions/${encodeURIComponent(sourceSessionId)}/forks`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          forkSessionId: input.forkSessionId,
+          ...(input.parentMessageId ? { parentMessageId: input.parentMessageId } : {}),
+        }),
+      },
+      'Could not register fork lineage with cloud server.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.fork;
   }
 
   async initiateAttachment(token: string): Promise<CloudAttachmentInitiateResult> {
