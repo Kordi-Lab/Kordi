@@ -319,9 +319,24 @@ function cloudAgentMentionCandidates(
     const humanId = cleanText(identity.humanId) || cleanText(identity.bridgeNodeId);
     if (identity.kind === 'human' && humanId) identityByHumanId.set(humanId, identity);
   }
+  // Self-agent sessions (regular self-agent chats and canonical-fork
+  // private continuations) never route mentions to remote bridge
+  // agents — they always reply through the forker's own local agent.
+  // A fork carries the source group's agent identities into its
+  // participant list so @-mentions render with the original label,
+  // but those mentions are UI shadows, not delivery targets. Without
+  // this skip the offline timer treats every such mention as a real
+  // outreach attempt and fires a "<owner> and <agent> are offline"
+  // notice ~15s later, polluting the fork transcript.
+  const selfAgentSessionIds = new Set(
+    state.sessions
+      .filter((session) => session.kind === 'self-agent')
+      .map((session) => session.id),
+  );
 
   return state.messages.flatMap((message): CloudAgentMentionCandidate[] => {
     if (message.senderRole !== 'user' || message.status === 'failed') return [];
+    if (selfAgentSessionIds.has(message.sessionId)) return [];
     if (
       recentSinceMs !== undefined
       && message.createdAtMs < recentSinceMs
