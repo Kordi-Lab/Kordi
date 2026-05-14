@@ -25,6 +25,9 @@ import {
   cloudMessagesByPeerEqual,
   loadCloudMessagesByPeerUntilStable,
   cloudInitialMessagesSettledForPeerKey,
+  cachedCloudMessagesByPeerHasMessages,
+  loadCachedCloudMessagesByPeer,
+  saveCachedCloudMessagesByPeer,
 } from '../src/features/cloud/useCloudBridgeState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -55,6 +58,41 @@ const message: CloudMessage = {
   readAt: null,
   direction: 'incoming',
 };
+
+function memoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    removeItem: (key: string) => { values.delete(key); },
+    setItem: (key: string, value: string) => { values.set(key, String(value)); },
+  };
+}
+
+test('cloud message local cache round-trips all peer chat messages', () => {
+  const storage = memoryStorage();
+  saveCachedCloudMessagesByPeer('acct_me', {
+    acct_peer: [message],
+    acct_group_peer: [{ ...message, messageId: 'msg_group_1', fromAccountId: 'acct_group_peer' }],
+  }, storage);
+
+  assert.equal(cachedCloudMessagesByPeerHasMessages('acct_me', storage), true);
+  assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), {
+    acct_peer: [message],
+    acct_group_peer: [{ ...message, messageId: 'msg_group_1', fromAccountId: 'acct_group_peer' }],
+  });
+});
+
+test('cloud message local cache ignores malformed cached records', () => {
+  const storage = memoryStorage();
+  storage.setItem('kordi.cloud.messagesByPeer.v1:acct_me', JSON.stringify({
+    acct_peer: [{ messageId: '', fromAccountId: 'acct_peer' }, message],
+  }));
+
+  assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), { acct_peer: [message] });
+});
 
 test('cloud message peer equality detects attachment cache updates', () => {
   const baseMessage: CloudMessage = {

@@ -140,6 +140,23 @@ export type CloudMessage = {
   attachments?: CloudMessageAttachment[];
 };
 
+export type CloudSyncEventType = 'message.upsert' | 'message.read' | string;
+
+export type CloudSyncEvent = {
+  eventId: string;
+  eventType: CloudSyncEventType;
+  peerAccountId: string | null;
+  messageId: string | null;
+  payload: unknown;
+  occurredAt: string;
+};
+
+export type CloudSyncResponse = {
+  cursor: string;
+  hasMore: boolean;
+  events: CloudSyncEvent[];
+};
+
 export type RegisterDeviceResult = {
   nodeId: string;
   apiKey: string;
@@ -536,6 +553,20 @@ export class CloudAuthClient {
       },
       'Could not mark messages read.',
     );
+  }
+
+  async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> {
+    const params = new URLSearchParams({ cursor });
+    if (limit !== undefined) params.set('limit', String(limit));
+    const response = await this.send<CloudSyncResponse>(
+      `/v1/cloud/sync?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not sync cloud changes.',
+    );
+    return response ?? { cursor, hasMore: false, events: [] };
   }
 
   async listMessages(

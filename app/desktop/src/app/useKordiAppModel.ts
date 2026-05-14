@@ -23,7 +23,7 @@ import {
   nonCloudGroupTargets,
 } from '@/features/cloud/cloudGroupMessages';
 import { currentKordiEdition } from '@/features/cloud/edition';
-import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
+import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
 import { useCloudSession } from '@/features/cloud/useCloudSession';
 import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
@@ -367,6 +367,7 @@ export function useKordiAppModel() {
     refreshCloudContacts,
     initialContactsSettled,
     initialMessagesSettled,
+    cachedMessagesReady,
   } = useCloudBridgeState({
     account: kordiEdition === 'cloud' ? cloudSession.account : null,
     baseBridgeState: baseDesktopBridgeState,
@@ -2195,6 +2196,7 @@ export function useKordiAppModel() {
       canonicalReady: !canonicalInitialRefreshError,
       contactsSettled: initialContactsSettled,
       messagesSettled: initialMessagesSettled,
+      localBackupReady: cachedMessagesReady || canonicalStateHasCloudLocalBackup(canonicalSessionState, cloudSession.account?.accountId),
       startedAtMs: cloudInitialSyncStartedAt,
       nowMs: cloudInitialSyncNow,
     });
@@ -2206,7 +2208,9 @@ export function useKordiAppModel() {
     canonicalInitialRefreshSettled,
     cloudInitialSyncNow,
     cloudInitialSyncStartedAt,
+    canonicalSessionState,
     cloudSession.account,
+    cachedMessagesReady,
     initialContactsSettled,
     initialMessagesSettled,
     kordiEdition,
