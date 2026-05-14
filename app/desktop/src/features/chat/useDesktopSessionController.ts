@@ -60,6 +60,17 @@ type UseDesktopSessionControllerArgs = {
   setOpenComposerSelector: Dispatch<SetStateAction<{ scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null>>;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
+  /** Fired after a local fork has been created and committed to state.
+   * The chat controller stays cloud-agnostic; the host wires this up
+   * to register fork lineage with the cloud server (so other source
+   * participants see a 'N forks' chip). Errors from this hook must be
+   * swallowed by the host — they shouldn't surface as a fork failure
+   * since the local fork already succeeded. */
+  onLocalForkCreated?: (args: {
+    forkedSessionId: string;
+    sourceSessionId: string;
+    sourceMessageId: string;
+  }) => void | Promise<void>;
 };
 
 export function useDesktopSessionController({
@@ -81,6 +92,7 @@ export function useDesktopSessionController({
   setOpenComposerSelector,
   setDesktopSessionRenameDraft,
   setIsEditingDesktopSessionTitle,
+  onLocalForkCreated,
 }: UseDesktopSessionControllerArgs) {
   const handleSelectChatSession = useCallback(async (sessionId: string) => {
     shouldAutoFollowChatRef.current = true;
@@ -191,11 +203,26 @@ export function useDesktopSessionController({
       setActiveConvId(result.forkedSessionId);
       setChatComposerAttachments([]);
       setPendingUserChatMessage(null);
+      if (onLocalForkCreated) {
+        // Best-effort cloud lineage registration. The local fork
+        // already succeeded; we don't roll back if the cloud call
+        // fails (offline, server error, etc.) — the worst case is
+        // other source-session participants won't see the lineage
+        // chip until the next backfill or fork creation.
+        void Promise.resolve(
+          onLocalForkCreated({
+            forkedSessionId: result.forkedSessionId,
+            sourceSessionId: result.sourceSessionId,
+            sourceMessageId: result.sourceMessageId,
+          }),
+        ).catch(() => {});
+      }
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to fork session');
     }
   }, [
     isNativeShell,
+    onLocalForkCreated,
     setActiveConvId,
     setChatComposerAttachments,
     setDesktopChatError,

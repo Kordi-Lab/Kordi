@@ -24,6 +24,8 @@ import {
 } from '@/features/cloud/cloudGroupMessages';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
+import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { loadSession as loadCloudStoredSession } from '@/features/cloud/session';
 import { useCloudSession } from '@/features/cloud/useCloudSession';
 import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
@@ -744,6 +746,47 @@ export function useKordiAppModel() {
     setDesktopChatError,
   ]);
 
+  // Cloud client for fork-lineage registration. Only used when the
+  // forker is signed into a cloud account AND the forked-from session
+  // lives on the server (group / direct-person sessions). Self-agent
+  // and purely-local sessions skip the call — there's no server-side
+  // lineage to broadcast for those.
+  const cloudAuthClient = useMemo(() => defaultCloudAuthClient(), []);
+  const handleLocalForkCreated = useCallback(
+    async ({
+      forkedSessionId,
+      sourceSessionId,
+      sourceMessageId,
+    }: { forkedSessionId: string; sourceSessionId: string; sourceMessageId: string }) => {
+      if (kordiEdition !== 'cloud') return;
+      const trimmedSource = sourceSessionId.trim();
+      if (!trimmedSource) return;
+      // The source has to be a cloud-rooted session for the server to
+      // know about it. Purely-local self-agent ids (plain uuids) and
+      // local fork ids (session:fork:*) aren't registered with the
+      // cloud, so POST'ing lineage for them would 404. Group / direct
+      // person / bridge ids all live in cloud_messages already.
+      const sourceIsCloudRooted = trimmedSource.startsWith('session:group:')
+        || trimmedSource.startsWith('session:direct-person:')
+        || trimmedSource.startsWith('session:bridge:');
+      if (!sourceIsCloudRooted) return;
+      const storedSession = await loadCloudStoredSession();
+      if (!storedSession?.token) return;
+      try {
+        await cloudAuthClient.createCloudSessionFork(storedSession.token, trimmedSource, {
+          forkSessionId: forkedSessionId,
+          parentMessageId: sourceMessageId || null,
+        });
+      } catch (err) {
+        // Lineage broadcast is best-effort. The local fork already
+        // succeeded for the forker; other participants will pick up
+        // lineage on the next list-forks backfill if available.
+        console.warn('Cloud fork lineage registration failed:', err);
+      }
+    },
+    [cloudAuthClient, kordiEdition],
+  );
+
   const {
     handleSelectChatSession,
     handleCreateChatSession,
@@ -769,6 +812,7 @@ export function useKordiAppModel() {
     setOpenComposerSelector: composerUi.setOpenComposerSelector,
     setDesktopSessionRenameDraft: sessionUi.setDesktopSessionRenameDraft,
     setIsEditingDesktopSessionTitle: sessionUi.setIsEditingDesktopSessionTitle,
+    onLocalForkCreated: handleLocalForkCreated,
   });
 
   const {
