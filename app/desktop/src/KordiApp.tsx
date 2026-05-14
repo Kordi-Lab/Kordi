@@ -157,7 +157,6 @@ function CloudGateLoading() {
 
 export function CloudStartingScreen({
   status = 'syncing',
-  onRetry,
 }: {
   status?: 'syncing' | 'error';
   onRetry?: () => void;
@@ -174,11 +173,6 @@ export function CloudStartingScreen({
         <span className="app-cloud-starting-dot app-cloud-starting-dot-2" />
         <span className="app-cloud-starting-dot app-cloud-starting-dot-3" />
       </div>
-      {status === 'error' ? (
-        <button type="button" className="app-cloud-starting-retry" onClick={onRetry}>
-          Retry
-        </button>
-      ) : null}
     </div>
   );
 }
