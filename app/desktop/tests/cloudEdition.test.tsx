@@ -212,6 +212,24 @@ test('cloud starting timeout still has no visible retry copy', () => {
   assert.doesNotMatch(markup, /button/);
 });
 
+test('cloud edition session restore uses the same dot loading screen', () => {
+  const markup = renderToStaticMarkup(createElement(KordiAppRoot, {
+    edition: 'cloud',
+    cloudSessionStatus: 'loading',
+    cloudSession: {
+      status: 'loading',
+      account: null,
+      signIn: async () => {},
+      signUp: async () => {},
+      signInWithProvider: async () => {},
+    },
+  }));
+
+  assert.match(markup, /app-cloud-starting-screen/);
+  assert.equal((markup.match(/<span class="app-cloud-starting-dot/g) ?? []).length, 3);
+  assert.doesNotMatch(markup, /Restoring session/);
+});
+
 test('cloud edition app root renders account login before the chat shell', () => {
   const markup = renderToStaticMarkup(createElement(KordiAppRoot, {
     edition: 'cloud',

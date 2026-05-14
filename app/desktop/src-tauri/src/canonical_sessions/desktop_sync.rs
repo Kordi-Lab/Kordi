@@ -357,10 +357,23 @@ pub(crate) fn sync_desktop_chat_message(
     Ok(Some(synced.id))
 }
 
+fn is_placeholder_or_default_agent_session_title(title: &str) -> bool {
+    let normalized = title.trim().to_lowercase();
+    normalized.is_empty()
+        || normalized == "new session"
+        || normalized == "session"
+        || normalized == "kordi"
+        || normalized == "my kordi"
+        || normalized == "my agent"
+        || normalized == "my kordi session"
+        || normalized == "my agent session"
+}
+
 pub(super) fn should_sync_desktop_chat_summary(
     summary: &kordi_cli::desktop_runtime::DesktopChatSessionSummary,
 ) -> bool {
-    !(summary.draft && summary.message_count == 0)
+    !(summary.message_count == 0
+        && (summary.draft || is_placeholder_or_default_agent_session_title(&summary.title)))
 }
 
 pub(super) fn should_sync_desktop_chat_detail(

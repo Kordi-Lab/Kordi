@@ -16,6 +16,21 @@ test('cloud initial sync waits for canonical fetch to settle', () => {
   }), 'syncing');
 });
 
+test('cloud initial sync keeps the startup load page until desktop chat settles', () => {
+  assert.equal(cloudInitialSyncStatus({
+    isCloudEdition: true,
+    accountReady: true,
+    canonicalSettled: true,
+    canonicalReady: true,
+    localBackupReady: true,
+    contactsSettled: true,
+    messagesSettled: true,
+    desktopChatSettled: false,
+    startedAtMs: 1_000,
+    nowMs: 1_500,
+  }), 'syncing');
+});
+
 test('cloud initial sync opens from local backup while cloud diff sync continues', () => {
   assert.equal(cloudInitialSyncStatus({
     isCloudEdition: true,

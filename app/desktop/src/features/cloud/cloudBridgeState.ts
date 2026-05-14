@@ -18,6 +18,7 @@ import type {
 } from '@/kordi-app/types';
 
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import { formatDesktopClockTime, formatDesktopLastActiveLabel } from '@/lib/time';
 
 import type { CloudAccount, CloudMessage } from './authClient';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
@@ -639,7 +640,7 @@ export function buildCloudBridgeConversation({
           && !readInboundMessageIds?.has(message.messageId)
         )).length,
     updatedAtMs,
-    updatedAtLabel: formatCloudBridgeTime(updatedAtMs),
+    updatedAtLabel: formatDesktopLastActiveLabel(updatedAtMs),
     awaitingReply: Boolean(pendingAgentOutreach),
     peerTyping: false,
     peerLastHeartbeatLabel: null,
@@ -699,6 +700,7 @@ export function buildCloudDesktopBridgeState({
   localAgentRuntimeRoute = null,
   cloudSessionTitlesById = {},
   hiddenCloudSessionIds = new Set<string>(),
+  suppressUnscopedSelfAgentConversation = false,
 }: {
   account: CloudAccount;
   contacts: Contact[];
@@ -709,6 +711,7 @@ export function buildCloudDesktopBridgeState({
   localAgentRuntimeRoute?: DesktopChatMessageRoute | null;
   cloudSessionTitlesById?: Record<string, string | null | undefined>;
   hiddenCloudSessionIds?: ReadonlySet<string>;
+  suppressUnscopedSelfAgentConversation?: boolean;
 }): DesktopBridgeState {
   const directContacts = contacts.filter(isDirectCloudContact);
   const host = buildCloudBridgeHost(account, directContacts, localAgentRuntimeRoute);
@@ -748,7 +751,7 @@ export function buildCloudDesktopBridgeState({
           for (const cloudMessage of messages) {
             const sessionId = cleanCloudSessionId(cloudMessage.sessionId);
             if (sessionId && hiddenCloudSessionIds.has(sessionId)) continue;
-            if (hasSessionScopedMessages && !sessionId) continue;
+            if ((hasSessionScopedMessages || suppressUnscopedSelfAgentConversation) && !sessionId) continue;
             const bucket = bySession.get(sessionId) ?? [];
             bucket.push(cloudMessage);
             bySession.set(sessionId, bucket);
@@ -765,16 +768,7 @@ export function buildCloudDesktopBridgeState({
             cloudSessionTitle: cloudSessionId ? cloudSessionTitlesById[cloudSessionId] : null,
           }));
         }
-        if (activeConversationId !== cloudBridgeConversationId(peerId, CLOUD_AGENT_RUNTIME)) return [];
-        return [buildCloudBridgeConversation({
-          account,
-          contact,
-          messages,
-          runtime: CLOUD_AGENT_RUNTIME,
-          readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
-          forceRead: isActivePeer,
-          localAgentTurnsByRequestId,
-        })];
+        return [];
       })();
       return [...personConversation, ...agentConversation];
     })
@@ -822,8 +816,5 @@ export function mergeCloudBridgeState(
 }
 
 function formatCloudBridgeTime(timestampMs: number): string {
-  return new Intl.DateTimeFormat([], {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(timestampMs));
+  return formatDesktopClockTime(timestampMs);
 }

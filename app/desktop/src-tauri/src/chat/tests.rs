@@ -1,4 +1,39 @@
 use super::*;
+
+fn test_summary(title: &str, message_count: usize, draft: bool) -> DesktopChatSessionSummary {
+    DesktopChatSessionSummary {
+        id: format!("session:{title}:{message_count}:{draft}"),
+        title: title.to_string(),
+        subtitle: String::new(),
+        updated_at_label: "Draft".to_string(),
+        message_count,
+        draft,
+        forked_from_session_id: None,
+        forked_from_message_id: None,
+    }
+}
+
+#[test]
+fn blank_default_agent_sessions_are_filtered_as_transient_drafts() {
+    assert!(is_blank_draft_summary(&test_summary("My Kordi", 0, false)));
+    assert!(is_blank_draft_summary(&test_summary(
+        "My Kordi session",
+        0,
+        false
+    )));
+    assert!(is_blank_draft_summary(&test_summary(
+        "New session",
+        0,
+        false
+    )));
+    assert!(!is_blank_draft_summary(&test_summary(
+        "Research notes",
+        0,
+        false
+    )));
+    assert!(!is_blank_draft_summary(&test_summary("My Kordi", 1, false)));
+}
+
 #[test]
 fn auto_compaction_status_detection_matches_turn_runner_messages() {
     assert!(is_auto_compaction_success_status(

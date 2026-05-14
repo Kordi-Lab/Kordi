@@ -731,6 +731,7 @@ type CloudSelfAgentSyncOperation = {
   role: 'user' | 'agent';
   text: string;
   parentLocalMessageId: string | null;
+  createdAtMs: number;
 };
 
 function selfAgentSyncLedgerKey(accountId: string): string {
@@ -812,6 +813,7 @@ export function planCloudSelfAgentSync(
             role: 'user',
             text: cleanText(message.contentText),
             parentLocalMessageId: null,
+            createdAtMs: message.createdAtMs,
           });
         }
         continue;
@@ -824,6 +826,7 @@ export function planCloudSelfAgentSync(
         role: 'agent',
         text: cleanText(message.contentText),
         parentLocalMessageId: lastUserMessageId,
+        createdAtMs: message.createdAtMs,
       });
     }
   }
@@ -1277,7 +1280,10 @@ export function useCloudBridgeState({
           if (!parentCloudMessageId) continue;
           body = encodeCloudAgentResponse({ requestId: parentCloudMessageId, text: operation.text });
         }
-        const message = await client.sendMessage(session.token, account.accountId, body, { sessionId: operation.sessionId });
+        const message = await client.sendMessage(session.token, account.accountId, body, {
+          sessionId: operation.sessionId,
+          clientCreatedAt: new Date(operation.createdAtMs).toISOString(),
+        });
         if (operation.role === 'user') {
           // These are historical local-agent requests, not fresh Cloud asks.
           // Suppress the direct-agent runner so backfill does not ask My Kordi
@@ -1652,6 +1658,7 @@ export function useCloudBridgeState({
           metadata: { accountId: account.accountId, cloudGroupAgent: true },
         });
         const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;
+        const processingCreatedAtMs = Date.now();
         const processingState = await appendCanonicalMessage({
           id: processingMessageId,
           sessionId: envelope.groupId,
@@ -1661,13 +1668,13 @@ export function useCloudBridgeState({
           contentText: 'processing...',
           content: {
             sender: 'My Kordi',
-            timestampMs: Date.now(),
+            timestampMs: processingCreatedAtMs,
             deliveryState: 'processing',
             bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
             requestId: envelope.message!.id,
             replyToMessageId: envelope.message!.id,
           },
-          createdAtMs: Date.now(),
+          createdAtMs: processingCreatedAtMs,
           parentMessageId: envelope.message!.id,
           status: 'processing',
           sourceTransport: 'cloud-group-agent',
@@ -1691,7 +1698,7 @@ export function useCloudBridgeState({
             id: processingMessageId,
             senderAccountId: account.accountId,
             text: 'processing...',
-            createdAtMs: Date.now(),
+            createdAtMs: processingCreatedAtMs,
             senderKind: 'agent',
             senderDisplayName: agentDisplayName,
             deliveryState: 'processing',
@@ -1700,7 +1707,9 @@ export function useCloudBridgeState({
           },
         });
         const processingSent = await Promise.allSettled(
-          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, processingBody)),
+          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, processingBody, {
+            clientCreatedAt: new Date(processingCreatedAtMs).toISOString(),
+          })),
         );
         processingSent.forEach((result) => {
           if (result.status === 'fulfilled') mergeMessage(result.value);
@@ -1742,6 +1751,7 @@ export function useCloudBridgeState({
         const responseContentText = succeeded ? finalTurn.assistantText.trim() : '';
         const responseEnvelopeText = succeeded ? finalTurn.assistantText.trim() : (failureMessage ?? '');
         const responseMessageId = `msg:cloud-agent:${finalTurn.id}`;
+        const responseCreatedAtMs = Date.now();
         // Overwrite the local "Processing…" row in place rather than appending
         // a new row at responseMessageId. The previous behavior left a stale
         // processing row that stayed visible as "Processing…" forever — user1's
@@ -1760,14 +1770,14 @@ export function useCloudBridgeState({
           contentText: responseContentText,
           content: {
             sender: 'My Kordi',
-            timestampMs: Date.now(),
+            timestampMs: responseCreatedAtMs,
             deliveryState: responseDeliveryState,
             bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
             requestId: envelope.message!.id,
             replyToMessageId: envelope.message!.id,
             ...(failureMessage ? { error: failureMessage } : {}),
           },
-          createdAtMs: Date.now(),
+          createdAtMs: responseCreatedAtMs,
           parentMessageId: envelope.message!.id,
           status: responseDeliveryState,
           sourceTransport: 'cloud-group-agent',
@@ -1786,7 +1796,7 @@ export function useCloudBridgeState({
             id: responseMessageId,
             senderAccountId: account.accountId,
             text: responseEnvelopeText,
-            createdAtMs: Date.now(),
+            createdAtMs: responseCreatedAtMs,
             senderKind: 'agent',
             senderDisplayName: agentDisplayName,
             deliveryState: responseDeliveryState,
@@ -1795,7 +1805,9 @@ export function useCloudBridgeState({
           },
         });
         const sent = await Promise.allSettled(
-          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, responseBody)),
+          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, responseBody, {
+            clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
+          })),
         );
         sent.forEach((result) => {
           if (result.status === 'fulfilled') mergeMessage(result.value);
@@ -2198,6 +2210,12 @@ export function useCloudBridgeState({
     const hiddenCloudSessionIds = new Set(canonicalSelfAgentSessions
       .map((session) => session.id.trim())
       .filter((sessionId) => sessionId.startsWith('session:fork:')));
+    const canonicalSelfAgentSessionIds = new Set(canonicalSelfAgentSessions.map((session) => session.id));
+    const suppressUnscopedSelfAgentConversation = (canonicalSessionState?.messages ?? []).some((message) => (
+      canonicalSelfAgentSessionIds.has(message.sessionId)
+      && message.sourceTransport !== 'canonical-fork-snapshot'
+      && message.sourceTransport !== 'cloud-group-fork-snapshot'
+    ));
     const generated = buildCloudDesktopBridgeState({
       account,
       contacts: cloudBridgeContacts,
@@ -2208,6 +2226,7 @@ export function useCloudBridgeState({
       localAgentRuntimeRoute: activeRuntimeRoute,
       cloudSessionTitlesById,
       hiddenCloudSessionIds,
+      suppressUnscopedSelfAgentConversation,
     });
     return applyCloudAgentRuntimeRouteToState(
       mergeCloudBridgeState(generated, cloudBridgeOverride),
@@ -2326,7 +2345,15 @@ export function useCloudBridgeState({
       fork: input.fork ?? forkFromSessionMetadata,
       message,
     });
-    const results = await Promise.allSettled(targetAccountIds.map((peerId) => client.sendMessage(session.token, peerId, envelope, { attachments: uploadedAttachments })));
+    const clientCreatedAtMs = typeof message?.createdAtMs === 'number' && Number.isFinite(message.createdAtMs)
+      ? message.createdAtMs
+      : typeof (input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs) === 'number' && Number.isFinite(input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs)
+        ? (input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs)!
+        : null;
+    const results = await Promise.allSettled(targetAccountIds.map((peerId) => client.sendMessage(session.token, peerId, envelope, {
+      attachments: uploadedAttachments,
+      ...(clientCreatedAtMs !== null ? { clientCreatedAt: new Date(clientCreatedAtMs).toISOString() } : {}),
+    })));
     const sent = fulfilledCloudGroupSends(results);
     sent.forEach(mergeMessage);
     if (sent.length > 0) {

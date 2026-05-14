@@ -357,7 +357,32 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
         messages: Vec::new(),
     };
 
+    let blank_default_agent_summary = kordi_cli::desktop_runtime::DesktopChatSessionSummary {
+        id: "session:blank-agent-runtime".to_string(),
+        title: "My Kordi".to_string(),
+        subtitle: String::new(),
+        updated_at_label: "23:16".to_string(),
+        message_count: 0,
+        draft: false,
+        forked_from_session_id: None,
+        forked_from_message_id: None,
+    };
+    let named_empty_summary = kordi_cli::desktop_runtime::DesktopChatSessionSummary {
+        id: "session:named-empty".to_string(),
+        title: "Research notes".to_string(),
+        subtitle: String::new(),
+        updated_at_label: "23:16".to_string(),
+        message_count: 0,
+        draft: false,
+        forked_from_session_id: None,
+        forked_from_message_id: None,
+    };
+
     assert!(!should_sync_desktop_chat_summary(&blank_summary));
+    assert!(!should_sync_desktop_chat_summary(
+        &blank_default_agent_summary
+    ));
+    assert!(should_sync_desktop_chat_summary(&named_empty_summary));
     assert!(!should_sync_desktop_chat_detail(&blank_detail));
 }
 

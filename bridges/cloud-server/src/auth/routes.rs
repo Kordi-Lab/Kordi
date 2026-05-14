@@ -16,7 +16,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
@@ -259,6 +259,8 @@ pub struct SendMessageRequest {
     pub body: String,
     #[serde(rename = "sessionId")]
     pub session_id: Option<String>,
+    #[serde(rename = "clientCreatedAt")]
+    pub client_created_at: Option<String>,
     #[serde(default)]
     pub attachments: Vec<SendMessageAttachmentRequest>,
 }
@@ -2299,6 +2301,29 @@ const MESSAGE_BODY_MAX_CHARS: usize = 4_000;
 const MESSAGE_LIST_DEFAULT_LIMIT: i64 = 200;
 const MESSAGE_LIST_MAX_LIMIT: i64 = 500;
 const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
+const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
+
+fn cloud_message_effective_created_at(
+    client_created_at: Option<&str>,
+    now: DateTime<Utc>,
+) -> String {
+    let Some(raw) = client_created_at
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return now.to_rfc3339();
+    };
+    let Ok(parsed) = DateTime::parse_from_rfc3339(raw) else {
+        return now.to_rfc3339();
+    };
+    let parsed_utc = parsed.with_timezone(&Utc);
+    if parsed_utc
+        > now + ChronoDuration::seconds(CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS)
+    {
+        return now.to_rfc3339();
+    }
+    parsed_utc.to_rfc3339()
+}
 
 fn cloud_message_requires_accepted_contact(body: &str) -> bool {
     !body.trim_start().starts_with(CLOUD_GROUP_CONTROL_PREFIX)
@@ -2306,7 +2331,8 @@ fn cloud_message_requires_accepted_contact(body: &str) -> bool {
 
 #[cfg(test)]
 mod cloud_message_policy_tests {
-    use super::cloud_message_requires_accepted_contact;
+    use super::{cloud_message_effective_created_at, cloud_message_requires_accepted_contact};
+    use chrono::{TimeZone, Utc};
 
     #[test]
     fn cloud_group_control_messages_do_not_require_direct_contacts() {
@@ -2314,6 +2340,28 @@ mod cloud_message_policy_tests {
             "kordi-cloud-group:abc"
         ));
         assert!(cloud_message_requires_accepted_contact("hello"));
+    }
+
+    #[test]
+    fn cloud_message_effective_created_at_preserves_valid_client_instant_with_offset() {
+        let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
+        assert_eq!(
+            cloud_message_effective_created_at(Some("2026-05-14T03:30:00-07:00"), now),
+            "2026-05-14T10:30:00+00:00"
+        );
+    }
+
+    #[test]
+    fn cloud_message_effective_created_at_rejects_invalid_or_too_future_client_time() {
+        let now = Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap();
+        assert_eq!(
+            cloud_message_effective_created_at(Some("bad timestamp"), now),
+            "2026-05-14T12:00:00+00:00"
+        );
+        assert_eq!(
+            cloud_message_effective_created_at(Some("2026-05-14T12:10:01Z"), now),
+            "2026-05-14T12:00:00+00:00"
+        );
     }
 }
 
@@ -2550,17 +2598,21 @@ async fn send_message(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.chars().take(256).collect::<String>());
-    let now = Utc::now().to_rfc3339();
+    let server_received_at = Utc::now();
+    let created_at =
+        cloud_message_effective_created_at(req.client_created_at.as_deref(), server_received_at);
+    let delivered_at = server_received_at.to_rfc3339();
     if query(
         "INSERT INTO cloud_messages \
          (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $5, $6)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(&message_id)
     .bind(&session.account_id)
     .bind(&peer)
     .bind(&body)
-    .bind(&now)
+    .bind(&created_at)
+    .bind(&delivered_at)
     .bind(&cloud_session_id)
     .execute(pool)
     .await
@@ -2605,7 +2657,7 @@ async fn send_message(
         let from = session.account_id.clone();
         let to = peer.clone();
         let body_clone = body.clone();
-        let created_at = now.clone();
+        let created_at = created_at.clone();
         let event_attachments =
             serde_json::to_value(&attachments).unwrap_or_else(|_| serde_json::json!([]));
         tokio::spawn(async move {
@@ -2628,8 +2680,8 @@ async fn send_message(
         to_account_id: peer.clone(),
         body,
         session_id: cloud_session_id,
-        created_at: now.clone(),
-        delivered_at: Some(now.clone()),
+        created_at: created_at.clone(),
+        delivered_at: Some(delivered_at.clone()),
         read_at: None,
         direction: "outgoing".into(),
         attachments,
@@ -2642,7 +2694,7 @@ async fn send_message(
         Some(&peer),
         Some(&summary.message_id),
         message_sync_payload(&summary),
-        &now,
+        &delivered_at,
     )
     .await
     .is_err()
@@ -2666,7 +2718,7 @@ async fn send_message(
             Some(&session.account_id),
             Some(&summary.message_id),
             message_sync_payload(&recipient_summary),
-            &now,
+            &delivered_at,
         )
         .await
         .is_err()

@@ -72,9 +72,10 @@ import { cn } from '@/lib/utils';
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
 
-export function shouldShowConversationTypeBadge(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'type'>): boolean {
+export function shouldShowConversationTypeBadge(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'type' | 'forkedFromSessionId'>): boolean {
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
-  return !sessionId.startsWith('session:group:');
+  const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
+  return !sessionId.startsWith('session:group:') && !forkParentId.startsWith('session:group:');
 }
 
 function humanTranscriptGroupKey(message?: Message) {

@@ -454,7 +454,7 @@ export class CloudAuthClient {
     );
   }
 
-  async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[] } = {}): Promise<CloudMessage> {
+  async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[]; clientCreatedAt?: string | null } = {}): Promise<CloudMessage> {
     const trimmedSessionId = options.sessionId?.trim() ?? '';
     const attachments = options.attachments ?? [];
     const response = await this.send<{ message: CloudMessage }>(
@@ -467,6 +467,7 @@ export class CloudAuthClient {
           body,
           ...(trimmedSessionId ? { sessionId: trimmedSessionId } : {}),
           ...(attachments.length > 0 ? { attachments } : {}),
+          ...(options.clientCreatedAt?.trim() ? { clientCreatedAt: options.clientCreatedAt.trim() } : {}),
         }),
       },
       'Could not send message.',

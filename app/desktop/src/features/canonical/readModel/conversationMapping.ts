@@ -1,11 +1,12 @@
 import type {
+  CanonicalSessionMessage,
   CanonicalSessionState,
   Conversation,
   ConversationBridgeTarget,
   ConversationParticipant,
   Message,
 } from '@/kordi-app/types';
-import { formatDesktopClockTime } from '@/lib/time';
+import { formatDesktopLastActiveLabel } from '@/lib/time';
 
 import { stringValue } from './messageMapping';
 
@@ -212,8 +213,21 @@ export function sessionHasActiveProcessing(messages: Message[]) {
     || messages.some((message) => message.statusChips?.some((chip) => ['sending', 'processing', 'pending'].includes(chip.trim().toLowerCase())));
 }
 
-export function sessionChatActivityAtMs(session: CanonicalSessionState['sessions'][number]) {
-  return session.lastMessageAtMs ?? session.createdAtMs ?? session.updatedAtMs ?? 0;
+export function canonicalMessageCountsForLastActive(message: CanonicalSessionMessage) {
+  if (message.sourceTransport === 'canonical-fork-snapshot' || message.sourceTransport === 'cloud-group-fork-snapshot') return false;
+  const status = message.status.trim().toLowerCase();
+  if (['sending', 'processing'].includes(status)) return false;
+  return true;
+}
+
+export function sessionChatActivityAtMs(
+  session: CanonicalSessionState['sessions'][number],
+  rawMessages: CanonicalSessionMessage[] = [],
+) {
+  const latestRealMessageAtMs = rawMessages
+    .filter(canonicalMessageCountsForLastActive)
+    .reduce((latest, message) => Math.max(latest, message.createdAtMs), 0);
+  return latestRealMessageAtMs || (session.lastMessageAtMs ?? session.createdAtMs ?? session.updatedAtMs ?? 0);
 }
 
 export function sessionUnreadCount(session: CanonicalSessionState['sessions'][number]) {
@@ -226,6 +240,7 @@ export function syntheticConversation(
   participants: ConversationParticipant[],
   messages: Message[],
   buildSubtitle: ConversationSubtitleBuilder,
+  rawMessages: CanonicalSessionMessage[] = [],
 ): Conversation {
   const primary = participants.find((participant) => participant.id === session.primaryIdentityId) ?? participants[0];
   const participantNames = participants.map((participant) => participant.name);
@@ -236,8 +251,7 @@ export function syntheticConversation(
     return acc;
   }, {});
   const bridgeTarget = syntheticBridgeTarget(session, participants);
-  const updatedAtLabel = messages[messages.length - 1]?.time
-    ?? formatDesktopClockTime(sessionChatActivityAtMs(session));
+  const updatedAtLabel = formatDesktopLastActiveLabel(sessionChatActivityAtMs(session, rawMessages));
 
   const displayTitle = sessionConversationDisplayTitle(session, participants, messages, session.title, { preferFallback: sessionHasManualTitle(session) });
 
