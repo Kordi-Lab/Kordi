@@ -56,3 +56,17 @@ test('cloud app model removes old bridge state hook from main-cloud', () => {
   const composerCall = source.slice(source.indexOf('useComposerController({'), source.indexOf('  });', source.indexOf('useComposerController({')));
   assert.doesNotMatch(composerCall, /isCloudEdition/);
 });
+
+test('main-cloud composer actions do not call old bridge communication commands', () => {
+  for (const file of [
+    'src/features/chat/messageActions/chatMessages.ts',
+    'src/features/chat/messageActions/projectMessages.ts',
+  ]) {
+    const source = readSource(file);
+    assert.doesNotMatch(source, /createDesktopBridgeOutreach/);
+    assert.doesNotMatch(source, /sendDesktopBridgeMessage/);
+    assert.doesNotMatch(source, /openDesktopBridgeConversation/);
+    assert.doesNotMatch(source, /isCloudEdition/);
+    assert.doesNotMatch(source, /nonCloudGroupTargets/);
+  }
+});
