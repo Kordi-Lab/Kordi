@@ -352,6 +352,61 @@ test('chat detail task panel uses canonical Cloud participant avatars for accoun
   assert.match(markup, /Synced Cloud task by Alice/);
 });
 
+test('chat detail task panel prefers Cloud task participant Google avatars over stale canonical pixels', () => {
+  const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
+    isNativeShell: true,
+    activeDetailTab: 'tasks',
+    activeConv: {
+      id: 'session:direct-person:acct_a:acct_b',
+      canonicalSessionId: 'session:direct-person:acct_a:acct_b',
+      name: 'Alice',
+      type: 'person',
+      subtitle: '',
+      unread: 0,
+      bridges: ['Cloud'],
+      trust: 'Cloud',
+      directness: 'Direct person chat',
+      participants: ['Me', 'Alice'],
+      canonicalParticipants: [
+        { id: 'cloud:acct_a', name: 'Me', kind: 'human', role: 'self', avatarKey: 'acct_a', profileImageUrl: null },
+        { id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b', profileImageUrl: null },
+      ],
+      messages: [],
+      taskActivities: [{
+        id: 'cloud-task:session:direct-person:acct_a:acct_b:find_restaurant_options',
+        sessionId: 'session:direct-person:acct_a:acct_b',
+        status: 'complete',
+        initiator: { id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b', profileImageUrl: 'https://example.test/alice.png' },
+        target: { id: 'task:find_restaurant_options', name: 'Find Restaurant Options', kind: 'agent', role: 'external-agent', avatarKey: 'acct_b' },
+        participants: [
+          { id: 'cloud:acct_a', name: 'Me', kind: 'human', role: 'self', avatarKey: 'acct_a', profileImageUrl: 'https://example.test/me.png' },
+          { id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b', profileImageUrl: 'https://example.test/alice.png' },
+        ],
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        bridgeRequestId: 'find_restaurant_options',
+        contextPolicy: 'cloud-session-activity',
+      }],
+    },
+    activeConvHasSubtitle: false,
+    activeLastMessage: undefined,
+    activeConversationIsBridge: true,
+    activeBridgeConversationHostNodeId: null,
+    activeBridgeConversationHostUrl: null,
+    activeBridgeConversation: null,
+    activeBridgeAwaitingReply: false,
+    isBridgePolling: false,
+    lastBridgePollAtLabel: null,
+    activeSessionProject: null,
+    artifacts: [],
+    activeArtifactId: null,
+    onSelectArtifact: () => {},
+  }));
+
+  assert.match(markup, /https:\/\/example\.test\/me\.png/);
+  assert.match(markup, /https:\/\/example\.test\/alice\.png/);
+});
+
 test('chat detail task panel shows only the two real Cloud participant avatars for a shared direct task', () => {
   const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
     isNativeShell: true,
