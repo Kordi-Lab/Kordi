@@ -106,7 +106,19 @@ export function applyCloudContactsRefreshSnapshot(
   refreshed: CloudContactsSnapshot,
   revisions: { startedMutationRevision: number; currentMutationRevision: number },
 ): CloudContactsSnapshot {
-  return revisions.startedMutationRevision === revisions.currentMutationRevision ? refreshed : current;
+  if (revisions.startedMutationRevision !== revisions.currentMutationRevision) return current;
+
+  const contactsByAccountId = new Map<string, CloudContactSummary>();
+  for (const contact of current.contacts) contactsByAccountId.set(contact.accountId, contact);
+  for (const contact of refreshed.contacts) contactsByAccountId.set(contact.accountId, contact);
+  const contacts = [...contactsByAccountId.values()];
+  const acceptedAccountIds = new Set(contacts.map((contact) => contact.accountId));
+  const requests = refreshed.requests.filter((request) => {
+    const counterpartId = request.counterpart?.accountId || (request.direction === 'incoming' ? request.fromAccountId : request.toAccountId);
+    return !acceptedAccountIds.has(counterpartId);
+  });
+
+  return { contacts, requests };
 }
 
 function cleanText(value: unknown): string {

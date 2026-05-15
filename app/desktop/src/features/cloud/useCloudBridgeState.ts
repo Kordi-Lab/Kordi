@@ -36,7 +36,7 @@ import {
   cloudContactsToCanonicalIdentityRequests,
   cloudGroupParticipantContacts,
   cloudPeerAccountIdFromConversationId,
-  cloudSessionIdFromConversationId,
+  cloudSessionIdForBridgeSend,
   isCloudBridgeHostId,
   mergeCloudBridgeState,
 } from './cloudBridgeState';
@@ -347,6 +347,7 @@ export function cloudAgentMentionCandidates(
   return state.messages.flatMap((message): CloudAgentMentionCandidate[] => {
     if (message.sourceTransport === 'canonical-fork-snapshot') return [];
     if (message.senderRole !== 'user' || message.status === 'failed') return [];
+    if (message.sessionId.trim().startsWith('session:direct-person:')) return [];
     if (
       recentSinceMs !== undefined
       && message.createdAtMs < recentSinceMs
@@ -561,6 +562,25 @@ export function cloudMessagesByPeerEqual(
   const rightKeys = Object.keys(right).sort();
   if (leftKeys.length !== rightKeys.length) return false;
   return leftKeys.every((key, index) => key === rightKeys[index] && cloudMessageListsEqual(left[key], right[key]));
+}
+
+export function mergeCloudMessagesByPeerSnapshot(
+  current: Record<string, CloudMessage[]>,
+  incoming: Record<string, CloudMessage[]>,
+): Record<string, CloudMessage[]> {
+  const peerIds = uniqueSortedPeerIds([...Object.keys(current), ...Object.keys(incoming)]);
+  const merged: Record<string, CloudMessage[]> = {};
+  for (const peerId of peerIds) {
+    const byMessageId = new Map<string, CloudMessage>();
+    for (const message of current[peerId] ?? []) byMessageId.set(message.messageId, message);
+    for (const message of incoming[peerId] ?? []) {
+      const previous = byMessageId.get(message.messageId);
+      byMessageId.set(message.messageId, previous ? { ...previous, ...message } : message);
+    }
+    const messages = [...byMessageId.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    if (messages.length > 0) merged[peerId] = messages;
+  }
+  return merged;
 }
 
 export const CLOUD_MESSAGE_DISCOVERY_MAX_PASSES = 50;
@@ -1098,7 +1118,10 @@ export function useCloudBridgeState({
     });
 
     if (cancelledRef.current) return;
-    setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, loaded.messagesByPeer) ? current : loaded.messagesByPeer));
+    setMessagesByPeer((current) => {
+      const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
+      return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+    });
     setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
   }, [account, bootstrapPeerKey, client]);
 
@@ -1129,7 +1152,10 @@ export function useCloudBridgeState({
         await refreshCloudBridgeMessages();
         return false;
       }
-      setMessagesByPeer((current) => (cloudMessagesByPeerEqual(current, messagesByPeer) ? current : messagesByPeer));
+      setMessagesByPeer((current) => {
+        const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer);
+        return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      });
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
@@ -1743,6 +1769,7 @@ export function useCloudBridgeState({
         });
         const processingSent = await Promise.allSettled(
           targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, processingBody, {
+            sessionId: envelope.groupId,
             clientCreatedAt: new Date(processingCreatedAtMs).toISOString(),
           })),
         );
@@ -1841,6 +1868,7 @@ export function useCloudBridgeState({
         });
         const sent = await Promise.allSettled(
           targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, responseBody, {
+            sessionId: envelope.groupId,
             clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
           })),
         );
@@ -1931,6 +1959,7 @@ export function useCloudBridgeState({
             deliveredAt: payload.delivered_at ?? payload.created_at ?? null,
             readAt: payload.read_at ?? null,
             direction: to === accountIdAtOpen ? 'incoming' : 'outgoing',
+            sessionId: typeof payload.session_id === 'string' ? payload.session_id : null,
           });
           void syncCloudBridgeDiffRef.current?.();
         } catch (error) {
@@ -2319,7 +2348,7 @@ export function useCloudBridgeState({
     const uploadedAttachments = attachments.length > 0
       ? await uploadComposerAttachments({ token: session.token, client, attachments })
       : [];
-    const cloudSessionId = peerId === account?.accountId ? cloudSessionIdFromConversationId(conversationId) : null;
+    const cloudSessionId = cloudSessionIdForBridgeSend(account?.accountId, peerId, conversationId);
     const message = await client.sendMessage(session.token, peerId, trimmed, { sessionId: cloudSessionId, attachments: uploadedAttachments });
     mergeMessage(message);
   }, [account?.accountId, client, mergeMessage]);
@@ -2398,6 +2427,7 @@ export function useCloudBridgeState({
         ? (input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs)!
         : null;
     const results = await Promise.allSettled(targetAccountIds.map((peerId) => client.sendMessage(session.token, peerId, envelope, {
+      sessionId: input.groupId,
       attachments: uploadedAttachments,
       ...(clientCreatedAtMs !== null ? { clientCreatedAt: new Date(clientCreatedAtMs).toISOString() } : {}),
     })));

@@ -87,6 +87,13 @@ export function cloudSessionIdFromConversationId(conversationId: string): string
   }
 }
 
+export function cloudSessionIdForBridgeSend(localAccountId: string | null | undefined, peerAccountId: string | null | undefined, conversationId: string): string | null {
+  const local = localAccountId?.trim() ?? '';
+  const peer = peerAccountId?.trim() ?? '';
+  if (local && peer && peer !== local) return cloudDirectPersonSessionId(local, peer);
+  return cloudSessionIdFromConversationId(conversationId);
+}
+
 export function isCloudBridgeConversationId(conversationId: string | null | undefined): boolean {
   return Boolean(conversationId && cloudPeerAccountIdFromConversationId(conversationId));
 }

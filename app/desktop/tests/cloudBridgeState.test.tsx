@@ -26,6 +26,7 @@ import {
   optimisticCloudAgentCancelMessage,
   planCloudSelfAgentSync,
   cloudMessagesByPeerEqual,
+  mergeCloudMessagesByPeerSnapshot,
   loadCloudMessagesByPeerUntilStable,
   cloudInitialMessagesSettledForPeerKey,
   cachedCloudMessagesByPeerHasMessages,
@@ -97,6 +98,33 @@ test('cloud message local cache ignores malformed cached records', () => {
   assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), { acct_peer: [message] });
 });
 
+test('cloud message refresh snapshots preserve locally merged newer messages', () => {
+  const greeting: CloudMessage = {
+    ...message,
+    messageId: 'msg_hello',
+    body: 'hello',
+    createdAt: '2026-05-11T10:00:00Z',
+  };
+  const justSent: CloudMessage = {
+    ...message,
+    messageId: 'msg_sent',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    direction: 'outgoing',
+    body: 'hiho w are you',
+    createdAt: '2026-05-11T10:00:05Z',
+    deliveredAt: '2026-05-11T10:00:05Z',
+    sessionId: 'session:direct-person:acct_me:acct_peer',
+  };
+
+  const merged = mergeCloudMessagesByPeerSnapshot(
+    { acct_peer: [greeting, justSent] },
+    { acct_peer: [greeting] },
+  );
+
+  assert.deepEqual(merged.acct_peer?.map((item) => item.messageId), ['msg_hello', 'msg_sent']);
+});
+
 test('cloud message peer equality detects attachment cache updates', () => {
   const baseMessage: CloudMessage = {
     ...message,
@@ -136,6 +164,42 @@ test('cloud bridge messages preserve resolved attachment local paths for inline 
 
   assert.equal(mapped.attachments?.[0]?.attachmentId, 'att_1');
   assert.equal(mapped.attachments?.[0]?.localPath, '/tmp/kordi-cache/Screenshot.png');
+});
+
+test('direct Cloud contact agent mentions are not treated as Cloud group placeholders', () => {
+  const state = {
+    profile: { humanIdentityId: 'human:me', displayName: 'Me' },
+    sessions: [],
+    identities: [
+      { id: 'human:peer', kind: 'human', displayName: 'Peer Person', source: 'bridge', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', ownerIdentityId: null, sourceHostId: 'cloud', agentId: null, avatarKey: 'peer', profileImageUrl: null, metadata: null, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:cloud:acct_peer', kind: 'agent', displayName: "Peer Person's Kordi", source: 'bridge', bridgeNodeId: 'cloud-agent:acct_peer', humanId: 'acct_peer', ownerIdentityId: 'human:peer', sourceHostId: 'cloud', agentId: 'cloud-agent:acct_peer', avatarKey: 'peer-agent', profileImageUrl: null, metadata: null, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [],
+    messages: [{
+      id: 'msg_direct_request',
+      sessionId: 'session:direct-person:acct_me:acct_peer',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: '@PeerKordi hi',
+      content: { mentions: [{ targetKind: 'bridge-agent', bridgeHostId: 'cloud', humanId: 'acct_peer', label: "Peer's Kordi" }] },
+      parentMessageId: null,
+      delegatedExchangeId: null,
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+      contentHash: null,
+      sourceTransport: 'cloud-direct',
+      sourceEventId: 'cloud-direct:msg_direct_request',
+    }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: null,
+  } satisfies CanonicalSessionState;
+
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'acct_me'), []);
 });
 
 test('cloud group agent mention candidates ignore inherited fork snapshot rows', () => {

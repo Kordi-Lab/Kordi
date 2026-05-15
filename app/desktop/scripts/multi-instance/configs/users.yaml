@@ -20,7 +20,3 @@ users:
   - id: user3
     port: 1486
     title: Kordi (user3)
-
-  - id: user4
-    port: 1488
-    title: Kordi (user4)

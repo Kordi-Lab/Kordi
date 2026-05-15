@@ -216,6 +216,7 @@ impl EventBus {
         to_account_id: &str,
         body: &str,
         created_at: &str,
+        session_id: Option<&str>,
         attachments: serde_json::Value,
     ) {
         if self.inner.is_none() {
@@ -228,6 +229,7 @@ impl EventBus {
             to_account_id,
             body,
             created_at,
+            session_id,
             attachments,
         };
         let body = match serde_json::to_vec(&payload) {
@@ -278,6 +280,7 @@ struct MessageArrivedEvent<'a> {
     to_account_id: &'a str,
     body: &'a str,
     created_at: &'a str,
+    session_id: Option<&'a str>,
     attachments: serde_json::Value,
 }
 

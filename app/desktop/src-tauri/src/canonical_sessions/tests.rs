@@ -436,6 +436,70 @@ fn manual_title_metadata_survives_session_shell_upsert() {
 }
 
 #[test]
+fn cloud_group_open_keeps_local_profile_as_only_self_even_when_remote_created() {
+    let conn = test_conn();
+    let local_human_id = local_profile_human_identity_id(&conn, "You").expect("local profile");
+    let remote_creator = seed_identity_with_source(
+        &conn,
+        "human:acct_remote_creator",
+        "Remote Creator",
+        "human",
+        "bridge",
+        None,
+    );
+    let remote_peer = seed_identity_with_source(
+        &conn,
+        "human:acct_remote_peer",
+        "Remote Peer",
+        "human",
+        "bridge",
+        None,
+    );
+
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:group:cloud-remote-created".to_string()),
+            kind: "group".to_string(),
+            title: Some("Cloud group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: remote_creator.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![local_human_id.clone(), remote_peer.id.clone()],
+            metadata: Some(serde_json::json!({
+                "createdFrom": "cloud-group-sync",
+                "adminIdentityIds": [remote_creator.id.clone()],
+                "initialContactIds": ["cloud:acct_remote_creator", "cloud:acct_remote_peer", "cloud:acct_local"]
+            })),
+        },
+    )
+    .expect("open replicated cloud group");
+
+    let roles = conn
+        .prepare(
+            "SELECT identity_id, role FROM session_participants
+             WHERE session_id = 'session:group:cloud-remote-created'
+             ORDER BY identity_id",
+        )
+        .expect("prepare roles")
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .expect("query roles")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect roles");
+
+    assert_eq!(
+        roles.iter().filter(|(_, role)| role == "self").count(),
+        1,
+        "group must have exactly one self participant",
+    );
+    assert!(roles.iter().any(|(identity_id, role)| identity_id == &local_human_id && role == "self"));
+    assert!(roles.iter().any(|(identity_id, role)| identity_id == &remote_creator.id && role == "person"));
+}
+
+#[test]
 fn renaming_group_session_preserves_group_name_as_separate_metadata() {
     let conn = test_conn();
     let creator = seed_identity(&conn, "human:me", "Me", "human");

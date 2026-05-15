@@ -79,7 +79,17 @@ test('stale contact refreshes do not overwrite newer accepted contacts', () => {
   assert.deepEqual(applyCloudContactsRefreshSnapshot(current, stale, {
     startedMutationRevision: 2,
     currentMutationRevision: 2,
-  }), stale);
+  }), { contacts: [summary()], requests: [] });
+});
+
+test('contact refresh preserves locally accepted contacts while the server snapshot catches up', () => {
+  const current = { contacts: [summary({ accountId: 'acct_accepted' })], requests: [] };
+  const delayed = { contacts: [], requests: [] };
+
+  assert.deepEqual(applyCloudContactsRefreshSnapshot(current, delayed, {
+    startedMutationRevision: 1,
+    currentMutationRevision: 1,
+  }), current);
 });
 
 test('accepted contact response identifies the peer and hello message for immediate local insert', () => {

@@ -138,6 +138,7 @@ export function useCloudConversation(
               readAt: null,
               direction,
               attachments,
+              sessionId: typeof payload.session_id === 'string' ? payload.session_id : null,
             });
           })();
         } catch (err) {

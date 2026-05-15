@@ -818,7 +818,7 @@ export function useChatMessageActions({
         text,
         chatComposerAttachments,
         sentAt,
-        'desktop-bridge-ui',
+        'cloud-group-ui',
         'sent',
         mentionForBridgeTarget(mentionedTarget),
       );
@@ -1093,7 +1093,7 @@ export function useChatMessageActions({
           text,
           chatComposerAttachments,
           sentAt,
-          'desktop-bridge-ui',
+          isGroupSessionMessage && cloudGroupTargetIds.length > 0 ? 'cloud-group-ui' : 'desktop-bridge-ui',
           shouldStayInCanonicalSession ? 'sent' : 'sending',
         );
         optimisticCanonicalSessionId = optimisticParentSessionId;
