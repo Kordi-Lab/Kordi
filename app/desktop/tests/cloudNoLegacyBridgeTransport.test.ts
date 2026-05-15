@@ -71,6 +71,17 @@ test('main-cloud composer actions do not call old bridge communication commands'
   }
 });
 
+test('main-cloud desktop runtime does not install old bridge reach_out transport', () => {
+  const chatSource = readSource('src-tauri/src/chat/bridge_outreach.rs');
+  assert.doesNotMatch(chatSource, /set_reach_out_runtime\(Some/);
+  assert.doesNotMatch(chatSource, /desktop_bridge_reach_out_impl/);
+  assert.doesNotMatch(chatSource, /desktop_bridge_outreach_prompt_context/);
+
+  const bridgeSource = readSource('src-tauri/src/bridge/mod.rs');
+  assert.doesNotMatch(bridgeSource, /desktop_bridge_outreach_prompt_context/);
+  assert.doesNotMatch(bridgeSource, /pub\(crate\) use self::outreach::desktop_bridge_reach_out_impl/);
+});
+
 test('main-cloud tauri runtime does not register live desktop bridge communication commands', () => {
   const source = readSource('src-tauri/src/lib.rs');
   const handlerStart = source.indexOf('tauri::generate_handler![');

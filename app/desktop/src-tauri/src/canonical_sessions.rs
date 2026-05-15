@@ -791,6 +791,7 @@ fn runtime_is_agent_like(runtime: &str) -> bool {
         .any(|token| normalized.contains(token))
 }
 
+#[allow(dead_code)]
 fn reassign_stale_local_human_identities(
     conn: &Connection,
     active_human_identity_id: &str,

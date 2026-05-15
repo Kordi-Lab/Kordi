@@ -6,7 +6,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::bridge::DesktopBridgeManager;
 use kordi_cli::desktop_runtime::{
     DesktopChatAgentProfile, DesktopChatContextMessage, DesktopChatModelOption,
     DesktopChatProjectGroup, DesktopChatSessionDetail, DesktopChatSessionSummary,
@@ -833,7 +832,6 @@ pub async fn desktop_chat_fork_session_from_message(
 #[tauri::command]
 pub async fn desktop_chat_send_message(
     manager: State<'_, DesktopChatManager>,
-    bridge_manager: State<'_, DesktopBridgeManager>,
     session_id: String,
     text: String,
 ) -> Result<DesktopChatState, String> {
@@ -854,14 +852,7 @@ pub async fn desktop_chat_send_message(
     let session_handle = session;
     let (provider, model) = {
         let mut session = session_handle.lock().await;
-        prepare_desktop_session_for_send(
-            &mut session,
-            bridge_manager.inner().clone(),
-            manager.inner().clone(),
-            cwd.clone(),
-            &text,
-        )
-        .await;
+        prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
         let detail = session.detail().map_err(|err| err.to_string())?;
         (detail.provider, detail.model)
     };
@@ -889,7 +880,6 @@ pub async fn desktop_chat_send_message(
 #[tauri::command]
 pub async fn desktop_chat_start_message(
     manager: State<'_, DesktopChatManager>,
-    bridge_manager: State<'_, DesktopBridgeManager>,
     session_id: String,
     text: String,
     attachment_paths: Option<Vec<String>>,
@@ -953,8 +943,6 @@ pub async fn desktop_chat_start_message(
     };
 
     let snapshot_for_task = snapshot.clone();
-    let bridge_manager_for_task = bridge_manager.inner().clone();
-    let chat_manager_for_task = manager.inner().clone();
     let session_handle = session;
     tokio::spawn(async move {
         let (provider, model) = {
@@ -997,14 +985,7 @@ pub async fn desktop_chat_start_message(
                 });
                 return;
             }
-            prepare_desktop_session_for_send(
-                &mut session,
-                bridge_manager_for_task,
-                chat_manager_for_task,
-                cwd.clone(),
-                &text,
-            )
-            .await;
+            prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
 
             let detail = session.detail().ok();
             let provider = detail

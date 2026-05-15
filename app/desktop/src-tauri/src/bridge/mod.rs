@@ -1,3 +1,8 @@
+#![allow(dead_code)]
+// main-cloud keeps the legacy desktop Bridge implementation compiled only as
+// Local Edition compatibility/test quarantine. The Cloud runtime no longer
+// registers or calls the localhost/kh_* end-to-end transport paths.
+
 mod agent_jobs;
 mod constants;
 mod conversation_actions;
@@ -20,7 +25,7 @@ mod storage;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use tauri::{Emitter, Manager, State};
+use tauri::State;
 use uuid::Uuid;
 
 use self::constants::{BRIDGE_AGENT_ID_PREFIX, BRIDGE_HOST_ID_PREFIX, BRIDGE_HUMAN_ID_PREFIX};
@@ -30,7 +35,6 @@ pub(crate) use self::constants::{
     BRIDGE_AGENT_SESSION_MESSAGE_CANCELLED_TEXT, BRIDGE_AGENT_SESSION_MESSAGE_PROCESSING_TEXT,
     BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_MS, BRIDGE_AGENT_SESSION_MESSAGE_TIMEOUT_TEXT,
 };
-pub(crate) use self::outreach::desktop_bridge_reach_out_impl;
 
 #[allow(unused_imports)]
 use self::conversations::{
@@ -623,53 +627,6 @@ pub struct DesktopBridgeManager {
     app_handle: Arc<tokio::sync::RwLock<Option<tauri::AppHandle>>>,
 }
 
-pub(crate) async fn desktop_bridge_outreach_prompt_context(
-    manager: &DesktopBridgeManager,
-) -> Option<String> {
-    let state = build_current_bridge_state(manager).await;
-    let active_host_id = state.active_host_id.as_deref();
-    let mut target_lines = Vec::new();
-
-    for host in &state.hosts {
-        let host_label = format!("{} / {}", host.display_name, host.owner_name);
-        for peer in &host.visible_peers {
-            let target_kind = if self::constants::is_agent_like_runtime(&peer.runtime) {
-                "bridge-agent"
-            } else {
-                "bridge-person"
-            };
-            let name = peer
-                .display_name
-                .as_deref()
-                .or(peer.owner_name.as_deref())
-                .unwrap_or(&peer.node_id);
-            let owner = peer.owner_name.as_deref().unwrap_or("unknown owner");
-            let active = if Some(host.id.as_str()) == active_host_id {
-                "active host"
-            } else {
-                "available host"
-            };
-            target_lines.push(format!(
-                "- {target_kind}: target=\"{name}\" owner=\"{owner}\" runtime=\"{}\" nodeId=\"{}\" via=\"{host_label}\" ({active})",
-                peer.runtime, peer.node_id
-            ));
-        }
-    }
-
-    if target_lines.is_empty() {
-        return Some(
-            "Bridge outreach: reach_out is available, but no bridge agents or people are currently visible. Ask the user to connect or expose a bridge target before using it."
-                .to_string(),
-        );
-    }
-
-    target_lines.truncate(50);
-    Some(format!(
-        "Bridge outreach is available through the reach_out tool only for explicit non-local @Person/@Agent mentions in the current user message. Use it only when the current user message names one of the visible bridge targets below; never use it for @Kordi/the local agent and do not proactively contact participants. Outreach is allowed without asking for approval, creates a visible/resumable bridge conversation, and returns the remote reply when possible.\n\nVisible bridge targets:\n{}",
-        target_lines.join("\n")
-    ))
-}
-
 impl Default for DesktopBridgeManager {
     fn default() -> Self {
         Self {
@@ -684,25 +641,6 @@ impl Default for DesktopBridgeManager {
 
 pub(crate) async fn set_bridge_app_handle(manager: &DesktopBridgeManager, app: tauri::AppHandle) {
     realtime::set_bridge_app_handle(manager, app).await;
-}
-
-pub(crate) fn schedule_bridge_realtime_refresh(app: &tauri::AppHandle, reason: &'static str) {
-    let manager = app.state::<DesktopBridgeManager>().inner().clone();
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        match realtime::refresh_realtime_connections(&manager).await {
-            Ok(state) => {
-                if let Err(error) = app.emit(BRIDGE_STATE_EVENT, state) {
-                    eprintln!(
-                        "Bridge realtime refresh after {reason} could not emit state: {error}"
-                    );
-                }
-            }
-            Err(error) => {
-                eprintln!("Bridge realtime refresh after {reason} failed: {error}");
-            }
-        }
-    });
 }
 
 fn default_bridge_api_style() -> String {
@@ -1014,13 +952,6 @@ fn build_public_bridge_agents(host: &DesktopBridgeHostConfig) -> Vec<DesktopBrid
 }
 
 #[tauri::command]
-pub async fn desktop_bridge_state(
-    manager: State<'_, DesktopBridgeManager>,
-) -> Result<DesktopBridgeState, String> {
-    host_commands::desktop_bridge_state_impl(&manager).await
-}
-
-#[tauri::command]
 pub async fn desktop_bridge_open_config_folder() -> Result<String, String> {
     host_commands::desktop_bridge_open_config_folder_impl().await
 }
@@ -1231,29 +1162,6 @@ pub async fn desktop_bridge_set_default_agent(
 }
 
 #[tauri::command]
-pub async fn desktop_bridge_start_local_server(
-    manager: State<'_, DesktopBridgeManager>,
-    port: Option<u16>,
-    display_name: Option<String>,
-    owner_name: Option<String>,
-) -> Result<DesktopBridgeState, String> {
-    server_commands::desktop_bridge_start_local_server_impl(
-        &manager,
-        port,
-        display_name,
-        owner_name,
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn desktop_bridge_stop_local_server(
-    manager: State<'_, DesktopBridgeManager>,
-) -> Result<DesktopBridgeState, String> {
-    server_commands::desktop_bridge_stop_local_server_impl(&manager).await
-}
-
-#[tauri::command]
 pub async fn desktop_bridge_create_project(
     manager: State<'_, DesktopBridgeManager>,
     host_id: String,
@@ -1367,66 +1275,6 @@ pub async fn desktop_bridge_mark_conversation_read(
 ) -> Result<DesktopBridgeState, String> {
     conversation_actions::desktop_bridge_mark_conversation_read_impl(&manager, conversation_id)
         .await
-}
-
-#[tauri::command]
-pub async fn desktop_bridge_send_message(
-    manager: State<'_, DesktopBridgeManager>,
-    conversation_id: String,
-    text: String,
-    attachment_paths: Option<Vec<String>>,
-    attachment_names: Option<Vec<String>>,
-) -> Result<DesktopBridgeState, String> {
-    conversation_actions::desktop_bridge_send_message_impl(
-        &manager,
-        conversation_id,
-        text,
-        attachment_paths.unwrap_or_default(),
-        attachment_names.unwrap_or_default(),
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn desktop_bridge_create_outreach(
-    manager: State<'_, DesktopBridgeManager>,
-    request: DesktopBridgeCreateOutreachRequest,
-) -> Result<DesktopBridgeState, String> {
-    conversation_commands::desktop_bridge_create_outreach_impl(&manager, request).await
-}
-
-#[tauri::command]
-pub async fn desktop_bridge_cancel_outreach(
-    manager: State<'_, DesktopBridgeManager>,
-    conversation_id: String,
-    request_id: Option<String>,
-) -> Result<DesktopBridgeState, String> {
-    conversation_actions::desktop_bridge_cancel_outreach_impl(&manager, conversation_id, request_id)
-        .await
-}
-
-#[tauri::command]
-pub async fn desktop_bridge_send_presence(
-    manager: State<'_, DesktopBridgeManager>,
-    conversation_id: String,
-    kind: String,
-) -> Result<DesktopBridgeState, String> {
-    conversation_actions::desktop_bridge_send_presence_impl(&manager, conversation_id, kind).await
-}
-
-#[tauri::command]
-pub async fn desktop_bridge_poll_mailbox(
-    manager: State<'_, DesktopBridgeManager>,
-    chat_manager: State<'_, crate::chat::DesktopChatManager>,
-) -> Result<DesktopBridgeState, String> {
-    mailbox::desktop_bridge_poll_mailbox_impl(&manager, &chat_manager).await
-}
-
-#[tauri::command]
-pub async fn desktop_bridge_refresh_realtime_connections(
-    manager: State<'_, DesktopBridgeManager>,
-) -> Result<DesktopBridgeState, String> {
-    realtime::refresh_realtime_connections(&manager).await
 }
 
 #[cfg(test)]
