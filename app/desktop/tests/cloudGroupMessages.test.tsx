@@ -155,6 +155,17 @@ test('cloud group participant envelopes drop local-only ids and huge data avatar
   ]);
 });
 
+test('cloud group participant normalization rejects kh local ids', () => {
+  const participants = cloudGroupUniqueParticipants([
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    { accountId: 'kh_local', displayName: 'Localhost', avatarUrl: null, role: 'person' },
+    { accountId: 'node_local', displayName: 'Node', avatarUrl: null, role: 'person' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+  ]);
+
+  assert.deepEqual(participants.map((participant) => participant.accountId), ['acct_a', 'acct_b']);
+});
+
 test('cloud group messages carry concrete session id separately from shared group space id', () => {
   assert.equal(cloudGroupMessageSessionId({
     activeConvCanonicalSessionId: 'session:group:child-session',
