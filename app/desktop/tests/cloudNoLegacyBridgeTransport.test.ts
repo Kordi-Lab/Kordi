@@ -92,3 +92,15 @@ test('main-cloud tauri runtime does not register live desktop bridge communicati
   assert.doesNotMatch(source, /schedule_bridge_realtime_refresh\(app_handle, "app-resumed"\)/);
   assert.doesNotMatch(source, /schedule_bridge_realtime_refresh\(app_handle, "window-focused"\)/);
 });
+
+test('cloud-specific tests do not use desktop bridge transport fixtures', () => {
+  const cloudTestFiles = [
+    'tests/cloudBridgeState.test.tsx',
+    'tests/cloudGroupMessages.test.tsx',
+    'tests/cloudDirectContactSend.test.ts',
+    'tests/cloudContactRouting.test.tsx',
+  ];
+  for (const file of cloudTestFiles) {
+    assert.doesNotMatch(readSource(file), /desktop-bridge-(parent|outreach|session-relay|ui)/, file);
+  }
+});
