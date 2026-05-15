@@ -62,6 +62,38 @@ test('right-panel task dashboard does not create a task row for an ordinary live
   assert.equal(dashboard.hasActivity, false);
 });
 
+test('right-panel task dashboard ignores Cloud context-wrapper task searches with object arguments', () => {
+  const liveTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-cloud-search',
+    sessionId: 'cloud-agent:acct_a:acct_b',
+    prompt: 'Use the shared Cloud conversation below as the single context window for both the humans and their Kordi agents.\n\nCurrent request from C UFishAI: which tasks are finished?',
+    status: 'tooling',
+    message: 'Processing…',
+    assistantText: '',
+    thinkingText: '',
+    completed: false,
+    succeeded: false,
+    tools: [
+      {
+        id: 'tool-search',
+        name: 'task_operator',
+        status: 'running',
+        arguments: { action: 'search', status: 'closed' } as never,
+        liveOutput: '',
+        resultText: null,
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'operator',
+        isError: false,
+      },
+    ],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [], liveTurn });
+
+  assert.equal(dashboard.tasks.length, 0);
+});
+
 test('right-panel task dashboard nests subagent tasks under the whole request', () => {
   const historicalTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',

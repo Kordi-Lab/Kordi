@@ -79,8 +79,11 @@ type MutableParentTask = Omit<TaskDashboardItem, 'subtasks' | 'subtaskCount' | '
   subtasksByKey: Map<string, MutableSubtask>;
 };
 
-function safeParseToolArguments(rawArguments?: string | null) {
-  if (!rawArguments?.trim()) return null;
+function safeParseToolArguments(rawArguments?: unknown) {
+  if (rawArguments && typeof rawArguments === 'object' && !Array.isArray(rawArguments)) {
+    return rawArguments as Record<string, unknown>;
+  }
+  if (typeof rawArguments !== 'string' || !rawArguments.trim()) return null;
   try {
     const parsed = JSON.parse(rawArguments);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
