@@ -70,3 +70,25 @@ test('main-cloud composer actions do not call old bridge communication commands'
     assert.doesNotMatch(source, /nonCloudGroupTargets/);
   }
 });
+
+test('main-cloud tauri runtime does not register live desktop bridge communication commands', () => {
+  const source = readSource('src-tauri/src/lib.rs');
+  const handlerStart = source.indexOf('tauri::generate_handler![');
+  assert.notEqual(handlerStart, -1);
+  const handlerEnd = source.indexOf('])', handlerStart);
+  const handlerBlock = source.slice(handlerStart, handlerEnd);
+  for (const command of [
+    'desktop_bridge_state',
+    'desktop_bridge_send_message',
+    'desktop_bridge_create_outreach',
+    'desktop_bridge_poll_mailbox',
+    'desktop_bridge_refresh_realtime_connections',
+    'desktop_bridge_send_presence',
+    'desktop_bridge_start_local_server',
+    'desktop_bridge_stop_local_server',
+  ]) {
+    assert.doesNotMatch(handlerBlock, new RegExp(`bridge::${command}`), command);
+  }
+  assert.doesNotMatch(source, /schedule_bridge_realtime_refresh\(app_handle, "app-resumed"\)/);
+  assert.doesNotMatch(source, /schedule_bridge_realtime_refresh\(app_handle, "window-focused"\)/);
+});
