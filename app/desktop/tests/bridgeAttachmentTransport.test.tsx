@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { canonicalAttachments } from '../src/features/canonical/readModel/messageMapping';
@@ -133,6 +134,41 @@ test('canonical optimistic bridge messages can be marked failed for visible send
   assert.equal(message?.status, 'failed');
   assert.equal((message?.content as { deliveryState?: string }).deliveryState, 'failed');
   assert.equal((message?.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
+});
+
+
+test('Cloud group send paths label optimistic canonical rows with Cloud UI transport', () => {
+  const source = readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /'cloud-group-ui'/);
+
+  const cloudMentionStart = source.indexOf('shouldRouteMentionThroughCloudGroup({');
+  const cloudMentionEnd = source.indexOf('if (mentionedTarget && activeConversationUsesBridgeRouting)', cloudMentionStart);
+  const cloudMentionBranch = source.slice(cloudMentionStart, cloudMentionEnd);
+  assert.match(cloudMentionBranch, /prepareCanonicalUserMessage\([\s\S]*?'cloud-group-ui'/);
+  assert.doesNotMatch(cloudMentionBranch, /prepareCanonicalUserMessage\([\s\S]*?'desktop-bridge-ui'/);
+
+  const groupSendStart = source.indexOf('const isGroupSessionMessage = shouldStayInCanonicalSession && activeGroupSessionIsGroup;');
+  const groupSendEnd = source.indexOf('if (preparedCanonicalMessage && isGroupSessionMessage && cloudGroupTargetIds.length > 0)', groupSendStart);
+  const groupSendPrepare = source.slice(groupSendStart, groupSendEnd);
+  assert.match(groupSendPrepare, /isGroupSessionMessage && cloudGroupTargetIds\.length > 0 \? 'cloud-group-ui' : 'desktop-bridge-ui'/);
+});
+
+
+test('prepared Cloud group UI messages use Cloud source transport metadata', () => {
+  const cloudGroupUiTransport: Parameters<typeof prepareCanonicalUserMessage>[5] = 'cloud-group-ui';
+  const prepared = prepareCanonicalUserMessage(
+    'session:group:cloud',
+    'human:me',
+    'hello group',
+    [],
+    '12:31',
+    cloudGroupUiTransport,
+    'sent',
+  );
+
+  assert.equal(prepared?.request.sourceTransport, 'cloud-group-ui');
+  assert.equal(prepared?.request.sourceEventId?.startsWith('cloud-group-ui:session:group:cloud:'), true);
 });
 
 

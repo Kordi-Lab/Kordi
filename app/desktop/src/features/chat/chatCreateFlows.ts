@@ -483,6 +483,8 @@ export function buildChatGroupBridgeUpdateParticipants(input: {
       bridgeNodeId,
       humanId,
       agentId: null,
+      avatarKey: cleanText(participant.avatarKey) || null,
+      profileImageUrl: cleanText(participant.profileImageUrl) || null,
     });
   }
   return [...participants.values()];

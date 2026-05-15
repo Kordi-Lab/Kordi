@@ -821,6 +821,8 @@ export type DesktopBridgeSessionParticipant = {
   humanId?: string | null;
   agentId?: string | null;
   runtime?: string | null;
+  avatarKey?: string | null;
+  profileImageUrl?: string | null;
 };
 
 export type DesktopBridgePromptIdentity = {

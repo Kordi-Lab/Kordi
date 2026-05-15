@@ -299,7 +299,7 @@ export function prepareCanonicalUserMessage(
   text: string,
   attachments: AttachmentItem[],
   sentAt: string,
-  sourceTransport: 'desktop-chat-ui' | 'desktop-bridge-ui',
+  sourceTransport: 'desktop-chat-ui' | 'desktop-bridge-ui' | 'cloud-group-ui',
   status = 'sending',
   mentions: MessageMention[] = [],
 ): PreparedCanonicalUserMessage | null {

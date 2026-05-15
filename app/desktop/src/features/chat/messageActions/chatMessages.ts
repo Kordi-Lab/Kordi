@@ -79,6 +79,10 @@ export function shouldShowBridgeSendFailureNotice(hasInlineFailureTarget: boolea
   return !hasInlineFailureTarget;
 }
 
+export function shouldAppendOptimisticBridgeMessage(conversationId: string): boolean {
+  return !isCloudBridgeConversationId(conversationId);
+}
+
 export function localChatSendIsInFlightForTarget(
   inFlight: LocalChatSendInFlight | null,
   targetSessionId: string | null,
@@ -772,11 +776,15 @@ export function useChatMessageActions({
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-        setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text)));
+        if (shouldAppendOptimisticBridgeMessage(activeConvId)) {
+          setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text)));
+        }
         await sendCloudBridgeMessage(activeConvId, text, chatComposerAttachments);
       } catch (error) {
         const failureDetail = bridgeSendFailureDetail(error, 'Unable to send cloud message');
-        setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
+        if (shouldAppendOptimisticBridgeMessage(activeConvId)) {
+          setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
+        }
         setDesktopChatError(failureDetail);
       } finally {
         setIsDesktopChatSending(false);
@@ -810,7 +818,7 @@ export function useChatMessageActions({
         text,
         chatComposerAttachments,
         sentAt,
-        'desktop-bridge-ui',
+        'cloud-group-ui',
         'sent',
         mentionForBridgeTarget(mentionedTarget),
       );
@@ -1085,7 +1093,7 @@ export function useChatMessageActions({
           text,
           chatComposerAttachments,
           sentAt,
-          'desktop-bridge-ui',
+          isGroupSessionMessage && cloudGroupTargetIds.length > 0 ? 'cloud-group-ui' : 'desktop-bridge-ui',
           shouldStayInCanonicalSession ? 'sent' : 'sending',
         );
         optimisticCanonicalSessionId = optimisticParentSessionId;

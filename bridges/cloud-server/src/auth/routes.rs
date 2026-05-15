@@ -238,6 +238,8 @@ pub struct ContactRequestListResponse {
 #[derive(Debug, Serialize)]
 pub struct ContactRequestResponse {
     pub request: ContactRequestSummary,
+    #[serde(rename = "helloMessage", skip_serializing_if = "Option::is_none")]
+    pub hello_message: Option<MessageSummary>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1807,7 +1809,7 @@ async fn send_contact_request(
         };
         return (
             StatusCode::OK,
-            Json(ContactRequestResponse { request: summary }),
+            Json(ContactRequestResponse { request: summary, hello_message: None }),
         )
             .into_response();
     }
@@ -1876,7 +1878,7 @@ async fn send_contact_request(
     };
     (
         StatusCode::CREATED,
-        Json(ContactRequestResponse { request: summary }),
+        Json(ContactRequestResponse { request: summary, hello_message: None }),
     )
         .into_response()
 }
@@ -2171,16 +2173,18 @@ async fn finalize_request_acceptance(
     // body so we can fire a message.arrived NATS event after commit.
     let hello_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
     let hello_body = "👋 Hi! Thanks for adding me — happy to connect.";
+    let hello_session_id = cloud_direct_person_session_id(from_id, to_id);
     if query(
         "INSERT INTO cloud_messages \
-         (message_id, from_account_id, to_account_id, body, created_at) \
-         VALUES ($1, $2, $3, $4, $5)",
+         (message_id, from_account_id, to_account_id, body, created_at, session_id) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&hello_id)
     .bind(to_id)
     .bind(from_id)
     .bind(hello_body)
     .bind(&now)
+    .bind(&hello_session_id)
     .execute(&mut *tx)
     .await
     .is_err()
@@ -2190,6 +2194,40 @@ async fn finalize_request_acceptance(
             "Could not record hello message.",
             StatusCode::INTERNAL_SERVER_ERROR,
         );
+    }
+
+    let (acceptor_hello, requester_hello) = contact_acceptance_hello_sync_summaries(
+        &hello_id,
+        from_id,
+        to_id,
+        hello_body,
+        &now,
+    );
+    for (account_id, peer_account_id, summary) in [
+        (to_id, from_id, &acceptor_hello),
+        (from_id, to_id, &requester_hello),
+    ] {
+        if query(
+            "INSERT INTO cloud_sync_events \
+             (account_id, event_type, peer_account_id, message_id, payload_json, occurred_at) \
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(account_id)
+        .bind("message.upsert")
+        .bind(peer_account_id)
+        .bind(&summary.message_id)
+        .bind(message_sync_payload(summary))
+        .bind(&now)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+        {
+            return err(
+                "server_error",
+                "Could not record hello sync event.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
     }
 
     if tx.commit().await.is_err() {
@@ -2242,6 +2280,7 @@ async fn finalize_request_acceptance(
                     &from,
                     &hello_body,
                     &now,
+                    Some(&hello_session_id),
                     serde_json::json!([]),
                 )
                 .await;
@@ -2278,9 +2317,16 @@ async fn finalize_request_acceptance(
         decided_at: Some(now),
         counterpart,
     };
+    let hello_message = if session.account_id == to_id {
+        Some(acceptor_hello)
+    } else if session.account_id == from_id {
+        Some(requester_hello)
+    } else {
+        None
+    };
     (
         StatusCode::OK,
-        Json(ContactRequestResponse { request: summary }),
+        Json(ContactRequestResponse { request: summary, hello_message }),
     )
         .into_response()
 }
@@ -2302,6 +2348,30 @@ const MESSAGE_LIST_DEFAULT_LIMIT: i64 = 200;
 const MESSAGE_LIST_MAX_LIMIT: i64 = 500;
 const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
+
+fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
+    let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
+    account_ids.sort_unstable();
+    format!("session:direct-person:{}:{}", account_ids[0], account_ids[1])
+}
+
+fn cloud_message_session_id(
+    requested_session_id: Option<&str>,
+    from_account_id: &str,
+    to_account_id: &str,
+    body: &str,
+) -> Option<String> {
+    if let Some(value) = requested_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(value.chars().take(256).collect::<String>());
+    }
+    if from_account_id != to_account_id && cloud_message_requires_accepted_contact(body) {
+        return Some(cloud_direct_person_session_id(from_account_id, to_account_id));
+    }
+    None
+}
 
 fn cloud_message_effective_created_at(
     client_created_at: Option<&str>,
@@ -2331,7 +2401,10 @@ fn cloud_message_requires_accepted_contact(body: &str) -> bool {
 
 #[cfg(test)]
 mod cloud_message_policy_tests {
-    use super::{cloud_message_effective_created_at, cloud_message_requires_accepted_contact};
+    use super::{
+        cloud_direct_person_session_id, cloud_message_effective_created_at,
+        cloud_message_requires_accepted_contact, contact_acceptance_hello_sync_summaries,
+    };
     use chrono::{TimeZone, Utc};
 
     #[test]
@@ -2363,10 +2436,74 @@ mod cloud_message_policy_tests {
             "2026-05-14T12:00:00+00:00"
         );
     }
+
+    #[test]
+    fn cloud_direct_person_session_id_is_stable_for_account_order() {
+        assert_eq!(
+            cloud_direct_person_session_id("acct_me", "acct_peer"),
+            "session:direct-person:acct_me:acct_peer"
+        );
+        assert_eq!(
+            cloud_direct_person_session_id("acct_peer", "acct_me"),
+            "session:direct-person:acct_me:acct_peer"
+        );
+    }
+
+    #[test]
+    fn contact_acceptance_hello_sync_events_cover_both_participants() {
+        let (acceptor, requester) = contact_acceptance_hello_sync_summaries(
+            "msg_hello",
+            "acct_requester",
+            "acct_acceptor",
+            "hello",
+            "2026-05-15T08:54:12Z",
+        );
+
+        assert_eq!(acceptor.from_account_id, "acct_acceptor");
+        assert_eq!(acceptor.to_account_id, "acct_requester");
+        assert_eq!(acceptor.session_id.as_deref(), Some("session:direct-person:acct_acceptor:acct_requester"));
+        assert_eq!(acceptor.direction, "outgoing");
+        assert_eq!(requester.from_account_id, "acct_acceptor");
+        assert_eq!(requester.to_account_id, "acct_requester");
+        assert_eq!(requester.session_id.as_deref(), Some("session:direct-person:acct_acceptor:acct_requester"));
+        assert_eq!(requester.direction, "incoming");
+        assert_eq!(acceptor.delivered_at.as_deref(), Some("2026-05-15T08:54:12Z"));
+        assert_eq!(requester.delivered_at.as_deref(), Some("2026-05-15T08:54:12Z"));
+    }
 }
 
 fn message_sync_payload(message: &MessageSummary) -> serde_json::Value {
     serde_json::json!({ "message": message })
+}
+
+fn contact_acceptance_hello_sync_summaries(
+    message_id: &str,
+    request_from_account_id: &str,
+    request_to_account_id: &str,
+    body: &str,
+    created_at: &str,
+) -> (MessageSummary, MessageSummary) {
+    let session_id = Some(cloud_direct_person_session_id(
+        request_from_account_id,
+        request_to_account_id,
+    ));
+    let acceptor_summary = MessageSummary {
+        message_id: message_id.to_string(),
+        from_account_id: request_to_account_id.to_string(),
+        to_account_id: request_from_account_id.to_string(),
+        body: body.to_string(),
+        session_id,
+        created_at: created_at.to_string(),
+        delivered_at: Some(created_at.to_string()),
+        read_at: None,
+        direction: "outgoing".into(),
+        attachments: vec![],
+    };
+    let requester_summary = MessageSummary {
+        direction: "incoming".into(),
+        ..acceptor_summary.clone()
+    };
+    (acceptor_summary, requester_summary)
 }
 
 async fn append_cloud_sync_event(
@@ -2592,12 +2729,12 @@ async fn send_message(
     }
 
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
-    let cloud_session_id = req
-        .session_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.chars().take(256).collect::<String>());
+    let cloud_session_id = cloud_message_session_id(
+        req.session_id.as_deref(),
+        &session.account_id,
+        &peer,
+        &body,
+    );
     let server_received_at = Utc::now();
     let created_at =
         cloud_message_effective_created_at(req.client_created_at.as_deref(), server_received_at);
@@ -2658,6 +2795,7 @@ async fn send_message(
         let to = peer.clone();
         let body_clone = body.clone();
         let created_at = created_at.clone();
+        let session_id = cloud_session_id.clone();
         let event_attachments =
             serde_json::to_value(&attachments).unwrap_or_else(|_| serde_json::json!([]));
         tokio::spawn(async move {
@@ -2668,6 +2806,7 @@ async fn send_message(
                     &to,
                     &body_clone,
                     &created_at,
+                    session_id.as_deref(),
                     event_attachments,
                 )
                 .await;

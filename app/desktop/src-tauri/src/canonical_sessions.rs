@@ -351,11 +351,24 @@ pub(super) fn open_or_create_session_in_db(
     )
     .map_err(|err| err.to_string())?;
 
+    let local_group_self_identity_id = if kind == "group" {
+        local_profile_self_identity_id(conn)?
+    } else {
+        None
+    };
+    let self_identity_id = local_group_self_identity_id
+        .as_deref()
+        .unwrap_or(request.created_by_identity_id.as_str());
+    let created_by_role = if request.created_by_identity_id == self_identity_id {
+        "self"
+    } else {
+        participant_role
+    };
     upsert_participant(
         conn,
         &id,
         &request.created_by_identity_id,
-        "self",
+        created_by_role,
         Some(&request.created_by_identity_id),
         now,
     )?;
@@ -364,17 +377,51 @@ pub(super) fn open_or_create_session_in_db(
         if participant.is_empty() || participant == request.created_by_identity_id {
             continue;
         }
+        let role = if participant == self_identity_id {
+            "self"
+        } else {
+            participant_role
+        };
         upsert_participant(
             conn,
             &id,
             participant,
-            participant_role,
+            role,
             Some(&request.created_by_identity_id),
             now,
         )?;
     }
+    if let Some(local_self_identity_id) = local_group_self_identity_id.as_deref() {
+        enforce_only_local_group_self(conn, &id, local_self_identity_id)?;
+    }
 
     select_session(conn, &id)?.ok_or_else(|| "Unable to save canonical session".to_string())
+}
+
+fn local_profile_self_identity_id(conn: &Connection) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT human_identity_id FROM local_profile LIMIT 1",
+        [],
+        |row| row.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .map(|value| value.flatten().map(|id| id.trim().to_string()).filter(|id| !id.is_empty()))
+    .map_err(|err| err.to_string())
+}
+
+fn enforce_only_local_group_self(
+    conn: &Connection,
+    session_id: &str,
+    local_self_identity_id: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE session_participants
+         SET role = 'person'
+         WHERE session_id = ?1 AND role = 'self' AND identity_id <> ?2",
+        params![session_id, local_self_identity_id],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 fn upsert_participant(

@@ -59,6 +59,10 @@ export function cloudBridgeConversationId(peerAccountId: string, runtime: string
   return trimmedSessionId ? `${base}${CLOUD_AGENT_SESSION_SUFFIX}${encodeURIComponent(trimmedSessionId)}` : base;
 }
 
+export function cloudDirectPersonSessionId(localAccountId: string, peerAccountId: string): string {
+  return `session:direct-person:${[localAccountId.trim(), peerAccountId.trim()].filter(Boolean).sort().join(':')}`;
+}
+
 export function cloudPeerAccountIdFromConversationId(conversationId: string): string | null {
   const prefix = `bridge:${CLOUD_HOST_SENTINEL}:`;
   if (!conversationId.startsWith(prefix)) return null;
@@ -81,6 +85,13 @@ export function cloudSessionIdFromConversationId(conversationId: string): string
   } catch {
     return null;
   }
+}
+
+export function cloudSessionIdForBridgeSend(localAccountId: string | null | undefined, peerAccountId: string | null | undefined, conversationId: string): string | null {
+  const local = localAccountId?.trim() ?? '';
+  const peer = peerAccountId?.trim() ?? '';
+  if (local && peer && peer !== local) return cloudDirectPersonSessionId(local, peer);
+  return cloudSessionIdFromConversationId(conversationId);
 }
 
 export function isCloudBridgeConversationId(conversationId: string | null | undefined): boolean {
@@ -621,7 +632,7 @@ export function buildCloudBridgeConversation({
   } : null;
   return {
     id: conversationId,
-    canonicalSessionId: normalizedCloudSessionId ?? `session:bridge:${conversationId}`,
+    canonicalSessionId: normalizedCloudSessionId ?? (isPerson && !isSelfPeer ? cloudDirectPersonSessionId(account.accountId, peerAccountId) : conversationId),
     hostId: CLOUD_HOST_SENTINEL,
     peerNodeId: peerAccountId,
     peerDisplayName: title,
