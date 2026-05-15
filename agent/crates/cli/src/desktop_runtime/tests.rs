@@ -175,6 +175,48 @@ fn test_model(provider: &str, id: &str, reasoning: bool) -> Model {
     }
 }
 
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings {
+        default_provider: Some("openai".to_string()),
+        default_model: Some("gpt-4o-mini".to_string()),
+        ..Settings::default()
+    }
+    .save_global()?;
+
+    let requested_session_id = "cloud-agent:acct_a:acct_b";
+    let runtime = DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), requested_session_id).await?;
+    let task_operator = runtime
+        .setup
+        .tool_ctx
+        .task_operator
+        .clone()
+        .expect("task operator runtime");
+
+    let created = (task_operator.run)(kordi_tools::task_operator::models::TaskOperatorRuntimeRequest::Create(
+        kordi_tools::task_operator::models::TaskCreateRequest {
+            task_id: Some("task_cloud".to_string()),
+            task_title: "Cloud Task".to_string(),
+            summary: None,
+            status: Some("open".to_string()),
+            parent_task_id: None,
+            involved_participants: Vec::new(),
+        },
+    ))
+    .await?;
+
+    let created_task_id = created.tasks.first().expect("created task").path.as_str();
+    let stored = kordi_session::tasks::get_task(&runtime.setup.conn, requested_session_id, created_task_id)?;
+    assert!(stored.is_some(), "task_operator should use requested create_with_id session id");
+    Ok(())
+}
+
 #[test]
 fn non_reasoning_models_do_not_send_thinking_controls() {
     let model = test_model("ollama", "qwen:1.8b-chat", false);

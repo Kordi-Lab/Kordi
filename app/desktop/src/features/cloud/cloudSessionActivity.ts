@@ -362,11 +362,12 @@ export function deriveCloudActivityFromTurn(input: {
   for (const tool of input.turn.tools) {
     if (tool.name.trim().toLowerCase() !== 'task_operator') continue;
     const args = parseToolArgs(tool.arguments) ?? {};
+    if (tool.isError) continue;
     const title = taskTitleFromArgs(args) ?? taskTitleFromResultText(tool.resultText);
     const taskId = taskIdFromArgs(args, tool.resultText) ?? (title ? slugify(title) : null);
     const action = cleanText(args.action).toLowerCase();
     if (!title || !taskId) continue;
-    const status = action === 'close' ? 'closed' : tool.isError ? 'failed' : 'active';
+    const status = action === 'close' ? 'closed' : 'active';
     tasks.push({
       sessionId: input.sessionId,
       taskId,

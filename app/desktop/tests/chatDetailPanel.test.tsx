@@ -296,6 +296,156 @@ test('chat detail task panel dedupes Cloud activity that mirrors a local task_op
   assert.equal(markup.match(/app-inspector-source-row/g)?.length, 1);
 });
 
+test('chat detail task panel prefers Cloud task activity over failed local task_operator rows with the same title', () => {
+  const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
+    isNativeShell: true,
+    activeDetailTab: 'tasks',
+    activeConv: {
+      id: 'session:direct-person:acct_a:acct_b',
+      canonicalSessionId: 'session:direct-person:acct_a:acct_b',
+      name: 'Alice',
+      type: 'person',
+      subtitle: '',
+      unread: 0,
+      bridges: ['Cloud'],
+      trust: 'Cloud',
+      directness: 'Direct person chat',
+      participants: ['Me', 'Alice'],
+      messages: [{
+        id: 'msg:failed-close',
+        role: 'external-agent',
+        sender: 'Alice Kordi',
+        senderType: 'agent',
+        isOwnMessage: false,
+        showSenderMeta: true,
+        text: '',
+        time: '18:49',
+        turn: {
+          id: 'turn:failed-close',
+          sessionId: 'session:direct-person:acct_a:acct_b',
+          prompt: '@MyKordi finish this task Another Test Task',
+          status: 'complete',
+          message: 'I couldn’t finish Another Test Task because it is already closed.',
+          assistantText: 'I couldn’t finish Another Test Task because it is already closed.',
+          thinkingText: '',
+          tools: [{
+            id: 'tool:task-operator',
+            name: 'task_operator',
+            status: 'failed',
+            arguments: JSON.stringify({ taskTitle: 'Another Test Task', action: 'close' }),
+            liveOutput: '',
+            resultText: 'I couldn’t finish Another Test Task because it is already closed.',
+            detail: null,
+            artifactPath: null,
+            toolLayer: null,
+            isError: true,
+          }],
+          completed: true,
+          succeeded: true,
+          error: null,
+        },
+      }],
+      taskActivities: [{
+        id: 'cloud-task:session:direct-person:acct_a:acct_b:another_test_task',
+        sessionId: 'session:direct-person:acct_a:acct_b',
+        status: 'active',
+        initiator: { id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b', profileImageUrl: 'https://example.test/alice.png' },
+        target: { id: 'task:another_test_task', name: 'Another Test Task', kind: 'agent', role: 'external-agent', avatarKey: 'acct_b' },
+        participants: [
+          { id: 'cloud:acct_a', name: 'Me', kind: 'human', role: 'self', avatarKey: 'acct_a', profileImageUrl: 'https://example.test/me.png' },
+          { id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b', profileImageUrl: 'https://example.test/alice.png' },
+        ],
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        bridgeRequestId: 'another_test_task',
+        contextPolicy: 'cloud-session-activity',
+      }],
+    },
+    activeConvHasSubtitle: false,
+    activeLastMessage: undefined,
+    activeConversationIsBridge: true,
+    activeBridgeConversationHostNodeId: null,
+    activeBridgeConversationHostUrl: null,
+    activeBridgeConversation: null,
+    activeBridgeAwaitingReply: false,
+    isBridgePolling: false,
+    lastBridgePollAtLabel: null,
+    activeSessionProject: null,
+    artifacts: [],
+    activeArtifactId: null,
+    onSelectArtifact: () => {},
+  }));
+
+  assert.equal(markup.match(/app-inspector-source-row/g)?.length, 1);
+  assert.match(markup, /Synced Cloud task by Alice/);
+  assert.doesNotMatch(markup, /failed subtask/);
+  assert.match(markup, /https:\/\/example\.test\/me\.png/);
+  assert.match(markup, /https:\/\/example\.test\/alice\.png/);
+});
+
+test('chat detail task panel dedupes stale Cloud task rows with the same title and prefers the latest row', () => {
+  const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
+    isNativeShell: true,
+    activeDetailTab: 'tasks',
+    activeConv: {
+      id: 'session:direct-person:acct_a:acct_b',
+      canonicalSessionId: 'session:direct-person:acct_a:acct_b',
+      name: 'Alice',
+      type: 'person',
+      subtitle: '',
+      unread: 0,
+      bridges: ['Cloud'],
+      trust: 'Cloud',
+      directness: 'Direct person chat',
+      participants: ['Me', 'Alice'],
+      messages: [],
+      taskActivities: [
+        {
+          id: 'cloud-task:session:direct-person:acct_a:acct_b:task_new',
+          sessionId: 'session:direct-person:acct_a:acct_b',
+          status: 'closed',
+          initiator: { id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b' },
+          target: { id: 'task:task_new', name: 'Another Test Task', kind: 'agent', role: 'external-agent', avatarKey: 'acct_b' },
+          participants: [{ id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b' }],
+          createdAtMs: 3,
+          updatedAtMs: 4,
+          bridgeRequestId: 'task_new',
+          contextPolicy: 'cloud-session-activity',
+        },
+        {
+          id: 'cloud-task:session:direct-person:acct_a:acct_b:legacy_slug',
+          sessionId: 'session:direct-person:acct_a:acct_b',
+          status: 'active',
+          initiator: { id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b' },
+          target: { id: 'task:legacy_slug', name: 'Another Test Task', kind: 'agent', role: 'external-agent', avatarKey: 'acct_b' },
+          participants: [{ id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b' }],
+          createdAtMs: 1,
+          updatedAtMs: 2,
+          bridgeRequestId: 'legacy_slug',
+          contextPolicy: 'cloud-session-activity',
+        },
+      ],
+    },
+    activeConvHasSubtitle: false,
+    activeLastMessage: undefined,
+    activeConversationIsBridge: true,
+    activeBridgeConversationHostNodeId: null,
+    activeBridgeConversationHostUrl: null,
+    activeBridgeConversation: null,
+    activeBridgeAwaitingReply: false,
+    isBridgePolling: false,
+    lastBridgePollAtLabel: null,
+    activeSessionProject: null,
+    artifacts: [],
+    activeArtifactId: null,
+    onSelectArtifact: () => {},
+  }));
+
+  assert.equal(markup.match(/app-inspector-source-row/g)?.length, 1);
+  assert.match(markup, /lucide-circle-check/);
+  assert.doesNotMatch(markup, /Active/);
+});
+
 test('chat detail task panel uses canonical Cloud participant avatars for account-id task participants', () => {
   const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
     isNativeShell: true,

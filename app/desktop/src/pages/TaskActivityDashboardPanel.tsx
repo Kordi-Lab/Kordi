@@ -460,10 +460,24 @@ function TaskRow({
 }
 
 function taskDedupeKeys(task: Pick<TaskDashboardItem, 'id' | 'taskId' | 'title'>) {
+  const normalizedTitle = task.title?.trim().replace(/\s+/g, ' ').toLowerCase();
   return [
     task.taskId ? `task-id:${task.taskId.trim().toLowerCase()}` : null,
+    normalizedTitle ? `task-title:${normalizedTitle}` : null,
     task.id ? `id:${task.id.trim().toLowerCase()}` : null,
   ].filter((value): value is string => Boolean(value));
+}
+
+function dedupeTaskRowsByKeys<T extends Pick<TaskDashboardItem, 'id' | 'taskId' | 'title'>>(tasks: T[]): T[] {
+  const seen = new Set<string>();
+  const rows: T[] = [];
+  for (const task of tasks) {
+    const keys = taskDedupeKeys(task);
+    if (keys.some((key) => seen.has(key))) continue;
+    rows.push(task);
+    keys.forEach((key) => seen.add(key));
+  }
+  return rows;
 }
 
 function participantDedupeKey(participant: TaskTargetParticipant) {
@@ -515,9 +529,10 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, a
     profileImageUrl: participant.profileImageUrl,
   })));
   const mergedTargetParticipants = mergeTaskTargetParticipants([...activityTargetParticipants, ...targetParticipants]);
-  const taskActivityRows = taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants));
-  const existingTaskKeys = new Set(dashboard.tasks.flatMap(taskDedupeKeys));
-  const tasks = [...dashboard.tasks, ...taskActivityRows.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)))];
+  const taskActivityRows = dedupeTaskRowsByKeys(taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants)));
+  const existingTaskKeys = new Set(taskActivityRows.flatMap(taskDedupeKeys));
+  const localRows = dashboard.tasks.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)));
+  const tasks = [...taskActivityRows, ...localRows];
 
   return (
     <section className="app-detail-section">

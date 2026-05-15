@@ -101,6 +101,34 @@ test('deriveCloudActivityFromTurn ignores context-wrapper task_operator rows wit
   assert.equal(derived.tasks.length, 0);
 });
 
+test('deriveCloudActivityFromTurn ignores failed task_operator updates instead of mutating Cloud task state', () => {
+  const derived = deriveCloudActivityFromTurn({
+    sessionId: 'session:direct-person:a:b',
+    localAccountId: 'acct_me',
+    participantAccountIds: ['acct_me', 'acct_peer'],
+    turn: {
+      id: 'turn_1',
+      sessionId: 'session:direct-person:a:b',
+      prompt: '@MyKordi finish this task Another Test Task',
+      status: 'complete',
+      message: 'I couldn’t finish **Another Test Task** because it’s already closed or no longer open here.',
+      assistantText: 'I couldn’t finish **Another Test Task** because it’s already closed or no longer open here.',
+      thinkingText: '',
+      completed: true,
+      succeeded: true,
+      error: null,
+      transcriptRefreshRequired: false,
+      startedAtMs: 1,
+      completedAtMs: 2,
+      tools: [
+        { id: 'tool_1', name: 'task_operator', status: 'failed', arguments: JSON.stringify({ action: 'close', taskTitle: 'Another Test Task' }), liveOutput: '', resultText: 'I couldn’t finish **Another Test Task** because it’s already closed or no longer open here.', detail: null, artifactPath: null, toolLayer: null, isError: true },
+      ],
+    },
+  });
+
+  assert.equal(derived.tasks.length, 0);
+});
+
 test('deriveCloudActivityFromTurn preserves participant display names and avatars', () => {
   const derived = deriveCloudActivityFromTurn({
     sessionId: 'session:group:cloud',

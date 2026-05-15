@@ -307,8 +307,7 @@ impl DesktopRuntimeSession {
     pub async fn create_with_id(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
         let (_runtime_host, _ui, mut setup) =
             prepare_session_runtime_for_cwd(cwd, SessionBootstrapOptions::default()).await?;
-        setup.session_id = session_id.to_string();
-        setup.session_created = false;
+        retarget_runtime_setup_session(&mut setup, session_id)?;
         normalize_setup_thinking(&mut setup);
         Ok(Self { setup })
     }
@@ -878,6 +877,21 @@ pub fn move_session_to_project(session_id: &str, project_root: &std::path::Path)
 pub fn delete_session_forever(session_id: &str) -> Result<()> {
     let conn = open_sessions_db()?;
     kordi_session::store::delete_session(&conn, session_id)
+}
+
+fn retarget_runtime_setup_session(setup: &mut SessionRuntimeSetup, session_id: &str) -> Result<()> {
+    setup.session_id = session_id.to_string();
+    setup.session_created = false;
+    let sibling_conn = setup
+        .sibling_conn
+        .clone()
+        .ok_or_else(|| anyhow!("Session DB connection is unavailable"))?;
+    setup.tool_ctx.task_operator = Some(crate::task_operator::build_task_operator_runtime(
+        setup.tool_ctx.cwd.clone(),
+        setup.session_id.clone(),
+        sibling_conn,
+    ));
+    Ok(())
 }
 
 fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
