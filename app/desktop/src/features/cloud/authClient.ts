@@ -170,6 +170,57 @@ export type CloudSessionForkSummary = {
   createdAt: string;
 };
 
+export type CloudTaskActivity = {
+  taskActivityId: string;
+  sessionId: string;
+  taskId: string;
+  title: string;
+  summary: string | null;
+  status: string;
+  createdByAccountId: string;
+  targetAccountId: string | null;
+  participants: unknown[];
+  artifactIds: string[];
+  responseMessageId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type CloudArtifactActivity = {
+  artifactActivityId: string;
+  sessionId: string;
+  artifactId: string;
+  name: string;
+  path: string;
+  kind: 'code' | 'document' | 'file' | string;
+  category: 'artifact' | 'related' | 'memory' | string;
+  summary: string | null;
+  createdByAccountId: string;
+  sourceMessageId: string | null;
+  attachmentId: string | null;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type CloudSessionActivity = {
+  tasks: CloudTaskActivity[];
+  artifacts: CloudArtifactActivity[];
+};
+
+export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
+  participantAccountIds: string[];
+  clientUpdatedAt?: string | null;
+};
+
+export type UpsertCloudArtifactActivityInput = Omit<CloudArtifactActivity, 'artifactActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
+  participantAccountIds: string[];
+  clientUpdatedAt?: string | null;
+};
+
 export type RegisterDeviceResult = {
   nodeId: string;
   apiKey: string;
@@ -584,6 +635,47 @@ export class CloudAuthClient {
     );
     if (!response) throw new Error('Empty response from cloud server.');
     return response.fork;
+  }
+
+  async listSessionActivity(token: string, sessionId: string): Promise<CloudSessionActivity> {
+    const params = new URLSearchParams({ sessionId });
+    const response = await this.send<CloudSessionActivity>(
+      `/v1/cloud/session-activity?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load session activity.',
+    );
+    return { tasks: response?.tasks ?? [], artifacts: response?.artifacts ?? [] };
+  }
+
+  async upsertTaskActivity(token: string, input: UpsertCloudTaskActivityInput): Promise<CloudTaskActivity> {
+    const response = await this.send<{ task: CloudTaskActivity }>(
+      '/v1/cloud/session-activity/tasks',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not sync task activity.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.task;
+  }
+
+  async upsertArtifactActivity(token: string, input: UpsertCloudArtifactActivityInput): Promise<CloudArtifactActivity> {
+    const response = await this.send<{ artifact: CloudArtifactActivity }>(
+      '/v1/cloud/session-activity/artifacts',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not sync artifact activity.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.artifact;
   }
 
   async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> {

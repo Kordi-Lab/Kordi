@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import {
+  cloneCloudSessionActivityForFork,
+  cloudActivityStorageKey,
+  cloudArtifactToSessionArtifact,
+  cloudArtifactsForSession,
+  cloudTaskActivitiesForSession,
+  cloudTaskToSessionTaskActivity,
+  deriveCloudActivityFromTurn,
+  mergeCloudSessionActivity,
+  normalizeCloudSessionActivitySnapshot,
+} from '../src/features/cloud/cloudSessionActivity';
+
+test('mergeCloudSessionActivity keeps newer task and artifact rows by session id', () => {
+  const current = normalizeCloudSessionActivitySnapshot({
+    tasks: [{ taskActivityId: 'old', sessionId: 'session:group:1', taskId: 'task-1', title: 'Old', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    artifacts: [{ artifactActivityId: 'artifact-old', sessionId: 'session:group:1', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+  });
+  const incoming = normalizeCloudSessionActivitySnapshot({
+    tasks: [{ taskActivityId: 'new', sessionId: 'session:group:1', taskId: 'task-1', title: 'New', summary: null, status: 'complete', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: ['docs/a.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:02:00Z', archivedAt: null }],
+    artifacts: [{ artifactActivityId: 'artifact-new', sessionId: 'session:group:1', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:02:00Z', archivedAt: null }],
+  });
+
+  const merged = mergeCloudSessionActivity(current, incoming);
+
+  assert.equal(merged.tasksBySessionId['session:group:1']?.[0]?.title, 'New');
+  assert.equal(merged.artifactsBySessionId['session:group:1']?.[0]?.artifactActivityId, 'artifact-new');
+});
+
+test('cloud task rows adapt to SessionTaskActivity and artifact rows adapt to SessionArtifact', () => {
+  const task = normalizeCloudSessionActivitySnapshot({
+    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:1', taskId: 'task-1', title: 'Review plan', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [{ accountId: 'acct_a', displayName: 'Alice' }], artifactIds: ['docs/plan.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:02:00Z', archivedAt: null }],
+    artifacts: [],
+  }).tasksBySessionId['session:group:1']![0];
+  const artifact = normalizeCloudSessionActivitySnapshot({
+    tasks: [],
+    artifacts: [{ artifactActivityId: 'artifactact_1', sessionId: 'session:group:1', artifactId: 'docs/plan.md', name: 'plan.md', path: 'docs/plan.md', kind: 'document', category: 'artifact', summary: 'Generated plan', createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:02:00Z', archivedAt: null }],
+  }).artifactsBySessionId['session:group:1']![0];
+
+  assert.equal(cloudTaskToSessionTaskActivity(task).target?.name, 'Review plan');
+  assert.equal(cloudArtifactToSessionArtifact(artifact).id, 'docs/plan.md');
+  assert.equal(cloudActivityStorageKey('acct_a'), 'kordi.cloud.sessionActivity.v1:acct_a');
+});
+
+test('session helpers return UI activity for a session with dedupe', () => {
+  const store = normalizeCloudSessionActivitySnapshot({
+    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:cloud', taskId: 'task-1', title: 'Review launch plan', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    artifacts: [{ artifactActivityId: 'artifactact_1', sessionId: 'session:group:cloud', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+  });
+
+  assert.equal(cloudTaskActivitiesForSession(store, 'session:group:cloud')[0]?.target?.name, 'Review launch plan');
+  assert.equal(cloudArtifactsForSession(store, 'session:group:cloud')[0]?.id, 'docs/a.md');
+});
+
+test('deriveCloudActivityFromTurn extracts task_operator tasks and generated artifacts', () => {
+  const derived = deriveCloudActivityFromTurn({
+    sessionId: 'session:group:cloud',
+    localAccountId: 'acct_me',
+    participantAccountIds: ['acct_me', 'acct_peer'],
+    turn: {
+      id: 'turn_1', sessionId: 'session:group:cloud', prompt: 'make a plan', status: 'complete', message: 'done', assistantText: 'Done', thinkingText: '', completed: true, succeeded: true, error: null, transcriptRefreshRequired: false, startedAtMs: 1, completedAtMs: 2,
+      tools: [
+        { id: 'tool_1', name: 'task_operator', status: 'done', arguments: JSON.stringify({ taskId: 'launch_plan', taskTitle: 'Launch plan', action: 'create' }), liveOutput: '', resultText: 'Task created', detail: null, artifactPath: null, toolLayer: null, isError: false },
+        { id: 'tool_2', name: 'write', status: 'done', arguments: JSON.stringify({ path: 'docs/launch-plan.md' }), liveOutput: '', resultText: 'ok', detail: null, artifactPath: 'docs/launch-plan.md', toolLayer: null, isError: false },
+      ],
+    },
+  });
+
+  assert.equal(derived.tasks[0]?.taskId, 'launch_plan');
+  assert.equal(derived.artifacts[0]?.artifactId, 'docs/launch-plan.md');
+});
+
+test('cloneCloudSessionActivityForFork copies source tasks and artifacts to fork session', () => {
+  const source = normalizeCloudSessionActivitySnapshot({
+    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:parent', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: ['docs/a.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    artifacts: [{ artifactActivityId: 'artifactact_1', sessionId: 'session:group:parent', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+  });
+
+  const cloned = cloneCloudSessionActivityForFork(source, 'session:group:parent', 'session:fork:child', '2026-05-15T10:05:00Z');
+
+  assert.equal(cloned.tasksBySessionId['session:fork:child']?.[0]?.sessionId, 'session:fork:child');
+  assert.equal(cloned.artifactsBySessionId['session:fork:child']?.[0]?.sessionId, 'session:fork:child');
+});
