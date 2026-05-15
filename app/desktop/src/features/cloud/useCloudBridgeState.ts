@@ -12,6 +12,7 @@ import {
   startDesktopChatMessage,
   upsertCanonicalIdentity,
   upsertCanonicalMessage,
+  type DesktopChatContextMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
@@ -44,7 +45,8 @@ import {
 } from './cloudBridgeState';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
-  buildCloudAgentPromptWithSharedContext,
+  cloudAgentNativeContextMessagesFromDirectCloudSession,
+  compactCloudAgentNativeContextMessages,
   cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsLocalAgent,
   encodeCloudAgentCancel,
@@ -576,6 +578,38 @@ function isRecentCloudAgentMention(createdAt: string): boolean {
 
 function isCloudAgentProcessingPlaceholderText(text: string): boolean {
   return /^processing[.\s…]*$/iu.test(text.trim());
+}
+
+function cloudGroupNativeContextMessages({
+  cloudMessages,
+  groupId,
+  requestMessageId,
+  requestCreatedAtMs,
+}: {
+  cloudMessages: CloudMessage[];
+  groupId: string;
+  requestMessageId: string;
+  requestCreatedAtMs: number;
+}): DesktopChatContextMessage[] {
+  return compactCloudAgentNativeContextMessages(cloudMessages.flatMap((cloudMessage) => {
+    const envelope = parseCloudGroupControl(cloudMessage.body);
+    if (envelope?.kind !== 'group-message' || envelope.groupId !== groupId || !envelope.message) return [];
+    const message = envelope.message;
+    if (message.id === requestMessageId) return [];
+    if (message.createdAtMs > requestCreatedAtMs) return [];
+    if (message.forkSnapshot === true) return [];
+    if (message.deliveryState === 'processing' || isCloudAgentProcessingPlaceholderText(message.text)) return [];
+    const text = message.text.trim();
+    if (!text) return [];
+    const participantName = envelope.participants.find((participant) => participant.accountId === message.senderAccountId)?.displayName?.trim();
+    return [{
+      id: message.id,
+      authorName: message.senderDisplayName?.trim() || participantName || 'Cloud participant',
+      authorKind: message.senderKind === 'agent' ? 'agent' : 'human',
+      text,
+      createdAtMs: message.createdAtMs,
+    }];
+  }));
 }
 
 function cloudMessageAttachmentsEqual(left: CloudMessage['attachments'] = [], right: CloudMessage['attachments'] = []): boolean {
@@ -1850,6 +1884,12 @@ export function useCloudBridgeState({
           if (result.status === 'fulfilled') mergeMessage(result.value);
         });
         const prompt = promptTextForCloudAgentMention(envelope.message!.text);
+        const contextMessages = cloudGroupNativeContextMessages({
+          cloudMessages: allCloudMessages,
+          groupId: envelope.groupId,
+          requestMessageId: envelope.message!.id,
+          requestCreatedAtMs: envelope.message!.createdAtMs,
+        });
         const agentAttachmentPaths = mappedAttachments
           .map((attachment) => attachment.localPath?.trim() || '')
           .filter(Boolean);
@@ -1862,6 +1902,7 @@ export function useCloudBridgeState({
           prompt,
           agentAttachmentPaths,
           cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
+          contextMessages,
         );
         rememberLocalTurn(startedTurn);
         cloudAgentTurnIdsByRequestIdRef.current.set(envelope.message!.id, startedTurn.id);
@@ -2242,7 +2283,8 @@ export function useCloudBridgeState({
             candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
           ) === peerId);
           const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
-          const prompt = buildCloudAgentPromptWithSharedContext({
+          const prompt = promptTextForCloudAgentMention(message.body);
+          const contextMessages = cloudAgentNativeContextMessagesFromDirectCloudSession({
             messages,
             requestMessage: message,
             localAccountId: account.accountId,
@@ -2267,6 +2309,7 @@ export function useCloudBridgeState({
             prompt,
             agentAttachmentPaths,
             cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
+            contextMessages,
           );
           rememberLocalTurn(startedTurn);
           cloudAgentTurnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);

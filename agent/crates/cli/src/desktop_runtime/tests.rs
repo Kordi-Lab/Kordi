@@ -191,7 +191,9 @@ async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result
     .save_global()?;
 
     let requested_session_id = "cloud-agent:acct_a:acct_b";
-    let runtime = DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), requested_session_id).await?;
+    let runtime =
+        DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), requested_session_id)
+            .await?;
     let task_operator = runtime
         .setup
         .tool_ctx
@@ -199,21 +201,92 @@ async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result
         .clone()
         .expect("task operator runtime");
 
-    let created = (task_operator.run)(kordi_tools::task_operator::models::TaskOperatorRuntimeRequest::Create(
-        kordi_tools::task_operator::models::TaskCreateRequest {
-            task_id: Some("task_cloud".to_string()),
-            task_title: "Cloud Task".to_string(),
-            summary: None,
-            status: Some("open".to_string()),
-            parent_task_id: None,
-            involved_participants: Vec::new(),
-        },
-    ))
+    let created = (task_operator.run)(
+        kordi_tools::task_operator::models::TaskOperatorRuntimeRequest::Create(
+            kordi_tools::task_operator::models::TaskCreateRequest {
+                task_id: Some("task_cloud".to_string()),
+                task_title: "Cloud Task".to_string(),
+                summary: None,
+                status: Some("open".to_string()),
+                parent_task_id: None,
+                involved_participants: Vec::new(),
+            },
+        ),
+    )
     .await?;
 
     let created_task_id = created.tasks.first().expect("created task").path.as_str();
-    let stored = kordi_session::tasks::get_task(&runtime.setup.conn, requested_session_id, created_task_id)?;
-    assert!(stored.is_some(), "task_operator should use requested create_with_id session id");
+    let stored =
+        kordi_session::tasks::get_task(&runtime.setup.conn, requested_session_id, created_task_id)?;
+    assert!(
+        stored.is_some(),
+        "task_operator should use requested create_with_id session id"
+    );
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn sync_context_messages_imports_cloud_history_once_as_native_session_context() -> Result<()>
+{
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings {
+        default_provider: Some("openai".to_string()),
+        default_model: Some("gpt-4o-mini".to_string()),
+        ..Settings::default()
+    }
+    .save_global()?;
+
+    let mut runtime = DesktopRuntimeSession::create_with_id(
+        cwd.path().to_path_buf(),
+        "cloud-agent:acct_a:session:group:g1",
+    )
+    .await?;
+    let imported = vec![DesktopChatContextMessage {
+        id: "msg_cloud_1".to_string(),
+        author_name: "Shu Yang".to_string(),
+        author_kind: "human".to_string(),
+        text: "Hello group".to_string(),
+        created_at_ms: Some(1_800_000_000_000),
+    }];
+
+    assert_eq!(runtime.sync_context_messages(&imported)?, 1);
+    assert_eq!(runtime.sync_context_messages(&imported)?, 0);
+
+    let entries = kordi_session::store::get_entries(
+        &runtime.setup.conn,
+        "cloud-agent:acct_a:session:group:g1",
+    )?;
+    let cloud_context_entries = entries
+        .iter()
+        .filter_map(|row| serde_json::from_str::<SessionEntry>(&row.payload).ok())
+        .filter_map(|entry| match entry {
+            SessionEntry::CustomMessage {
+                custom_type,
+                content,
+                details,
+                ..
+            } if custom_type == CLOUD_AGENT_CONTEXT_CUSTOM_TYPE => Some((content, details)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(cloud_context_entries.len(), 1);
+    assert_eq!(
+        cloud_context_entries[0]
+            .1
+            .as_ref()
+            .and_then(|value| value.get("cloudMessageId"))
+            .and_then(|value| value.as_str()),
+        Some("msg_cloud_1")
+    );
+    assert!(
+        matches!(&cloud_context_entries[0].0[0], ContentBlock::Text { text } if text == "Shu Yang (human): Hello group")
+    );
     Ok(())
 }
 

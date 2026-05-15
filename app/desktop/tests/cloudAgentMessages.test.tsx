@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
-  buildCloudAgentPromptWithSharedContext,
+  cloudAgentNativeContextMessagesFromDirectCloudSession,
   cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsFirstPersonAgent,
   cloudMessageMentionsLocalAgent,
@@ -155,7 +155,7 @@ test('cloud agent response envelope round trips without exposing metadata text',
   assert.equal(parseCloudAgentResponse('normal text'), null);
 });
 
-test('cloud agent prompt includes the shared human plus agent cloud context window', () => {
+test('cloud agent mentions keep the current request native and sync prior cloud messages as context entries', () => {
   const request: CloudMessage = {
     messageId: 'msg_request',
     fromAccountId: 'acct_me',
@@ -166,7 +166,7 @@ test('cloud agent prompt includes the shared human plus agent cloud context wind
     readAt: null,
     direction: 'outgoing',
   };
-  const prompt = buildCloudAgentPromptWithSharedContext({
+  const contextMessages = cloudAgentNativeContextMessagesFromDirectCloudSession({
     localAccountId: 'acct_me',
     localHumanName: 'Shuyhere',
     peerHumanName: 'Shuyheretest',
@@ -196,10 +196,11 @@ test('cloud agent prompt includes the shared human plus agent cloud context wind
     ],
   });
 
-  assert.match(prompt, /Shared conversation:/);
-  assert.match(prompt, /Shuyheretest: Hi! Thanks for adding me\./);
-  assert.match(prompt, /Shuyheretest's Kordi: I can help\./);
-  assert.match(prompt, /Current request from Shuyhere: can you see that greeting\?/);
+  assert.equal(promptTextForCloudAgentMention(request.body), 'can you see that greeting?');
+  assert.deepEqual(contextMessages.map(({ authorName, authorKind, text }) => ({ authorName, authorKind, text })), [
+    { authorName: 'Shuyheretest', authorKind: 'human', text: 'Hi! Thanks for adding me.' },
+    { authorName: "Shuyheretest's Kordi", authorKind: 'agent', text: 'I can help.' },
+  ]);
 });
 
 test('cloud agent cancel envelope round trips and is treated as control metadata', () => {
