@@ -15,7 +15,9 @@
 - Modify `app/desktop/src/app/assembleRightDetailSlot.tsx` — remove Cloud-only task tab filtering and keep active tab valid.
 - Add/modify `app/desktop/tests/rightDetailRailCloudTasks.test.tsx` — regression for Cloud chat/group/fork Tasks tab visibility.
 - Add `bridges/cloud-server/migrations/0013_cloud_session_activity.sql` — task/artifact activity tables and indexes.
-- Modify `bridges/cloud-server/src/auth/routes.rs` — add request/response structs and endpoints for session task/artifact activity; write `cloud_sync_events` rows.
+- Modify `bridges/cloud-server/src/auth/routes.rs` — only mount the focused activity router and call the fork snapshot helper; do not add more endpoint implementation code to this already-large file.
+- Create/modify `bridges/cloud-server/src/auth/session_activity.rs` — own Cloud task/artifact request/response structs, handlers, SQL row mapping, sync-event writes, fork snapshot helper, and focused unit tests.
+- Modify `bridges/cloud-server/src/auth/mod.rs` — expose the `session_activity` module.
 - Modify `bridges/cloud-server/src/events/mod.rs` — optional live NATS event for Cloud activity changes.
 - Modify `app/desktop/src/features/cloud/authClient.ts` — add Cloud task/artifact types and client methods.
 - Add `app/desktop/src/features/cloud/cloudSessionActivity.ts` — normalization, idempotent merge, cache helpers, and conversion to UI shapes.
@@ -274,13 +276,15 @@ git commit -m "Add Cloud session activity schema"
 ### Task 3: Add cloud-server activity upsert/list/fork fanout helpers
 
 **Files:**
-- Modify: `bridges/cloud-server/src/auth/routes.rs`
+- Create/modify: `bridges/cloud-server/src/auth/session_activity.rs`
+- Modify: `bridges/cloud-server/src/auth/mod.rs`
+- Modify: `bridges/cloud-server/src/auth/routes.rs` only for router mounting and fork snapshot delegation
 - Modify: `bridges/cloud-server/src/events/mod.rs`
-- Test: `bridges/cloud-server/src/auth/routes.rs` test module
+- Test: `bridges/cloud-server/src/auth/session_activity.rs` test module
 
 - [ ] **Step 1: Write failing helper tests**
 
-In the existing `#[cfg(test)]` module in `bridges/cloud-server/src/auth/routes.rs`, add tests for pure payload/fanout helpers before writing endpoint code:
+In `bridges/cloud-server/src/auth/session_activity.rs`, add tests for pure payload/fanout helpers before writing endpoint code:
 
 ```rust
 #[test]
@@ -429,7 +433,7 @@ fn cloud_activity_recipient_ids(owner_account_id: &str, participant_account_ids:
 
 - [ ] **Step 4: Add request/response structs**
 
-In `routes.rs`, near other request structs, add:
+In `session_activity.rs`, add:
 
 ```rust
 #[derive(Debug, Deserialize)]
@@ -492,14 +496,29 @@ struct CloudSessionActivityResponse {
 }
 ```
 
-- [ ] **Step 5: Add routes**
+- [ ] **Step 5: Add focused activity router and mount it**
 
-In `cloud_auth_router`, add:
+In `session_activity.rs`, expose a focused router:
 
 ```rust
-.route("/v1/cloud/session-activity", get(list_cloud_session_activity))
-.route("/v1/cloud/session-activity/tasks", post(upsert_cloud_task_activity))
-.route("/v1/cloud/session-activity/artifacts", post(upsert_cloud_artifact_activity))
+pub fn routes() -> Router<Arc<ServerState>> {
+    Router::new()
+        .route("/v1/cloud/session-activity", get(list_cloud_session_activity))
+        .route("/v1/cloud/session-activity/tasks", post(upsert_cloud_task_activity))
+        .route("/v1/cloud/session-activity/artifacts", post(upsert_cloud_artifact_activity))
+}
+```
+
+In `auth/mod.rs`, add:
+
+```rust
+pub mod session_activity;
+```
+
+In `routes.rs`, only mount the router:
+
+```rust
+.merge(crate::auth::session_activity::routes())
 ```
 
 - [ ] **Step 6: Implement endpoint validation and SQL upserts**
@@ -1240,7 +1259,7 @@ In `useCloudBridgeState.recordCloudSessionFork`, after server call succeeds, mer
 
 - [ ] **Step 5: Add server helper test**
 
-In `routes.rs` test module, add a pure test for fork-copy row id generation helper if implemented in Rust. If using SQL-only copy, add an integration-like helper test that verifies generated sync payload for copied fork row has `sessionId = forkSessionId`.
+In `session_activity.rs` test module, add a pure test for fork-copy row id generation helper if implemented in Rust. If using SQL-only copy, add an integration-like helper test that verifies generated sync payload for copied fork row has `sessionId = forkSessionId`.
 
 - [ ] **Step 6: Run tests**
 
