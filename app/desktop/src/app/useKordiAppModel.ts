@@ -21,7 +21,6 @@ import {
   cloudGroupParticipantsForContacts,
   cloudGroupSelfParticipant,
   cloudGroupTargetAccountIds,
-  nonCloudGroupTargets,
 } from '@/features/cloud/cloudGroupMessages';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
@@ -44,16 +43,11 @@ import {
   agentCanonicalIdentityRequest,
   buildChatAgentSessionKind,
   buildChatAgentSessionMetadata,
-  buildChatCreateGroupBridgeInviteParticipants,
   buildChatCreateGroupBridgeInviteTargets,
-  buildChatCreateGroupInviteText,
   buildChatCreateGroupMetadata,
   buildChatCreatePeopleContactLookup,
   buildChatGroupBridgeUpdateParticipants,
   buildChatGroupBridgeUpdateTargets,
-  CHAT_GROUP_INVITE_CONTEXT_POLICY,
-  CHAT_GROUP_UPDATE_CONTEXT_POLICY,
-  CHAT_GROUP_SESSION_TITLE_UPDATE_CONTEXT_POLICY,
   buildChatCreatePersonOptions,
   buildParticipantSpaceContinuationMetadata,
   chatSessionIdForAgentStart,
@@ -70,19 +64,17 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/featu
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
-import { useBridgeOrchestration } from '@/features/bridge/useBridgeOrchestration';
-import { mergeDesktopBridgeState, useBridgeState } from '@/features/bridge/useBridgeState';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import type { BridgeSettingsDraft, BridgeWizardDraft } from '@/app/kordiShellSlots.types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
   addCanonicalSessionParticipants,
   appendCanonicalMessage,
   archiveDesktopChatSession,
-  createDesktopBridgeOutreach,
   createDesktopProject,
   createDesktopProjectFromFolder,
   deleteDesktopChatSessionForever,
@@ -318,46 +310,6 @@ export function useKordiAppModel() {
   });
 
   const {
-    setDesktopBridgeState,
-    bridgeSettingsDraft,
-    setBridgeSettingsDraft,
-    isDesktopBridgeSaving,
-    desktopBridgeError,
-    setDesktopBridgeError,
-    isBridgePolling,
-    lastBridgePollAt,
-    bridgeInvite,
-    setBridgeInvite,
-    isProjectBridgeBusy,
-    setIsProjectBridgeBusy,
-    bridgeWizardOpen,
-    setBridgeWizardOpen,
-    bridgeWizardStep,
-    setBridgeWizardStep,
-    bridgeWizardDraft,
-    setBridgeWizardDraft,
-    refreshDesktopBridge,
-    handleSaveBridgeSettings,
-    handleSelectBridgeHost,
-    handleRemoveBridgeHost,
-    handleCreateBridgeDraft,
-    openBridgeWizard,
-    handleBridgeWizardPrimary,
-    handleCopyBridgeText,
-    handleOpenBridgeConfigFolder,
-    handleRevealBridgeStorageFile,
-    handleExportBridgeHostsConfig,
-    handleImportBridgeHostsConfig,
-  } = useBridgeState({
-    isNativeShell,
-    activeNav,
-    activeConvId,
-    activeConversationIsBridge: isNativeShell && (activeConvId.startsWith('bridge:') || isCanonicalBridgeSessionId(activeConvId)),
-    composerChatText: composerDraftsView.chat,
-    shouldAutoFollowChatRef,
-  });
-
-  const {
     setCloudBridgeState,
     mergedBridgeState: desktopBridgeState,
     sendCloudBridgeMessage,
@@ -381,6 +333,60 @@ export function useKordiAppModel() {
     incrementLocalSessionUnread: incrementUnreadForSession,
     cloudAgentRuntimeRoutesBySessionId,
   });
+
+  // main-cloud keeps a Bridge-shaped UI adapter for existing components, but the
+  // data source is Cloud-native only. Do not merge localhost Bridge state here.
+  const setDesktopBridgeState = setCloudBridgeState;
+  const [bridgeSettingsDraft, setBridgeSettingsDraft] = useState<BridgeSettingsDraft | null>(null);
+  const isDesktopBridgeSaving = false;
+  const [desktopBridgeError, setDesktopBridgeError] = useState<string | null>(null);
+  const isBridgePolling = false;
+  const lastBridgePollAt = null;
+  const [bridgeInvite] = useState<DesktopBridgeInvite | null>(null);
+  const [isProjectBridgeBusy] = useState(false);
+  const [bridgeWizardOpen, setBridgeWizardOpen] = useState(false);
+  const [bridgeWizardStep, setBridgeWizardStep] = useState<1 | 2 | 3>(1);
+  const [bridgeWizardDraft, setBridgeWizardDraft] = useState<BridgeWizardDraft>({
+    mode: 'have-url',
+    serverUrl: '',
+    displayName: '',
+    ownerName: '',
+  });
+
+  const removedLocalBridgeAction = useCallback(async (..._args: unknown[]) => {
+    const message = 'Localhost Bridge communication was removed from main-cloud.';
+    setDesktopBridgeError(message);
+    throw new Error(message);
+  }, []);
+
+  const refreshDesktopBridge = useCallback(async () => {
+    await refreshCloudBridgeMessages();
+  }, [refreshCloudBridgeMessages]);
+
+  const handleCopyBridgeText = useCallback(async (value: string, successMessage = 'Copied to clipboard') => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setDesktopBridgeError(successMessage);
+    } catch (error) {
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to copy bridge details');
+    }
+  }, []);
+
+  const handleSaveBridgeSettings = removedLocalBridgeAction;
+  const handleSelectBridgeHost = removedLocalBridgeAction;
+  const handleRemoveBridgeHost = removedLocalBridgeAction;
+  const handleCreateBridgeDraft = useCallback(() => {
+    setBridgeSettingsDraft(null);
+  }, []);
+  const openBridgeWizard = useCallback(() => {
+    setBridgeWizardOpen(false);
+    setDesktopBridgeError('Localhost Bridge communication was removed from main-cloud.');
+  }, []);
+  const handleBridgeWizardPrimary = removedLocalBridgeAction;
+  const handleOpenBridgeConfigFolder = removedLocalBridgeAction;
+  const handleRevealBridgeStorageFile = removedLocalBridgeAction;
+  const handleExportBridgeHostsConfig = removedLocalBridgeAction;
+  const handleImportBridgeHostsConfig = removedLocalBridgeAction;
 
   const avatarBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
     ?? desktopBridgeState?.hosts[0]
@@ -661,41 +667,55 @@ export function useKordiAppModel() {
     return 'app-badge-neutral';
   };
 
-  const {
-    handleAddBridgeContact,
-    handleActivateBridgeAgent,
-    handleCreateBridgeAgent,
-    handleCreateProjectBridgeInvite,
-    handleOpenBridgeConversation,
-    handleRemoveBridgeContact,
-    handleStartBridgePersonSession,
-    handleSetBridgeDiscoveryMode,
-    handleSetBridgeHostPrivacyPolicy,
-    handleSetBridgeAgentReachabilityPolicy,
-    handleApproveBridgeContactRequest,
-    handleRejectBridgeContactRequest,
-    handleSetDefaultBridgeAgent,
-    handleUpdateBridgeAgentModelRouting,
-    handleUpdateLocalAgentModelRouting,
-    handleStartLocalBridgeHost,
-    handleStopLocalBridgeHost,
-  } = useBridgeOrchestration({
-    isNativeShell,
-    activeProject,
-    activeProjectBridgeHost,
-    activeBridgeHost,
-    bridgeSettingsDraft,
-    canonicalHumanIdentityId: canonicalSessionState?.profile.humanIdentityId,
-    setCanonicalSessionState,
-    setDesktopBridgeState,
-    setDesktopBridgeError,
-    setBridgeInvite,
-    setIsProjectBridgeBusy,
-    setActiveNav,
-    setActiveConvId,
-    setDesktopChatError,
-    handleCopyBridgeText,
-  });
+  const handleOpenBridgeConversation = useCallback(async (
+    hostId: string,
+    peerNodeId: string,
+    _peerDisplayName?: string | null,
+    _peerOwnerName?: string | null,
+    peerRuntime?: string | null,
+    _project?: DesktopBridgeProject | null,
+  ) => {
+    if (hostId !== CLOUD_HOST_SENTINEL) {
+      await removedLocalBridgeAction();
+      return;
+    }
+    setActiveNav('chats');
+    setActiveConvId(cloudBridgeConversationId(peerNodeId, peerRuntime ?? 'person'));
+    setDesktopChatError(null);
+  }, [removedLocalBridgeAction, setActiveConvId, setActiveNav, setDesktopChatError]);
+
+  const handleStartBridgePersonSession = useCallback(async (target: {
+    hostId: string;
+    nodeId: string;
+    displayName?: string | null;
+    ownerName?: string | null;
+    humanId?: string | null;
+  }) => {
+    if (target.hostId !== CLOUD_HOST_SENTINEL) {
+      await removedLocalBridgeAction();
+      return;
+    }
+    setActiveNav('chats');
+    setActiveConvId(cloudBridgeConversationId(target.nodeId, 'person'));
+    setDesktopChatError(null);
+  }, [removedLocalBridgeAction, setActiveConvId, setActiveNav, setDesktopChatError]);
+
+  const handleAddBridgeContact = removedLocalBridgeAction;
+  const handleActivateBridgeAgent = removedLocalBridgeAction;
+  const handleCreateBridgeAgent = removedLocalBridgeAction;
+  const handleCreateProjectBridgeInvite = removedLocalBridgeAction;
+  const handleRemoveBridgeContact = removedLocalBridgeAction;
+  const handleSetBridgeDiscoveryMode = removedLocalBridgeAction;
+  const handleSetBridgeHostPrivacyPolicy = removedLocalBridgeAction;
+  const handleSetBridgeAgentReachabilityPolicy = removedLocalBridgeAction;
+  const handleApproveBridgeContactRequest = removedLocalBridgeAction;
+  const handleRejectBridgeContactRequest = removedLocalBridgeAction;
+  const handleSetDefaultBridgeAgent = removedLocalBridgeAction;
+  const handleUpdateBridgeAgentModelRouting = removedLocalBridgeAction;
+  const handleStartLocalBridgeHost = removedLocalBridgeAction;
+  const handleStopLocalBridgeHost = removedLocalBridgeAction;
+  const handleUpdateLocalAgentModelRouting = removedLocalBridgeAction;
+
 
   const handleUpdateBridgeAgentModelRoutingForActiveSession = useCallback(async (
     hostId: string,
@@ -1080,8 +1100,6 @@ export function useKordiAppModel() {
     const participants = canonicalGroupParticipantsForSession(state, sessionId);
     const targets = buildChatGroupBridgeUpdateTargets({ actorIdentityId, participants });
     if (targets.length === 0) return;
-    const actorName = canonicalIdentityDisplayName(state, actorIdentityId);
-    const noticeText = sessionRenameNoticeText(actorName, title, 'session');
     const updateParticipants = buildChatGroupBridgeUpdateParticipants({
       participants,
       adminIdentityIds: activeGroupAdminIds(state, sessionId),
@@ -1089,7 +1107,6 @@ export function useKordiAppModel() {
     const currentMetadata = sessionMetadataRecord(state, sessionId);
     const parentGroupSpaceId = metadataGroupSpaceId(currentMetadata) || sessionId;
     const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
-    const bridgeTargets = nonCloudGroupTargets(targets);
     if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
       await sendCloudGroupControl({
         targetAccountIds: cloudTargetAccountIds,
@@ -1100,34 +1117,7 @@ export function useKordiAppModel() {
         participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, updateParticipants),
       });
     }
-    for (const target of bridgeTargets) {
-      const bridgeState = await createDesktopBridgeOutreach({
-        hostId: target.hostId,
-        targetNodeId: target.nodeId,
-        targetKind: 'bridge-person',
-        requestText: noticeText,
-        targetDisplayName: target.displayName,
-        targetOwnerName: target.ownerName,
-        targetRuntime: 'person',
-        targetHumanId: target.humanId,
-        targetAgentId: null,
-        triggerText: null,
-        contextText: null,
-        contextPolicy: CHAT_GROUP_SESSION_TITLE_UPDATE_CONTEXT_POLICY,
-        parentSessionId: sessionId,
-        parentSessionTitle: title,
-        parentSessionKind: 'group',
-        parentGroupSpaceId,
-        parentSessionParticipants: updateParticipants,
-        parentSessionMessages: [],
-        parentTurnId: null,
-        parentMessageId: null,
-        projectId: null,
-        projectName: null,
-      });
-      setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
-    }
-  }, [cloudSession.account, sendCloudGroupControl, setDesktopBridgeState]);
+  }, [cloudSession.account, sendCloudGroupControl]);
 
   const handleRenameChatSession = useCallback(async (sessionId: string, title: string) => {
     if (!isNativeShell || !sessionId.trim()) return;
@@ -1513,23 +1503,8 @@ export function useKordiAppModel() {
     });
     setCanonicalSessionState(nextState);
 
-    const creatorIdentity = currentCanonicalState.identities.find((identity) => identity.id === creatorIdentityId);
-    const creatorInviteIdentity = {
-      id: creatorIdentityId,
-      displayName: creatorIdentity?.displayName?.trim()
-        || currentCanonicalState.profile.displayName?.trim()
-        || activeBridgeHost?.ownerName?.trim()
-        || 'Me',
-      bridgeNodeId: creatorIdentity?.bridgeNodeId?.trim() || activeBridgeHost?.nodeId?.trim() || null,
-      humanId: creatorIdentity?.humanId?.trim() || activeBridgeHost?.humanId?.trim() || null,
-    };
     const inviteTargets = buildChatCreateGroupBridgeInviteTargets(contacts);
     const cloudInviteTargetAccountIds = cloudGroupTargetAccountIds(inviteTargets);
-    const bridgeInviteTargets = nonCloudGroupTargets(inviteTargets);
-    const inviteParticipants = buildChatCreateGroupBridgeInviteParticipants({
-      creator: creatorInviteIdentity,
-      contacts,
-    });
     if (cloudInviteTargetAccountIds.length > 0 && cloudSession.account) {
       try {
         await sendCloudGroupControl({
@@ -1544,50 +1519,15 @@ export function useKordiAppModel() {
         setDesktopChatError(`Group created, but Cloud invites failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    if (bridgeInviteTargets.length > 0) {
-      const inviteText = buildChatCreateGroupInviteText(groupDisplayName);
-      try {
-        for (const target of bridgeInviteTargets) {
-          const inviteState = await createDesktopBridgeOutreach({
-            hostId: target.hostId,
-            targetNodeId: target.nodeId,
-            targetKind: 'bridge-person',
-            requestText: inviteText,
-            targetDisplayName: target.displayName,
-            targetOwnerName: target.ownerName,
-            targetRuntime: 'person',
-            targetHumanId: target.humanId,
-            targetAgentId: null,
-            triggerText: null,
-            contextText: null,
-            contextPolicy: CHAT_GROUP_INVITE_CONTEXT_POLICY,
-            parentSessionId: sessionId,
-            parentSessionTitle: groupDisplayName,
-            parentSessionKind: 'group',
-            parentSessionParticipants: inviteParticipants,
-            parentSessionMessages: [],
-            parentTurnId: null,
-            parentMessageId: null,
-            projectId: null,
-            projectName: null,
-          });
-          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, inviteState));
-        }
-      } catch (error) {
-        setDesktopChatError(`Group created, but Bridge invites failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
 
     selectNewChatSession(sessionId);
   }, [
-    activeBridgeHost,
     canonicalSessionState,
     cloudSession.account,
     isNativeShell,
     peopleContactById,
     selectNewChatSession,
     sendCloudGroupControl,
-    setDesktopBridgeState,
     setDesktopChatError,
   ]);
 
@@ -1675,7 +1615,6 @@ export function useKordiAppModel() {
           if (targets.length > 0) {
             const syncContext = canonicalGroupSessionSyncContextForSession(nextState, sessionId, groupSpaceId ?? sessionId);
             const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
-            const bridgeTargets = nonCloudGroupTargets(targets);
             if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
               await sendCloudGroupControl({
                 targetAccountIds: cloudTargetAccountIds,
@@ -1685,35 +1624,6 @@ export function useKordiAppModel() {
                 groupTitle: syncContext.parentSessionTitle,
                 participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, syncContext.parentSessionParticipants),
               });
-            }
-            const actorName = canonicalIdentityDisplayName(nextState, creatorIdentityId) ?? 'Someone';
-            const requestText = `${actorName} created a new group session`;
-            for (const target of bridgeTargets) {
-              const bridgeState = await createDesktopBridgeOutreach({
-                hostId: target.hostId,
-                targetNodeId: target.nodeId,
-                targetKind: 'bridge-person',
-                requestText,
-                targetDisplayName: target.displayName,
-                targetOwnerName: target.ownerName,
-                targetRuntime: 'person',
-                targetHumanId: target.humanId,
-                targetAgentId: null,
-                triggerText: null,
-                contextText: null,
-                contextPolicy: CHAT_GROUP_UPDATE_CONTEXT_POLICY,
-                parentSessionId: sessionId,
-                parentSessionTitle: syncContext.parentSessionTitle,
-                parentSessionKind: 'group',
-                parentGroupSpaceId: syncContext.parentGroupSpaceId,
-                parentSessionParticipants: syncContext.parentSessionParticipants,
-                parentSessionMessages: syncContext.parentSessionMessages,
-                parentTurnId: null,
-                parentMessageId: null,
-                projectId: null,
-                projectName: null,
-              });
-              setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
             }
           }
         } catch (error) {
@@ -1759,7 +1669,6 @@ export function useKordiAppModel() {
     isNativeShell,
     selectNewChatSession,
     sendCloudGroupControl,
-    setDesktopBridgeState,
     setDesktopChatError,
   ]);
 
@@ -1802,9 +1711,7 @@ export function useKordiAppModel() {
           participants,
           adminIdentityIds: activeGroupAdminIds(nextState, sourceSessionId),
         });
-        const noticeText = sessionRenameNoticeText(canonicalIdentityDisplayName(nextState, actorIdentityId), title, 'group');
         const cloudTargetAccountIds = cloudGroupTargetAccountIds(targets);
-        const bridgeTargets = nonCloudGroupTargets(targets);
         if (cloudTargetAccountIds.length > 0 && cloudSession.account) {
           await sendCloudGroupControl({
             targetAccountIds: cloudTargetAccountIds,
@@ -1815,37 +1722,11 @@ export function useKordiAppModel() {
             participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, updateParticipants),
           });
         }
-        for (const target of bridgeTargets) {
-          const bridgeState = await createDesktopBridgeOutreach({
-            hostId: target.hostId,
-            targetNodeId: target.nodeId,
-            targetKind: 'bridge-person',
-            requestText: noticeText,
-            targetDisplayName: target.displayName,
-            targetOwnerName: target.ownerName,
-            targetRuntime: 'person',
-            targetHumanId: target.humanId,
-            targetAgentId: null,
-            triggerText: null,
-            contextText: null,
-            contextPolicy: CHAT_GROUP_UPDATE_CONTEXT_POLICY,
-            parentSessionId: groupId,
-            parentSessionTitle: title,
-            parentSessionKind: 'group',
-            parentSessionParticipants: updateParticipants,
-            parentSessionMessages: [],
-            parentTurnId: null,
-            parentMessageId: null,
-            projectId: null,
-            projectName: null,
-          });
-          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, bridgeState));
-        }
       }
     } catch (error) {
       setDesktopChatError(`Group renamed, but Bridge rename sync failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [appendRenameNotice, canonicalSessionState, cloudSession.account, isNativeShell, sendCloudGroupControl, setDesktopBridgeState, setDesktopChatError]);
+  }, [appendRenameNotice, canonicalSessionState, cloudSession.account, isNativeShell, sendCloudGroupControl, setDesktopChatError]);
 
   const handleAddChatGroupMembers = useCallback(async (sessionIds: string[], contactIds: string[]) => {
     if (!isNativeShell) return;
@@ -1904,7 +1785,6 @@ export function useKordiAppModel() {
 
     const inviteTargets = buildChatCreateGroupBridgeInviteTargets(contacts);
     const cloudInviteTargetAccountIds = cloudGroupTargetAccountIds(inviteTargets);
-    const bridgeInviteTargets = nonCloudGroupTargets(inviteTargets);
     if (cloudInviteTargetAccountIds.length > 0 && cloudSession.account) {
       try {
         for (const sessionId of groupSessionIds) {
@@ -1926,54 +1806,12 @@ export function useKordiAppModel() {
         setDesktopChatError(`Group members added, but Cloud invites failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    if (bridgeInviteTargets.length > 0) {
-      try {
-        for (const sessionId of groupSessionIds) {
-          const inviteContext = canonicalGroupInviteContextForSession(
-            nextState,
-            sessionId,
-            fallbackGroupSpaceId,
-          );
-          const inviteText = buildChatCreateGroupInviteText(inviteContext.parentSessionTitle);
-          for (const target of bridgeInviteTargets) {
-            const inviteState = await createDesktopBridgeOutreach({
-              hostId: target.hostId,
-              targetNodeId: target.nodeId,
-              targetKind: 'bridge-person',
-              requestText: inviteText,
-              targetDisplayName: target.displayName,
-              targetOwnerName: target.ownerName,
-              targetRuntime: 'person',
-              targetHumanId: target.humanId,
-              targetAgentId: null,
-              triggerText: null,
-              contextText: null,
-              contextPolicy: CHAT_GROUP_INVITE_CONTEXT_POLICY,
-              parentSessionId: sessionId,
-              parentSessionTitle: inviteContext.parentSessionTitle,
-              parentSessionKind: 'group',
-              parentGroupSpaceId: inviteContext.parentGroupSpaceId,
-              parentSessionParticipants: inviteContext.parentSessionParticipants,
-              parentSessionMessages: inviteContext.parentSessionMessages,
-              parentTurnId: null,
-              parentMessageId: null,
-              projectId: null,
-              projectName: null,
-            });
-            setDesktopBridgeState((current) => mergeDesktopBridgeState(current, inviteState));
-          }
-        }
-      } catch (error) {
-        setDesktopChatError(`Group members added, but Bridge invites failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
   }, [
     canonicalSessionState,
     cloudSession.account,
     isNativeShell,
     peopleContactById,
     sendCloudGroupControl,
-    setDesktopBridgeState,
     setDesktopChatError,
   ]);
 

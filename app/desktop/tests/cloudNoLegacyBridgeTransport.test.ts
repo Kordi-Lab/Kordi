@@ -49,7 +49,10 @@ test('cloud state hook no longer accepts base desktop bridge state', () => {
 
 test('cloud app model removes old bridge state hook from main-cloud', () => {
   const source = readSource('src/app/useKordiAppModel.ts');
-  assert.doesNotMatch(source, /useBridgeState\(/);
+  assert.doesNotMatch(source, /useBridgeState/);
+  assert.doesNotMatch(source, /useBridgeOrchestration/);
   assert.doesNotMatch(source, /baseBridgeState:\s*baseDesktopBridgeState/);
-  assert.doesNotMatch(source, /isCloudEdition:\s*kordiEdition\s*===\s*'cloud'/);
+  assert.doesNotMatch(source, /enabled:\s*kordiEdition\s*!==\s*'cloud'/);
+  const composerCall = source.slice(source.indexOf('useComposerController({'), source.indexOf('  });', source.indexOf('useComposerController({')));
+  assert.doesNotMatch(composerCall, /isCloudEdition/);
 });
