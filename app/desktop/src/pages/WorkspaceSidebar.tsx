@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   Activity,
+  Check,
   ChevronDown,
   Copy,
   MoreHorizontal,
@@ -251,6 +252,63 @@ export function buildCloudProfileRows(account: CloudAccount | null | undefined):
     account.primaryEmail?.trim() ? { label: 'Email', value: account.primaryEmail.trim() } : null,
     { label: 'Account ID', value: account.accountId, copyable: true },
   ].filter((row): row is CloudProfileRow => Boolean(row));
+}
+
+const CLOUD_PROFILE_COPY_RESET_MS = 1800;
+
+export function CloudProfileRowCopyButton({ label, value }: { label: string; value: string }) {
+  const [status, setStatus] = useState<'idle' | 'copied' | 'error'>('idle');
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+  }, []);
+
+  const scheduleReset = () => {
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = window.setTimeout(() => {
+      setStatus('idle');
+      resetTimerRef.current = null;
+    }, CLOUD_PROFILE_COPY_RESET_MS);
+  };
+
+  const handleCopy = async () => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) {
+      setStatus('error');
+      scheduleReset();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus('copied');
+    } catch {
+      setStatus('error');
+    } finally {
+      scheduleReset();
+    }
+  };
+
+  const copied = status === 'copied';
+  const errored = status === 'error';
+  return (
+    <button
+      type="button"
+      className={cn(
+        'shrink-0 inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-[11px] font-semibold transition',
+        copied
+          ? 'bg-emerald-500/15 text-emerald-200'
+          : errored
+            ? 'bg-red-500/15 text-red-200'
+            : 'text-slate-200 hover:bg-white/10 hover:text-white',
+      )}
+      aria-label={copied ? `${label} copied` : errored ? `Copy ${label} failed` : `Copy ${label}`}
+      aria-live="polite"
+      onClick={() => { void handleCopy(); }}
+    >
+      {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
+      {copied ? 'Copied' : errored ? 'Copy failed' : 'Copy'}
+    </button>
+  );
 }
 
 const SIDEBAR_STATUS_DOT_TONE: Record<SessionStatusIndicator['tone'], string> = {
@@ -1489,19 +1547,7 @@ export function WorkspaceSidebar({
                     <div className="mt-0.5 truncate text-[11px] text-slate-400">{row.value}</div>
                   </div>
                   {row.copyable ? (
-                    <button
-                      type="button"
-                      className={cn(
-                        'shrink-0 rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200',
-                        'transition hover:bg-white/10 hover:text-white',
-                      )}
-                      aria-label={`Copy ${row.label}`}
-                      onClick={() => {
-                        void navigator.clipboard?.writeText(row.value);
-                      }}
-                    >
-                      Copy
-                    </button>
+                    <CloudProfileRowCopyButton label={row.label} value={row.value} />
                   ) : null}
                 </div>
               )) : (
