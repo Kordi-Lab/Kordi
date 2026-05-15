@@ -13,7 +13,7 @@ import {
 } from '../src/features/cloud/cloudBridgeState';
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
-import { cloudGroupForkPayloadFromSessionMetadata, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { cloudGroupForkPayloadFromSessionMetadata, cloudGroupParticipantsWithProfiles, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
   cloudAgentMentionCandidates,
@@ -426,6 +426,18 @@ test('planCloudSelfAgentSync skips inherited fork snapshot rows but keeps new fo
   assert.deepEqual(planCloudSelfAgentSync(state, {}), [
     { localMessageId: 'new-u1', sessionId: forkSessionId, role: 'user', text: 'new fork prompt', parentLocalMessageId: null, createdAtMs: 30 },
     { localMessageId: 'new-a1', sessionId: forkSessionId, role: 'agent', text: 'new answer', parentLocalMessageId: 'new-u1', createdAtMs: 40 },
+  ]);
+});
+
+test('cloud group participants hydrate missing avatars from account profiles', () => {
+  const participants = cloudGroupParticipantsWithProfiles([
+    { accountId: 'acct_79', displayName: '杨澍', avatarUrl: null, role: 'person' },
+  ], [
+    { accountId: 'acct_79', displayName: '杨澍', avatarUrl: 'https://lh3.googleusercontent.com/a/google-avatar=s96-c' },
+  ]);
+
+  assert.deepEqual(participants, [
+    { accountId: 'acct_79', displayName: '杨澍', avatarUrl: 'https://lh3.googleusercontent.com/a/google-avatar=s96-c', role: 'person' },
   ]);
 });
 

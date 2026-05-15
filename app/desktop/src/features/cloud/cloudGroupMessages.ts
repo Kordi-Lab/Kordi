@@ -8,7 +8,7 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
-import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment } from './authClient';
+import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
@@ -150,6 +150,22 @@ function uniqueByAccount(participants: CloudGroupParticipant[]) {
 
 export function cloudGroupUniqueParticipants(participants: CloudGroupParticipant[]): CloudGroupParticipant[] {
   return uniqueByAccount(participants);
+}
+
+export function cloudGroupParticipantsWithProfiles(
+  participants: CloudGroupParticipant[],
+  profiles: Pick<CloudPublicProfile, 'accountId' | 'displayName' | 'avatarUrl'>[],
+): CloudGroupParticipant[] {
+  const profileByAccountId = new Map(profiles.map((profile) => [profile.accountId, profile]));
+  return uniqueByAccount(participants.map((participant) => {
+    const profile = profileByAccountId.get(participant.accountId);
+    if (!profile) return participant;
+    return {
+      ...participant,
+      displayName: cleanText(profile.displayName) || participant.displayName,
+      avatarUrl: cleanText(profile.avatarUrl) || participant.avatarUrl,
+    };
+  }));
 }
 
 export type CloudGroupRelatedControl = {
@@ -425,7 +441,7 @@ export function cloudGroupParticipantsForBridgeSessionParticipants(
       return [{
         accountId,
         displayName: cleanText(participant.displayName) || accountId,
-        avatarUrl: null,
+        avatarUrl: cleanText(participant.profileImageUrl) || pixelAvatarUrlFromSeed(participant.avatarKey),
         role: participant.role || 'person',
       }];
     }),

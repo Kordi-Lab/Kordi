@@ -29,6 +29,7 @@ import {
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudMessage,
+  type CloudPublicProfile,
 } from './authClient';
 import {
   buildCloudDesktopBridgeState,
@@ -71,6 +72,7 @@ import {
   cloudGroupParticipantsForBridgeSessionParticipants,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
+  cloudGroupParticipantsWithProfiles,
   cloudGroupSelfParticipant,
   cloudGroupTitleForOutgoingControl,
   cloudGroupTitleUpdateNoticeRequest,
@@ -934,6 +936,7 @@ export function useCloudBridgeState({
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
   const cloudGroupOfflineTimersRef = useRef<Map<string, number>>(new Map());
+  const cloudProfileCacheRef = useRef<Map<string, CloudPublicProfile>>(new Map());
   const bootstrapPeerIdsRef = useRef<string[]>([]);
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
   const [localAgentTurnsByRequestId, setLocalAgentTurnsByRequestId] = useState<Record<string, DesktopChatTurnSnapshot>>({});
@@ -1322,8 +1325,40 @@ export function useCloudBridgeState({
     const localHumanIdentityId = canonicalState.profile.humanIdentityId?.trim();
     if (!localHumanIdentityId) return;
 
+    const rawParticipants = [envelope.actor, ...envelope.participants, cloudGroupSelfParticipant(account, 'self')];
+    const profileAccountIds = [...new Set(rawParticipants.map((participant) => participant.accountId.trim()).filter(Boolean))];
+    const missingProfileAccountIds = profileAccountIds.filter((accountId) => !cloudProfileCacheRef.current.has(accountId));
+    if (missingProfileAccountIds.length > 0) {
+      const session = await loadSession();
+      if (session?.token) {
+        await Promise.all(missingProfileAccountIds.map(async (accountId) => {
+          try {
+            const profile = accountId === account.accountId
+              ? {
+                  accountId: account.accountId,
+                  displayName: account.displayName,
+                  avatarUrl: account.avatarUrl,
+                  nodeId: account.nodeId,
+                  isContact: false,
+                  isSelf: true,
+                }
+              : await client.getProfile(session.token, accountId);
+            cloudProfileCacheRef.current.set(accountId, profile);
+          } catch {
+            // Group sync must still work if a profile lookup races account/session refresh.
+          }
+        }));
+      }
+    }
+    const hydratedParticipants = cloudGroupParticipantsWithProfiles(
+      rawParticipants,
+      profileAccountIds
+        .map((accountId) => cloudProfileCacheRef.current.get(accountId))
+        .filter((profile): profile is CloudPublicProfile => Boolean(profile)),
+    );
+
     const participantByAccount = new Map<string, CloudGroupParticipant>();
-    for (const participant of [envelope.actor, ...envelope.participants, cloudGroupSelfParticipant(account, 'self')]) {
+    for (const participant of hydratedParticipants) {
       const normalized = participant.accountId.trim() ? participant : null;
       if (!normalized || participantByAccount.has(normalized.accountId)) continue;
       participantByAccount.set(normalized.accountId, normalized);

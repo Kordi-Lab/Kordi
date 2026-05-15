@@ -418,9 +418,19 @@ test('group update bridge metadata targets every other bridge-backed human and c
     { hostId: 'host-1', nodeId: 'kd_user3', displayName: 'Testuser3', ownerName: 'Testuser3', humanId: 'kh_user3' },
   ]);
   assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
-    { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null },
-    { identityId: 'human:user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null },
-    { identityId: 'human:user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null },
+    { identityId: 'human:me', displayName: 'Testuser2', role: 'admin', bridgeNodeId: 'kd_me', humanId: 'kh_me', agentId: null, avatarKey: 'me', profileImageUrl: null },
+    { identityId: 'human:user1', displayName: 'Testuser1', role: 'person', bridgeNodeId: 'kd_user1', humanId: 'kh_user1', agentId: null, avatarKey: 'user1', profileImageUrl: null },
+    { identityId: 'human:user3', displayName: 'Testuser3', role: 'person', bridgeNodeId: 'kd_user3', humanId: 'kh_user3', agentId: null, avatarKey: 'user3', profileImageUrl: null },
+  ]);
+});
+
+test('group update participant metadata preserves profile avatars', () => {
+  const participants = [
+    { id: 'human:acct_a', name: 'Cloud A', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', bridgeNodeId: 'acct_a', humanId: 'acct_a', avatarKey: 'acct_a', profileImageUrl: 'https://example.com/a.png' },
+  ] satisfies Conversation['canonicalParticipants'];
+
+  assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: [] }), [
+    { identityId: 'human:acct_a', displayName: 'Cloud A', role: 'person', bridgeNodeId: 'acct_a', humanId: 'acct_a', agentId: null, avatarKey: 'acct_a', profileImageUrl: 'https://example.com/a.png' },
   ]);
 });
 
@@ -436,9 +446,9 @@ test('group update targets keep same-name cloud humans separate by account id', 
     { hostId: 'cloud', nodeId: 'acct_b', displayName: 'Shu Yang', ownerName: 'Shu Yang', humanId: 'acct_b' },
   ]);
   assert.deepEqual(buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds: ['human:me'] }), [
-    { identityId: 'human:me', displayName: 'Me', role: 'admin', bridgeNodeId: null, humanId: null, agentId: null },
-    { identityId: 'human:acct_a', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_a', humanId: 'acct_a', agentId: null },
-    { identityId: 'human:acct_b', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_b', humanId: 'acct_b', agentId: null },
+    { identityId: 'human:me', displayName: 'Me', role: 'admin', bridgeNodeId: null, humanId: null, agentId: null, avatarKey: 'me', profileImageUrl: null },
+    { identityId: 'human:acct_a', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_a', humanId: 'acct_a', agentId: null, avatarKey: 'acct_a', profileImageUrl: null },
+    { identityId: 'human:acct_b', displayName: 'Shu Yang', role: 'person', bridgeNodeId: 'acct_b', humanId: 'acct_b', agentId: null, avatarKey: 'acct_b', profileImageUrl: null },
   ]);
 });
 
