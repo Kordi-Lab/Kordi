@@ -41,7 +41,6 @@ import {
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdForBridgeSend,
   isCloudBridgeHostId,
-  mergeCloudBridgeState,
 } from './cloudBridgeState';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
@@ -1030,7 +1029,6 @@ function applyCloudAgentRuntimeRouteToState(
 
 export function useCloudBridgeState({
   account,
-  baseBridgeState,
   activeConversationId,
   canonicalSessionState,
   setCanonicalSessionState,
@@ -1038,7 +1036,6 @@ export function useCloudBridgeState({
   cloudAgentRuntimeRoutesBySessionId,
 }: {
   account: CloudAccount | null;
-  baseBridgeState: DesktopBridgeState | null;
   activeConversationId?: string | null;
   canonicalSessionState?: CanonicalSessionState | null;
   setCanonicalSessionState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
@@ -2472,10 +2469,8 @@ export function useCloudBridgeState({
       hiddenCloudSessionIds,
       suppressUnscopedSelfAgentConversation,
     });
-    return applyCloudAgentRuntimeRouteToState(
-      mergeCloudBridgeState(generated, cloudBridgeOverride),
-      activeRuntimeRoute,
-    );
+    const generatedWithOverride = cloudBridgeOverride ?? generated;
+    return applyCloudAgentRuntimeRouteToState(generatedWithOverride, activeRuntimeRoute);
   }, [
     account,
     activeConversationId,
@@ -2500,10 +2495,7 @@ export function useCloudBridgeState({
     setCloudBridgeOverrideState(next);
   }, []);
 
-  const mergedBridgeState = useMemo(
-    () => mergeCloudBridgeState(baseBridgeState, cloudBridgeState),
-    [baseBridgeState, cloudBridgeState],
-  );
+  const mergedBridgeState = cloudBridgeState;
 
   const sendCloudBridgeMessage = useCallback(async (conversationId: string, text: string, attachments: AttachmentItem[] = []) => {
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);

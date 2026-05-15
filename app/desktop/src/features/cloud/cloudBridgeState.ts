@@ -804,28 +804,6 @@ export function buildCloudDesktopBridgeState({
   };
 }
 
-export function mergeCloudBridgeState(
-  base: DesktopBridgeState | null,
-  cloud: DesktopBridgeState | null,
-): DesktopBridgeState | null {
-  if (!cloud) return base;
-  if (!base) return cloud;
-  const cloudHostIds = new Set(cloud.hosts.map((host) => host.id));
-  return {
-    ...base,
-    activeHostId: base.activeHostId ?? cloud.activeHostId,
-    hosts: [
-      ...base.hosts.filter((host) => !cloudHostIds.has(host.id)),
-      ...cloud.hosts,
-    ],
-    conversations: [
-      ...base.conversations.filter((conversation) => !cloudHostIds.has(conversation.hostId)),
-      ...cloud.conversations,
-    ].sort((left, right) => right.updatedAtMs - left.updatedAtMs),
-    localServer: base.localServer.running ? base.localServer : cloud.localServer,
-  };
-}
-
 function formatCloudBridgeTime(timestampMs: number): string {
   return formatDesktopClockTime(timestampMs);
 }

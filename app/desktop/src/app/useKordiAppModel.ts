@@ -318,7 +318,6 @@ export function useKordiAppModel() {
   });
 
   const {
-    desktopBridgeState: baseDesktopBridgeState,
     setDesktopBridgeState,
     bridgeSettingsDraft,
     setBridgeSettingsDraft,
@@ -376,7 +375,6 @@ export function useKordiAppModel() {
     cachedMessagesReady,
   } = useCloudBridgeState({
     account: kordiEdition === 'cloud' ? cloudSession.account : null,
-    baseBridgeState: baseDesktopBridgeState,
     activeConversationId: activeConvId,
     canonicalSessionState,
     setCanonicalSessionState,

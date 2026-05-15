@@ -75,6 +75,24 @@ function memoryStorage(): Storage {
   };
 }
 
+test('cloud bridge state ignores poisoned localhost bridge state instead of merging it', () => {
+  const cloudState = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: {},
+    readInboundMessageIdsByPeer: {},
+    activeConversationId: null,
+    localAgentTurnsByRequestId: {},
+    localAgentRuntimeRoute: null,
+    cloudSessionTitlesById: {},
+    hiddenCloudSessionIds: new Set(),
+    suppressUnscopedSelfAgentConversation: false,
+  });
+
+  assert.deepEqual(cloudState.hosts.map((host) => host.id), ['cloud']);
+  assert.equal(cloudState.conversations.every((conversation) => conversation.hostId === 'cloud'), true);
+});
+
 test('cloud message local cache round-trips all peer chat messages', () => {
   const storage = memoryStorage();
   saveCachedCloudMessagesByPeer('acct_me', {
