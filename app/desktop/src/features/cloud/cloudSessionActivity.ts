@@ -315,7 +315,23 @@ function slugify(value: string): string {
 }
 
 function taskTitleFromArgs(args: Record<string, unknown>): string | null {
-  return nullableText(args.taskTitle) ?? nullableText(args.title) ?? nullableText(args.task) ?? nullableText(args.name);
+  return nullableText(args.taskTitle) ?? nullableText(args.task_title) ?? nullableText(args.title) ?? nullableText(args.task) ?? nullableText(args.name);
+}
+
+function taskTitleFromResultText(text?: string | null): string | null {
+  const value = text?.trim() ?? '';
+  if (!value) return null;
+  const match = /(?:created|opened|updated|closed)\s+(?:the\s+)?(?:task|test task)\s*:?\s*\*\*([^*]+)\*\*/i.exec(value)
+    ?? /(?:created|opened|updated|closed)\s+(?:the\s+)?(?:task|test task)\s*:?\s*([^\n.]+)/i.exec(value);
+  return match?.[1]?.trim() || null;
+}
+
+function taskIdFromArgs(args: Record<string, unknown>, resultText?: string | null): string | null {
+  const explicit = nullableText(args.taskId) ?? nullableText(args.task_id) ?? nullableText(args.id);
+  if (explicit) return explicit;
+  const result = resultText?.trim() ?? '';
+  const match = /(?:^|[\n;])\s*(?:-\s*)?(?:Task ID|ID):\s*`([^`]+)`/i.exec(result);
+  return match?.[1]?.trim() || null;
 }
 
 function cloudActivityParticipants(accountIds: string[], profiles: CloudActivityParticipantProfile[] = []) {
@@ -346,9 +362,10 @@ export function deriveCloudActivityFromTurn(input: {
   for (const tool of input.turn.tools) {
     if (tool.name.trim().toLowerCase() !== 'task_operator') continue;
     const args = parseToolArgs(tool.arguments) ?? {};
-    const title = taskTitleFromArgs(args) ?? input.turn.prompt.trim() ?? 'Cloud task';
-    const taskId = nullableText(args.taskId) ?? nullableText(args.id) ?? slugify(title);
+    const title = taskTitleFromArgs(args) ?? taskTitleFromResultText(tool.resultText);
+    const taskId = taskIdFromArgs(args, tool.resultText) ?? (title ? slugify(title) : null);
     const action = cleanText(args.action).toLowerCase();
+    if (!title || !taskId) continue;
     const status = action === 'close' ? 'closed' : tool.isError ? 'failed' : 'active';
     tasks.push({
       sessionId: input.sessionId,

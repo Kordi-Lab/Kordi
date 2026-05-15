@@ -73,6 +73,34 @@ test('deriveCloudActivityFromTurn extracts task_operator tasks and generated art
   assert.equal(derived.artifacts[0]?.artifactId, 'docs/launch-plan.md');
 });
 
+test('deriveCloudActivityFromTurn ignores context-wrapper task_operator rows without explicit task identity', () => {
+  const derived = deriveCloudActivityFromTurn({
+    sessionId: 'session:direct-person:a:b',
+    localAccountId: 'acct_me',
+    participantAccountIds: ['acct_me', 'acct_peer'],
+    turn: {
+      id: 'turn_1',
+      sessionId: 'session:direct-person:a:b',
+      prompt: 'Use the shared Cloud conversation below as the single context window. Current request from C UFishAI: close all the task here',
+      status: 'complete',
+      message: 'Closed all tasks I can access here.',
+      assistantText: 'Closed all tasks I can access here.',
+      thinkingText: '',
+      completed: true,
+      succeeded: true,
+      error: null,
+      transcriptRefreshRequired: false,
+      startedAtMs: 1,
+      completedAtMs: 2,
+      tools: [
+        { id: 'tool_1', name: 'task_operator', status: 'done', arguments: JSON.stringify({ action: 'close' }), liveOutput: '', resultText: 'Closed all tasks I can access here.', detail: null, artifactPath: null, toolLayer: null, isError: false },
+      ],
+    },
+  });
+
+  assert.equal(derived.tasks.length, 0);
+});
+
 test('deriveCloudActivityFromTurn preserves participant display names and avatars', () => {
   const derived = deriveCloudActivityFromTurn({
     sessionId: 'session:group:cloud',
