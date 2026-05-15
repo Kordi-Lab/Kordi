@@ -3,7 +3,7 @@ import { useMemo, useRef } from 'react';
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import { cloudPeerAccountIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
@@ -118,6 +118,35 @@ export function bridgeChatConversationIsVisible(
   conversation: Pick<DesktopBridgeConversation, 'outreach'>,
 ) {
   return !conversation.outreach?.parentSessionId;
+}
+
+export function pendingCloudBridgeConversationForActiveId(activeConvId: string): Conversation | null {
+  if (!isCloudBridgeConversationId(activeConvId)) return null;
+  const peerId = cloudPeerAccountIdFromConversationId(activeConvId);
+  if (!peerId) return null;
+  return {
+    id: activeConvId,
+    canonicalSessionId: undefined,
+    name: peerId,
+    type: 'person',
+    subtitle: 'Cloud direct chat is opening…',
+    unread: 0,
+    bridges: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', peerId],
+    messages: [{ role: 'system', text: 'Cloud direct chat is opening…', time: '--:--' }],
+    bridgeTarget: {
+      hostId: 'cloud',
+      nodeId: peerId,
+      displayName: peerId,
+      ownerName: peerId,
+      runtime: 'person',
+      humanId: peerId,
+      agentId: null,
+    },
+    avatarSeed: peerId,
+  };
 }
 
 function liveTurnsViewModelSignature(liveTurns: Record<string, DesktopChatTurnSnapshot>) {
@@ -447,7 +476,11 @@ export function useWorkspaceViewModels({
     if (isNativeShell && isLocalDraftChatConversationId(activeConvId)) {
       return nativeChatPlaceholder;
     }
-    return chatConversations.find((conversation) => conversation.id === activeConvId) ?? chatConversations[0] ?? (isNativeShell ? nativeChatPlaceholder : conversations[0]);
+    const selectedConversation = chatConversations.find((conversation) => conversation.id === activeConvId);
+    if (selectedConversation) return selectedConversation;
+    const pendingCloudConversation = pendingCloudBridgeConversationForActiveId(activeConvId);
+    if (pendingCloudConversation) return pendingCloudConversation;
+    return chatConversations[0] ?? (isNativeShell ? nativeChatPlaceholder : conversations[0]);
   }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder]);
   const activeConversationIsBridge = isNativeShell && (
     activeConv.id.startsWith('bridge:')
