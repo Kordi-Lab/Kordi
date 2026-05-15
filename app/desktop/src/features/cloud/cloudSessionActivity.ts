@@ -1,5 +1,6 @@
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
+import type { DesktopVisibleTaskRecord } from '@/lib/desktop';
 import type { DesktopChatTurnSnapshot, SessionArtifact, SessionTaskActivity, SessionTaskParticipant } from '@/kordi-app/types';
 
 import type {
@@ -265,6 +266,30 @@ export function cloudTaskActivitiesForSession(store: CloudSessionActivityStore, 
     byId.set(activity.id, activity);
   }
   return [...byId.values()];
+}
+
+function taskOperatorStatusFromCloudStatus(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'closed' || normalized === 'complete' || normalized === 'completed') return 'closed';
+  if (normalized === 'failed' || normalized === 'cancelled') return normalized;
+  return 'open';
+}
+
+function cloudTaskParticipantNames(task: CloudTaskActivity): string[] {
+  return Array.from(new Set(task.participants
+    .map((participant) => participantFromCloud(participant, task.createdByAccountId)?.name?.trim() ?? '')
+    .filter(Boolean)));
+}
+
+export function cloudVisibleTaskRecordsForSession(store: CloudSessionActivityStore, sessionId: string): DesktopVisibleTaskRecord[] {
+  return (store.tasksBySessionId[sessionId] ?? []).map((task) => ({
+    taskId: task.taskId,
+    parentTaskId: null,
+    title: task.title,
+    summary: task.summary,
+    status: taskOperatorStatusFromCloudStatus(task.status),
+    involvedParticipants: cloudTaskParticipantNames(task),
+  }));
 }
 
 export function cloudArtifactsForSession(store: CloudSessionActivityStore, sessionId: string): SessionArtifact[] {

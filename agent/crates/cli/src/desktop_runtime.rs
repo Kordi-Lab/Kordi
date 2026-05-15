@@ -114,6 +114,14 @@ fn is_false(value: &bool) -> bool {
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
 const CLOUD_AGENT_CONTEXT_CUSTOM_TYPE: &str = "cloud_agent_context_message";
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
+
+fn visible_task_record_status_for_store(status: &str) -> String {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "closed" | "complete" | "completed" => "closed".to_string(),
+        "failed" => "failed".to_string(),
+        _ => "open".to_string(),
+    }
+}
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -688,7 +696,7 @@ impl DesktopRuntimeSession {
                     parent_task_id: record.parent_task_id.clone(),
                     title: title.to_string(),
                     summary: record.summary.clone(),
-                    status: Some(record.status.clone()),
+                    status: Some(visible_task_record_status_for_store(&record.status)),
                     involved_participants: record.involved_participants.clone(),
                 },
             )?;

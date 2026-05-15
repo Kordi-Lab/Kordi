@@ -10,7 +10,7 @@ use crate::bridge::DesktopBridgeManager;
 use kordi_cli::desktop_runtime::{
     DesktopChatAgentProfile, DesktopChatContextMessage, DesktopChatModelOption,
     DesktopChatProjectGroup, DesktopChatSessionDetail, DesktopChatSessionSummary,
-    DesktopChatSlashCommand, DesktopRuntimeSession,
+    DesktopChatSlashCommand, DesktopRuntimeSession, DesktopVisibleTaskRecord,
 };
 
 pub(crate) mod artifacts;
@@ -895,6 +895,7 @@ pub async fn desktop_chat_start_message(
     attachment_paths: Option<Vec<String>>,
     route: Option<DesktopChatMessageRoute>,
     context_messages: Option<Vec<DesktopChatContextMessage>>,
+    visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -959,6 +960,20 @@ pub async fn desktop_chat_start_message(
         let (provider, model) = {
             let mut session = session_handle.lock().await;
             if let Err(error) = apply_desktop_chat_message_route(&mut session, route.as_ref()) {
+                update_turn(&snapshot_for_task, |state| {
+                    state.status = "failed".to_string();
+                    state.message = error.clone();
+                    state.completed = true;
+                    state.completed_at_ms = Some(now_millis());
+                    state.succeeded = false;
+                    state.error = Some(error);
+                });
+                return;
+            }
+            if let Err(error) =
+                session.sync_visible_task_records(&visible_task_records.unwrap_or_default())
+            {
+                let error = error.to_string();
                 update_turn(&snapshot_for_task, |state| {
                     state.status = "failed".to_string();
                     state.message = error.clone();

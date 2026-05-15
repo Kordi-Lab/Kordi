@@ -101,6 +101,7 @@ import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
   cloneCloudSessionActivityForFork,
   deriveCloudActivityFromTurn,
+  cloudVisibleTaskRecordsForSession,
   loadCachedCloudSessionActivity,
   mergeCloudSessionActivity,
   normalizeCloudSessionActivitySnapshot,
@@ -1890,6 +1891,7 @@ export function useCloudBridgeState({
           requestMessageId: envelope.message!.id,
           requestCreatedAtMs: envelope.message!.createdAtMs,
         });
+        const visibleTaskRecords = cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, envelope.groupId);
         const agentAttachmentPaths = mappedAttachments
           .map((attachment) => attachment.localPath?.trim() || '')
           .filter(Boolean);
@@ -1903,6 +1905,7 @@ export function useCloudBridgeState({
           agentAttachmentPaths,
           cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
           contextMessages,
+          visibleTaskRecords,
         );
         rememberLocalTurn(startedTurn);
         cloudAgentTurnIdsByRequestIdRef.current.set(envelope.message!.id, startedTurn.id);
@@ -2283,6 +2286,7 @@ export function useCloudBridgeState({
             candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
           ) === peerId);
           const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
+          const activitySessionId = message.sessionId ?? cloudSessionIdForBridgeSend(account.accountId, peerId, `cloud:${peerId}`);
           const prompt = promptTextForCloudAgentMention(message.body);
           const contextMessages = cloudAgentNativeContextMessagesFromDirectCloudSession({
             messages,
@@ -2297,6 +2301,9 @@ export function useCloudBridgeState({
           const agentAttachments = currentSession?.token && message.attachments?.length
             ? await resolveCloudMessageAttachments({ token: currentSession.token, client, attachments: message.attachments })
             : message.attachments ?? [];
+          const visibleTaskRecords = activitySessionId
+            ? cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, activitySessionId)
+            : [];
           const agentAttachmentPaths = agentAttachments
             .map((attachment) => attachment.localPath?.trim() || '')
             .filter(Boolean);
@@ -2310,6 +2317,7 @@ export function useCloudBridgeState({
             agentAttachmentPaths,
             cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
             contextMessages,
+            visibleTaskRecords,
           );
           rememberLocalTurn(startedTurn);
           cloudAgentTurnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
@@ -2322,7 +2330,6 @@ export function useCloudBridgeState({
             void refreshCloudBridgeMessages();
             return;
           }
-          const activitySessionId = message.sessionId ?? cloudSessionIdForBridgeSend(account.accountId, peerId, `cloud:${peerId}`);
           if (activitySessionId) {
             await publishDerivedCloudSessionActivity({
               client,

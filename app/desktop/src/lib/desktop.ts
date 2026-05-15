@@ -717,12 +717,22 @@ export type DesktopChatContextMessage = {
   createdAtMs?: number | null;
 };
 
+export type DesktopVisibleTaskRecord = {
+  taskId: string;
+  parentTaskId?: string | null;
+  title: string;
+  summary?: string | null;
+  status: string;
+  involvedParticipants?: string[];
+};
+
 export async function startDesktopChatMessage(
   sessionId: string,
   text: string,
   attachmentPaths: string[] = [],
   route?: DesktopChatMessageRoute | null,
   contextMessages: DesktopChatContextMessage[] = [],
+  visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
 ) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', {
     sessionId,
@@ -730,6 +740,7 @@ export async function startDesktopChatMessage(
     attachmentPaths,
     route: route ?? null,
     contextMessages,
+    visibleTaskRecords,
   });
 }
 

@@ -8,6 +8,7 @@ import {
   cloudArtifactsForSession,
   cloudTaskActivitiesForSession,
   cloudTaskToSessionTaskActivity,
+  cloudVisibleTaskRecordsForSession,
   deriveCloudActivityFromTurn,
   mergeCloudSessionActivity,
   normalizeCloudSessionActivitySnapshot,
@@ -52,6 +53,36 @@ test('session helpers return UI activity for a session with dedupe', () => {
 
   assert.equal(cloudTaskActivitiesForSession(store, 'session:group:cloud')[0]?.target?.name, 'Review launch plan');
   assert.equal(cloudArtifactsForSession(store, 'session:group:cloud')[0]?.id, 'docs/a.md');
+});
+
+test('cloud visible task records expose one shared session task list to native agents', () => {
+  const store = normalizeCloudSessionActivitySnapshot({
+    tasks: [
+      { taskActivityId: 'taskact_open', sessionId: 'session:group:cloud', taskId: 'another_test_task', title: 'Another Test Task', summary: 'Shared follow-up', status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [{ accountId: 'acct_a', displayName: 'C UFishAI' }, { accountId: 'acct_b', displayName: 'Shu Yang' }], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null },
+      { taskActivityId: 'taskact_closed', sessionId: 'session:group:cloud', taskId: 'find_restaurant_options', title: 'Find Restaurant Options', summary: null, status: 'closed', createdByAccountId: 'acct_b', targetAccountId: null, participants: [{ accountId: 'acct_b', displayName: 'Shu Yang' }], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T09:00:00Z', updatedAt: '2026-05-15T09:05:00Z', archivedAt: null },
+      { taskActivityId: 'taskact_other', sessionId: 'session:group:other', taskId: 'other_task', title: 'Other Task', summary: null, status: 'active', createdByAccountId: 'acct_c', targetAccountId: null, participants: [], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T08:00:00Z', updatedAt: '2026-05-15T08:00:00Z', archivedAt: null },
+    ],
+    artifacts: [],
+  });
+
+  assert.deepEqual(cloudVisibleTaskRecordsForSession(store, 'session:group:cloud'), [
+    {
+      taskId: 'another_test_task',
+      parentTaskId: null,
+      title: 'Another Test Task',
+      summary: 'Shared follow-up',
+      status: 'open',
+      involvedParticipants: ['C UFishAI', 'Shu Yang'],
+    },
+    {
+      taskId: 'find_restaurant_options',
+      parentTaskId: null,
+      title: 'Find Restaurant Options',
+      summary: null,
+      status: 'closed',
+      involvedParticipants: ['Shu Yang'],
+    },
+  ]);
 });
 
 test('deriveCloudActivityFromTurn extracts task_operator tasks and generated artifacts', () => {

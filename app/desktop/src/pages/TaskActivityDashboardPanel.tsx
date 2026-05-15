@@ -396,7 +396,7 @@ function taskActivityToDashboardItem(activity: SessionTaskActivity, targetPartic
     status,
     statusLabel: dashboardStatusLabel(status),
     tone: dashboardToneFromStatus(status),
-    target: activity.target?.name ?? null,
+    target: activity.bridgeRequestId ? `ID: ${activity.bridgeRequestId}` : null,
     writeScope: [],
     live: status === 'active',
     timeLabel: null,

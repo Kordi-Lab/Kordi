@@ -227,6 +227,62 @@ async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result
 
 #[allow(clippy::await_holding_lock)]
 #[tokio::test]
+async fn sync_visible_task_records_makes_active_cloud_tasks_closable_by_title() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings {
+        default_provider: Some("openai".to_string()),
+        default_model: Some("gpt-4o-mini".to_string()),
+        ..Settings::default()
+    }
+    .save_global()?;
+
+    let session_id = "cloud-agent:acct_a:session:group:g1";
+    let mut runtime =
+        DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), session_id).await?;
+    assert_eq!(
+        runtime.sync_visible_task_records(&[DesktopVisibleTaskRecord {
+            task_id: "another_test_task".to_string(),
+            parent_task_id: None,
+            title: "Another Test Task".to_string(),
+            summary: Some("Shared Cloud task".to_string()),
+            status: "active".to_string(),
+            involved_participants: vec!["C UFishAI".to_string(), "Shu Yang".to_string()],
+        }])?,
+        1
+    );
+
+    let task_operator = runtime
+        .setup
+        .tool_ctx
+        .task_operator
+        .clone()
+        .expect("task operator runtime");
+    let closed = (task_operator.run)(
+        kordi_tools::task_operator::models::TaskOperatorRuntimeRequest::Close(
+            kordi_tools::task_operator::models::TaskCloseRequest {
+                task_id: None,
+                task_title: Some("Another Test Task".to_string()),
+                query: None,
+                target: None,
+            },
+        ),
+    )
+    .await?;
+
+    assert_eq!(closed.target.as_deref(), Some("another_test_task"));
+    assert_eq!(
+        closed.tasks.first().map(|task| task.status.as_str()),
+        Some("closed")
+    );
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
 async fn sync_context_messages_imports_cloud_history_once_as_native_session_context() -> Result<()>
 {
     let _lock = env_lock().lock().unwrap();
