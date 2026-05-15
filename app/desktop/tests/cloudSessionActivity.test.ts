@@ -69,6 +69,7 @@ test('deriveCloudActivityFromTurn extracts task_operator tasks and generated art
   });
 
   assert.equal(derived.tasks[0]?.taskId, 'launch_plan');
+  assert.equal(derived.tasks[0]?.status, 'active');
   assert.equal(derived.artifacts[0]?.artifactId, 'docs/launch-plan.md');
 });
 

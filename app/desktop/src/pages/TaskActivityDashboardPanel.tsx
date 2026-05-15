@@ -335,8 +335,8 @@ function firstLinkedArtifactId(task: TaskDashboardItemWithParticipants, artifact
 
 function dashboardStatusFromActivity(status: string): TaskDashboardItem['status'] {
   const normalized = status.trim().toLowerCase();
-  if (normalized === 'complete') return 'completed';
-  if (normalized === 'completed' || normalized === 'closed' || normalized === 'failed') return normalized;
+  if (normalized === 'complete' || normalized === 'completed') return 'planned';
+  if (normalized === 'closed' || normalized === 'failed') return normalized;
   if (normalized === 'cancelled' || normalized === 'timeout') return 'failed';
   if (normalized === 'processing' || normalized === 'active') return 'active';
   return 'planned';

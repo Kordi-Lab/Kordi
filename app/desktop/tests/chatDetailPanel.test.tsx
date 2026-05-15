@@ -461,6 +461,8 @@ test('chat detail task panel shows only the two real Cloud participant avatars f
   assert.equal(markup.match(/data-avatar-kind="human"/g)?.length, 2);
   assert.match(markup, /https:\/\/example\.test\/me\.png/);
   assert.match(markup, /https:\/\/example\.test\/alice\.png/);
+  assert.match(markup, /lucide-circle /);
+  assert.doesNotMatch(markup, /lucide-circle-check/);
 });
 
 test('chat detail task panel renders empty task state', () => {
