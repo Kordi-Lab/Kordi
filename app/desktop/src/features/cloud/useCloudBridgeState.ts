@@ -98,6 +98,7 @@ import { syncCloudDiffOnce } from './cloudDiffSync';
 import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
   cloneCloudSessionActivityForFork,
+  deriveCloudActivityFromTurn,
   loadCachedCloudSessionActivity,
   mergeCloudSessionActivity,
   normalizeCloudSessionActivitySnapshot,
@@ -136,6 +137,46 @@ function objectContent(value: unknown): Record<string, unknown> {
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
+}
+
+async function publishDerivedCloudSessionActivity({
+  client,
+  token,
+  accountId,
+  sessionId,
+  participantAccountIds,
+  turn,
+  mergeActivity,
+}: {
+  client: CloudAuthClient;
+  token: string;
+  accountId: string;
+  sessionId: string;
+  participantAccountIds: string[];
+  turn: DesktopChatTurnSnapshot;
+  mergeActivity: (snapshot: CloudSessionActivityStore) => void;
+}) {
+  const activity = deriveCloudActivityFromTurn({
+    sessionId,
+    localAccountId: accountId,
+    participantAccountIds: [...new Set([accountId, ...participantAccountIds].map((value) => value.trim()).filter(Boolean))],
+    turn,
+  });
+  if (activity.tasks.length === 0 && activity.artifacts.length === 0) return;
+  const [taskResults, artifactResults] = await Promise.all([
+    Promise.allSettled(activity.tasks.map((task) => client.upsertTaskActivity(token, task))),
+    Promise.allSettled(activity.artifacts.map((artifact) => client.upsertArtifactActivity(token, artifact))),
+  ]);
+  const tasks = taskResults.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<CloudAuthClient['upsertTaskActivity']>>> => result.status === 'fulfilled').map((result) => result.value);
+  const artifacts = artifactResults.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<CloudAuthClient['upsertArtifactActivity']>>> => result.status === 'fulfilled').map((result) => result.value);
+  if (tasks.length > 0 || artifacts.length > 0) {
+    mergeActivity(normalizeCloudSessionActivitySnapshot({ tasks, artifacts }));
+  }
+  const firstFailure = [...taskResults, ...artifactResults].find((result) => result.status === 'rejected') as PromiseRejectedResult | undefined;
+  if (firstFailure) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloud-session-activity] publish failed', firstFailure.reason);
+  }
 }
 
 export function optimisticCloudAgentCancelMessage({
@@ -1824,6 +1865,15 @@ export function useCloudBridgeState({
         rememberLocalTurn(finalTurn);
         cloudAgentTurnIdsByRequestIdRef.current.delete(envelope.message!.id);
         if (finalTurn.status === 'cancelled') return;
+        await publishDerivedCloudSessionActivity({
+          client,
+          token: session.token,
+          accountId: account.accountId,
+          sessionId: envelope.groupId,
+          participantAccountIds: [...participantByAccount.keys()],
+          turn: finalTurn,
+          mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
+        });
         // When the local agent turn fails (e.g. provider overload after retries),
         // surface the failure as a structured `failed` agent-turn instead of
         // wrapping the error as `Failed: <error>` plain text. The receive-side
@@ -2218,6 +2268,18 @@ export function useCloudBridgeState({
           if (finalTurn.status === 'cancelled') {
             void refreshCloudBridgeMessages();
             return;
+          }
+          const activitySessionId = message.sessionId ?? cloudSessionIdForBridgeSend(account.accountId, peerId, `cloud:${peerId}`);
+          if (activitySessionId) {
+            await publishDerivedCloudSessionActivity({
+              client,
+              token: session.token,
+              accountId: account.accountId,
+              sessionId: activitySessionId,
+              participantAccountIds: [peerId],
+              turn: finalTurn,
+              mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
+            });
           }
           const responseText = finalTurn.succeeded && finalTurn.assistantText.trim()
             ? finalTurn.assistantText.trim()
