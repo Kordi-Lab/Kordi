@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Bot, Layers3, MessageSquare, Network, Settings, Users } from 'lucide-react';
+import { Bot, Layers3, MessageSquare, Settings, Users } from 'lucide-react';
 
 import type { NavId } from '../types';
 
@@ -8,7 +8,6 @@ export const navItems: Array<{ id: NavId; label: string; icon: ComponentType<{ c
   { id: 'projects', label: 'Projects', icon: Layers3 },
   { id: 'contacts', label: 'Contacts', icon: Users },
   { id: 'agents', label: 'Agents', icon: Bot },
-  { id: 'bridge', label: 'Bridge', icon: Network },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
-import { Bot, CheckCircle2, Link2, LoaderCircle, Users } from 'lucide-react';
+import { Bot, CheckCircle2, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import type { ConversationParticipant, DesktopBridgeHost, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
+import type { ConversationParticipant, DesktopChatTurnSnapshot, DetailTab, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
@@ -49,12 +49,6 @@ type ProjectDetailPanelProps = {
   activeProjectSession: ProjectSession;
   activeProjectLastMessage?: { sender?: string; text?: string; time: string };
   activeLiveTurn?: DesktopChatTurnSnapshot | null;
-  activeProjectBridgeHost: DesktopBridgeHost | null;
-  activeProjectBridgeProject: DesktopBridgeProject | null;
-  isProjectBridgeBusy: boolean;
-  bridgeInvite: DesktopBridgeInvite | null;
-  onCreateProjectBridgeInvite: () => void;
-  onOpenBridgeHosts: () => void;
   onSetTasksTab: () => void;
   getStatusBadgeClass: (value: string) => string;
   artifacts: SessionArtifact[];
@@ -143,12 +137,6 @@ export function ProjectDetailPanel({
   activeProjectSession,
   activeProjectLastMessage,
   activeLiveTurn,
-  activeProjectBridgeHost,
-  activeProjectBridgeProject,
-  isProjectBridgeBusy,
-  bridgeInvite,
-  onCreateProjectBridgeInvite,
-  onOpenBridgeHosts,
   onSetTasksTab,
   getStatusBadgeClass,
   artifacts,
@@ -174,8 +162,6 @@ export function ProjectDetailPanel({
             <div className="app-inspector-inline-meta">
               <span><strong>Shared sources:</strong>&nbsp;{activeProject.sharedSources?.length ?? 0}</span>
               {activeProject.root ? <span className="min-w-0"><strong>Root:</strong>&nbsp;<span className="truncate">{activeProject.root}</span></span> : null}
-              {activeProjectBridgeHost ? <span><strong>Bridge:</strong>&nbsp;{activeProjectBridgeHost.displayName || activeProjectBridgeHost.serverUrl}</span> : null}
-              {activeProjectBridgeProject ? <span><strong>Status:</strong>&nbsp;Invite-ready</span> : null}
             </div>
           </div>
         </section>
@@ -193,45 +179,9 @@ export function ProjectDetailPanel({
               </Badge>
             </div>
             <div className="app-inspector-meta-list">
-              <MetaRow label="Bridge" value={activeProject.bridge} />
               <MetaRow label="Sessions" value={activeProject.sessions.length} />
               <MetaRow label="Shared sources" value={activeProject.sharedSources?.length ?? activeProject.artifacts} />
             </div>
-          </div>
-        </section>
-
-        <section className="app-detail-section">
-          <div className="app-detail-kicker">Bridge collaboration</div>
-          <div className="space-y-3">
-            <EmphasisBlock title="Active bridge host">
-              <div className="break-all text-[color:var(--utility-foreground)]">{activeProjectBridgeHost?.serverUrl || 'No active bridge host selected'}</div>
-              <div className="mt-1 app-inspector-subtext">
-                {activeProjectBridgeProject
-                  ? `${activeProjectBridgeProject.name} • ${activeProjectBridgeProject.memberCount} members on this bridge`
-                  : 'This workspace is not on the current bridge host yet.'}
-              </div>
-            </EmphasisBlock>
-            <div className="app-inspector-actions">
-              <Button
-                className="justify-start rounded-[14px] px-3 py-2 text-[12px]"
-                onClick={onCreateProjectBridgeInvite}
-                disabled={isProjectBridgeBusy || !activeProjectBridgeHost}
-              >
-                {isProjectBridgeBusy ? <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Link2 className="mr-2 h-3.5 w-3.5" />}
-                {activeProjectBridgeProject ? 'Copy project invite' : 'Create project and copy invite'}
-              </Button>
-              <Button variant="secondary" className="justify-start rounded-[14px] border-0 px-3 py-2 text-[12px]" onClick={onOpenBridgeHosts}>
-                <Users className="mr-2 h-3.5 w-3.5" />
-                Open Bridge hosts
-              </Button>
-            </div>
-            {bridgeInvite && activeProjectBridgeProject && bridgeInvite.projectId === activeProjectBridgeProject.id ? (
-              <div className="app-inspector-emphasis border border-cyan-500/20 bg-cyan-500/10 text-cyan-100">
-                <div className="mb-1.5 text-[13px] font-semibold">Latest invite copied</div>
-                <div className="break-all text-[12px]">{bridgeInvite.projectId}</div>
-                <div className="mt-1 break-all text-[12px]">{bridgeInvite.inviteToken}</div>
-              </div>
-            ) : null}
           </div>
         </section>
 

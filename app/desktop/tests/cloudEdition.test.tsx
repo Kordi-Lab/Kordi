@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -11,12 +13,28 @@ import {
   normalizeKordiEdition,
   shouldShowCloudLoginGate,
 } from '../src/features/cloud/edition';
+const repoRoot = resolve(import.meta.dirname, '..');
+
+function readSource(path: string): string {
+  return readFileSync(resolve(repoRoot, path), 'utf8');
+}
+
 import {
   applyCloudLoginWindowSize,
   applyKordiMainWindowSize,
   cloudLoginWindowSizeForMode,
   isTauriRuntime,
 } from '../src/features/cloud/loginWindow';
+
+test('cloud shell source does not expose localhost bridge controls', () => {
+  const navigation = readSource('src/kordi-app/data/navigation.tsx');
+  const sidebar = readSource('src/pages/WorkspaceSidebar.tsx');
+  const rightDetail = readSource('src/app/assembleRightDetailSlot.tsx');
+
+  assert.doesNotMatch(navigation, /id: 'bridge'/);
+  assert.doesNotMatch(sidebar, /Refresh bridge state|Copy host URL|Add \/ join another host/);
+  assert.doesNotMatch(rightDetail, /onOpenBridgeHosts|handleCreateProjectBridgeInvite/);
+});
 
 test('normalizeKordiEdition defaults to local and accepts cloud explicitly', () => {
   assert.equal(normalizeKordiEdition(undefined), 'local');

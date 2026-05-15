@@ -47,14 +47,6 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
           activeProjectSession={args.activeProjectSession}
           activeProjectLastMessage={args.activeProjectLastMessage}
           activeLiveTurn={args.desktopLiveTurn?.sessionId === activeProjectSessionId ? args.desktopLiveTurn : null}
-          activeProjectBridgeHost={args.activeProjectBridgeHost}
-          activeProjectBridgeProject={args.activeProjectBridgeProject}
-          isProjectBridgeBusy={args.isProjectBridgeBusy}
-          bridgeInvite={args.bridgeInvite}
-          onCreateProjectBridgeInvite={() => {
-            void args.handleCreateProjectBridgeInvite();
-          }}
-          onOpenBridgeHosts={() => args.setActiveNav('bridge')}
           onSetTasksTab={() => args.setActiveDetailTab('tasks')}
           getStatusBadgeClass={args.getStatusBadgeClass}
           artifacts={args.activeProjectArtifacts}
