@@ -72,6 +72,13 @@ function copyBinary(label, sourcePath, targetName) {
 }
 
 const targetTriple = detectTargetTriple();
+const hostTriple = (() => {
+  const result = spawnSync('rustc', ['-vV'], { cwd: appRoot, encoding: 'utf8', env: process.env });
+  if (result.status !== 0) return targetTriple;
+  const line = result.stdout.split('\n').find((l) => l.startsWith('host: '));
+  return line ? line.replace('host: ', '').trim() : targetTriple;
+})();
+const crossArchBuild = targetTriple !== hostTriple;
 
 const kordiRuntimeRepo = ensureRepo(
   'Kordi runtime',
@@ -85,33 +92,46 @@ const bridgesRepo = ensureRepo('Bridges', workspaceConfig.bridgesPath);
 const bridgesManifestPath =
   workspaceConfig.bridgesManifestPath ?? 'cli/Cargo.toml';
 
-console.log('[kordi] Building Kordi runtime sidecar...');
+const cargoTargetArgs = ['--target', targetTriple];
+
+console.log(`[kordi] Building Kordi runtime sidecar for ${targetTriple}...`);
 run(
   'cargo',
-  ['build', '--release', '--manifest-path', kordiRuntimeManifestPath],
+  ['build', '--release', ...cargoTargetArgs, '--manifest-path', kordiRuntimeManifestPath],
   kordiRuntimeRepo
 );
 
-console.log('[kordi] Building Bridges sidecar...');
+console.log(`[kordi] Building Bridges sidecar for ${targetTriple}...`);
 run(
   'cargo',
-  ['build', '--release', '--manifest-path', bridgesManifestPath],
+  ['build', '--release', ...cargoTargetArgs, '--manifest-path', bridgesManifestPath],
   bridgesRepo
 );
 
+function withTriple(relativePath, triple) {
+  // Insert <triple> between the workspace target/ dir and release/. Handles
+  // both `target/release/foo` and `../target/release/foo` shapes.
+  return relativePath.replace(/(^|\/)target\/release\//, `$1target/${triple}/release/`);
+}
+
+const kordiRuntimeBinaryRel =
+  workspaceConfig.kordiRuntimeBinary ?? workspaceConfig.bbAgentBinary;
+const bridgesBinaryRel = workspaceConfig.bridgesBinary;
+
 copyBinary(
   'Kordi runtime',
-  join(
-    kordiRuntimeRepo,
-    workspaceConfig.kordiRuntimeBinary ?? workspaceConfig.bbAgentBinary,
-  ),
+  join(kordiRuntimeRepo, withTriple(kordiRuntimeBinaryRel, targetTriple)),
   `kordi-${targetTriple}`
 );
 
 copyBinary(
   'Bridges',
-  join(bridgesRepo, workspaceConfig.bridgesBinary),
+  join(bridgesRepo, withTriple(bridgesBinaryRel, targetTriple)),
   `bridges-${targetTriple}`
 );
+
+if (crossArchBuild) {
+  console.log(`[kordi] Cross-arch build detected (host ${hostTriple} -> target ${targetTriple}); sidecars built for ${targetTriple}.`);
+}
 
 console.log('[kordi] Sidecars are ready for Tauri.');
