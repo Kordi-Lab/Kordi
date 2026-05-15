@@ -400,7 +400,7 @@ function taskActivityToDashboardItem(activity: SessionTaskActivity, targetPartic
     responseMessageId: activity.bridgeRequestId ?? null,
     taskId: activity.bridgeRequestId ?? activity.id,
     artifactIds: [],
-    involvedParticipantNames: Array.from(new Set(participants.flatMap(participantAliasValues))).filter(Boolean),
+    involvedParticipantNames: Array.from(new Set(participants.map((participant) => participant.name).filter(Boolean))),
     subtasks: [],
     subtaskCount: 0,
     activeSubtaskCount: 0,
