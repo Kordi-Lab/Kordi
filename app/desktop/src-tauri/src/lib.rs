@@ -60,6 +60,7 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(DesktopAuthManager::default())
         .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
