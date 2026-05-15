@@ -23,6 +23,13 @@ export const EMPTY_CLOUD_SESSION_ACTIVITY: CloudSessionActivityStore = {
 export type PublishCloudTaskActivityInput = UpsertCloudTaskActivityInput;
 export type PublishCloudArtifactActivityInput = UpsertCloudArtifactActivityInput;
 
+export type CloudActivityParticipantProfile = {
+  accountId: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  role?: string | null;
+};
+
 export function cloudActivityStorageKey(accountId: string) {
   return `kordi.cloud.sessionActivity.v1:${accountId.trim()}`;
 }
@@ -311,13 +318,30 @@ function taskTitleFromArgs(args: Record<string, unknown>): string | null {
   return nullableText(args.taskTitle) ?? nullableText(args.title) ?? nullableText(args.task) ?? nullableText(args.name);
 }
 
+function cloudActivityParticipants(accountIds: string[], profiles: CloudActivityParticipantProfile[] = []) {
+  const profileByAccountId = new Map(profiles
+    .map((profile) => [profile.accountId.trim(), profile] as const)
+    .filter(([accountId]) => Boolean(accountId)));
+  return accountIds.map((accountId) => {
+    const profile = profileByAccountId.get(accountId);
+    return {
+      accountId,
+      displayName: profile?.displayName?.trim() || accountId,
+      ...(profile?.avatarUrl?.trim() ? { avatarUrl: profile.avatarUrl.trim() } : {}),
+      ...(profile?.role?.trim() ? { role: profile.role.trim() } : {}),
+    };
+  });
+}
+
 export function deriveCloudActivityFromTurn(input: {
   sessionId: string;
   localAccountId: string;
   participantAccountIds: string[];
+  participantProfiles?: CloudActivityParticipantProfile[];
   turn: DesktopChatTurnSnapshot;
 }): { tasks: PublishCloudTaskActivityInput[]; artifacts: PublishCloudArtifactActivityInput[] } {
   const clientUpdatedAt = new Date(input.turn.completedAtMs ?? Date.now()).toISOString();
+  const participants = cloudActivityParticipants(input.participantAccountIds, input.participantProfiles);
   const tasks: PublishCloudTaskActivityInput[] = [];
   for (const tool of input.turn.tools) {
     if (tool.name.trim().toLowerCase() !== 'task_operator') continue;
@@ -335,7 +359,7 @@ export function deriveCloudActivityFromTurn(input: {
       createdByAccountId: input.localAccountId,
       targetAccountId: input.localAccountId,
       participantAccountIds: input.participantAccountIds,
-      participants: input.participantAccountIds.map((accountId) => ({ accountId, displayName: accountId })),
+      participants,
       artifactIds: [],
       responseMessageId: input.turn.id,
       clientUpdatedAt,

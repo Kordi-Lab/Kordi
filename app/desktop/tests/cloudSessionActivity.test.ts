@@ -72,6 +72,29 @@ test('deriveCloudActivityFromTurn extracts task_operator tasks and generated art
   assert.equal(derived.artifacts[0]?.artifactId, 'docs/launch-plan.md');
 });
 
+test('deriveCloudActivityFromTurn preserves participant display names and avatars', () => {
+  const derived = deriveCloudActivityFromTurn({
+    sessionId: 'session:group:cloud',
+    localAccountId: 'acct_me',
+    participantAccountIds: ['acct_me', 'acct_peer'],
+    participantProfiles: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: 'https://example.test/me.png' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: 'https://example.test/peer.png' },
+    ],
+    turn: {
+      id: 'turn_1', sessionId: 'session:group:cloud', prompt: 'make a task', status: 'complete', message: 'done', assistantText: 'Done', thinkingText: '', completed: true, succeeded: true, error: null, transcriptRefreshRequired: false, startedAtMs: 1, completedAtMs: 2,
+      tools: [
+        { id: 'tool_1', name: 'task_operator', status: 'done', arguments: JSON.stringify({ taskId: 'task_1', taskTitle: 'Task one', action: 'create' }), liveOutput: '', resultText: 'Task created', detail: null, artifactPath: null, toolLayer: null, isError: false },
+      ],
+    },
+  });
+
+  assert.deepEqual(derived.tasks[0]?.participants, [
+    { accountId: 'acct_me', displayName: 'Me', avatarUrl: 'https://example.test/me.png' },
+    { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: 'https://example.test/peer.png' },
+  ]);
+});
+
 test('cloneCloudSessionActivityForFork copies source tasks and artifacts to fork session', () => {
   const source = normalizeCloudSessionActivitySnapshot({
     tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:parent', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: ['docs/a.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],

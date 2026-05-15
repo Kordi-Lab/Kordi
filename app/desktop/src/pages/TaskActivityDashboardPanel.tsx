@@ -115,12 +115,21 @@ function taskSearchText(task: TaskDashboardItem) {
   ].filter((value): value is string => Boolean(value?.trim())).join(' ');
 }
 
+function participantAliasValues(participant: Pick<TaskTargetParticipant, 'id' | 'name' | 'ownerName' | 'avatarKey'>) {
+  const values = [participant.name, participant.ownerName, participant.id, participant.avatarKey]
+    .filter((value): value is string => Boolean(value?.trim()));
+  return Array.from(new Set(values.flatMap((value) => {
+    const trimmed = value.trim();
+    const withoutPrefix = trimmed.includes(':') ? trimmed.split(':').filter(Boolean).pop() ?? trimmed : trimmed;
+    return [trimmed, withoutPrefix];
+  }).filter(Boolean)));
+}
+
 function participantMatchesTask(participant: TaskTargetParticipant, taskText: string, normalizedTaskText: string) {
-  const names = [participant.name, participant.ownerName].filter((value): value is string => Boolean(value?.trim()));
-  for (const name of names) {
-    const normalizedName = normalizedParticipantMatchText(name);
-    if (normalizedName && normalizedTaskText.includes(normalizedName)) return true;
-    const participantUserNumber = userNumberLabel(name);
+  for (const alias of participantAliasValues(participant)) {
+    const normalizedAlias = normalizedParticipantMatchText(alias);
+    if (normalizedAlias && (normalizedTaskText.includes(normalizedAlias) || normalizedAlias.includes(normalizedTaskText))) return true;
+    const participantUserNumber = userNumberLabel(alias);
     if (participantUserNumber && participantUserNumber === userNumberLabel(taskText)) return true;
   }
   return false;
@@ -349,13 +358,37 @@ function dashboardStatusLabel(status: TaskDashboardItem['status']) {
   }
 }
 
-function taskActivityToDashboardItem(activity: SessionTaskActivity): TaskDashboardItem {
+function matchingCanonicalParticipant(participant: SessionTaskActivity['participants'][number] | SessionTaskActivity['initiator'] | null | undefined, targetParticipants: TaskTargetParticipant[]) {
+  if (!participant) return undefined;
+  const participantAliases = new Set(participantAliasValues(participant).map(normalizedParticipantMatchText).filter(Boolean));
+  return targetParticipants.find((targetParticipant) => (
+    participantAliasValues(targetParticipant)
+      .map(normalizedParticipantMatchText)
+      .filter(Boolean)
+      .some((alias) => participantAliases.has(alias))
+  ));
+}
+
+function enrichTaskParticipant(participant: SessionTaskActivity['participants'][number], targetParticipants: TaskTargetParticipant[]): SessionTaskActivity['participants'][number] {
+  const canonical = matchingCanonicalParticipant(participant, targetParticipants);
+  return canonical ? {
+    ...participant,
+    name: canonical.name || participant.name,
+    avatarKey: canonical.avatarKey ?? participant.avatarKey,
+    profileImageUrl: canonical.profileImageUrl ?? participant.profileImageUrl,
+    role: canonical.role ?? participant.role,
+  } : participant;
+}
+
+function taskActivityToDashboardItem(activity: SessionTaskActivity, targetParticipants: TaskTargetParticipant[]): TaskDashboardItem {
   const status = dashboardStatusFromActivity(activity.status);
   const title = activity.target?.name ?? activity.bridgeRequestId ?? 'Cloud task';
+  const initiator = matchingCanonicalParticipant(activity.initiator, targetParticipants) ?? activity.initiator;
+  const participants = activity.participants.map((participant) => enrichTaskParticipant(participant, targetParticipants));
   return {
     id: activity.id,
     title,
-    summary: activity.error ?? `Synced Cloud task${activity.initiator?.name ? ` by ${activity.initiator.name}` : ''}.`,
+    summary: activity.error ?? `Synced Cloud task${initiator?.name ? ` by ${initiator.name}` : ''}.`,
     status,
     statusLabel: dashboardStatusLabel(status),
     tone: dashboardToneFromStatus(status),
@@ -367,7 +400,7 @@ function taskActivityToDashboardItem(activity: SessionTaskActivity): TaskDashboa
     responseMessageId: activity.bridgeRequestId ?? null,
     taskId: activity.bridgeRequestId ?? activity.id,
     artifactIds: [],
-    involvedParticipantNames: activity.participants.map((participant) => participant.name).filter(Boolean),
+    involvedParticipantNames: Array.from(new Set(participants.flatMap(participantAliasValues))).filter(Boolean),
     subtasks: [],
     subtaskCount: 0,
     activeSubtaskCount: 0,
@@ -414,14 +447,30 @@ function TaskRow({
   );
 }
 
+function taskDedupeKeys(task: Pick<TaskDashboardItem, 'id' | 'taskId' | 'title'>) {
+  return [
+    task.taskId ? `task-id:${task.taskId.trim().toLowerCase()}` : null,
+    task.id ? `id:${task.id.trim().toLowerCase()}` : null,
+  ].filter((value): value is string => Boolean(value));
+}
+
 export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
   // Conversation message arrays can be updated in place while Bridge/canonical polling is active.
   // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
   // as the transcript rerenders, even if the array identity did not change.
   const dashboard = buildTaskActivityDashboard({ messages, liveTurn });
-  const taskActivityRows = taskActivities.map(taskActivityToDashboardItem);
-  const taskIds = new Set(dashboard.tasks.map((task) => task.id));
-  const tasks = [...dashboard.tasks, ...taskActivityRows.filter((task) => !taskIds.has(task.id))];
+  const activityTargetParticipants: TaskTargetParticipant[] = taskActivities.flatMap((activity) => activity.participants.map((participant) => ({
+    id: participant.id,
+    name: participant.name,
+    kind: participant.kind === 'agent' ? 'agent' : 'human',
+    role: participant.role,
+    avatarKey: participant.avatarKey,
+    profileImageUrl: participant.profileImageUrl,
+  })));
+  const mergedTargetParticipants = [...targetParticipants, ...activityTargetParticipants];
+  const taskActivityRows = taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants));
+  const existingTaskKeys = new Set(dashboard.tasks.flatMap(taskDedupeKeys));
+  const tasks = [...dashboard.tasks, ...taskActivityRows.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)))];
 
   return (
     <section className="app-detail-section">

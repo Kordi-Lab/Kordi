@@ -216,6 +216,142 @@ test('chat detail task panel renders Cloud-synced task activity rows', () => {
   assert.match(markup, /Review launch plan/);
 });
 
+test('chat detail task panel dedupes Cloud activity that mirrors a local task_operator turn', () => {
+  const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
+    isNativeShell: true,
+    activeDetailTab: 'tasks',
+    activeConv: {
+      id: 'session:direct-person:acct_a:acct_b',
+      canonicalSessionId: 'session:direct-person:acct_a:acct_b',
+      name: 'Alice',
+      type: 'person',
+      subtitle: '',
+      unread: 0,
+      bridges: ['Cloud'],
+      trust: 'Cloud',
+      directness: 'Direct person chat',
+      participants: ['Me', 'Alice'],
+      messages: [{
+        id: 'msg:agent-task-response',
+        role: 'external-agent',
+        sender: 'Alice Kordi',
+        senderType: 'agent',
+        isOwnMessage: false,
+        showSenderMeta: true,
+        text: '',
+        time: '18:04',
+        turn: {
+          id: 'turn:agent-task-response',
+          sessionId: 'session:direct-person:acct_a:acct_b',
+          prompt: '@MyKordi create task',
+          status: 'complete',
+          message: 'Created the task: Cloud Duplicate Task',
+          assistantText: 'Created the task: Cloud Duplicate Task',
+          thinkingText: '',
+          tools: [{
+            id: 'tool:task-operator',
+            name: 'task_operator',
+            status: 'done',
+            arguments: JSON.stringify({ taskId: 'task_123', taskTitle: 'Cloud Duplicate Task', action: 'create' }),
+            liveOutput: '',
+            resultText: 'Task ID: `task_123`',
+            detail: null,
+            artifactPath: null,
+            toolLayer: null,
+            isError: false,
+          }],
+          completed: true,
+          succeeded: true,
+          error: null,
+        },
+      }],
+      taskActivities: [{
+        id: 'cloud-task:session:direct-person:acct_a:acct_b:task_123',
+        sessionId: 'session:direct-person:acct_a:acct_b',
+        status: 'active',
+        initiator: { id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b' },
+        target: { id: 'task:task_123', name: 'Cloud Duplicate Task', kind: 'agent', role: 'external-agent', avatarKey: 'acct_b' },
+        participants: [{ id: 'cloud:acct_b', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_b' }],
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        bridgeRequestId: 'task_123',
+        contextPolicy: 'cloud-session-activity',
+      }],
+    },
+    activeConvHasSubtitle: false,
+    activeLastMessage: undefined,
+    activeConversationIsBridge: true,
+    activeBridgeConversationHostNodeId: null,
+    activeBridgeConversationHostUrl: null,
+    activeBridgeConversation: null,
+    activeBridgeAwaitingReply: false,
+    isBridgePolling: false,
+    lastBridgePollAtLabel: null,
+    activeSessionProject: null,
+    artifacts: [],
+    activeArtifactId: null,
+    onSelectArtifact: () => {},
+  }));
+
+  assert.equal(markup.match(/app-inspector-source-row/g)?.length, 1);
+});
+
+test('chat detail task panel uses canonical Cloud participant avatars for account-id task participants', () => {
+  const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
+    isNativeShell: true,
+    activeDetailTab: 'tasks',
+    activeConv: {
+      id: 'session:direct-person:acct_a:acct_b',
+      canonicalSessionId: 'session:direct-person:acct_a:acct_b',
+      name: 'Alice',
+      type: 'person',
+      subtitle: '',
+      unread: 0,
+      bridges: ['Cloud'],
+      trust: 'Cloud',
+      directness: 'Direct person chat',
+      participants: ['Me', 'Alice'],
+      canonicalParticipants: [{
+        id: 'cloud:acct_b',
+        name: 'Alice',
+        kind: 'human',
+        role: 'person',
+        avatarKey: 'acct_b',
+        profileImageUrl: 'https://example.test/alice.png',
+      }],
+      messages: [],
+      taskActivities: [{
+        id: 'cloud-task:session:direct-person:acct_a:acct_b:task_123',
+        sessionId: 'session:direct-person:acct_a:acct_b',
+        status: 'active',
+        initiator: { id: 'cloud:acct_b', name: 'acct_b', kind: 'human', role: 'person', avatarKey: 'acct_b' },
+        target: { id: 'task:task_123', name: 'Use Real Avatar', kind: 'agent', role: 'external-agent', avatarKey: 'acct_b' },
+        participants: [{ id: 'cloud:acct_b', name: 'acct_b', kind: 'human', role: 'person', avatarKey: 'acct_b' }],
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        bridgeRequestId: 'task_123',
+        contextPolicy: 'cloud-session-activity',
+      }],
+    },
+    activeConvHasSubtitle: false,
+    activeLastMessage: undefined,
+    activeConversationIsBridge: true,
+    activeBridgeConversationHostNodeId: null,
+    activeBridgeConversationHostUrl: null,
+    activeBridgeConversation: null,
+    activeBridgeAwaitingReply: false,
+    isBridgePolling: false,
+    lastBridgePollAtLabel: null,
+    activeSessionProject: null,
+    artifacts: [],
+    activeArtifactId: null,
+    onSelectArtifact: () => {},
+  }));
+
+  assert.match(markup, /https:\/\/example\.test\/alice\.png/);
+  assert.match(markup, /Synced Cloud task by Alice/);
+});
+
 test('chat detail task panel renders empty task state', () => {
   const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
     isNativeShell: true,

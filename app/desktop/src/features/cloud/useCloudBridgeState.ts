@@ -103,6 +103,7 @@ import {
   mergeCloudSessionActivity,
   normalizeCloudSessionActivitySnapshot,
   saveCachedCloudSessionActivity,
+  type CloudActivityParticipantProfile,
   type CloudSessionActivityStore,
 } from './cloudSessionActivity';
 import { loadSession } from './session';
@@ -145,6 +146,7 @@ async function publishDerivedCloudSessionActivity({
   accountId,
   sessionId,
   participantAccountIds,
+  participantProfiles = [],
   turn,
   mergeActivity,
 }: {
@@ -153,6 +155,7 @@ async function publishDerivedCloudSessionActivity({
   accountId: string;
   sessionId: string;
   participantAccountIds: string[];
+  participantProfiles?: CloudActivityParticipantProfile[];
   turn: DesktopChatTurnSnapshot;
   mergeActivity: (snapshot: CloudSessionActivityStore) => void;
 }) {
@@ -160,6 +163,7 @@ async function publishDerivedCloudSessionActivity({
     sessionId,
     localAccountId: accountId,
     participantAccountIds: [...new Set([accountId, ...participantAccountIds].map((value) => value.trim()).filter(Boolean))],
+    participantProfiles,
     turn,
   });
   if (activity.tasks.length === 0 && activity.artifacts.length === 0) return;
@@ -1871,6 +1875,12 @@ export function useCloudBridgeState({
           accountId: account.accountId,
           sessionId: envelope.groupId,
           participantAccountIds: [...participantByAccount.keys()],
+          participantProfiles: [...participantByAccount.values()].map((participant) => ({
+            accountId: participant.accountId,
+            displayName: participant.displayName,
+            avatarUrl: participant.avatarUrl,
+            role: participant.role,
+          })),
           turn: finalTurn,
           mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
         });
@@ -2277,6 +2287,20 @@ export function useCloudBridgeState({
               accountId: account.accountId,
               sessionId: activitySessionId,
               participantAccountIds: [peerId],
+              participantProfiles: [
+                {
+                  accountId: account.accountId,
+                  displayName: account.displayName || account.primaryEmail || account.accountId,
+                  avatarUrl: account.avatarUrl,
+                  role: 'self',
+                },
+                {
+                  accountId: peerId,
+                  displayName: peerHumanName,
+                  avatarUrl: contact?.profileImageUrl ?? null,
+                  role: 'person',
+                },
+              ],
               turn: finalTurn,
               mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
             });
