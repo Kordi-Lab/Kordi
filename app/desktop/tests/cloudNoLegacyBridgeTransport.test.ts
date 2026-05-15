@@ -57,6 +57,13 @@ test('cloud app model removes old bridge state hook from main-cloud', () => {
   assert.doesNotMatch(composerCall, /isCloudEdition/);
 });
 
+test('main-cloud cloud bridge selection does not call old local bridge read command', () => {
+  const source = readSource('src/features/chat/useDesktopSessionController.ts');
+  assert.match(source, /isCloudBridgeConversationId\(sessionId\)/);
+  const bridgeSelectionBlock = source.slice(source.indexOf("if (sessionId.startsWith('bridge:'))"), source.indexOf('try {', source.indexOf("if (sessionId.startsWith('bridge:'))")));
+  assert.match(bridgeSelectionBlock, /isCloudBridgeConversationId\(sessionId\)/);
+});
+
 test('main-cloud composer actions do not call old bridge communication commands', () => {
   for (const file of [
     'src/features/chat/messageActions/chatMessages.ts',

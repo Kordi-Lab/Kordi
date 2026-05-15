@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
-import { bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
+import { activeConversationForSelection, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
@@ -16,6 +16,45 @@ test('pending Cloud contact selection keeps active conversation on Cloud instead
   assert.equal(conversation?.bridgeTarget?.hostId, 'cloud');
   assert.equal(conversation?.bridgeTarget?.nodeId, 'acct_peer');
   assert.equal(conversation?.bridges.includes('Cloud'), true);
+});
+
+test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
+  const localConversation = {
+    id: 'local-newer',
+    canonicalSessionId: 'local-newer',
+    name: 'Local newer',
+    type: 'owned-agent' as const,
+    subtitle: 'Local fallback should not win',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'owned-agent' as const, text: 'wrong local conversation', time: '10:02' }],
+  };
+  const cloudConversation = {
+    id: 'bridge:cloud:acct_e933bef06cc0499c8287f4fd43205eab:person',
+    canonicalSessionId: 'session:direct-person:acct_ab28e22a7e904f00bbe5d76eff13b495:acct_e933bef06cc0499c8287f4fd43205eab',
+    name: 'Cloud peer',
+    type: 'person' as const,
+    subtitle: 'Cloud direct chat',
+    unread: 0,
+    bridges: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', 'Cloud peer'],
+    messages: [{ role: 'user' as const, isOwnMessage: true, text: 'hi', time: '10:01' }],
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_e933bef06cc0499c8287f4fd43205eab', runtime: 'person' },
+  };
+
+  const selected = activeConversationForSelection(
+    'session:direct-person:acct_ab28e22a7e904f00bbe5d76eff13b495:acct_e933bef06cc0499c8287f4fd43205eab',
+    [localConversation, cloudConversation],
+    { isNativeShell: true, nativeChatPlaceholder: localConversation },
+  );
+
+  assert.equal(selected.id, cloudConversation.id);
+  assert.equal(selected.messages[0]?.text, 'hi');
 });
 
 test('workspace active conversation does not fall back to a local UUID while a Cloud contact opens', () => {
