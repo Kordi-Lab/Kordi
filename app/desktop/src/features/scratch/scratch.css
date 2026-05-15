@@ -1,0 +1,132 @@
+.scratch-doc-editor {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.scratch-doc-editor .ProseMirror {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 32px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--utility-foreground);
+  outline: none;
+}
+
+.scratch-doc-editor .ProseMirror:focus {
+  outline: none;
+}
+
+.scratch-doc-editor .ProseMirror p {
+  margin: 0.5em 0;
+}
+
+.scratch-doc-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--utility-muted-text);
+  pointer-events: none;
+  height: 0;
+}
+
+.scratch-doc-editor .ProseMirror h1,
+.scratch-doc-editor .ProseMirror h2,
+.scratch-doc-editor .ProseMirror h3 {
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+  color: var(--utility-foreground);
+  line-height: 1.3;
+}
+
+.scratch-doc-editor .ProseMirror h1 { font-size: 1.55em; }
+.scratch-doc-editor .ProseMirror h2 { font-size: 1.3em; }
+.scratch-doc-editor .ProseMirror h3 { font-size: 1.12em; }
+
+.scratch-doc-editor .ProseMirror ul,
+.scratch-doc-editor .ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.scratch-doc-editor .ProseMirror li {
+  margin: 0.2em 0;
+}
+
+.scratch-doc-editor .ProseMirror li > p {
+  margin: 0;
+}
+
+.scratch-doc-editor .ProseMirror blockquote {
+  margin: 0.75em 0;
+  padding: 0.25em 0 0.25em 0.9em;
+  border-left: 3px solid var(--app-divider);
+  color: var(--utility-muted-text);
+}
+
+.scratch-doc-editor .ProseMirror code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--app-control-bg) 60%, transparent);
+  color: var(--utility-foreground);
+}
+
+.scratch-doc-editor .ProseMirror pre {
+  margin: 0.75em 0;
+  padding: 0.75em 1em;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--app-control-bg) 78%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 0.9em;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.scratch-doc-editor .ProseMirror pre code {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.scratch-doc-editor .ProseMirror a {
+  color: color-mix(in oklab, var(--utility-foreground) 80%, #6aaaff);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, currentColor 50%, transparent);
+}
+
+.scratch-doc-editor .ProseMirror hr {
+  border: 0;
+  border-top: 1px solid var(--app-divider);
+  margin: 1.25em 0;
+}
+
+.scratch-doc-editor .ProseMirror strong { font-weight: 600; }
+.scratch-doc-editor .ProseMirror em { font-style: italic; }
+
+.scratch-canvas-editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.scratch-canvas-editor > .tl-container,
+.scratch-canvas-editor .tl-container {
+  position: absolute;
+  inset: 0;
+}
+
+.scratch-canvas-loading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: var(--utility-muted-text);
+  font-size: 12px;
+}

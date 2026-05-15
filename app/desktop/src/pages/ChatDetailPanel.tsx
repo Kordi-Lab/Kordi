@@ -8,6 +8,7 @@ import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, Desk
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
+import { ScratchPanel } from '@/features/scratch/ScratchPanel';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 
 type ActiveConversation = {
@@ -386,6 +387,14 @@ function ChatDetailPanelView({
           onSelectArtifact={onSelectArtifact}
           emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local generated artifacts yet.' : 'No generated code or docs in this session yet.'}
         />
+      </div>
+    );
+  }
+
+  if (activeDetailTab === 'scratch') {
+    return (
+      <div className="app-detail-sheet flex h-full min-h-0 flex-col overflow-hidden">
+        <ScratchPanel sessionId={activeSessionId} />
       </div>
     );
   }

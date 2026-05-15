@@ -21,6 +21,9 @@ export default defineConfig({
         codeSplitting: {
           minSize: 20_000,
           groups: [
+            { name: 'editor-vendor', test: /[\\/]node_modules[\\/](@tiptap|tiptap-markdown|prosemirror-.+)[\\/]/ },
+            { name: 'canvas-vendor', test: /[\\/]node_modules[\\/](tldraw|@tldraw|hotkeys-js|core-js)[\\/]/ },
+            { name: 'download-vendor', test: /[\\/]node_modules[\\/](pdfmake|docx|fontkit|@xmldom|pako|jszip|xmlbuilder)[\\/]/ },
             { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
             { name: 'desktop-features', test: /[\\/]src[\\/]features[\\/]/ },
             { name: 'workspace-ui', test: /[\\/]src[\\/](?:app|components|kordi-app|pages)[\\/]/ },

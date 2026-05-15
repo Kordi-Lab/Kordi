@@ -9,3 +9,5 @@
 @import './styles/shell-sidebar.css';
 @import './styles/shell-pages.css';
 @import './styles/theme-overrides.css';
+
+@import './features/scratch/scratch.css';
