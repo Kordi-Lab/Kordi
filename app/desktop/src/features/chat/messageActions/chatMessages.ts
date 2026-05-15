@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import { localAgentRuntimeRouteForBridgeState } from '@/features/bridge/agentModelRouting';
 import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
 import {
   cloudGroupMessageSessionId,
@@ -10,7 +9,6 @@ import {
 } from '@/features/cloud/cloudGroupMessages';
 import { bridgeConversationIdsToMarkReadOnUserActivity } from '@/features/bridge/readReceipts';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
-import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type {
   ComposerScope,
   Conversation,
@@ -39,7 +37,6 @@ import {
   mentionForBridgeTarget,
   mentionedPersonIsActiveBridgeTarget,
   mentionsLocalAgent,
-  publicLocalAgentMentionText,
   resolveMentionedBridgeTarget,
   stripLeadingAddressMentions,
 } from './mentions';
@@ -54,8 +51,6 @@ import {
   persistCanonicalUserMessage,
   prepareCanonicalUserMessage,
 } from './optimistic';
-import { relaySharedSessionMessage } from './relay';
-import type { RelaySharedSessionMessageOptions } from './relay';
 import type { PendingBridgeOutreach } from './types';
 
 export type LocalChatSendInFlight = {
@@ -511,7 +506,6 @@ type UseChatMessageActionsArgs = Pick<
   | 'setCanonicalSessionState'
   | 'setChatComposerAttachments'
   | 'setComposerDrafts'
-  | 'setDesktopBridgeState'
   | 'setCloudBridgeState'
   | 'sendCloudBridgeMessage'
   | 'sendCloudGroupControl'
@@ -559,7 +553,6 @@ export function useChatMessageActions({
   setCanonicalSessionState,
   setChatComposerAttachments,
   setComposerDrafts,
-  setDesktopBridgeState,
   setCloudBridgeState,
   sendCloudBridgeMessage,
   sendCloudGroupControl,
@@ -945,11 +938,6 @@ export function useChatMessageActions({
       const previewText = attachmentSummaryText(text);
       setPendingUserChatMessage(null);
       const parentSessionIdForMessage = activeConvCanonicalSessionId ?? resolvedSessionId;
-      const willRelayToLocalAgent = bridgeLocalAgentMentionCanRelayToBridge({
-        activeGroupSessionIsGroup,
-        activeConvBridgeTarget,
-        hasLocalAgentMention: mentionsLocalAgent(text, desktopChatState, desktopBridgeState),
-      });
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         parentSessionIdForMessage,
         canonicalHumanIdentityId,
@@ -957,22 +945,8 @@ export function useChatMessageActions({
         chatComposerAttachments,
         sentAt,
         'desktop-chat-ui',
-        willRelayToLocalAgent ? 'sent' : 'sending',
+        'sending',
       );
-      const localAgentRelayTargets = willRelayToLocalAgent
-        ? bridgeLocalAgentRelayTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
-        : [];
-      const localAgentRelayPlan = localAgentRelayTargets.length > 0
-        ? {
-            targets: localAgentRelayTargets,
-            parentSessionId: parentSessionIdForMessage,
-            parentMessageId: preparedCanonicalMessage?.messageId ?? null,
-            parentSessionTitle: desktopChatState?.activeSession.title ?? null,
-            parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
-            parentGroupSpaceId: activeGroupSessionSpaceId,
-            parentSessionParticipants: activeGroupSessionParticipants,
-          }
-        : null;
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
       setDesktopChatState((current) => {
         const baseState = materializedState && current?.activeSessionId !== resolvedSessionId
@@ -991,171 +965,16 @@ export function useChatMessageActions({
       ));
       setChatComposerAttachments([]);
       resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-      const relayToLocalAgentTargets = async (
-        requestText: string,
-        parentTurnId?: string | null,
-        deliveryState?: 'processing' | LocalAgentRelayTerminalDeliveryState,
-        bridgeRequestId?: string | null,
-        options: Pick<RelaySharedSessionMessageOptions, 'attachments' | 'taskTools'> = {},
-      ) => {
-        if (!localAgentRelayPlan) return;
-        for (const target of localAgentRelayPlan.targets) {
-          const nextState = await relaySharedSessionMessage(
-            target,
-            localAgentRelayPlan.parentSessionId,
-            requestText,
-            localAgentRelayPlan.parentSessionTitle,
-            localAgentRelayPlan.parentMessageId,
-            parentTurnId,
-            deliveryState,
-            bridgeRequestId,
-            {
-              parentSessionKind: localAgentRelayPlan.parentSessionKind,
-              parentGroupSpaceId: localAgentRelayPlan.parentGroupSpaceId,
-              parentSessionParticipants: localAgentRelayPlan.parentSessionParticipants,
-              attachments: options.attachments,
-              taskTools: options.taskTools,
-            },
-          );
-          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-        }
-      };
-      const runtimeMessageText = localAgentRelayPlan
-        ? localAgentRuntimeText(text, desktopChatState, desktopBridgeState)
-        : text;
-      if (localAgentRelayPlan) {
-        setIsDesktopChatSending(true);
-        const optimisticLiveTurnId = `local-agent-starting:${preparedCanonicalMessage?.messageId ?? Date.now()}`;
-        setDesktopLiveTurnsBySession((current) => ({
-          ...current,
-          [resolvedSessionId]: {
-            id: optimisticLiveTurnId,
-            sessionId: resolvedSessionId,
-            prompt: runtimeMessageText,
-            status: 'starting',
-            message: 'Starting…',
-            assistantText: '',
-            thinkingText: '',
-            tools: [],
-            completed: false,
-            succeeded: false,
-            error: null,
-          },
-        }));
-      }
       void persistCanonicalUserMessage(preparedCanonicalMessage)
         .catch((error: unknown) => {
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
         })
-        .then(async () => {
-          const userRelayPromise = localAgentRelayPlan
-            ? relayToLocalAgentTargets(
-              publicLocalAgentMentionText(text, desktopBridgeState),
-              null,
-              undefined,
-              undefined,
-              { attachments: chatComposerAttachments },
-            ).catch((error: unknown) => {
-              setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent request');
-            })
-            : null;
-          const turn = await startDesktopChatMessage(
-            resolvedSessionId,
-            runtimeMessageText,
-            attachmentPaths,
-            localAgentRelayPlan ? localAgentRuntimeRouteForBridgeState(desktopBridgeState, desktopChatState) : null,
-          );
-          const localAgentBridgeRequestId = `bridge_req_${turn.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-          let processingRelayPromise: Promise<void> | null = null;
-          if (localAgentRelayPlan) {
-            await userRelayPromise;
-            processingRelayPromise = relayToLocalAgentTargets(
-              'processing...',
-              turn.id,
-              'processing',
-              localAgentBridgeRequestId,
-            ).catch((error: unknown) => {
-              setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent progress');
-            });
-          }
-          return { turn, processingRelayPromise, localAgentBridgeRequestId };
-        })
-        .then(({ turn, processingRelayPromise, localAgentBridgeRequestId }) => {
-          if (!localAgentRelayPlan) {
-            watchLocalTurnAndFlushQueue(turn);
-            setIsDesktopChatSending(false);
-            return;
-          }
-
-          void (async () => {
-            let completedTurn: DesktopChatTurnSnapshot | null = null;
-            try {
-              await watchDesktopLiveTurn(turn);
-              completedTurn = await waitForCompletedDesktopTurn(fetchDesktopChatTurnState, turn.id);
-              await awaitRelayProgressBeforeTerminal(processingRelayPromise);
-              const assistantText = stripLeadingAddressMentions(
-                completedTurn.assistantText.trim(),
-                localHumanAddressLabels(desktopBridgeState),
-              );
-              const userCancelledThisTurn = userCancelledTurnIdsRef.current.delete(completedTurn.id)
-                || userCancelledTurnIdsRef.current.delete(turn.id);
-              const turnStatusForRelay = userCancelledThisTurn ? 'cancelled' : completedTurn.status;
-              const terminalDeliveryState = localAgentRelayTerminalDeliveryState({
-                assistantText,
-                error: completedTurn.error,
-                succeeded: completedTurn.succeeded,
-                status: turnStatusForRelay,
-              });
-              await relayToLocalAgentTargets(
-                terminalDeliveryState === 'responded'
-                  ? assistantText
-                  : localAgentRelayFailureText({ error: completedTurn.error, status: turnStatusForRelay }),
-                completedTurn.id,
-                terminalDeliveryState,
-                localAgentBridgeRequestId,
-                { taskTools: completedTurn.tools },
-              );
-            } catch (error) {
-              await awaitRelayProgressBeforeTerminal(processingRelayPromise);
-              const userCancelledThisTurn = userCancelledTurnIdsRef.current.delete(turn.id)
-                || (completedTurn && userCancelledTurnIdsRef.current.delete(completedTurn.id));
-              const wasCancelled = userCancelledThisTurn
-                || completedTurn?.status === 'cancelled'
-                || completedTurn?.status === 'cancelling';
-              const fallbackTurn = completedTurn
-                ? { error: completedTurn.error, status: wasCancelled ? 'cancelled' as const : completedTurn.status }
-                : { error: error instanceof Error ? error.message : null, status: wasCancelled ? 'cancelled' as const : 'failed' as const };
-              await relayToLocalAgentTargets(
-                localAgentRelayFailureText(fallbackTurn),
-                completedTurn?.id ?? turn.id,
-                wasCancelled ? 'cancelled' : 'processing_failed',
-                localAgentBridgeRequestId,
-                completedTurn ? { taskTools: completedTurn.tools } : undefined,
-              );
-              throw error;
-            } finally {
-              if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
-                localChatSendInFlightRef.current = null;
-              }
-              setIsDesktopChatSending(false);
-              flushQueuedDesktopMessagesForSessionRef.current(resolvedSessionId);
-            }
-          })().catch((error: unknown) => {
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent response');
-          });
+        .then(() => startDesktopChatMessage(resolvedSessionId, text, attachmentPaths, null))
+        .then((turn) => {
+          watchLocalTurnAndFlushQueue(turn);
+          setIsDesktopChatSending(false);
         })
         .catch((error: unknown) => {
-          if (localAgentRelayPlan) {
-            if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
-              localChatSendInFlightRef.current = null;
-            }
-            setIsDesktopChatSending(false);
-            setDesktopLiveTurnsBySession((current) => {
-              if (!current[resolvedSessionId]) return current;
-              const { [resolvedSessionId]: _removed, ...rest } = current;
-              return rest;
-            });
-          }
           setPendingUserChatMessage(null);
           if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
             localChatSendInFlightRef.current = null;
@@ -1194,7 +1013,6 @@ export function useChatMessageActions({
     setCanonicalSessionState,
     setChatComposerAttachments,
     setComposerDrafts,
-    setDesktopBridgeState,
     setCloudBridgeState,
     sendCloudBridgeMessage,
     sendCloudGroupControl,

@@ -25,7 +25,6 @@ type UseProjectMessageActionsArgs = Pick<
   | 'isNativeShell'
   | 'setCanonicalSessionState'
   | 'setChatComposerAttachments'
-  | 'setDesktopBridgeState'
   | 'setDesktopChatError'
   | 'setDesktopChatState'
   | 'setIsDesktopChatSending'
@@ -54,7 +53,6 @@ export function useProjectMessageActions({
   isNativeShell,
   setCanonicalSessionState,
   setChatComposerAttachments,
-  setDesktopBridgeState,
   setDesktopChatError,
   setDesktopChatState,
   setIsDesktopChatSending,
@@ -184,7 +182,6 @@ export function useProjectMessageActions({
     isNativeShell,
     setCanonicalSessionState,
     setChatComposerAttachments,
-    setDesktopBridgeState,
     setDesktopChatError,
     setDesktopChatState,
     setIsDesktopChatSending,

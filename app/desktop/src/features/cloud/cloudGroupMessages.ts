@@ -816,9 +816,7 @@ export function cloudGroupTargetAccountIds<T extends { hostId?: string | null; n
     .filter((accountId): accountId is string => Boolean(accountId)))];
 }
 
-export function cloudOnlyGroupTargetAccountIds(targets: Array<{ hostId?: string | null; nodeId?: string | null }>): string[] {
-  return rejectNonCloudBridgeTargets(targets);
-}
+export const cloudOnlyGroupTargetAccountIds = (targets: Array<{ hostId?: string | null; nodeId?: string | null }>): string[] => rejectNonCloudBridgeTargets(targets);
 
 export function nonCloudGroupTargets<T extends { hostId?: string | null }>(targets: T[]): T[] {
   return targets.filter((target) => target.hostId !== CLOUD_HOST_SENTINEL);
