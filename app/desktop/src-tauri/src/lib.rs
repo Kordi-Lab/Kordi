@@ -4,6 +4,7 @@ mod bridge;
 mod canonical_sessions;
 mod chat;
 mod project;
+mod scratch;
 #[cfg(test)]
 mod test_support;
 mod workspace;
@@ -88,6 +89,7 @@ pub fn run() {
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,
             project::desktop_save_project_settings,
+            scratch::desktop_scratch_download_blob,
             bridge::desktop_bridge_state,
             bridge::desktop_bridge_open_config_folder,
             bridge::desktop_bridge_reveal_storage_file,
