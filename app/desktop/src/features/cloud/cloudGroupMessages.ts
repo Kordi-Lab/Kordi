@@ -805,8 +805,9 @@ export function shouldRouteMentionThroughCloudGroup(input: {
 }): boolean {
   if (!input.activeGroupSessionIsGroup) return false;
   if (cleanText(input.mentionedHostId) === CLOUD_HOST_SENTINEL) return true;
+  if (input.hasCloudGroupRecipients === true) return true;
   if (input.mentionsLocalAgent === true) return true;
-  return input.mentionsBridgeAgent === true && input.hasCloudGroupRecipients === true;
+  return false;
 }
 
 export function cloudGroupTargetAccountIds<T extends { hostId?: string | null; nodeId?: string | null }>(targets: T[]): string[] {

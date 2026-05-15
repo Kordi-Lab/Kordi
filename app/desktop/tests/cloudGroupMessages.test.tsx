@@ -623,6 +623,7 @@ test('cloud group send helpers treat partial recipient success as a send success
 test('cloud agent mentions inside cloud groups stay on cloud group transport', () => {
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true }), false);
+  assert.equal(shouldRouteMentionThroughCloudGroup({ activeGroupSessionIsGroup: true, hasCloudGroupRecipients: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsLocalAgent: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: false }), false);
