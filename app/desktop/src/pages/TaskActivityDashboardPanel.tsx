@@ -320,6 +320,60 @@ function firstLinkedArtifactId(task: TaskDashboardItem, artifacts: SessionArtifa
   return task.artifactIds.find((artifactId) => generatedArtifactIds.has(artifactId)) ?? task.artifactIds[0] ?? null;
 }
 
+function dashboardStatusFromActivity(status: string): TaskDashboardItem['status'] {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'complete') return 'completed';
+  if (normalized === 'completed' || normalized === 'closed' || normalized === 'failed') return normalized;
+  if (normalized === 'cancelled' || normalized === 'timeout') return 'failed';
+  if (normalized === 'processing' || normalized === 'active') return 'active';
+  return 'planned';
+}
+
+function dashboardToneFromStatus(status: TaskDashboardItem['status']): TaskDashboardTone {
+  if (status === 'active') return 'running';
+  if (status === 'completed') return 'success';
+  if (status === 'closed') return 'closed';
+  if (status === 'failed') return 'error';
+  return 'muted';
+}
+
+function dashboardStatusLabel(status: TaskDashboardItem['status']) {
+  switch (status) {
+    case 'active': return 'Active';
+    case 'completed': return 'Done';
+    case 'closed': return 'Closed';
+    case 'failed': return 'Failed';
+    case 'waiting': return 'Needs input';
+    case 'planned':
+    default: return 'Planned';
+  }
+}
+
+function taskActivityToDashboardItem(activity: SessionTaskActivity): TaskDashboardItem {
+  const status = dashboardStatusFromActivity(activity.status);
+  const title = activity.target?.name ?? activity.bridgeRequestId ?? 'Cloud task';
+  return {
+    id: activity.id,
+    title,
+    summary: activity.error ?? `Synced Cloud task${activity.initiator?.name ? ` by ${activity.initiator.name}` : ''}.`,
+    status,
+    statusLabel: dashboardStatusLabel(status),
+    tone: dashboardToneFromStatus(status),
+    target: activity.target?.name ?? null,
+    writeScope: [],
+    live: status === 'active',
+    timeLabel: null,
+    startedAtMs: activity.createdAtMs || null,
+    responseMessageId: activity.bridgeRequestId ?? null,
+    taskId: activity.bridgeRequestId ?? activity.id,
+    artifactIds: [],
+    involvedParticipantNames: activity.participants.map((participant) => participant.name).filter(Boolean),
+    subtasks: [],
+    subtaskCount: 0,
+    activeSubtaskCount: 0,
+  };
+}
+
 function TaskRow({
   task,
   artifacts,
@@ -360,12 +414,14 @@ function TaskRow({
   );
 }
 
-export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
+export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
   // Conversation message arrays can be updated in place while Bridge/canonical polling is active.
   // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
   // as the transcript rerenders, even if the array identity did not change.
   const dashboard = buildTaskActivityDashboard({ messages, liveTurn });
-  const tasks = dashboard.tasks;
+  const taskActivityRows = taskActivities.map(taskActivityToDashboardItem);
+  const taskIds = new Set(dashboard.tasks.map((task) => task.id));
+  const tasks = [...dashboard.tasks, ...taskActivityRows.filter((task) => !taskIds.has(task.id))];
 
   return (
     <section className="app-detail-section">

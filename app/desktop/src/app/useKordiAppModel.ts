@@ -367,6 +367,10 @@ export function useKordiAppModel() {
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
     refreshCloudContacts,
+    cloudSessionActivity,
+    refreshCloudSessionActivity,
+    publishCloudTaskActivity,
+    publishCloudArtifactActivity,
     initialContactsSettled,
     initialMessagesSettled,
     cachedMessagesReady,
@@ -530,6 +534,7 @@ export function useKordiAppModel() {
     localSessionUnreadCounts,
     desktopLiveTurnsBySession,
     mapDesktopMessages,
+    cloudSessionActivity,
   });
 
   const activeConvMentionScope = useMemo(
@@ -603,6 +608,7 @@ export function useKordiAppModel() {
     setActiveDetailTab,
     isDetailPanelCollapsed,
     lastSeenArtifactByContextRef,
+    cloudSessionActivity,
   });
 
   useKordiUiEffects({

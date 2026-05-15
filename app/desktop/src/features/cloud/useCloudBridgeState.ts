@@ -30,6 +30,8 @@ import {
   type CloudAccount,
   type CloudMessage,
   type CloudPublicProfile,
+  type UpsertCloudArtifactActivityInput,
+  type UpsertCloudTaskActivityInput,
 } from './authClient';
 import {
   buildCloudDesktopBridgeState,
@@ -93,6 +95,15 @@ import {
 } from './cloudGroupMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
 import { syncCloudDiffOnce } from './cloudDiffSync';
+import {
+  EMPTY_CLOUD_SESSION_ACTIVITY,
+  cloneCloudSessionActivityForFork,
+  loadCachedCloudSessionActivity,
+  mergeCloudSessionActivity,
+  normalizeCloudSessionActivitySnapshot,
+  saveCachedCloudSessionActivity,
+  type CloudSessionActivityStore,
+} from './cloudSessionActivity';
 import { loadSession } from './session';
 import { CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
@@ -898,6 +909,10 @@ export type UseCloudBridgeStateResult = {
   recordCloudSessionFork(input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }): Promise<void>;
   cancelCloudBridgeAgentRequest(conversationId: string, requestId: string): Promise<void>;
   refreshCloudBridgeMessages(): Promise<void>;
+  cloudSessionActivity: CloudSessionActivityStore;
+  refreshCloudSessionActivity(sessionId: string): Promise<void>;
+  publishCloudTaskActivity(input: UpsertCloudTaskActivityInput): Promise<void>;
+  publishCloudArtifactActivity(input: UpsertCloudArtifactActivityInput): Promise<void>;
   refreshCloudContacts(): Promise<void>;
   initialContactsSettled: boolean;
   initialMessagesSettled: boolean;
@@ -951,7 +966,9 @@ export function useCloudBridgeState({
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>(() => loadCachedCloudMessagesByPeer(account?.accountId));
+  const [cloudSessionActivity, setCloudSessionActivity] = useState<CloudSessionActivityStore>(() => loadCachedCloudSessionActivity(account?.accountId));
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
+  const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
@@ -984,6 +1001,11 @@ export function useCloudBridgeState({
   }, [account, messagesByPeer]);
 
   useEffect(() => {
+    cloudSessionActivityRef.current = cloudSessionActivity;
+    if (account && messagesCacheAccountRef.current === account.accountId) saveCachedCloudSessionActivity(account.accountId, cloudSessionActivity);
+  }, [account, cloudSessionActivity]);
+
+  useEffect(() => {
     setMessagesByPeer((current) => {
       if (!account) {
         messagesCacheAccountRef.current = null;
@@ -993,6 +1015,7 @@ export function useCloudBridgeState({
       messagesCacheAccountRef.current = account.accountId;
       return cloudMessagesByPeerEqual(current, cached) ? current : cached;
     });
+    setCloudSessionActivity(account ? loadCachedCloudSessionActivity(account.accountId) : EMPTY_CLOUD_SESSION_ACTIVITY);
   }, [account?.accountId]);
 
   useEffect(() => {
@@ -1133,11 +1156,13 @@ export function useCloudBridgeState({
     syncingCloudDiffRef.current = true;
     try {
       let messagesByPeer = messagesByPeerRef.current;
+      let sessionActivity = cloudSessionActivityRef.current;
       let fallbackRequired = false;
       for (let pass = 0; pass < 20; pass += 1) {
         const result = await syncCloudDiffOnce({
           accountId: account.accountId,
           messagesByPeer,
+          sessionActivity,
           fetchEvents: (cursor) => client.syncCloudEvents(session.token, cursor, 500),
         });
         if (result.fallbackRequired) {
@@ -1145,6 +1170,7 @@ export function useCloudBridgeState({
           break;
         }
         messagesByPeer = result.messagesByPeer;
+        sessionActivity = result.sessionActivity;
         if (!result.hasMore) break;
       }
       if (cancelledRef.current) return false;
@@ -1156,6 +1182,7 @@ export function useCloudBridgeState({
         const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer);
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
+      setCloudSessionActivity((current) => mergeCloudSessionActivity(current, sessionActivity));
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
@@ -1166,6 +1193,7 @@ export function useCloudBridgeState({
   useEffect(() => {
     if (!account) {
       setMessagesByPeer({});
+      setCloudSessionActivity(EMPTY_CLOUD_SESSION_ACTIVITY);
       setReadInboundMessageIdsByPeer({});
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
@@ -2441,6 +2469,38 @@ export function useCloudBridgeState({
     throw firstFailure instanceof Error ? firstFailure : new Error(String(firstFailure || 'Cloud group message failed.'));
   }, [account, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
+  const refreshCloudSessionActivity = useCallback(async (sessionId: string) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!account || !trimmedSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) return;
+    const snapshot = await client.listSessionActivity(session.token, trimmedSessionId);
+    const normalized = normalizeCloudSessionActivitySnapshot(snapshot);
+    setCloudSessionActivity((current) => mergeCloudSessionActivity(current, normalized));
+  }, [account, client]);
+
+  const publishCloudTaskActivity = useCallback(async (input: UpsertCloudTaskActivityInput) => {
+    if (!account) throw new Error('Not signed in.');
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const task = await client.upsertTaskActivity(session.token, input);
+    setCloudSessionActivity((current) => mergeCloudSessionActivity(
+      current,
+      normalizeCloudSessionActivitySnapshot({ tasks: [task], artifacts: [] }),
+    ));
+  }, [account, client]);
+
+  const publishCloudArtifactActivity = useCallback(async (input: UpsertCloudArtifactActivityInput) => {
+    if (!account) throw new Error('Not signed in.');
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const artifact = await client.upsertArtifactActivity(session.token, input);
+    setCloudSessionActivity((current) => mergeCloudSessionActivity(
+      current,
+      normalizeCloudSessionActivitySnapshot({ tasks: [], artifacts: [artifact] }),
+    ));
+  }, [account, client]);
+
   const recordCloudSessionFork = useCallback(async (input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }) => {
     if (!account) throw new Error('Not signed in.');
     const sourceSessionId = input.sourceSessionId.trim();
@@ -2452,7 +2512,15 @@ export function useCloudBridgeState({
       forkSessionId,
       parentMessageId: input.parentMessageId ?? null,
     });
-  }, [account, client]);
+    const cloned = cloneCloudSessionActivityForFork(
+      cloudSessionActivityRef.current,
+      sourceSessionId,
+      forkSessionId,
+      new Date().toISOString(),
+    );
+    setCloudSessionActivity((current) => mergeCloudSessionActivity(current, cloned));
+    void refreshCloudSessionActivity(forkSessionId);
+  }, [account, client, refreshCloudSessionActivity]);
 
   const cancelCloudBridgeAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
     const trimmedRequestId = requestId.trim();
@@ -2543,6 +2611,10 @@ export function useCloudBridgeState({
     recordCloudSessionFork,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
+    cloudSessionActivity,
+    refreshCloudSessionActivity,
+    publishCloudTaskActivity,
+    publishCloudArtifactActivity,
     refreshCloudContacts: contacts.refresh,
     initialContactsSettled: contacts.initialLoadSettled,
     initialMessagesSettled: cloudInitialMessagesSettledForPeerKey({

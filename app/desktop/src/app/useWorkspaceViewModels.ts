@@ -6,6 +6,7 @@ import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessage
 import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { currentKordiEdition } from '@/features/cloud/edition';
+import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -37,6 +38,7 @@ import type {
   Message,
   Project,
   SessionStatusIndicator,
+  SessionTaskActivity,
 } from '@/kordi-app/types';
 import { isSelfReferenceName } from '@/lib/identityLabels';
 import { getInitials } from '@/kordi-app/utils';
@@ -163,6 +165,7 @@ type UseWorkspaceViewModelsArgs = {
   localSessionUnreadCounts: Record<string, number>;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
+  cloudSessionActivity?: CloudSessionActivityStore;
 };
 
 export function useWorkspaceViewModels({
@@ -188,6 +191,7 @@ export function useWorkspaceViewModels({
   localSessionUnreadCounts,
   desktopLiveTurnsBySession,
   mapDesktopMessages,
+  cloudSessionActivity = EMPTY_CLOUD_SESSION_ACTIVITY,
 }: UseWorkspaceViewModelsArgs) {
   const canonicalReadModel = useMemo(() => createCanonicalSessionReadModel(canonicalSessionState), [canonicalSessionState]);
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
@@ -392,8 +396,24 @@ export function useWorkspaceViewModels({
           if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
           return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
         });
-    return hideRawConversationIds(visibleConversations);
-  }, [activeConvId, bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
+    const withCloudActivity = visibleConversations.map((conversation) => {
+      const sessionId = conversation.canonicalSessionId ?? conversation.id;
+      const cloudTaskActivities = cloudTaskActivitiesForSession(cloudSessionActivity, sessionId);
+      if (cloudTaskActivities.length === 0) return conversation;
+      const existingTaskActivities = 'taskActivities' in conversation
+        ? (conversation.taskActivities as SessionTaskActivity[] | undefined) ?? []
+        : [];
+      const existingIds = new Set(existingTaskActivities.map((activity) => activity.id));
+      return {
+        ...conversation,
+        taskActivities: [
+          ...existingTaskActivities,
+          ...cloudTaskActivities.filter((activity) => !existingIds.has(activity.id)),
+        ],
+      };
+    });
+    return hideRawConversationIds(withCloudActivity);
+  }, [activeConvId, bridgeChatConversations, canonicalReadModel, cloudSessionActivity, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
     () => {

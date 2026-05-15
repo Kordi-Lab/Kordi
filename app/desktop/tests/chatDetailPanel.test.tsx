@@ -170,6 +170,52 @@ test('chat detail task panel renders model-created task rows, not simple delegat
   assert.doesNotMatch(markup, /Shared with 3 participants/);
 });
 
+test('chat detail task panel renders Cloud-synced task activity rows', () => {
+  const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
+    isNativeShell: true,
+    activeDetailTab: 'tasks',
+    activeConv: {
+      id: 'session:group:cloud',
+      canonicalSessionId: 'session:group:cloud',
+      name: 'Cloud group',
+      type: 'person',
+      subtitle: '',
+      unread: 0,
+      bridges: ['Cloud'],
+      trust: 'Cloud',
+      directness: 'Group chat',
+      participants: ['Me'],
+      messages: [],
+      taskActivities: [{
+        id: 'cloud-task:task-1',
+        sessionId: 'session:group:cloud',
+        status: 'active',
+        initiator: { id: 'cloud:acct_a', name: 'Alice', kind: 'human', role: 'person', avatarKey: 'acct_a' },
+        target: { id: 'task:task-1', name: 'Review launch plan', kind: 'agent', role: 'external-agent', avatarKey: 'acct_a' },
+        participants: [],
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        contextPolicy: 'cloud-session-activity',
+      }],
+    },
+    activeConvHasSubtitle: false,
+    activeLastMessage: undefined,
+    activeConversationIsBridge: true,
+    activeBridgeConversationHostNodeId: null,
+    activeBridgeConversationHostUrl: null,
+    activeBridgeConversation: null,
+    activeBridgeAwaitingReply: false,
+    isBridgePolling: false,
+    lastBridgePollAtLabel: null,
+    activeSessionProject: null,
+    artifacts: [],
+    activeArtifactId: null,
+    onSelectArtifact: () => {},
+  }));
+
+  assert.match(markup, /Review launch plan/);
+});
+
 test('chat detail task panel renders empty task state', () => {
   const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
     isNativeShell: true,
