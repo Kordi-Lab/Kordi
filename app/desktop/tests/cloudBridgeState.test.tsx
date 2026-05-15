@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
@@ -50,6 +51,14 @@ const peer = cloudContactToContact({
   avatarUrl: null,
   nodeId: 'node_peer',
   createdAt: '2026-05-11T00:00:00Z',
+});
+
+test('cloud bridge state does not replay stale localStorage messages before server sync settles', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /const visibleMessagesByPeer = initialMessagesSettled \? messagesByPeer : \{\};/);
+  assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
+  assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*cloudGroupControlMessagesForAccount/);
 });
 
 const message: CloudMessage = {

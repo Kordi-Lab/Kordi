@@ -1147,6 +1147,12 @@ export function useCloudBridgeState({
   ), [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
   const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
   const bootstrapPeerKey = useMemo(() => bootstrapPeerIds.join('|'), [bootstrapPeerIds]);
+  const initialMessagesSettled = cloudInitialMessagesSettledForPeerKey({
+    accountReady: Boolean(account),
+    contactsSettled: contacts.initialLoadSettled,
+    currentPeerKey: bootstrapPeerKey,
+    settledPeerKey: initialMessagesSettledPeerKey,
+  });
   useEffect(() => {
     bootstrapPeerIdsRef.current = bootstrapPeerIds;
   }, [bootstrapPeerKey]);
@@ -2177,7 +2183,7 @@ export function useCloudBridgeState({
   }, [account, activeConversationId, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
-    if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState) return;
+    if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
     const replayMessages = cloudGroupControlMessagesForAccount({
       accountId: account.accountId,
       messages: Object.values(messagesByPeer).flat(),
@@ -2194,10 +2200,10 @@ export function useCloudBridgeState({
         console.warn('[cloud-group] sync failed', error);
       });
     }
-  }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, messagesByPeer, setCanonicalSessionState]);
+  }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
-    if (!account) return;
+    if (!account || !initialMessagesSettled) return;
     for (const messages of Object.values(messagesByPeer)) {
       for (const message of messages) {
         if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) continue;
@@ -2373,7 +2379,7 @@ export function useCloudBridgeState({
         });
       }
     }
-  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
+  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, initialMessagesSettled, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
@@ -2457,10 +2463,11 @@ export function useCloudBridgeState({
       && message.sourceTransport !== 'canonical-fork-snapshot'
       && message.sourceTransport !== 'cloud-group-fork-snapshot'
     ));
+    const visibleMessagesByPeer = initialMessagesSettled ? messagesByPeer : {};
     const generated = buildCloudDesktopBridgeState({
       account,
       contacts: cloudBridgeContacts,
-      messagesByPeer,
+      messagesByPeer: visibleMessagesByPeer,
       readInboundMessageIdsByPeer,
       activeConversationId,
       localAgentTurnsByRequestId,
@@ -2479,6 +2486,7 @@ export function useCloudBridgeState({
     cloudBridgeOverride,
     cloudBridgeContacts,
     localAgentTurnsByRequestId,
+    initialMessagesSettled,
     messagesByPeer,
     readInboundMessageIdsByPeer,
   ]);
@@ -2747,12 +2755,7 @@ export function useCloudBridgeState({
     publishCloudArtifactActivity,
     refreshCloudContacts: contacts.refresh,
     initialContactsSettled: contacts.initialLoadSettled,
-    initialMessagesSettled: cloudInitialMessagesSettledForPeerKey({
-      accountReady: Boolean(account),
-      contactsSettled: contacts.initialLoadSettled,
-      currentPeerKey: bootstrapPeerKey,
-      settledPeerKey: initialMessagesSettledPeerKey,
-    }),
+    initialMessagesSettled,
     cachedMessagesReady: Object.values(messagesByPeer).some((messages) => messages.length > 0),
   };
 }
