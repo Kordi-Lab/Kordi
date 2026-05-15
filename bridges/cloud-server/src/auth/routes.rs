@@ -238,6 +238,8 @@ pub struct ContactRequestListResponse {
 #[derive(Debug, Serialize)]
 pub struct ContactRequestResponse {
     pub request: ContactRequestSummary,
+    #[serde(rename = "helloMessage", skip_serializing_if = "Option::is_none")]
+    pub hello_message: Option<MessageSummary>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1807,7 +1809,7 @@ async fn send_contact_request(
         };
         return (
             StatusCode::OK,
-            Json(ContactRequestResponse { request: summary }),
+            Json(ContactRequestResponse { request: summary, hello_message: None }),
         )
             .into_response();
     }
@@ -1876,7 +1878,7 @@ async fn send_contact_request(
     };
     (
         StatusCode::CREATED,
-        Json(ContactRequestResponse { request: summary }),
+        Json(ContactRequestResponse { request: summary, hello_message: None }),
     )
         .into_response()
 }
@@ -2192,6 +2194,40 @@ async fn finalize_request_acceptance(
         );
     }
 
+    let (acceptor_hello, requester_hello) = contact_acceptance_hello_sync_summaries(
+        &hello_id,
+        from_id,
+        to_id,
+        hello_body,
+        &now,
+    );
+    for (account_id, peer_account_id, summary) in [
+        (to_id, from_id, &acceptor_hello),
+        (from_id, to_id, &requester_hello),
+    ] {
+        if query(
+            "INSERT INTO cloud_sync_events \
+             (account_id, event_type, peer_account_id, message_id, payload_json, occurred_at) \
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(account_id)
+        .bind("message.upsert")
+        .bind(peer_account_id)
+        .bind(&summary.message_id)
+        .bind(message_sync_payload(summary))
+        .bind(&now)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+        {
+            return err(
+                "server_error",
+                "Could not record hello sync event.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
     if tx.commit().await.is_err() {
         return err(
             "server_error",
@@ -2278,9 +2314,16 @@ async fn finalize_request_acceptance(
         decided_at: Some(now),
         counterpart,
     };
+    let hello_message = if session.account_id == to_id {
+        Some(acceptor_hello)
+    } else if session.account_id == from_id {
+        Some(requester_hello)
+    } else {
+        None
+    };
     (
         StatusCode::OK,
-        Json(ContactRequestResponse { request: summary }),
+        Json(ContactRequestResponse { request: summary, hello_message }),
     )
         .into_response()
 }
@@ -2331,7 +2374,10 @@ fn cloud_message_requires_accepted_contact(body: &str) -> bool {
 
 #[cfg(test)]
 mod cloud_message_policy_tests {
-    use super::{cloud_message_effective_created_at, cloud_message_requires_accepted_contact};
+    use super::{
+        cloud_message_effective_created_at, cloud_message_requires_accepted_contact,
+        contact_acceptance_hello_sync_summaries,
+    };
     use chrono::{TimeZone, Utc};
 
     #[test]
@@ -2363,10 +2409,56 @@ mod cloud_message_policy_tests {
             "2026-05-14T12:00:00+00:00"
         );
     }
+
+    #[test]
+    fn contact_acceptance_hello_sync_events_cover_both_participants() {
+        let (acceptor, requester) = contact_acceptance_hello_sync_summaries(
+            "msg_hello",
+            "acct_requester",
+            "acct_acceptor",
+            "hello",
+            "2026-05-15T08:54:12Z",
+        );
+
+        assert_eq!(acceptor.from_account_id, "acct_acceptor");
+        assert_eq!(acceptor.to_account_id, "acct_requester");
+        assert_eq!(acceptor.direction, "outgoing");
+        assert_eq!(requester.from_account_id, "acct_acceptor");
+        assert_eq!(requester.to_account_id, "acct_requester");
+        assert_eq!(requester.direction, "incoming");
+        assert_eq!(acceptor.delivered_at.as_deref(), Some("2026-05-15T08:54:12Z"));
+        assert_eq!(requester.delivered_at.as_deref(), Some("2026-05-15T08:54:12Z"));
+    }
 }
 
 fn message_sync_payload(message: &MessageSummary) -> serde_json::Value {
     serde_json::json!({ "message": message })
+}
+
+fn contact_acceptance_hello_sync_summaries(
+    message_id: &str,
+    request_from_account_id: &str,
+    request_to_account_id: &str,
+    body: &str,
+    created_at: &str,
+) -> (MessageSummary, MessageSummary) {
+    let acceptor_summary = MessageSummary {
+        message_id: message_id.to_string(),
+        from_account_id: request_to_account_id.to_string(),
+        to_account_id: request_from_account_id.to_string(),
+        body: body.to_string(),
+        session_id: None,
+        created_at: created_at.to_string(),
+        delivered_at: Some(created_at.to_string()),
+        read_at: None,
+        direction: "outgoing".into(),
+        attachments: vec![],
+    };
+    let requester_summary = MessageSummary {
+        direction: "incoming".into(),
+        ..acceptor_summary.clone()
+    };
+    (acceptor_summary, requester_summary)
 }
 
 async fn append_cloud_sync_event(

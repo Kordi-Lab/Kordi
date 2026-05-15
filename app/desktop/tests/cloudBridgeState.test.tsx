@@ -5,6 +5,7 @@ import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClien
 import {
   buildCloudDesktopBridgeState,
   cloudBridgeConversationId,
+  cloudDirectPersonSessionId,
   cloudContactsToCanonicalIdentityRequests,
   cloudGroupParticipantContacts,
   cloudMessageToBridgeMessage,
@@ -191,6 +192,8 @@ test('cloud group fork payload is recovered from canonical fork metadata', () =>
 test('cloud bridge conversation ids use normal bridge ids with cloud host sentinel', () => {
   assert.equal(cloudBridgeConversationId('acct_peer'), 'bridge:cloud:acct_peer:person');
   assert.equal(cloudBridgeConversationId('acct_peer', 'kordi-desktop'), 'bridge:cloud:acct_peer');
+  assert.equal(cloudDirectPersonSessionId('acct_me', 'acct_peer'), 'session:direct-person:acct_me:acct_peer');
+  assert.equal(cloudDirectPersonSessionId('acct_peer', 'acct_me'), 'session:direct-person:acct_me:acct_peer');
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer:person'), 'acct_peer');
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer'), 'acct_peer');
   assert.equal(isCloudBridgeConversationId('bridge:local:node:person'), false);

@@ -84,6 +84,11 @@ export type CloudContactRequest = {
   counterpart: CloudContactSummary | null;
 };
 
+export type CloudContactAcceptResult = {
+  request: CloudContactRequest;
+  helloMessage?: CloudMessage | null;
+};
+
 export type CloudMessageDirection = 'incoming' | 'outgoing';
 
 export type CloudMessageAttachment = {
@@ -430,8 +435,8 @@ export class CloudAuthClient {
     return response?.requests ?? [];
   }
 
-  async acceptContactRequest(token: string, requestId: string): Promise<CloudContactRequest> {
-    const response = await this.send<{ request: CloudContactRequest }>(
+  async acceptContactRequest(token: string, requestId: string): Promise<CloudContactAcceptResult> {
+    const response = await this.send<CloudContactAcceptResult>(
       `/v1/cloud/contacts/requests/${encodeURIComponent(requestId)}/accept`,
       {
         method: 'POST',
@@ -440,7 +445,7 @@ export class CloudAuthClient {
       'Could not accept contact request.',
     );
     if (!response) throw new Error('Empty response from cloud server.');
-    return response.request;
+    return response;
   }
 
   async rejectContactRequest(token: string, requestId: string): Promise<void> {

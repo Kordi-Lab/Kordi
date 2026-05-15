@@ -94,7 +94,7 @@ import {
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
 import { syncCloudDiffOnce } from './cloudDiffSync';
 import { loadSession } from './session';
-import { CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
+import { CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
 export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
@@ -1872,6 +1872,20 @@ export function useCloudBridgeState({
   useEffect(() => { syncCloudBridgeDiffRef.current = syncCloudBridgeDiff; }, [syncCloudBridgeDiff]);
 
   useEffect(() => {
+    if (!account || typeof window === 'undefined') return undefined;
+    const handleAcceptedContact = (event: Event) => {
+      const detail = event instanceof CustomEvent && event.detail && typeof event.detail === 'object'
+        ? event.detail as { message?: CloudMessage }
+        : null;
+      if (detail?.message) {
+        mergeMessageRef.current(detail.message);
+      }
+    };
+    window.addEventListener(CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, handleAcceptedContact);
+    return () => window.removeEventListener(CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, handleAcceptedContact);
+  }, [account]);
+
+  useEffect(() => {
     if (!account) return;
     // Pin the WS lifecycle to `account` only. Earlier the deps included
     // `mergeMessage` and `refreshCloudBridgeMessages`, both of whose
@@ -2308,9 +2322,7 @@ export function useCloudBridgeState({
     const cloudSessionId = peerId === account?.accountId ? cloudSessionIdFromConversationId(conversationId) : null;
     const message = await client.sendMessage(session.token, peerId, trimmed, { sessionId: cloudSessionId, attachments: uploadedAttachments });
     mergeMessage(message);
-    await refreshCloudBridgeMessages();
-    setCloudBridgeOverrideState(null);
-  }, [account?.accountId, client, mergeMessage, refreshCloudBridgeMessages]);
+  }, [account?.accountId, client, mergeMessage]);
 
   const sendCloudGroupControl = useCallback(async (input: SendCloudGroupControlInput) => {
     if (!account) throw new Error('Not signed in.');
