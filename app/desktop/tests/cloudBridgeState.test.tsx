@@ -467,6 +467,8 @@ test('planCloudSelfAgentSync backfills terminal local self-agent turns without r
   assert.deepEqual(planCloudSelfAgentSync(state, { u1: { cloudMessageId: 'msg_remote', syncedAtMs: 123 } }), [
     { localMessageId: 'a1', sessionId: 'local-self-session', role: 'agent', text: 'Hi there', parentLocalMessageId: 'u1', createdAtMs: 20 },
   ]);
+
+  assert.deepEqual(planCloudSelfAgentSync(state, {}, { allowLocalBackfill: false }), []);
 });
 
 test('planCloudSelfAgentSync skips inherited fork snapshot rows but keeps new fork turns', () => {
