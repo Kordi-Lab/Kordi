@@ -891,7 +891,9 @@ function isTerminalSelfAgentMessage(message: CanonicalSessionMessage): boolean {
 export function planCloudSelfAgentSync(
   state: CanonicalSessionState,
   ledger: CloudSelfAgentSyncLedger,
+  options: { allowLocalBackfill?: boolean } = {},
 ): CloudSelfAgentSyncOperation[] {
+  if (options.allowLocalBackfill === false) return [];
   const selfAgentSessionIds = new Set(state.sessions
     .filter((session) => session.kind === 'self-agent' && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX))
     .map((session) => session.id));
@@ -1400,7 +1402,7 @@ export function useCloudBridgeState({
       const latestState = await fetchCanonicalSessionState().catch(() => canonicalSessionState ?? null);
       if (!latestState) return;
       const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
-      const operations = planCloudSelfAgentSync(latestState, initialLedger);
+      const operations = planCloudSelfAgentSync(latestState, initialLedger, { allowLocalBackfill: false });
       if (operations.length === 0) return;
 
       const session = await loadSession();

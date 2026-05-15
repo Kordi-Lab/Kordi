@@ -12,6 +12,27 @@ mod workspace;
 
 use std::process::Command;
 
+fn current_kordi_edition() -> String {
+    std::env::var("KORDI_EDITION")
+        .or_else(|_| std::env::var("VITE_KORDI_EDITION"))
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn configure_cloud_app_data_dir(app: &tauri::App) {
+    if current_kordi_edition() != "cloud" || std::env::var_os("APP_DATA_DIR").is_some() {
+        return;
+    }
+    let Ok(app_data_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    // Cloud Edition must not read/write the local/localhost Kordi stores under
+    // ~/.korde. The Cloud bundle uses a separate identifier, so Tauri's app
+    // data dir is isolated from the local build and from old Bridge state.
+    unsafe { std::env::set_var("APP_DATA_DIR", app_data_dir) };
+}
+
 use auth::DesktopAuthManager;
 use bridge::DesktopBridgeManager;
 use chat::DesktopChatManager;
@@ -67,10 +88,15 @@ pub fn run() {
         .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
         .setup(|app| {
+            configure_cloud_app_data_dir(app);
             let window = app
                 .get_webview_window("main")
                 .expect("main window should exist");
-            window.set_title("Kordi")?;
+            window.set_title(if current_kordi_edition() == "cloud" {
+                "Kordi Cloud"
+            } else {
+                "Kordi"
+            })?;
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }

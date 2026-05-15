@@ -144,6 +144,17 @@ test('cloud group participant merge preserves later real avatar urls', () => {
   ]);
 });
 
+test('cloud group participant envelopes drop local-only ids and huge data avatars', () => {
+  assert.deepEqual(cloudGroupUniqueParticipants([
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'data:image/jpeg;base64,'.padEnd(5000, 'x'), role: 'admin' },
+    { accountId: 'kh_local_human', displayName: 'Local Human', avatarUrl: null, role: 'self' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'kordi-pixel-avatar://cloud-signup:seed', role: 'person' },
+  ]), [
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'kordi-pixel-avatar://cloud-signup:seed', role: 'person' },
+  ]);
+});
+
 test('cloud group messages carry concrete session id separately from shared group space id', () => {
   assert.equal(cloudGroupMessageSessionId({
     activeConvCanonicalSessionId: 'session:group:child-session',

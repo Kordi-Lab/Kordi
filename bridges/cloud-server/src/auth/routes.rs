@@ -18,6 +18,7 @@ use axum::{Extension, Json, Router};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -1810,7 +1811,10 @@ async fn send_contact_request(
         };
         return (
             StatusCode::OK,
-            Json(ContactRequestResponse { request: summary, hello_message: None }),
+            Json(ContactRequestResponse {
+                request: summary,
+                hello_message: None,
+            }),
         )
             .into_response();
     }
@@ -1879,7 +1883,10 @@ async fn send_contact_request(
     };
     (
         StatusCode::CREATED,
-        Json(ContactRequestResponse { request: summary, hello_message: None }),
+        Json(ContactRequestResponse {
+            request: summary,
+            hello_message: None,
+        }),
     )
         .into_response()
 }
@@ -2197,13 +2204,8 @@ async fn finalize_request_acceptance(
         );
     }
 
-    let (acceptor_hello, requester_hello) = contact_acceptance_hello_sync_summaries(
-        &hello_id,
-        from_id,
-        to_id,
-        hello_body,
-        &now,
-    );
+    let (acceptor_hello, requester_hello) =
+        contact_acceptance_hello_sync_summaries(&hello_id, from_id, to_id, hello_body, &now);
     for (account_id, peer_account_id, summary) in [
         (to_id, from_id, &acceptor_hello),
         (from_id, to_id, &requester_hello),
@@ -2327,7 +2329,10 @@ async fn finalize_request_acceptance(
     };
     (
         StatusCode::OK,
-        Json(ContactRequestResponse { request: summary, hello_message }),
+        Json(ContactRequestResponse {
+            request: summary,
+            hello_message,
+        }),
     )
         .into_response()
 }
@@ -2353,7 +2358,79 @@ const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
     let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
     account_ids.sort_unstable();
-    format!("session:direct-person:{}:{}", account_ids[0], account_ids[1])
+    format!(
+        "session:direct-person:{}:{}",
+        account_ids[0], account_ids[1]
+    )
+}
+
+fn is_cloud_account_id(value: &str) -> bool {
+    value.trim().starts_with("acct_")
+}
+
+fn syncable_cloud_avatar_url(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 1024 {
+        return None;
+    }
+    if value.starts_with("kordi-pixel-avatar://")
+        || value.starts_with("https://")
+        || value.starts_with("http://")
+    {
+        return Some(value.to_string());
+    }
+    None
+}
+
+fn sanitize_cloud_group_participant(value: &mut Value) -> bool {
+    let Some(object) = value.as_object_mut() else {
+        return false;
+    };
+    let account_id = object
+        .get("accountId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    if !is_cloud_account_id(&account_id) {
+        return false;
+    }
+    object.insert("accountId".to_string(), Value::String(account_id.clone()));
+    let display_name = object
+        .get("displayName")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&account_id)
+        .to_string();
+    object.insert("displayName".to_string(), Value::String(display_name));
+    let avatar_url = object
+        .get("avatarUrl")
+        .and_then(Value::as_str)
+        .and_then(syncable_cloud_avatar_url);
+    object.insert(
+        "avatarUrl".to_string(),
+        avatar_url.map(Value::String).unwrap_or(Value::Null),
+    );
+    if !object.get("role").is_some_and(Value::is_string) {
+        object.insert("role".to_string(), Value::String("person".to_string()));
+    }
+    true
+}
+
+fn sanitized_cloud_group_control_body(body: &str) -> Option<String> {
+    let encoded = body.trim().strip_prefix(CLOUD_GROUP_CONTROL_PREFIX)?;
+    let decoded = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    let mut value: Value = serde_json::from_slice(&decoded).ok()?;
+    let object = value.as_object_mut()?;
+    sanitize_cloud_group_participant(object.get_mut("actor")?).then_some(())?;
+    let participants = object.get_mut("participants")?.as_array_mut()?;
+    participants.retain_mut(sanitize_cloud_group_participant);
+    if participants.is_empty() {
+        return None;
+    }
+    let encoded = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&value).ok()?);
+    Some(format!("{CLOUD_GROUP_CONTROL_PREFIX}{encoded}"))
 }
 
 fn cloud_message_session_id(
@@ -2369,7 +2446,10 @@ fn cloud_message_session_id(
         return Some(value.chars().take(256).collect::<String>());
     }
     if from_account_id != to_account_id && cloud_message_requires_accepted_contact(body) {
-        return Some(cloud_direct_person_session_id(from_account_id, to_account_id));
+        return Some(cloud_direct_person_session_id(
+            from_account_id,
+            to_account_id,
+        ));
     }
     None
 }
@@ -2405,7 +2485,9 @@ mod cloud_message_policy_tests {
     use super::{
         cloud_direct_person_session_id, cloud_message_effective_created_at,
         cloud_message_requires_accepted_contact, contact_acceptance_hello_sync_summaries,
+        sanitized_cloud_group_control_body, CLOUD_GROUP_CONTROL_PREFIX,
     };
+    use base64::Engine as _;
     use chrono::{TimeZone, Utc};
 
     #[test]
@@ -2439,6 +2521,45 @@ mod cloud_message_policy_tests {
     }
 
     #[test]
+    fn cloud_group_control_sanitizer_removes_local_ids_and_data_avatars() {
+        let envelope = serde_json::json!({
+            "kind": "group-message",
+            "groupId": "session:group:1",
+            "groupSpaceId": "session:group:1",
+            "groupTitle": null,
+            "createdByAccountId": "acct_a",
+            "actor": { "accountId": "acct_a", "displayName": "Alice", "avatarUrl": "data:image/jpeg;base64,".to_string() + &"x".repeat(5000), "role": "person" },
+            "participants": [
+                { "accountId": "acct_a", "displayName": "Alice", "avatarUrl": "data:image/jpeg;base64,".to_string() + &"x".repeat(5000), "role": "admin" },
+                { "accountId": "kh_local", "displayName": "Local", "avatarUrl": null, "role": "self" },
+                { "accountId": "acct_b", "displayName": "Bob", "avatarUrl": "https://images.test/bob.png", "role": "person" }
+            ],
+            "message": { "id": "msg_1", "senderAccountId": "acct_a", "text": "@BobKordi hi", "createdAtMs": 1 }
+        });
+        let body = format!(
+            "{CLOUD_GROUP_CONTROL_PREFIX}{}",
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .encode(serde_json::to_vec(&envelope).unwrap())
+        );
+
+        let sanitized = sanitized_cloud_group_control_body(&body).expect("sanitize group control");
+        assert!(sanitized.len() < 4_000);
+        let encoded = sanitized.strip_prefix(CLOUD_GROUP_CONTROL_PREFIX).unwrap();
+        let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(encoded)
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+
+        assert_eq!(parsed["actor"]["avatarUrl"], serde_json::Value::Null);
+        assert_eq!(parsed["participants"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            parsed["participants"][0]["avatarUrl"],
+            serde_json::Value::Null
+        );
+        assert_eq!(parsed["participants"][1]["accountId"], "acct_b");
+    }
+
+    #[test]
     fn cloud_direct_person_session_id_is_stable_for_account_order() {
         assert_eq!(
             cloud_direct_person_session_id("acct_me", "acct_peer"),
@@ -2462,14 +2583,26 @@ mod cloud_message_policy_tests {
 
         assert_eq!(acceptor.from_account_id, "acct_acceptor");
         assert_eq!(acceptor.to_account_id, "acct_requester");
-        assert_eq!(acceptor.session_id.as_deref(), Some("session:direct-person:acct_acceptor:acct_requester"));
+        assert_eq!(
+            acceptor.session_id.as_deref(),
+            Some("session:direct-person:acct_acceptor:acct_requester")
+        );
         assert_eq!(acceptor.direction, "outgoing");
         assert_eq!(requester.from_account_id, "acct_acceptor");
         assert_eq!(requester.to_account_id, "acct_requester");
-        assert_eq!(requester.session_id.as_deref(), Some("session:direct-person:acct_acceptor:acct_requester"));
+        assert_eq!(
+            requester.session_id.as_deref(),
+            Some("session:direct-person:acct_acceptor:acct_requester")
+        );
         assert_eq!(requester.direction, "incoming");
-        assert_eq!(acceptor.delivered_at.as_deref(), Some("2026-05-15T08:54:12Z"));
-        assert_eq!(requester.delivered_at.as_deref(), Some("2026-05-15T08:54:12Z"));
+        assert_eq!(
+            acceptor.delivered_at.as_deref(),
+            Some("2026-05-15T08:54:12Z")
+        );
+        assert_eq!(
+            requester.delivered_at.as_deref(),
+            Some("2026-05-15T08:54:12Z")
+        );
     }
 }
 
@@ -2627,10 +2760,27 @@ async fn send_message(
             StatusCode::BAD_REQUEST,
         );
     }
-    let body = body
-        .chars()
-        .take(MESSAGE_BODY_MAX_CHARS)
-        .collect::<String>();
+    let body = if body.starts_with(CLOUD_GROUP_CONTROL_PREFIX) {
+        let Some(sanitized) = sanitized_cloud_group_control_body(body) else {
+            return err(
+                "invalid_group_control",
+                "Cloud group control payload is invalid.",
+                StatusCode::BAD_REQUEST,
+            );
+        };
+        if sanitized.chars().count() > MESSAGE_BODY_MAX_CHARS {
+            return err(
+                "message_too_large",
+                "Cloud group control payload is too large.",
+                StatusCode::BAD_REQUEST,
+            );
+        }
+        sanitized
+    } else {
+        body.chars()
+            .take(MESSAGE_BODY_MAX_CHARS)
+            .collect::<String>()
+    };
 
     let pool = state.db_pool();
 
@@ -2730,12 +2880,8 @@ async fn send_message(
     }
 
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
-    let cloud_session_id = cloud_message_session_id(
-        req.session_id.as_deref(),
-        &session.account_id,
-        &peer,
-        &body,
-    );
+    let cloud_session_id =
+        cloud_message_session_id(req.session_id.as_deref(), &session.account_id, &peer, &body);
     let server_received_at = Utc::now();
     let created_at =
         cloud_message_effective_created_at(req.client_created_at.as_deref(), server_received_at);

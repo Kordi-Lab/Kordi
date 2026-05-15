@@ -121,13 +121,25 @@ function pixelAvatarUrlFromSeed(seed?: string | null) {
   return trimmed ? `${CLOUD_PIXEL_AVATAR_URL_PREFIX}${trimmed}` : null;
 }
 
+function isCloudAccountId(value: string): boolean {
+  return value.trim().startsWith('acct_');
+}
+
+function syncableCloudGroupAvatarUrl(value?: string | null): string | null {
+  const url = cleanText(value);
+  if (!url || url.length > 1024) return null;
+  if (url.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  return null;
+}
+
 function uniqueByAccount(participants: CloudGroupParticipant[]) {
   const byAccountId = new Map<string, CloudGroupParticipant>();
   for (const participant of participants) {
     const accountId = cleanText(participant.accountId);
     const displayName = cleanText(participant.displayName) || accountId;
-    if (!accountId) continue;
-    const avatarUrl = cleanText(participant.avatarUrl) || null;
+    if (!accountId || !isCloudAccountId(accountId)) continue;
+    const avatarUrl = syncableCloudGroupAvatarUrl(participant.avatarUrl);
     const existing = byAccountId.get(accountId);
     if (existing) {
       byAccountId.set(accountId, {
@@ -366,9 +378,9 @@ export function isCloudGroupControlMessage(body: string): boolean {
 export function cloudGroupNormalizeParticipant(participant: CloudGroupParticipant): CloudGroupParticipant {
   const accountId = cleanText(participant.accountId);
   return {
-    accountId,
+    accountId: isCloudAccountId(accountId) ? accountId : '',
     displayName: cleanText(participant.displayName) || accountId || 'Cloud user',
-    avatarUrl: cleanText(participant.avatarUrl) || null,
+    avatarUrl: syncableCloudGroupAvatarUrl(participant.avatarUrl),
     role: participant.role ?? 'person',
   };
 }
@@ -377,7 +389,7 @@ export function cloudGroupSelfParticipant(account: CloudAccount, role: CloudGrou
   return {
     accountId: account.accountId,
     displayName: cleanText(account.displayName) || cleanText(account.primaryEmail) || account.accountId,
-    avatarUrl: account.avatarUrl,
+    avatarUrl: syncableCloudGroupAvatarUrl(account.avatarUrl),
     role,
   };
 }
@@ -388,7 +400,7 @@ export function cloudGroupParticipantFromContact(contact: Contact, role: CloudGr
   return {
     accountId,
     displayName: cleanText(contact.name) || cleanText(contact.owner) || accountId,
-    avatarUrl: contact.profileImageUrl ?? pixelAvatarUrlFromSeed(contact.avatarSeed),
+    avatarUrl: syncableCloudGroupAvatarUrl(contact.profileImageUrl) ?? pixelAvatarUrlFromSeed(contact.avatarSeed),
     role,
   };
 }
@@ -404,7 +416,7 @@ export function cloudGroupParticipantFromConversationParticipant(
   return {
     accountId,
     displayName: cleanText(participant.name) || accountId,
-    avatarUrl: participant.profileImageUrl ?? pixelAvatarUrlFromSeed(participant.avatarKey),
+    avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl) ?? pixelAvatarUrlFromSeed(participant.avatarKey),
     role: participant.role || 'person',
   };
 }
@@ -441,7 +453,7 @@ export function cloudGroupParticipantsForBridgeSessionParticipants(
       return [{
         accountId,
         displayName: cleanText(participant.displayName) || accountId,
-        avatarUrl: cleanText(participant.profileImageUrl) || pixelAvatarUrlFromSeed(participant.avatarKey),
+        avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl) || pixelAvatarUrlFromSeed(participant.avatarKey),
         role: participant.role || 'person',
       }];
     }),
