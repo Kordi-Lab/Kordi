@@ -8,3 +8,4 @@ pub mod password;
 pub mod rate_limit;
 pub mod routes;
 pub mod session;
+pub mod session_activity;

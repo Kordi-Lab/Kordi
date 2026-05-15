@@ -12,6 +12,7 @@ import {
   startDesktopChatMessage,
   upsertCanonicalIdentity,
   upsertCanonicalMessage,
+  type DesktopChatContextMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
@@ -30,6 +31,8 @@ import {
   type CloudAccount,
   type CloudMessage,
   type CloudPublicProfile,
+  type UpsertCloudArtifactActivityInput,
+  type UpsertCloudTaskActivityInput,
 } from './authClient';
 import {
   buildCloudDesktopBridgeState,
@@ -42,7 +45,8 @@ import {
 } from './cloudBridgeState';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
-  buildCloudAgentPromptWithSharedContext,
+  cloudAgentNativeContextMessagesFromDirectCloudSession,
+  compactCloudAgentNativeContextMessages,
   cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsLocalAgent,
   encodeCloudAgentCancel,
@@ -93,6 +97,18 @@ import {
 } from './cloudGroupMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
 import { syncCloudDiffOnce } from './cloudDiffSync';
+import {
+  EMPTY_CLOUD_SESSION_ACTIVITY,
+  cloneCloudSessionActivityForFork,
+  deriveCloudActivityFromTurn,
+  cloudVisibleTaskRecordsForSession,
+  loadCachedCloudSessionActivity,
+  mergeCloudSessionActivity,
+  normalizeCloudSessionActivitySnapshot,
+  saveCachedCloudSessionActivity,
+  type CloudActivityParticipantProfile,
+  type CloudSessionActivityStore,
+} from './cloudSessionActivity';
 import { loadSession } from './session';
 import { CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, CLOUD_HOST_SENTINEL, useCloudContacts } from './useCloudContacts';
 
@@ -125,6 +141,49 @@ function objectContent(value: unknown): Record<string, unknown> {
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
+}
+
+async function publishDerivedCloudSessionActivity({
+  client,
+  token,
+  accountId,
+  sessionId,
+  participantAccountIds,
+  participantProfiles = [],
+  turn,
+  mergeActivity,
+}: {
+  client: CloudAuthClient;
+  token: string;
+  accountId: string;
+  sessionId: string;
+  participantAccountIds: string[];
+  participantProfiles?: CloudActivityParticipantProfile[];
+  turn: DesktopChatTurnSnapshot;
+  mergeActivity: (snapshot: CloudSessionActivityStore) => void;
+}) {
+  const activity = deriveCloudActivityFromTurn({
+    sessionId,
+    localAccountId: accountId,
+    participantAccountIds: [...new Set([accountId, ...participantAccountIds].map((value) => value.trim()).filter(Boolean))],
+    participantProfiles,
+    turn,
+  });
+  if (activity.tasks.length === 0 && activity.artifacts.length === 0) return;
+  const [taskResults, artifactResults] = await Promise.all([
+    Promise.allSettled(activity.tasks.map((task) => client.upsertTaskActivity(token, task))),
+    Promise.allSettled(activity.artifacts.map((artifact) => client.upsertArtifactActivity(token, artifact))),
+  ]);
+  const tasks = taskResults.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<CloudAuthClient['upsertTaskActivity']>>> => result.status === 'fulfilled').map((result) => result.value);
+  const artifacts = artifactResults.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<CloudAuthClient['upsertArtifactActivity']>>> => result.status === 'fulfilled').map((result) => result.value);
+  if (tasks.length > 0 || artifacts.length > 0) {
+    mergeActivity(normalizeCloudSessionActivitySnapshot({ tasks, artifacts }));
+  }
+  const firstFailure = [...taskResults, ...artifactResults].find((result) => result.status === 'rejected') as PromiseRejectedResult | undefined;
+  if (firstFailure) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloud-session-activity] publish failed', firstFailure.reason);
+  }
 }
 
 export function optimisticCloudAgentCancelMessage({
@@ -522,6 +581,38 @@ function isCloudAgentProcessingPlaceholderText(text: string): boolean {
   return /^processing[.\s…]*$/iu.test(text.trim());
 }
 
+function cloudGroupNativeContextMessages({
+  cloudMessages,
+  groupId,
+  requestMessageId,
+  requestCreatedAtMs,
+}: {
+  cloudMessages: CloudMessage[];
+  groupId: string;
+  requestMessageId: string;
+  requestCreatedAtMs: number;
+}): DesktopChatContextMessage[] {
+  return compactCloudAgentNativeContextMessages(cloudMessages.flatMap((cloudMessage) => {
+    const envelope = parseCloudGroupControl(cloudMessage.body);
+    if (envelope?.kind !== 'group-message' || envelope.groupId !== groupId || !envelope.message) return [];
+    const message = envelope.message;
+    if (message.id === requestMessageId) return [];
+    if (message.createdAtMs > requestCreatedAtMs) return [];
+    if (message.forkSnapshot === true) return [];
+    if (message.deliveryState === 'processing' || isCloudAgentProcessingPlaceholderText(message.text)) return [];
+    const text = message.text.trim();
+    if (!text) return [];
+    const participantName = envelope.participants.find((participant) => participant.accountId === message.senderAccountId)?.displayName?.trim();
+    return [{
+      id: message.id,
+      authorName: message.senderDisplayName?.trim() || participantName || 'Cloud participant',
+      authorKind: message.senderKind === 'agent' ? 'agent' : 'human',
+      text,
+      createdAtMs: message.createdAtMs,
+    }];
+  }));
+}
+
 function cloudMessageAttachmentsEqual(left: CloudMessage['attachments'] = [], right: CloudMessage['attachments'] = []): boolean {
   if ((left?.length ?? 0) !== (right?.length ?? 0)) return false;
   return (left ?? []).every((attachment, index) => {
@@ -898,6 +989,10 @@ export type UseCloudBridgeStateResult = {
   recordCloudSessionFork(input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }): Promise<void>;
   cancelCloudBridgeAgentRequest(conversationId: string, requestId: string): Promise<void>;
   refreshCloudBridgeMessages(): Promise<void>;
+  cloudSessionActivity: CloudSessionActivityStore;
+  refreshCloudSessionActivity(sessionId: string): Promise<void>;
+  publishCloudTaskActivity(input: UpsertCloudTaskActivityInput): Promise<void>;
+  publishCloudArtifactActivity(input: UpsertCloudArtifactActivityInput): Promise<void>;
   refreshCloudContacts(): Promise<void>;
   initialContactsSettled: boolean;
   initialMessagesSettled: boolean;
@@ -951,7 +1046,9 @@ export function useCloudBridgeState({
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>(() => loadCachedCloudMessagesByPeer(account?.accountId));
+  const [cloudSessionActivity, setCloudSessionActivity] = useState<CloudSessionActivityStore>(() => loadCachedCloudSessionActivity(account?.accountId));
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
+  const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
@@ -984,6 +1081,11 @@ export function useCloudBridgeState({
   }, [account, messagesByPeer]);
 
   useEffect(() => {
+    cloudSessionActivityRef.current = cloudSessionActivity;
+    if (account && messagesCacheAccountRef.current === account.accountId) saveCachedCloudSessionActivity(account.accountId, cloudSessionActivity);
+  }, [account, cloudSessionActivity]);
+
+  useEffect(() => {
     setMessagesByPeer((current) => {
       if (!account) {
         messagesCacheAccountRef.current = null;
@@ -993,6 +1095,7 @@ export function useCloudBridgeState({
       messagesCacheAccountRef.current = account.accountId;
       return cloudMessagesByPeerEqual(current, cached) ? current : cached;
     });
+    setCloudSessionActivity(account ? loadCachedCloudSessionActivity(account.accountId) : EMPTY_CLOUD_SESSION_ACTIVITY);
   }, [account?.accountId]);
 
   useEffect(() => {
@@ -1133,11 +1236,13 @@ export function useCloudBridgeState({
     syncingCloudDiffRef.current = true;
     try {
       let messagesByPeer = messagesByPeerRef.current;
+      let sessionActivity = cloudSessionActivityRef.current;
       let fallbackRequired = false;
       for (let pass = 0; pass < 20; pass += 1) {
         const result = await syncCloudDiffOnce({
           accountId: account.accountId,
           messagesByPeer,
+          sessionActivity,
           fetchEvents: (cursor) => client.syncCloudEvents(session.token, cursor, 500),
         });
         if (result.fallbackRequired) {
@@ -1145,6 +1250,7 @@ export function useCloudBridgeState({
           break;
         }
         messagesByPeer = result.messagesByPeer;
+        sessionActivity = result.sessionActivity;
         if (!result.hasMore) break;
       }
       if (cancelledRef.current) return false;
@@ -1156,6 +1262,7 @@ export function useCloudBridgeState({
         const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer);
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
+      setCloudSessionActivity((current) => mergeCloudSessionActivity(current, sessionActivity));
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
@@ -1166,6 +1273,7 @@ export function useCloudBridgeState({
   useEffect(() => {
     if (!account) {
       setMessagesByPeer({});
+      setCloudSessionActivity(EMPTY_CLOUD_SESSION_ACTIVITY);
       setReadInboundMessageIdsByPeer({});
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
@@ -1777,6 +1885,13 @@ export function useCloudBridgeState({
           if (result.status === 'fulfilled') mergeMessage(result.value);
         });
         const prompt = promptTextForCloudAgentMention(envelope.message!.text);
+        const contextMessages = cloudGroupNativeContextMessages({
+          cloudMessages: allCloudMessages,
+          groupId: envelope.groupId,
+          requestMessageId: envelope.message!.id,
+          requestCreatedAtMs: envelope.message!.createdAtMs,
+        });
+        const visibleTaskRecords = cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, envelope.groupId);
         const agentAttachmentPaths = mappedAttachments
           .map((attachment) => attachment.localPath?.trim() || '')
           .filter(Boolean);
@@ -1789,6 +1904,8 @@ export function useCloudBridgeState({
           prompt,
           agentAttachmentPaths,
           cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
+          contextMessages,
+          visibleTaskRecords,
         );
         rememberLocalTurn(startedTurn);
         cloudAgentTurnIdsByRequestIdRef.current.set(envelope.message!.id, startedTurn.id);
@@ -1796,6 +1913,21 @@ export function useCloudBridgeState({
         rememberLocalTurn(finalTurn);
         cloudAgentTurnIdsByRequestIdRef.current.delete(envelope.message!.id);
         if (finalTurn.status === 'cancelled') return;
+        await publishDerivedCloudSessionActivity({
+          client,
+          token: session.token,
+          accountId: account.accountId,
+          sessionId: envelope.groupId,
+          participantAccountIds: [...participantByAccount.keys()],
+          participantProfiles: [...participantByAccount.values()].map((participant) => ({
+            accountId: participant.accountId,
+            displayName: participant.displayName,
+            avatarUrl: participant.avatarUrl,
+            role: participant.role,
+          })),
+          turn: finalTurn,
+          mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
+        });
         // When the local agent turn fails (e.g. provider overload after retries),
         // surface the failure as a structured `failed` agent-turn instead of
         // wrapping the error as `Failed: <error>` plain text. The receive-side
@@ -2154,7 +2286,9 @@ export function useCloudBridgeState({
             candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
           ) === peerId);
           const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
-          const prompt = buildCloudAgentPromptWithSharedContext({
+          const activitySessionId = message.sessionId ?? cloudSessionIdForBridgeSend(account.accountId, peerId, `cloud:${peerId}`);
+          const prompt = promptTextForCloudAgentMention(message.body);
+          const contextMessages = cloudAgentNativeContextMessagesFromDirectCloudSession({
             messages,
             requestMessage: message,
             localAccountId: account.accountId,
@@ -2167,6 +2301,9 @@ export function useCloudBridgeState({
           const agentAttachments = currentSession?.token && message.attachments?.length
             ? await resolveCloudMessageAttachments({ token: currentSession.token, client, attachments: message.attachments })
             : message.attachments ?? [];
+          const visibleTaskRecords = activitySessionId
+            ? cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, activitySessionId)
+            : [];
           const agentAttachmentPaths = agentAttachments
             .map((attachment) => attachment.localPath?.trim() || '')
             .filter(Boolean);
@@ -2179,6 +2316,8 @@ export function useCloudBridgeState({
             prompt,
             agentAttachmentPaths,
             cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId),
+            contextMessages,
+            visibleTaskRecords,
           );
           rememberLocalTurn(startedTurn);
           cloudAgentTurnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
@@ -2190,6 +2329,31 @@ export function useCloudBridgeState({
           if (finalTurn.status === 'cancelled') {
             void refreshCloudBridgeMessages();
             return;
+          }
+          if (activitySessionId) {
+            await publishDerivedCloudSessionActivity({
+              client,
+              token: session.token,
+              accountId: account.accountId,
+              sessionId: activitySessionId,
+              participantAccountIds: [peerId],
+              participantProfiles: [
+                {
+                  accountId: account.accountId,
+                  displayName: account.displayName || account.primaryEmail || account.accountId,
+                  avatarUrl: account.avatarUrl,
+                  role: 'self',
+                },
+                {
+                  accountId: peerId,
+                  displayName: peerHumanName,
+                  avatarUrl: contact?.profileImageUrl ?? null,
+                  role: 'person',
+                },
+              ],
+              turn: finalTurn,
+              mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
+            });
           }
           const responseText = finalTurn.succeeded && finalTurn.assistantText.trim()
             ? finalTurn.assistantText.trim()
@@ -2441,6 +2605,38 @@ export function useCloudBridgeState({
     throw firstFailure instanceof Error ? firstFailure : new Error(String(firstFailure || 'Cloud group message failed.'));
   }, [account, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
+  const refreshCloudSessionActivity = useCallback(async (sessionId: string) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!account || !trimmedSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) return;
+    const snapshot = await client.listSessionActivity(session.token, trimmedSessionId);
+    const normalized = normalizeCloudSessionActivitySnapshot(snapshot);
+    setCloudSessionActivity((current) => mergeCloudSessionActivity(current, normalized));
+  }, [account, client]);
+
+  const publishCloudTaskActivity = useCallback(async (input: UpsertCloudTaskActivityInput) => {
+    if (!account) throw new Error('Not signed in.');
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const task = await client.upsertTaskActivity(session.token, input);
+    setCloudSessionActivity((current) => mergeCloudSessionActivity(
+      current,
+      normalizeCloudSessionActivitySnapshot({ tasks: [task], artifacts: [] }),
+    ));
+  }, [account, client]);
+
+  const publishCloudArtifactActivity = useCallback(async (input: UpsertCloudArtifactActivityInput) => {
+    if (!account) throw new Error('Not signed in.');
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const artifact = await client.upsertArtifactActivity(session.token, input);
+    setCloudSessionActivity((current) => mergeCloudSessionActivity(
+      current,
+      normalizeCloudSessionActivitySnapshot({ tasks: [], artifacts: [artifact] }),
+    ));
+  }, [account, client]);
+
   const recordCloudSessionFork = useCallback(async (input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }) => {
     if (!account) throw new Error('Not signed in.');
     const sourceSessionId = input.sourceSessionId.trim();
@@ -2452,7 +2648,15 @@ export function useCloudBridgeState({
       forkSessionId,
       parentMessageId: input.parentMessageId ?? null,
     });
-  }, [account, client]);
+    const cloned = cloneCloudSessionActivityForFork(
+      cloudSessionActivityRef.current,
+      sourceSessionId,
+      forkSessionId,
+      new Date().toISOString(),
+    );
+    setCloudSessionActivity((current) => mergeCloudSessionActivity(current, cloned));
+    void refreshCloudSessionActivity(forkSessionId);
+  }, [account, client, refreshCloudSessionActivity]);
 
   const cancelCloudBridgeAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
     const trimmedRequestId = requestId.trim();
@@ -2543,6 +2747,10 @@ export function useCloudBridgeState({
     recordCloudSessionFork,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
+    cloudSessionActivity,
+    refreshCloudSessionActivity,
+    publishCloudTaskActivity,
+    publishCloudArtifactActivity,
     refreshCloudContacts: contacts.refresh,
     initialContactsSettled: contacts.initialLoadSettled,
     initialMessagesSettled: cloudInitialMessagesSettledForPeerKey({

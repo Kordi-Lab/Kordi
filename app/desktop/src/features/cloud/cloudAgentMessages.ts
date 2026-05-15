@@ -3,7 +3,7 @@ import { isCloudGroupControlMessage } from './cloudGroupMessages';
 
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
 const CLOUD_AGENT_CANCEL_PREFIX = 'kordi-cloud-agent-cancel:';
-const CLOUD_AGENT_CONTEXT_MESSAGE_LIMIT = 40;
+const CLOUD_AGENT_NATIVE_CONTEXT_MESSAGE_LIMIT = 40;
 export const CLOUD_AGENT_RUNTIME_SESSION_PREFIX = 'cloud-agent:';
 
 export function isCloudAgentRuntimeSessionId(sessionId: string | null | undefined): boolean {
@@ -172,7 +172,15 @@ function cloudContextMessageText(message: CloudMessage): string | null {
   return (response?.text ?? message.body).trim() || null;
 }
 
-export function buildCloudAgentPromptWithSharedContext({
+export type CloudAgentNativeContextMessage = {
+  id: string;
+  authorName: string;
+  authorKind: 'human' | 'agent';
+  text: string;
+  createdAtMs: number;
+};
+
+export function cloudAgentNativeContextMessagesFromDirectCloudSession({
   messages,
   requestMessage,
   localAccountId,
@@ -188,33 +196,43 @@ export function buildCloudAgentPromptWithSharedContext({
   peerHumanName?: string;
   localAgentName?: string;
   peerAgentName?: string;
-}): string {
-  const requestText = promptTextForCloudAgentMention(requestMessage.body);
-  const sorted = [...messages].sort((left, right) => cloudMessageCreatedAtMs(left) - cloudMessageCreatedAtMs(right));
+}): CloudAgentNativeContextMessage[] {
   const requestCreatedAtMs = cloudMessageCreatedAtMs(requestMessage);
-  const contextLines = sorted
+  const sorted = [...messages].sort((left, right) => cloudMessageCreatedAtMs(left) - cloudMessageCreatedAtMs(right));
+  return sorted
     .filter((message) => message.messageId !== requestMessage.messageId)
     .filter((message) => cloudMessageCreatedAtMs(message) <= requestCreatedAtMs)
-    .slice(-CLOUD_AGENT_CONTEXT_MESSAGE_LIMIT)
     .flatMap((message) => {
       const text = cloudContextMessageText(message);
       if (!text) return [];
       const isLocal = message.fromAccountId === localAccountId;
       const isAgentResponse = Boolean(parseCloudAgentResponse(message.body));
-      const speaker = isAgentResponse
+      const authorName = isAgentResponse
         ? (isLocal ? localAgentName : peerAgentName)
         : (isLocal ? localHumanName : peerHumanName);
-      return [`${speaker}: ${text}`];
-    });
+      return [{
+        id: message.messageId,
+        authorName,
+        authorKind: isAgentResponse ? 'agent' as const : 'human' as const,
+        text,
+        createdAtMs: cloudMessageCreatedAtMs(message),
+      }];
+    })
+    .slice(-CLOUD_AGENT_NATIVE_CONTEXT_MESSAGE_LIMIT);
+}
 
-  if (contextLines.length === 0) return requestText;
-  return [
-    'Use the shared Cloud conversation below as the single context window for both the humans and their Kordi agents.',
-    'Answer only the current request. Do not repeat the transcript.',
-    '',
-    'Shared conversation:',
-    ...contextLines,
-    '',
-    `Current request from ${requestMessage.fromAccountId === localAccountId ? localHumanName : peerHumanName}: ${requestText}`,
-  ].join('\n');
+export function compactCloudAgentNativeContextMessages(
+  messages: CloudAgentNativeContextMessage[],
+): CloudAgentNativeContextMessage[] {
+  const byId = new Map<string, CloudAgentNativeContextMessage>();
+  [...messages]
+    .sort((left, right) => left.createdAtMs - right.createdAtMs)
+    .forEach((message) => {
+      const id = message.id.trim();
+      const text = message.text.trim();
+      const authorName = message.authorName.trim();
+      if (!id || !text || !authorName) return;
+      byId.set(id, { ...message, id, text, authorName });
+    });
+  return [...byId.values()].slice(-CLOUD_AGENT_NATIVE_CONTEXT_MESSAGE_LIMIT);
 }

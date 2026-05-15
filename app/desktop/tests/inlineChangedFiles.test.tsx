@@ -64,6 +64,47 @@ test('changedFileRowsFromTurn returns new and modified local files with diff sta
   ]);
 });
 
+test('changed file extraction accepts live tool arguments that arrive as objects', () => {
+  const turn = turnWithTools([
+    {
+      id: 'tool-write-object-args',
+      name: 'write',
+      status: 'done',
+      arguments: { path: 'docs/superpowers/plans/2026-05-15-preview-plan.md' } as never,
+      liveOutput: '',
+      resultText: 'created file\n+plan',
+      isError: false,
+    },
+  ]);
+
+  assert.deepEqual(changedFileRowsFromTurn(turn), [{
+    path: 'docs/superpowers/plans/2026-05-15-preview-plan.md',
+    status: 'new',
+    artifactId: 'docs/superpowers/plans/2026-05-15-preview-plan.md',
+    diffStat: { added: 1, removed: 0 },
+  }]);
+});
+
+test('plan files are promoted to generated artifacts instead of related files', () => {
+  const turn = turnWithTools([
+    {
+      id: 'tool-write-plan',
+      name: 'write',
+      status: 'done',
+      arguments: JSON.stringify({ path: 'docs/superpowers/plans/2026-05-15-preview-plan.md' }),
+      liveOutput: '',
+      resultText: 'created file\n+plan',
+      isError: false,
+    },
+  ]);
+  const message: Message = { role: 'owned-agent', sender: 'My Kordi', text: 'Done.', time: '10:00', turn };
+
+  const artifacts = extractSessionArtifacts([message]);
+
+  assert.equal(artifacts[0]?.id, 'docs/superpowers/plans/2026-05-15-preview-plan.md');
+  assert.equal(artifacts[0]?.category, 'artifact');
+});
+
 test('inline changed files render under assistant turns and hide when there are no file changes', () => {
   const changedTurn = turnWithTools([
     {

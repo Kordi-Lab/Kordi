@@ -16,6 +16,7 @@ import type {
 } from '@/kordi-app/types';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
+import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudArtifactsForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 
 function liveTurnArtifactSignature(turn?: DesktopChatTurnSnapshot | null) {
   if (!turn) return '';
@@ -104,6 +105,7 @@ type UseKordiDesktopActivityArgs = {
   setActiveDetailTab: (tab: DetailTab) => void;
   isDetailPanelCollapsed: boolean;
   lastSeenArtifactByContextRef: MutableRefObject<Record<string, string | null>>;
+  cloudSessionActivity?: CloudSessionActivityStore;
 };
 
 export function useKordiDesktopActivity({
@@ -126,6 +128,7 @@ export function useKordiDesktopActivity({
   setActiveDetailTab,
   isDetailPanelCollapsed,
   lastSeenArtifactByContextRef,
+  cloudSessionActivity = EMPTY_CLOUD_SESSION_ACTIVITY,
 }: UseKordiDesktopActivityArgs) {
   const activeContactRequest = contactRequests.find((request) => request.id === activeContactRequestId) ?? contactRequests[0];
   const activeSettingsSection = settingsSections.find((section) => section.id === activeSettingsSectionId) ?? settingsSections[0] as SettingsSection;
@@ -141,10 +144,14 @@ export function useKordiDesktopActivity({
       ? isDesktopBridgeSending || Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed)
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
 
-  const activeChatArtifacts = useMemo(
-    () => activeConversationIsBridge ? [] : extractSessionArtifacts(activeConv.messages, activeChatArtifactLiveTurn, activeConv.reflectionLessonArtifacts),
-    [activeChatArtifactLiveTurn, activeConv.messages, activeConv.reflectionLessonArtifacts, activeConversationIsBridge],
-  );
+  const activeChatArtifacts = useMemo(() => {
+    const cloudArtifacts = cloudArtifactsForSession(cloudSessionActivity, activeConv.canonicalSessionId ?? activeConv.id);
+    if (activeConversationIsBridge) return cloudArtifacts;
+    return [
+      ...cloudArtifacts,
+      ...extractSessionArtifacts(activeConv.messages, activeChatArtifactLiveTurn, activeConv.reflectionLessonArtifacts),
+    ];
+  }, [activeChatArtifactLiveTurn, activeConv.canonicalSessionId, activeConv.id, activeConv.messages, activeConv.reflectionLessonArtifacts, activeConversationIsBridge, cloudSessionActivity]);
   const activeProjectArtifacts = useMemo(
     () => extractSessionArtifacts(activeProjectSession.messages, activeProjectArtifactLiveTurn, activeProjectSession.reflectionLessonArtifacts),
     [activeProjectArtifactLiveTurn, activeProjectSession.messages, activeProjectSession.reflectionLessonArtifacts],

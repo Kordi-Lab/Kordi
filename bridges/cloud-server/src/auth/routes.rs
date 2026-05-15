@@ -568,6 +568,7 @@ pub fn routes_with_config(
         .route("/v1/cloud/messages", get(list_messages).post(send_message))
         .route("/v1/cloud/messages/read", post(mark_messages_read))
         .route("/v1/cloud/sync", get(sync_cloud_events))
+        .merge(crate::auth::session_activity::routes())
         .route(
             "/v1/cloud/attachments/initiate",
             post(crate::attachments::routes::initiate),
@@ -3303,6 +3304,14 @@ async fn create_cloud_session_fork(
         created_by_account_id: session.account_id.clone(),
         created_at: created_at.clone(),
     };
+
+    let _ = crate::auth::session_activity::copy_cloud_session_activity_to_fork(
+        pool,
+        &parent_session_id,
+        &fork_session_id,
+        &created_at,
+    )
+    .await;
 
     // Fan out a `session-forked` event to every participant of the source
     // session, including the forker themselves. Failures on individual

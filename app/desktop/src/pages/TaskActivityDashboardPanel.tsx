@@ -18,6 +18,10 @@ type TaskTargetParticipant = Pick<ConversationParticipant,
   avatarSeed?: string | null;
 };
 
+type TaskDashboardItemWithParticipants = TaskDashboardItem & {
+  targetParticipants?: TaskTargetParticipant[];
+};
+
 type TaskActivityDashboardPanelProps = {
   messages: Message[];
   liveTurn?: DesktopChatTurnSnapshot | null;
@@ -115,12 +119,21 @@ function taskSearchText(task: TaskDashboardItem) {
   ].filter((value): value is string => Boolean(value?.trim())).join(' ');
 }
 
+function participantAliasValues(participant: Pick<TaskTargetParticipant, 'id' | 'name' | 'ownerName' | 'avatarKey'>) {
+  const values = [participant.name, participant.ownerName, participant.id, participant.avatarKey]
+    .filter((value): value is string => Boolean(value?.trim()));
+  return Array.from(new Set(values.flatMap((value) => {
+    const trimmed = value.trim();
+    const withoutPrefix = trimmed.includes(':') ? trimmed.split(':').filter(Boolean).pop() ?? trimmed : trimmed;
+    return [trimmed, withoutPrefix];
+  }).filter(Boolean)));
+}
+
 function participantMatchesTask(participant: TaskTargetParticipant, taskText: string, normalizedTaskText: string) {
-  const names = [participant.name, participant.ownerName].filter((value): value is string => Boolean(value?.trim()));
-  for (const name of names) {
-    const normalizedName = normalizedParticipantMatchText(name);
-    if (normalizedName && normalizedTaskText.includes(normalizedName)) return true;
-    const participantUserNumber = userNumberLabel(name);
+  for (const alias of participantAliasValues(participant)) {
+    const normalizedAlias = normalizedParticipantMatchText(alias);
+    if (normalizedAlias && (normalizedTaskText.includes(normalizedAlias) || normalizedAlias.includes(normalizedTaskText))) return true;
+    const participantUserNumber = userNumberLabel(alias);
     if (participantUserNumber && participantUserNumber === userNumberLabel(taskText)) return true;
   }
   return false;
@@ -142,7 +155,7 @@ function taskTargetParticipants(task: TaskDashboardItem, participants: TaskTarge
   const normalizedInvolvedText = normalizedParticipantMatchText(involvedText);
   const humans = participants.filter((participant) => participant.kind !== 'agent' && participantMatchesTask(participant, involvedText, normalizedInvolvedText));
   const matched = (humans.length > 0 ? humans : participants.filter((participant) => participantMatchesTask(participant, involvedText, normalizedInvolvedText))).slice(0, 4);
-  const matchedText = normalizedParticipantMatchText(matched.map((participant) => participant.name).join(' '));
+  const matchedText = normalizedParticipantMatchText(matched.flatMap(participantAliasValues).join(' '));
   const fallbackParticipants = task.involvedParticipantNames
     .filter((name) => {
       const normalizedName = normalizedParticipantMatchText(name);
@@ -311,13 +324,99 @@ function artifactCategory(artifact: SessionArtifact): NonNullable<SessionArtifac
   return artifact.category ?? 'artifact';
 }
 
-function firstLinkedArtifactId(task: TaskDashboardItem, artifacts: SessionArtifact[]) {
+function firstLinkedArtifactId(task: TaskDashboardItemWithParticipants, artifacts: SessionArtifact[]) {
   const generatedArtifactIds = new Set(
     artifacts
       .filter((artifact) => artifactCategory(artifact) === 'artifact')
       .map((artifact) => artifact.id),
   );
   return task.artifactIds.find((artifactId) => generatedArtifactIds.has(artifactId)) ?? task.artifactIds[0] ?? null;
+}
+
+function dashboardStatusFromActivity(status: string): TaskDashboardItem['status'] {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'complete' || normalized === 'completed') return 'planned';
+  if (normalized === 'closed' || normalized === 'failed') return normalized;
+  if (normalized === 'cancelled' || normalized === 'timeout') return 'failed';
+  if (normalized === 'processing' || normalized === 'active') return 'active';
+  return 'planned';
+}
+
+function dashboardToneFromStatus(status: TaskDashboardItem['status']): TaskDashboardTone {
+  if (status === 'active') return 'running';
+  if (status === 'completed') return 'success';
+  if (status === 'closed') return 'closed';
+  if (status === 'failed') return 'error';
+  return 'muted';
+}
+
+function dashboardStatusLabel(status: TaskDashboardItem['status']) {
+  switch (status) {
+    case 'active': return 'Active';
+    case 'completed': return 'Done';
+    case 'closed': return 'Closed';
+    case 'failed': return 'Failed';
+    case 'waiting': return 'Needs input';
+    case 'planned':
+    default: return 'Planned';
+  }
+}
+
+function matchingCanonicalParticipant(participant: SessionTaskActivity['participants'][number] | SessionTaskActivity['initiator'] | null | undefined, targetParticipants: TaskTargetParticipant[]) {
+  if (!participant) return undefined;
+  const participantAliases = new Set(participantAliasValues(participant).map(normalizedParticipantMatchText).filter(Boolean));
+  return targetParticipants.find((targetParticipant) => (
+    participantAliasValues(targetParticipant)
+      .map(normalizedParticipantMatchText)
+      .filter(Boolean)
+      .some((alias) => participantAliases.has(alias))
+  ));
+}
+
+function enrichTaskParticipant(participant: SessionTaskActivity['participants'][number], targetParticipants: TaskTargetParticipant[]): SessionTaskActivity['participants'][number] {
+  const canonical = matchingCanonicalParticipant(participant, targetParticipants);
+  return canonical ? {
+    ...participant,
+    name: canonical.name || participant.name,
+    avatarKey: canonical.avatarKey ?? participant.avatarKey,
+    profileImageUrl: canonical.profileImageUrl ?? participant.profileImageUrl,
+    role: canonical.role ?? participant.role,
+  } : participant;
+}
+
+function taskActivityToDashboardItem(activity: SessionTaskActivity, targetParticipants: TaskTargetParticipant[]): TaskDashboardItemWithParticipants {
+  const status = dashboardStatusFromActivity(activity.status);
+  const title = activity.target?.name ?? activity.bridgeRequestId ?? 'Cloud task';
+  const initiator = matchingCanonicalParticipant(activity.initiator, targetParticipants) ?? activity.initiator;
+  const participants = activity.participants.map((participant) => enrichTaskParticipant(participant, targetParticipants));
+  return {
+    id: activity.id,
+    title,
+    summary: activity.error ?? `Synced Cloud task${initiator?.name ? ` by ${initiator.name}` : ''}.`,
+    status,
+    statusLabel: dashboardStatusLabel(status),
+    tone: dashboardToneFromStatus(status),
+    target: activity.bridgeRequestId ? `ID: ${activity.bridgeRequestId}` : null,
+    writeScope: [],
+    live: status === 'active',
+    timeLabel: null,
+    startedAtMs: activity.createdAtMs || null,
+    responseMessageId: activity.bridgeRequestId ?? null,
+    taskId: activity.bridgeRequestId ?? activity.id,
+    artifactIds: [],
+    involvedParticipantNames: Array.from(new Set(participants.map((participant) => participant.name).filter(Boolean))),
+    targetParticipants: participants.map((participant) => ({
+      id: participant.id,
+      name: participant.name,
+      kind: participant.kind === 'agent' ? 'agent' : 'human',
+      role: participant.role,
+      avatarKey: participant.avatarKey,
+      profileImageUrl: participant.profileImageUrl,
+    })),
+    subtasks: [],
+    subtaskCount: 0,
+    activeSubtaskCount: 0,
+  };
 }
 
 function TaskRow({
@@ -327,14 +426,14 @@ function TaskRow({
   onOpenArtifact,
   onNavigateToResponse,
 }: {
-  task: TaskDashboardItem;
+  task: TaskDashboardItemWithParticipants;
   artifacts: SessionArtifact[];
   targetParticipants: TaskTargetParticipant[];
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
 }) {
   const artifactId = firstLinkedArtifactId(task, artifacts);
-  const matchedTargetParticipants = taskTargetParticipants(task, targetParticipants);
+  const matchedTargetParticipants = task.targetParticipants ?? taskTargetParticipants(task, targetParticipants);
 
   if (task.subtasks.length === 0) {
     return (
@@ -360,12 +459,80 @@ function TaskRow({
   );
 }
 
-export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
+function taskDedupeKeys(task: Pick<TaskDashboardItem, 'id' | 'taskId' | 'title'>) {
+  const normalizedTitle = task.title?.trim().replace(/\s+/g, ' ').toLowerCase();
+  return [
+    task.taskId ? `task-id:${task.taskId.trim().toLowerCase()}` : null,
+    normalizedTitle ? `task-title:${normalizedTitle}` : null,
+    task.id ? `id:${task.id.trim().toLowerCase()}` : null,
+  ].filter((value): value is string => Boolean(value));
+}
+
+function dedupeTaskRowsByKeys<T extends Pick<TaskDashboardItem, 'id' | 'taskId' | 'title'>>(tasks: T[]): T[] {
+  const seen = new Set<string>();
+  const rows: T[] = [];
+  for (const task of tasks) {
+    const keys = taskDedupeKeys(task);
+    if (keys.some((key) => seen.has(key))) continue;
+    rows.push(task);
+    keys.forEach((key) => seen.add(key));
+  }
+  return rows;
+}
+
+function participantDedupeKey(participant: TaskTargetParticipant) {
+  const accountAlias = participantAliasValues(participant).find((alias) => /^acct_[a-z0-9]+$/i.test(alias));
+  if (accountAlias) return `account:${accountAlias.toLowerCase()}`;
+  return `name:${normalizedParticipantMatchText(participant.name) || participant.id}`;
+}
+
+function participantNameLooksTechnical(name?: string | null) {
+  const value = name?.trim() ?? '';
+  return !value || /^acct_[a-z0-9]+$/i.test(value) || /^cloud:acct_[a-z0-9]+$/i.test(value);
+}
+
+function mergeTaskTargetParticipants(participants: TaskTargetParticipant[]) {
+  const byKey = new Map<string, TaskTargetParticipant>();
+  for (const participant of participants) {
+    const key = participantDedupeKey(participant);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, participant);
+      continue;
+    }
+    const participantHasBetterName = participantNameLooksTechnical(existing.name) && !participantNameLooksTechnical(participant.name);
+    byKey.set(key, {
+      ...existing,
+      ...participant,
+      name: participantHasBetterName ? participant.name : existing.name,
+      ownerName: participant.ownerName ?? existing.ownerName,
+      avatarKey: participant.avatarKey ?? existing.avatarKey,
+      avatarSeed: participant.avatarSeed ?? existing.avatarSeed,
+      profileImageUrl: participant.profileImageUrl ?? existing.profileImageUrl,
+      role: participant.role ?? existing.role,
+    });
+  }
+  return [...byKey.values()];
+}
+
+export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
   // Conversation message arrays can be updated in place while Bridge/canonical polling is active.
   // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
   // as the transcript rerenders, even if the array identity did not change.
   const dashboard = buildTaskActivityDashboard({ messages, liveTurn });
-  const tasks = dashboard.tasks;
+  const activityTargetParticipants: TaskTargetParticipant[] = taskActivities.flatMap((activity) => activity.participants.map((participant) => ({
+    id: participant.id,
+    name: participant.name,
+    kind: participant.kind === 'agent' ? 'agent' : 'human',
+    role: participant.role,
+    avatarKey: participant.avatarKey,
+    profileImageUrl: participant.profileImageUrl,
+  })));
+  const mergedTargetParticipants = mergeTaskTargetParticipants([...activityTargetParticipants, ...targetParticipants]);
+  const taskActivityRows = dedupeTaskRowsByKeys(taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants)));
+  const existingTaskKeys = new Set(taskActivityRows.flatMap(taskDedupeKeys));
+  const localRows = dashboard.tasks.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)));
+  const tasks = [...taskActivityRows, ...localRows];
 
   return (
     <section className="app-detail-section">

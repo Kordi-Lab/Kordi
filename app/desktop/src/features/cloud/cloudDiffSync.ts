@@ -1,4 +1,5 @@
-import type { CloudMessage, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse } from './authClient';
+import type { CloudArtifactActivity, CloudMessage, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
+import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
 
@@ -149,15 +150,44 @@ export function applyCloudSyncEventsToMessagesByPeer(
   return next;
 }
 
+export function applyCloudSyncEventsToSessionActivity(
+  current: CloudSessionActivityStore,
+  events: CloudSyncEvent[],
+): CloudSessionActivityStore {
+  let next = current;
+  for (const event of events) {
+    const payload = objectRecord(event.payload);
+    if (!payload) continue;
+    if (event.eventType === 'task.upsert') {
+      const task = payload.task;
+      next = mergeCloudSessionActivity(
+        next,
+        normalizeCloudSessionActivitySnapshot({ tasks: task ? [task as CloudTaskActivity] : [], artifacts: [] }),
+      );
+      continue;
+    }
+    if (event.eventType === 'artifact.upsert' || event.eventType === 'artifact.archived') {
+      const artifact = payload.artifact;
+      next = mergeCloudSessionActivity(
+        next,
+        normalizeCloudSessionActivitySnapshot({ tasks: [], artifacts: artifact ? [artifact as CloudArtifactActivity] : [] }),
+      );
+    }
+  }
+  return next;
+}
+
 export type SyncCloudDiffOnceInput = {
   accountId: string;
   messagesByPeer: Record<string, CloudMessage[]>;
+  sessionActivity?: CloudSessionActivityStore;
   cursorStorage?: Storage | null;
   fetchEvents(cursor: string): Promise<CloudSyncResponse>;
 };
 
 export type SyncCloudDiffOnceResult = {
   messagesByPeer: Record<string, CloudMessage[]>;
+  sessionActivity: CloudSessionActivityStore;
   cursor: string;
   fallbackRequired: boolean;
   hasMore: boolean;
@@ -178,19 +208,24 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   try {
     response = await input.fetchEvents(previousCursor);
   } catch {
-    return { messagesByPeer: input.messagesByPeer, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const nextCursor = normalizeCursor(response.cursor);
   if (cursorWentBackwards(previousCursor, nextCursor)) {
-    return { messagesByPeer: input.messagesByPeer, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
+  const events = response.events ?? [];
   const messagesByPeer = applyCloudSyncEventsToMessagesByPeer(
     input.accountId,
     input.messagesByPeer,
-    response.events ?? [],
+    events,
+  );
+  const sessionActivity = applyCloudSyncEventsToSessionActivity(
+    input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY,
+    events,
   );
   saveCloudSyncCursor(input.accountId, nextCursor, storage);
-  return { messagesByPeer, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
+  return { messagesByPeer, sessionActivity, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
 }

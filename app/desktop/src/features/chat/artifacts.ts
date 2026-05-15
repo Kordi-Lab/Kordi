@@ -18,11 +18,11 @@ type CollectedArtifactPath = {
 };
 
 const GENERATED_ARTIFACT_SEGMENTS = new Set([
-  'artifact', 'artifacts', 'deliverable', 'deliverables', 'report', 'reports', 'output', 'outputs', 'prototype', 'prototypes', 'dashboard', 'dashboards',
+  'artifact', 'artifacts', 'deliverable', 'deliverables', 'plan', 'plans', 'report', 'reports', 'output', 'outputs', 'prototype', 'prototypes', 'dashboard', 'dashboards',
 ]);
 
 const GENERATED_ARTIFACT_NAME_TERMS = [
-  'artifact', 'report', 'summary', 'brief', 'spec', 'proposal', 'dashboard', 'prototype', 'visualization', 'contract', 'agreement', 'clause', 'notice',
+  'artifact', 'plan', 'report', 'summary', 'brief', 'spec', 'proposal', 'dashboard', 'prototype', 'visualization', 'contract', 'agreement', 'clause', 'notice',
 ];
 
 const RELATED_METADATA_FILE_NAMES = new Set([
@@ -142,12 +142,13 @@ export function sessionArtifactCategoryForToolPath(toolName: string, path: strin
   return 'related';
 }
 
-function parseToolArguments(raw: string) {
-  if (!raw.trim()) return null;
+function parseToolArguments(raw: unknown) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw !== 'string' || !raw.trim()) return null;
 
   try {
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
   } catch {
     return null;
   }

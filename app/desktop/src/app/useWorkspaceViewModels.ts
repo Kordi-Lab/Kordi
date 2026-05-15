@@ -3,9 +3,10 @@ import { useMemo, useRef } from 'react';
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import { cloudPeerAccountIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { currentKordiEdition } from '@/features/cloud/edition';
+import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -37,6 +38,7 @@ import type {
   Message,
   Project,
   SessionStatusIndicator,
+  SessionTaskActivity,
 } from '@/kordi-app/types';
 import { isSelfReferenceName } from '@/lib/identityLabels';
 import { getInitials } from '@/kordi-app/utils';
@@ -118,6 +120,35 @@ export function bridgeChatConversationIsVisible(
   return !conversation.outreach?.parentSessionId;
 }
 
+export function pendingCloudBridgeConversationForActiveId(activeConvId: string): Conversation | null {
+  if (!isCloudBridgeConversationId(activeConvId)) return null;
+  const peerId = cloudPeerAccountIdFromConversationId(activeConvId);
+  if (!peerId) return null;
+  return {
+    id: activeConvId,
+    canonicalSessionId: undefined,
+    name: peerId,
+    type: 'person',
+    subtitle: 'Cloud direct chat is opening…',
+    unread: 0,
+    bridges: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', peerId],
+    messages: [{ role: 'system', text: 'Cloud direct chat is opening…', time: '--:--' }],
+    bridgeTarget: {
+      hostId: 'cloud',
+      nodeId: peerId,
+      displayName: peerId,
+      ownerName: peerId,
+      runtime: 'person',
+      humanId: peerId,
+      agentId: null,
+    },
+    avatarSeed: peerId,
+  };
+}
+
 function liveTurnsViewModelSignature(liveTurns: Record<string, DesktopChatTurnSnapshot>) {
   return Object.entries(liveTurns)
     .map(([sessionId, turn]) => [
@@ -163,6 +194,7 @@ type UseWorkspaceViewModelsArgs = {
   localSessionUnreadCounts: Record<string, number>;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
+  cloudSessionActivity?: CloudSessionActivityStore;
 };
 
 export function useWorkspaceViewModels({
@@ -188,6 +220,7 @@ export function useWorkspaceViewModels({
   localSessionUnreadCounts,
   desktopLiveTurnsBySession,
   mapDesktopMessages,
+  cloudSessionActivity = EMPTY_CLOUD_SESSION_ACTIVITY,
 }: UseWorkspaceViewModelsArgs) {
   const canonicalReadModel = useMemo(() => createCanonicalSessionReadModel(canonicalSessionState), [canonicalSessionState]);
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
@@ -392,8 +425,24 @@ export function useWorkspaceViewModels({
           if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
           return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
         });
-    return hideRawConversationIds(visibleConversations);
-  }, [activeConvId, bridgeChatConversations, canonicalReadModel, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
+    const withCloudActivity = visibleConversations.map((conversation) => {
+      const sessionId = conversation.canonicalSessionId ?? conversation.id;
+      const cloudTaskActivities = cloudTaskActivitiesForSession(cloudSessionActivity, sessionId);
+      if (cloudTaskActivities.length === 0) return conversation;
+      const existingTaskActivities = 'taskActivities' in conversation
+        ? (conversation.taskActivities as SessionTaskActivity[] | undefined) ?? []
+        : [];
+      const existingIds = new Set(existingTaskActivities.map((activity) => activity.id));
+      return {
+        ...conversation,
+        taskActivities: [
+          ...existingTaskActivities,
+          ...cloudTaskActivities.filter((activity) => !existingIds.has(activity.id)),
+        ],
+      };
+    });
+    return hideRawConversationIds(withCloudActivity);
+  }, [activeConvId, bridgeChatConversations, canonicalReadModel, cloudSessionActivity, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
     () => {
@@ -427,7 +476,11 @@ export function useWorkspaceViewModels({
     if (isNativeShell && isLocalDraftChatConversationId(activeConvId)) {
       return nativeChatPlaceholder;
     }
-    return chatConversations.find((conversation) => conversation.id === activeConvId) ?? chatConversations[0] ?? (isNativeShell ? nativeChatPlaceholder : conversations[0]);
+    const selectedConversation = chatConversations.find((conversation) => conversation.id === activeConvId);
+    if (selectedConversation) return selectedConversation;
+    const pendingCloudConversation = pendingCloudBridgeConversationForActiveId(activeConvId);
+    if (pendingCloudConversation) return pendingCloudConversation;
+    return chatConversations[0] ?? (isNativeShell ? nativeChatPlaceholder : conversations[0]);
   }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder]);
   const activeConversationIsBridge = isNativeShell && (
     activeConv.id.startsWith('bridge:')

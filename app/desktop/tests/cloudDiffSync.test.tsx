@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 import {
   applyCloudSyncEventsToMessagesByPeer,
+  applyCloudSyncEventsToSessionActivity,
   cloudSyncCursorStorageKey,
   loadCloudSyncCursor,
   saveCloudSyncCursor,
@@ -68,6 +69,27 @@ test('applyCloudSyncEventsToMessagesByPeer applies read receipts to cached messa
   assert.equal(result.acct_peer[0]?.deliveredAt, '2026-05-13T00:00:00Z');
 });
 
+test('cloud diff sync applies task and artifact upsert events', () => {
+  const next = applyCloudSyncEventsToSessionActivity({ tasksBySessionId: {}, artifactsBySessionId: {} }, [{
+    eventId: '1',
+    eventType: 'task.upsert',
+    peerAccountId: null,
+    messageId: null,
+    occurredAt: '2026-05-15T10:00:00Z',
+    payload: { task: { taskActivityId: 'taskact_1', sessionId: 'session:group:1', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null } },
+  }, {
+    eventId: '2',
+    eventType: 'artifact.upsert',
+    peerAccountId: null,
+    messageId: null,
+    occurredAt: '2026-05-15T10:00:00Z',
+    payload: { artifact: { artifactActivityId: 'artifactact_1', sessionId: 'session:group:1', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null } },
+  }]);
+
+  assert.equal(next.tasksBySessionId['session:group:1']?.[0]?.taskId, 'task-1');
+  assert.equal(next.artifactsBySessionId['session:group:1']?.[0]?.artifactId, 'docs/a.md');
+});
+
 test('cloud sync cursor storage is per account', () => {
   const storage = memoryStorage();
   saveCloudSyncCursor('acct_me', '42', storage);
@@ -96,6 +118,13 @@ test('syncCloudDiffOnce advances cursor only after applying events', async () =>
           messageId: 'msg_1',
           payload: { message: incoming },
           occurredAt: '2026-05-13T00:00:00Z',
+        }, {
+          eventId: '11',
+          eventType: 'task.upsert',
+          peerAccountId: null,
+          messageId: null,
+          payload: { task: { taskActivityId: 'taskact_1', sessionId: 'session:group:1', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: [], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null } },
+          occurredAt: '2026-05-15T10:00:00Z',
         }],
       };
     },
@@ -104,6 +133,7 @@ test('syncCloudDiffOnce advances cursor only after applying events', async () =>
   assert.deepEqual(calls, ['0']);
   assert.equal(loadCloudSyncCursor('acct_me', storage), '10');
   assert.deepEqual(result.messagesByPeer, { acct_peer: [incoming] });
+  assert.equal(result.sessionActivity.tasksBySessionId['session:group:1']?.[0]?.taskId, 'task-1');
   assert.equal(result.fallbackRequired, false);
 });
 

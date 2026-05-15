@@ -1,10 +1,11 @@
 use anyhow::{Result, anyhow, bail};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::settings::Settings;
-use kordi_core::types::{EntryBase, EntryId, SessionEntry};
+use kordi_core::types::{ContentBlock, EntryBase, EntryId, SessionEntry};
 use kordi_provider::registry::Model;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use tokio::sync::mpsc;
 
 use crate::login;
@@ -79,6 +80,16 @@ pub struct DesktopVisibleTaskRecord {
     pub involved_participants: Vec<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopChatContextMessage {
+    pub id: String,
+    pub author_name: String,
+    pub author_kind: String,
+    pub text: String,
+    pub created_at_ms: Option<i64>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatStoredTool {
@@ -101,7 +112,16 @@ fn is_false(value: &bool) -> bool {
 }
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
+const CLOUD_AGENT_CONTEXT_CUSTOM_TYPE: &str = "cloud_agent_context_message";
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
+
+fn visible_task_record_status_for_store(status: &str) -> String {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "closed" | "complete" | "completed" => "closed".to_string(),
+        "failed" => "failed".to_string(),
+        _ => "open".to_string(),
+    }
+}
 const DESKTOP_BRIDGE_OUTREACH_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -307,8 +327,7 @@ impl DesktopRuntimeSession {
     pub async fn create_with_id(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
         let (_runtime_host, _ui, mut setup) =
             prepare_session_runtime_for_cwd(cwd, SessionBootstrapOptions::default()).await?;
-        setup.session_id = session_id.to_string();
-        setup.session_created = false;
+        retarget_runtime_setup_session(&mut setup, session_id)?;
         normalize_setup_thinking(&mut setup);
         Ok(Self { setup })
     }
@@ -574,6 +593,86 @@ impl DesktopRuntimeSession {
         self.setup.tool_ctx.reach_out = runtime;
     }
 
+    pub fn sync_context_messages(
+        &mut self,
+        messages: &[DesktopChatContextMessage],
+    ) -> Result<usize> {
+        if messages.is_empty() {
+            return Ok(0);
+        }
+        ensure_session_row_created(&mut self.setup)?;
+
+        let mut imported_ids = HashSet::new();
+        for row in kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)? {
+            let Ok(SessionEntry::CustomMessage {
+                custom_type,
+                details,
+                ..
+            }) = serde_json::from_str::<SessionEntry>(&row.payload)
+            else {
+                continue;
+            };
+            if custom_type != CLOUD_AGENT_CONTEXT_CUSTOM_TYPE {
+                continue;
+            }
+            if let Some(id) = details
+                .as_ref()
+                .and_then(|value| value.get("cloudMessageId"))
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                imported_ids.insert(id.to_string());
+            }
+        }
+
+        let mut count = 0;
+        for message in messages {
+            let id = message.id.trim();
+            let author_name = message.author_name.trim();
+            let text = message.text.trim();
+            if id.is_empty() || author_name.is_empty() || text.is_empty() {
+                continue;
+            }
+            if !imported_ids.insert(id.to_string()) {
+                continue;
+            }
+            let author_kind = if message.author_kind.trim().eq_ignore_ascii_case("agent") {
+                "agent"
+            } else {
+                "human"
+            };
+            let timestamp = message
+                .created_at_ms
+                .and_then(DateTime::<Utc>::from_timestamp_millis)
+                .unwrap_or_else(Utc::now);
+            let parent_id =
+                kordi_session::store::get_session(&self.setup.conn, &self.setup.session_id)?
+                    .and_then(|session| session.leaf_id)
+                    .map(EntryId);
+            let entry = SessionEntry::CustomMessage {
+                base: EntryBase {
+                    id: EntryId::generate(),
+                    parent_id,
+                    timestamp,
+                },
+                custom_type: CLOUD_AGENT_CONTEXT_CUSTOM_TYPE.to_string(),
+                content: vec![ContentBlock::Text {
+                    text: format!("{author_name} ({author_kind}): {text}"),
+                }],
+                display: false,
+                details: Some(serde_json::json!({
+                    "cloudMessageId": id,
+                    "authorName": author_name,
+                    "authorKind": author_kind,
+                })),
+            };
+            kordi_session::store::append_entry(&self.setup.conn, &self.setup.session_id, &entry)?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
     pub fn sync_visible_task_records(
         &mut self,
         records: &[DesktopVisibleTaskRecord],
@@ -597,7 +696,7 @@ impl DesktopRuntimeSession {
                     parent_task_id: record.parent_task_id.clone(),
                     title: title.to_string(),
                     summary: record.summary.clone(),
-                    status: Some(record.status.clone()),
+                    status: Some(visible_task_record_status_for_store(&record.status)),
                     involved_participants: record.involved_participants.clone(),
                 },
             )?;
@@ -880,6 +979,21 @@ pub fn delete_session_forever(session_id: &str) -> Result<()> {
     kordi_session::store::delete_session(&conn, session_id)
 }
 
+fn retarget_runtime_setup_session(setup: &mut SessionRuntimeSetup, session_id: &str) -> Result<()> {
+    setup.session_id = session_id.to_string();
+    setup.session_created = false;
+    let sibling_conn = setup
+        .sibling_conn
+        .clone()
+        .ok_or_else(|| anyhow!("Session DB connection is unavailable"))?;
+    setup.tool_ctx.task_operator = Some(crate::task_operator::build_task_operator_runtime(
+        setup.tool_ctx.cwd.clone(),
+        setup.session_id.clone(),
+        sibling_conn,
+    ));
+    Ok(())
+}
+
 fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
     let settings = Settings::load_merged(&setup.tool_ctx.cwd);
     let auth_override = setup
@@ -921,10 +1035,7 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
     Ok(())
 }
 
-fn session_has_visible_message_entries(
-    conn: &rusqlite::Connection,
-    session_id: &str,
-) -> bool {
+fn session_has_visible_message_entries(conn: &rusqlite::Connection, session_id: &str) -> bool {
     // A "visible" entry is a User or Assistant message — the things a
     // person reads as transcript content. ModelChange / ThinkingLevel
     // / ContextSnapshot etc. are runtime metadata that shouldn't gate

@@ -4,10 +4,61 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
-import { bridgeChatConversationIsVisible, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
+import { bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
+
+test('pending Cloud contact selection keeps active conversation on Cloud instead of falling back to local session', () => {
+  const conversation = pendingCloudBridgeConversationForActiveId('bridge:cloud:acct_peer:person');
+
+  assert.equal(conversation?.id, 'bridge:cloud:acct_peer:person');
+  assert.equal(conversation?.bridgeTarget?.hostId, 'cloud');
+  assert.equal(conversation?.bridgeTarget?.nodeId, 'acct_peer');
+  assert.equal(conversation?.bridges.includes('Cloud'), true);
+});
+
+test('workspace active conversation does not fall back to a local UUID while a Cloud contact opens', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: true,
+      isDesktopChatLoading: false,
+      desktopChatState: {
+        activeSessionId: 'local-session-1',
+        sessions: [{ id: 'local-session-1', title: 'Local accidental session', subtitle: '', updatedAtLabel: '19:06', messageCount: 1, draft: false }],
+        activeSession: { id: 'local-session-1', title: 'Local accidental session', subtitle: '', updatedAtLabel: '19:06', messageCount: 1, draft: false, messages: [], project: null, reflectionLessonArtifacts: [] },
+        localAgent: { label: 'My Kordi' },
+      } as never,
+      desktopBridgeState: null,
+      canonicalSessionState: null,
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [],
+      projectSelectedSessionIds: {},
+      activeNav: 'chats',
+      activeConvId: 'bridge:cloud:acct_peer:person',
+      activeProjectId: '',
+      activeProjectSessionId: 'draft:project-chat',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: {},
+      mapDesktopMessages: () => [],
+      cloudSessionActivity: { tasksBySessionId: {}, artifactsBySessionId: {} },
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  assert.equal(viewModels?.activeConv.id, 'bridge:cloud:acct_peer:person');
+  assert.equal(viewModels?.activeConv.bridgeTarget?.hostId, 'cloud');
+});
 
 test('canonical direct person conversations use contact name and latest-message subtitle', () => {
   const readModel = createCanonicalSessionReadModel({

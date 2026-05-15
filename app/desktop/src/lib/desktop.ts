@@ -709,8 +709,39 @@ export type DesktopChatMessageRoute = {
   thinking?: string | null;
 };
 
-export async function startDesktopChatMessage(sessionId: string, text: string, attachmentPaths: string[] = [], route?: DesktopChatMessageRoute | null) {
-  return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', { sessionId, text, attachmentPaths, route: route ?? null });
+export type DesktopChatContextMessage = {
+  id: string;
+  authorName: string;
+  authorKind: 'human' | 'agent';
+  text: string;
+  createdAtMs?: number | null;
+};
+
+export type DesktopVisibleTaskRecord = {
+  taskId: string;
+  parentTaskId?: string | null;
+  title: string;
+  summary?: string | null;
+  status: string;
+  involvedParticipants?: string[];
+};
+
+export async function startDesktopChatMessage(
+  sessionId: string,
+  text: string,
+  attachmentPaths: string[] = [],
+  route?: DesktopChatMessageRoute | null,
+  contextMessages: DesktopChatContextMessage[] = [],
+  visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
+) {
+  return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', {
+    sessionId,
+    text,
+    attachmentPaths,
+    route: route ?? null,
+    contextMessages,
+    visibleTaskRecords,
+  });
 }
 
 export async function runDesktopChatSkillCommand(sessionId: string, text: string) {
