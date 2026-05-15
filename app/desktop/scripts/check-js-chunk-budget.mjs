@@ -4,6 +4,26 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES ?? '', 10) || 700_000;
+
+// Per-chunk overrides for chunks that are loaded asynchronously and only when
+// the user opens a specific feature. The default budget still applies to every
+// chunk that ships in the initial download.
+const PER_CHUNK_BUDGET_OVERRIDES = [
+  // tldraw is ~1.4 MB by design; the canvas-vendor chunk is loaded lazily on
+  // the first canvas-scratch open (see app/desktop/src/features/scratch).
+  { prefix: 'canvas-vendor', limit: 1_500_000 },
+  // pdfmake (with embedded vfs fonts) + docx is ~2.2 MB; the download-vendor
+  // chunk is loaded lazily on the first doc-scratch download.
+  { prefix: 'download-vendor', limit: 2_500_000 },
+];
+
+function budgetFor(chunkName) {
+  for (const override of PER_CHUNK_BUDGET_OVERRIDES) {
+    if (chunkName.startsWith(override.prefix)) return override.limit;
+  }
+  return MAX_JS_CHUNK_BYTES;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const assetsDir = process.argv[2]
@@ -34,11 +54,13 @@ try {
     process.exit(1);
   }
 
-  const oversizedChunks = chunks.filter((chunk) => chunk.bytes > MAX_JS_CHUNK_BYTES);
+  const oversizedChunks = chunks
+    .map((chunk) => ({ ...chunk, limit: budgetFor(chunk.name) }))
+    .filter((chunk) => chunk.bytes > chunk.limit);
   if (oversizedChunks.length > 0) {
-    console.error(`JavaScript chunk budget exceeded. Maximum allowed chunk size is ${formatKb(MAX_JS_CHUNK_BYTES)}.`);
+    console.error(`JavaScript chunk budget exceeded. Default budget is ${formatKb(MAX_JS_CHUNK_BYTES)}.`);
     for (const chunk of oversizedChunks) {
-      console.error(`- ${chunk.name}: ${formatKb(chunk.bytes)}`);
+      console.error(`- ${chunk.name}: ${formatKb(chunk.bytes)} (limit ${formatKb(chunk.limit)})`);
     }
     process.exit(1);
   }
