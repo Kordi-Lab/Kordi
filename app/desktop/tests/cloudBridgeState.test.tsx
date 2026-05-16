@@ -25,6 +25,7 @@ import {
   cloudGroupAgentProcessingMessageForRequest,
   cloudGroupAgentProcessingSlotForResponse,
   optimisticCloudAgentCancelMessage,
+  cloudSelfAgentDerivedSyncedStatusBySessionId,
   planCloudSelfAgentSync,
   planCloudSelfAgentCanonicalSync,
   seedCloudSelfAgentForwardSyncLedger,
@@ -290,6 +291,24 @@ test('cloud bridge conversation ids use normal bridge ids with cloud host sentin
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer:person'), 'acct_peer');
   assert.equal(cloudPeerAccountIdFromConversationId('bridge:cloud:acct_peer'), 'acct_peer');
   assert.equal(isCloudBridgeConversationId('bridge:local:node:person'), false);
+});
+
+test('cloud self-agent derived sync status marks sessions with Cloud self rows as synced', () => {
+  const statuses = cloudSelfAgentDerivedSyncedStatusBySessionId('acct_me', {
+    acct_me: [{
+      messageId: 'msg_synced',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_me',
+      body: 'hello',
+      createdAt: '2026-05-16T08:41:34.336Z',
+      deliveredAt: null,
+      readAt: null,
+      sessionId: 'session:fork:hello',
+    }],
+  }, 1000);
+
+  assert.equal(statuses['session:fork:hello']?.state, 'synced');
+  assert.equal(statuses['session:fork:hello']?.updatedAtMs, 1000);
 });
 
 test('cloud self-agent bridge state preserves one Cloud conversation per local session id', () => {

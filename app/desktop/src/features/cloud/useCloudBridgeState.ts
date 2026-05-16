@@ -858,6 +858,23 @@ export type CloudSelfAgentSyncStatus = {
   updatedAtMs: number;
 };
 
+export function cloudSelfAgentDerivedSyncedStatusBySessionId(
+  accountId: string | null | undefined,
+  messagesByPeer: Record<string, CloudMessage[]>,
+  updatedAtMs: number = Date.now(),
+): Record<string, CloudSelfAgentSyncStatus> {
+  const localAccountId = accountId?.trim();
+  if (!localAccountId) return {};
+  const statuses: Record<string, CloudSelfAgentSyncStatus> = {};
+  for (const message of messagesByPeer[localAccountId] ?? []) {
+    if (message.fromAccountId !== localAccountId || message.toAccountId !== localAccountId) continue;
+    const sessionId = cleanText(message.sessionId);
+    if (!sessionId) continue;
+    statuses[sessionId] = { state: 'synced', updatedAtMs };
+  }
+  return statuses;
+}
+
 function selfAgentSyncLedgerKey(accountId: string): string {
   return `${CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX}${accountId}`;
 }
@@ -2823,6 +2840,10 @@ export function useCloudBridgeState({
   }, []);
 
   const mergedBridgeState = cloudBridgeState;
+  const visibleCloudSelfAgentSyncStatusBySessionId = useMemo(() => ({
+    ...cloudSelfAgentDerivedSyncedStatusBySessionId(account?.accountId, messagesByPeer),
+    ...cloudSelfAgentSyncStatusBySessionId,
+  }), [account?.accountId, cloudSelfAgentSyncStatusBySessionId, messagesByPeer]);
 
   const sendCloudBridgeMessage = useCallback(async (conversationId: string, text: string, attachments: AttachmentItem[] = []) => {
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);
@@ -3076,6 +3097,6 @@ export function useCloudBridgeState({
     initialContactsSettled: contacts.initialLoadSettled,
     initialMessagesSettled,
     cachedMessagesReady: Object.values(messagesByPeer).some((messages) => messages.length > 0),
-    cloudSelfAgentSyncStatusBySessionId,
+    cloudSelfAgentSyncStatusBySessionId: visibleCloudSelfAgentSyncStatusBySessionId,
   };
 }
