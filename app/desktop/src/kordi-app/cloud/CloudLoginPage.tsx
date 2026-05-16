@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { Upload } from 'lucide-react';
 
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import {
@@ -209,21 +210,30 @@ function AvatarPicker({
   const imageUrl = preference?.dataUrl;
 
   return (
-    <div className="grid gap-1.5">
-      <div className="grid h-12 w-20 place-items-center">
+    <div className="grid h-12 w-20 place-items-center">
+      <div className="relative h-12 w-12">
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           title="Upload avatar"
           aria-label="Upload avatar"
           className={[
-            'app-cloud-login-avatar block h-12 w-12 overflow-hidden rounded-full border transition hover:scale-[1.03] focus-visible:outline-none',
+            'app-cloud-login-avatar relative block h-12 w-12 overflow-hidden rounded-full border transition hover:scale-[1.03] focus-visible:outline-none',
             BORDER_INNER,
             PAPER_SUNK,
             SMALL_FOCUS_RING,
           ].join(' ')}
         >
           {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <UploadAvatarPlaceholder displayName={displayName} />}
+          {!imageUrl && !uploadError ? (
+            <span
+              data-cloud-signup-avatar-upload-icon="true"
+              className="absolute bottom-0 right-0 grid h-5 w-5 place-items-center rounded-full border border-white/35 bg-black/45 text-white shadow-[0_2px_8px_rgba(0,0,0,0.28)]"
+              aria-hidden="true"
+            >
+              <Upload className="h-3 w-3" strokeWidth={2.4} />
+            </span>
+          ) : null}
         </button>
       </div>
       <input
@@ -238,12 +248,11 @@ function AvatarPicker({
           onAvatarFile(file);
         }}
       />
-      <span
-        data-cloud-signup-avatar-upload-label={!imageUrl && !uploadError ? 'true' : undefined}
-        className={`${TYPE_HINT} max-w-28 text-center normal-case tracking-normal ${uploadError ? 'text-[var(--app-cloud-login-danger-text)]' : INK_MUTED}`}
-      >
-        {uploadError ?? (imageUrl ? 'Change' : 'Upload')}
-      </span>
+      {uploadError || imageUrl ? (
+        <span className={`${TYPE_HINT} max-w-28 text-center normal-case tracking-normal ${uploadError ? 'text-[var(--app-cloud-login-danger-text)]' : INK_MUTED}`}>
+          {uploadError ?? 'Change'}
+        </span>
+      ) : null}
     </div>
   );
 }

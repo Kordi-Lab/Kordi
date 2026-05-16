@@ -102,7 +102,8 @@ test('signup mode requires avatar upload and removes random avatar controls', ()
   assert.match(markup, /Upload avatar/);
   assert.match(markup, /data-cloud-signup-avatar-placeholder="true"/);
   assert.match(markup, />KO<\/span>/);
-  assert.match(markup, /data-cloud-signup-avatar-upload-label="true"[^>]*>Upload<\/span>/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
+  assert.doesNotMatch(markup, />Upload<\/span>/);
   assert.doesNotMatch(markup, />\+<\/span>/);
   assert.doesNotMatch(markup, /Random avatar/);
   assert.match(markup, /Display name/);
