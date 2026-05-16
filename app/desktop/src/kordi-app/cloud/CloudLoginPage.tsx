@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
-import { Upload } from 'lucide-react';
+import { ArrowUp } from 'lucide-react';
 
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import {
@@ -218,7 +218,7 @@ function AvatarPicker({
           title="Upload avatar"
           aria-label="Upload avatar"
           className={[
-            'app-cloud-login-avatar relative block h-12 w-12 overflow-hidden rounded-full border transition hover:scale-[1.03] focus-visible:outline-none',
+            'app-cloud-login-avatar group relative block h-12 w-12 overflow-hidden rounded-full border transition duration-150 hover:scale-[1.015] focus-visible:outline-none',
             BORDER_INNER,
             PAPER_SUNK,
             SMALL_FOCUS_RING,
@@ -228,10 +228,10 @@ function AvatarPicker({
           {!uploadError ? (
             <span
               data-cloud-signup-avatar-upload-icon="true"
-              className="absolute bottom-0 right-0 grid h-5 w-5 place-items-center rounded-full border border-white/35 bg-black/45 text-white shadow-[0_2px_8px_rgba(0,0,0,0.28)]"
+              className="absolute bottom-[3px] right-[3px] grid h-[17px] w-[17px] place-items-center rounded-full border border-white/20 bg-white/[0.18] text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] backdrop-blur-[2px] transition duration-150 group-hover:border-white/30 group-hover:bg-white/[0.24] group-hover:text-white"
               aria-hidden="true"
             >
-              <Upload className="h-3 w-3" strokeWidth={2.4} />
+              <ArrowUp className="h-[10px] w-[10px] -translate-y-px" strokeWidth={2.35} />
             </span>
           ) : null}
         </button>
