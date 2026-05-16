@@ -1012,23 +1012,6 @@
     0 6px 14px oklch(0.28 0.04 82 / 0.10);
 }
 
-/* Random-avatar dice overlay button (signup avatar corner). */
-.app-cloud-login-dice-button {
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
-}
-
-.app-cloud-login-dice-button:hover {
-  color: var(--utility-foreground);
-}
-
-.bridge-app.theme-light .app-cloud-login-dice-button {
-  box-shadow: 0 3px 8px oklch(0.32 0.04 82 / 0.14);
-}
-
-.bridge-app.theme-light .app-cloud-login-dice-button:hover {
-  color: oklch(0.20 0.025 125);
-}
-
 /* Icon-only social provider pills (Google / GitHub). */
 .app-cloud-login-social-pill:hover {
   color: var(--utility-foreground);
