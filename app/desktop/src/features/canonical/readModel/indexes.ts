@@ -75,6 +75,19 @@ function sortedCanonicalMessages(messages: SortableCanonicalMessage[]) {
     .map((entry) => entry.message);
 }
 
+function inheritedDesktopForkSnapshot(session: CanonicalSessionState['sessions'][number] | undefined, message: CanonicalSessionMessage) {
+  if (!session || message.sourceTransport !== 'desktop-chat') return false;
+  if (!Number.isFinite(session.createdAtMs) || message.createdAtMs >= session.createdAtMs) return false;
+  const metadata = session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
+    ? session.metadata as Record<string, unknown>
+    : null;
+  const fork = metadata?.fork && typeof metadata.fork === 'object' && !Array.isArray(metadata.fork)
+    ? metadata.fork as Record<string, unknown>
+    : null;
+  return stringValue(fork?.boundary) === 'inherited-history-reference-only'
+    && Boolean(stringValue(fork?.forkedFromSessionId));
+}
+
 function messageSortPosition(message: CanonicalSessionMessage): CanonicalMessageSortPosition {
   return { sortAtMs: message.createdAtMs, sequenceNum: message.sequenceNum };
 }
@@ -786,7 +799,9 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       if (!mapped) return [];
       const displayMessage = mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
         ? { ...mapped, statusChips: ['failed'] }
-        : mapped;
+        : inheritedDesktopForkSnapshot(sessionById.get(sessionId), message)
+          ? { ...mapped, isForkSnapshot: true }
+          : mapped;
       return [{
         message: displayMessage,
         ...(messageSortById.get(message.id) ?? messageSortPosition(message)),

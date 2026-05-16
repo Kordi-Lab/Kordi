@@ -126,6 +126,63 @@ test('canonical read model keeps bridge unread when a local runtime source share
   assert.equal(conversations[0]?.unread, 1);
 });
 
+test('canonical read model marks inherited desktop-chat fork history as fork snapshots', () => {
+  const sessionId = 'session:fork:restored-self-agent';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      {
+        id: sessionId,
+        kind: 'self-agent',
+        title: 'Fork',
+        status: 'active',
+        createdByIdentityId: 'human:me',
+        primaryIdentityId: 'agent:local',
+        relationshipIdentityId: null,
+        metadata: {
+          fork: {
+            boundary: 'inherited-history-reference-only',
+            forkedFromSessionId: 'session:root',
+            forkedFromMessageId: 'msg:root-anchor',
+          },
+        },
+        createdAtMs: 1_000,
+        updatedAtMs: 1_200,
+        lastMessageAtMs: 1_200,
+      },
+    ],
+    participants: [
+      { sessionId, identityId: 'agent:local', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:copied-user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'old question', content: { sender: 'You', timeLabel: '09:00' }, status: 'sent', sequenceNum: 1, createdAtMs: 900, updatedAtMs: 900, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-chat:session:fork:0:user' },
+      { id: 'msg:copied-agent', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'old answer', content: { sender: 'My Kordi', timeLabel: '09:01' }, status: 'complete', sequenceNum: 2, createdAtMs: 950, updatedAtMs: 950, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-chat:session:fork:1:assistant:turn' },
+      { id: 'msg:new-user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'new fork input', content: { sender: 'You', timeLabel: '09:02' }, status: 'sent', sequenceNum: 3, createdAtMs: 1_100, updatedAtMs: 1_100, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-chat:session:fork:2:user' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const messages = readModel?.messages(sessionId) ?? [];
+  assert.equal(messages[0]?.isForkSnapshot, true);
+  assert.equal(messages[1]?.isForkSnapshot, true);
+  assert.equal(messages[2]?.isForkSnapshot, undefined);
+});
+
 test('canonical read model hides duplicate local-agent group response fanout copies', () => {
   const sessionId = 'session:group:fanout-agent';
   const responseText = 'same weather answer';
