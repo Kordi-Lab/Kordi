@@ -127,6 +127,9 @@ test('signup mode requires avatar upload and removes random avatar controls', ()
   assert.match(markup, /data-cloud-signup-avatar-placeholder="true"/);
   assert.match(markup, />KO<\/span>/);
   assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-dock="true"/);
+  assert.match(markup, /left-1\/2 top-\[46px\]/);
+  assert.doesNotMatch(markup, /bottom-\[3px\] right-\[3px\]/);
   assert.doesNotMatch(markup, />Upload<\/span>/);
   assert.doesNotMatch(markup, />\+<\/span>/);
   assert.doesNotMatch(markup, />Change<\/span>/);
@@ -138,7 +141,7 @@ test('signup mode requires avatar upload and removes random avatar controls', ()
   assert.doesNotMatch(markup, /Kordi Cloud/);
 });
 
-test('signup uploaded avatar preview keeps the upload affordance as an in-avatar icon', () => {
+test('signup uploaded avatar preview keeps the upload affordance in a bottom dock', () => {
   const storage = makeStorageStub({
     'kordi.cloud.signupAvatar': JSON.stringify({ kind: 'upload', dataUrl: 'data:image/jpeg;base64,abc' }),
   });
@@ -146,6 +149,9 @@ test('signup uploaded avatar preview keeps the upload affordance as an in-avatar
 
   assert.match(markup, /src="data:image\/jpeg;base64,abc"/);
   assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-dock="true"/);
+  assert.match(markup, /left-1\/2 top-\[46px\]/);
+  assert.doesNotMatch(markup, /bottom-\[3px\] right-\[3px\]/);
   assert.doesNotMatch(markup, />Upload<\/span>/);
   assert.doesNotMatch(markup, />Change<\/span>/);
 });
