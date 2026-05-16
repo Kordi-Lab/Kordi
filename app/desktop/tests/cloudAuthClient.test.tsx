@@ -208,6 +208,27 @@ test('sendMessage posts attachment metadata and parses returned attachments', as
   assert.equal(sent.attachments?.[0]?.downloadUrl, 'https://files.test/att_1');
 });
 
+test('listSessionForks loads cloud fork lineage for a parent session', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    forks: [{
+      forkSessionId: 'session:fork:child',
+      parentSessionId: 'session:parent',
+      parentMessageId: 'msg:parent',
+      createdByAccountId: 'acct_me',
+      createdAt: '2026-05-16T10:00:00Z',
+    }],
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const forks = await client.listSessionForks('kordi_cs_xyz', 'session:parent');
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Aparent/forks');
+  assert.equal(calls[0].init?.method, 'GET');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+  assert.equal(forks[0]?.forkSessionId, 'session:fork:child');
+});
+
 test('uploadAttachment initiates then proxies bytes through the cloud API', async () => {
   const { calls, fetchImpl } = recordingFetch((call) => {
     if (call.url === 'http://srv/v1/cloud/attachments/initiate') {

@@ -1327,6 +1327,7 @@ export function useCloudBridgeState({
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
+  const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
   const syncingCloudDiffRef = useRef(false);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
@@ -1584,6 +1585,7 @@ export function useCloudBridgeState({
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
       setInitialMessagesSettledPeerKey(null);
+      cloudSelfAgentForkRefreshKeyRef.current = null;
       return;
     }
     void syncCloudBridgeDiff().then((diffSynced) => {
@@ -2775,6 +2777,53 @@ export function useCloudBridgeState({
         readReceiptRequestRef.current = null;
       });
   }, [account, activeConversationId, client, messagesByPeer, refreshCloudBridgeMessages]);
+
+  useEffect(() => {
+    if (!account || !initialMessagesSettled) return;
+    const selfSessionIds = [...new Set(
+      (messagesByPeer[account.accountId] ?? [])
+        .map((message) => cleanText(message.sessionId))
+        .filter(Boolean),
+    )].sort();
+    if (selfSessionIds.length === 0) return;
+    const refreshKey = `${account.accountId}:${selfSessionIds.join('|')}`;
+    if (cloudSelfAgentForkRefreshKeyRef.current === refreshKey) return;
+    cloudSelfAgentForkRefreshKeyRef.current = refreshKey;
+
+    let cancelled = false;
+    void (async () => {
+      const session = await loadSession();
+      if (!session?.token) return;
+      const results = await Promise.allSettled(
+        selfSessionIds.map((sessionId) => client.listSessionForks(session.token, sessionId)),
+      );
+      const forks = results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
+      if (cancelled || forks.length === 0) return;
+      setCloudSessionForksById((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const fork of forks) {
+          const existing = next[fork.forkSessionId];
+          if (
+            existing?.parentSessionId === fork.parentSessionId
+            && existing?.parentMessageId === fork.parentMessageId
+            && existing?.createdAt === fork.createdAt
+          ) {
+            continue;
+          }
+          next[fork.forkSessionId] = fork;
+          changed = true;
+        }
+        return changed ? next : current;
+      });
+    })().catch((error) => {
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-self-agent-sync] failed to refresh cloud fork lineage', error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, client, initialMessagesSettled, messagesByPeer]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState || !setCanonicalSessionState || !initialMessagesSettled) return;
