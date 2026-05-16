@@ -158,11 +158,11 @@ function CloudField({
 }
 
 const SIGNUP_AVATAR_PALETTES = [
-  { background: 'linear-gradient(135deg, #f97316 0%, #ec4899 100%)', foreground: '#fff7ed' },
-  { background: 'linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)', foreground: '#f8fafc' },
-  { background: 'linear-gradient(135deg, #14b8a6 0%, #84cc16 100%)', foreground: '#ecfeff' },
-  { background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)', foreground: '#fff7ed' },
-  { background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', foreground: '#f5f3ff' },
+  { from: '#f97316', to: '#ec4899', foreground: '#fff7ed' },
+  { from: '#06b6d4', to: '#8b5cf6', foreground: '#f8fafc' },
+  { from: '#14b8a6', to: '#84cc16', foreground: '#ecfeff' },
+  { from: '#f59e0b', to: '#ef4444', foreground: '#fff7ed' },
+  { from: '#6366f1', to: '#a855f7', foreground: '#f5f3ff' },
 ];
 
 function hashText(value: string) {
@@ -184,13 +184,43 @@ function cloudSignupAvatarPalette(displayName: string | null | undefined) {
   return SIGNUP_AVATAR_PALETTES[hashText(key) % SIGNUP_AVATAR_PALETTES.length] ?? SIGNUP_AVATAR_PALETTES[0];
 }
 
+function cloudSignupAvatarBackground(palette: (typeof SIGNUP_AVATAR_PALETTES)[number]) {
+  return `linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%)`;
+}
+
+export function cloudSignupDefaultAvatarDataUrl(displayName: string | null | undefined) {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Could not prepare default avatar.');
+
+  const size = 256;
+  const palette = cloudSignupAvatarPalette(displayName);
+  const initials = cloudSignupAvatarInitials(displayName);
+  canvas.width = size;
+  canvas.height = size;
+
+  const gradient = context.createLinearGradient(0, 0, size, size);
+  gradient.addColorStop(0, palette.from);
+  gradient.addColorStop(1, palette.to);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+
+  context.fillStyle = palette.foreground;
+  context.font = '700 82px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(initials, size / 2, size / 2 + 6);
+
+  return canvas.toDataURL('image/png');
+}
+
 function UploadAvatarPlaceholder({ displayName }: { displayName: string }) {
   const palette = cloudSignupAvatarPalette(displayName);
   return (
     <span
       data-cloud-signup-avatar-placeholder="true"
       className="grid h-full w-full place-items-center text-[15px] font-bold tracking-[0.03em]"
-      style={{ background: palette.background, color: palette.foreground }}
+      style={{ background: cloudSignupAvatarBackground(palette), color: palette.foreground }}
       aria-hidden="true"
     >
       {cloudSignupAvatarInitials(displayName)}
@@ -385,16 +415,12 @@ export function CloudLoginPage({
     try {
       if (isSignup) {
         const trimmedName = displayName.trim();
-        if (!avatarPref) {
-          flashUploadError('Upload an avatar.');
-          setSubmitError('Upload an avatar to create your account.');
-          return;
-        }
+        const avatarUrl = avatarPref?.dataUrl ?? cloudSignupDefaultAvatarDataUrl(trimmedName || displayName);
         await onSignUp({
           email,
           password,
           displayName: trimmedName.length > 0 ? trimmedName : undefined,
-          avatarUrl: avatarPref.dataUrl,
+          avatarUrl,
         });
       } else {
         await onSignIn(email, password);

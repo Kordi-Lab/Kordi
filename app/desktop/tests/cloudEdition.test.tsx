@@ -232,12 +232,14 @@ test('signup-mode submit button is the create-account variant', () => {
   assert.match(markup, />Create account<\/button>/);
 });
 
-test('signup submit remains pressable enough to explain missing avatar', () => {
+test('signup submit falls back to the displayed initials avatar image', () => {
   const source = readSource('src/kordi-app/cloud/CloudLoginPage.tsx');
 
   assert.doesNotMatch(source, /if \(isSignup && !avatarPref\) return false;/);
-  assert.match(source, /flashUploadError\('Upload an avatar\.'\)/);
-  assert.match(source, /setSubmitError\('Upload an avatar to create your account\.'\)/);
+  assert.match(source, /cloudSignupDefaultAvatarDataUrl\(trimmedName \|\| displayName\)/);
+  assert.match(source, /return canvas\.toDataURL\('image\/png'\)/);
+  assert.match(source, /avatarUrl,/);
+  assert.doesNotMatch(source, /flashUploadError\('Upload an avatar\.'\)/);
 });
 
 test('login-mode tab pill announces aria-pressed for accessibility', () => {
