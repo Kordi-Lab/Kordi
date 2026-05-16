@@ -33,7 +33,6 @@ export type CloudOAuthStartResponse = {
 
 export type CloudProfileUpdateInput = {
   displayName?: string;
-  avatarSeed?: string;
   avatarUrl?: string;
 };
 
@@ -42,6 +41,8 @@ export type CloudAuthErrorCode =
   | 'weak_password'
   | 'email_in_use'
   | 'invalid_credentials'
+  | 'missing_avatar'
+  | 'invalid_avatar'
   | 'invalid_session'
   | 'rate_limited'
   | 'account_missing'
@@ -274,6 +275,8 @@ function isErrorCode(value: unknown): value is CloudAuthErrorCode {
     value === 'weak_password' ||
     value === 'email_in_use' ||
     value === 'invalid_credentials' ||
+    value === 'missing_avatar' ||
+    value === 'invalid_avatar' ||
     value === 'invalid_session' ||
     value === 'rate_limited' ||
     value === 'account_missing' ||
@@ -338,7 +341,7 @@ export class CloudAuthClient {
     email: string;
     password: string;
     displayName?: string;
-    avatarSeed?: string;
+    avatarUrl?: string;
   }): Promise<CloudAuthResult> {
     return this.send<CloudAuthResult>(
       '/v1/cloud/auth/signup',

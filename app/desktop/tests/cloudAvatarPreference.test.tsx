@@ -5,7 +5,6 @@ import {
   AVATAR_PREFERENCE_STORAGE_KEY,
   AVATAR_UPLOAD_MAX_BYTES,
   clearAvatarPreference,
-  randomAvatarSeed,
   readAvatarPreference,
   writeAvatarPreference,
 } from '../src/features/cloud/avatarPreference';
@@ -33,24 +32,12 @@ function makeStorageStub(): Storage {
   };
 }
 
-test('randomAvatarSeed returns a stable cloud-signup-prefixed seed', () => {
-  const seed = randomAvatarSeed();
-  assert.match(seed, /^cloud-signup:/);
-  assert.notEqual(seed, randomAvatarSeed());
-});
-
-test('randomAvatarSeed falls back when crypto.randomUUID is unavailable', () => {
-  const seed = randomAvatarSeed({});
-  assert.match(seed, /^cloud-signup:[a-z0-9-]+$/i);
-});
-
-test('avatarPreference round-trips a seed through storage', () => {
+test('avatarPreference clears legacy seed entries instead of restoring random avatars', () => {
   const storage = makeStorageStub();
-  const written = writeAvatarPreference({ kind: 'seed', seed: 'cloud-signup:abc' }, storage);
-  assert.equal(written, true);
+  storage.setItem(AVATAR_PREFERENCE_STORAGE_KEY, JSON.stringify({ kind: 'seed', seed: 'cloud-signup:abc' }));
 
-  const restored = readAvatarPreference(storage);
-  assert.deepEqual(restored, { kind: 'seed', seed: 'cloud-signup:abc' });
+  assert.equal(readAvatarPreference(storage), null);
+  assert.equal(storage.getItem(AVATAR_PREFERENCE_STORAGE_KEY), null);
 });
 
 test('avatarPreference round-trips a small upload data URL', () => {
@@ -65,15 +52,16 @@ test('avatarPreference round-trips a small upload data URL', () => {
 
 test('avatarPreference rejects oversized uploads without writing', () => {
   const storage = makeStorageStub();
-  const dataUrl = `data:image/jpeg;base64,${'A'.repeat(AVATAR_UPLOAD_MAX_BYTES + 1)}`;
+  const oversizedPayload = 'A'.repeat(Math.ceil((AVATAR_UPLOAD_MAX_BYTES + 1) * 4 / 3));
+  const dataUrl = `data:image/jpeg;base64,${oversizedPayload}`;
   const written = writeAvatarPreference({ kind: 'upload', dataUrl }, storage);
   assert.equal(written, false);
   assert.equal(storage.getItem(AVATAR_PREFERENCE_STORAGE_KEY), null);
 });
 
-test('avatarPreference rejects empty seed values', () => {
+test('avatarPreference rejects legacy seed writes', () => {
   const storage = makeStorageStub();
-  const written = writeAvatarPreference({ kind: 'seed', seed: '   ' }, storage);
+  const written = writeAvatarPreference({ kind: 'seed', seed: 'cloud-signup:abc' } as never, storage);
   assert.equal(written, false);
   assert.equal(storage.getItem(AVATAR_PREFERENCE_STORAGE_KEY), null);
 });
@@ -99,7 +87,7 @@ test('avatarPreference clears entries that fail validation', () => {
 
 test('clearAvatarPreference removes the stored value', () => {
   const storage = makeStorageStub();
-  writeAvatarPreference({ kind: 'seed', seed: 'cloud-signup:abc' }, storage);
+  writeAvatarPreference({ kind: 'upload', dataUrl: 'data:image/jpeg;base64,abc' }, storage);
   clearAvatarPreference(storage);
   assert.equal(storage.getItem(AVATAR_PREFERENCE_STORAGE_KEY), null);
 });
@@ -107,7 +95,7 @@ test('clearAvatarPreference removes the stored value', () => {
 test('avatarPreference returns null when no storage is available', () => {
   // No global localStorage in node:test — call with undefined explicitly.
   assert.equal(readAvatarPreference(undefined), null);
-  assert.equal(writeAvatarPreference({ kind: 'seed', seed: 'x' }, undefined), false);
+  assert.equal(writeAvatarPreference({ kind: 'upload', dataUrl: 'data:image/jpeg;base64,abc' }, undefined), false);
 });
 
 test('loginModePreference round-trips login and signup', () => {

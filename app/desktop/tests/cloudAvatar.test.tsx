@@ -9,11 +9,11 @@ import {
   resolveCloudLocalProfileAvatar,
 } from '../src/features/cloud/avatar';
 
-test('cloud pixel avatar urls become shared generated avatar seeds', () => {
+test('cloud pixel avatar urls are treated as legacy non-image values', () => {
   const url = `${CLOUD_PIXEL_AVATAR_URL_PREFIX}cloud-signup:avatar-1`;
 
-  assert.equal(cloudAvatarSeedFromUrl(url), 'cloud-signup:avatar-1');
-  assert.equal(cloudAvatarSeedForAccount('acct_peer', url), 'cloud-signup:avatar-1');
+  assert.equal(cloudAvatarSeedFromUrl(url), null);
+  assert.equal(cloudAvatarSeedForAccount('acct_peer', url), 'acct_peer');
   assert.equal(cloudAvatarImageUrl(url), null);
 });
 
@@ -40,7 +40,7 @@ test('cloud local profile avatar ignores canonical generated seeds for provider 
   assert.equal(resolved.shouldPersistSeed, false);
 });
 
-test('cloud local profile avatar persists email signup pixel avatar seeds only', () => {
+test('cloud local profile avatar does not persist legacy pixel avatar seeds', () => {
   const resolved = resolveCloudLocalProfileAvatar({
     accountId: 'acct_email',
     avatarUrl: `${CLOUD_PIXEL_AVATAR_URL_PREFIX}cloud-signup:stable-once`,
@@ -48,7 +48,7 @@ test('cloud local profile avatar persists email signup pixel avatar seeds only',
     canonicalProfileImageUrl: 'https://example.com/local-stale.png',
   });
 
-  assert.equal(resolved.seed, 'cloud-signup:stable-once');
-  assert.equal(resolved.imageUrl, null);
-  assert.equal(resolved.shouldPersistSeed, true);
+  assert.equal(resolved.seed, 'acct_email');
+  assert.equal(resolved.imageUrl, 'https://example.com/local-stale.png');
+  assert.equal(resolved.shouldPersistSeed, false);
 });

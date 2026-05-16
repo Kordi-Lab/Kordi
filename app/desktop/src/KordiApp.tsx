@@ -6,10 +6,7 @@ import { currentKordiEdition, shouldShowCloudLoginGate, type CloudSessionStatus,
 import { applyKordiMainWindowSize } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
-import { setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { ResolvedThemeMode } from '@/kordi-app/types';
-
-const AVATAR_URL_PREFIX = 'kordi-pixel-avatar://';
 
 function readSystemTheme(): ResolvedThemeMode {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
@@ -108,20 +105,6 @@ function CloudEditionRoot({
   });
   const session = cloudSessionOverride ?? liveSession;
   const status: CloudSessionStatus = cloudSessionStatusOverride ?? session.status;
-  const account = session.account ?? null;
-
-  // Mirror the cloud account's avatar choice into the local profile slot so
-  // the desktop shell renders the user's chosen pixel character (bottom-left
-  // of the chat workspace, transcript "you" rows, etc.) instead of a fresh
-  // generic seed. Display name sync lives in a follow-up.
-  useEffect(() => {
-    if (status !== 'authenticated' || !account?.avatarUrl) return;
-    if (!account.avatarUrl.startsWith(AVATAR_URL_PREFIX)) return;
-    const seed = account.avatarUrl.slice(AVATAR_URL_PREFIX.length).trim();
-    if (!seed) return;
-    setLocalProfileAvatarSeed(seed);
-  }, [status, account?.avatarUrl]);
-
   if (shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: status })) {
     return (
       <CloudGateShell>

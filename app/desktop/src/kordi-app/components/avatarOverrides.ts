@@ -3,7 +3,10 @@ import { useSyncExternalStore } from 'react';
 const STORAGE_KEY = 'kordi.avatarOverrides.v1';
 const CHANGE_EVENT = 'kordi-avatar-overrides-change';
 const AVATAR_SIZE = 256;
-const JPEG_QUALITY = 0.9;
+const MIN_AVATAR_SIZE = 64;
+const INITIAL_JPEG_QUALITY = 0.9;
+const MIN_JPEG_QUALITY = 0.58;
+const AVATAR_UPLOAD_TARGET_BYTES = 200 * 1024;
 
 type AvatarOverrideMap = Record<string, string>;
 
@@ -104,26 +107,54 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function dataUrlPayloadBytes(dataUrl: string) {
+  const commaIndex = dataUrl.indexOf(',');
+  const payload = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
+  const trimmed = payload.trimEnd().replace(/=+$/, '');
+  return Math.floor((trimmed.length * 3) / 4);
+}
+
 export async function fileToAvatarDataUrl(file: File) {
-  if (!file.type.startsWith('image/')) {
-    throw new Error('Choose an image file.');
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    throw new Error('Choose a PNG, JPEG, or WebP image.');
   }
 
   const rawDataUrl = await readFileAsDataUrl(file);
   const image = await loadImageFromDataUrl(rawDataUrl);
   const canvas = document.createElement('canvas');
-  canvas.width = AVATAR_SIZE;
-  canvas.height = AVATAR_SIZE;
 
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Could not prepare that image.');
 
-  const sourceSize = Math.min(image.naturalWidth || image.width, image.naturalHeight || image.height);
-  const sourceX = ((image.naturalWidth || image.width) - sourceSize) / 2;
-  const sourceY = ((image.naturalHeight || image.height) - sourceSize) / 2;
+  const imageWidth = image.naturalWidth || image.width;
+  const imageHeight = image.naturalHeight || image.height;
+  const sourceSize = Math.min(imageWidth, imageHeight);
+  const sourceX = (imageWidth - sourceSize) / 2;
+  const sourceY = (imageHeight - sourceSize) / 2;
 
-  context.clearRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);
-  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+  const renderSquare = () => {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, canvas.width, canvas.height);
+  };
 
-  return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+  let size = AVATAR_SIZE;
+  let quality = INITIAL_JPEG_QUALITY;
+  let best = '';
+  while (size >= MIN_AVATAR_SIZE) {
+    canvas.width = size;
+    canvas.height = size;
+    renderSquare();
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    best = dataUrl;
+    if (dataUrlPayloadBytes(dataUrl) <= AVATAR_UPLOAD_TARGET_BYTES) return dataUrl;
+    if (quality > MIN_JPEG_QUALITY) {
+      quality = Math.max(MIN_JPEG_QUALITY, quality - 0.08);
+    } else {
+      size = Math.floor(size * 0.82);
+      quality = INITIAL_JPEG_QUALITY;
+    }
+  }
+
+  if (best && dataUrlPayloadBytes(best) <= AVATAR_UPLOAD_TARGET_BYTES) return best;
+  throw new Error('Could not process that avatar. Try another image.');
 }

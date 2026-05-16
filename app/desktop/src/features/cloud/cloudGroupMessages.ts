@@ -9,7 +9,7 @@ import type {
 } from '@/kordi-app/types';
 
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
-import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
+import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
@@ -117,16 +117,11 @@ function cloudMessageAttachments(value: unknown): CloudMessageAttachment[] {
   return value.map(cloudMessageAttachmentFromRecord).filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
 }
 
-function pixelAvatarUrlFromSeed(seed?: string | null) {
-  const trimmed = cleanText(seed);
-  return trimmed ? `${CLOUD_PIXEL_AVATAR_URL_PREFIX}${trimmed}` : null;
-}
-
 function syncableCloudGroupAvatarUrl(value?: string | null): string | null {
   const url = cleanText(value);
-  if (!url || url.length > 1024) return null;
-  if (url.startsWith(CLOUD_PIXEL_AVATAR_URL_PREFIX)) return url;
+  if (!url || url.length > 4096) return null;
   if (/^https?:\/\//i.test(url)) return url;
+  if (/^data:image\/(?:png|jpeg|webp);base64,/i.test(url)) return url;
   return null;
 }
 
@@ -397,7 +392,7 @@ export function cloudGroupParticipantFromContact(contact: Contact, role: CloudGr
   return {
     accountId,
     displayName: cleanText(contact.name) || cleanText(contact.owner) || accountId,
-    avatarUrl: syncableCloudGroupAvatarUrl(contact.profileImageUrl) ?? pixelAvatarUrlFromSeed(contact.avatarSeed),
+    avatarUrl: syncableCloudGroupAvatarUrl(contact.profileImageUrl),
     role,
   };
 }
@@ -413,7 +408,7 @@ export function cloudGroupParticipantFromConversationParticipant(
   return {
     accountId,
     displayName: cleanText(participant.name) || accountId,
-    avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl) ?? pixelAvatarUrlFromSeed(participant.avatarKey),
+    avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl),
     role: participant.role || 'person',
   };
 }
@@ -450,7 +445,7 @@ export function cloudGroupParticipantsForBridgeSessionParticipants(
       return [{
         accountId,
         displayName: cleanText(participant.displayName) || accountId,
-        avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl) || pixelAvatarUrlFromSeed(participant.avatarKey),
+        avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl),
         role: participant.role || 'person',
       }];
     }),

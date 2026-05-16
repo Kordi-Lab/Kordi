@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { CLOUD_PIXEL_AVATAR_URL_PREFIX } from '../src/features/cloud/avatar';
 import {
   cloudGroupIdentityRequest,
   cloudGroupAgentResponseTargetAccountIds,
@@ -45,7 +44,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
     actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
     participants: [
       { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
-      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: `${CLOUD_PIXEL_AVATAR_URL_PREFIX}bob-seed`, role: 'person' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'data:image/jpeg;base64,bob', role: 'person' },
     ],
     message: {
       id: 'msg_1',
@@ -63,7 +62,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   const parsed = parseCloudGroupControl(body);
   assert.equal(parsed?.kind, 'group-message');
   assert.equal(parsed?.groupId, 'session:group:one');
-  assert.equal(parsed?.participants[1]?.avatarUrl, `${CLOUD_PIXEL_AVATAR_URL_PREFIX}bob-seed`);
+  assert.equal(parsed?.participants[1]?.avatarUrl, 'data:image/jpeg;base64,bob');
   assert.equal(parsed?.message?.text, 'hello group');
   assert.equal(parsed?.message?.senderKind, 'agent');
   assert.equal(parsed?.message?.senderDisplayName, 'Agent');
@@ -144,14 +143,14 @@ test('cloud group participant merge preserves later real avatar urls', () => {
   ]);
 });
 
-test('cloud group participant envelopes drop local-only ids and huge data avatars', () => {
+test('cloud group participant envelopes drop local-only ids, huge data avatars, and legacy pixel avatars', () => {
   assert.deepEqual(cloudGroupUniqueParticipants([
     { accountId: 'acct_a', displayName: 'Alice', avatarUrl: 'data:image/jpeg;base64,'.padEnd(5000, 'x'), role: 'admin' },
     { accountId: 'kh_local_human', displayName: 'Local Human', avatarUrl: null, role: 'self' },
     { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'kordi-pixel-avatar://cloud-signup:seed', role: 'person' },
   ]), [
     { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
-    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: 'kordi-pixel-avatar://cloud-signup:seed', role: 'person' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
   ]);
 });
 
@@ -705,19 +704,19 @@ test('cloud group helpers split cloud recipients from bridge recipients', () => 
   assert.deepEqual(nonCloudGroupTargets(targets), [{ hostId: 'local-bridge', nodeId: 'node_c' }]);
 });
 
-test('cloud group self identity uses the stable cloud account id and avatar seed', () => {
+test('cloud group self identity uses the stable cloud account id and uploaded avatar image', () => {
   const request = cloudGroupIdentityRequest(
     {
       accountId: 'acct_self',
       displayName: 'Self',
-      avatarUrl: `${CLOUD_PIXEL_AVATAR_URL_PREFIX}self-seed`,
+      avatarUrl: 'data:image/jpeg;base64,self',
       role: 'self',
     },
     {
       accountId: 'acct_self',
       displayName: 'Self',
       primaryEmail: 'self@example.com',
-      avatarUrl: `${CLOUD_PIXEL_AVATAR_URL_PREFIX}self-seed`,
+      avatarUrl: 'data:image/jpeg;base64,self',
       nodeId: null,
       passwordSet: true,
     },
@@ -726,10 +725,10 @@ test('cloud group self identity uses the stable cloud account id and avatar seed
 
   assert.equal(request.id, 'human:acct_self');
   assert.equal(request.humanId, 'acct_self');
-  assert.equal(request.avatarKey, 'self-seed');
+  assert.equal(request.avatarKey, 'acct_self');
 });
 
-test('cloud group contact participant preserves generated cloud avatar seed as a syncable avatar url', () => {
+test('cloud group contact participant does not synthesize generated avatar urls', () => {
   const participant = cloudGroupParticipantFromContact({
     id: 'cloud:acct_b',
     name: 'Bob',
@@ -750,5 +749,5 @@ test('cloud group contact participant preserves generated cloud avatar seed as a
     profileImageUrl: null,
   });
 
-  assert.equal(participant?.avatarUrl, `${CLOUD_PIXEL_AVATAR_URL_PREFIX}bob-seed`);
+  assert.equal(participant?.avatarUrl, null);
 });

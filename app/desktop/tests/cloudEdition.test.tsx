@@ -95,12 +95,13 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.doesNotMatch(markup, /Connect one provider before your first chat/);
 });
 
-test('signup mode offers avatar upload and random avatar controls', () => {
+test('signup mode requires avatar upload and removes random avatar controls', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
 
   assert.match(markup, /Create account/);
   assert.match(markup, /Upload avatar/);
-  assert.match(markup, /Random avatar/);
+  assert.match(markup, /PNG, JPEG, or WebP/);
+  assert.doesNotMatch(markup, /Random avatar/);
   assert.match(markup, /Display name/);
   assert.match(markup, /Confirm Password/);
   assert.doesNotMatch(markup, />Name</);
@@ -108,13 +109,11 @@ test('signup mode offers avatar upload and random avatar controls', () => {
   assert.doesNotMatch(markup, /Kordi Cloud/);
 });
 
-test('signup mode renders the IdentityAvatar pixel-character SVG, not a gradient swatch', () => {
+test('signup mode does not render a generated pixel avatar before upload', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
 
-  // IdentityAvatar fingerprint: a 64x64 SVG with crisp-edges pixel rects.
-  assert.match(markup, /shape-rendering="crispEdges"/);
-  assert.match(markup, /viewBox="0 0 64 64"/);
-  // The previous gradient-based avatar must be gone.
+  assert.doesNotMatch(markup, /shape-rendering="crispEdges"/);
+  assert.doesNotMatch(markup, /viewBox="0 0 64 64"/);
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.72 0\.16 211\)/);
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.66 0\.26 355\)/);
 });

@@ -33,7 +33,6 @@ import type {
 } from '@/kordi-app/types';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
-import { randomAvatarSeed } from '@/features/cloud/avatarPreference';
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
@@ -236,7 +235,7 @@ type WorkspaceSidebarProps = {
   activeBridgeHost: BridgeHostSummary | null;
   localProfileAvatarSeed?: string | null;
   cloudAccount?: CloudAccount | null;
-  onUpdateCloudProfile?: (input: { displayName?: string; avatarSeed?: string; avatarUrl?: string }) => Promise<void>;
+  onUpdateCloudProfile?: (input: { displayName?: string; avatarUrl?: string }) => Promise<void>;
   onCloudSignOut?: () => Promise<void> | void;
   isBridgePolling: boolean;
   onRefreshBridge: () => void;
@@ -559,7 +558,6 @@ export function WorkspaceSidebar({
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
   const [isEditingCloudProfile, setIsEditingCloudProfile] = useState(false);
   const [cloudProfileNameDraft, setCloudProfileNameDraft] = useState('');
-  const [cloudProfileAvatarSeedDraft, setCloudProfileAvatarSeedDraft] = useState('');
   const [cloudProfileAvatarUrlDraft, setCloudProfileAvatarUrlDraft] = useState('');
   const [cloudProfileSaving, setCloudProfileSaving] = useState(false);
   const [cloudProfileError, setCloudProfileError] = useState('');
@@ -627,7 +625,6 @@ export function WorkspaceSidebar({
   useEffect(() => {
     if (!cloudAccount) return;
     setCloudProfileNameDraft(cloudAccount.displayName?.trim() || '');
-    setCloudProfileAvatarSeedDraft(cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl));
     setCloudProfileAvatarUrlDraft(cloudAvatarImageUrl(cloudAccount.avatarUrl) || '');
     setCloudProfileError('');
   }, [cloudAccount]);
@@ -639,7 +636,6 @@ export function WorkspaceSidebar({
     try {
       await onUpdateCloudProfile({
         displayName: cloudProfileNameDraft.trim(),
-        avatarSeed: cloudProfileAvatarUrlDraft.trim() ? undefined : cloudProfileAvatarSeedDraft.trim(),
         avatarUrl: cloudProfileAvatarUrlDraft.trim() || undefined,
       });
       setIsEditingCloudProfile(false);
@@ -652,10 +648,13 @@ export function WorkspaceSidebar({
 
   const handleCloudProfileAvatarFile = (file: File | undefined) => {
     if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setCloudProfileError('Choose a PNG, JPEG, or WebP image.');
+      return;
+    }
     void fileToAvatarDataUrl(file)
       .then((dataUrl) => {
         setCloudProfileAvatarUrlDraft(dataUrl);
-        setCloudProfileAvatarSeedDraft('');
       })
       .catch((caught) => setCloudProfileError(caught instanceof Error ? caught.message : 'Could not use that image.'));
   };
@@ -1496,7 +1495,7 @@ export function WorkspaceSidebar({
                   <div className="flex items-center gap-2">
                     <IdentityAvatar
                       kind="human"
-                      seed={cloudProfileAvatarSeedDraft || profileAvatarSeed}
+                      seed={profileAvatarSeed}
                       name={cloudProfileNameDraft || profileDisplayName}
                       imageUrl={cloudProfileAvatarUrlDraft || undefined}
                       className="h-9 w-9 border border-white/10"
@@ -1508,21 +1507,10 @@ export function WorkspaceSidebar({
                     >
                       Upload
                     </button>
-                    <button
-                      type="button"
-                      className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10"
-                      onClick={() => {
-                        setCloudProfileAvatarSeedDraft(randomAvatarSeed());
-                        setCloudProfileAvatarUrlDraft('');
-                      }}
-                    >
-                      Random
-                    </button>
                     <input
                       ref={cloudProfileFileRef}
                       type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      className="sr-only"
+                      accept="image/png,image/jpeg,image/webp"                      className="sr-only"
                       onChange={(event) => {
                         const file = event.currentTarget.files?.[0];
                         event.currentTarget.value = '';

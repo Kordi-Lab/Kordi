@@ -36,7 +36,7 @@ export type UseCloudSessionResult = {
     email: string;
     password: string;
     displayName?: string;
-    avatarSeed?: string;
+    avatarUrl?: string;
   }): Promise<void>;
   signInWithProvider(provider: CloudOAuthProvider): Promise<void>;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
@@ -191,9 +191,9 @@ export function useCloudSession({
   );
 
   const signUp = useCallback<UseCloudSessionResult['signUp']>(
-    async ({ email, password, displayName, avatarSeed }) => {
+    async ({ email, password, displayName, avatarUrl }) => {
       try {
-        const result = await authClient.signup({ email, password, displayName, avatarSeed });
+        const result = await authClient.signup({ email, password, displayName, avatarUrl });
         await saveSession({
           token: result.session.token,
           accountId: result.account.accountId,

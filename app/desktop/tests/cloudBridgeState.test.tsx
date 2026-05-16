@@ -969,16 +969,16 @@ test('cloud group members do not become direct contacts or direct chat peers', (
   assert.equal(state.conversations.some((conversation) => conversation.peerNodeId === 'acct_peer'), true);
 });
 
-test('cloud contact identity requests preserve account ids, display names, and shared avatar seeds', () => {
+test('cloud contact identity requests preserve account ids, display names, and uploaded avatar images', () => {
   const requests = cloudContactsToCanonicalIdentityRequests({
     account: {
       ...account,
-      avatarUrl: 'kordi-pixel-avatar://cloud-signup:me-seed',
+      avatarUrl: 'data:image/jpeg;base64,me',
     },
     contacts: [cloudContactToContact({
       accountId: 'acct_peer',
       displayName: 'Peer Person',
-      avatarUrl: 'kordi-pixel-avatar://cloud-signup:peer-seed',
+      avatarUrl: 'data:image/jpeg;base64,peer',
       nodeId: 'node_peer',
       createdAt: '2026-05-11T00:00:00Z',
     })],
@@ -1003,8 +1003,8 @@ test('cloud contact identity requests preserve account ids, display names, and s
       sourceHostId: null,
       bridgeNodeId: null,
       humanId: 'acct_me',
-      avatarKey: 'cloud-signup:me-seed',
-      profileImageUrl: null,
+      avatarKey: 'acct_me',
+      profileImageUrl: 'data:image/jpeg;base64,me',
     },
     {
       id: 'human:acct_peer',
@@ -1013,8 +1013,8 @@ test('cloud contact identity requests preserve account ids, display names, and s
       sourceHostId: 'cloud',
       bridgeNodeId: 'acct_peer',
       humanId: 'acct_peer',
-      avatarKey: 'cloud-signup:peer-seed',
-      profileImageUrl: null,
+      avatarKey: 'acct_peer',
+      profileImageUrl: 'data:image/jpeg;base64,peer',
     },
   ]);
 });

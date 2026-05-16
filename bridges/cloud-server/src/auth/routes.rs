@@ -40,11 +40,31 @@ use crate::auth::session::{
 use crate::server::ServerState;
 
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
+const AVATAR_UPLOAD_MAX_BYTES: usize = 200 * 1024;
 const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
 
 #[cfg(test)]
 mod oauth_avatar_policy_tests {
-    use super::oauth_account_avatar_url;
+    use super::{clean_required_signup_avatar_url, oauth_account_avatar_url};
+    use axum::http::StatusCode;
+
+    #[test]
+    fn signup_avatar_requires_uploaded_image_not_seed() {
+        let missing = clean_required_signup_avatar_url(None).expect_err("missing avatar should be rejected");
+        assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
+
+        let seeded = clean_required_signup_avatar_url(Some("kordi-pixel-avatar://cloud-signup:abc"))
+            .expect_err("generated avatars should be rejected");
+        assert_eq!(seeded.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn signup_avatar_accepts_small_png_jpeg_or_webp_data_urls() {
+        for prefix in ["data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,"] {
+            let value = format!("{}AAAA", prefix);
+            assert_eq!(clean_required_signup_avatar_url(Some(&value)).unwrap(), value);
+        }
+    }
 
     #[test]
     fn oauth_provider_avatar_replaces_generated_signup_avatar() {
@@ -93,8 +113,8 @@ pub struct SignupRequest {
     pub password: String,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
-    #[serde(rename = "avatarSeed")]
-    pub avatar_seed: Option<String>,
+    #[serde(rename = "avatarUrl")]
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,8 +146,6 @@ pub struct OAuthStartResponse {
 pub struct UpdateProfileRequest {
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
-    #[serde(rename = "avatarSeed")]
-    pub avatar_seed: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
 }
@@ -875,7 +893,7 @@ async fn complete_oauth_login(
         .unwrap_or_else(|| format!("acct_{}", uuid::Uuid::new_v4().simple()));
     let display_name = clean_profile_display_name(profile.display_name.as_deref())
         .or_else(|| profile.username.clone());
-    let provider_avatar_url = clean_profile_avatar_url(None, profile.avatar_url.as_deref());
+    let provider_avatar_url = clean_profile_avatar_url(profile.avatar_url.as_deref());
     let existing_account_avatar_url: Option<(Option<String>,)> =
         query_as("SELECT avatar_url FROM cloud_accounts WHERE account_id = $1")
             .bind(&account_id)
@@ -973,8 +991,10 @@ async fn update_me(
     Json(req): Json<UpdateProfileRequest>,
 ) -> Response {
     let display_name = clean_profile_display_name(req.display_name.as_deref());
-    let avatar_url =
-        clean_profile_avatar_url(req.avatar_seed.as_deref(), req.avatar_url.as_deref());
+    let avatar_url = match clean_optional_uploaded_avatar_url(req.avatar_url.as_deref()) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
     let now = Utc::now().to_rfc3339();
     if query(
         "UPDATE cloud_accounts \
@@ -1012,6 +1032,54 @@ async fn update_me(
     }
 }
 
+fn decoded_base64_len(encoded: &str) -> usize {
+    let trimmed = encoded.trim_end_matches('=');
+    (trimmed.len() * 3) / 4
+}
+
+fn clean_optional_uploaded_avatar_url(value: Option<&str>) -> Result<Option<String>, Response> {
+    let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if raw.starts_with(AVATAR_SEED_PREFIX) {
+        return Err(err(
+            "invalid_avatar",
+            "Avatar must be an uploaded image.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    if let Some(payload) = raw.strip_prefix("data:image/png;base64,")
+        .or_else(|| raw.strip_prefix("data:image/jpeg;base64,"))
+        .or_else(|| raw.strip_prefix("data:image/webp;base64,"))
+    {
+        if decoded_base64_len(payload) <= AVATAR_UPLOAD_MAX_BYTES {
+            return Ok(Some(raw.to_string()));
+        }
+        return Err(err(
+            "invalid_avatar",
+            "Avatar payload is too large after processing.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    Err(err(
+        "invalid_avatar",
+        "Avatar must be a PNG, JPEG, or WebP image.",
+        StatusCode::BAD_REQUEST,
+    ))
+}
+
+fn clean_required_signup_avatar_url(value: Option<&str>) -> Result<String, Response> {
+    match clean_optional_uploaded_avatar_url(value) {
+        Ok(Some(value)) => Ok(value),
+        Ok(None) => Err(err(
+            "missing_avatar",
+            "Upload an avatar to sign up.",
+            StatusCode::BAD_REQUEST,
+        )),
+        Err(response) => Err(response),
+    }
+}
+
 async fn signup(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
@@ -1039,12 +1107,10 @@ async fn signup(
         .filter(|value| !value.is_empty())
         .map(|value| value.chars().take(80).collect::<String>());
 
-    let avatar_url = req
-        .avatar_seed
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|seed| format!("{}{}", AVATAR_SEED_PREFIX, seed));
+    let avatar_url = match clean_required_signup_avatar_url(req.avatar_url.as_deref()) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
 
     let pool = state.db_pool();
 
@@ -1116,7 +1182,7 @@ async fn signup(
     .bind(&account_id)
     .bind(display_name.as_deref())
     .bind(&normalized_email)
-    .bind(avatar_url.as_deref())
+    .bind(&avatar_url)
     .bind(&now)
     .bind(&password_hash)
     .bind(PASSWORD_ALGORITHM_ID)
@@ -1210,7 +1276,7 @@ async fn signup(
         account_id,
         display_name,
         primary_email: Some(normalized_email),
-        avatar_url,
+        avatar_url: Some(avatar_url),
         node_id: None,
         password_set: true,
     };
@@ -2372,12 +2438,14 @@ fn is_cloud_account_id(value: &str) -> bool {
 
 fn syncable_cloud_avatar_url(value: &str) -> Option<String> {
     let value = value.trim();
-    if value.is_empty() || value.len() > 1024 {
+    if value.is_empty() || value.len() > 4096 {
         return None;
     }
-    if value.starts_with("kordi-pixel-avatar://")
-        || value.starts_with("https://")
+    if value.starts_with("https://")
         || value.starts_with("http://")
+        || value.starts_with("data:image/png;base64,")
+        || value.starts_with("data:image/jpeg;base64,")
+        || value.starts_with("data:image/webp;base64,")
     {
         return Some(value.to_string());
     }

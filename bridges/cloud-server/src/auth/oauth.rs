@@ -173,21 +173,12 @@ pub(super) fn clean_profile_display_name(value: Option<&str>) -> Option<String> 
         .map(|value| value.chars().take(80).collect::<String>())
 }
 
-pub(super) fn clean_profile_avatar_url(
-    avatar_seed: Option<&str>,
-    avatar_url: Option<&str>,
-) -> Option<String> {
-    if let Some(seed) = avatar_seed.map(str::trim).filter(|value| !value.is_empty()) {
-        return Some(format!(
-            "{}{}",
-            AVATAR_SEED_PREFIX,
-            seed.chars().take(160).collect::<String>()
-        ));
+pub(super) fn clean_profile_avatar_url(avatar_url: Option<&str>) -> Option<String> {
+    let normalized = avatar_url?.trim();
+    if normalized.is_empty() || normalized.starts_with(AVATAR_SEED_PREFIX) {
+        return None;
     }
-    avatar_url
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.chars().take(4096).collect::<String>())
+    Some(normalized.chars().take(4096).collect::<String>())
 }
 
 #[derive(Debug, Clone)]

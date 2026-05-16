@@ -7,7 +7,6 @@ import {
   isCloudContact,
   isPendingIncomingCloudContactRequest,
 } from '../src/features/cloud/useCloudContacts';
-import { CLOUD_PIXEL_AVATAR_URL_PREFIX } from '../src/features/cloud/avatar';
 import type { Contact } from '../src/kordi-app/types';
 
 function localBridgeContact(overrides: Partial<Contact> = {}): Contact {
@@ -56,7 +55,7 @@ test('cloud contacts carry bridge-compatible routing metadata', () => {
   const cloud = cloudContactToContact({
     accountId: 'acct_peer',
     displayName: 'Cloud Peer',
-    avatarUrl: `${CLOUD_PIXEL_AVATAR_URL_PREFIX}shared-avatar-seed`,
+    avatarUrl: 'data:image/jpeg;base64,shared',
     nodeId: null,
     createdAt: '2026-05-11T00:00:00Z',
   });
@@ -65,7 +64,7 @@ test('cloud contacts carry bridge-compatible routing metadata', () => {
   assert.equal(cloud.bridgePeerNodeId, 'acct_peer');
   assert.equal(cloud.bridgePeerRuntime, 'person');
   assert.equal(cloud.bridgeContactStatus, 'accepted');
-  assert.equal(cloud.avatarSeed, 'shared-avatar-seed');
-  assert.equal(cloud.profileImageUrl, null);
+  assert.equal(cloud.avatarSeed, 'acct_peer');
+  assert.equal(cloud.profileImageUrl, 'data:image/jpeg;base64,shared');
   assert.equal(isCloudContact(localBridgeContact()), false);
 });
