@@ -58,7 +58,7 @@ fn signup_body(email: &str, password: &str) -> Body {
             "email": email,
             "password": password,
             "displayName": "E2E",
-            "avatarSeed": "cloud-signup:e2e",
+            "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
         })
         .to_string(),
     )

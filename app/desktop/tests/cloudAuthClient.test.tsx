@@ -30,13 +30,14 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 test('signup posts JSON to the signup route and parses the response', async () => {
+  const avatarUrl = 'data:image/jpeg;base64,abc';
   const { calls, fetchImpl } = recordingFetch(() =>
     jsonResponse(201, {
       account: {
         accountId: 'acct_1',
         displayName: 'Ada',
         primaryEmail: 'ada@example.com',
-        avatarUrl: null,
+        avatarUrl,
         passwordSet: true,
       },
       session: { token: 'kordi_cs_abc', expiresAt: '2099-01-01T00:00:00Z' },
@@ -48,7 +49,7 @@ test('signup posts JSON to the signup route and parses the response', async () =
     email: 'ada@example.com',
     password: 'correct horse',
     displayName: 'Ada',
-    avatarSeed: 'cloud-signup:1',
+    avatarUrl,
   });
 
   assert.equal(calls.length, 1);
@@ -59,10 +60,28 @@ test('signup posts JSON to the signup route and parses the response', async () =
     email: 'ada@example.com',
     password: 'correct horse',
     displayName: 'Ada',
-    avatarSeed: 'cloud-signup:1',
+    avatarUrl,
   });
   assert.equal(result.session.token, 'kordi_cs_abc');
   assert.equal(result.account.passwordSet, true);
+  assert.equal(result.account.avatarUrl, avatarUrl);
+});
+
+test('signup throws missing_avatar when the server requires an upload', async () => {
+  const { fetchImpl } = recordingFetch(() =>
+    jsonResponse(400, { errorCode: 'missing_avatar', message: 'Upload an avatar to sign up.' }),
+  );
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await assert.rejects(
+    () => client.signup({ email: 'a@b.com', password: 'correct horse' }),
+    (caught: unknown) => {
+      assert.ok(caught instanceof CloudAuthError);
+      assert.equal((caught as CloudAuthError).code, 'missing_avatar');
+      assert.equal((caught as CloudAuthError).status, 400);
+      return true;
+    },
+  );
 });
 
 test('signup throws CloudAuthError with the server-supplied error code on 409', async () => {
@@ -310,11 +329,12 @@ test('startOAuth requests a provider auth URL with redirectAfter', async () => {
 });
 
 test('updateProfile patches cloud account profile fields', async () => {
+  const avatarUrl = 'data:image/jpeg;base64,profile';
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
     accountId: 'acct_1',
     displayName: 'Grace',
     primaryEmail: 'grace@example.com',
-    avatarUrl: 'kordi-pixel-avatar://cloud-profile:1',
+    avatarUrl,
     nodeId: null,
     passwordSet: false,
   }));
@@ -322,18 +342,18 @@ test('updateProfile patches cloud account profile fields', async () => {
 
   const account = await client.updateProfile('kordi_cs_xyz', {
     displayName: 'Grace',
-    avatarSeed: 'cloud-profile:1',
+    avatarUrl,
   });
 
   assert.equal(account.displayName, 'Grace');
-  assert.equal(account.avatarUrl, 'kordi-pixel-avatar://cloud-profile:1');
+  assert.equal(account.avatarUrl, avatarUrl);
   assert.equal(calls[0].url, 'http://srv/v1/cloud/auth/me');
   assert.equal(calls[0].init?.method, 'PATCH');
   const headers = calls[0].init?.headers as Record<string, string>;
   assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
   assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
     displayName: 'Grace',
-    avatarSeed: 'cloud-profile:1',
+    avatarUrl,
   });
 });
 

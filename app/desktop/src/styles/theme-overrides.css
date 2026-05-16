@@ -985,6 +985,18 @@
   color: var(--utility-meta-text);
 }
 
+/* Tauri's WebKit password caps-lock glyph inherits the tall rounded field and
+ * balloons into a vertical key. Keep the field visually stable by hiding the
+ * native glyph rather than letting it distort the login form. */
+.app-cloud-login-input::-webkit-caps-lock-indicator {
+  display: none;
+  width: 0;
+  height: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Big signup avatar — themed inset highlight + soft outer drop. */
 .app-cloud-login-avatar {
   border-color: var(--app-cloud-login-inner-border);
@@ -1000,23 +1012,6 @@
     0 6px 14px oklch(0.28 0.04 82 / 0.10);
 }
 
-/* Random-avatar dice overlay button (signup avatar corner). */
-.app-cloud-login-dice-button {
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
-}
-
-.app-cloud-login-dice-button:hover {
-  color: var(--utility-foreground);
-}
-
-.bridge-app.theme-light .app-cloud-login-dice-button {
-  box-shadow: 0 3px 8px oklch(0.32 0.04 82 / 0.14);
-}
-
-.bridge-app.theme-light .app-cloud-login-dice-button:hover {
-  color: oklch(0.20 0.025 125);
-}
-
 /* Icon-only social provider pills (Google / GitHub). */
 .app-cloud-login-social-pill:hover {
   color: var(--utility-foreground);
@@ -1028,11 +1023,55 @@
 
 /* Active segment indicator pill behind the Log in / Sign up tabs. */
 .app-cloud-login-tab-pill {
+  transition-duration: 260ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
 }
 
 .bridge-app.theme-light .app-cloud-login-tab-pill {
   box-shadow: 0 4px 12px oklch(0.42 0.04 82 / 0.10);
+}
+
+.app-cloud-login-panel {
+  min-height: 548px;
+}
+
+.app-cloud-login-mode-copy {
+  transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-cloud-login-signup-section {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  overflow: hidden;
+  transform: translate3d(0, -4px, 0);
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-cloud-login-signup-section[data-cloud-login-signup-section="open"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.app-cloud-login-signup-section > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-cloud-login-mode-copy,
+  .app-cloud-login-signup-section {
+    transition-duration: 1ms;
+  }
+
+  .app-cloud-login-tab-pill {
+    transition-duration: 1ms;
+  }
 }
 
 /* Error banner (per-form submission). */

@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
-import { CloudLoginPage } from '../src/kordi-app/cloud/CloudLoginPage';
+import { CloudLoginPage, cloudSignupAvatarInitials } from '../src/kordi-app/cloud/CloudLoginPage';
 import {
   kordiEditionFromEnv,
   kordiEditionFromRuntimeHints,
@@ -14,6 +14,30 @@ import {
   shouldShowCloudLoginGate,
 } from '../src/features/cloud/edition';
 const repoRoot = resolve(import.meta.dirname, '..');
+
+function makeStorageStub(initial: Record<string, string> = {}): Storage {
+  const map = new Map(Object.entries(initial));
+  return {
+    get length() { return map.size; },
+    clear: () => map.clear(),
+    getItem: (key: string) => map.get(key) ?? null,
+    key: (index: number) => Array.from(map.keys())[index] ?? null,
+    removeItem: (key: string) => { map.delete(key); },
+    setItem: (key: string, value: string) => { map.set(key, String(value)); },
+  };
+}
+
+function withLocalStorage<T>(storage: Storage, run: () => T): T {
+  const target = globalThis as typeof globalThis & { localStorage?: Storage };
+  const previous = target.localStorage;
+  target.localStorage = storage;
+  try {
+    return run();
+  } finally {
+    if (previous) target.localStorage = previous;
+    else delete target.localStorage;
+  }
+}
 
 function readSource(path: string): string {
   return readFileSync(resolve(repoRoot, path), 'utf8');
@@ -66,6 +90,28 @@ test('cloud login gate blocks signed-out Cloud Edition in native and web preview
   assert.equal(shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: 'signed-out' }), true);
 });
 
+test('cloud login CSS hides the oversized native WebKit caps-lock indicator', () => {
+  const css = readSource('src/styles/theme-overrides.css');
+
+  assert.match(css, /\.app-cloud-login-input::-webkit-caps-lock-indicator/);
+  assert.match(css, /display:\s*none/);
+  assert.match(css, /width:\s*0/);
+});
+
+test('cloud login mode switch keeps the top edge stable and smooths signup sections', () => {
+  const css = readSource('src/styles/theme-overrides.css');
+  const source = readSource('src/kordi-app/cloud/CloudLoginPage.tsx');
+
+  assert.match(css, /\.app-cloud-login-panel \{\n  min-height: 548px;/);
+  assert.match(css, /\.app-cloud-login-signup-section \{[\s\S]*?grid-template-rows: 0fr/);
+  assert.match(css, /data-cloud-login-signup-section="open"\][\s\S]*?grid-template-rows: 1fr/);
+  assert.match(css, /transform: translate3d\(0, -4px, 0\)/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
+  assert.doesNotMatch(css, /@keyframes app-cloud-login-signup-field-enter/);
+  assert.doesNotMatch(source, /key=\{`form-/);
+  assert.doesNotMatch(source, /key=\{`copy-/);
+});
+
 test('cloud login page centers a minimal Codex-style Kordi account view before model provider auth', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage));
 
@@ -78,6 +124,8 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.doesNotMatch(markup, /app-overlay/);
   assert.match(markup, /place-items-center/);
   assert.match(markup, /Welcome to Kordi/);
+  assert.match(markup, /data-cloud-login-mode-copy="login"/);
+  assert.match(markup, /data-cloud-login-mode-form="login"/);
   assert.match(markup, /Sign up/);
   assert.match(markup, /Email/);
   assert.match(markup, /Password/);
@@ -95,12 +143,25 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.doesNotMatch(markup, /Connect one provider before your first chat/);
 });
 
-test('signup mode offers avatar upload and random avatar controls', () => {
+test('signup mode requires avatar upload and removes random avatar controls', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
 
   assert.match(markup, /Create account/);
+  assert.match(markup, /data-cloud-login-mode-copy="signup"/);
+  assert.match(markup, /data-cloud-login-mode-form="signup"/);
   assert.match(markup, /Upload avatar/);
-  assert.match(markup, /Random avatar/);
+  assert.match(markup, /data-cloud-signup-avatar-placeholder="true"/);
+  assert.match(markup, />KO<\/span>/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-dock="true"/);
+  assert.match(markup, /bottom-0 left-1\/2/);
+  assert.match(markup, /overflow-hidden rounded-full/);
+  assert.doesNotMatch(markup, /top-\[46px\]/);
+  assert.doesNotMatch(markup, /bottom-\[3px\] right-\[3px\]/);
+  assert.doesNotMatch(markup, />Upload<\/span>/);
+  assert.doesNotMatch(markup, />\+<\/span>/);
+  assert.doesNotMatch(markup, />Change<\/span>/);
+  assert.doesNotMatch(markup, /Random avatar/);
   assert.match(markup, /Display name/);
   assert.match(markup, /Confirm Password/);
   assert.doesNotMatch(markup, />Name</);
@@ -108,13 +169,34 @@ test('signup mode offers avatar upload and random avatar controls', () => {
   assert.doesNotMatch(markup, /Kordi Cloud/);
 });
 
-test('signup mode renders the IdentityAvatar pixel-character SVG, not a gradient swatch', () => {
+test('signup uploaded avatar preview keeps the upload affordance in a bottom dock', () => {
+  const storage = makeStorageStub({
+    'kordi.cloud.signupAvatar': JSON.stringify({ kind: 'upload', dataUrl: 'data:image/jpeg;base64,abc' }),
+  });
+  const markup = withLocalStorage(storage, () => renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' })));
+
+  assert.match(markup, /src="data:image\/jpeg;base64,abc"/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-dock="true"/);
+  assert.match(markup, /bottom-0 left-1\/2/);
+  assert.match(markup, /overflow-hidden rounded-full/);
+  assert.doesNotMatch(markup, /top-\[46px\]/);
+  assert.doesNotMatch(markup, /bottom-\[3px\] right-\[3px\]/);
+  assert.doesNotMatch(markup, />Upload<\/span>/);
+  assert.doesNotMatch(markup, />Change<\/span>/);
+});
+
+test('cloud signup avatar placeholder derives initials from the display name', () => {
+  assert.equal(cloudSignupAvatarInitials('Ada Lovelace'), 'AD');
+  assert.equal(cloudSignupAvatarInitials('杨谢'), '杨谢');
+  assert.equal(cloudSignupAvatarInitials(''), 'KO');
+});
+
+test('signup mode does not render a generated pixel avatar before upload', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
 
-  // IdentityAvatar fingerprint: a 64x64 SVG with crisp-edges pixel rects.
-  assert.match(markup, /shape-rendering="crispEdges"/);
-  assert.match(markup, /viewBox="0 0 64 64"/);
-  // The previous gradient-based avatar must be gone.
+  assert.doesNotMatch(markup, /shape-rendering="crispEdges"/);
+  assert.doesNotMatch(markup, /viewBox="0 0 64 64"/);
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.72 0\.16 211\)/);
   assert.doesNotMatch(markup, /linear-gradient\(135deg, oklch\(0\.66 0\.26 355\)/);
 });
@@ -148,6 +230,16 @@ test('signup-mode submit button is the create-account variant', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
   assert.match(markup, /aria-label="Create account"/);
   assert.match(markup, />Create account<\/button>/);
+});
+
+test('signup submit falls back to the displayed initials avatar image', () => {
+  const source = readSource('src/kordi-app/cloud/CloudLoginPage.tsx');
+
+  assert.doesNotMatch(source, /if \(isSignup && !avatarPref\) return false;/);
+  assert.match(source, /cloudSignupDefaultAvatarDataUrl\(trimmedName \|\| displayName\)/);
+  assert.match(source, /return canvas\.toDataURL\('image\/png'\)/);
+  assert.match(source, /avatarUrl,/);
+  assert.doesNotMatch(source, /flashUploadError\('Upload an avatar\.'\)/);
 });
 
 test('login-mode tab pill announces aria-pressed for accessibility', () => {

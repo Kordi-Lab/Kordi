@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { ArrowUp } from 'lucide-react';
 
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import {
-  CLOUD_SIGNUP_AVATAR_KEY,
-  randomAvatarSeed,
   readAvatarPreference,
   writeAvatarPreference,
   type AvatarPreference,
@@ -14,7 +13,6 @@ import {
   writeLoginModePreference,
 } from '@/features/cloud/loginModePreference';
 import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
 
@@ -85,18 +83,17 @@ function messageForError(error: CloudAuthError): string {
       return 'Could not reach the cloud server. Check your connection and try again.';
     case 'server_error':
       return 'The server hit an unexpected error. Please try again.';
+    case 'missing_avatar':
+      return 'Upload an avatar to create your account.';
+    case 'invalid_avatar':
+      return 'Could not process that avatar. Try another image.';
     default:
       return error.message || 'Something went wrong.';
   }
 }
 
-function initialAvatarPreference(initialMode: CloudLoginMode): AvatarPreference {
-  const existing = readAvatarPreference();
-  if (existing) return existing;
-
-  const fresh: AvatarPreference = { kind: 'seed', seed: randomAvatarSeed() };
-  if (initialMode === 'signup') writeAvatarPreference(fresh);
-  return fresh;
+function initialAvatarPreference(): AvatarPreference | null {
+  return readAvatarPreference();
 }
 
 type CloudFieldValidation = 'invalid' | 'hint' | undefined;
@@ -111,6 +108,7 @@ function CloudField({
   onChange,
   validation,
   hint,
+  disabled,
 }: {
   label?: string;
   ariaLabel?: string;
@@ -121,6 +119,7 @@ function CloudField({
   onChange: (next: string) => void;
   validation?: CloudFieldValidation;
   hint?: string;
+  disabled?: boolean;
 }) {
   const baseInput = `${INPUT_BASE_CLASS} ${PAPER_INPUT} ${TYPE_INPUT} ${INK}`;
   const tone =
@@ -140,6 +139,7 @@ function CloudField({
         onChange={(event) => onChange(event.currentTarget.value)}
         aria-label={ariaLabel ?? label}
         aria-invalid={validation === 'invalid' || undefined}
+        disabled={disabled}
         className={`${baseInput} ${tone}`}
       />
       {hint ? (
@@ -157,86 +157,129 @@ function CloudField({
   );
 }
 
-function DiceAvatarIcon() {
+const SIGNUP_AVATAR_PALETTES = [
+  { from: '#f97316', to: '#ec4899', foreground: '#fff7ed' },
+  { from: '#06b6d4', to: '#8b5cf6', foreground: '#f8fafc' },
+  { from: '#14b8a6', to: '#84cc16', foreground: '#ecfeff' },
+  { from: '#f59e0b', to: '#ef4444', foreground: '#fff7ed' },
+  { from: '#6366f1', to: '#a855f7', foreground: '#f5f3ff' },
+];
+
+function hashText(value: string) {
+  let hash = 2166136261;
+  for (const char of value) {
+    hash ^= char.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+export function cloudSignupAvatarInitials(displayName: string | null | undefined) {
+  const compact = Array.from(displayName?.trim().replace(/\s+/g, '') || '').filter((char) => /[\p{L}\p{N}]/u.test(char));
+  return compact.slice(0, 2).join('').toLocaleUpperCase() || 'KO';
+}
+
+function cloudSignupAvatarPalette(displayName: string | null | undefined) {
+  const key = displayName?.trim() || 'kordi-cloud-signup';
+  return SIGNUP_AVATAR_PALETTES[hashText(key) % SIGNUP_AVATAR_PALETTES.length] ?? SIGNUP_AVATAR_PALETTES[0];
+}
+
+function cloudSignupAvatarBackground(palette: (typeof SIGNUP_AVATAR_PALETTES)[number]) {
+  return `linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%)`;
+}
+
+export function cloudSignupDefaultAvatarDataUrl(displayName: string | null | undefined) {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Could not prepare default avatar.');
+
+  const size = 256;
+  const palette = cloudSignupAvatarPalette(displayName);
+  const initials = cloudSignupAvatarInitials(displayName);
+  canvas.width = size;
+  canvas.height = size;
+
+  const gradient = context.createLinearGradient(0, 0, size, size);
+  gradient.addColorStop(0, palette.from);
+  gradient.addColorStop(1, palette.to);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+
+  context.fillStyle = palette.foreground;
+  context.font = '700 82px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(initials, size / 2, size / 2 + 6);
+
+  return canvas.toDataURL('image/png');
+}
+
+function UploadAvatarPlaceholder({ displayName }: { displayName: string }) {
+  const palette = cloudSignupAvatarPalette(displayName);
   return (
-    <svg
-      viewBox="0 0 24 24"
+    <span
+      data-cloud-signup-avatar-placeholder="true"
+      className="grid h-full w-full place-items-center text-[15px] font-bold tracking-[0.03em]"
+      style={{ background: cloudSignupAvatarBackground(palette), color: palette.foreground }}
       aria-hidden="true"
-      focusable="false"
-      className="h-3.5 w-3.5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
     >
-      <rect x="4" y="4" width="16" height="16" rx="3.5" />
-      <path d="M8.5 8.5h.01" />
-      <path d="M15.5 8.5h.01" />
-      <path d="M12 12h.01" />
-      <path d="M8.5 15.5h.01" />
-      <path d="M15.5 15.5h.01" />
-    </svg>
+      {cloudSignupAvatarInitials(displayName)}
+    </span>
   );
 }
 
 function AvatarPicker({
   preference,
-  onRandomAvatar,
+  displayName,
   onAvatarFile,
   uploadError,
+  disabled,
 }: {
-  preference: AvatarPreference;
-  onRandomAvatar: () => void;
+  preference: AvatarPreference | null;
+  displayName: string;
   onAvatarFile: (file: File | undefined) => void;
   uploadError?: string;
+  disabled?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const seed = preference.kind === 'seed' ? preference.seed : 'cloud-signup:upload';
-  const imageUrl = preference.kind === 'upload' ? preference.dataUrl : undefined;
+  const imageUrl = preference?.dataUrl;
 
   return (
     <div className="grid h-12 w-20 place-items-center">
       <div className="relative h-12 w-12">
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => { if (!disabled) fileInputRef.current?.click(); }}
           title="Upload avatar"
           aria-label="Upload avatar"
-          className={`block h-12 w-12 rounded-full transition hover:scale-[1.03] focus-visible:outline-none ${SMALL_FOCUS_RING}`}
-        >
-          <IdentityAvatar
-            kind="human"
-            seed={seed}
-            name="Cloud signup avatar"
-            imageUrl={imageUrl}
-            avatarKey={CLOUD_SIGNUP_AVATAR_KEY}
-            className="app-cloud-login-avatar h-12 w-12 rounded-full border"
-          />
-        </button>
-        <button
-          type="button"
-          onClick={onRandomAvatar}
-          title="Random avatar"
-          aria-label="Random avatar"
+          disabled={disabled}
           className={[
-            'app-cloud-login-dice-button absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border',
-            'transition hover:scale-105 focus-visible:outline-none',
+            'app-cloud-login-avatar group relative block h-12 w-12 overflow-hidden rounded-full border transition duration-150 hover:scale-[1.01] focus-visible:outline-none',
             BORDER_INNER,
-            PAPER_RAISED,
-            INK_MUTED,
+            PAPER_SUNK,
             SMALL_FOCUS_RING,
           ].join(' ')}
         >
-          <DiceAvatarIcon />
+          {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <UploadAvatarPlaceholder displayName={displayName} />}
+          {!uploadError ? (
+            <span
+              data-cloud-signup-avatar-upload-icon="true"
+              data-cloud-signup-avatar-upload-dock="true"
+              className="absolute bottom-0 left-1/2 grid h-[15px] w-[32px] -translate-x-1/2 place-items-center rounded-t-[999px] border-t border-white/18 bg-white/[0.16] text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-[2px] transition duration-150 group-hover:h-4 group-hover:bg-white/[0.22] group-hover:text-white"
+              aria-hidden="true"
+            >
+              <ArrowUp className="h-[9px] w-[9px] -translate-y-px" strokeWidth={2.35} />
+            </span>
+          ) : null}
         </button>
       </div>
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
+        accept="image/png,image/jpeg,image/webp"
         className="sr-only"
         aria-label="Upload avatar"
+        disabled={disabled}
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = '';
@@ -244,7 +287,9 @@ function AvatarPicker({
         }}
       />
       {uploadError ? (
-        <span className={`${TYPE_HINT} max-w-20 text-center normal-case tracking-normal text-[var(--app-cloud-login-danger-text)]`}>{uploadError}</span>
+        <span className={`${TYPE_HINT} max-w-28 text-center normal-case tracking-normal text-[var(--app-cloud-login-danger-text)]`}>
+          {uploadError}
+        </span>
       ) : null}
     </div>
   );
@@ -257,7 +302,7 @@ export type CloudLoginPageProps = {
     email: string;
     password: string;
     displayName?: string;
-    avatarSeed?: string;
+    avatarUrl?: string;
   }) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
 };
@@ -274,7 +319,7 @@ export function CloudLoginPage({
   onSocialSignIn,
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
-  const [avatarPref, setAvatarPref] = useState<AvatarPreference>(() => initialAvatarPreference(mode));
+  const [avatarPref, setAvatarPref] = useState<AvatarPreference | null>(() => initialAvatarPreference());
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -311,18 +356,18 @@ export function CloudLoginPage({
 
   function handleAvatarFile(file: File | undefined) {
     if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      flashUploadError('Choose a PNG, JPEG, or WebP image.');
+      return;
+    }
     void fileToAvatarDataUrl(file)
       .then((dataUrl) => {
         const ok = persistAvatar({ kind: 'upload', dataUrl });
-        if (!ok) flashUploadError('That image is too large. Try one under 200 KB.');
+        if (!ok) flashUploadError('Could not process that avatar. Try another image.');
       })
       .catch((caught: unknown) => {
         flashUploadError(caught instanceof Error ? caught.message : 'Could not use that image.');
       });
-  }
-
-  function randomizeAvatar() {
-    persistAvatar({ kind: 'seed', seed: randomAvatarSeed() });
   }
 
   const emailInvalid = email.length > 0 && !EMAIL_PATTERN.test(email);
@@ -370,12 +415,12 @@ export function CloudLoginPage({
     try {
       if (isSignup) {
         const trimmedName = displayName.trim();
-        const seed = avatarPref.kind === 'seed' ? avatarPref.seed : undefined;
+        const avatarUrl = avatarPref?.dataUrl ?? cloudSignupDefaultAvatarDataUrl(trimmedName || displayName);
         await onSignUp({
           email,
           password,
           displayName: trimmedName.length > 0 ? trimmedName : undefined,
-          avatarSeed: seed,
+          avatarUrl,
         });
       } else {
         await onSignIn(email, password);
@@ -396,6 +441,7 @@ export function CloudLoginPage({
   const tabBaseClass = `relative z-10 rounded-full px-3 py-1.5 ${TYPE_TAB} transition`;
   const tabActiveText = INK;
   const tabInactiveText = `${INK_MUTED} hover:${INK}`;
+  const modeKey = isSignup ? 'signup' : 'login';
 
   return (
     <div
@@ -410,8 +456,11 @@ export function CloudLoginPage({
         Kordi
       </div>
 
-      <main className="relative w-full max-w-[440px] px-6">
-        <div className="grid justify-items-center text-center">
+      <main className="app-cloud-login-panel relative w-full max-w-[440px] px-6">
+        <div
+          data-cloud-login-mode-copy={modeKey}
+          className="app-cloud-login-mode-copy grid justify-items-center text-center"
+        >
           <h1 className={`${TYPE_DISPLAY} ${INK}`}>
             {isSignup ? 'Create your account' : 'Welcome to Kordi'}
           </h1>
@@ -478,14 +527,23 @@ export function CloudLoginPage({
           </button>
         </div>
 
-        <form className="mt-5 grid gap-3.5" onSubmit={handleSubmit}>
-          {isSignup ? (
-            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+        <form
+          data-cloud-login-mode-form={modeKey}
+          className="app-cloud-login-form mt-5 grid gap-3.5"
+          onSubmit={handleSubmit}
+        >
+          <div
+            className="app-cloud-login-signup-section"
+            data-cloud-login-signup-section={isSignup ? 'open' : 'closed'}
+            aria-hidden={!isSignup}
+          >
+            <div className="app-cloud-login-signup-field grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
               <AvatarPicker
                 preference={avatarPref}
-                onRandomAvatar={randomizeAvatar}
+                displayName={displayName}
                 onAvatarFile={handleAvatarFile}
                 uploadError={uploadError}
+                disabled={!isSignup}
               />
               <CloudField
                 ariaLabel="Display name"
@@ -494,9 +552,10 @@ export function CloudLoginPage({
                 placeholder="Display name"
                 value={displayName}
                 onChange={setDisplayName}
+                disabled={!isSignup}
               />
             </div>
-          ) : null}
+          </div>
           <CloudField
             label="Email"
             type="email"
@@ -517,18 +576,25 @@ export function CloudLoginPage({
             validation={passwordTooShort ? 'hint' : undefined}
             hint={passwordTooShort ? `At least ${PASSWORD_MIN_LENGTH} characters.` : undefined}
           />
-          {isSignup ? (
-            <CloudField
-              label="Confirm Password"
-              type="password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              validation={passwordMismatch ? 'invalid' : undefined}
-              hint={passwordMismatch ? 'Passwords do not match.' : undefined}
-            />
-          ) : null}
+          <div
+            className="app-cloud-login-signup-section"
+            data-cloud-login-signup-section={isSignup ? 'open' : 'closed'}
+            aria-hidden={!isSignup}
+          >
+            <div className="app-cloud-login-signup-field">
+              <CloudField
+                label="Confirm Password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                validation={passwordMismatch ? 'invalid' : undefined}
+                hint={passwordMismatch ? 'Passwords do not match.' : undefined}
+                disabled={!isSignup}
+              />
+            </div>
+          </div>
           {submitError ? (
             <div
               role="alert"
