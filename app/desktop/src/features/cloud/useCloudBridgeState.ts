@@ -34,6 +34,7 @@ import {
   type CloudAccount,
   type CloudMessage,
   type CloudPublicProfile,
+  type CloudSessionForkSummary,
   type UpsertCloudArtifactActivityInput,
   type UpsertCloudTaskActivityInput,
 } from './authClient';
@@ -965,10 +966,12 @@ export function planCloudSelfAgentCanonicalSync({
   account,
   messages,
   state,
+  forksBySessionId = {},
 }: {
   account: CloudAccount;
   messages: CloudMessage[];
   state: CanonicalSessionState;
+  forksBySessionId?: Record<string, CloudSessionForkSummary>;
 }): {
   agentIdentityRequest: UpsertCanonicalIdentityRequest;
   sessionRequests: OpenCanonicalSessionRequest[];
@@ -988,7 +991,45 @@ export function planCloudSelfAgentCanonicalSync({
   const requestLocalMessageIdByCloudMessageId = new Map<string, string>();
   const plannedCanonicalMessageIdByDuplicateKey = new Map<string, string>();
   const sessionRequestsById = new Map<string, OpenCanonicalSessionRequest>();
+  const existingSessionById = new Map(state.sessions.map((session) => [session.id, session]));
   const messageRequests: AppendCanonicalMessageRequest[] = [];
+
+  const ensureSessionRequest = (sessionId: string, title: string) => {
+    if (sessionRequestsById.has(sessionId)) return;
+    const fork = forksBySessionId[sessionId];
+    const existingSession = existingSessionById.get(sessionId);
+    const metadata = {
+      cloudSelfAgentSession: true,
+      ...(fork
+        ? {
+            fork: {
+              forkedFromSessionId: fork.parentSessionId,
+              ...(fork.parentMessageId ? { forkedFromMessageId: fork.parentMessageId } : {}),
+            },
+          }
+        : {}),
+    };
+    const existingMetadata = existingSession?.metadata && typeof existingSession.metadata === 'object' && !Array.isArray(existingSession.metadata)
+      ? existingSession.metadata as Record<string, unknown>
+      : {};
+    const existingFork = existingMetadata.fork && typeof existingMetadata.fork === 'object' && !Array.isArray(existingMetadata.fork)
+      ? existingMetadata.fork as Record<string, unknown>
+      : null;
+    const existingHasFork = Boolean(fork)
+      && existingFork?.forkedFromSessionId === fork?.parentSessionId
+      && (!fork?.parentMessageId || existingFork?.forkedFromMessageId === fork.parentMessageId);
+    if (existingSession && (!fork || existingHasFork)) return;
+    sessionRequestsById.set(sessionId, {
+      id: sessionId,
+      kind: 'self-agent',
+      title: cleanText(existingSession?.title) || title,
+      status: 'active',
+      createdByIdentityId: localHumanIdentityId,
+      primaryIdentityId: agentIdentityId,
+      participantIdentityIds: [agentIdentityId],
+      metadata,
+    });
+  };
 
   for (const message of sorted) {
     const sessionId = cleanText(message.sessionId);
@@ -1010,6 +1051,9 @@ export function planCloudSelfAgentCanonicalSync({
       if (!response) {
         userTextByCloudMessageId.set(message.messageId, text);
         requestLocalMessageIdByCloudMessageId.set(message.messageId, existingMatch.id);
+        ensureSessionRequest(sessionId, text || 'My Kordi');
+      } else {
+        ensureSessionRequest(sessionId, cleanText(userTextByCloudMessageId.get(response.requestId)) || cleanText(existingSessionById.get(sessionId)?.title) || 'My Kordi');
       }
       continue;
     }
@@ -1032,18 +1076,7 @@ export function planCloudSelfAgentCanonicalSync({
     const parentMessageId = response ? requestLocalMessageIdByCloudMessageId.get(response.requestId) ?? null : null;
     if (response && !parentMessageId) continue;
     const title = cleanText(userTextByCloudMessageId.get(response?.requestId ?? message.messageId)) || 'My Kordi';
-    if (!sessionRequestsById.has(sessionId)) {
-      sessionRequestsById.set(sessionId, {
-        id: sessionId,
-        kind: 'self-agent',
-        title,
-        status: 'active',
-        createdByIdentityId: localHumanIdentityId,
-        primaryIdentityId: agentIdentityId,
-        participantIdentityIds: [agentIdentityId],
-        metadata: { cloudSelfAgentSession: true },
-      });
-    }
+    ensureSessionRequest(sessionId, title);
     plannedCanonicalMessageIdByDuplicateKey.set(duplicateKey, canonicalMessageId);
     messageRequests.push({
       id: canonicalMessageId,
@@ -1276,6 +1309,7 @@ export function useCloudBridgeState({
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>(() => loadCachedCloudMessagesByPeer(account?.accountId));
   const [cloudSessionActivity, setCloudSessionActivity] = useState<CloudSessionActivityStore>(() => loadCachedCloudSessionActivity(account?.accountId));
+  const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
   const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
@@ -1504,12 +1538,14 @@ export function useCloudBridgeState({
     try {
       let messagesByPeer = messagesByPeerRef.current;
       let sessionActivity = cloudSessionActivityRef.current;
+      let sessionForksById = cloudSessionForksById;
       let fallbackRequired = false;
       for (let pass = 0; pass < 20; pass += 1) {
         const result = await syncCloudDiffOnce({
           accountId: account.accountId,
           messagesByPeer,
           sessionActivity,
+          sessionForksById,
           fetchEvents: (cursor) => client.syncCloudEvents(session.token, cursor, 500),
         });
         if (result.fallbackRequired) {
@@ -1518,6 +1554,7 @@ export function useCloudBridgeState({
         }
         messagesByPeer = result.messagesByPeer;
         sessionActivity = result.sessionActivity;
+        sessionForksById = result.sessionForksById;
         if (!result.hasMore) break;
       }
       if (cancelledRef.current) return false;
@@ -1530,17 +1567,19 @@ export function useCloudBridgeState({
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
       setCloudSessionActivity((current) => mergeCloudSessionActivity(current, sessionActivity));
+      setCloudSessionForksById(sessionForksById);
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
       syncingCloudDiffRef.current = false;
     }
-  }, [account, bootstrapPeerKey, client, refreshCloudBridgeMessages]);
+  }, [account, bootstrapPeerKey, client, cloudSessionForksById, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account) {
       setMessagesByPeer({});
       setCloudSessionActivity(EMPTY_CLOUD_SESSION_ACTIVITY);
+      setCloudSessionForksById({});
       setReadInboundMessageIdsByPeer({});
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
@@ -2745,6 +2784,7 @@ export function useCloudBridgeState({
       account,
       messages: selfMessages,
       state: canonicalSessionState,
+      forksBySessionId: cloudSessionForksById,
     });
     if (plan.sessionRequests.length === 0 && plan.messageRequests.length === 0) return;
     let cancelled = false;
@@ -2766,7 +2806,7 @@ export function useCloudBridgeState({
     return () => {
       cancelled = true;
     };
-  }, [account, canonicalSessionState, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
+  }, [account, canonicalSessionState, cloudSessionForksById, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account) return;
@@ -2986,10 +3026,11 @@ export function useCloudBridgeState({
     if (!sourceSessionId || !forkSessionId) return;
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
-    await client.createSessionFork(session.token, sourceSessionId, {
+    const fork = await client.createSessionFork(session.token, sourceSessionId, {
       forkSessionId,
       parentMessageId: input.parentMessageId ?? null,
     });
+    setCloudSessionForksById((current) => ({ ...current, [fork.forkSessionId]: fork }));
     const cloned = cloneCloudSessionActivityForFork(
       cloudSessionActivityRef.current,
       sourceSessionId,

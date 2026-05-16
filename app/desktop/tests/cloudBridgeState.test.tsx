@@ -542,6 +542,101 @@ test('planCloudSelfAgentSync backfills terminal local self-agent turns without r
   assert.deepEqual(planCloudSelfAgentSync(state, {}, { allowLocalBackfill: false }), []);
 });
 
+test('cloud self-agent canonical sync restores fork lineage metadata', () => {
+  const userMessage: CloudMessage = {
+    messageId: 'msg_child_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'child prompt',
+    createdAt: '2026-05-16T08:41:27.120Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'session:fork:child',
+  };
+  const state = {
+    sessions: [],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [userMessage],
+    state,
+    forksBySessionId: {
+      'session:fork:child': {
+        forkSessionId: 'session:fork:child',
+        parentSessionId: 'parent-session',
+        parentMessageId: 'msg:cloud:self:parent-agent',
+        createdByAccountId: account.accountId,
+        createdAt: '2026-05-16T08:40:00Z',
+      },
+    },
+  });
+
+  assert.deepEqual(plan.sessionRequests[0]?.metadata, {
+    cloudSelfAgentSession: true,
+    fork: {
+      forkedFromSessionId: 'parent-session',
+      forkedFromMessageId: 'msg:cloud:self:parent-agent',
+    },
+  });
+});
+
+test('cloud self-agent canonical sync patches fork lineage onto existing restored sessions', () => {
+  const userMessage: CloudMessage = {
+    messageId: 'msg_child_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'child prompt',
+    createdAt: '2026-05-16T08:41:27.120Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'session:fork:child',
+  };
+  const state = {
+    sessions: [{ id: 'session:fork:child', kind: 'self-agent', title: 'child prompt', status: 'active', createdByIdentityId: 'human:acct_me', primaryIdentityId: 'agent:cloud-self:acct_me', projectId: null, projectName: null, relationshipIdentityId: null, metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 }],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [{ id: 'msg:cloud:self:msg_child_request', sessionId: 'session:fork:child', sequenceNum: 1, senderIdentityId: 'human:acct_me', senderRole: 'user', messageKind: 'text', contentText: 'child prompt', content: null, parentMessageId: null, status: 'sent', createdAtMs: Date.parse('2026-05-16T08:41:27.120Z'), updatedAtMs: Date.parse('2026-05-16T08:41:27.120Z'), sourceTransport: 'cloud-self-agent', sourceEventId: 'msg_child_request' }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [userMessage],
+    state,
+    forksBySessionId: {
+      'session:fork:child': {
+        forkSessionId: 'session:fork:child',
+        parentSessionId: 'parent-session',
+        parentMessageId: 'msg:cloud:self:parent-agent',
+        createdByAccountId: account.accountId,
+        createdAt: '2026-05-16T08:40:00Z',
+      },
+    },
+  });
+
+  assert.equal(plan.messageRequests.length, 0);
+  assert.deepEqual(plan.sessionRequests[0]?.metadata, {
+    cloudSelfAgentSession: true,
+    fork: {
+      forkedFromSessionId: 'parent-session',
+      forkedFromMessageId: 'msg:cloud:self:parent-agent',
+    },
+  });
+});
+
 test('cloud self-agent canonical sync materializes restored Cloud private agent sessions', () => {
   const userMessage: CloudMessage = {
     messageId: 'msg_self_request',

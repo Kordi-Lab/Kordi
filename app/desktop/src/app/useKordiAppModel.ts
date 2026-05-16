@@ -777,7 +777,7 @@ export function useKordiAppModel() {
     if (!state) return;
     setCanonicalSessionState(state);
     const forkSession = state.sessions.find((session) => session.id === result.forkedSessionId);
-    if (!forkSession || forkSession.kind !== 'group') return;
+    if (!forkSession) return;
     const forkMetadata = forkSession.metadata && typeof forkSession.metadata === 'object' && !Array.isArray(forkSession.metadata)
       ? (forkSession.metadata as Record<string, unknown>).fork
       : null;
@@ -790,6 +790,21 @@ export function useKordiAppModel() {
     const parentMessageId = typeof forkRecord?.forkedFromMessageId === 'string' && forkRecord.forkedFromMessageId.trim()
       ? forkRecord.forkedFromMessageId.trim()
       : result.sourceMessageId;
+
+    await recordCloudSessionFork({
+      sourceSessionId: parentSessionId,
+      forkSessionId: result.forkedSessionId,
+      parentMessageId,
+    }).catch((error) => {
+      if (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 409) return;
+      // Best effort: the local fork remains usable if Cloud lineage is not yet
+      // available. Group forks still fall back to the explicit Cloud control
+      // below for peers; private self-agent forks use this row for relogin sync.
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-fork] failed to record cloud fork lineage', error);
+    });
+
+    if (forkSession.kind !== 'group') return;
     const participants = canonicalGroupParticipantsForSession(state, result.forkedSessionId)
       .filter((participant) => participant.kind === 'human');
     const cloudParticipants: CloudGroupParticipant[] = participants.flatMap((participant) => {
@@ -807,20 +822,6 @@ export function useKordiAppModel() {
     }
     const targetAccountIds = [...new Set(cloudParticipants.map((participant) => participant.accountId).filter((accountId) => accountId && accountId !== cloudSession.account?.accountId))];
     if (targetAccountIds.length === 0) return;
-
-    await recordCloudSessionFork({
-      sourceSessionId: parentSessionId,
-      forkSessionId: result.forkedSessionId,
-      parentMessageId,
-    }).catch((error) => {
-      if (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 409) return;
-      // Best effort: the session-fork control below still materializes the fork
-      // for peers. The server lineage row becomes available after Cloud server
-      // rollout, and a failed lineage write must not turn a local fork into a UI
-      // error.
-      // eslint-disable-next-line no-console
-      console.warn('[cloud-group-fork] failed to record cloud fork lineage', error);
-    });
 
     const fork = {
       forkSessionId: result.forkedSessionId,

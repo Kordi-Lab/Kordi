@@ -1,4 +1,4 @@
-import type { CloudArtifactActivity, CloudMessage, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
+import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
@@ -150,6 +150,34 @@ export function applyCloudSyncEventsToMessagesByPeer(
   return next;
 }
 
+export function applyCloudSyncEventsToSessionForks(
+  current: Record<string, CloudSessionForkSummary>,
+  events: CloudSyncEvent[],
+): Record<string, CloudSessionForkSummary> {
+  let next = current;
+  for (const event of events) {
+    if (event.eventType !== 'session-forked') continue;
+    const payload = objectRecord(event.payload);
+    if (!payload) continue;
+    const forkSessionId = cleanText(payload.forkSessionId);
+    const parentSessionId = cleanText(payload.parentSessionId);
+    const createdByAccountId = cleanText(payload.createdByAccountId);
+    const createdAt = cleanText(payload.createdAt) || event.occurredAt;
+    if (!forkSessionId || !parentSessionId || !createdByAccountId || !createdAt) continue;
+    next = {
+      ...next,
+      [forkSessionId]: {
+        forkSessionId,
+        parentSessionId,
+        parentMessageId: cleanText(payload.parentMessageId) || null,
+        createdByAccountId,
+        createdAt,
+      },
+    };
+  }
+  return next;
+}
+
 export function applyCloudSyncEventsToSessionActivity(
   current: CloudSessionActivityStore,
   events: CloudSyncEvent[],
@@ -181,6 +209,7 @@ export type SyncCloudDiffOnceInput = {
   accountId: string;
   messagesByPeer: Record<string, CloudMessage[]>;
   sessionActivity?: CloudSessionActivityStore;
+  sessionForksById?: Record<string, CloudSessionForkSummary>;
   cursorStorage?: Storage | null;
   fetchEvents(cursor: string): Promise<CloudSyncResponse>;
 };
@@ -188,6 +217,7 @@ export type SyncCloudDiffOnceInput = {
 export type SyncCloudDiffOnceResult = {
   messagesByPeer: Record<string, CloudMessage[]>;
   sessionActivity: CloudSessionActivityStore;
+  sessionForksById: Record<string, CloudSessionForkSummary>;
   cursor: string;
   fallbackRequired: boolean;
   hasMore: boolean;
@@ -208,12 +238,12 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   try {
     response = await input.fetchEvents(previousCursor);
   } catch {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const nextCursor = normalizeCursor(response.cursor);
   if (cursorWentBackwards(previousCursor, nextCursor)) {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const events = response.events ?? [];
@@ -226,6 +256,7 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
     input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY,
     events,
   );
+  const sessionForksById = applyCloudSyncEventsToSessionForks(input.sessionForksById ?? {}, events);
   saveCloudSyncCursor(input.accountId, nextCursor, storage);
-  return { messagesByPeer, sessionActivity, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
+  return { messagesByPeer, sessionActivity, sessionForksById, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
 }
