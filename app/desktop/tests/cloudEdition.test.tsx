@@ -128,7 +128,9 @@ test('signup mode requires avatar upload and removes random avatar controls', ()
   assert.match(markup, />KO<\/span>/);
   assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
   assert.match(markup, /data-cloud-signup-avatar-upload-dock="true"/);
-  assert.match(markup, /left-1\/2 top-\[46px\]/);
+  assert.match(markup, /bottom-0 left-1\/2/);
+  assert.match(markup, /overflow-hidden rounded-full/);
+  assert.doesNotMatch(markup, /top-\[46px\]/);
   assert.doesNotMatch(markup, /bottom-\[3px\] right-\[3px\]/);
   assert.doesNotMatch(markup, />Upload<\/span>/);
   assert.doesNotMatch(markup, />\+<\/span>/);
@@ -150,7 +152,9 @@ test('signup uploaded avatar preview keeps the upload affordance in a bottom doc
   assert.match(markup, /src="data:image\/jpeg;base64,abc"/);
   assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
   assert.match(markup, /data-cloud-signup-avatar-upload-dock="true"/);
-  assert.match(markup, /left-1\/2 top-\[46px\]/);
+  assert.match(markup, /bottom-0 left-1\/2/);
+  assert.match(markup, /overflow-hidden rounded-full/);
+  assert.doesNotMatch(markup, /top-\[46px\]/);
   assert.doesNotMatch(markup, /bottom-\[3px\] right-\[3px\]/);
   assert.doesNotMatch(markup, />Upload<\/span>/);
   assert.doesNotMatch(markup, />Change<\/span>/);

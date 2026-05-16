@@ -210,35 +210,29 @@ function AvatarPicker({
   const imageUrl = preference?.dataUrl;
 
   return (
-    <div className="grid h-[60px] w-20 place-items-center">
-      <div className="relative h-[60px] w-12">
+    <div className="grid h-12 w-20 place-items-center">
+      <div className="relative h-12 w-12">
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           title="Upload avatar"
           aria-label="Upload avatar"
           className={[
-            'app-cloud-login-avatar group relative block h-[60px] w-12 rounded-[999px] transition duration-150 hover:scale-[1.01] focus-visible:outline-none',
+            'app-cloud-login-avatar group relative block h-12 w-12 overflow-hidden rounded-full border transition duration-150 hover:scale-[1.01] focus-visible:outline-none',
+            BORDER_INNER,
+            PAPER_SUNK,
             SMALL_FOCUS_RING,
           ].join(' ')}
         >
-          <span
-            className={[
-              'block h-12 w-12 overflow-hidden rounded-full border',
-              BORDER_INNER,
-              PAPER_SUNK,
-            ].join(' ')}
-          >
-            {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <UploadAvatarPlaceholder displayName={displayName} />}
-          </span>
+          {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <UploadAvatarPlaceholder displayName={displayName} />}
           {!uploadError ? (
             <span
               data-cloud-signup-avatar-upload-icon="true"
               data-cloud-signup-avatar-upload-dock="true"
-              className="absolute left-1/2 top-[46px] grid h-[14px] w-[30px] -translate-x-1/2 place-items-center rounded-b-[999px] border border-t-0 border-white/18 bg-white/[0.16] text-white/90 shadow-[inset_0_-1px_0_rgba(255,255,255,0.16)] backdrop-blur-[2px] transition duration-150 group-hover:bg-white/[0.22] group-hover:text-white"
+              className="absolute bottom-0 left-1/2 grid h-[15px] w-[32px] -translate-x-1/2 place-items-center rounded-t-[999px] border-t border-white/18 bg-white/[0.16] text-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-[2px] transition duration-150 group-hover:h-4 group-hover:bg-white/[0.22] group-hover:text-white"
               aria-hidden="true"
             >
-              <ArrowUp className="h-[9px] w-[9px] -translate-y-[1.5px]" strokeWidth={2.4} />
+              <ArrowUp className="h-[9px] w-[9px] -translate-y-px" strokeWidth={2.35} />
             </span>
           ) : null}
         </button>
