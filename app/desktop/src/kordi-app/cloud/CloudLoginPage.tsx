@@ -225,7 +225,7 @@ function AvatarPicker({
           ].join(' ')}
         >
           {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <UploadAvatarPlaceholder displayName={displayName} />}
-          {!imageUrl && !uploadError ? (
+          {!uploadError ? (
             <span
               data-cloud-signup-avatar-upload-icon="true"
               className="absolute bottom-0 right-0 grid h-5 w-5 place-items-center rounded-full border border-white/35 bg-black/45 text-white shadow-[0_2px_8px_rgba(0,0,0,0.28)]"
@@ -248,9 +248,9 @@ function AvatarPicker({
           onAvatarFile(file);
         }}
       />
-      {uploadError || imageUrl ? (
-        <span className={`${TYPE_HINT} max-w-28 text-center normal-case tracking-normal ${uploadError ? 'text-[var(--app-cloud-login-danger-text)]' : INK_MUTED}`}>
-          {uploadError ?? 'Change'}
+      {uploadError ? (
+        <span className={`${TYPE_HINT} max-w-28 text-center normal-case tracking-normal text-[var(--app-cloud-login-danger-text)]`}>
+          {uploadError}
         </span>
       ) : null}
     </div>

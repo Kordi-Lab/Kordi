@@ -15,6 +15,30 @@ import {
 } from '../src/features/cloud/edition';
 const repoRoot = resolve(import.meta.dirname, '..');
 
+function makeStorageStub(initial: Record<string, string> = {}): Storage {
+  const map = new Map(Object.entries(initial));
+  return {
+    get length() { return map.size; },
+    clear: () => map.clear(),
+    getItem: (key: string) => map.get(key) ?? null,
+    key: (index: number) => Array.from(map.keys())[index] ?? null,
+    removeItem: (key: string) => { map.delete(key); },
+    setItem: (key: string, value: string) => { map.set(key, String(value)); },
+  };
+}
+
+function withLocalStorage<T>(storage: Storage, run: () => T): T {
+  const target = globalThis as typeof globalThis & { localStorage?: Storage };
+  const previous = target.localStorage;
+  target.localStorage = storage;
+  try {
+    return run();
+  } finally {
+    if (previous) target.localStorage = previous;
+    else delete target.localStorage;
+  }
+}
+
 function readSource(path: string): string {
   return readFileSync(resolve(repoRoot, path), 'utf8');
 }
@@ -105,12 +129,25 @@ test('signup mode requires avatar upload and removes random avatar controls', ()
   assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
   assert.doesNotMatch(markup, />Upload<\/span>/);
   assert.doesNotMatch(markup, />\+<\/span>/);
+  assert.doesNotMatch(markup, />Change<\/span>/);
   assert.doesNotMatch(markup, /Random avatar/);
   assert.match(markup, /Display name/);
   assert.match(markup, /Confirm Password/);
   assert.doesNotMatch(markup, />Name</);
   assert.match(markup, /Create account/);
   assert.doesNotMatch(markup, /Kordi Cloud/);
+});
+
+test('signup uploaded avatar preview keeps the upload affordance as an in-avatar icon', () => {
+  const storage = makeStorageStub({
+    'kordi.cloud.signupAvatar': JSON.stringify({ kind: 'upload', dataUrl: 'data:image/jpeg;base64,abc' }),
+  });
+  const markup = withLocalStorage(storage, () => renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' })));
+
+  assert.match(markup, /src="data:image\/jpeg;base64,abc"/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-icon="true"/);
+  assert.doesNotMatch(markup, />Upload<\/span>/);
+  assert.doesNotMatch(markup, />Change<\/span>/);
 });
 
 test('cloud signup avatar placeholder derives initials from the display name', () => {
