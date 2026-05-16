@@ -1,5 +1,6 @@
 import type {
   AddCanonicalSessionParticipantsRequest,
+  AdoptCloudProfileIdentityRequest,
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
@@ -558,6 +559,10 @@ export async function fetchCanonicalSessionState() {
 
 export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_upsert_identity', { request });
+}
+
+export async function adoptCloudProfileIdentity(request: AdoptCloudProfileIdentityRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_adopt_cloud_profile_identity', { request });
 }
 
 export async function openOrCreateCanonicalSession(request: OpenCanonicalSessionRequest) {

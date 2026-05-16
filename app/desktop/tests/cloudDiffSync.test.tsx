@@ -5,6 +5,7 @@ import type { CloudMessage } from '../src/features/cloud/authClient';
 import {
   applyCloudSyncEventsToMessagesByPeer,
   applyCloudSyncEventsToSessionActivity,
+  applyCloudSyncEventsToSessionForks,
   cloudSyncCursorStorageKey,
   loadCloudSyncCursor,
   saveCloudSyncCursor,
@@ -67,6 +68,31 @@ test('applyCloudSyncEventsToMessagesByPeer applies read receipts to cached messa
 
   assert.equal(result.acct_peer[0]?.readAt, '2026-05-13T00:01:00Z');
   assert.equal(result.acct_peer[0]?.deliveredAt, '2026-05-13T00:00:00Z');
+});
+
+test('cloud diff sync applies session fork events', () => {
+  const next = applyCloudSyncEventsToSessionForks({}, [{
+    eventId: '1',
+    eventType: 'session-forked',
+    peerAccountId: null,
+    messageId: null,
+    occurredAt: '2026-05-16T08:41:00Z',
+    payload: {
+      forkSessionId: 'session:fork:child',
+      parentSessionId: 'session:parent',
+      parentMessageId: 'msg:parent',
+      createdByAccountId: 'acct_me',
+      createdAt: '2026-05-16T08:41:00Z',
+    },
+  }]);
+
+  assert.deepEqual(next['session:fork:child'], {
+    forkSessionId: 'session:fork:child',
+    parentSessionId: 'session:parent',
+    parentMessageId: 'msg:parent',
+    createdByAccountId: 'acct_me',
+    createdAt: '2026-05-16T08:41:00Z',
+  });
 });
 
 test('cloud diff sync applies task and artifact upsert events', () => {

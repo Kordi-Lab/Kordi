@@ -298,6 +298,53 @@ test('WorkspaceSidebar renders an Agent tab shortcut for new My agent sessions',
   assert.match(markup, /New session/);
 });
 
+test('WorkspaceSidebar marks the active agent fork path connector for accent styling', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:agent:root',
+      canonicalSessionId: 'session:agent:root',
+      name: 'Root agent chat',
+      type: 'owned-agent',
+      subtitle: 'Root reply',
+      unread: 0,
+      participants: ['Me', 'My agent'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
+      ],
+      _updatedAtMs: 1,
+    }),
+    conversation({
+      id: 'session:agent:fork',
+      canonicalSessionId: 'session:agent:fork',
+      name: 'Forked agent chat',
+      type: 'owned-agent',
+      subtitle: 'Fork reply',
+      unread: 0,
+      forkedFromSessionId: 'session:agent:root',
+      forkedFromMessageId: 'msg:root-agent',
+      participants: ['Me', 'My agent'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
+      ],
+      _updatedAtMs: 2,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: [],
+    agentParticipantSpaces: participantSpaces,
+    activeConvId: 'session:agent:fork',
+    initialChatChannel: 'agent',
+  }) as never));
+
+  assert.match(markup, /data-session-fork-path-active="true"/);
+  assert.match(markup, /app-session-fork-children-active/);
+});
+
 test('WorkspaceSidebar does not show an Agent tab unread badge for hidden canonical parent forks', () => {
   const chatConversations = [
     conversation({

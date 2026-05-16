@@ -144,6 +144,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       authSettingsLayoutWidth: args.authSettingsLayoutWidth,
       isNativeShell: args.isNativeShell,
       desktopChatState: args.desktopChatState,
+      cloudSelfAgentSyncStatusBySessionId: args.cloudSelfAgentSyncStatusBySessionId,
       desktopAuthState: args.desktopAuthState,
       isDesktopAuthLoading: args.isDesktopAuthLoading,
       desktopAuthError: args.desktopAuthError,

@@ -249,8 +249,11 @@ fn bridge_agent_prompt_includes_inline_identity_frame_for_parent_session() {
     assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
     assert!(prompt.contains("- identityId: human:alice"));
     assert!(prompt.contains("agent:bob-kordi | Bob's Kordi | agent"));
-    assert!(prompt
-        .contains("If the request asks you to create, manage, persist, search, or close a task"));
+    assert!(
+        prompt.contains(
+            "If the request asks you to create, manage, persist, search, or close a task"
+        )
+    );
     assert!(prompt.contains("use task_operator"));
     assert!(prompt.contains("action=create"));
     assert!(prompt.contains("action=search"));
@@ -436,6 +439,141 @@ fn manual_title_metadata_survives_session_shell_upsert() {
 }
 
 #[test]
+fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
+    let conn = test_conn();
+    let old_local_human_id =
+        local_profile_human_identity_id(&conn, "Old Device Name").expect("local profile");
+    seed_identity(&conn, "agent:old-local", "Kordi", "agent");
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:local-before-cloud".to_string()),
+            kind: "self-agent".to_string(),
+            title: Some("Local before cloud".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: old_local_human_id.clone(),
+            primary_identity_id: Some("agent:old-local".to_string()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["agent:old-local".to_string()],
+            metadata: Some(serde_json::json!({ "adminIdentityIds": [old_local_human_id.clone()] })),
+        },
+    )
+    .expect("create local session");
+    seed_identity_with_source(
+        &conn,
+        "human:acct_same",
+        "Cloud Name",
+        "human",
+        "bridge",
+        None,
+    );
+    let remote = seed_identity_with_source(
+        &conn,
+        "human:acct_remote",
+        "Remote",
+        "human",
+        "bridge",
+        None,
+    );
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:group:arrived-before-adoption".to_string()),
+            kind: "group".to_string(),
+            title: Some("Remote group".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: remote.id,
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["human:acct_same".to_string()],
+            metadata: Some(serde_json::json!({ "createdFrom": "cloud-group-sync" })),
+        },
+    )
+    .expect("create pre-adoption cloud group");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:old-local-user".to_string()),
+            session_id: "session:local-before-cloud".to_string(),
+            sender_identity_id: old_local_human_id.clone(),
+            sender_role: "user".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "hello before cloud".to_string(),
+            content: None,
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("sent".to_string()),
+            created_at_ms: Some(1),
+            source_transport: Some("desktop-chat-ui".to_string()),
+            source_event_id: Some("old-local-user".to_string()),
+        },
+    )
+    .expect("append old local message");
+
+    adopt_cloud_profile_identity_in_db(
+        &conn,
+        AdoptCloudProfileIdentityRequest {
+            account_id: "acct_same".to_string(),
+            display_name: "Cloud Name".to_string(),
+            avatar_key: Some("acct_same".to_string()),
+            profile_image_url: Some("https://example.invalid/avatar.png".to_string()),
+        },
+    )
+    .expect("adopt cloud profile");
+
+    let profile = schema::ensure_local_profile(&conn).expect("profile");
+    assert_eq!(
+        profile.human_identity_id.as_deref(),
+        Some("human:acct_same")
+    );
+    assert_eq!(profile.display_name.as_deref(), Some("Cloud Name"));
+
+    let sender_identity_id: String = conn
+        .query_row(
+            "SELECT sender_identity_id FROM session_messages WHERE id = 'msg:old-local-user'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("sender identity");
+    assert_eq!(sender_identity_id, "human:acct_same");
+
+    let metadata_json: String = conn
+        .query_row(
+            "SELECT metadata_json FROM sessions WHERE id = 'session:local-before-cloud'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("session metadata");
+    let metadata: serde_json::Value = serde_json::from_str(&metadata_json).expect("metadata json");
+    assert_eq!(
+        metadata["adminIdentityIds"],
+        serde_json::json!(["human:acct_same"])
+    );
+
+    let self_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_participants WHERE session_id = 'session:local-before-cloud' AND role = 'self' AND identity_id = 'human:acct_same'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("self participant count");
+    assert_eq!(self_count, 1);
+
+    let pre_adoption_group_self_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_participants WHERE session_id = 'session:group:arrived-before-adoption' AND role = 'self' AND identity_id = 'human:acct_same'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("pre-adoption group self count");
+    assert_eq!(pre_adoption_group_self_count, 1);
+}
+
+#[test]
 fn cloud_group_open_keeps_local_profile_as_only_self_even_when_remote_created() {
     let conn = test_conn();
     let local_human_id = local_profile_human_identity_id(&conn, "You").expect("local profile");
@@ -485,7 +623,9 @@ fn cloud_group_open_keeps_local_profile_as_only_self_even_when_remote_created() 
              ORDER BY identity_id",
         )
         .expect("prepare roles")
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .expect("query roles")
         .collect::<Result<Vec<_>, _>>()
         .expect("collect roles");
@@ -495,8 +635,16 @@ fn cloud_group_open_keeps_local_profile_as_only_self_even_when_remote_created() 
         1,
         "group must have exactly one self participant",
     );
-    assert!(roles.iter().any(|(identity_id, role)| identity_id == &local_human_id && role == "self"));
-    assert!(roles.iter().any(|(identity_id, role)| identity_id == &remote_creator.id && role == "person"));
+    assert!(
+        roles
+            .iter()
+            .any(|(identity_id, role)| identity_id == &local_human_id && role == "self")
+    );
+    assert!(
+        roles
+            .iter()
+            .any(|(identity_id, role)| identity_id == &remote_creator.id && role == "person")
+    );
 }
 
 #[test]
@@ -912,11 +1060,13 @@ fn local_agent_identity_uses_delegate_name_stable_agent_id_and_owner() {
         identity.owner_identity_id.as_deref(),
         Some(human_identity_id.as_str())
     );
-    assert!(identity
-        .agent_id
-        .as_deref()
-        .unwrap_or_default()
-        .starts_with("local:"));
+    assert!(
+        identity
+            .agent_id
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("local:")
+    );
     assert_eq!(identity.avatar_key, identity.agent_id.clone().unwrap());
     assert_eq!(
         identity
@@ -1114,10 +1264,12 @@ fn bridge_fallback_node_identity_can_be_reconciled_to_human_id() {
     .expect("cleanup fallback identity");
 
     let state = commands::load_state_from_db(&conn).expect("load state");
-    assert!(state
-        .participants
-        .iter()
-        .all(|participant| participant.identity_id != "human:bridge-node:kd_alice"));
+    assert!(
+        state
+            .participants
+            .iter()
+            .all(|participant| participant.identity_id != "human:bridge-node:kd_alice")
+    );
     assert_eq!(state.messages[0].sender_identity_id, human.id);
 }
 

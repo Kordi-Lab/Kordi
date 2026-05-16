@@ -171,6 +171,15 @@ pub struct UpsertCanonicalIdentityRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AdoptCloudProfileIdentityRequest {
+    pub account_id: String,
+    pub display_name: String,
+    pub avatar_key: Option<String>,
+    pub profile_image_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenCanonicalSessionRequest {
     pub id: Option<String>,
     pub kind: String,

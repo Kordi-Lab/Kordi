@@ -155,6 +155,17 @@ test('cloud group participant envelopes drop local-only ids and huge data avatar
   ]);
 });
 
+test('cloud group participant normalization rejects kh local ids', () => {
+  const participants = cloudGroupUniqueParticipants([
+    { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    { accountId: 'kh_local', displayName: 'Localhost', avatarUrl: null, role: 'person' },
+    { accountId: 'node_local', displayName: 'Node', avatarUrl: null, role: 'person' },
+    { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+  ]);
+
+  assert.deepEqual(participants.map((participant) => participant.accountId), ['acct_a', 'acct_b']);
+});
+
 test('cloud group messages carry concrete session id separately from shared group space id', () => {
   assert.equal(cloudGroupMessageSessionId({
     activeConvCanonicalSessionId: 'session:group:child-session',
@@ -599,6 +610,71 @@ test('cloud group unread count helper deduplicates inbound unread controls per h
   }), {});
 });
 
+test('cloud group unread count helper ignores inherited fork snapshots and counts only new fork messages', () => {
+  const forkSnapshotMessage = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:fork:child',
+    groupSpaceId: 'session:fork:child',
+    groupTitle: 'Fork',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    fork: {
+      forkSessionId: 'session:fork:child',
+      parentSessionId: 'session:group:parent',
+      parentMessageId: 'msg:parent',
+      createdAtMs: 1,
+    },
+    message: {
+      id: 'msg:old-snapshot',
+      senderAccountId: 'acct_peer',
+      senderDisplayName: 'Peer',
+      senderKind: 'human',
+      text: 'Inherited old message',
+      createdAtMs: 1,
+      forkSnapshot: true,
+    },
+  });
+  const newForkMessage = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:fork:child',
+    groupSpaceId: 'session:fork:child',
+    groupTitle: 'Fork',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    fork: {
+      forkSessionId: 'session:fork:child',
+      parentSessionId: 'session:group:parent',
+      parentMessageId: 'msg:parent',
+      createdAtMs: 1,
+    },
+    message: {
+      id: 'msg:new-after-fork',
+      senderAccountId: 'acct_peer',
+      senderDisplayName: 'Peer',
+      senderKind: 'human',
+      text: 'New message after fork',
+      createdAtMs: 2,
+    },
+  });
+
+  assert.deepEqual(cloudGroupUnreadCountsBySessionId({
+    accountId: 'acct_me',
+    activeConversationId: 'session:outside',
+    messages: [
+      { messageId: 'cloud_snapshot', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: forkSnapshotMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+      { messageId: 'cloud_new', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: newForkMessage, createdAt: '2026-05-11T00:00:01Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), { 'session:fork:child': 1 });
+});
+
 test('cloud group send helpers treat partial recipient success as a send success', () => {
   const results: PromiseSettledResult<string>[] = [
     { status: 'fulfilled', value: 'msg_ok' },
@@ -612,6 +688,7 @@ test('cloud group send helpers treat partial recipient success as a send success
 test('cloud agent mentions inside cloud groups stay on cloud group transport', () => {
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true }), false);
+  assert.equal(shouldRouteMentionThroughCloudGroup({ activeGroupSessionIsGroup: true, hasCloudGroupRecipients: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsLocalAgent: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: false }), false);
@@ -647,7 +724,7 @@ test('cloud group self identity uses the stable cloud account id and avatar seed
     'human:local-profile',
   );
 
-  assert.equal(request.id, 'human:local-profile');
+  assert.equal(request.id, 'human:acct_self');
   assert.equal(request.humanId, 'acct_self');
   assert.equal(request.avatarKey, 'self-seed');
 });

@@ -5,6 +5,7 @@ import {
   ArrowRightLeft,
   ChevronDown,
   Clock3,
+  Cloud,
   FileText,
   Globe,
   Image as ImageIcon,
@@ -25,6 +26,7 @@ import {
   routingSelectionForBridgeAgent,
 } from '@/features/bridge/agentModelRouting';
 import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
@@ -76,6 +78,18 @@ export function shouldShowConversationTypeBadge(conversation: Pick<Conversation,
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
   return !sessionId.startsWith('session:group:') && !forkParentId.startsWith('session:group:');
+}
+
+export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
+  if (!status) return null;
+  if (status.state === 'syncing') {
+    const pendingCount = typeof status.pendingCount === 'number' && Number.isFinite(status.pendingCount)
+      ? Math.max(0, Math.floor(status.pendingCount))
+      : 0;
+    return pendingCount > 1 ? `Syncing ${pendingCount}` : 'Syncing';
+  }
+  if (status.state === 'synced') return 'Synced';
+  return 'Sync issue';
 }
 
 function humanTranscriptGroupKey(message?: Message) {
@@ -206,6 +220,7 @@ type ChatsPageProps = {
   activeConversationIsBridge: boolean;
   activeBridgeModelHost: DesktopBridgeHost | null;
   desktopChatState: DesktopChatState | null;
+  cloudSelfAgentSyncStatus?: CloudSelfAgentSyncStatus | null;
   onUpdateBridgeAgentModelRouting: (
     hostId: string,
     agentId: string,
@@ -278,6 +293,7 @@ export function ChatsPage({
   activeConversationIsBridge,
   activeBridgeModelHost,
   desktopChatState,
+  cloudSelfAgentSyncStatus,
   onUpdateBridgeAgentModelRouting,
   isEditingDesktopSessionTitle,
   setIsEditingDesktopSessionTitle,
@@ -335,6 +351,7 @@ export function ChatsPage({
   const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
   const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
+  const activeCloudSelfAgentSyncLabel = cloudSelfAgentSyncStatusLabel(cloudSelfAgentSyncStatus);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
@@ -624,6 +641,27 @@ export function ChatsPage({
               ) : (
                 <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold" data-kordi-window-drag="false">{activeConv.name}</h2>
               )}
+              {activeCloudSelfAgentSyncLabel ? (
+                <span
+                  className={cn(
+                    'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors',
+                    cloudSelfAgentSyncStatus?.state === 'error'
+                      ? 'text-rose-300'
+                      : cloudSelfAgentSyncStatus?.state === 'syncing'
+                        ? 'text-sky-200'
+                        : 'text-emerald-200',
+                  )}
+                  title={cloudSelfAgentSyncStatus?.state === 'error'
+                    ? cloudSelfAgentSyncStatus.message || 'Cloud sync needs attention'
+                    : activeCloudSelfAgentSyncLabel}
+                  aria-label={cloudSelfAgentSyncStatus?.state === 'error'
+                    ? 'Cloud sync issue'
+                    : activeCloudSelfAgentSyncLabel}
+                  data-cloud-self-agent-sync-status={cloudSelfAgentSyncStatus?.state ?? 'idle'}
+                >
+                  <Cloud className="h-3.5 w-3.5" aria-hidden="true" />
+                </span>
+              ) : null}
               {shouldShowConversationTypeBadge(activeConv) ? <TypeBadge type={activeConv.type} compact /> : null}
               {activeForkSourceSessionId ? (
                 <button

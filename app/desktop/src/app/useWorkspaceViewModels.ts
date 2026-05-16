@@ -3,7 +3,7 @@ import { useMemo, useRef } from 'react';
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import { cloudPeerAccountIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
@@ -118,6 +118,32 @@ export function bridgeChatConversationIsVisible(
   conversation: Pick<DesktopBridgeConversation, 'outreach'>,
 ) {
   return !conversation.outreach?.parentSessionId;
+}
+
+export function activeConversationForSelection(
+  activeConvId: string,
+  chatConversations: Conversation[],
+  options: {
+    isNativeShell: boolean;
+    nativeChatPlaceholder: Conversation;
+    fallbackConversation?: Conversation;
+  },
+): Conversation {
+  if (options.isNativeShell && isLocalDraftChatConversationId(activeConvId)) {
+    return options.nativeChatPlaceholder;
+  }
+  const activeCloudSessionId = isCloudBridgeConversationId(activeConvId)
+    ? cloudSessionIdFromConversationId(activeConvId)
+    : null;
+  const selectedConversation = chatConversations.find((conversation) => conversation.id === activeConvId)
+    ?? chatConversations.find((conversation) => conversation.canonicalSessionId === activeConvId)
+    ?? (activeCloudSessionId
+      ? chatConversations.find((conversation) => conversation.id === activeCloudSessionId || conversation.canonicalSessionId === activeCloudSessionId)
+      : undefined);
+  if (selectedConversation) return selectedConversation;
+  const pendingCloudConversation = pendingCloudBridgeConversationForActiveId(activeConvId);
+  if (pendingCloudConversation) return pendingCloudConversation;
+  return chatConversations[0] ?? (options.isNativeShell ? options.nativeChatPlaceholder : options.fallbackConversation ?? options.nativeChatPlaceholder);
 }
 
 export function pendingCloudBridgeConversationForActiveId(activeConvId: string): Conversation | null {
@@ -472,16 +498,11 @@ export function useWorkspaceViewModels({
     [isDesktopChatLoading],
   );
 
-  const activeConv = useMemo(() => {
-    if (isNativeShell && isLocalDraftChatConversationId(activeConvId)) {
-      return nativeChatPlaceholder;
-    }
-    const selectedConversation = chatConversations.find((conversation) => conversation.id === activeConvId);
-    if (selectedConversation) return selectedConversation;
-    const pendingCloudConversation = pendingCloudBridgeConversationForActiveId(activeConvId);
-    if (pendingCloudConversation) return pendingCloudConversation;
-    return chatConversations[0] ?? (isNativeShell ? nativeChatPlaceholder : conversations[0]);
-  }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder]);
+  const activeConv = useMemo(() => activeConversationForSelection(activeConvId, chatConversations, {
+    isNativeShell,
+    nativeChatPlaceholder,
+    fallbackConversation: conversations[0],
+  }), [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder]);
   const activeConversationIsBridge = isNativeShell && (
     activeConv.id.startsWith('bridge:')
     || isCanonicalBridgeSessionId(activeConv.canonicalSessionId ?? activeConv.id)

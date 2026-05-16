@@ -52,6 +52,56 @@ function conversation(overrides: Partial<DesktopBridgeConversation> = {}): Deskt
   };
 }
 
+test('cloud self-agent bridge conversations render as My agent, not external agent', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    id: 'bridge:cloud:acct_me',
+    canonicalSessionId: 'bridge:cloud:acct_me',
+    hostId: 'cloud',
+    peerNodeId: 'acct_me',
+    peerDisplayName: 'My Kordi',
+    peerOwnerName: 'Me',
+    peerRuntime: 'kordi-desktop',
+    title: 'My Kordi',
+    subtitle: 'Hello!',
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: 'acct_me',
+      localHumanName: 'Me',
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      localAgentNodeId: 'acct_me',
+      remoteHumanId: 'acct_me',
+      remoteHumanName: 'Me',
+      remoteHumanNodeId: 'acct_me',
+      remoteAgentId: 'cloud-local-agent',
+      remoteAgentName: 'My Kordi',
+      remoteAgentNodeId: 'acct_me',
+      remoteAgentRuntime: 'kordi-desktop',
+    },
+    messages: [{
+      id: 'msg-response',
+      direction: 'outbound-response',
+      sender: 'My Kordi',
+      text: 'Hello!',
+      timeLabel: '09:57',
+      timestampMs: 2,
+    }],
+  }), host({
+    id: 'cloud',
+    serverUrl: 'kordi.cloud',
+    nodeId: 'acct_me',
+    humanId: 'acct_me',
+    displayName: 'Kordi Cloud',
+    ownerName: 'Me',
+  }), 'My Kordi');
+
+  assert.equal(view.type, 'owned-agent');
+  assert.equal(view.directness, 'Direct chat');
+  assert.deepEqual(view.participants, ['Me', 'My Kordi']);
+  assert.equal(view.messages[0]?.role, 'owned-agent');
+  assert.equal(view.messages[0]?.sender, 'My Kordi');
+});
+
 test('bridge transcript maps local and remote human profile images onto message avatars', () => {
   const view = mapBridgeConversationToViewModel(conversation({
     messages: [

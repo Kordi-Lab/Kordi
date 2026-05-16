@@ -2,12 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
 import { isCloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
-import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { BridgeAgentRequestControl, ComposerScope } from '@/kordi-app/types';
-import {
-  cancelDesktopBridgeOutreach,
-  cancelDesktopChatTurn,
-} from '@/lib/desktop';
+import { cancelDesktopChatTurn } from '@/lib/desktop';
 
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, resizeComposerTextarea } from './composerController.shared';
 import type { UseComposerControllerArgs } from './composerController.types';
@@ -67,7 +63,6 @@ type UseComposerMessageActionsArgs = Pick<
   | 'queuedDesktopMessagesBySession'
   | 'setQueuedDesktopMessagesBySession'
   | 'setDesktopLiveTurnsBySession'
-  | 'setDesktopBridgeState'
   | 'setCloudBridgeState'
   | 'sendCloudBridgeMessage'
   | 'sendCloudGroupControl'
@@ -125,7 +120,6 @@ export function useComposerMessageActions({
   queuedDesktopMessagesBySession,
   setQueuedDesktopMessagesBySession,
   setDesktopLiveTurnsBySession,
-  setDesktopBridgeState,
   setCloudBridgeState,
   sendCloudBridgeMessage,
   sendCloudGroupControl,
@@ -228,7 +222,6 @@ export function useComposerMessageActions({
     setCanonicalSessionState,
     setChatComposerAttachments,
     setComposerDrafts,
-    setDesktopBridgeState,
     setCloudBridgeState,
     sendCloudBridgeMessage,
     sendCloudGroupControl,
@@ -262,7 +255,6 @@ export function useComposerMessageActions({
     isNativeShell,
     setCanonicalSessionState,
     setChatComposerAttachments,
-    setDesktopBridgeState,
     setDesktopChatError,
     setDesktopChatState,
     setIsDesktopChatSending,
@@ -305,13 +297,12 @@ export function useComposerMessageActions({
         await cancelCloudBridgeAgentRequest(conversationId, requestId);
         return;
       }
-      const nextState = await cancelDesktopBridgeOutreach(conversationId, requestId);
-      setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
+      throw new Error('Localhost Bridge communication was removed from main-cloud.');
     } catch (error) {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop bridge outreach');
       throw error;
     }
-  }, [cancelCloudBridgeAgentRequest, setDesktopBridgeState, setDesktopChatError, setIsDesktopChatSending, setPendingBridgeOutreach]);
+  }, [cancelCloudBridgeAgentRequest, setDesktopChatError, setIsDesktopChatSending, setPendingBridgeOutreach]);
 
   const handleStopBridgeAgentRequest = useCallback(async (request: BridgeAgentRequestControl) => {
     await stopBridgeOutreach(request.conversationId, request.requestId);

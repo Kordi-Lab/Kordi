@@ -1304,6 +1304,7 @@ export function WorkspaceSidebar({
     const childrenToRender = expanded
       ? forks
       : forks.filter((fork) => activeSessionPathIds.has(fork.id));
+    const hasActiveForkPath = childrenToRender.some((fork) => activeSessionPathIds.has(fork.id));
     return (
       <div key={row.session.id} className="app-session-row-group">
         {renderAgentSessionRow(row, {
@@ -1315,8 +1316,12 @@ export function WorkspaceSidebar({
         })}
         {childrenToRender.length > 0 ? (
           <div
-            className="app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2"
+            className={cn(
+              'app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2',
+              hasActiveForkPath && 'app-session-fork-children-active',
+            )}
             data-session-fork-depth={depth + 1}
+            data-session-fork-path-active={hasActiveForkPath || undefined}
           >
             {childrenToRender.map((forkSession) => {
               const forkRow = agentSessionRowsById.get(forkSession.id);
@@ -1854,36 +1859,6 @@ export function WorkspaceSidebar({
                       ))}
                     </div>
                   </ScrollArea>
-                </div>
-              )}
-
-              {activeNav === 'bridge' && (
-                <div className="h-full p-3">
-                  <div className="app-sidebar-panel space-y-3 text-white">
-                    <div className="app-sidebar-panel-section">
-                      <div className="app-sidebar-panel-heading">Active host</div>
-                      <div className="app-sidebar-meta-list mt-2.5">
-                        <div className="app-sidebar-meta-row"><span>Server</span><span className="max-w-[180px] truncate text-right">{activeBridgeHost?.serverUrl || 'Not set'}</span></div>
-                        <div className="app-sidebar-meta-row"><span>Connection</span><span>{activeBridgeHost?.connected ? 'Connected' : 'Offline'}</span></div>
-                        <div className="app-sidebar-meta-row"><span>Local node</span><span className="max-w-[180px] truncate text-right">{activeBridgeHost?.nodeId || 'Not registered'}</span></div>
-                        <div className="app-sidebar-meta-row"><span>Visible members</span><span>{activeBridgeHost?.visiblePeerCount ?? 0}</span></div>
-                      </div>
-                    </div>
-                    <div className="app-sidebar-panel-section">
-                      <div className="app-sidebar-panel-heading">Quick actions</div>
-                      <div className="mt-2.5 grid gap-2">
-                        <Button variant="secondary" className="justify-start rounded-xl" onClick={onRefreshBridge}>
-                          <Activity className="mr-2 h-4 w-4" /> Refresh bridge state
-                        </Button>
-                        <Button variant="secondary" className="justify-start rounded-xl" onClick={onCopyBridgeHostUrl}>
-                          <Copy className="mr-2 h-4 w-4" /> Copy host URL
-                        </Button>
-                        <Button variant="secondary" className="justify-start rounded-xl" onClick={onCreateBridgeDraft}>
-                          <Plus className="mr-2 h-4 w-4" /> Add / join another host
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
 

@@ -3,6 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import { isCanonicalBridgeSessionId } from '@/features/canonical/sessionResolver';
+import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
 import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import {
   createDesktopChatSession,
@@ -97,6 +98,10 @@ export function useDesktopSessionController({
     }
 
     if (sessionId.startsWith('bridge:')) {
+      if (isCloudBridgeConversationId(sessionId)) {
+        setDesktopChatError(null);
+        return;
+      }
       try {
         const nextState = await markDesktopBridgeConversationRead(sessionId);
         setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));

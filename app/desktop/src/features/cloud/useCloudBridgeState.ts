@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 
 import {
+  adoptCloudProfileIdentity,
   appendCanonicalMessage,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
@@ -20,6 +21,8 @@ import type {
   CanonicalIdentity,
   CanonicalSessionMessage,
   CanonicalSessionState,
+  OpenCanonicalSessionRequest,
+  UpsertCanonicalIdentityRequest,
   DesktopBridgeSessionParticipant,
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
@@ -31,6 +34,7 @@ import {
   type CloudAccount,
   type CloudMessage,
   type CloudPublicProfile,
+  type CloudSessionForkSummary,
   type UpsertCloudArtifactActivityInput,
   type UpsertCloudTaskActivityInput,
 } from './authClient';
@@ -41,7 +45,6 @@ import {
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdForBridgeSend,
   isCloudBridgeHostId,
-  mergeCloudBridgeState,
 } from './cloudBridgeState';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
@@ -830,10 +833,12 @@ export async function loadCloudMessagesByPeerUntilStable({
 }
 
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
+const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX = 'kordi.cloud.selfAgentForwardBaseline.v1:';
 
 type CloudSelfAgentSyncLedgerEntry = {
-  cloudMessageId: string;
+  cloudMessageId: string | null;
   syncedAtMs: number;
+  skippedLocalBackfill?: boolean;
 };
 
 type CloudSelfAgentSyncLedger = Record<string, CloudSelfAgentSyncLedgerEntry>;
@@ -847,8 +852,50 @@ type CloudSelfAgentSyncOperation = {
   createdAtMs: number;
 };
 
+export type CloudSelfAgentSyncStatus = {
+  state: 'syncing' | 'synced' | 'error';
+  pendingCount?: number;
+  message?: string;
+  updatedAtMs: number;
+};
+
+export function cloudSelfAgentDerivedSyncedStatusBySessionId(
+  accountId: string | null | undefined,
+  messagesByPeer: Record<string, CloudMessage[]>,
+  updatedAtMs: number = Date.now(),
+): Record<string, CloudSelfAgentSyncStatus> {
+  const localAccountId = accountId?.trim();
+  if (!localAccountId) return {};
+  const statuses: Record<string, CloudSelfAgentSyncStatus> = {};
+  for (const message of messagesByPeer[localAccountId] ?? []) {
+    if (message.fromAccountId !== localAccountId || message.toAccountId !== localAccountId) continue;
+    const sessionId = cleanText(message.sessionId);
+    if (!sessionId) continue;
+    statuses[sessionId] = { state: 'synced', updatedAtMs };
+  }
+  return statuses;
+}
+
 function selfAgentSyncLedgerKey(accountId: string): string {
   return `${CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX}${accountId}`;
+}
+
+function selfAgentForwardBaselineKey(accountId: string): string {
+  return `${CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX}${accountId}`;
+}
+
+function loadCloudSelfAgentForwardBaseline(accountId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(selfAgentForwardBaselineKey(accountId)) === '1';
+}
+
+function saveCloudSelfAgentForwardBaseline(accountId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(selfAgentForwardBaselineKey(accountId), '1');
+  } catch {
+    // Best effort. If persistence fails, this device may try again later.
+  }
 }
 
 function loadCloudSelfAgentSyncLedger(accountId: string): CloudSelfAgentSyncLedger {
@@ -864,8 +911,10 @@ function loadCloudSelfAgentSyncLedger(accountId: string): CloudSelfAgentSyncLedg
         ? (value as Record<string, unknown>).cloudMessageId as string
         : null);
       const syncedAtMs = (value as Record<string, unknown>).syncedAtMs;
-      if (!localMessageId.trim() || !cloudMessageId || typeof syncedAtMs !== 'number' || !Number.isFinite(syncedAtMs)) continue;
-      ledger[localMessageId] = { cloudMessageId, syncedAtMs };
+      const skippedLocalBackfill = (value as Record<string, unknown>).skippedLocalBackfill === true;
+      if (!localMessageId.trim() || typeof syncedAtMs !== 'number' || !Number.isFinite(syncedAtMs)) continue;
+      if (!cloudMessageId && !skippedLocalBackfill) continue;
+      ledger[localMessageId] = { cloudMessageId: cloudMessageId || null, syncedAtMs, skippedLocalBackfill: skippedLocalBackfill || undefined };
     }
     return ledger;
   } catch {
@@ -888,21 +937,233 @@ function isTerminalSelfAgentMessage(message: CanonicalSessionMessage): boolean {
   return !['', 'sending', 'processing', 'failed', 'cancelled'].includes(status);
 }
 
+function cloudSelfAgentCanonicalMessageId(messageId: string): string {
+  return `msg:cloud:self:${messageId}`;
+}
+
+function cloudSelfAgentCreatedAtMs(message: CloudMessage): number {
+  const parsed = Date.parse(message.createdAt);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+function existingCanonicalMessageMatchesCloudSelfAgent(
+  existing: CanonicalSessionMessage,
+  input: { sessionId: string; role: 'user' | 'agent'; text: string; createdAtMs: number; cloudMessageId: string },
+): boolean {
+  if (existing.sessionId !== input.sessionId) return false;
+  if (existing.id === cloudSelfAgentCanonicalMessageId(input.cloudMessageId)) return true;
+  if (existing.sourceTransport === 'cloud-self-agent' && existing.sourceEventId === input.cloudMessageId) return true;
+  const existingText = cleanText(existing.contentText);
+  if (!existingText || existingText !== input.text) return false;
+  const roleMatches = input.role === 'user'
+    ? existing.senderRole === 'user'
+    : existing.senderRole.includes('agent') || existing.messageKind === 'agent-turn';
+  if (!roleMatches) return false;
+  return Math.abs(existing.createdAtMs - input.createdAtMs) <= 5_000;
+}
+
+export function planCloudSelfAgentCanonicalSync({
+  account,
+  messages,
+  state,
+  forksBySessionId = {},
+}: {
+  account: CloudAccount;
+  messages: CloudMessage[];
+  state: CanonicalSessionState;
+  forksBySessionId?: Record<string, CloudSessionForkSummary>;
+}): {
+  agentIdentityRequest: UpsertCanonicalIdentityRequest;
+  sessionRequests: OpenCanonicalSessionRequest[];
+  messageRequests: AppendCanonicalMessageRequest[];
+} {
+  const localHumanIdentityId = state.profile.humanIdentityId?.trim() || `human:${account.accountId}`;
+  const agentIdentityId = `agent:cloud-self:${account.accountId}`;
+  const sorted = [...messages]
+    .filter((message) => message.fromAccountId === account.accountId && message.toAccountId === account.accountId)
+    .filter((message) => cleanText(message.sessionId))
+    .sort((left, right) => (
+      cloudSelfAgentCreatedAtMs(left) - cloudSelfAgentCreatedAtMs(right)
+      || left.messageId.localeCompare(right.messageId)
+    ));
+
+  const userTextByCloudMessageId = new Map<string, string>();
+  const requestLocalMessageIdByCloudMessageId = new Map<string, string>();
+  const plannedCanonicalMessageIdByDuplicateKey = new Map<string, string>();
+  const sessionRequestsById = new Map<string, OpenCanonicalSessionRequest>();
+  const existingSessionById = new Map(state.sessions.map((session) => [session.id, session]));
+  const messageRequests: AppendCanonicalMessageRequest[] = [];
+
+  const ensureSessionRequest = (sessionId: string, title: string) => {
+    if (sessionRequestsById.has(sessionId)) return;
+    const fork = forksBySessionId[sessionId];
+    const existingSession = existingSessionById.get(sessionId);
+    const metadata = {
+      cloudSelfAgentSession: true,
+      ...(fork
+        ? {
+            fork: {
+              forkedFromSessionId: fork.parentSessionId,
+              ...(fork.parentMessageId ? { forkedFromMessageId: fork.parentMessageId } : {}),
+            },
+          }
+        : {}),
+    };
+    const existingMetadata = existingSession?.metadata && typeof existingSession.metadata === 'object' && !Array.isArray(existingSession.metadata)
+      ? existingSession.metadata as Record<string, unknown>
+      : {};
+    const existingFork = existingMetadata.fork && typeof existingMetadata.fork === 'object' && !Array.isArray(existingMetadata.fork)
+      ? existingMetadata.fork as Record<string, unknown>
+      : null;
+    const existingHasFork = Boolean(fork)
+      && existingFork?.forkedFromSessionId === fork?.parentSessionId
+      && (!fork?.parentMessageId || existingFork?.forkedFromMessageId === fork.parentMessageId);
+    if (existingSession && (!fork || existingHasFork)) return;
+    sessionRequestsById.set(sessionId, {
+      id: sessionId,
+      kind: 'self-agent',
+      title: cleanText(existingSession?.title) || title,
+      status: 'active',
+      createdByIdentityId: localHumanIdentityId,
+      primaryIdentityId: agentIdentityId,
+      participantIdentityIds: [agentIdentityId],
+      metadata,
+    });
+  };
+
+  for (const message of sorted) {
+    const sessionId = cleanText(message.sessionId);
+    if (!sessionId) continue;
+    const response = parseCloudAgentResponse(message.body);
+    if (!response && (parseCloudAgentCancel(message.body) || parseCloudGroupControl(message.body))) continue;
+    const role = response ? 'agent' as const : 'user' as const;
+    const text = cleanText(response?.text ?? message.body);
+    if (!text) continue;
+    const createdAtMs = cloudSelfAgentCreatedAtMs(message);
+    const existingMatch = state.messages.find((existing) => existingCanonicalMessageMatchesCloudSelfAgent(existing, {
+      sessionId,
+      role,
+      text,
+      createdAtMs,
+      cloudMessageId: message.messageId,
+    }));
+    if (existingMatch) {
+      if (!response) {
+        userTextByCloudMessageId.set(message.messageId, text);
+        requestLocalMessageIdByCloudMessageId.set(message.messageId, existingMatch.id);
+        ensureSessionRequest(sessionId, text || 'My Kordi');
+      } else {
+        ensureSessionRequest(sessionId, cleanText(userTextByCloudMessageId.get(response.requestId)) || cleanText(existingSessionById.get(sessionId)?.title) || 'My Kordi');
+      }
+      continue;
+    }
+
+    const duplicateKey = [sessionId, role, createdAtMs.toString(), text].join('\u001f');
+    const plannedDuplicateMessageId = plannedCanonicalMessageIdByDuplicateKey.get(duplicateKey);
+    if (plannedDuplicateMessageId) {
+      if (!response) {
+        userTextByCloudMessageId.set(message.messageId, text);
+        requestLocalMessageIdByCloudMessageId.set(message.messageId, plannedDuplicateMessageId);
+      }
+      continue;
+    }
+
+    const canonicalMessageId = cloudSelfAgentCanonicalMessageId(message.messageId);
+    if (!response) {
+      userTextByCloudMessageId.set(message.messageId, text);
+      requestLocalMessageIdByCloudMessageId.set(message.messageId, canonicalMessageId);
+    }
+    const parentMessageId = response ? requestLocalMessageIdByCloudMessageId.get(response.requestId) ?? null : null;
+    if (response && !parentMessageId) continue;
+    const title = cleanText(userTextByCloudMessageId.get(response?.requestId ?? message.messageId)) || 'My Kordi';
+    ensureSessionRequest(sessionId, title);
+    plannedCanonicalMessageIdByDuplicateKey.set(duplicateKey, canonicalMessageId);
+    messageRequests.push({
+      id: canonicalMessageId,
+      sessionId,
+      senderIdentityId: response ? agentIdentityId : localHumanIdentityId,
+      senderRole: response ? 'owned-agent' : 'user',
+      messageKind: response ? 'agent-turn' : 'text',
+      contentText: text,
+      content: response ? { cloudRequestMessageId: response.requestId } : null,
+      parentMessageId,
+      status: response ? 'complete' : 'sent',
+      createdAtMs,
+      sourceTransport: 'cloud-self-agent',
+      sourceEventId: message.messageId,
+    });
+  }
+
+  return {
+    agentIdentityRequest: {
+      id: agentIdentityId,
+      kind: 'agent',
+      displayName: 'My Kordi',
+      ownerIdentityId: localHumanIdentityId,
+      source: 'local',
+      sourceHostId: null,
+      bridgeNodeId: null,
+      humanId: null,
+      agentId: `cloud-self:${account.accountId}`,
+      avatarKey: `cloud-self:${account.accountId}`,
+      profileImageUrl: null,
+      metadata: { cloudSelfAgent: true, accountId: account.accountId },
+    },
+    sessionRequests: [...sessionRequestsById.values()],
+    messageRequests,
+  };
+}
+
+function localSelfAgentSessionIds(state: CanonicalSessionState): Set<string> {
+  return new Set(state.sessions
+    .filter((session) => session.kind === 'self-agent' && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX))
+    .map((session) => session.id));
+}
+
+function shouldSkipSelfAgentForwardSyncMessage(message: CanonicalSessionMessage): boolean {
+  return message.sourceTransport === 'canonical-fork-snapshot'
+    || message.sourceTransport === 'cloud-group-fork-snapshot'
+    || message.sourceTransport === 'cloud-self-agent'
+    || message.id.startsWith('msg:cloud:self:');
+}
+
+export function seedCloudSelfAgentForwardSyncLedger(
+  state: CanonicalSessionState,
+  ledger: CloudSelfAgentSyncLedger,
+  syncedAtMs: number = Date.now(),
+): { ledger: CloudSelfAgentSyncLedger; changed: boolean } {
+  const selfAgentSessionIds = localSelfAgentSessionIds(state);
+  if (selfAgentSessionIds.size === 0) return { ledger, changed: false };
+
+  let changed = false;
+  const next: CloudSelfAgentSyncLedger = { ...ledger };
+  for (const message of state.messages) {
+    if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
+    if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
+    if (!cleanText(message.contentText) || next[message.id]) continue;
+    next[message.id] = {
+      cloudMessageId: null,
+      syncedAtMs,
+      skippedLocalBackfill: true,
+    };
+    changed = true;
+  }
+  return { ledger: changed ? next : ledger, changed };
+}
+
 export function planCloudSelfAgentSync(
   state: CanonicalSessionState,
   ledger: CloudSelfAgentSyncLedger,
   options: { allowLocalBackfill?: boolean } = {},
 ): CloudSelfAgentSyncOperation[] {
   if (options.allowLocalBackfill === false) return [];
-  const selfAgentSessionIds = new Set(state.sessions
-    .filter((session) => session.kind === 'self-agent' && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX))
-    .map((session) => session.id));
+  const selfAgentSessionIds = localSelfAgentSessionIds(state);
   if (selfAgentSessionIds.size === 0) return [];
 
   const messagesBySession = new Map<string, CanonicalSessionMessage[]>();
   for (const message of state.messages) {
     if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
-    if (message.sourceTransport === 'canonical-fork-snapshot') continue;
+    if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
     const text = cleanText(message.contentText);
     if (!text) continue;
     const bucket = messagesBySession.get(message.sessionId) ?? [];
@@ -999,6 +1260,7 @@ export type UseCloudBridgeStateResult = {
   initialContactsSettled: boolean;
   initialMessagesSettled: boolean;
   cachedMessagesReady: boolean;
+  cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
 };
 
 function applyCloudAgentRuntimeRouteToState(
@@ -1030,7 +1292,6 @@ function applyCloudAgentRuntimeRouteToState(
 
 export function useCloudBridgeState({
   account,
-  baseBridgeState,
   activeConversationId,
   canonicalSessionState,
   setCanonicalSessionState,
@@ -1038,7 +1299,6 @@ export function useCloudBridgeState({
   cloudAgentRuntimeRoutesBySessionId,
 }: {
   account: CloudAccount | null;
-  baseBridgeState: DesktopBridgeState | null;
   activeConversationId?: string | null;
   canonicalSessionState?: CanonicalSessionState | null;
   setCanonicalSessionState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
@@ -1049,6 +1309,7 @@ export function useCloudBridgeState({
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>(() => loadCachedCloudMessagesByPeer(account?.accountId));
   const [cloudSessionActivity, setCloudSessionActivity] = useState<CloudSessionActivityStore>(() => loadCachedCloudSessionActivity(account?.accountId));
+  const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
   const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
@@ -1060,11 +1321,13 @@ export function useCloudBridgeState({
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
   const [localAgentTurnsByRequestId, setLocalAgentTurnsByRequestId] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [cloudBridgeOverride, setCloudBridgeOverrideState] = useState<DesktopBridgeState | null>(null);
+  const [cloudSelfAgentSyncStatusBySessionId, setCloudSelfAgentSyncStatusBySessionId] = useState<Record<string, CloudSelfAgentSyncStatus>>({});
   const cloudBridgeStateRef = useRef<DesktopBridgeState | null>(null);
   const readReceiptRequestRef = useRef<string | null>(null);
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
+  const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
   const syncingCloudDiffRef = useRef(false);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
@@ -1148,11 +1411,48 @@ export function useCloudBridgeState({
     groupParticipantPeerIds,
     contacts.requests,
   ), [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
-  const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
+  const cloudProfileIdentityId = account?.accountId ? `human:${account.accountId}` : '';
+  const localHumanIdentityId = cloudProfileIdentityId || canonicalSessionState?.profile.humanIdentityId?.trim() || '';
   const bootstrapPeerKey = useMemo(() => bootstrapPeerIds.join('|'), [bootstrapPeerIds]);
+  const initialMessagesSettled = cloudInitialMessagesSettledForPeerKey({
+    accountReady: Boolean(account),
+    contactsSettled: contacts.initialLoadSettled,
+    currentPeerKey: bootstrapPeerKey,
+    settledPeerKey: initialMessagesSettledPeerKey,
+  });
   useEffect(() => {
     bootstrapPeerIdsRef.current = bootstrapPeerIds;
   }, [bootstrapPeerKey]);
+  const cloudProfileAdoptionSignature = useMemo(() => JSON.stringify({
+    accountId: account?.accountId ?? null,
+    displayName: account?.displayName ?? account?.primaryEmail ?? null,
+    avatarUrl: account?.avatarUrl ?? null,
+    profileHumanIdentityId: canonicalSessionState?.profile.humanIdentityId ?? null,
+  }), [account?.accountId, account?.avatarUrl, account?.displayName, account?.primaryEmail, canonicalSessionState?.profile.humanIdentityId]);
+
+  useEffect(() => {
+    if (!account || !setCanonicalSessionState) return;
+    const stableIdentityId = `human:${account.accountId}`;
+    if (canonicalSessionState?.profile.humanIdentityId === stableIdentityId) return;
+    let cancelled = false;
+    void adoptCloudProfileIdentity({
+      accountId: account.accountId,
+      displayName: account.displayName || account.primaryEmail || account.accountId,
+      avatarKey: account.accountId,
+      profileImageUrl: account.avatarUrl ?? null,
+    })
+      .then((nextState) => {
+        if (!cancelled) setCanonicalSessionState(nextState);
+      })
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-profile-identity] failed to adopt stable cloud profile identity', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, canonicalSessionState?.profile.humanIdentityId, cloudProfileAdoptionSignature, setCanonicalSessionState]);
+
   const contactIdentitySignature = useMemo(() => JSON.stringify({
     accountId: account?.accountId ?? null,
     localHumanIdentityId,
@@ -1239,12 +1539,14 @@ export function useCloudBridgeState({
     try {
       let messagesByPeer = messagesByPeerRef.current;
       let sessionActivity = cloudSessionActivityRef.current;
+      let sessionForksById = cloudSessionForksById;
       let fallbackRequired = false;
       for (let pass = 0; pass < 20; pass += 1) {
         const result = await syncCloudDiffOnce({
           accountId: account.accountId,
           messagesByPeer,
           sessionActivity,
+          sessionForksById,
           fetchEvents: (cursor) => client.syncCloudEvents(session.token, cursor, 500),
         });
         if (result.fallbackRequired) {
@@ -1253,6 +1555,7 @@ export function useCloudBridgeState({
         }
         messagesByPeer = result.messagesByPeer;
         sessionActivity = result.sessionActivity;
+        sessionForksById = result.sessionForksById;
         if (!result.hasMore) break;
       }
       if (cancelledRef.current) return false;
@@ -1265,21 +1568,24 @@ export function useCloudBridgeState({
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
       setCloudSessionActivity((current) => mergeCloudSessionActivity(current, sessionActivity));
+      setCloudSessionForksById(sessionForksById);
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
       syncingCloudDiffRef.current = false;
     }
-  }, [account, bootstrapPeerKey, client, refreshCloudBridgeMessages]);
+  }, [account, bootstrapPeerKey, client, cloudSessionForksById, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account) {
       setMessagesByPeer({});
       setCloudSessionActivity(EMPTY_CLOUD_SESSION_ACTIVITY);
+      setCloudSessionForksById({});
       setReadInboundMessageIdsByPeer({});
       setLocalAgentTurnsByRequestId({});
       setCloudBridgeOverrideState(null);
       setInitialMessagesSettledPeerKey(null);
+      cloudSelfAgentForkRefreshKeyRef.current = null;
       return;
     }
     void syncCloudBridgeDiff().then((diffSynced) => {
@@ -1398,15 +1704,36 @@ export function useCloudBridgeState({
     if (!account || syncingSelfAgentHistoryRef.current) return;
 
     syncingSelfAgentHistoryRef.current = true;
+    let plannedSessionIds: string[] = [];
     void (async () => {
       const latestState = await fetchCanonicalSessionState().catch(() => canonicalSessionState ?? null);
       if (!latestState) return;
       const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
-      const operations = planCloudSelfAgentSync(latestState, initialLedger, { allowLocalBackfill: false });
+      if (!loadCloudSelfAgentForwardBaseline(account.accountId)) {
+        const seeded = seedCloudSelfAgentForwardSyncLedger(latestState, initialLedger);
+        if (seeded.changed) {
+          saveCloudSelfAgentSyncLedger(account.accountId, seeded.ledger);
+        }
+        saveCloudSelfAgentForwardBaseline(account.accountId);
+        return;
+      }
+      const operations = planCloudSelfAgentSync(latestState, initialLedger);
       if (operations.length === 0) return;
 
+      plannedSessionIds = [...new Set(operations.map((operation) => operation.sessionId))];
       const session = await loadSession();
       if (!session?.token) return;
+      const pendingBySession = operations.reduce<Record<string, number>>((counts, operation) => {
+        counts[operation.sessionId] = (counts[operation.sessionId] ?? 0) + 1;
+        return counts;
+      }, {});
+      setCloudSelfAgentSyncStatusBySessionId((current) => {
+        const next = { ...current };
+        for (const [sessionId, pendingCount] of Object.entries(pendingBySession)) {
+          next[sessionId] = { state: 'syncing', pendingCount, updatedAtMs: Date.now() };
+        }
+        return next;
+      });
       const ledger = loadCloudSelfAgentSyncLedger(account.accountId);
       for (const operation of operations) {
         if (cancelledRef.current) return;
@@ -1414,7 +1741,7 @@ export function useCloudBridgeState({
         let body = operation.text;
         if (operation.role === 'agent') {
           const parentCloudMessageId = operation.parentLocalMessageId
-            ? ledger[operation.parentLocalMessageId]?.cloudMessageId
+            ? ledger[operation.parentLocalMessageId]?.cloudMessageId ?? null
             : null;
           if (!parentCloudMessageId) continue;
           body = encodeCloudAgentResponse({ requestId: parentCloudMessageId, text: operation.text });
@@ -1435,11 +1762,28 @@ export function useCloudBridgeState({
           syncedAtMs: Date.now(),
         };
         saveCloudSelfAgentSyncLedger(account.accountId, ledger);
+        pendingBySession[operation.sessionId] = Math.max(0, (pendingBySession[operation.sessionId] ?? 1) - 1);
+        setCloudSelfAgentSyncStatusBySessionId((current) => ({
+          ...current,
+          [operation.sessionId]: pendingBySession[operation.sessionId] > 0
+            ? { state: 'syncing', pendingCount: pendingBySession[operation.sessionId], updatedAtMs: Date.now() }
+            : { state: 'synced', updatedAtMs: Date.now() },
+        }));
         mergeMessage(message);
       }
       await refreshCloudBridgeMessages();
     })()
       .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (plannedSessionIds.length > 0) {
+          setCloudSelfAgentSyncStatusBySessionId((current) => {
+            const next = { ...current };
+            for (const sessionId of plannedSessionIds) {
+              next[sessionId] = { state: 'error', message, updatedAtMs: Date.now() };
+            }
+            return next;
+          });
+        }
         // eslint-disable-next-line no-console
         console.warn('[cloud-self-agent-sync] failed to sync local history', error);
       })
@@ -1782,7 +2126,12 @@ export function useCloudBridgeState({
         nextState = removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
       }
       setCanonicalSessionState(nextState);
-      if (shouldCountCloudGroupMessageUnread({ activeConversationId, groupId: envelope.groupId, groupSpaceId })) {
+      if (shouldCountCloudGroupMessageUnread({
+        activeConversationId,
+        groupId: envelope.groupId,
+        groupSpaceId,
+        forkSnapshot: envelope.message.forkSnapshot,
+      })) {
         incrementLocalSessionUnread?.(envelope.groupId, 1);
       }
     }
@@ -2180,7 +2529,7 @@ export function useCloudBridgeState({
   }, [account, activeConversationId, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
-    if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState) return;
+    if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
     const replayMessages = cloudGroupControlMessagesForAccount({
       accountId: account.accountId,
       messages: Object.values(messagesByPeer).flat(),
@@ -2197,10 +2546,10 @@ export function useCloudBridgeState({
         console.warn('[cloud-group] sync failed', error);
       });
     }
-  }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, messagesByPeer, setCanonicalSessionState]);
+  }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
-    if (!account) return;
+    if (!account || !initialMessagesSettled) return;
     for (const messages of Object.values(messagesByPeer)) {
       for (const message of messages) {
         if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) continue;
@@ -2376,7 +2725,7 @@ export function useCloudBridgeState({
         });
       }
     }
-  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
+  }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, initialMessagesSettled, mergeMessage, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
@@ -2430,6 +2779,85 @@ export function useCloudBridgeState({
   }, [account, activeConversationId, client, messagesByPeer, refreshCloudBridgeMessages]);
 
   useEffect(() => {
+    if (!account || !initialMessagesSettled) return;
+    const selfSessionIds = [...new Set(
+      (messagesByPeer[account.accountId] ?? [])
+        .map((message) => cleanText(message.sessionId))
+        .filter(Boolean),
+    )].sort();
+    if (selfSessionIds.length === 0) return;
+    const refreshKey = `${account.accountId}:${selfSessionIds.join('|')}`;
+    if (cloudSelfAgentForkRefreshKeyRef.current === refreshKey) return;
+    cloudSelfAgentForkRefreshKeyRef.current = refreshKey;
+
+    let cancelled = false;
+    void (async () => {
+      const session = await loadSession();
+      if (!session?.token) return;
+      const results = await Promise.allSettled(
+        selfSessionIds.map((sessionId) => client.listSessionForks(session.token, sessionId)),
+      );
+      const forks = results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
+      if (cancelled || forks.length === 0) return;
+      setCloudSessionForksById((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const fork of forks) {
+          const existing = next[fork.forkSessionId];
+          if (
+            existing?.parentSessionId === fork.parentSessionId
+            && existing?.parentMessageId === fork.parentMessageId
+            && existing?.createdAt === fork.createdAt
+          ) {
+            continue;
+          }
+          next[fork.forkSessionId] = fork;
+          changed = true;
+        }
+        return changed ? next : current;
+      });
+    })().catch((error) => {
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-self-agent-sync] failed to refresh cloud fork lineage', error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, client, initialMessagesSettled, messagesByPeer]);
+
+  useEffect(() => {
+    if (!account || !canonicalSessionState || !setCanonicalSessionState || !initialMessagesSettled) return;
+    const selfMessages = messagesByPeer[account.accountId] ?? [];
+    if (selfMessages.length === 0) return;
+    const plan = planCloudSelfAgentCanonicalSync({
+      account,
+      messages: selfMessages,
+      state: canonicalSessionState,
+      forksBySessionId: cloudSessionForksById,
+    });
+    if (plan.sessionRequests.length === 0 && plan.messageRequests.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      let nextState = await upsertCanonicalIdentity(plan.agentIdentityRequest);
+      for (const sessionRequest of plan.sessionRequests) {
+        if (cancelled) return;
+        nextState = await openOrCreateCanonicalSession(sessionRequest);
+      }
+      for (const messageRequest of plan.messageRequests) {
+        if (cancelled) return;
+        nextState = await upsertCanonicalMessage(messageRequest);
+      }
+      if (!cancelled) setCanonicalSessionState(nextState);
+    })().catch((error) => {
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-self-agent-sync] failed to materialize cloud session locally', error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, canonicalSessionState, cloudSessionForksById, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
+
+  useEffect(() => {
     if (!account) return;
     const refresh = () => void refreshCloudBridgeMessages();
     const refreshWhenVisible = () => {
@@ -2453,17 +2881,18 @@ export function useCloudBridgeState({
       .map((session) => [session.id, session.title]));
     const hiddenCloudSessionIds = new Set(canonicalSelfAgentSessions
       .map((session) => session.id.trim())
-      .filter((sessionId) => sessionId.startsWith('session:fork:')));
+      .filter(Boolean));
     const canonicalSelfAgentSessionIds = new Set(canonicalSelfAgentSessions.map((session) => session.id));
     const suppressUnscopedSelfAgentConversation = (canonicalSessionState?.messages ?? []).some((message) => (
       canonicalSelfAgentSessionIds.has(message.sessionId)
       && message.sourceTransport !== 'canonical-fork-snapshot'
       && message.sourceTransport !== 'cloud-group-fork-snapshot'
     ));
+    const visibleMessagesByPeer = initialMessagesSettled ? messagesByPeer : {};
     const generated = buildCloudDesktopBridgeState({
       account,
       contacts: cloudBridgeContacts,
-      messagesByPeer,
+      messagesByPeer: visibleMessagesByPeer,
       readInboundMessageIdsByPeer,
       activeConversationId,
       localAgentTurnsByRequestId,
@@ -2472,10 +2901,8 @@ export function useCloudBridgeState({
       hiddenCloudSessionIds,
       suppressUnscopedSelfAgentConversation,
     });
-    return applyCloudAgentRuntimeRouteToState(
-      mergeCloudBridgeState(generated, cloudBridgeOverride),
-      activeRuntimeRoute,
-    );
+    const generatedWithOverride = cloudBridgeOverride ?? generated;
+    return applyCloudAgentRuntimeRouteToState(generatedWithOverride, activeRuntimeRoute);
   }, [
     account,
     activeConversationId,
@@ -2484,6 +2911,7 @@ export function useCloudBridgeState({
     cloudBridgeOverride,
     cloudBridgeContacts,
     localAgentTurnsByRequestId,
+    initialMessagesSettled,
     messagesByPeer,
     readInboundMessageIdsByPeer,
   ]);
@@ -2500,10 +2928,11 @@ export function useCloudBridgeState({
     setCloudBridgeOverrideState(next);
   }, []);
 
-  const mergedBridgeState = useMemo(
-    () => mergeCloudBridgeState(baseBridgeState, cloudBridgeState),
-    [baseBridgeState, cloudBridgeState],
-  );
+  const mergedBridgeState = cloudBridgeState;
+  const visibleCloudSelfAgentSyncStatusBySessionId = useMemo(() => ({
+    ...cloudSelfAgentDerivedSyncedStatusBySessionId(account?.accountId, messagesByPeer),
+    ...cloudSelfAgentSyncStatusBySessionId,
+  }), [account?.accountId, cloudSelfAgentSyncStatusBySessionId, messagesByPeer]);
 
   const sendCloudBridgeMessage = useCallback(async (conversationId: string, text: string, attachments: AttachmentItem[] = []) => {
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);
@@ -2646,10 +3075,11 @@ export function useCloudBridgeState({
     if (!sourceSessionId || !forkSessionId) return;
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
-    await client.createSessionFork(session.token, sourceSessionId, {
+    const fork = await client.createSessionFork(session.token, sourceSessionId, {
       forkSessionId,
       parentMessageId: input.parentMessageId ?? null,
     });
+    setCloudSessionForksById((current) => ({ ...current, [fork.forkSessionId]: fork }));
     const cloned = cloneCloudSessionActivityForFork(
       cloudSessionActivityRef.current,
       sourceSessionId,
@@ -2755,12 +3185,8 @@ export function useCloudBridgeState({
     publishCloudArtifactActivity,
     refreshCloudContacts: contacts.refresh,
     initialContactsSettled: contacts.initialLoadSettled,
-    initialMessagesSettled: cloudInitialMessagesSettledForPeerKey({
-      accountReady: Boolean(account),
-      contactsSettled: contacts.initialLoadSettled,
-      currentPeerKey: bootstrapPeerKey,
-      settledPeerKey: initialMessagesSettledPeerKey,
-    }),
+    initialMessagesSettled,
     cachedMessagesReady: Object.values(messagesByPeer).some((messages) => messages.length > 0),
+    cloudSelfAgentSyncStatusBySessionId: visibleCloudSelfAgentSyncStatusBySessionId,
   };
 }

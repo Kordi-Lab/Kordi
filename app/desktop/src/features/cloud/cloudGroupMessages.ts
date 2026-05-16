@@ -10,6 +10,7 @@ import type {
 
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
+import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
@@ -121,10 +122,6 @@ function pixelAvatarUrlFromSeed(seed?: string | null) {
   return trimmed ? `${CLOUD_PIXEL_AVATAR_URL_PREFIX}${trimmed}` : null;
 }
 
-function isCloudAccountId(value: string): boolean {
-  return value.trim().startsWith('acct_');
-}
-
 function syncableCloudGroupAvatarUrl(value?: string | null): string | null {
   const url = cleanText(value);
   if (!url || url.length > 1024) return null;
@@ -136,9 +133,9 @@ function syncableCloudGroupAvatarUrl(value?: string | null): string | null {
 function uniqueByAccount(participants: CloudGroupParticipant[]) {
   const byAccountId = new Map<string, CloudGroupParticipant>();
   for (const participant of participants) {
-    const accountId = cleanText(participant.accountId);
+    const accountId = cloudAccountIdOrNull(participant.accountId) ?? '';
     const displayName = cleanText(participant.displayName) || accountId;
-    if (!accountId || !isCloudAccountId(accountId)) continue;
+    if (!accountId) continue;
     const avatarUrl = syncableCloudGroupAvatarUrl(participant.avatarUrl);
     const existing = byAccountId.get(accountId);
     if (existing) {
@@ -471,7 +468,9 @@ export function shouldCountCloudGroupMessageUnread(input: {
   activeConversationId?: string | null;
   groupId: string;
   groupSpaceId?: string | null;
+  forkSnapshot?: boolean | null;
 }): boolean {
+  if (input.forkSnapshot === true) return false;
   const active = cleanText(input.activeConversationId);
   const sessionId = cleanText(input.groupId);
   const spaceId = cleanText(input.groupSpaceId) || sessionId;
@@ -742,6 +741,7 @@ export function cloudGroupMessageReadPeerIds(input: {
       activeConversationId: input.activeConversationId,
       groupId: envelope.groupId,
       groupSpaceId: envelope.groupSpaceId,
+      forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const peerId = cleanText(message.fromAccountId);
     if (peerId) peerIds.add(peerId);
@@ -766,6 +766,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
       activeConversationId: input.activeConversationId,
       groupId: envelope.groupId,
       groupSpaceId: envelope.groupSpaceId,
+      forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const sessionId = cleanText(envelope.groupId);
     if (!sessionId) continue;
@@ -808,16 +809,19 @@ export function shouldRouteMentionThroughCloudGroup(input: {
 }): boolean {
   if (!input.activeGroupSessionIsGroup) return false;
   if (cleanText(input.mentionedHostId) === CLOUD_HOST_SENTINEL) return true;
+  if (input.hasCloudGroupRecipients === true) return true;
   if (input.mentionsLocalAgent === true) return true;
-  return input.mentionsBridgeAgent === true && input.hasCloudGroupRecipients === true;
+  return false;
 }
 
 export function cloudGroupTargetAccountIds<T extends { hostId?: string | null; nodeId?: string | null }>(targets: T[]): string[] {
   return [...new Set(targets
     .filter((target) => target.hostId === CLOUD_HOST_SENTINEL)
-    .map((target) => cleanText(target.nodeId))
-    .filter(Boolean))];
+    .map((target) => cloudAccountIdOrNull(target.nodeId))
+    .filter((accountId): accountId is string => Boolean(accountId)))];
 }
+
+export const cloudOnlyGroupTargetAccountIds = (targets: Array<{ hostId?: string | null; nodeId?: string | null }>): string[] => rejectNonCloudBridgeTargets(targets);
 
 export function nonCloudGroupTargets<T extends { hostId?: string | null }>(targets: T[]): T[] {
   return targets.filter((target) => target.hostId !== CLOUD_HOST_SENTINEL);
@@ -836,10 +840,10 @@ export function firstCloudGroupSendFailure(results: PromiseSettledResult<unknown
 export function cloudGroupIdentityRequest(
   participant: CloudGroupParticipant,
   account: CloudAccount,
-  localHumanIdentityId: string,
+  _localHumanIdentityId: string,
 ): UpsertCanonicalIdentityRequest {
   const isSelf = participant.accountId === account.accountId;
-  const id = isSelf ? localHumanIdentityId : `human:${participant.accountId}`;
+  const id = `human:${participant.accountId}`;
   return {
     id,
     kind: 'human',

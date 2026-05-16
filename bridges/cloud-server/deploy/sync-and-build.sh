@@ -30,28 +30,42 @@ echo "[deploy] remote dir:   ${REMOTE_DIR}"
 # config.
 export CLOUDSDK_COMPUTE_ZONE="${SSH_ZONE}"
 
-echo "[deploy] ensuring remote dir exists"
+echo "[deploy] ensuring remote dir exists and rsync is available"
 gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" \
-	--command "mkdir -p ${REMOTE_DIR}"
+	--command "set -e; mkdir -p ${REMOTE_DIR}; if ! command -v rsync >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y rsync; fi"
 
-echo "[deploy] rsync source tree (excluding heavy build/cache dirs)"
-gcloud compute scp --zone "${SSH_ZONE}" --recurse \
-	--compress \
-	"${REPO_ROOT}/Cargo.toml" \
-	"${REPO_ROOT}/Cargo.lock" \
-	"${SSH_TARGET}:${REMOTE_DIR}/"
+echo "[deploy] deriving rsync SSH transport from gcloud"
+# `gcloud compute ssh --dry-run` prints the exact ssh command for the VM,
+# including the active key, host alias, known-hosts file, and external IP.
+# Drop `-t`: rsync is non-interactive and a forced TTY can corrupt protocol IO.
+GCLOUD_SSH_DRY_RUN="$(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --dry-run | sed 's/ -t / /')"
+RSYNC_REMOTE="$(awk '{ print $NF }' <<<"${GCLOUD_SSH_DRY_RUN}")"
+RSYNC_RSH="$(awk '{$NF=""; sub(/[[:space:]]+$/, ""); print}' <<<"${GCLOUD_SSH_DRY_RUN}")"
 
 # Each workspace member that the cloud-server's Cargo.toml inherits via
 # `*.workspace = true` deps has to exist for cargo to resolve, even though
-# only `bridges/cloud-server` itself is built. We ship them all to keep the
-# workspace consistent — the build only touches bridges/cloud-server.
-gcloud compute scp --zone "${SSH_ZONE}" --recurse \
-	--compress \
+# only `bridges/cloud-server` itself is built. Sync in-place with --delete so
+# removed source files disappear from the VM, but exclude target/ so Cargo's
+# remote build cache survives iterative deploys.
+echo "[deploy] rsync source tree in-place (preserving remote target/)"
+rsync -az --delete --human-readable --itemize-changes \
+	--rsh="${RSYNC_RSH}" \
+	--exclude='target/' \
+	--exclude='.git/' \
+	--exclude='node_modules/' \
+	--exclude='dist/' \
+	--exclude='build/' \
+	--exclude='.next/' \
+	--exclude='.multi-instance-data/' \
+	--exclude='.multi-instance-logs/' \
+	--exclude='.multi-instance-runtime/' \
+	"${REPO_ROOT}/Cargo.toml" \
+	"${REPO_ROOT}/Cargo.lock" \
 	"${REPO_ROOT}/bridges" \
 	"${REPO_ROOT}/agent" \
 	"${REPO_ROOT}/app" \
 	"${REPO_ROOT}/shared" \
-	"${SSH_TARGET}:${REMOTE_DIR}/"
+	"${RSYNC_REMOTE}:${REMOTE_DIR}/"
 
 echo "[deploy] running 'cargo build --release -p kordi-cloud-server' on the VM"
 gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" \

@@ -4,7 +4,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
-import { bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
+import { activeConversationForSelection, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
+import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
+import { restoredCloudSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
@@ -16,6 +18,71 @@ test('pending Cloud contact selection keeps active conversation on Cloud instead
   assert.equal(conversation?.bridgeTarget?.hostId, 'cloud');
   assert.equal(conversation?.bridgeTarget?.nodeId, 'acct_peer');
   assert.equal(conversation?.bridges.includes('Cloud'), true);
+});
+
+test('workspace active conversation resolves Cloud self-agent bridge session ids to restored canonical sessions', () => {
+  const localConversation = {
+    id: '109fcf23-654c-41a7-bd73-8156b0b89703',
+    canonicalSessionId: '109fcf23-654c-41a7-bd73-8156b0b89703',
+    name: '今天thuwal天气怎么样',
+    type: 'owned-agent' as const,
+    subtitle: 'Local restored self-agent chat',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'user' as const, isOwnMessage: true, text: '家人们谁懂啊', time: '11:27' }],
+  };
+  const cloudBridgeSelection = 'bridge:cloud:acct_me:session:109fcf23-654c-41a7-bd73-8156b0b89703';
+
+  const selected = activeConversationForSelection(
+    cloudBridgeSelection,
+    [localConversation],
+    { isNativeShell: true, nativeChatPlaceholder: localConversation },
+  );
+
+  assert.equal(selected.id, localConversation.id);
+  assert.equal(selected.messages[0]?.text, '家人们谁懂啊');
+});
+
+test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
+  const localConversation = {
+    id: 'local-newer',
+    canonicalSessionId: 'local-newer',
+    name: 'Local newer',
+    type: 'owned-agent' as const,
+    subtitle: 'Local fallback should not win',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'owned-agent' as const, text: 'wrong local conversation', time: '10:02' }],
+  };
+  const cloudConversation = {
+    id: 'bridge:cloud:acct_e933bef06cc0499c8287f4fd43205eab:person',
+    canonicalSessionId: 'session:direct-person:acct_ab28e22a7e904f00bbe5d76eff13b495:acct_e933bef06cc0499c8287f4fd43205eab',
+    name: 'Cloud peer',
+    type: 'person' as const,
+    subtitle: 'Cloud direct chat',
+    unread: 0,
+    bridges: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Direct person chat',
+    participants: ['Me', 'Cloud peer'],
+    messages: [{ role: 'user' as const, isOwnMessage: true, text: 'hi', time: '10:01' }],
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_e933bef06cc0499c8287f4fd43205eab', runtime: 'person' },
+  };
+
+  const selected = activeConversationForSelection(
+    'session:direct-person:acct_ab28e22a7e904f00bbe5d76eff13b495:acct_e933bef06cc0499c8287f4fd43205eab',
+    [localConversation, cloudConversation],
+    { isNativeShell: true, nativeChatPlaceholder: localConversation },
+  );
+
+  assert.equal(selected.id, cloudConversation.id);
+  assert.equal(selected.messages[0]?.text, 'hi');
 });
 
 test('workspace active conversation does not fall back to a local UUID while a Cloud contact opens', () => {
@@ -410,6 +477,91 @@ test('workspace view model exposes visible non-contact Bridge people for Add con
   assert.equal(viewModels?.displayedContacts.some((contact) => contact.name === 'Existing Contact'), true);
 });
 
+test('canonical read model keeps existing local transcript when canonical has equal message count', () => {
+  const existingMessages = [
+    { id: 'local-user', role: 'user' as const, text: 'hello', time: '11:41', isOwnMessage: true },
+  ];
+  const canonicalMessages = [
+    { id: 'canonical-user', role: 'user' as const, text: 'hello', time: '11:41', isOwnMessage: true },
+  ];
+
+  assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), false);
+});
+
+test('canonical read model prefers equal-count canonical transcript when it adds fork snapshot markers', () => {
+  const existingMessages = [
+    { id: 'local-old', role: 'user' as const, text: 'old question', time: '11:41', isOwnMessage: true },
+    { id: 'local-new', role: 'user' as const, text: 'new fork input', time: '11:42', isOwnMessage: true },
+  ];
+  const canonicalMessages = [
+    { id: 'canonical-old', role: 'user' as const, text: 'old question', time: '11:41', isOwnMessage: true, isForkSnapshot: true },
+    { id: 'canonical-new', role: 'user' as const, text: 'new fork input', time: '11:42', isOwnMessage: true },
+  ];
+
+  assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), true);
+});
+
+test('restored Cloud self-agent messages are sent as native context for continued local turns', () => {
+  const contextMessages = restoredCloudSelfAgentContextMessages([
+    {
+      id: 'msg:cloud:self:user-1',
+      role: 'user',
+      sender: 'Me',
+      senderType: 'human',
+      text: '今天沙特阿拉伯图瓦的天气怎么样',
+      time: '14:30',
+      isOwnMessage: true,
+    },
+    {
+      id: 'msg:cloud:self:agent-1',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '14:31',
+      turn: {
+        id: 'turn-1',
+        sessionId: 'session:restored',
+        prompt: '今天沙特阿拉伯图瓦的天气怎么样',
+        status: 'succeeded',
+        message: 'Response complete',
+        assistantText: '图瓦今天多云。',
+        thinkingText: '',
+        tools: [],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    },
+    {
+      id: 'msg:ui:local-new',
+      role: 'user',
+      sender: 'Me',
+      senderType: 'human',
+      text: '你可以看到这里的聊天记录吗',
+      time: '14:33',
+      isOwnMessage: true,
+    },
+  ]);
+
+  assert.deepEqual(contextMessages, [
+    {
+      id: 'msg:cloud:self:user-1',
+      authorName: 'Me',
+      authorKind: 'human',
+      text: '今天沙特阿拉伯图瓦的天气怎么样',
+      createdAtMs: null,
+    },
+    {
+      id: 'msg:cloud:self:agent-1',
+      authorName: 'My Kordi',
+      authorKind: 'agent',
+      text: '图瓦今天多云。',
+      createdAtMs: null,
+    },
+  ]);
+});
+
 test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
@@ -598,6 +750,56 @@ test('canonical read model names chat-created direct and group sessions from the
   assert.equal(groupConversation?.name, 'Review launch plan and assign owners before demo');
   assert.equal(groupSpace?.title, 'Design crew');
   assert.equal(groupSpace?.sessions[0]?.title, 'Review launch plan and assign owners before demo');
+});
+
+test('canonical read model titles private self-agent forks from the first new turn, not inherited snapshots', () => {
+  const sessionId = 'session:fork:self-title';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: 'Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'self-agent',
+      title: 'hello',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'agent:me',
+      relationshipIdentityId: null,
+      metadata: { fork: { forkedFromSessionId: 'parent-self-session', forkedFromMessageId: 'parent-agent-message' } },
+      createdAtMs: 1,
+      updatedAtMs: 40,
+      lastMessageAtMs: 40,
+    }],
+    participants: [
+      { sessionId, identityId: 'agent:me', role: 'agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'snapshot-user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '今天thuwal天气怎么样', content: { sender: 'Me', timeLabel: '11:27' }, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'canonical-fork-snapshot', sourceEventId: 'snapshot:user' },
+      { id: 'snapshot-agent', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'weather answer', content: { sender: 'Kordi', timeLabel: '11:28' }, status: 'complete', sequenceNum: 2, createdAtMs: 20, updatedAtMs: 20, contentHash: null, sourceTransport: 'canonical-fork-snapshot', sourceEventId: 'snapshot:agent' },
+      { id: 'new-user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hello', content: { sender: 'Me', timeLabel: '11:41' }, status: 'sent', sequenceNum: 3, createdAtMs: 30, updatedAtMs: 30, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'new:user' },
+      { id: 'new-agent', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Hello! How can I help you today?', content: { sender: 'Kordi', timeLabel: '11:41' }, status: 'complete', sequenceNum: 4, createdAtMs: 40, updatedAtMs: 40, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'new:agent' },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+    presence: [],
+  } as never);
+
+  const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages.at(-1)?.text ?? fallback ?? '') ?? [];
+  const forkConversation = conversations.find((conversation) => conversation.id === sessionId);
+
+  assert.equal(forkConversation?.name, 'hello');
 });
 
 test('canonical read model ignores inherited manual title metadata when session title is still New session', () => {

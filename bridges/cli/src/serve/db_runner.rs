@@ -12,7 +12,9 @@
 //! Cloud-edition handlers route every DB call through this runner. Local
 //! coordinator code paths can adopt it incrementally.
 
-use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use rusqlite::Connection;
@@ -43,6 +45,7 @@ impl std::error::Error for DbRunnerError {}
 
 #[derive(Debug)]
 struct DbRunnerInner {
+    #[cfg(test)]
     db_path: PathBuf,
     write: Mutex<Connection>,
 }
@@ -61,15 +64,11 @@ impl DbRunner {
         configure_server_connection(&connection).map_err(DbRunnerError::Configure)?;
         Ok(Self {
             inner: Arc::new(DbRunnerInner {
+                #[cfg(test)]
                 db_path,
                 write: Mutex::new(connection),
             }),
         })
-    }
-
-    /// Path used to open additional read-only connections.
-    pub fn db_path(&self) -> &Path {
-        &self.inner.db_path
     }
 
     /// Run a write transaction. The closure runs on a tokio blocking thread
@@ -98,6 +97,7 @@ impl DbRunner {
 
     /// Run a read on its own short-lived connection. Multiple `read` calls
     /// can execute concurrently, limited only by the tokio blocking pool.
+    #[cfg(test)]
     pub async fn read<F, T, E>(&self, f: F) -> Result<T, E>
     where
         F: FnOnce(&Connection) -> Result<T, E> + Send + 'static,
@@ -137,19 +137,19 @@ mod tests {
 
     #[derive(Debug)]
     enum TestError {
-        Db(DbRunnerError),
-        Sqlite(rusqlite::Error),
+        Db,
+        Sqlite,
     }
 
     impl From<DbRunnerError> for TestError {
-        fn from(value: DbRunnerError) -> Self {
-            Self::Db(value)
+        fn from(_value: DbRunnerError) -> Self {
+            Self::Db
         }
     }
 
     impl From<rusqlite::Error> for TestError {
-        fn from(value: rusqlite::Error) -> Self {
-            Self::Sqlite(value)
+        fn from(_value: rusqlite::Error) -> Self {
+            Self::Sqlite
         }
     }
 
@@ -238,7 +238,7 @@ mod tests {
             })
             .await
             .expect_err("expected sqlite error");
-        assert!(matches!(err, TestError::Sqlite(_)));
+        assert!(matches!(err, TestError::Sqlite));
         cleanup(&path);
     }
 }

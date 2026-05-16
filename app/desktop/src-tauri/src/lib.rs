@@ -116,7 +116,6 @@ pub fn run() {
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,
             project::desktop_save_project_settings,
-            bridge::desktop_bridge_state,
             bridge::desktop_bridge_open_config_folder,
             bridge::desktop_bridge_reveal_storage_file,
             bridge::desktop_bridge_export_hosts_config,
@@ -134,8 +133,6 @@ pub fn run() {
             bridge::desktop_bridge_update_agent_model_routing,
             bridge::desktop_bridge_update_local_agent_model_routing,
             bridge::desktop_bridge_set_default_agent,
-            bridge::desktop_bridge_start_local_server,
-            bridge::desktop_bridge_stop_local_server,
             bridge::desktop_bridge_create_project,
             bridge::desktop_bridge_create_invite,
             bridge::desktop_bridge_join_project,
@@ -145,14 +142,9 @@ pub fn run() {
             bridge::desktop_bridge_reject_contact_request,
             bridge::desktop_bridge_open_conversation,
             bridge::desktop_bridge_mark_conversation_read,
-            bridge::desktop_bridge_send_message,
-            bridge::desktop_bridge_create_outreach,
-            bridge::desktop_bridge_cancel_outreach,
-            bridge::desktop_bridge_send_presence,
-            bridge::desktop_bridge_poll_mailbox,
-            bridge::desktop_bridge_refresh_realtime_connections,
             canonical_sessions::desktop_canonical_session_state,
             canonical_sessions::desktop_canonical_upsert_identity,
+            canonical_sessions::desktop_canonical_adopt_cloud_profile_identity,
             canonical_sessions::desktop_canonical_open_or_create_session,
             canonical_sessions::desktop_canonical_append_message,
             canonical_sessions::desktop_canonical_upsert_message,
@@ -235,16 +227,5 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");
 
-    app.run(|app_handle, event| match event {
-        tauri::RunEvent::Resumed => {
-            bridge::schedule_bridge_realtime_refresh(app_handle, "app-resumed");
-        }
-        tauri::RunEvent::WindowEvent {
-            event: tauri::WindowEvent::Focused(true),
-            ..
-        } => {
-            bridge::schedule_bridge_realtime_refresh(app_handle, "window-focused");
-        }
-        _ => {}
-    });
+    app.run(|_app_handle, _event| {});
 }

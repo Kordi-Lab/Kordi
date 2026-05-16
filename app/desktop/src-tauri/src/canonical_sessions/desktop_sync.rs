@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::core::hash_hex;
 use super::message_reconcile;
@@ -434,23 +434,91 @@ pub(super) fn explicit_desktop_project_membership(
     })
 }
 
-fn fork_metadata_value(
+fn resolve_desktop_entry_to_canonical_message_id(
+    conn: &Connection,
+    session_id: &str,
+    entry_id: &str,
+) -> Result<Option<String>, String> {
+    let session_id = session_id.trim();
+    let entry_id = entry_id.trim();
+    if session_id.is_empty() || entry_id.is_empty() || entry_id.starts_with("msg:") {
+        return Ok(None);
+    }
+
+    let settings = kordi_core::settings::Settings::load_global();
+    let local_conn =
+        kordi_session::store::open_db(&kordi_core::config::session_db_path(&settings.storage))
+            .map_err(|err| err.to_string())?;
+    let local_entries = kordi_session::store::get_entries(&local_conn, session_id)
+        .map_err(|err| err.to_string())?;
+    let Some(entry_index) = local_entries
+        .iter()
+        .filter(|entry| entry.entry_type == "message")
+        .position(|entry| entry.entry_id == entry_id)
+    else {
+        return Ok(None);
+    };
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id FROM session_messages \
+             WHERE session_id = ?1 AND source_transport = 'desktop-chat' \
+             ORDER BY sequence_num ASC",
+        )
+        .map_err(|err| err.to_string())?;
+    let canonical_ids = stmt
+        .query_map(params![session_id], |row| row.get::<_, String>(0))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+
+    Ok(canonical_ids.get(entry_index).cloned())
+}
+
+fn canonical_fork_message_id(
+    conn: &Connection,
     forked_from_session_id: Option<&str>,
     forked_from_message_id: Option<&str>,
-) -> Option<serde_json::Value> {
-    let session = forked_from_session_id?.trim();
-    if session.is_empty() {
-        return None;
+) -> Result<Option<String>, String> {
+    let Some(message_id) = forked_from_message_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    if message_id.starts_with("msg:") {
+        return Ok(Some(message_id.to_string()));
     }
+    let resolved = forked_from_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|session_id| {
+            resolve_desktop_entry_to_canonical_message_id(conn, session_id, message_id)
+        })
+        .transpose()?
+        .flatten();
+    Ok(resolved.or_else(|| Some(message_id.to_string())))
+}
+
+fn fork_metadata_value(
+    conn: &Connection,
+    forked_from_session_id: Option<&str>,
+    forked_from_message_id: Option<&str>,
+) -> Result<Option<serde_json::Value>, String> {
+    let Some(session) = forked_from_session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
     let mut value = serde_json::json!({
         "forkedFromSessionId": session,
         "forkMode": "private-local",
         "contextPolicy": "prefix-through-message",
         "boundary": "inherited-history-reference-only",
     });
-    if let Some(message_id) = forked_from_message_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+    if let Some(message_id) =
+        canonical_fork_message_id(conn, forked_from_session_id, forked_from_message_id)?
     {
         if let Some(object) = value.as_object_mut() {
             object.insert(
@@ -459,22 +527,24 @@ fn fork_metadata_value(
             );
         }
     }
-    Some(value)
+    Ok(Some(value))
 }
 
 fn metadata_with_fork(
+    conn: &Connection,
     base: serde_json::Value,
     forked_from_session_id: Option<&str>,
     forked_from_message_id: Option<&str>,
-) -> serde_json::Value {
-    let Some(fork) = fork_metadata_value(forked_from_session_id, forked_from_message_id) else {
-        return base;
+) -> Result<serde_json::Value, String> {
+    let Some(fork) = fork_metadata_value(conn, forked_from_session_id, forked_from_message_id)?
+    else {
+        return Ok(base);
     };
     let mut combined = base;
     if let Some(object) = combined.as_object_mut() {
         object.insert("fork".to_string(), fork);
     }
-    combined
+    Ok(combined)
 }
 
 pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> Result<(), String> {
@@ -496,6 +566,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             continue;
         }
         let metadata = metadata_with_fork(
+            &conn,
             serde_json::json!({
                 "source": "desktop-chat-summary",
                 "subtitle": summary.subtitle,
@@ -504,7 +575,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             }),
             summary.forked_from_session_id.as_deref(),
             summary.forked_from_message_id.as_deref(),
-        );
+        )?;
         open_or_create_session_in_db(
             &conn,
             OpenCanonicalSessionRequest {
@@ -530,6 +601,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             .filter(|summary| should_sync_desktop_chat_summary(summary))
         {
             let metadata = metadata_with_fork(
+                &conn,
                 serde_json::json!({
                     "source": "desktop-project-summary",
                     "projectRoot": project.root,
@@ -539,7 +611,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                 }),
                 summary.forked_from_session_id.as_deref(),
                 summary.forked_from_message_id.as_deref(),
-            );
+            )?;
             open_or_create_session_in_db(
                 &conn,
                 OpenCanonicalSessionRequest {
@@ -575,6 +647,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         let workspace_root = active.project.as_ref().map(|project| project.root.clone());
         if should_update_desktop_session_shell(&conn, &active.id)? {
             let metadata = metadata_with_fork(
+                &conn,
                 serde_json::json!({
                     "source": "desktop-chat-detail",
                     "provider": active.provider,
@@ -588,7 +661,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                 }),
                 active.forked_from_session_id.as_deref(),
                 active.forked_from_message_id.as_deref(),
-            );
+            )?;
             open_or_create_session_in_db(
                 &conn,
                 OpenCanonicalSessionRequest {
@@ -639,13 +712,16 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
 #[cfg(test)]
 mod fork_metadata_tests {
     use super::{fork_metadata_value, metadata_with_fork};
+    use rusqlite::Connection;
 
     #[test]
     fn fork_metadata_value_includes_session_message_and_policy_defaults() {
-        let value = fork_metadata_value(Some("session:source"), Some("entry:42"))
+        let conn = Connection::open_in_memory().expect("open db");
+        let value = fork_metadata_value(&conn, Some("session:source"), Some("msg:source"))
+            .expect("fork metadata builds")
             .expect("fork metadata is emitted when source session is present");
         assert_eq!(value["forkedFromSessionId"], "session:source");
-        assert_eq!(value["forkedFromMessageId"], "entry:42");
+        assert_eq!(value["forkedFromMessageId"], "msg:source");
         assert_eq!(value["forkMode"], "private-local");
         assert_eq!(value["contextPolicy"], "prefix-through-message");
         assert_eq!(value["boundary"], "inherited-history-reference-only");
@@ -653,15 +729,22 @@ mod fork_metadata_tests {
 
     #[test]
     fn fork_metadata_value_omits_message_id_when_unknown() {
-        let value = fork_metadata_value(Some("session:source"), None)
+        let conn = Connection::open_in_memory().expect("open db");
+        let value = fork_metadata_value(&conn, Some("session:source"), None)
+            .expect("fork metadata builds")
             .expect("fork metadata is emitted when source session is present");
         assert!(value.get("forkedFromMessageId").is_none());
     }
 
     #[test]
     fn fork_metadata_value_returns_none_without_source_session() {
-        assert!(fork_metadata_value(None, Some("entry:42")).is_none());
-        assert!(fork_metadata_value(Some("   "), Some("entry:42")).is_none());
+        let conn = Connection::open_in_memory().expect("open db");
+        assert!(fork_metadata_value(&conn, None, Some("entry:42"))
+            .expect("fork metadata builds")
+            .is_none());
+        assert!(fork_metadata_value(&conn, Some("   "), Some("entry:42"))
+            .expect("fork metadata builds")
+            .is_none());
     }
 
     #[test]
@@ -670,17 +753,21 @@ mod fork_metadata_tests {
             "source": "desktop-chat-detail",
             "subtitle": "talking about forks",
         });
-        let combined = metadata_with_fork(base, Some("session:source"), Some("entry:42"));
+        let conn = Connection::open_in_memory().expect("open db");
+        let combined = metadata_with_fork(&conn, base, Some("session:source"), Some("msg:source"))
+            .expect("metadata builds");
         assert_eq!(combined["source"], "desktop-chat-detail");
         assert_eq!(combined["subtitle"], "talking about forks");
         assert_eq!(combined["fork"]["forkedFromSessionId"], "session:source");
-        assert_eq!(combined["fork"]["forkedFromMessageId"], "entry:42");
+        assert_eq!(combined["fork"]["forkedFromMessageId"], "msg:source");
     }
 
     #[test]
     fn metadata_with_fork_returns_base_when_no_fork_lineage() {
         let base = serde_json::json!({"source": "desktop-chat-summary"});
-        let combined = metadata_with_fork(base.clone(), None, None);
+        let conn = Connection::open_in_memory().expect("open db");
+        let combined =
+            metadata_with_fork(&conn, base.clone(), None, None).expect("metadata builds");
         assert_eq!(combined, base);
     }
 }

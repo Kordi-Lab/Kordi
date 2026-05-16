@@ -1,15 +1,13 @@
 import { useCallback } from 'react';
 
-import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type { Project } from '@/kordi-app/types';
-import { createDesktopBridgeOutreach, createDesktopProjectSession, startDesktopChatMessage } from '@/lib/desktop';
+import { createDesktopProjectSession, startDesktopChatMessage } from '@/lib/desktop';
 import { isProjectDraftSessionId } from '../draftSessions';
 
 import { formatDesktopEventTime, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
-import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
-import { mentionForBridgeTarget, outreachIdentityForBridgeTarget, resolveMentionedBridgeTarget } from './mentions';
-import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, bridgeAttachmentTransportFields, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
+import { resolveMentionedBridgeTarget } from './mentions';
+import { appendOptimisticCanonicalMessage, appendOptimisticOutboundMessage, optimisticSessionTitleFromMessage, persistCanonicalUserMessage, prepareCanonicalUserMessage, toOptimisticAttachments } from './optimistic';
 
 type UseProjectMessageActionsArgs = Pick<
   UseComposerControllerArgs,
@@ -27,7 +25,6 @@ type UseProjectMessageActionsArgs = Pick<
   | 'isNativeShell'
   | 'setCanonicalSessionState'
   | 'setChatComposerAttachments'
-  | 'setDesktopBridgeState'
   | 'setDesktopChatError'
   | 'setDesktopChatState'
   | 'setIsDesktopChatSending'
@@ -56,7 +53,6 @@ export function useProjectMessageActions({
   isNativeShell,
   setCanonicalSessionState,
   setChatComposerAttachments,
-  setDesktopBridgeState,
   setDesktopChatError,
   setDesktopChatState,
   setIsDesktopChatSending,
@@ -129,66 +125,7 @@ export function useProjectMessageActions({
 
     const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, null, { targetKind: 'bridge-agent' });
     if (mentionedTarget) {
-      try {
-        shouldAutoFollowChatRef.current = true;
-        setIsDesktopChatSending(true);
-        setDesktopChatError(null);
-        const { sessionId: projectSessionId, state: projectChatState } = await ensureProjectSession();
-        appendProjectDraft('');
-        setChatComposerAttachments([]);
-        resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]');
-        const sentAt = formatDesktopEventTime();
-        const preparedCanonicalMessage = prepareCanonicalUserMessage(
-          projectSessionId,
-          canonicalHumanIdentityId,
-          text,
-          chatComposerAttachments,
-          sentAt,
-          'desktop-chat-ui',
-          'sent',
-          mentionForBridgeTarget(mentionedTarget),
-        );
-        setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        setDesktopChatState((current) => {
-          if (!current || current.activeSessionId !== projectSessionId) return current;
-          return appendOptimisticOutboundMessage(current, projectSessionId, text, text, chatComposerAttachments, sentAt, mentionForBridgeTarget(mentionedTarget));
-        });
-        void persistCanonicalUserMessage(preparedCanonicalMessage)
-          .catch((error: unknown) => {
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
-            return preparedCanonicalMessage?.messageId ?? null;
-          })
-          .then((parentMessageId) => createDesktopBridgeOutreach({
-            hostId: mentionedTarget.host.id,
-            targetNodeId: mentionedTarget.peer.nodeId,
-            targetKind: mentionedTarget.targetKind,
-            requestText: mentionedTarget.requestText,
-            ...outreachIdentityForBridgeTarget(mentionedTarget),
-            triggerText: text,
-            contextText: combineContext(
-              renderProjectContext(projectChatState),
-              renderRecentMessageContext(activeConvMessages),
-            ),
-            contextPolicy: 'recent-window',
-            parentSessionId: projectSessionId,
-            parentSessionTitle: projectChatState?.activeSession.title,
-            parentSessionMessages: parentSessionMessagesForOutreach(activeConvMessages),
-            parentMessageId,
-            projectId: projectChatState?.activeSession.project?.root,
-            projectName: projectChatState?.activeSession.project?.name,
-            ...bridgeAttachmentTransportFields(chatComposerAttachments),
-          }))
-          .then((nextState) => {
-            setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-          })
-          .catch((error: unknown) => {
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
-          });
-      } catch (error) {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
-      } finally {
-        setIsDesktopChatSending(false);
-      }
+      setDesktopChatError('Localhost Bridge communication was removed from main-cloud.');
       return;
     }
 
@@ -245,7 +182,6 @@ export function useProjectMessageActions({
     isNativeShell,
     setCanonicalSessionState,
     setChatComposerAttachments,
-    setDesktopBridgeState,
     setDesktopChatError,
     setDesktopChatState,
     setIsDesktopChatSending,

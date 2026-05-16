@@ -1,18 +1,19 @@
 use rusqlite::Connection;
 
 use super::{
-    add_session_participants_in_db, append_message_in_db, create_delegated_exchange_in_db,
-    json_from_db, open_db, open_or_create_session_in_db, remove_session_participant_in_db,
-    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
-    select_delegated_exchange, select_identity, select_message, select_session,
-    set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
-    upsert_identity_in_db, upsert_message_in_db, AddCanonicalSessionParticipantsRequest,
+    AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
     AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
     CanonicalSessionParticipant, CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest,
     OpenCanonicalSessionRequest, RemoveCanonicalSessionParticipantRequest,
     RenameCanonicalSessionRequest, SetCanonicalSessionParticipantRoleRequest,
     UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
-    UpsertCanonicalIdentityRequest,
+    UpsertCanonicalIdentityRequest, add_session_participants_in_db,
+    adopt_cloud_profile_identity_in_db, append_message_in_db, create_delegated_exchange_in_db,
+    json_from_db, open_db, open_or_create_session_in_db, remove_session_participant_in_db,
+    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
+    select_delegated_exchange, select_identity, select_message, select_session,
+    set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
+    upsert_identity_in_db, upsert_message_in_db,
 };
 
 fn query_all<T>(
@@ -143,6 +144,14 @@ pub(super) fn desktop_canonical_upsert_identity(
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
     upsert_identity_in_db(&conn, request)?;
+    load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_adopt_cloud_profile_identity(
+    request: AdoptCloudProfileIdentityRequest,
+) -> Result<CanonicalSessionState, String> {
+    let conn = open_db()?;
+    adopt_cloud_profile_identity_in_db(&conn, request)?;
     load_state_from_db(&conn)
 }
 

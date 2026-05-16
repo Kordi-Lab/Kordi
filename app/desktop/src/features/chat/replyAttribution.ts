@@ -245,12 +245,12 @@ export function shouldInferLatestHumanReplyTarget(
   if (!conversation) return false;
   if (conversation.type === 'person' || conversation.type === 'external-agent') return true;
   if (conversation.participantSpaceId?.trim()) return true;
-  // Forked sessions inherit a snapshot of their parent's transcript;
-  // we want each agent reply to attach to the preceding human message
-  // by position so the "N replies ↵" affordance keeps working in the
-  // fork even though there are no explicit reply pointers between
-  // the synthesized entries.
-  if (conversation.forkedFromSessionId?.trim()) return true;
+  // Forked group/contact sessions inherit a snapshot of their parent's
+  // transcript; infer positional reply links there so group agent replies
+  // retain their request context. Private self-agent forks already show the
+  // user's new turn as the adjacent message, so adding a source quote repeats
+  // the same text inside the assistant bubble.
+  if (conversation.forkedFromSessionId?.trim()) return conversation.type !== 'owned-agent';
   const participantCount = conversation.canonicalParticipantCount ?? conversation.canonicalParticipants?.length ?? 0;
   return participantCount > 2;
 }

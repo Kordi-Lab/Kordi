@@ -1,3 +1,5 @@
+// These fixtures cover Local Edition desktop Bridge read-model compatibility.
+// Cloud Edition must not use these source transports as live collaboration transport.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 

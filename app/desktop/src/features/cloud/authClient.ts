@@ -620,6 +620,18 @@ export class CloudAuthClient {
     );
   }
 
+  async listSessionForks(token: string, sourceSessionId: string): Promise<CloudSessionForkSummary[]> {
+    const response = await this.send<{ forks: CloudSessionForkSummary[] }>(
+      `/v1/cloud/sessions/${encodeURIComponent(sourceSessionId)}/forks`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not list cloud session forks.',
+    );
+    return response?.forks ?? [];
+  }
+
   async createSessionFork(token: string, sourceSessionId: string, input: { forkSessionId: string; parentMessageId?: string | null }): Promise<CloudSessionForkSummary> {
     const response = await this.send<{ fork: CloudSessionForkSummary }>(
       `/v1/cloud/sessions/${encodeURIComponent(sourceSessionId)}/forks`,

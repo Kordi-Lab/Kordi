@@ -154,6 +154,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     && (args.activeConv.bridgeTarget.runtime?.trim().toLowerCase() === 'person' || args.activeConv.type === 'person')
     ? args.activeConv.bridgeTarget
     : null;
+  const activeCloudSelfAgentSessionId = args.activeConv.canonicalSessionId ?? args.activeConv.id;
 
   return {
     isNativeShell: args.isNativeShell,
@@ -169,6 +170,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       ?? args.desktopBridgeState?.hosts.find((host) => host.id === args.activeConv.bridgeTarget?.hostId)
       ?? args.activeBridgeHost,
     desktopChatState: args.desktopChatState,
+    cloudSelfAgentSyncStatus: args.cloudSelfAgentSyncStatusBySessionId[activeCloudSelfAgentSessionId] ?? null,
     onUpdateBridgeAgentModelRouting: args.handleUpdateBridgeAgentModelRouting,
     isEditingDesktopSessionTitle: args.isEditingDesktopSessionTitle,
     setIsEditingDesktopSessionTitle: args.setIsEditingDesktopSessionTitle,

@@ -62,13 +62,17 @@ export function shouldUseCanonicalMessages(existingMessages: Message[], canonica
     return false;
   }
 
+  const canonicalHasForkSnapshotMarkers = canonicalMessages.some((message) => message.isForkSnapshot === true);
+  const existingHasForkSnapshotMarkers = existingMessages.some((message) => message.isForkSnapshot === true);
+  if (canonicalHasForkSnapshotMarkers && !existingHasForkSnapshotMarkers) return true;
+
   if (canonicalHasMissingCompletedAgentResponse(existingMessages, canonicalMessages)) return true;
 
   const placeholderOnly = existingMessages.length === 1
     && existingMessages[0]?.role === 'system'
     && /^(Draft session|Session ready|Opening (?:my|your) local chat history|Select a local session)/.test(existingMessages[0]?.text ?? '');
 
-  return placeholderOnly || canonicalMessages.length >= existingMessages.length;
+  return placeholderOnly || canonicalMessages.length > existingMessages.length;
 }
 
 export function sessionMetadata(session: CanonicalSessionState['sessions'][number]) {
@@ -145,7 +149,7 @@ export function syntheticParticipantSpaceId(session: CanonicalSessionState['sess
 
 function firstMessageTitle(messages: Message[]) {
   const text = messages
-    .find((message) => message.role !== 'system' && message.text.trim().length > 0)
+    .find((message) => !message.isForkSnapshot && message.role !== 'system' && message.text.trim().length > 0)
     ?.text
     .trim()
     .split(/\s+/)

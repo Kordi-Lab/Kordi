@@ -1,6 +1,7 @@
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   Agent,
@@ -55,6 +56,7 @@ export type CreateChatGroupRequest = {
 export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
+  cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
   windowWidth: number;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
   activeConvId: string;
@@ -465,6 +467,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'authSettingsLayoutWidth'
   | 'isNativeShell'
   | 'desktopChatState'
+  | 'cloudSelfAgentSyncStatusBySessionId'
   | 'desktopAuthState'
   | 'isDesktopAuthLoading'
   | 'desktopAuthError'

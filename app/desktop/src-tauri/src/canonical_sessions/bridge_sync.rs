@@ -24,6 +24,7 @@ use super::{
     upsert_identity_in_db,
 };
 
+#[allow(dead_code)]
 pub(crate) fn sync_bridge_state_identities(
     state: &crate::bridge::DesktopBridgeState,
 ) -> Result<(), String> {

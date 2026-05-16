@@ -2353,6 +2353,8 @@ const MESSAGE_BODY_MAX_CHARS: usize = 4_000;
 const MESSAGE_LIST_DEFAULT_LIMIT: i64 = 200;
 const MESSAGE_LIST_MAX_LIMIT: i64 = 500;
 const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
+const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
+const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 
 fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
@@ -2418,6 +2420,11 @@ fn sanitize_cloud_group_participant(value: &mut Value) -> bool {
     true
 }
 
+fn is_cloud_agent_control_body(body: &str) -> bool {
+    let body = body.trim_start();
+    body.starts_with(CLOUD_AGENT_RESPONSE_PREFIX) || body.starts_with(CLOUD_AGENT_CANCEL_PREFIX)
+}
+
 fn sanitized_cloud_group_control_body(body: &str) -> Option<String> {
     let encoded = body.trim().strip_prefix(CLOUD_GROUP_CONTROL_PREFIX)?;
     let decoded = URL_SAFE_NO_PAD.decode(encoded).ok()?;
@@ -2431,6 +2438,26 @@ fn sanitized_cloud_group_control_body(body: &str) -> Option<String> {
     }
     let encoded = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&value).ok()?);
     Some(format!("{CLOUD_GROUP_CONTROL_PREFIX}{encoded}"))
+}
+
+fn normalize_cloud_message_body(body: &str) -> Result<String, &'static str> {
+    let body = body.trim();
+    if body.starts_with(CLOUD_GROUP_CONTROL_PREFIX) {
+        let Some(sanitized) = sanitized_cloud_group_control_body(body) else {
+            return Err("invalid_group_control");
+        };
+        if sanitized.chars().count() > MESSAGE_BODY_MAX_CHARS {
+            return Err("message_too_large");
+        }
+        return Ok(sanitized);
+    }
+    if is_cloud_agent_control_body(body) {
+        return Ok(body.to_string());
+    }
+    Ok(body
+        .chars()
+        .take(MESSAGE_BODY_MAX_CHARS)
+        .collect::<String>())
 }
 
 fn cloud_message_session_id(
@@ -2485,10 +2512,18 @@ mod cloud_message_policy_tests {
     use super::{
         cloud_direct_person_session_id, cloud_message_effective_created_at,
         cloud_message_requires_accepted_contact, contact_acceptance_hello_sync_summaries,
-        sanitized_cloud_group_control_body, CLOUD_GROUP_CONTROL_PREFIX,
+        normalize_cloud_message_body, sanitized_cloud_group_control_body,
+        CLOUD_AGENT_RESPONSE_PREFIX, CLOUD_GROUP_CONTROL_PREFIX,
     };
     use base64::Engine as _;
     use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn cloud_agent_response_has_no_app_level_character_limit() {
+        let body = format!("{CLOUD_AGENT_RESPONSE_PREFIX}{}", "a".repeat(200_000));
+
+        assert_eq!(normalize_cloud_message_body(&body).unwrap(), body);
+    }
 
     #[test]
     fn cloud_group_control_messages_do_not_require_direct_contacts() {
@@ -2760,26 +2795,29 @@ async fn send_message(
             StatusCode::BAD_REQUEST,
         );
     }
-    let body = if body.starts_with(CLOUD_GROUP_CONTROL_PREFIX) {
-        let Some(sanitized) = sanitized_cloud_group_control_body(body) else {
+    let body = match normalize_cloud_message_body(body) {
+        Ok(body) => body,
+        Err("invalid_group_control") => {
             return err(
                 "invalid_group_control",
                 "Cloud group control payload is invalid.",
                 StatusCode::BAD_REQUEST,
             );
-        };
-        if sanitized.chars().count() > MESSAGE_BODY_MAX_CHARS {
+        }
+        Err("message_too_large") => {
             return err(
                 "message_too_large",
-                "Cloud group control payload is too large.",
+                "Cloud control payload is too large.",
                 StatusCode::BAD_REQUEST,
             );
         }
-        sanitized
-    } else {
-        body.chars()
-            .take(MESSAGE_BODY_MAX_CHARS)
-            .collect::<String>()
+        Err(_) => {
+            return err(
+                "invalid_message",
+                "Cloud message payload is invalid.",
+                StatusCode::BAD_REQUEST,
+            );
+        }
     };
 
     let pool = state.db_pool();

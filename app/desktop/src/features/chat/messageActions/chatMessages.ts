@@ -1,21 +1,19 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import { localAgentRuntimeRouteForBridgeState } from '@/features/bridge/agentModelRouting';
 import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
 import {
   cloudGroupMessageSessionId,
   cloudGroupTargetAccountIds,
-  nonCloudGroupTargets,
   shouldRouteMentionThroughCloudGroup,
 } from '@/features/cloud/cloudGroupMessages';
 import { bridgeConversationIdsToMarkReadOnUserActivity } from '@/features/bridge/readReceipts';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
-import { markBridgeConversationsReadInState, mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import type {
   ComposerScope,
   Conversation,
   ConversationBridgeTarget,
+  Message,
   DesktopChatState,
   DesktopBridgePromptIdentity,
   DesktopBridgeState,
@@ -24,30 +22,23 @@ import type {
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import {
-  cancelDesktopBridgeOutreach,
-  createDesktopBridgeOutreach,
   createDesktopChatSession,
   fetchDesktopChatTurnState,
-  markDesktopBridgeConversationRead,
-  openDesktopBridgeConversation,
-  sendDesktopBridgeMessage,
   startDesktopChatMessage,
   updateDesktopChatSessionConfig,
+  type DesktopChatContextMessage,
 } from '@/lib/desktop';
 
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
 import type { UseComposerControllerArgs } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
-import { combineContext, parentSessionMessagesForOutreach, renderProjectContext, renderRecentMessageContext } from './context';
 import {
   localAgentRuntimeText,
   localHumanAddressLabels,
   mentionForBridgeTarget,
   mentionedPersonIsActiveBridgeTarget,
   mentionsLocalAgent,
-  outreachIdentityForBridgeTarget,
-  publicLocalAgentMentionText,
   resolveMentionedBridgeTarget,
   stripLeadingAddressMentions,
 } from './mentions';
@@ -55,7 +46,6 @@ import {
   appendOptimisticBridgeMessage,
   appendOptimisticCanonicalMessage,
   appendOptimisticOutboundMessage,
-  bridgeAttachmentTransportFields,
   failedPreparedCanonicalUserMessage,
   findBridgeConversationForTarget,
   markOptimisticBridgeMessageFailed,
@@ -63,8 +53,6 @@ import {
   persistCanonicalUserMessage,
   prepareCanonicalUserMessage,
 } from './optimistic';
-import { pendingOutreachFromState, relaySharedSessionMessage } from './relay';
-import type { RelaySharedSessionMessageOptions } from './relay';
 import type { PendingBridgeOutreach } from './types';
 
 export type LocalChatSendInFlight = {
@@ -402,6 +390,36 @@ export function chatDraftSessionIdsToClearForSend(activeSessionId: string, resol
     .filter((sessionId, index, sessionIds) => Boolean(sessionId) && sessionIds.indexOf(sessionId) === index);
 }
 
+function messageAuthorKind(message: Message): 'human' | 'agent' {
+  if (message.senderType === 'agent' || message.role === 'owned-agent' || message.role === 'external-agent') return 'agent';
+  return 'human';
+}
+
+function messageContextText(message: Message): string {
+  return (message.turn?.assistantText ?? message.text).trim();
+}
+
+function cloudSelfAgentMessageId(message: Message): string | null {
+  const id = message.id?.trim() || message.entryId?.trim() || '';
+  return id.startsWith('msg:cloud:self:') ? id : null;
+}
+
+export function restoredCloudSelfAgentContextMessages(messages: readonly Message[]): DesktopChatContextMessage[] {
+  return messages.flatMap((message) => {
+    const id = cloudSelfAgentMessageId(message);
+    const text = messageContextText(message);
+    if (!id || !text) return [];
+    const authorKind = messageAuthorKind(message);
+    return [{
+      id,
+      authorName: message.sender?.trim() || (authorKind === 'agent' ? 'My Kordi' : 'Me'),
+      authorKind,
+      text,
+      createdAtMs: null,
+    }];
+  });
+}
+
 export function bridgeLocalAgentMentionCanRelayToBridge({
   activeGroupSessionIsGroup,
   activeConvBridgeTarget,
@@ -520,7 +538,6 @@ type UseChatMessageActionsArgs = Pick<
   | 'setCanonicalSessionState'
   | 'setChatComposerAttachments'
   | 'setComposerDrafts'
-  | 'setDesktopBridgeState'
   | 'setCloudBridgeState'
   | 'sendCloudBridgeMessage'
   | 'sendCloudGroupControl'
@@ -568,7 +585,6 @@ export function useChatMessageActions({
   setCanonicalSessionState,
   setChatComposerAttachments,
   setComposerDrafts,
-  setDesktopBridgeState,
   setCloudBridgeState,
   sendCloudBridgeMessage,
   sendCloudGroupControl,
@@ -876,392 +892,12 @@ export function useChatMessageActions({
     }
 
     if (mentionedTarget && activeConversationUsesBridgeRouting) {
-      try {
-        shouldAutoFollowChatRef.current = true;
-        pendingBridgeCancelRequestedRef.current = false;
-        setIsDesktopChatSending(true);
-        setDesktopChatError(null);
-        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
-        setChatComposerAttachments([]);
-        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-        const sentAt = formatDesktopEventTime();
-        const parentSessionId = activeConvCanonicalSessionId ?? activeConvId;
-        const groupMentionRelayTargets = activeGroupSessionIsGroup
-          ? bridgeGroupMentionRelayTargets(activeGroupSessionScope, mentionedTarget, activeConvBridgeTarget, localBridgeNodeIds)
-          : [];
-        const mentionIsSessionMessage = Boolean(
-          activeGroupSessionIsGroup
-          || (activeConvCanonicalSessionId && mentionedPersonIsActiveBridgeTarget(mentionedTarget, activeConvBridgeTarget)),
-        );
-        const preparedCanonicalMessage = prepareCanonicalUserMessage(
-          parentSessionId,
-          canonicalHumanIdentityId,
-          text,
-          chatComposerAttachments,
-          sentAt,
-          'desktop-bridge-ui',
-          'sent',
-          mentionForBridgeTarget(mentionedTarget),
-        );
-        setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        void persistCanonicalUserMessage(preparedCanonicalMessage)
-          .catch((error: unknown) => {
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
-            return preparedCanonicalMessage?.messageId ?? null;
-          })
-          .then(async (parentMessageId) => {
-            const primaryState = await createDesktopBridgeOutreach({
-              hostId: mentionedTarget.host.id,
-              targetNodeId: mentionedTarget.peer.nodeId,
-              targetKind: mentionedTarget.targetKind,
-              requestText: mentionIsSessionMessage ? text : mentionedTarget.requestText,
-              ...outreachIdentityForBridgeTarget(mentionedTarget),
-              triggerText: text,
-              contextText: mentionIsSessionMessage
-                ? null
-                : combineContext(
-                  renderProjectContext(desktopChatState),
-                  renderRecentMessageContext(activeConvMessages),
-                ),
-              contextPolicy: mentionIsSessionMessage ? 'session-message' : 'recent-window',
-              parentSessionId,
-              parentSessionTitle: mentionIsSessionMessage ? null : desktopChatState?.activeSession.title,
-              parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
-              parentGroupSpaceId: activeGroupSessionSpaceId,
-              parentSessionParticipants: activeGroupSessionParticipants,
-              parentSessionMessages: mentionIsSessionMessage ? [] : parentSessionMessagesForOutreach(activeConvMessages),
-              initiatorIdentity: bridgePromptInitiatorIdentity,
-              parentMessageId,
-              projectId: mentionIsSessionMessage ? null : desktopChatState?.activeSession.project?.root,
-              projectName: mentionIsSessionMessage ? null : desktopChatState?.activeSession.project?.name,
-              ...bridgeAttachmentTransportFields(chatComposerAttachments),
-            });
-            let nextState = primaryState;
-            for (const relayTarget of groupMentionRelayTargets) {
-              const relayState = await createDesktopBridgeOutreach({
-                hostId: relayTarget.hostId,
-                targetNodeId: relayTarget.nodeId,
-                targetKind: 'bridge-person',
-                requestText: text,
-                targetDisplayName: relayTarget.displayName ?? relayTarget.ownerName ?? null,
-                targetOwnerName: relayTarget.ownerName ?? relayTarget.displayName ?? null,
-                targetRuntime: 'person',
-                targetHumanId: relayTarget.humanId ?? null,
-                targetAgentId: null,
-                triggerText: null,
-                contextText: null,
-                contextPolicy: 'session-message',
-                parentSessionId,
-                parentSessionTitle: null,
-                parentSessionKind: 'group',
-                parentGroupSpaceId: activeGroupSessionSpaceId,
-                parentSessionParticipants: activeGroupSessionParticipants,
-                parentSessionMessages: [],
-                initiatorIdentity: bridgePromptInitiatorIdentity,
-                parentMessageId,
-                projectId: null,
-                projectName: null,
-                ...bridgeAttachmentTransportFields(chatComposerAttachments),
-              });
-              nextState = mergeDesktopBridgeState(nextState, relayState) ?? relayState;
-            }
-            return { primaryState, nextState };
-          })
-          .then(({ primaryState, nextState }) => {
-            if (mentionedTarget.targetKind === 'bridge-agent') {
-              const pending = pendingOutreachFromState(primaryState, parentSessionId, mentionedTarget.peer.nodeId);
-              if (pendingBridgeCancelRequestedRef.current && pending) {
-                pendingBridgeCancelRequestedRef.current = false;
-                void cancelDesktopBridgeOutreach(pending.conversationId, pending.requestId)
-                  .then((cancelledState) => {
-                    setDesktopBridgeState((current) => mergeDesktopBridgeState(current, cancelledState));
-                  })
-                  .catch((error: unknown) => {
-                    setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop bridge outreach');
-                  })
-                  .finally(() => {
-                    setPendingBridgeOutreach(null);
-                    setIsDesktopChatSending(false);
-                  });
-              } else if (pending) {
-                setPendingBridgeOutreach(pending);
-              } else {
-                setPendingBridgeOutreach(null);
-                setIsDesktopChatSending(false);
-              }
-            }
-            setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-          })
-          .catch((error: unknown) => {
-            if (mentionedTarget.targetKind === 'bridge-agent') {
-              setPendingBridgeOutreach(null);
-              setIsDesktopChatSending(false);
-            }
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
-          });
-      } catch (error) {
-        if (mentionedTarget.targetKind === 'bridge-agent') {
-          setPendingBridgeOutreach(null);
-        }
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
-      } finally {
-        if (mentionedTarget.targetKind !== 'bridge-agent') {
-          setIsDesktopChatSending(false);
-        }
-      }
+      setDesktopChatError('Localhost Bridge communication was removed from main-cloud.');
       return;
     }
 
     if (activeConversationUsesBridgeRouting && !localAgentMentioned) {
-      const sentAt = formatDesktopEventTime();
-      const previewText = attachmentSummaryText(text);
-      const bridgeMessageText = text;
-      const optimisticMessageId = `bridge-pending-${Date.now()}`;
-      const hasMaterializedBridgeConversation = activeConversationIsBridge && activeConvId.startsWith('bridge:');
-      const existingTargetConversation = activeConvBridgeTarget && desktopBridgeState
-        ? findBridgeConversationForTarget(desktopBridgeState, activeConvBridgeTarget)
-        : null;
-      const shouldStayInCanonicalSession = Boolean(activeConvCanonicalSessionId && (activeConvBridgeTarget || activeGroupSessionIsGroup));
-      const isGroupSessionMessage = shouldStayInCanonicalSession && activeGroupSessionIsGroup;
-      const allGroupSendTargets = isGroupSessionMessage
-        ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
-        : [];
-      const groupSendTargets = nonCloudGroupTargets(allGroupSendTargets);
-      const cloudGroupTargetIds = cloudGroupTargetAccountIds(allGroupSendTargets);
-      const groupSessionParticipants = isGroupSessionMessage ? activeGroupSessionParticipants : [];
-      const sendPlan = bridgeConversationSendPlan({
-        activeConvId,
-        hasMaterializedBridgeConversation,
-        existingTargetConversationId: existingTargetConversation?.id ?? null,
-        shouldStayInCanonicalSession,
-      });
-      let targetConversationId = sendPlan.targetConversationId;
-      let optimisticCanonicalSessionId: string | null = null;
-      let optimisticCanonicalMessageId: string | null = null;
-      let preparedCanonicalMessage: ReturnType<typeof prepareCanonicalUserMessage> = null;
-      let canonicalUserMessagePersisted = false;
-      let optimisticBridgeMessageAppended = false;
-      const markCanonicalSendFailed = (detail?: string | null) => {
-        const failedSessionId = optimisticCanonicalSessionId;
-        const failedMessageId = optimisticCanonicalMessageId;
-        if (!failedSessionId || !failedMessageId) return;
-        setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
-          current,
-          failedSessionId,
-          failedMessageId,
-          detail,
-        ));
-      };
-      const hasInlineSendFailureTarget = () => Boolean(
-        optimisticCanonicalMessageId || optimisticBridgeMessageAppended,
-      );
-      try {
-        shouldAutoFollowChatRef.current = true;
-        setIsDesktopChatSending(true);
-        setDesktopChatError(null);
-
-        if (sendPlan.shouldOpenBeforeOptimisticSend && activeConvBridgeTarget) {
-          const openedState = await openDesktopBridgeConversation(
-            activeConvBridgeTarget.hostId,
-            activeConvBridgeTarget.nodeId,
-            activeConvBridgeTarget.displayName ?? undefined,
-            activeConvBridgeTarget.ownerName ?? undefined,
-            activeConvBridgeTarget.runtime ?? undefined,
-          );
-          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, openedState));
-          const openedConversation = findBridgeConversationForTarget(openedState, activeConvBridgeTarget);
-          if (!openedConversation) {
-            throw new Error('Unable to open bridge conversation');
-          }
-          targetConversationId = openedConversation.id;
-          if (!shouldStayInCanonicalSession) {
-            setActiveConvId(openedConversation.id);
-          }
-        }
-
-        if (!targetConversationId && !shouldStayInCanonicalSession) {
-          throw new Error('Unable to resolve bridge conversation');
-        }
-
-        const optimisticParentSessionId = activeConvCanonicalSessionId ?? targetConversationId;
-        if (!optimisticParentSessionId) {
-          throw new Error('Unable to resolve bridge conversation');
-        }
-        preparedCanonicalMessage = prepareCanonicalUserMessage(
-          optimisticParentSessionId,
-          canonicalHumanIdentityId,
-          text,
-          chatComposerAttachments,
-          sentAt,
-          isGroupSessionMessage && cloudGroupTargetIds.length > 0 ? 'cloud-group-ui' : 'desktop-bridge-ui',
-          shouldStayInCanonicalSession ? 'sent' : 'sending',
-        );
-        optimisticCanonicalSessionId = optimisticParentSessionId;
-        optimisticCanonicalMessageId = preparedCanonicalMessage?.messageId ?? null;
-        if (preparedCanonicalMessage && isGroupSessionMessage && cloudGroupTargetIds.length > 0) {
-          preparedCanonicalMessage.request.content = {
-            ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
-            deliveryState: 'delivered',
-          };
-        }
-        setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        if (targetConversationId && !isGroupSessionMessage) {
-          setDesktopBridgeState((current) => appendOptimisticBridgeMessage(current, targetConversationId!, bridgeMessageText, sentAt, optimisticMessageId, chatComposerAttachments, previewText));
-          optimisticBridgeMessageAppended = true;
-        }
-        const activeBridgeReadConversationIds = bridgeConversationIdsToMarkReadOnUserActivity(
-          desktopBridgeState?.conversations ?? [],
-          activeConvCanonicalSessionId ?? activeConvId,
-        );
-        if (activeBridgeReadConversationIds.length > 0) {
-          setDesktopBridgeState((current) => markBridgeConversationsReadInState(current, activeBridgeReadConversationIds));
-          void Promise.all(activeBridgeReadConversationIds.map((conversationId) => markDesktopBridgeConversationRead(conversationId)))
-            .then((states) => {
-              setDesktopBridgeState((current) => states.reduce((merged, state) => mergeDesktopBridgeState(merged, state), current));
-            })
-            .catch(() => {});
-        }
-        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
-        setChatComposerAttachments([]);
-        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-        const resolvedConversationId = targetConversationId;
-        void (async () => {
-          try {
-            let nextBridgeState = null;
-            if (isGroupSessionMessage && activeConvCanonicalSessionId) {
-              if (groupSendTargets.length === 0 && cloudGroupTargetIds.length === 0) {
-                throw new Error('Unable to resolve group recipients');
-              }
-              if (cloudGroupTargetIds.length > 0) {
-                if (!sendCloudGroupControl) throw new Error('Cloud group chat is still loading. Try again in a moment.');
-                await persistCanonicalUserMessage(preparedCanonicalMessage);
-                canonicalUserMessagePersisted = true;
-                await sendCloudGroupControl({
-                  targetAccountIds: cloudGroupTargetIds,
-                  kind: 'group-message',
-                  groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId }),
-                  groupSpaceId: activeGroupSessionSpaceId,
-                  groupTitle: null,
-                  bridgeParticipants: groupSessionParticipants,
-                  message: {
-                    id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
-                    senderAccountId: '',
-                    text: bridgeMessageText,
-                    createdAtMs: Date.now(),
-                  },
-                  attachments: chatComposerAttachments,
-                });
-              }
-              for (const target of groupSendTargets) {
-                const nextState = await createDesktopBridgeOutreach({
-                  hostId: target.hostId,
-                  targetNodeId: target.nodeId,
-                  targetKind: 'bridge-person',
-                  requestText: bridgeMessageText,
-                  targetDisplayName: target.displayName ?? target.ownerName ?? null,
-                  targetOwnerName: target.ownerName ?? target.displayName ?? null,
-                  targetRuntime: 'person',
-                  targetHumanId: target.humanId ?? null,
-                  targetAgentId: null,
-                  triggerText: null,
-                  contextText: null,
-                  contextPolicy: 'session-message',
-                  parentSessionId: activeConvCanonicalSessionId,
-                  parentSessionTitle: null,
-                  parentSessionKind: 'group',
-                  parentGroupSpaceId: activeGroupSessionSpaceId,
-                  parentSessionParticipants: groupSessionParticipants,
-                  parentSessionMessages: [],
-                  parentTurnId: null,
-                  parentMessageId: preparedCanonicalMessage?.messageId ?? null,
-                  projectId: null,
-                  projectName: null,
-                  ...bridgeAttachmentTransportFields(chatComposerAttachments),
-                });
-                setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-              }
-            } else if (shouldStayInCanonicalSession && activeConvBridgeTarget && activeConvCanonicalSessionId) {
-              const target = bridgeSessionOutreachTarget(activeConvBridgeTarget);
-              const targetIsAgent = target.targetKind === 'bridge-agent';
-              nextBridgeState = await createDesktopBridgeOutreach({
-                hostId: activeConvBridgeTarget.hostId,
-                targetNodeId: activeConvBridgeTarget.nodeId,
-                targetKind: target.targetKind,
-                requestText: bridgeMessageText,
-                targetDisplayName: target.targetDisplayName,
-                targetOwnerName: target.targetOwnerName,
-                targetRuntime: target.targetRuntime,
-                targetHumanId: target.targetHumanId,
-                targetAgentId: target.targetAgentId,
-                triggerText: null,
-                contextText: targetIsAgent
-                  ? combineContext(
-                    renderProjectContext(desktopChatState),
-                    renderRecentMessageContext(activeConvMessages),
-                  )
-                  : null,
-                contextPolicy: targetIsAgent ? 'recent-window' : 'session-message',
-                parentSessionId: activeConvCanonicalSessionId,
-                parentSessionTitle: null,
-                parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
-                parentGroupSpaceId: activeGroupSessionSpaceId,
-                parentSessionMessages: targetIsAgent ? parentSessionMessagesForOutreach(activeConvMessages) : [],
-                parentTurnId: null,
-                parentMessageId: preparedCanonicalMessage?.messageId ?? null,
-                projectId: targetIsAgent ? desktopChatState?.activeSession.project?.root : null,
-                projectName: targetIsAgent ? desktopChatState?.activeSession.project?.name : null,
-                ...bridgeAttachmentTransportFields(chatComposerAttachments),
-              });
-            } else {
-              if (!resolvedConversationId) {
-                throw new Error('Unable to resolve bridge conversation');
-              }
-              nextBridgeState = await sendDesktopBridgeMessage(resolvedConversationId, bridgeMessageText, chatComposerAttachments);
-            }
-            if (!canonicalUserMessagePersisted) {
-              void persistCanonicalUserMessage(preparedCanonicalMessage)
-                .catch((error: unknown) => {
-                  setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
-                });
-            }
-            if (nextBridgeState) {
-              setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextBridgeState));
-            }
-          } catch (error) {
-            const failureDetail = bridgeSendFailureDetail(error);
-            if (resolvedConversationId) {
-              setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, resolvedConversationId, optimisticMessageId, failureDetail));
-            }
-            markCanonicalSendFailed(failureDetail);
-            if (!canonicalUserMessagePersisted) {
-              void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
-                .catch((saveError: unknown) => {
-                  setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
-                });
-            }
-            if (shouldShowBridgeSendFailureNotice(hasInlineSendFailureTarget())) {
-              setDesktopChatError(failureDetail);
-            }
-          }
-        })();
-      } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error);
-        if (targetConversationId) {
-          setDesktopBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversationId!, optimisticMessageId, failureDetail));
-        }
-        markCanonicalSendFailed(failureDetail);
-        if (!canonicalUserMessagePersisted) {
-          void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
-            .catch((saveError: unknown) => {
-              setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
-            });
-        }
-        if (shouldShowBridgeSendFailureNotice(hasInlineSendFailureTarget())) {
-          setDesktopChatError(failureDetail);
-        }
-      } finally {
-        setIsDesktopChatSending(false);
-      }
+      setDesktopChatError('Localhost Bridge communication was removed from main-cloud.');
       return;
     }
 
@@ -1302,69 +938,7 @@ export function useChatMessageActions({
     };
 
     if (mentionedTarget) {
-      try {
-        shouldAutoFollowChatRef.current = true;
-        setIsDesktopChatSending(true);
-        setDesktopChatError(null);
-        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
-        setChatComposerAttachments([]);
-        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-        const parentSessionId = await ensureLocalSessionId();
-        const sentAt = formatDesktopEventTime();
-        const preparedCanonicalMessage = prepareCanonicalUserMessage(
-          parentSessionId,
-          canonicalHumanIdentityId,
-          text,
-          chatComposerAttachments,
-          sentAt,
-          'desktop-chat-ui',
-          'sent',
-          mentionForBridgeTarget(mentionedTarget),
-        );
-        setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        setDesktopChatState((current) => {
-          const baseState = materializedState && current?.activeSessionId !== parentSessionId
-            ? materializedState
-            : current;
-          if (!baseState) return current;
-          return appendOptimisticOutboundMessage(baseState, parentSessionId, text, text, chatComposerAttachments, sentAt, mentionForBridgeTarget(mentionedTarget));
-        });
-        void persistCanonicalUserMessage(preparedCanonicalMessage)
-          .catch((error: unknown) => {
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
-            return preparedCanonicalMessage?.messageId ?? null;
-          })
-          .then((parentMessageId) => createDesktopBridgeOutreach({
-            hostId: mentionedTarget.host.id,
-            targetNodeId: mentionedTarget.peer.nodeId,
-            targetKind: mentionedTarget.targetKind,
-            requestText: mentionedTarget.requestText,
-            ...outreachIdentityForBridgeTarget(mentionedTarget),
-            triggerText: text,
-            contextText: combineContext(
-              renderProjectContext(desktopChatState),
-              renderRecentMessageContext(activeConvMessages),
-            ),
-            contextPolicy: 'recent-window',
-            parentSessionId,
-            parentSessionTitle: desktopChatState?.activeSession.title,
-            parentSessionMessages: parentSessionMessagesForOutreach(activeConvMessages),
-            parentMessageId,
-            projectId: desktopChatState?.activeSession.project?.root,
-            projectName: desktopChatState?.activeSession.project?.name,
-            ...bridgeAttachmentTransportFields(chatComposerAttachments),
-          }))
-          .then((nextState) => {
-            setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-          })
-          .catch((error: unknown) => {
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
-          });
-      } catch (error) {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to start outreach');
-      } finally {
-        setIsDesktopChatSending(false);
-      }
+      setDesktopChatError('Localhost Bridge communication was removed from main-cloud.');
       return;
     }
 
@@ -1394,13 +968,9 @@ export function useChatMessageActions({
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
       const previewText = attachmentSummaryText(text);
+      const restoredCloudContextMessages = restoredCloudSelfAgentContextMessages(activeConvMessages);
       setPendingUserChatMessage(null);
       const parentSessionIdForMessage = activeConvCanonicalSessionId ?? resolvedSessionId;
-      const willRelayToLocalAgent = bridgeLocalAgentMentionCanRelayToBridge({
-        activeGroupSessionIsGroup,
-        activeConvBridgeTarget,
-        hasLocalAgentMention: mentionsLocalAgent(text, desktopChatState, desktopBridgeState),
-      });
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         parentSessionIdForMessage,
         canonicalHumanIdentityId,
@@ -1408,22 +978,8 @@ export function useChatMessageActions({
         chatComposerAttachments,
         sentAt,
         'desktop-chat-ui',
-        willRelayToLocalAgent ? 'sent' : 'sending',
+        'sending',
       );
-      const localAgentRelayTargets = willRelayToLocalAgent
-        ? bridgeLocalAgentRelayTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
-        : [];
-      const localAgentRelayPlan = localAgentRelayTargets.length > 0
-        ? {
-            targets: localAgentRelayTargets,
-            parentSessionId: parentSessionIdForMessage,
-            parentMessageId: preparedCanonicalMessage?.messageId ?? null,
-            parentSessionTitle: desktopChatState?.activeSession.title ?? null,
-            parentSessionKind: activeGroupSessionIsGroup ? 'group' : null,
-            parentGroupSpaceId: activeGroupSessionSpaceId,
-            parentSessionParticipants: activeGroupSessionParticipants,
-          }
-        : null;
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
       setDesktopChatState((current) => {
         const baseState = materializedState && current?.activeSessionId !== resolvedSessionId
@@ -1442,171 +998,16 @@ export function useChatMessageActions({
       ));
       setChatComposerAttachments([]);
       resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-      const relayToLocalAgentTargets = async (
-        requestText: string,
-        parentTurnId?: string | null,
-        deliveryState?: 'processing' | LocalAgentRelayTerminalDeliveryState,
-        bridgeRequestId?: string | null,
-        options: Pick<RelaySharedSessionMessageOptions, 'attachments' | 'taskTools'> = {},
-      ) => {
-        if (!localAgentRelayPlan) return;
-        for (const target of localAgentRelayPlan.targets) {
-          const nextState = await relaySharedSessionMessage(
-            target,
-            localAgentRelayPlan.parentSessionId,
-            requestText,
-            localAgentRelayPlan.parentSessionTitle,
-            localAgentRelayPlan.parentMessageId,
-            parentTurnId,
-            deliveryState,
-            bridgeRequestId,
-            {
-              parentSessionKind: localAgentRelayPlan.parentSessionKind,
-              parentGroupSpaceId: localAgentRelayPlan.parentGroupSpaceId,
-              parentSessionParticipants: localAgentRelayPlan.parentSessionParticipants,
-              attachments: options.attachments,
-              taskTools: options.taskTools,
-            },
-          );
-          setDesktopBridgeState((current) => mergeDesktopBridgeState(current, nextState));
-        }
-      };
-      const runtimeMessageText = localAgentRelayPlan
-        ? localAgentRuntimeText(text, desktopChatState, desktopBridgeState)
-        : text;
-      if (localAgentRelayPlan) {
-        setIsDesktopChatSending(true);
-        const optimisticLiveTurnId = `local-agent-starting:${preparedCanonicalMessage?.messageId ?? Date.now()}`;
-        setDesktopLiveTurnsBySession((current) => ({
-          ...current,
-          [resolvedSessionId]: {
-            id: optimisticLiveTurnId,
-            sessionId: resolvedSessionId,
-            prompt: runtimeMessageText,
-            status: 'starting',
-            message: 'Starting…',
-            assistantText: '',
-            thinkingText: '',
-            tools: [],
-            completed: false,
-            succeeded: false,
-            error: null,
-          },
-        }));
-      }
       void persistCanonicalUserMessage(preparedCanonicalMessage)
         .catch((error: unknown) => {
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
         })
-        .then(async () => {
-          const userRelayPromise = localAgentRelayPlan
-            ? relayToLocalAgentTargets(
-              publicLocalAgentMentionText(text, desktopBridgeState),
-              null,
-              undefined,
-              undefined,
-              { attachments: chatComposerAttachments },
-            ).catch((error: unknown) => {
-              setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent request');
-            })
-            : null;
-          const turn = await startDesktopChatMessage(
-            resolvedSessionId,
-            runtimeMessageText,
-            attachmentPaths,
-            localAgentRelayPlan ? localAgentRuntimeRouteForBridgeState(desktopBridgeState, desktopChatState) : null,
-          );
-          const localAgentBridgeRequestId = `bridge_req_${turn.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-          let processingRelayPromise: Promise<void> | null = null;
-          if (localAgentRelayPlan) {
-            await userRelayPromise;
-            processingRelayPromise = relayToLocalAgentTargets(
-              'processing...',
-              turn.id,
-              'processing',
-              localAgentBridgeRequestId,
-            ).catch((error: unknown) => {
-              setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent progress');
-            });
-          }
-          return { turn, processingRelayPromise, localAgentBridgeRequestId };
-        })
-        .then(({ turn, processingRelayPromise, localAgentBridgeRequestId }) => {
-          if (!localAgentRelayPlan) {
-            watchLocalTurnAndFlushQueue(turn);
-            setIsDesktopChatSending(false);
-            return;
-          }
-
-          void (async () => {
-            let completedTurn: DesktopChatTurnSnapshot | null = null;
-            try {
-              await watchDesktopLiveTurn(turn);
-              completedTurn = await waitForCompletedDesktopTurn(fetchDesktopChatTurnState, turn.id);
-              await awaitRelayProgressBeforeTerminal(processingRelayPromise);
-              const assistantText = stripLeadingAddressMentions(
-                completedTurn.assistantText.trim(),
-                localHumanAddressLabels(desktopBridgeState),
-              );
-              const userCancelledThisTurn = userCancelledTurnIdsRef.current.delete(completedTurn.id)
-                || userCancelledTurnIdsRef.current.delete(turn.id);
-              const turnStatusForRelay = userCancelledThisTurn ? 'cancelled' : completedTurn.status;
-              const terminalDeliveryState = localAgentRelayTerminalDeliveryState({
-                assistantText,
-                error: completedTurn.error,
-                succeeded: completedTurn.succeeded,
-                status: turnStatusForRelay,
-              });
-              await relayToLocalAgentTargets(
-                terminalDeliveryState === 'responded'
-                  ? assistantText
-                  : localAgentRelayFailureText({ error: completedTurn.error, status: turnStatusForRelay }),
-                completedTurn.id,
-                terminalDeliveryState,
-                localAgentBridgeRequestId,
-                { taskTools: completedTurn.tools },
-              );
-            } catch (error) {
-              await awaitRelayProgressBeforeTerminal(processingRelayPromise);
-              const userCancelledThisTurn = userCancelledTurnIdsRef.current.delete(turn.id)
-                || (completedTurn && userCancelledTurnIdsRef.current.delete(completedTurn.id));
-              const wasCancelled = userCancelledThisTurn
-                || completedTurn?.status === 'cancelled'
-                || completedTurn?.status === 'cancelling';
-              const fallbackTurn = completedTurn
-                ? { error: completedTurn.error, status: wasCancelled ? 'cancelled' as const : completedTurn.status }
-                : { error: error instanceof Error ? error.message : null, status: wasCancelled ? 'cancelled' as const : 'failed' as const };
-              await relayToLocalAgentTargets(
-                localAgentRelayFailureText(fallbackTurn),
-                completedTurn?.id ?? turn.id,
-                wasCancelled ? 'cancelled' : 'processing_failed',
-                localAgentBridgeRequestId,
-                completedTurn ? { taskTools: completedTurn.tools } : undefined,
-              );
-              throw error;
-            } finally {
-              if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
-                localChatSendInFlightRef.current = null;
-              }
-              setIsDesktopChatSending(false);
-              flushQueuedDesktopMessagesForSessionRef.current(resolvedSessionId);
-            }
-          })().catch((error: unknown) => {
-            setDesktopChatError(error instanceof Error ? error.message : 'Unable to relay local agent response');
-          });
+        .then(() => startDesktopChatMessage(resolvedSessionId, text, attachmentPaths, null, restoredCloudContextMessages))
+        .then((turn) => {
+          watchLocalTurnAndFlushQueue(turn);
+          setIsDesktopChatSending(false);
         })
         .catch((error: unknown) => {
-          if (localAgentRelayPlan) {
-            if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
-              localChatSendInFlightRef.current = null;
-            }
-            setIsDesktopChatSending(false);
-            setDesktopLiveTurnsBySession((current) => {
-              if (!current[resolvedSessionId]) return current;
-              const { [resolvedSessionId]: _removed, ...rest } = current;
-              return rest;
-            });
-          }
           setPendingUserChatMessage(null);
           if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
             localChatSendInFlightRef.current = null;
@@ -1645,7 +1046,6 @@ export function useChatMessageActions({
     setCanonicalSessionState,
     setChatComposerAttachments,
     setComposerDrafts,
-    setDesktopBridgeState,
     setCloudBridgeState,
     sendCloudBridgeMessage,
     sendCloudGroupControl,

@@ -233,6 +233,9 @@ export function mapBridgeConversationToViewModel(
 ): BridgeConversationViewModel {
   const hostLabel = bridgeHostLabel(host);
   const isPersonChat = isBridgeConversationPersonChat(conversation);
+  const isCloudSelfAgent = conversation.hostId === 'cloud'
+    && conversation.peerNodeId === conversation.identity?.localHumanId
+    && conversation.identity?.remoteAgentId === conversation.identity?.localAgentId;
   const isAgent = !isPersonChat && isBridgeAgentRuntime(conversation.peerRuntime);
   const hasSentBridgeRequest = Boolean(conversation.outreach?.bridgeRequestId)
     || conversation.messages.some((message) => Boolean(message.requestId));
@@ -258,7 +261,7 @@ export function mapBridgeConversationToViewModel(
   const localAgentAvatarSeed = conversation.identity?.localAgentId || host?.activeAgentId || host?.nodeId || 'local-agent';
   const remoteHumanAvatarSeed = peer?.avatarSeed || conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
   const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
-  const conversationAvatarSeed = isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
+  const conversationAvatarSeed = isCloudSelfAgent ? localAgentAvatarSeed : isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
   const localHumanProfileImageUrl = bridgeProfileImageUrl(host?.profileImageUrl);
   const remoteHumanProfileImageUrl = bridgeProfileImageUrl(peer?.profileImageUrl);
   const participantAvatarSeeds: Record<string, string> = {
@@ -501,7 +504,7 @@ export function mapBridgeConversationToViewModel(
     id: conversation.id,
     canonicalSessionId: conversation.canonicalSessionId,
     name: conversation.title,
-    type: isAgent ? 'external-agent' : 'person',
+    type: isCloudSelfAgent ? 'owned-agent' : isAgent ? 'external-agent' : 'person',
     subtitle: outreachPrefix
       ? `${outreachPrefix}${conversation.projectName ? ` • ${conversation.projectName}` : ''} • ${conversation.subtitle || conversation.outreach?.requestText || 'Waiting for reply'}`
       : conversation.projectName
@@ -510,10 +513,12 @@ export function mapBridgeConversationToViewModel(
     unread: conversation.unreadCount,
     bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
     trust: 'Bridge',
-    directness: outreachPrefix ?? (isPersonChat ? 'Direct person chat' : 'Agent thread'),
-    participants: isAgent
-      ? ['Me', remoteHumanLabel, remoteAgentLabel]
-      : ['Me', conversation.peerOwnerName || conversation.title],
+    directness: isCloudSelfAgent ? 'Direct chat' : outreachPrefix ?? (isPersonChat ? 'Direct person chat' : 'Agent thread'),
+    participants: isCloudSelfAgent
+      ? ['Me', localBridgeAgentLabel]
+      : isAgent
+        ? ['Me', remoteHumanLabel, remoteAgentLabel]
+        : ['Me', conversation.peerOwnerName || conversation.title],
     updatedAtLabel: conversation.updatedAtLabel,
     outreach: conversation.outreach,
     identity: conversation.identity,
