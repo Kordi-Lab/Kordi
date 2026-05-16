@@ -468,7 +468,9 @@ export function shouldCountCloudGroupMessageUnread(input: {
   activeConversationId?: string | null;
   groupId: string;
   groupSpaceId?: string | null;
+  forkSnapshot?: boolean | null;
 }): boolean {
+  if (input.forkSnapshot === true) return false;
   const active = cleanText(input.activeConversationId);
   const sessionId = cleanText(input.groupId);
   const spaceId = cleanText(input.groupSpaceId) || sessionId;
@@ -739,6 +741,7 @@ export function cloudGroupMessageReadPeerIds(input: {
       activeConversationId: input.activeConversationId,
       groupId: envelope.groupId,
       groupSpaceId: envelope.groupSpaceId,
+      forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const peerId = cleanText(message.fromAccountId);
     if (peerId) peerIds.add(peerId);
@@ -763,6 +766,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
       activeConversationId: input.activeConversationId,
       groupId: envelope.groupId,
       groupSpaceId: envelope.groupSpaceId,
+      forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const sessionId = cleanText(envelope.groupId);
     if (!sessionId) continue;

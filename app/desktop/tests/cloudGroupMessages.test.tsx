@@ -610,6 +610,71 @@ test('cloud group unread count helper deduplicates inbound unread controls per h
   }), {});
 });
 
+test('cloud group unread count helper ignores inherited fork snapshots and counts only new fork messages', () => {
+  const forkSnapshotMessage = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:fork:child',
+    groupSpaceId: 'session:fork:child',
+    groupTitle: 'Fork',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    fork: {
+      forkSessionId: 'session:fork:child',
+      parentSessionId: 'session:group:parent',
+      parentMessageId: 'msg:parent',
+      createdAtMs: 1,
+    },
+    message: {
+      id: 'msg:old-snapshot',
+      senderAccountId: 'acct_peer',
+      senderDisplayName: 'Peer',
+      senderKind: 'human',
+      text: 'Inherited old message',
+      createdAtMs: 1,
+      forkSnapshot: true,
+    },
+  });
+  const newForkMessage = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:fork:child',
+    groupSpaceId: 'session:fork:child',
+    groupTitle: 'Fork',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    fork: {
+      forkSessionId: 'session:fork:child',
+      parentSessionId: 'session:group:parent',
+      parentMessageId: 'msg:parent',
+      createdAtMs: 1,
+    },
+    message: {
+      id: 'msg:new-after-fork',
+      senderAccountId: 'acct_peer',
+      senderDisplayName: 'Peer',
+      senderKind: 'human',
+      text: 'New message after fork',
+      createdAtMs: 2,
+    },
+  });
+
+  assert.deepEqual(cloudGroupUnreadCountsBySessionId({
+    accountId: 'acct_me',
+    activeConversationId: 'session:outside',
+    messages: [
+      { messageId: 'cloud_snapshot', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: forkSnapshotMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+      { messageId: 'cloud_new', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: newForkMessage, createdAt: '2026-05-11T00:00:01Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), { 'session:fork:child': 1 });
+});
+
 test('cloud group send helpers treat partial recipient success as a send success', () => {
   const results: PromiseSettledResult<string>[] = [
     { status: 'fulfilled', value: 'msg_ok' },

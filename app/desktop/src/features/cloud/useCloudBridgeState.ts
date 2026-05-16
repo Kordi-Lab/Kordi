@@ -1785,7 +1785,12 @@ export function useCloudBridgeState({
         nextState = removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
       }
       setCanonicalSessionState(nextState);
-      if (shouldCountCloudGroupMessageUnread({ activeConversationId, groupId: envelope.groupId, groupSpaceId })) {
+      if (shouldCountCloudGroupMessageUnread({
+        activeConversationId,
+        groupId: envelope.groupId,
+        groupSpaceId,
+        forkSnapshot: envelope.message.forkSnapshot,
+      })) {
         incrementLocalSessionUnread?.(envelope.groupId, 1);
       }
     }
