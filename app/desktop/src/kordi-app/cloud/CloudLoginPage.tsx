@@ -348,9 +348,8 @@ export function CloudLoginPage({
     if (!EMAIL_PATTERN.test(email)) return false;
     if (password.length < PASSWORD_MIN_LENGTH) return false;
     if (isSignup && password !== confirmPassword) return false;
-    if (isSignup && !avatarPref) return false;
     return true;
-  }, [avatarPref, confirmPassword, email, isSignup, password, submitting]);
+  }, [confirmPassword, email, isSignup, password, submitting]);
 
   const submitLabel = isSignup
     ? submitting
@@ -387,6 +386,7 @@ export function CloudLoginPage({
       if (isSignup) {
         const trimmedName = displayName.trim();
         if (!avatarPref) {
+          flashUploadError('Upload an avatar.');
           setSubmitError('Upload an avatar to create your account.');
           return;
         }
