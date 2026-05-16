@@ -68,7 +68,7 @@ export function shouldUseCanonicalMessages(existingMessages: Message[], canonica
     && existingMessages[0]?.role === 'system'
     && /^(Draft session|Session ready|Opening (?:my|your) local chat history|Select a local session)/.test(existingMessages[0]?.text ?? '');
 
-  return placeholderOnly || canonicalMessages.length >= existingMessages.length;
+  return placeholderOnly || canonicalMessages.length > existingMessages.length;
 }
 
 export function sessionMetadata(session: CanonicalSessionState['sessions'][number]) {

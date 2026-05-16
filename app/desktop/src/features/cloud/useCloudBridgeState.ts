@@ -851,6 +851,13 @@ type CloudSelfAgentSyncOperation = {
   createdAtMs: number;
 };
 
+export type CloudSelfAgentSyncStatus = {
+  state: 'syncing' | 'synced' | 'error';
+  pendingCount?: number;
+  message?: string;
+  updatedAtMs: number;
+};
+
 function selfAgentSyncLedgerKey(accountId: string): string {
   return `${CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX}${accountId}`;
 }
@@ -1203,6 +1210,7 @@ export type UseCloudBridgeStateResult = {
   initialContactsSettled: boolean;
   initialMessagesSettled: boolean;
   cachedMessagesReady: boolean;
+  cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
 };
 
 function applyCloudAgentRuntimeRouteToState(
@@ -1262,6 +1270,7 @@ export function useCloudBridgeState({
   const [readInboundMessageIdsByPeer, setReadInboundMessageIdsByPeer] = useState<Record<string, Set<string>>>({});
   const [localAgentTurnsByRequestId, setLocalAgentTurnsByRequestId] = useState<Record<string, DesktopChatTurnSnapshot>>({});
   const [cloudBridgeOverride, setCloudBridgeOverrideState] = useState<DesktopBridgeState | null>(null);
+  const [cloudSelfAgentSyncStatusBySessionId, setCloudSelfAgentSyncStatusBySessionId] = useState<Record<string, CloudSelfAgentSyncStatus>>({});
   const cloudBridgeStateRef = useRef<DesktopBridgeState | null>(null);
   const readReceiptRequestRef = useRef<string | null>(null);
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
@@ -1637,6 +1646,7 @@ export function useCloudBridgeState({
     if (!account || syncingSelfAgentHistoryRef.current) return;
 
     syncingSelfAgentHistoryRef.current = true;
+    let plannedSessionIds: string[] = [];
     void (async () => {
       const latestState = await fetchCanonicalSessionState().catch(() => canonicalSessionState ?? null);
       if (!latestState) return;
@@ -1652,8 +1662,20 @@ export function useCloudBridgeState({
       const operations = planCloudSelfAgentSync(latestState, initialLedger);
       if (operations.length === 0) return;
 
+      plannedSessionIds = [...new Set(operations.map((operation) => operation.sessionId))];
       const session = await loadSession();
       if (!session?.token) return;
+      const pendingBySession = operations.reduce<Record<string, number>>((counts, operation) => {
+        counts[operation.sessionId] = (counts[operation.sessionId] ?? 0) + 1;
+        return counts;
+      }, {});
+      setCloudSelfAgentSyncStatusBySessionId((current) => {
+        const next = { ...current };
+        for (const [sessionId, pendingCount] of Object.entries(pendingBySession)) {
+          next[sessionId] = { state: 'syncing', pendingCount, updatedAtMs: Date.now() };
+        }
+        return next;
+      });
       const ledger = loadCloudSelfAgentSyncLedger(account.accountId);
       for (const operation of operations) {
         if (cancelledRef.current) return;
@@ -1682,11 +1704,28 @@ export function useCloudBridgeState({
           syncedAtMs: Date.now(),
         };
         saveCloudSelfAgentSyncLedger(account.accountId, ledger);
+        pendingBySession[operation.sessionId] = Math.max(0, (pendingBySession[operation.sessionId] ?? 1) - 1);
+        setCloudSelfAgentSyncStatusBySessionId((current) => ({
+          ...current,
+          [operation.sessionId]: pendingBySession[operation.sessionId] > 0
+            ? { state: 'syncing', pendingCount: pendingBySession[operation.sessionId], updatedAtMs: Date.now() }
+            : { state: 'synced', updatedAtMs: Date.now() },
+        }));
         mergeMessage(message);
       }
       await refreshCloudBridgeMessages();
     })()
       .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (plannedSessionIds.length > 0) {
+          setCloudSelfAgentSyncStatusBySessionId((current) => {
+            const next = { ...current };
+            for (const sessionId of plannedSessionIds) {
+              next[sessionId] = { state: 'error', message, updatedAtMs: Date.now() };
+            }
+            return next;
+          });
+        }
         // eslint-disable-next-line no-console
         console.warn('[cloud-self-agent-sync] failed to sync local history', error);
       })
@@ -3037,5 +3076,6 @@ export function useCloudBridgeState({
     initialContactsSettled: contacts.initialLoadSettled,
     initialMessagesSettled,
     cachedMessagesReady: Object.values(messagesByPeer).some((messages) => messages.length > 0),
+    cloudSelfAgentSyncStatusBySessionId,
   };
 }

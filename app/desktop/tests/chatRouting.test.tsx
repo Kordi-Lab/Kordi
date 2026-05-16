@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { activeConversationForSelection, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
+import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
@@ -473,6 +474,17 @@ test('workspace view model exposes visible non-contact Bridge people for Add con
   assert.deepEqual(viewModels?.addableContacts.map((contact) => contact.name), ['Kordi User 6']);
   assert.equal(viewModels?.displayedContacts.some((contact) => contact.name === 'Kordi User 6'), false);
   assert.equal(viewModels?.displayedContacts.some((contact) => contact.name === 'Existing Contact'), true);
+});
+
+test('canonical read model keeps existing local transcript when canonical has equal message count', () => {
+  const existingMessages = [
+    { id: 'local-user', role: 'user' as const, text: 'hello', time: '11:41', isOwnMessage: true },
+  ];
+  const canonicalMessages = [
+    { id: 'canonical-user', role: 'user' as const, text: 'hello', time: '11:41', isOwnMessage: true },
+  ];
+
+  assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), false);
 });
 
 test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {

@@ -25,6 +25,7 @@ import {
   routingSelectionForBridgeAgent,
 } from '@/features/bridge/agentModelRouting';
 import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
@@ -76,6 +77,18 @@ export function shouldShowConversationTypeBadge(conversation: Pick<Conversation,
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
   return !sessionId.startsWith('session:group:') && !forkParentId.startsWith('session:group:');
+}
+
+export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
+  if (!status) return null;
+  if (status.state === 'syncing') {
+    const pendingCount = typeof status.pendingCount === 'number' && Number.isFinite(status.pendingCount)
+      ? Math.max(0, Math.floor(status.pendingCount))
+      : 0;
+    return pendingCount > 1 ? `Syncing ${pendingCount}` : 'Syncing';
+  }
+  if (status.state === 'synced') return 'Synced';
+  return 'Sync issue';
 }
 
 function humanTranscriptGroupKey(message?: Message) {
@@ -206,6 +219,7 @@ type ChatsPageProps = {
   activeConversationIsBridge: boolean;
   activeBridgeModelHost: DesktopBridgeHost | null;
   desktopChatState: DesktopChatState | null;
+  cloudSelfAgentSyncStatus?: CloudSelfAgentSyncStatus | null;
   onUpdateBridgeAgentModelRouting: (
     hostId: string,
     agentId: string,
@@ -278,6 +292,7 @@ export function ChatsPage({
   activeConversationIsBridge,
   activeBridgeModelHost,
   desktopChatState,
+  cloudSelfAgentSyncStatus,
   onUpdateBridgeAgentModelRouting,
   isEditingDesktopSessionTitle,
   setIsEditingDesktopSessionTitle,
@@ -335,6 +350,7 @@ export function ChatsPage({
   const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
   const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
+  const activeCloudSelfAgentSyncLabel = cloudSelfAgentSyncStatusLabel(cloudSelfAgentSyncStatus);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
@@ -624,6 +640,24 @@ export function ChatsPage({
               ) : (
                 <h2 className="min-w-0 max-w-full truncate text-[17px] font-semibold" data-kordi-window-drag="false">{activeConv.name}</h2>
               )}
+              {activeCloudSelfAgentSyncLabel ? (
+                <span
+                  className={cn(
+                    'inline-flex h-5 shrink-0 items-center rounded-full border px-2 text-[10.5px] font-medium transition-colors',
+                    cloudSelfAgentSyncStatus?.state === 'error'
+                      ? 'border-rose-400/25 bg-rose-400/10 text-rose-200'
+                      : cloudSelfAgentSyncStatus?.state === 'syncing'
+                        ? 'border-sky-300/20 bg-sky-300/10 text-sky-100'
+                        : 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
+                  )}
+                  title={cloudSelfAgentSyncStatus?.state === 'error'
+                    ? cloudSelfAgentSyncStatus.message || 'Cloud sync needs attention'
+                    : activeCloudSelfAgentSyncLabel}
+                  data-cloud-self-agent-sync-status={cloudSelfAgentSyncStatus?.state ?? 'idle'}
+                >
+                  {activeCloudSelfAgentSyncLabel}
+                </span>
+              ) : null}
               {shouldShowConversationTypeBadge(activeConv) ? <TypeBadge type={activeConv.type} compact /> : null}
               {activeForkSourceSessionId ? (
                 <button

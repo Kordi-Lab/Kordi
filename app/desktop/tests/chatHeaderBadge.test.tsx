@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { shouldShowConversationTypeBadge } from '../src/pages/ChatsPage';
+import { cloudSelfAgentSyncStatusLabel, shouldShowConversationTypeBadge } from '../src/pages/ChatsPage';
 
 test('chat header hides the My agent badge for canonical group sessions', () => {
   assert.equal(shouldShowConversationTypeBadge({
@@ -26,4 +26,11 @@ test('chat header keeps the My agent badge for true self-agent sessions', () => 
     canonicalSessionId: '4367e286-afb4-4941-b0cb-7d644b0f6ce6',
     type: 'owned-agent',
   }), true);
+});
+
+test('chat header cloud self-agent sync label is concise and stable', () => {
+  assert.equal(cloudSelfAgentSyncStatusLabel(undefined), null);
+  assert.equal(cloudSelfAgentSyncStatusLabel({ state: 'syncing', pendingCount: 2 }), 'Syncing 2');
+  assert.equal(cloudSelfAgentSyncStatusLabel({ state: 'synced' }), 'Synced');
+  assert.equal(cloudSelfAgentSyncStatusLabel({ state: 'error', message: 'network failed' }), 'Sync issue');
 });

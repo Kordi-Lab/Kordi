@@ -325,6 +325,7 @@ export function useKordiAppModel() {
     initialContactsSettled,
     initialMessagesSettled,
     cachedMessagesReady,
+    cloudSelfAgentSyncStatusBySessionId,
   } = useCloudBridgeState({
     account: kordiEdition === 'cloud' ? cloudSession.account : null,
     activeConversationId: activeConvId,
@@ -1916,6 +1917,7 @@ export function useKordiAppModel() {
   const shellArgs = useKordiShellArgs({
     isNativeShell,
     desktopChatState,
+    cloudSelfAgentSyncStatusBySessionId,
     windowWidth: windowSize.width,
     activeNav,
     setActiveNav,
