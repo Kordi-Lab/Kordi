@@ -5,6 +5,7 @@ import {
   ArrowRightLeft,
   ChevronDown,
   Clock3,
+  Cloud,
   FileText,
   Globe,
   Image as ImageIcon,
@@ -643,19 +644,22 @@ export function ChatsPage({
               {activeCloudSelfAgentSyncLabel ? (
                 <span
                   className={cn(
-                    'inline-flex h-5 shrink-0 items-center rounded-full border px-2 text-[10.5px] font-medium transition-colors',
+                    'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors',
                     cloudSelfAgentSyncStatus?.state === 'error'
-                      ? 'border-rose-400/25 bg-rose-400/10 text-rose-200'
+                      ? 'text-rose-300'
                       : cloudSelfAgentSyncStatus?.state === 'syncing'
-                        ? 'border-sky-300/20 bg-sky-300/10 text-sky-100'
-                        : 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100',
+                        ? 'text-sky-200'
+                        : 'text-emerald-200',
                   )}
                   title={cloudSelfAgentSyncStatus?.state === 'error'
                     ? cloudSelfAgentSyncStatus.message || 'Cloud sync needs attention'
                     : activeCloudSelfAgentSyncLabel}
+                  aria-label={cloudSelfAgentSyncStatus?.state === 'error'
+                    ? 'Cloud sync issue'
+                    : activeCloudSelfAgentSyncLabel}
                   data-cloud-self-agent-sync-status={cloudSelfAgentSyncStatus?.state ?? 'idle'}
                 >
-                  {activeCloudSelfAgentSyncLabel}
+                  <Cloud className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
               ) : null}
               {shouldShowConversationTypeBadge(activeConv) ? <TypeBadge type={activeConv.type} compact /> : null}

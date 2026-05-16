@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { cloudSelfAgentSyncStatusLabel, shouldShowConversationTypeBadge } from '../src/pages/ChatsPage';
@@ -26,6 +27,14 @@ test('chat header keeps the My agent badge for true self-agent sessions', () => 
     canonicalSessionId: '4367e286-afb4-4941-b0cb-7d644b0f6ce6',
     type: 'owned-agent',
   }), true);
+});
+
+test('chat header cloud self-agent sync indicator is icon-only', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const indicatorMarkup = source.slice(source.indexOf('data-cloud-self-agent-sync-status'), source.indexOf('{shouldShowConversationTypeBadge'));
+
+  assert.match(indicatorMarkup, /<Cloud/);
+  assert.doesNotMatch(indicatorMarkup, /\{activeCloudSelfAgentSyncLabel\}/);
 });
 
 test('chat header cloud self-agent sync label is concise and stable', () => {
