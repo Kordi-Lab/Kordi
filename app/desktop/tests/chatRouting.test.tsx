@@ -18,6 +18,32 @@ test('pending Cloud contact selection keeps active conversation on Cloud instead
   assert.equal(conversation?.bridges.includes('Cloud'), true);
 });
 
+test('workspace active conversation resolves Cloud self-agent bridge session ids to restored canonical sessions', () => {
+  const localConversation = {
+    id: '109fcf23-654c-41a7-bd73-8156b0b89703',
+    canonicalSessionId: '109fcf23-654c-41a7-bd73-8156b0b89703',
+    name: '今天thuwal天气怎么样',
+    type: 'owned-agent' as const,
+    subtitle: 'Local restored self-agent chat',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'user' as const, isOwnMessage: true, text: '家人们谁懂啊', time: '11:27' }],
+  };
+  const cloudBridgeSelection = 'bridge:cloud:acct_me:session:109fcf23-654c-41a7-bd73-8156b0b89703';
+
+  const selected = activeConversationForSelection(
+    cloudBridgeSelection,
+    [localConversation],
+    { isNativeShell: true, nativeChatPlaceholder: localConversation },
+  );
+
+  assert.equal(selected.id, localConversation.id);
+  assert.equal(selected.messages[0]?.text, '家人们谁懂啊');
+});
+
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
   const localConversation = {
     id: 'local-newer',

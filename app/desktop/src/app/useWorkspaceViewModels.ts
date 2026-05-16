@@ -3,7 +3,7 @@ import { useMemo, useRef } from 'react';
 import { mapBridgeConversationToViewModel } from '@/features/bridge/transcript';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import { cloudPeerAccountIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
@@ -132,8 +132,14 @@ export function activeConversationForSelection(
   if (options.isNativeShell && isLocalDraftChatConversationId(activeConvId)) {
     return options.nativeChatPlaceholder;
   }
+  const activeCloudSessionId = isCloudBridgeConversationId(activeConvId)
+    ? cloudSessionIdFromConversationId(activeConvId)
+    : null;
   const selectedConversation = chatConversations.find((conversation) => conversation.id === activeConvId)
-    ?? chatConversations.find((conversation) => conversation.canonicalSessionId === activeConvId);
+    ?? chatConversations.find((conversation) => conversation.canonicalSessionId === activeConvId)
+    ?? (activeCloudSessionId
+      ? chatConversations.find((conversation) => conversation.id === activeCloudSessionId || conversation.canonicalSessionId === activeCloudSessionId)
+      : undefined);
   if (selectedConversation) return selectedConversation;
   const pendingCloudConversation = pendingCloudBridgeConversationForActiveId(activeConvId);
   if (pendingCloudConversation) return pendingCloudConversation;

@@ -955,10 +955,14 @@ export function planCloudSelfAgentCanonicalSync({
   const sorted = [...messages]
     .filter((message) => message.fromAccountId === account.accountId && message.toAccountId === account.accountId)
     .filter((message) => cleanText(message.sessionId))
-    .sort((left, right) => cloudSelfAgentCreatedAtMs(left) - cloudSelfAgentCreatedAtMs(right));
+    .sort((left, right) => (
+      cloudSelfAgentCreatedAtMs(left) - cloudSelfAgentCreatedAtMs(right)
+      || left.messageId.localeCompare(right.messageId)
+    ));
 
   const userTextByCloudMessageId = new Map<string, string>();
   const requestLocalMessageIdByCloudMessageId = new Map<string, string>();
+  const plannedCanonicalMessageIdByDuplicateKey = new Map<string, string>();
   const sessionRequestsById = new Map<string, OpenCanonicalSessionRequest>();
   const messageRequests: AppendCanonicalMessageRequest[] = [];
 
@@ -986,9 +990,20 @@ export function planCloudSelfAgentCanonicalSync({
       continue;
     }
 
+    const duplicateKey = [sessionId, role, createdAtMs.toString(), text].join('\u001f');
+    const plannedDuplicateMessageId = plannedCanonicalMessageIdByDuplicateKey.get(duplicateKey);
+    if (plannedDuplicateMessageId) {
+      if (!response) {
+        userTextByCloudMessageId.set(message.messageId, text);
+        requestLocalMessageIdByCloudMessageId.set(message.messageId, plannedDuplicateMessageId);
+      }
+      continue;
+    }
+
+    const canonicalMessageId = cloudSelfAgentCanonicalMessageId(message.messageId);
     if (!response) {
       userTextByCloudMessageId.set(message.messageId, text);
-      requestLocalMessageIdByCloudMessageId.set(message.messageId, cloudSelfAgentCanonicalMessageId(message.messageId));
+      requestLocalMessageIdByCloudMessageId.set(message.messageId, canonicalMessageId);
     }
     const parentMessageId = response ? requestLocalMessageIdByCloudMessageId.get(response.requestId) ?? null : null;
     if (response && !parentMessageId) continue;
@@ -1005,8 +1020,9 @@ export function planCloudSelfAgentCanonicalSync({
         metadata: { cloudSelfAgentSession: true },
       });
     }
+    plannedCanonicalMessageIdByDuplicateKey.set(duplicateKey, canonicalMessageId);
     messageRequests.push({
-      id: cloudSelfAgentCanonicalMessageId(message.messageId),
+      id: canonicalMessageId,
       sessionId,
       senderIdentityId: response ? agentIdentityId : localHumanIdentityId,
       senderRole: response ? 'owned-agent' : 'user',
@@ -1047,6 +1063,13 @@ function localSelfAgentSessionIds(state: CanonicalSessionState): Set<string> {
     .map((session) => session.id));
 }
 
+function shouldSkipSelfAgentForwardSyncMessage(message: CanonicalSessionMessage): boolean {
+  return message.sourceTransport === 'canonical-fork-snapshot'
+    || message.sourceTransport === 'cloud-group-fork-snapshot'
+    || message.sourceTransport === 'cloud-self-agent'
+    || message.id.startsWith('msg:cloud:self:');
+}
+
 export function seedCloudSelfAgentForwardSyncLedger(
   state: CanonicalSessionState,
   ledger: CloudSelfAgentSyncLedger,
@@ -1059,7 +1082,7 @@ export function seedCloudSelfAgentForwardSyncLedger(
   const next: CloudSelfAgentSyncLedger = { ...ledger };
   for (const message of state.messages) {
     if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
-    if (message.sourceTransport === 'canonical-fork-snapshot') continue;
+    if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
     if (!cleanText(message.contentText) || next[message.id]) continue;
     next[message.id] = {
       cloudMessageId: null,
@@ -1083,7 +1106,7 @@ export function planCloudSelfAgentSync(
   const messagesBySession = new Map<string, CanonicalSessionMessage[]>();
   for (const message of state.messages) {
     if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
-    if (message.sourceTransport === 'canonical-fork-snapshot') continue;
+    if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
     const text = cleanText(message.contentText);
     if (!text) continue;
     const bucket = messagesBySession.get(message.sessionId) ?? [];
@@ -2713,7 +2736,7 @@ export function useCloudBridgeState({
       .map((session) => [session.id, session.title]));
     const hiddenCloudSessionIds = new Set(canonicalSelfAgentSessions
       .map((session) => session.id.trim())
-      .filter((sessionId) => sessionId.startsWith('session:fork:')));
+      .filter(Boolean));
     const canonicalSelfAgentSessionIds = new Set(canonicalSelfAgentSessions.map((session) => session.id));
     const suppressUnscopedSelfAgentConversation = (canonicalSessionState?.messages ?? []).some((message) => (
       canonicalSelfAgentSessionIds.has(message.sessionId)
