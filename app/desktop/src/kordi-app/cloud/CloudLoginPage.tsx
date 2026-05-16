@@ -108,6 +108,7 @@ function CloudField({
   onChange,
   validation,
   hint,
+  disabled,
 }: {
   label?: string;
   ariaLabel?: string;
@@ -118,6 +119,7 @@ function CloudField({
   onChange: (next: string) => void;
   validation?: CloudFieldValidation;
   hint?: string;
+  disabled?: boolean;
 }) {
   const baseInput = `${INPUT_BASE_CLASS} ${PAPER_INPUT} ${TYPE_INPUT} ${INK}`;
   const tone =
@@ -137,6 +139,7 @@ function CloudField({
         onChange={(event) => onChange(event.currentTarget.value)}
         aria-label={ariaLabel ?? label}
         aria-invalid={validation === 'invalid' || undefined}
+        disabled={disabled}
         className={`${baseInput} ${tone}`}
       />
       {hint ? (
@@ -200,11 +203,13 @@ function AvatarPicker({
   displayName,
   onAvatarFile,
   uploadError,
+  disabled,
 }: {
   preference: AvatarPreference | null;
   displayName: string;
   onAvatarFile: (file: File | undefined) => void;
   uploadError?: string;
+  disabled?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageUrl = preference?.dataUrl;
@@ -214,9 +219,10 @@ function AvatarPicker({
       <div className="relative h-12 w-12">
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => { if (!disabled) fileInputRef.current?.click(); }}
           title="Upload avatar"
           aria-label="Upload avatar"
+          disabled={disabled}
           className={[
             'app-cloud-login-avatar group relative block h-12 w-12 overflow-hidden rounded-full border transition duration-150 hover:scale-[1.01] focus-visible:outline-none',
             BORDER_INNER,
@@ -243,6 +249,7 @@ function AvatarPicker({
         accept="image/png,image/jpeg,image/webp"
         className="sr-only"
         aria-label="Upload avatar"
+        disabled={disabled}
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = '';
@@ -423,7 +430,7 @@ export function CloudLoginPage({
         Kordi
       </div>
 
-      <main className="relative w-full max-w-[440px] px-6">
+      <main className="app-cloud-login-panel relative w-full max-w-[440px] px-6">
         <div
           data-cloud-login-mode-copy={modeKey}
           className="app-cloud-login-mode-copy grid justify-items-center text-center"
@@ -499,13 +506,18 @@ export function CloudLoginPage({
           className="app-cloud-login-form mt-5 grid gap-3.5"
           onSubmit={handleSubmit}
         >
-          {isSignup ? (
+          <div
+            className="app-cloud-login-signup-section"
+            data-cloud-login-signup-section={isSignup ? 'open' : 'closed'}
+            aria-hidden={!isSignup}
+          >
             <div className="app-cloud-login-signup-field grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
               <AvatarPicker
                 preference={avatarPref}
                 displayName={displayName}
                 onAvatarFile={handleAvatarFile}
                 uploadError={uploadError}
+                disabled={!isSignup}
               />
               <CloudField
                 ariaLabel="Display name"
@@ -514,9 +526,10 @@ export function CloudLoginPage({
                 placeholder="Display name"
                 value={displayName}
                 onChange={setDisplayName}
+                disabled={!isSignup}
               />
             </div>
-          ) : null}
+          </div>
           <CloudField
             label="Email"
             type="email"
@@ -537,7 +550,11 @@ export function CloudLoginPage({
             validation={passwordTooShort ? 'hint' : undefined}
             hint={passwordTooShort ? `At least ${PASSWORD_MIN_LENGTH} characters.` : undefined}
           />
-          {isSignup ? (
+          <div
+            className="app-cloud-login-signup-section"
+            data-cloud-login-signup-section={isSignup ? 'open' : 'closed'}
+            aria-hidden={!isSignup}
+          >
             <div className="app-cloud-login-signup-field">
               <CloudField
                 label="Confirm Password"
@@ -548,9 +565,10 @@ export function CloudLoginPage({
                 onChange={setConfirmPassword}
                 validation={passwordMismatch ? 'invalid' : undefined}
                 hint={passwordMismatch ? 'Passwords do not match.' : undefined}
+                disabled={!isSignup}
               />
             </div>
-          ) : null}
+          </div>
           {submitError ? (
             <div
               role="alert"
