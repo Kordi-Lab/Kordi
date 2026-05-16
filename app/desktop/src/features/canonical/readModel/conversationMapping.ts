@@ -145,7 +145,7 @@ export function syntheticParticipantSpaceId(session: CanonicalSessionState['sess
 
 function firstMessageTitle(messages: Message[]) {
   const text = messages
-    .find((message) => message.role !== 'system' && message.text.trim().length > 0)
+    .find((message) => !message.isForkSnapshot && message.role !== 'system' && message.text.trim().length > 0)
     ?.text
     .trim()
     .split(/\s+/)

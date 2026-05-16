@@ -90,6 +90,15 @@ test('shouldInferLatestHumanReplyTarget enables fallback linking for person, ext
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'owned-agent', participantSpaceId: null, canonicalParticipantCount: 1 }), false);
 });
 
+test('shouldInferLatestHumanReplyTarget does not quote new private self-agent fork turns', () => {
+  assert.equal(shouldInferLatestHumanReplyTarget({
+    type: 'owned-agent',
+    participantSpaceId: null,
+    canonicalParticipantCount: 1,
+    forkedFromSessionId: 'parent-self-session',
+  }), false);
+});
+
 test('buildReplyAttribution resolves canonical bridge parent aliases as the source request', () => {
   const messages: Message[] = [
     humanRequest({
