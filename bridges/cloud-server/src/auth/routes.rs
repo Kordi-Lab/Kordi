@@ -2350,7 +2350,6 @@ fn account_to_summary(account: AccountResponse) -> ContactSummary {
 // ---------- Cloud messages (1:1 peer chat) ----------
 
 const MESSAGE_BODY_MAX_CHARS: usize = 4_000;
-const CLOUD_AGENT_CONTROL_MAX_CHARS: usize = 128_000;
 const MESSAGE_LIST_DEFAULT_LIMIT: i64 = 200;
 const MESSAGE_LIST_MAX_LIMIT: i64 = 500;
 const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
@@ -2453,9 +2452,6 @@ fn normalize_cloud_message_body(body: &str) -> Result<String, &'static str> {
         return Ok(sanitized);
     }
     if is_cloud_agent_control_body(body) {
-        if body.chars().count() > CLOUD_AGENT_CONTROL_MAX_CHARS {
-            return Err("message_too_large");
-        }
         return Ok(body.to_string());
     }
     Ok(body
@@ -2523,8 +2519,8 @@ mod cloud_message_policy_tests {
     use chrono::{TimeZone, Utc};
 
     #[test]
-    fn long_cloud_agent_response_is_not_truncated() {
-        let body = format!("{CLOUD_AGENT_RESPONSE_PREFIX}{}", "a".repeat(6_000));
+    fn cloud_agent_response_has_no_app_level_character_limit() {
+        let body = format!("{CLOUD_AGENT_RESPONSE_PREFIX}{}", "a".repeat(200_000));
 
         assert_eq!(normalize_cloud_message_body(&body).unwrap(), body);
     }
