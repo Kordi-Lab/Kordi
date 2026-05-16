@@ -26,6 +26,7 @@ import {
   cloudGroupAgentProcessingSlotForResponse,
   optimisticCloudAgentCancelMessage,
   planCloudSelfAgentSync,
+  seedCloudSelfAgentForwardSyncLedger,
   cloudMessagesByPeerEqual,
   mergeCloudMessagesByPeerSnapshot,
   loadCloudMessagesByPeerUntilStable,
@@ -496,6 +497,45 @@ test('planCloudSelfAgentSync backfills terminal local self-agent turns without r
   ]);
 
   assert.deepEqual(planCloudSelfAgentSync(state, {}, { allowLocalBackfill: false }), []);
+});
+
+test('cloud self-agent forward sync seeds existing local history but uploads continued turns', () => {
+  const initialState = {
+    sessions: [
+      { id: 'local-self-session', kind: 'self-agent', title: 'Hello', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [
+      { id: 'old-u1', sessionId: 'local-self-session', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'old prompt', status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10 },
+      { id: 'old-a1', sessionId: 'local-self-session', senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'old answer', status: 'complete', sequenceNum: 2, createdAtMs: 20, updatedAtMs: 20 },
+    ] as CanonicalSessionMessage[],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const seeded = seedCloudSelfAgentForwardSyncLedger(initialState, {}, 1000);
+  assert.equal(seeded.changed, true);
+  assert.equal(seeded.ledger['old-u1']?.cloudMessageId, null);
+  assert.equal(seeded.ledger['old-u1']?.skippedLocalBackfill, true);
+  assert.deepEqual(planCloudSelfAgentSync(initialState, seeded.ledger), []);
+
+  const continuedState = {
+    ...initialState,
+    messages: [
+      ...initialState.messages,
+      { id: 'new-u1', sessionId: 'local-self-session', senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'new prompt', status: 'sent', sequenceNum: 3, createdAtMs: 30, updatedAtMs: 30 },
+      { id: 'new-a1', sessionId: 'local-self-session', senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'new answer', status: 'complete', sequenceNum: 4, createdAtMs: 40, updatedAtMs: 40 },
+    ] as CanonicalSessionMessage[],
+  } as CanonicalSessionState;
+
+  assert.deepEqual(planCloudSelfAgentSync(continuedState, seeded.ledger), [
+    { localMessageId: 'new-u1', sessionId: 'local-self-session', role: 'user', text: 'new prompt', parentLocalMessageId: null, createdAtMs: 30 },
+    { localMessageId: 'new-a1', sessionId: 'local-self-session', role: 'agent', text: 'new answer', parentLocalMessageId: 'new-u1', createdAtMs: 40 },
+  ]);
 });
 
 test('planCloudSelfAgentSync skips inherited fork snapshot rows but keeps new fork turns', () => {

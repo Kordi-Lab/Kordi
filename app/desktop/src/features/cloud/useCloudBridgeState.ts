@@ -830,10 +830,12 @@ export async function loadCloudMessagesByPeerUntilStable({
 }
 
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
+const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX = 'kordi.cloud.selfAgentForwardBaseline.v1:';
 
 type CloudSelfAgentSyncLedgerEntry = {
-  cloudMessageId: string;
+  cloudMessageId: string | null;
   syncedAtMs: number;
+  skippedLocalBackfill?: boolean;
 };
 
 type CloudSelfAgentSyncLedger = Record<string, CloudSelfAgentSyncLedgerEntry>;
@@ -851,6 +853,24 @@ function selfAgentSyncLedgerKey(accountId: string): string {
   return `${CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX}${accountId}`;
 }
 
+function selfAgentForwardBaselineKey(accountId: string): string {
+  return `${CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX}${accountId}`;
+}
+
+function loadCloudSelfAgentForwardBaseline(accountId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(selfAgentForwardBaselineKey(accountId)) === '1';
+}
+
+function saveCloudSelfAgentForwardBaseline(accountId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(selfAgentForwardBaselineKey(accountId), '1');
+  } catch {
+    // Best effort. If persistence fails, this device may try again later.
+  }
+}
+
 function loadCloudSelfAgentSyncLedger(accountId: string): CloudSelfAgentSyncLedger {
   if (typeof window === 'undefined') return {};
   try {
@@ -864,8 +884,10 @@ function loadCloudSelfAgentSyncLedger(accountId: string): CloudSelfAgentSyncLedg
         ? (value as Record<string, unknown>).cloudMessageId as string
         : null);
       const syncedAtMs = (value as Record<string, unknown>).syncedAtMs;
-      if (!localMessageId.trim() || !cloudMessageId || typeof syncedAtMs !== 'number' || !Number.isFinite(syncedAtMs)) continue;
-      ledger[localMessageId] = { cloudMessageId, syncedAtMs };
+      const skippedLocalBackfill = (value as Record<string, unknown>).skippedLocalBackfill === true;
+      if (!localMessageId.trim() || typeof syncedAtMs !== 'number' || !Number.isFinite(syncedAtMs)) continue;
+      if (!cloudMessageId && !skippedLocalBackfill) continue;
+      ledger[localMessageId] = { cloudMessageId: cloudMessageId || null, syncedAtMs, skippedLocalBackfill: skippedLocalBackfill || undefined };
     }
     return ledger;
   } catch {
@@ -888,15 +910,43 @@ function isTerminalSelfAgentMessage(message: CanonicalSessionMessage): boolean {
   return !['', 'sending', 'processing', 'failed', 'cancelled'].includes(status);
 }
 
+function localSelfAgentSessionIds(state: CanonicalSessionState): Set<string> {
+  return new Set(state.sessions
+    .filter((session) => session.kind === 'self-agent' && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX))
+    .map((session) => session.id));
+}
+
+export function seedCloudSelfAgentForwardSyncLedger(
+  state: CanonicalSessionState,
+  ledger: CloudSelfAgentSyncLedger,
+  syncedAtMs: number = Date.now(),
+): { ledger: CloudSelfAgentSyncLedger; changed: boolean } {
+  const selfAgentSessionIds = localSelfAgentSessionIds(state);
+  if (selfAgentSessionIds.size === 0) return { ledger, changed: false };
+
+  let changed = false;
+  const next: CloudSelfAgentSyncLedger = { ...ledger };
+  for (const message of state.messages) {
+    if (!selfAgentSessionIds.has(message.sessionId) || !isTerminalSelfAgentMessage(message)) continue;
+    if (message.sourceTransport === 'canonical-fork-snapshot') continue;
+    if (!cleanText(message.contentText) || next[message.id]) continue;
+    next[message.id] = {
+      cloudMessageId: null,
+      syncedAtMs,
+      skippedLocalBackfill: true,
+    };
+    changed = true;
+  }
+  return { ledger: changed ? next : ledger, changed };
+}
+
 export function planCloudSelfAgentSync(
   state: CanonicalSessionState,
   ledger: CloudSelfAgentSyncLedger,
   options: { allowLocalBackfill?: boolean } = {},
 ): CloudSelfAgentSyncOperation[] {
   if (options.allowLocalBackfill === false) return [];
-  const selfAgentSessionIds = new Set(state.sessions
-    .filter((session) => session.kind === 'self-agent' && !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX))
-    .map((session) => session.id));
+  const selfAgentSessionIds = localSelfAgentSessionIds(state);
   if (selfAgentSessionIds.size === 0) return [];
 
   const messagesBySession = new Map<string, CanonicalSessionMessage[]>();
@@ -1437,7 +1487,15 @@ export function useCloudBridgeState({
       const latestState = await fetchCanonicalSessionState().catch(() => canonicalSessionState ?? null);
       if (!latestState) return;
       const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
-      const operations = planCloudSelfAgentSync(latestState, initialLedger, { allowLocalBackfill: false });
+      if (!loadCloudSelfAgentForwardBaseline(account.accountId)) {
+        const seeded = seedCloudSelfAgentForwardSyncLedger(latestState, initialLedger);
+        if (seeded.changed) {
+          saveCloudSelfAgentSyncLedger(account.accountId, seeded.ledger);
+        }
+        saveCloudSelfAgentForwardBaseline(account.accountId);
+        return;
+      }
+      const operations = planCloudSelfAgentSync(latestState, initialLedger);
       if (operations.length === 0) return;
 
       const session = await loadSession();
@@ -1449,7 +1507,7 @@ export function useCloudBridgeState({
         let body = operation.text;
         if (operation.role === 'agent') {
           const parentCloudMessageId = operation.parentLocalMessageId
-            ? ledger[operation.parentLocalMessageId]?.cloudMessageId
+            ? ledger[operation.parentLocalMessageId]?.cloudMessageId ?? null
             : null;
           if (!parentCloudMessageId) continue;
           body = encodeCloudAgentResponse({ requestId: parentCloudMessageId, text: operation.text });
