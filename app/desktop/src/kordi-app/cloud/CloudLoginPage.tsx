@@ -153,20 +153,55 @@ function CloudField({
   );
 }
 
-function UploadAvatarPlaceholder() {
+const SIGNUP_AVATAR_PALETTES = [
+  { background: 'linear-gradient(135deg, #f97316 0%, #ec4899 100%)', foreground: '#fff7ed' },
+  { background: 'linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)', foreground: '#f8fafc' },
+  { background: 'linear-gradient(135deg, #14b8a6 0%, #84cc16 100%)', foreground: '#ecfeff' },
+  { background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)', foreground: '#fff7ed' },
+  { background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', foreground: '#f5f3ff' },
+];
+
+function hashText(value: string) {
+  let hash = 2166136261;
+  for (const char of value) {
+    hash ^= char.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+export function cloudSignupAvatarInitials(displayName: string | null | undefined) {
+  const compact = Array.from(displayName?.trim().replace(/\s+/g, '') || '').filter((char) => /[\p{L}\p{N}]/u.test(char));
+  return compact.slice(0, 2).join('').toLocaleUpperCase() || 'KO';
+}
+
+function cloudSignupAvatarPalette(displayName: string | null | undefined) {
+  const key = displayName?.trim() || 'kordi-cloud-signup';
+  return SIGNUP_AVATAR_PALETTES[hashText(key) % SIGNUP_AVATAR_PALETTES.length] ?? SIGNUP_AVATAR_PALETTES[0];
+}
+
+function UploadAvatarPlaceholder({ displayName }: { displayName: string }) {
+  const palette = cloudSignupAvatarPalette(displayName);
   return (
-    <span className="grid h-full w-full place-items-center text-[18px] font-semibold text-muted-foreground" aria-hidden="true">
-      +
+    <span
+      data-cloud-signup-avatar-placeholder="true"
+      className="grid h-full w-full place-items-center text-[15px] font-bold tracking-[0.03em]"
+      style={{ background: palette.background, color: palette.foreground }}
+      aria-hidden="true"
+    >
+      {cloudSignupAvatarInitials(displayName)}
     </span>
   );
 }
 
 function AvatarPicker({
   preference,
+  displayName,
   onAvatarFile,
   uploadError,
 }: {
   preference: AvatarPreference | null;
+  displayName: string;
   onAvatarFile: (file: File | undefined) => void;
   uploadError?: string;
 }) {
@@ -188,7 +223,7 @@ function AvatarPicker({
             SMALL_FOCUS_RING,
           ].join(' ')}
         >
-          {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <UploadAvatarPlaceholder />}
+          {imageUrl ? <img src={imageUrl} alt="" className="h-full w-full object-cover" draggable={false} /> : <UploadAvatarPlaceholder displayName={displayName} />}
         </button>
       </div>
       <input
@@ -203,8 +238,11 @@ function AvatarPicker({
           onAvatarFile(file);
         }}
       />
-      <span className={`${TYPE_HINT} max-w-28 text-center normal-case tracking-normal ${uploadError ? 'text-[var(--app-cloud-login-danger-text)]' : INK_MUTED}`}>
-        {uploadError ?? 'PNG, JPEG, or WebP'}
+      <span
+        data-cloud-signup-avatar-upload-label={!imageUrl && !uploadError ? 'true' : undefined}
+        className={`${TYPE_HINT} max-w-28 text-center normal-case tracking-normal ${uploadError ? 'text-[var(--app-cloud-login-danger-text)]' : INK_MUTED}`}
+      >
+        {uploadError ?? (imageUrl ? 'Change' : 'Upload')}
       </span>
     </div>
   );
@@ -447,6 +485,7 @@ export function CloudLoginPage({
             <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
               <AvatarPicker
                 preference={avatarPref}
+                displayName={displayName}
                 onAvatarFile={handleAvatarFile}
                 uploadError={uploadError}
               />

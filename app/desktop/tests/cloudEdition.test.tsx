@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
-import { CloudLoginPage } from '../src/kordi-app/cloud/CloudLoginPage';
+import { CloudLoginPage, cloudSignupAvatarInitials } from '../src/kordi-app/cloud/CloudLoginPage';
 import {
   kordiEditionFromEnv,
   kordiEditionFromRuntimeHints,
@@ -100,13 +100,22 @@ test('signup mode requires avatar upload and removes random avatar controls', ()
 
   assert.match(markup, /Create account/);
   assert.match(markup, /Upload avatar/);
-  assert.match(markup, /PNG, JPEG, or WebP/);
+  assert.match(markup, /data-cloud-signup-avatar-placeholder="true"/);
+  assert.match(markup, />KO<\/span>/);
+  assert.match(markup, /data-cloud-signup-avatar-upload-label="true"[^>]*>Upload<\/span>/);
+  assert.doesNotMatch(markup, />\+<\/span>/);
   assert.doesNotMatch(markup, /Random avatar/);
   assert.match(markup, /Display name/);
   assert.match(markup, /Confirm Password/);
   assert.doesNotMatch(markup, />Name</);
   assert.match(markup, /Create account/);
   assert.doesNotMatch(markup, /Kordi Cloud/);
+});
+
+test('cloud signup avatar placeholder derives initials from the display name', () => {
+  assert.equal(cloudSignupAvatarInitials('Ada Lovelace'), 'AD');
+  assert.equal(cloudSignupAvatarInitials('杨谢'), '杨谢');
+  assert.equal(cloudSignupAvatarInitials(''), 'KO');
 });
 
 test('signup mode does not render a generated pixel avatar before upload', () => {
