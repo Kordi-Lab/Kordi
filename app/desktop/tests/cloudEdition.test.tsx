@@ -90,6 +90,14 @@ test('cloud login gate blocks signed-out Cloud Edition in native and web preview
   assert.equal(shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: 'signed-out' }), true);
 });
 
+test('cloud login CSS hides the oversized native WebKit caps-lock indicator', () => {
+  const css = readSource('src/styles/theme-overrides.css');
+
+  assert.match(css, /\.app-cloud-login-input::-webkit-caps-lock-indicator/);
+  assert.match(css, /display:\s*none/);
+  assert.match(css, /width:\s*0/);
+});
+
 test('cloud login page centers a minimal Codex-style Kordi account view before model provider auth', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage));
 

@@ -985,6 +985,18 @@
   color: var(--utility-meta-text);
 }
 
+/* Tauri's WebKit password caps-lock glyph inherits the tall rounded field and
+ * balloons into a vertical key. Keep the field visually stable by hiding the
+ * native glyph rather than letting it distort the login form. */
+.app-cloud-login-input::-webkit-caps-lock-indicator {
+  display: none;
+  width: 0;
+  height: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Big signup avatar — themed inset highlight + soft outer drop. */
 .app-cloud-login-avatar {
   border-color: var(--app-cloud-login-inner-border);
