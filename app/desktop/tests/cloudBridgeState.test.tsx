@@ -26,6 +26,7 @@ import {
   cloudGroupAgentProcessingSlotForResponse,
   optimisticCloudAgentCancelMessage,
   planCloudSelfAgentSync,
+  planCloudSelfAgentCanonicalSync,
   seedCloudSelfAgentForwardSyncLedger,
   cloudMessagesByPeerEqual,
   mergeCloudMessagesByPeerSnapshot,
@@ -497,6 +498,90 @@ test('planCloudSelfAgentSync backfills terminal local self-agent turns without r
   ]);
 
   assert.deepEqual(planCloudSelfAgentSync(state, {}, { allowLocalBackfill: false }), []);
+});
+
+test('cloud self-agent canonical sync materializes restored Cloud private agent sessions', () => {
+  const userMessage: CloudMessage = {
+    messageId: 'msg_self_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'sync this question',
+    createdAt: '2026-05-16T08:11:27.120Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'restored-self-session',
+  };
+  const agentMessage: CloudMessage = {
+    messageId: 'msg_self_answer',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: encodeCloudAgentResponse({ requestId: userMessage.messageId, text: 'synced answer' }),
+    createdAt: '2026-05-16T08:11:32.820Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'restored-self-session',
+  };
+  const state = {
+    sessions: [],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages: [agentMessage, userMessage], state });
+
+  assert.equal(plan.agentIdentityRequest.id, 'agent:cloud-self:acct_me');
+  assert.deepEqual(plan.sessionRequests.map((request) => ({ id: request.id, title: request.title, createdByIdentityId: request.createdByIdentityId, primaryIdentityId: request.primaryIdentityId })), [
+    { id: 'restored-self-session', title: 'sync this question', createdByIdentityId: 'human:acct_me', primaryIdentityId: 'agent:cloud-self:acct_me' },
+  ]);
+  assert.deepEqual(plan.messageRequests.map((request) => ({
+    id: request.id,
+    senderRole: request.senderRole,
+    messageKind: request.messageKind,
+    contentText: request.contentText,
+    parentMessageId: request.parentMessageId ?? null,
+    sourceEventId: request.sourceEventId,
+  })), [
+    { id: 'msg:cloud:self:msg_self_request', senderRole: 'user', messageKind: 'text', contentText: 'sync this question', parentMessageId: null, sourceEventId: 'msg_self_request' },
+    { id: 'msg:cloud:self:msg_self_answer', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'synced answer', parentMessageId: 'msg:cloud:self:msg_self_request', sourceEventId: 'msg_self_answer' },
+  ]);
+});
+
+test('cloud self-agent canonical sync does not duplicate existing local turns on the sending device', () => {
+  const userMessage: CloudMessage = {
+    messageId: 'msg_self_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'already local',
+    createdAt: '2026-05-16T08:11:27.120Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'local-self-session',
+  };
+  const state = {
+    sessions: [
+      { id: 'local-self-session', kind: 'self-agent', title: 'already local', status: 'active', createdByIdentityId: 'human:acct_me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [
+      { id: 'local-u1', sessionId: 'local-self-session', senderIdentityId: 'human:acct_me', senderRole: 'user', messageKind: 'text', contentText: 'already local', status: 'sent', sequenceNum: 1, createdAtMs: Date.parse(userMessage.createdAt), updatedAtMs: Date.parse(userMessage.createdAt), sourceTransport: 'desktop-chat' },
+    ] as CanonicalSessionMessage[],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages: [userMessage], state });
+
+  assert.equal(plan.messageRequests.length, 0);
 });
 
 test('cloud self-agent forward sync seeds existing local history but uploads continued turns', () => {

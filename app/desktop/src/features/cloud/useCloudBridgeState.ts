@@ -21,6 +21,8 @@ import type {
   CanonicalIdentity,
   CanonicalSessionMessage,
   CanonicalSessionState,
+  OpenCanonicalSessionRequest,
+  UpsertCanonicalIdentityRequest,
   DesktopBridgeSessionParticipant,
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
@@ -908,6 +910,135 @@ function saveCloudSelfAgentSyncLedger(accountId: string, ledger: CloudSelfAgentS
 function isTerminalSelfAgentMessage(message: CanonicalSessionMessage): boolean {
   const status = cleanText(message.status).toLowerCase();
   return !['', 'sending', 'processing', 'failed', 'cancelled'].includes(status);
+}
+
+function cloudSelfAgentCanonicalMessageId(messageId: string): string {
+  return `msg:cloud:self:${messageId}`;
+}
+
+function cloudSelfAgentCreatedAtMs(message: CloudMessage): number {
+  const parsed = Date.parse(message.createdAt);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+function existingCanonicalMessageMatchesCloudSelfAgent(
+  existing: CanonicalSessionMessage,
+  input: { sessionId: string; role: 'user' | 'agent'; text: string; createdAtMs: number; cloudMessageId: string },
+): boolean {
+  if (existing.sessionId !== input.sessionId) return false;
+  if (existing.id === cloudSelfAgentCanonicalMessageId(input.cloudMessageId)) return true;
+  if (existing.sourceTransport === 'cloud-self-agent' && existing.sourceEventId === input.cloudMessageId) return true;
+  const existingText = cleanText(existing.contentText);
+  if (!existingText || existingText !== input.text) return false;
+  const roleMatches = input.role === 'user'
+    ? existing.senderRole === 'user'
+    : existing.senderRole.includes('agent') || existing.messageKind === 'agent-turn';
+  if (!roleMatches) return false;
+  return Math.abs(existing.createdAtMs - input.createdAtMs) <= 5_000;
+}
+
+export function planCloudSelfAgentCanonicalSync({
+  account,
+  messages,
+  state,
+}: {
+  account: CloudAccount;
+  messages: CloudMessage[];
+  state: CanonicalSessionState;
+}): {
+  agentIdentityRequest: UpsertCanonicalIdentityRequest;
+  sessionRequests: OpenCanonicalSessionRequest[];
+  messageRequests: AppendCanonicalMessageRequest[];
+} {
+  const localHumanIdentityId = state.profile.humanIdentityId?.trim() || `human:${account.accountId}`;
+  const agentIdentityId = `agent:cloud-self:${account.accountId}`;
+  const sorted = [...messages]
+    .filter((message) => message.fromAccountId === account.accountId && message.toAccountId === account.accountId)
+    .filter((message) => cleanText(message.sessionId))
+    .sort((left, right) => cloudSelfAgentCreatedAtMs(left) - cloudSelfAgentCreatedAtMs(right));
+
+  const userTextByCloudMessageId = new Map<string, string>();
+  const requestLocalMessageIdByCloudMessageId = new Map<string, string>();
+  const sessionRequestsById = new Map<string, OpenCanonicalSessionRequest>();
+  const messageRequests: AppendCanonicalMessageRequest[] = [];
+
+  for (const message of sorted) {
+    const sessionId = cleanText(message.sessionId);
+    if (!sessionId) continue;
+    const response = parseCloudAgentResponse(message.body);
+    if (!response && (parseCloudAgentCancel(message.body) || parseCloudGroupControl(message.body))) continue;
+    const role = response ? 'agent' as const : 'user' as const;
+    const text = cleanText(response?.text ?? message.body);
+    if (!text) continue;
+    const createdAtMs = cloudSelfAgentCreatedAtMs(message);
+    const existingMatch = state.messages.find((existing) => existingCanonicalMessageMatchesCloudSelfAgent(existing, {
+      sessionId,
+      role,
+      text,
+      createdAtMs,
+      cloudMessageId: message.messageId,
+    }));
+    if (existingMatch) {
+      if (!response) {
+        userTextByCloudMessageId.set(message.messageId, text);
+        requestLocalMessageIdByCloudMessageId.set(message.messageId, existingMatch.id);
+      }
+      continue;
+    }
+
+    if (!response) {
+      userTextByCloudMessageId.set(message.messageId, text);
+      requestLocalMessageIdByCloudMessageId.set(message.messageId, cloudSelfAgentCanonicalMessageId(message.messageId));
+    }
+    const parentMessageId = response ? requestLocalMessageIdByCloudMessageId.get(response.requestId) ?? null : null;
+    if (response && !parentMessageId) continue;
+    const title = cleanText(userTextByCloudMessageId.get(response?.requestId ?? message.messageId)) || 'My Kordi';
+    if (!sessionRequestsById.has(sessionId)) {
+      sessionRequestsById.set(sessionId, {
+        id: sessionId,
+        kind: 'self-agent',
+        title,
+        status: 'active',
+        createdByIdentityId: localHumanIdentityId,
+        primaryIdentityId: agentIdentityId,
+        participantIdentityIds: [agentIdentityId],
+        metadata: { cloudSelfAgentSession: true },
+      });
+    }
+    messageRequests.push({
+      id: cloudSelfAgentCanonicalMessageId(message.messageId),
+      sessionId,
+      senderIdentityId: response ? agentIdentityId : localHumanIdentityId,
+      senderRole: response ? 'owned-agent' : 'user',
+      messageKind: response ? 'agent-turn' : 'text',
+      contentText: text,
+      content: response ? { cloudRequestMessageId: response.requestId } : null,
+      parentMessageId,
+      status: response ? 'complete' : 'sent',
+      createdAtMs,
+      sourceTransport: 'cloud-self-agent',
+      sourceEventId: message.messageId,
+    });
+  }
+
+  return {
+    agentIdentityRequest: {
+      id: agentIdentityId,
+      kind: 'agent',
+      displayName: 'My Kordi',
+      ownerIdentityId: localHumanIdentityId,
+      source: 'local',
+      sourceHostId: null,
+      bridgeNodeId: null,
+      humanId: null,
+      agentId: `cloud-self:${account.accountId}`,
+      avatarKey: `cloud-self:${account.accountId}`,
+      profileImageUrl: null,
+      metadata: { cloudSelfAgent: true, accountId: account.accountId },
+    },
+    sessionRequests: [...sessionRequestsById.values()],
+    messageRequests,
+  };
 }
 
 function localSelfAgentSessionIds(state: CanonicalSessionState): Set<string> {
@@ -2526,6 +2657,37 @@ export function useCloudBridgeState({
         readReceiptRequestRef.current = null;
       });
   }, [account, activeConversationId, client, messagesByPeer, refreshCloudBridgeMessages]);
+
+  useEffect(() => {
+    if (!account || !canonicalSessionState || !setCanonicalSessionState || !initialMessagesSettled) return;
+    const selfMessages = messagesByPeer[account.accountId] ?? [];
+    if (selfMessages.length === 0) return;
+    const plan = planCloudSelfAgentCanonicalSync({
+      account,
+      messages: selfMessages,
+      state: canonicalSessionState,
+    });
+    if (plan.sessionRequests.length === 0 && plan.messageRequests.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      let nextState = await upsertCanonicalIdentity(plan.agentIdentityRequest);
+      for (const sessionRequest of plan.sessionRequests) {
+        if (cancelled) return;
+        nextState = await openOrCreateCanonicalSession(sessionRequest);
+      }
+      for (const messageRequest of plan.messageRequests) {
+        if (cancelled) return;
+        nextState = await upsertCanonicalMessage(messageRequest);
+      }
+      if (!cancelled) setCanonicalSessionState(nextState);
+    })().catch((error) => {
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-self-agent-sync] failed to materialize cloud session locally', error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, canonicalSessionState, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account) return;
