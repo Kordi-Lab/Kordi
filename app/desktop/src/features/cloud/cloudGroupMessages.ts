@@ -840,10 +840,10 @@ export function firstCloudGroupSendFailure(results: PromiseSettledResult<unknown
 export function cloudGroupIdentityRequest(
   participant: CloudGroupParticipant,
   account: CloudAccount,
-  localHumanIdentityId: string,
+  _localHumanIdentityId: string,
 ): UpsertCanonicalIdentityRequest {
   const isSelf = participant.accountId === account.accountId;
-  const id = isSelf ? localHumanIdentityId : `human:${participant.accountId}`;
+  const id = `human:${participant.accountId}`;
   return {
     id,
     kind: 'human',

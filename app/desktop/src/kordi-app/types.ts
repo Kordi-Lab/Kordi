@@ -516,6 +516,13 @@ export type UpsertCanonicalIdentityRequest = {
   metadata?: unknown;
 };
 
+export type AdoptCloudProfileIdentityRequest = {
+  accountId: string;
+  displayName: string;
+  avatarKey?: string | null;
+  profileImageUrl?: string | null;
+};
+
 export type OpenCanonicalSessionRequest = {
   id?: string | null;
   kind: 'self-agent' | 'direct-person' | 'direct-agent' | 'relationship' | 'group' | 'project';

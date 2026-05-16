@@ -654,7 +654,7 @@ test('cloud contact identity requests preserve account ids, display names, and s
     profileImageUrl: request.profileImageUrl,
   })), [
     {
-      id: 'human:local',
+      id: 'human:acct_me',
       displayName: 'Me Cloud',
       source: 'local',
       sourceHostId: null,

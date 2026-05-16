@@ -724,7 +724,7 @@ test('cloud group self identity uses the stable cloud account id and avatar seed
     'human:local-profile',
   );
 
-  assert.equal(request.id, 'human:local-profile');
+  assert.equal(request.id, 'human:acct_self');
   assert.equal(request.humanId, 'acct_self');
   assert.equal(request.avatarKey, 'self-seed');
 });

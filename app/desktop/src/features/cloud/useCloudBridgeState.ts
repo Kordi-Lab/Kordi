@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 
 import {
+  adoptCloudProfileIdentity,
   appendCanonicalMessage,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
@@ -1145,7 +1146,8 @@ export function useCloudBridgeState({
     groupParticipantPeerIds,
     contacts.requests,
   ), [account, contactPeerIds, groupParticipantPeerIds, contacts.requests]);
-  const localHumanIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim() || '';
+  const cloudProfileIdentityId = account?.accountId ? `human:${account.accountId}` : '';
+  const localHumanIdentityId = cloudProfileIdentityId || canonicalSessionState?.profile.humanIdentityId?.trim() || '';
   const bootstrapPeerKey = useMemo(() => bootstrapPeerIds.join('|'), [bootstrapPeerIds]);
   const initialMessagesSettled = cloudInitialMessagesSettledForPeerKey({
     accountReady: Boolean(account),
@@ -1156,6 +1158,36 @@ export function useCloudBridgeState({
   useEffect(() => {
     bootstrapPeerIdsRef.current = bootstrapPeerIds;
   }, [bootstrapPeerKey]);
+  const cloudProfileAdoptionSignature = useMemo(() => JSON.stringify({
+    accountId: account?.accountId ?? null,
+    displayName: account?.displayName ?? account?.primaryEmail ?? null,
+    avatarUrl: account?.avatarUrl ?? null,
+    profileHumanIdentityId: canonicalSessionState?.profile.humanIdentityId ?? null,
+  }), [account?.accountId, account?.avatarUrl, account?.displayName, account?.primaryEmail, canonicalSessionState?.profile.humanIdentityId]);
+
+  useEffect(() => {
+    if (!account || !setCanonicalSessionState) return;
+    const stableIdentityId = `human:${account.accountId}`;
+    if (canonicalSessionState?.profile.humanIdentityId === stableIdentityId) return;
+    let cancelled = false;
+    void adoptCloudProfileIdentity({
+      accountId: account.accountId,
+      displayName: account.displayName || account.primaryEmail || account.accountId,
+      avatarKey: account.accountId,
+      profileImageUrl: account.avatarUrl ?? null,
+    })
+      .then((nextState) => {
+        if (!cancelled) setCanonicalSessionState(nextState);
+      })
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-profile-identity] failed to adopt stable cloud profile identity', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, canonicalSessionState?.profile.humanIdentityId, cloudProfileAdoptionSignature, setCanonicalSessionState]);
+
   const contactIdentitySignature = useMemo(() => JSON.stringify({
     accountId: account?.accountId ?? null,
     localHumanIdentityId,
