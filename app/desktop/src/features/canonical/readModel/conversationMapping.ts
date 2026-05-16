@@ -62,6 +62,10 @@ export function shouldUseCanonicalMessages(existingMessages: Message[], canonica
     return false;
   }
 
+  const canonicalHasForkSnapshotMarkers = canonicalMessages.some((message) => message.isForkSnapshot === true);
+  const existingHasForkSnapshotMarkers = existingMessages.some((message) => message.isForkSnapshot === true);
+  if (canonicalHasForkSnapshotMarkers && !existingHasForkSnapshotMarkers) return true;
+
   if (canonicalHasMissingCompletedAgentResponse(existingMessages, canonicalMessages)) return true;
 
   const placeholderOnly = existingMessages.length === 1

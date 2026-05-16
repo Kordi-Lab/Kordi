@@ -487,6 +487,19 @@ test('canonical read model keeps existing local transcript when canonical has eq
   assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), false);
 });
 
+test('canonical read model prefers equal-count canonical transcript when it adds fork snapshot markers', () => {
+  const existingMessages = [
+    { id: 'local-old', role: 'user' as const, text: 'old question', time: '11:41', isOwnMessage: true },
+    { id: 'local-new', role: 'user' as const, text: 'new fork input', time: '11:42', isOwnMessage: true },
+  ];
+  const canonicalMessages = [
+    { id: 'canonical-old', role: 'user' as const, text: 'old question', time: '11:41', isOwnMessage: true, isForkSnapshot: true },
+    { id: 'canonical-new', role: 'user' as const, text: 'new fork input', time: '11:42', isOwnMessage: true },
+  ];
+
+  assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), true);
+});
+
 test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
