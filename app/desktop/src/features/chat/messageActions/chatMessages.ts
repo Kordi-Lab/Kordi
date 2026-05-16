@@ -13,6 +13,7 @@ import type {
   ComposerScope,
   Conversation,
   ConversationBridgeTarget,
+  Message,
   DesktopChatState,
   DesktopBridgePromptIdentity,
   DesktopBridgeState,
@@ -25,6 +26,7 @@ import {
   fetchDesktopChatTurnState,
   startDesktopChatMessage,
   updateDesktopChatSessionConfig,
+  type DesktopChatContextMessage,
 } from '@/lib/desktop';
 
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
@@ -386,6 +388,36 @@ export function chatDraftSessionIdsToClearForSend(activeSessionId: string, resol
   return [activeSessionId, resolvedSessionId]
     .map((sessionId) => sessionId.trim())
     .filter((sessionId, index, sessionIds) => Boolean(sessionId) && sessionIds.indexOf(sessionId) === index);
+}
+
+function messageAuthorKind(message: Message): 'human' | 'agent' {
+  if (message.senderType === 'agent' || message.role === 'owned-agent' || message.role === 'external-agent') return 'agent';
+  return 'human';
+}
+
+function messageContextText(message: Message): string {
+  return (message.turn?.assistantText ?? message.text).trim();
+}
+
+function cloudSelfAgentMessageId(message: Message): string | null {
+  const id = message.id?.trim() || message.entryId?.trim() || '';
+  return id.startsWith('msg:cloud:self:') ? id : null;
+}
+
+export function restoredCloudSelfAgentContextMessages(messages: readonly Message[]): DesktopChatContextMessage[] {
+  return messages.flatMap((message) => {
+    const id = cloudSelfAgentMessageId(message);
+    const text = messageContextText(message);
+    if (!id || !text) return [];
+    const authorKind = messageAuthorKind(message);
+    return [{
+      id,
+      authorName: message.sender?.trim() || (authorKind === 'agent' ? 'My Kordi' : 'Me'),
+      authorKind,
+      text,
+      createdAtMs: null,
+    }];
+  });
 }
 
 export function bridgeLocalAgentMentionCanRelayToBridge({
@@ -936,6 +968,7 @@ export function useChatMessageActions({
       const sentAt = formatDesktopEventTime();
       const attachmentPaths = chatComposerAttachments.map((item) => item.path);
       const previewText = attachmentSummaryText(text);
+      const restoredCloudContextMessages = restoredCloudSelfAgentContextMessages(activeConvMessages);
       setPendingUserChatMessage(null);
       const parentSessionIdForMessage = activeConvCanonicalSessionId ?? resolvedSessionId;
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
@@ -969,7 +1002,7 @@ export function useChatMessageActions({
         .catch((error: unknown) => {
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
         })
-        .then(() => startDesktopChatMessage(resolvedSessionId, text, attachmentPaths, null))
+        .then(() => startDesktopChatMessage(resolvedSessionId, text, attachmentPaths, null, restoredCloudContextMessages))
         .then((turn) => {
           watchLocalTurnAndFlushQueue(turn);
           setIsDesktopChatSending(false);

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { activeConversationForSelection, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
+import { restoredCloudSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
@@ -498,6 +499,67 @@ test('canonical read model prefers equal-count canonical transcript when it adds
   ];
 
   assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), true);
+});
+
+test('restored Cloud self-agent messages are sent as native context for continued local turns', () => {
+  const contextMessages = restoredCloudSelfAgentContextMessages([
+    {
+      id: 'msg:cloud:self:user-1',
+      role: 'user',
+      sender: 'Me',
+      senderType: 'human',
+      text: '今天沙特阿拉伯图瓦的天气怎么样',
+      time: '14:30',
+      isOwnMessage: true,
+    },
+    {
+      id: 'msg:cloud:self:agent-1',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '14:31',
+      turn: {
+        id: 'turn-1',
+        sessionId: 'session:restored',
+        prompt: '今天沙特阿拉伯图瓦的天气怎么样',
+        status: 'succeeded',
+        message: 'Response complete',
+        assistantText: '图瓦今天多云。',
+        thinkingText: '',
+        tools: [],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    },
+    {
+      id: 'msg:ui:local-new',
+      role: 'user',
+      sender: 'Me',
+      senderType: 'human',
+      text: '你可以看到这里的聊天记录吗',
+      time: '14:33',
+      isOwnMessage: true,
+    },
+  ]);
+
+  assert.deepEqual(contextMessages, [
+    {
+      id: 'msg:cloud:self:user-1',
+      authorName: 'Me',
+      authorKind: 'human',
+      text: '今天沙特阿拉伯图瓦的天气怎么样',
+      createdAtMs: null,
+    },
+    {
+      id: 'msg:cloud:self:agent-1',
+      authorName: 'My Kordi',
+      authorKind: 'agent',
+      text: '图瓦今天多云。',
+      createdAtMs: null,
+    },
+  ]);
 });
 
 test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
