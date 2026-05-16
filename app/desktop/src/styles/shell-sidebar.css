@@ -175,6 +175,11 @@
   background: color-mix(in oklab, var(--app-control-active) 68%, var(--app-control-bg));
 }
 
+.app-workspace-sidebar .app-session-fork-children-active {
+  border-left-color: color-mix(in oklab, var(--app-accent-ring) 88%, transparent);
+  box-shadow: -1px 0 0 color-mix(in oklab, var(--app-accent-ring) 28%, transparent);
+}
+
 .app-workspace-sidebar .app-participant-space-session-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;

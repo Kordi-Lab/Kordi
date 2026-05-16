@@ -1304,6 +1304,7 @@ export function WorkspaceSidebar({
     const childrenToRender = expanded
       ? forks
       : forks.filter((fork) => activeSessionPathIds.has(fork.id));
+    const hasActiveForkPath = childrenToRender.some((fork) => activeSessionPathIds.has(fork.id));
     return (
       <div key={row.session.id} className="app-session-row-group">
         {renderAgentSessionRow(row, {
@@ -1315,8 +1316,12 @@ export function WorkspaceSidebar({
         })}
         {childrenToRender.length > 0 ? (
           <div
-            className="app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2"
+            className={cn(
+              'app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2',
+              hasActiveForkPath && 'app-session-fork-children-active',
+            )}
             data-session-fork-depth={depth + 1}
+            data-session-fork-path-active={hasActiveForkPath || undefined}
           >
             {childrenToRender.map((forkSession) => {
               const forkRow = agentSessionRowsById.get(forkSession.id);
