@@ -408,6 +408,7 @@ export function CloudLoginPage({
   const tabBaseClass = `relative z-10 rounded-full px-3 py-1.5 ${TYPE_TAB} transition`;
   const tabActiveText = INK;
   const tabInactiveText = `${INK_MUTED} hover:${INK}`;
+  const modeKey = isSignup ? 'signup' : 'login';
 
   return (
     <div
@@ -423,7 +424,11 @@ export function CloudLoginPage({
       </div>
 
       <main className="relative w-full max-w-[440px] px-6">
-        <div className="grid justify-items-center text-center">
+        <div
+          key={`copy-${modeKey}`}
+          data-cloud-login-mode-copy={modeKey}
+          className="app-cloud-login-mode-copy grid justify-items-center text-center"
+        >
           <h1 className={`${TYPE_DISPLAY} ${INK}`}>
             {isSignup ? 'Create your account' : 'Welcome to Kordi'}
           </h1>
@@ -490,7 +495,12 @@ export function CloudLoginPage({
           </button>
         </div>
 
-        <form className="mt-5 grid gap-3.5" onSubmit={handleSubmit}>
+        <form
+          key={`form-${modeKey}`}
+          data-cloud-login-mode-form={modeKey}
+          className="app-cloud-login-form mt-5 grid gap-3.5"
+          onSubmit={handleSubmit}
+        >
           {isSignup ? (
             <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
               <AvatarPicker

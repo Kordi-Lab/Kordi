@@ -1040,11 +1040,40 @@
 
 /* Active segment indicator pill behind the Log in / Sign up tabs. */
 .app-cloud-login-tab-pill {
+  transition-duration: 260ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
 }
 
 .bridge-app.theme-light .app-cloud-login-tab-pill {
   box-shadow: 0 4px 12px oklch(0.42 0.04 82 / 0.10);
+}
+
+.app-cloud-login-mode-copy,
+.app-cloud-login-form {
+  animation: app-cloud-login-mode-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes app-cloud-login-mode-enter {
+  from {
+    opacity: 0.68;
+    transform: translate3d(0, 5px, 0) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-cloud-login-mode-copy,
+  .app-cloud-login-form {
+    animation: none;
+  }
+
+  .app-cloud-login-tab-pill {
+    transition-duration: 1ms;
+  }
 }
 
 /* Error banner (per-form submission). */

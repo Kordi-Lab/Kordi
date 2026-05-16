@@ -98,6 +98,17 @@ test('cloud login CSS hides the oversized native WebKit caps-lock indicator', ()
   assert.match(css, /width:\s*0/);
 });
 
+test('cloud login mode switch uses reduced-motion-safe transform animation', () => {
+  const css = readSource('src/styles/theme-overrides.css');
+
+  assert.match(css, /\.app-cloud-login-mode-copy,\n\.app-cloud-login-form/);
+  assert.match(css, /@keyframes app-cloud-login-mode-enter/);
+  assert.match(css, /transform: translate3d\(0, 5px, 0\) scale\(0\.995\)/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
+  const modeKeyframes = css.match(/@keyframes app-cloud-login-mode-enter \{[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.doesNotMatch(modeKeyframes, /filter:/);
+});
+
 test('cloud login page centers a minimal Codex-style Kordi account view before model provider auth', () => {
   const markup = renderToStaticMarkup(createElement(CloudLoginPage));
 
@@ -110,6 +121,8 @@ test('cloud login page centers a minimal Codex-style Kordi account view before m
   assert.doesNotMatch(markup, /app-overlay/);
   assert.match(markup, /place-items-center/);
   assert.match(markup, /Welcome to Kordi/);
+  assert.match(markup, /data-cloud-login-mode-copy="login"/);
+  assert.match(markup, /data-cloud-login-mode-form="login"/);
   assert.match(markup, /Sign up/);
   assert.match(markup, /Email/);
   assert.match(markup, /Password/);
@@ -131,6 +144,8 @@ test('signup mode requires avatar upload and removes random avatar controls', ()
   const markup = renderToStaticMarkup(createElement(CloudLoginPage, { initialMode: 'signup' }));
 
   assert.match(markup, /Create account/);
+  assert.match(markup, /data-cloud-login-mode-copy="signup"/);
+  assert.match(markup, /data-cloud-login-mode-form="signup"/);
   assert.match(markup, /Upload avatar/);
   assert.match(markup, /data-cloud-signup-avatar-placeholder="true"/);
   assert.match(markup, />KO<\/span>/);
