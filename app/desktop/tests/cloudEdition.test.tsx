@@ -98,15 +98,18 @@ test('cloud login CSS hides the oversized native WebKit caps-lock indicator', ()
   assert.match(css, /width:\s*0/);
 });
 
-test('cloud login mode switch uses reduced-motion-safe transform animation', () => {
+test('cloud login mode switch avoids remount flicker and animates signup-only fields', () => {
   const css = readSource('src/styles/theme-overrides.css');
+  const source = readSource('src/kordi-app/cloud/CloudLoginPage.tsx');
 
-  assert.match(css, /\.app-cloud-login-mode-copy,\n\.app-cloud-login-form/);
-  assert.match(css, /@keyframes app-cloud-login-mode-enter/);
-  assert.match(css, /transform: translate3d\(0, 5px, 0\) scale\(0\.995\)/);
+  assert.match(css, /\.app-cloud-login-signup-field/);
+  assert.match(css, /@keyframes app-cloud-login-signup-field-enter/);
+  assert.match(css, /transform: translate3d\(0, -4px, 0\)/);
   assert.match(css, /prefers-reduced-motion: reduce/);
-  const modeKeyframes = css.match(/@keyframes app-cloud-login-mode-enter \{[\s\S]*?\n\}/)?.[0] ?? '';
-  assert.doesNotMatch(modeKeyframes, /filter:/);
+  const signupKeyframes = css.match(/@keyframes app-cloud-login-signup-field-enter \{[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.doesNotMatch(signupKeyframes, /filter:/);
+  assert.doesNotMatch(source, /key=\{`form-/);
+  assert.doesNotMatch(source, /key=\{`copy-/);
 });
 
 test('cloud login page centers a minimal Codex-style Kordi account view before model provider auth', () => {

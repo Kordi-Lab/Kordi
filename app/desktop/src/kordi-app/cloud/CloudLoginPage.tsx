@@ -425,7 +425,6 @@ export function CloudLoginPage({
 
       <main className="relative w-full max-w-[440px] px-6">
         <div
-          key={`copy-${modeKey}`}
           data-cloud-login-mode-copy={modeKey}
           className="app-cloud-login-mode-copy grid justify-items-center text-center"
         >
@@ -496,13 +495,12 @@ export function CloudLoginPage({
         </div>
 
         <form
-          key={`form-${modeKey}`}
           data-cloud-login-mode-form={modeKey}
           className="app-cloud-login-form mt-5 grid gap-3.5"
           onSubmit={handleSubmit}
         >
           {isSignup ? (
-            <div className="grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
+            <div className="app-cloud-login-signup-field grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
               <AvatarPicker
                 preference={avatarPref}
                 displayName={displayName}
@@ -540,16 +538,18 @@ export function CloudLoginPage({
             hint={passwordTooShort ? `At least ${PASSWORD_MIN_LENGTH} characters.` : undefined}
           />
           {isSignup ? (
-            <CloudField
-              label="Confirm Password"
-              type="password"
-              autoComplete="new-password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={setConfirmPassword}
-              validation={passwordMismatch ? 'invalid' : undefined}
-              hint={passwordMismatch ? 'Passwords do not match.' : undefined}
-            />
+            <div className="app-cloud-login-signup-field">
+              <CloudField
+                label="Confirm Password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                validation={passwordMismatch ? 'invalid' : undefined}
+                hint={passwordMismatch ? 'Passwords do not match.' : undefined}
+              />
+            </div>
           ) : null}
           {submitError ? (
             <div
