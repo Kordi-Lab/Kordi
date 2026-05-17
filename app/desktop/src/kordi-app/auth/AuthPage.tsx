@@ -144,6 +144,10 @@ export function AuthPage({
     }));
   };
 
+  const goToProviderList = () => {
+    setRouteState({ history: [{ type: 'list' }], index: 0 });
+  };
+
   const canGoBack = routeState.index > 0;
   const canGoForward = routeState.index < routeState.history.length - 1;
   const showDetailPage = currentRoute.type === 'detail' && !!provider;
@@ -220,13 +224,25 @@ export function AuthPage({
       className={cn(
         'flex items-center gap-3',
         showHero
-          ? 'mb-4'
+          ? 'shrink-0 pb-4'
           : 'app-main-panel sticky top-0 z-30 -mt-5 mb-4 border-b border-[color:var(--app-divider)] px-0 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.16)]',
       )}
     >
-      <AuthNavigationControls canGoBack={canGoBack} canGoForward={canGoForward} onBack={goBack} onForward={goForward} />
-      {!showHero && provider ? (
-        <div className="text-[18px] font-semibold tracking-tight text-white">{provider.label} auth</div>
+      {showHero ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="app-control-chip h-9 rounded-full border-0 px-3.5 text-[12px] text-white"
+          onClick={goToProviderList}
+        >
+          <ChevronLeft className="mr-1.5 h-3.5 w-3.5" />
+          Back to providers
+        </Button>
+      ) : (
+        <AuthNavigationControls canGoBack={canGoBack} canGoForward={canGoForward} onBack={goBack} onForward={goForward} />
+      )}
+      {provider ? (
+        <div className="truncate text-[18px] font-semibold tracking-tight text-white">{provider.label} auth</div>
       ) : null}
     </div>
   ) : null;
@@ -246,37 +262,48 @@ export function AuthPage({
       }
     >
       {showHero ? (
-        <div className="app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(126,111,64,0.10),rgba(15,16,18,0.18)_48%,rgba(10,11,13,0.22))] px-8 py-8 shadow-[var(--app-shadow-float)]">
-          <div className="flex w-full max-w-[820px] flex-col gap-7">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-[34rem]">
-                <h1 className="text-[42px] font-semibold leading-[0.98] tracking-[-0.045em] text-white">
-                  Connect a provider
-                </h1>
-                <p className="mt-3 max-w-[34ch] text-[15px] leading-6 text-slate-300">
-                  Use cloud APIs or local models to start chatting.
-                </p>
-              </div>
-
-              {onDismissGate ? (
-                <Button
-                  variant="secondary"
-                  className="h-9 shrink-0 rounded-full px-4 text-[12px] text-white"
-                  onClick={onDismissGate}
-                >
-                  Skip for now →
-                </Button>
-              ) : null}
-            </div>
-
-            <div className="min-h-0">{content}</div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-4 text-[12px] text-slate-400">
-              <div>Shared authentication enabled</div>
-              <div>Details stay in Settings → Authentication.</div>
+        showDetailPage ? (
+          <div className="app-modal-panel flex h-full min-h-0 w-full justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(126,111,64,0.08),rgba(15,16,18,0.16)_48%,rgba(10,11,13,0.20))] px-5 py-5 shadow-[var(--app-shadow-float)]">
+            <div className="flex min-h-0 w-full max-w-[780px] flex-col">
+              {detailHeader}
+              <ScrollArea className="min-h-0 flex-1 pr-2">
+                <div className="min-h-0 w-full">{content}</div>
+              </ScrollArea>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(126,111,64,0.10),rgba(15,16,18,0.18)_48%,rgba(10,11,13,0.22))] px-8 py-8 shadow-[var(--app-shadow-float)]">
+            <div className="flex w-full max-w-[820px] flex-col gap-7">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="max-w-[34rem]">
+                  <h1 className="text-[42px] font-semibold leading-[0.98] tracking-[-0.045em] text-white">
+                    Connect a provider
+                  </h1>
+                  <p className="mt-3 max-w-[34ch] text-[15px] leading-6 text-slate-300">
+                    Use cloud APIs or local models to start chatting.
+                  </p>
+                </div>
+
+                {onDismissGate ? (
+                  <Button
+                    variant="secondary"
+                    className="h-9 shrink-0 rounded-full px-4 text-[12px] text-white"
+                    onClick={onDismissGate}
+                  >
+                    Skip for now →
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="min-h-0">{content}</div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-4 text-[12px] text-slate-400">
+                <div>Shared authentication enabled</div>
+                <div>Details stay in Settings → Authentication.</div>
+              </div>
+            </div>
+          </div>
+        )
       ) : (
         <div className="app-auth-settings-page flex h-full min-h-0 w-full flex-col overflow-hidden" style={{ WebkitAppRegion: 'no-drag' as const }}>
           {!showDetailPage && (

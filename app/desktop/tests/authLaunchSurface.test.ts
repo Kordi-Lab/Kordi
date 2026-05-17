@@ -28,3 +28,13 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.doesNotMatch(providerList, /saved of/);
   assert.doesNotMatch(providerList, /provider\.loginHint/);
 });
+
+test('provider detail view keeps a persistent back control and scroll boundary', () => {
+  const authPage = readAuthSource('AuthPage.tsx');
+  const providerDetail = readAuthSource('AuthProviderDetail.tsx');
+
+  assert.match(authPage, /Back to providers/);
+  assert.match(authPage, /showDetailPage[\s\S]*detailHeader[\s\S]*ScrollArea className="min-h-0 flex-1/);
+  assert.match(providerDetail, /className="grid min-h-0 w-full gap-3\.5 pb-6"/);
+  assert.doesNotMatch(providerDetail, /overflow-y-auto/);
+});
