@@ -33,6 +33,37 @@ test('renders live turn errors as raw red inline text instead of a popped bubble
   assert.doesNotMatch(markup, /circle-alert/);
 });
 
+test('no-provider failed agent turn renders red inline text with authentication action', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-no-provider',
+    sessionId: 'session-1',
+    prompt: 'hello',
+    status: 'failed',
+    message: 'Failed',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    error: 'No provider configured yet.',
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn,
+    historical: true,
+    onOpenAuthSettings: () => undefined,
+  }));
+
+  assert.match(markup, /app-live-turn-error app-live-turn-error-text/);
+  assert.match(markup, /text-rose-300/);
+  assert.match(markup, /No provider configured yet/);
+  assert.match(markup, />Open authentication</);
+  assert.match(markup, /app-live-turn-auth-action/);
+  assert.match(markup, /whitespace-nowrap/);
+  assert.match(markup, /underline/);
+  assert.doesNotMatch(markup, /rounded-full border border-rose/);
+});
+
 test('contact request row shows accept progress while sending the greeting', () => {
   const request: ContactRequest = {
     id: 'request-1',

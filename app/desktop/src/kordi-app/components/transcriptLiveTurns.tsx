@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
+import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
 import { SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
@@ -747,6 +748,7 @@ function LiveChatTurnCardView({
   onStopActiveTurn,
   onNavigateToMessage,
   onOpenArtifact,
+  onOpenAuthSettings,
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
@@ -754,6 +756,7 @@ function LiveChatTurnCardView({
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string) => void;
   onOpenArtifact?: (artifactId: string) => void;
+  onOpenAuthSettings?: () => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
   // Suppress assistantText when it's just a "Failed: <error>" or duplicate of
@@ -814,6 +817,7 @@ function LiveChatTurnCardView({
       || changedFileRows.length > 0,
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
+  const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
 
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
@@ -883,8 +887,17 @@ function LiveChatTurnCardView({
           ) : null}
 
           {visibleTurn.error ? (
-            <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300">
+            <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300 [&_.app-live-turn-auth-action]:whitespace-nowrap">
               {visibleTurn.error}
+              {showOpenAuthAction ? (
+                <button
+                  type="button"
+                  className="app-live-turn-auth-action ml-2 inline-flex p-0 text-[12px] font-semibold text-rose-100 underline decoration-rose-200/45 underline-offset-2 transition hover:text-rose-50 hover:decoration-rose-100"
+                  onClick={onOpenAuthSettings}
+                >
+                  Open authentication
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -937,6 +950,7 @@ export const LiveChatTurnCard = memo(
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
+    && previous.onOpenAuthSettings === next.onOpenAuthSettings
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );
 
@@ -947,6 +961,7 @@ function LiveChatTurnMessageView({
   onStopActiveTurn,
   onNavigateToMessage,
   onOpenArtifact,
+  onOpenAuthSettings,
 }: {
   turn: DesktopChatTurnSnapshot;
   sender?: string;
@@ -954,6 +969,7 @@ function LiveChatTurnMessageView({
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string) => void;
   onOpenArtifact?: (artifactId: string) => void;
+  onOpenAuthSettings?: () => void;
 }) {
   return (
     <div
@@ -968,6 +984,7 @@ function LiveChatTurnMessageView({
         onStopActiveTurn={onStopActiveTurn}
         onNavigateToMessage={onNavigateToMessage}
         onOpenArtifact={onOpenArtifact}
+        onOpenAuthSettings={onOpenAuthSettings}
       />
     </div>
   );
@@ -980,5 +997,6 @@ export const LiveChatTurnMessage = memo(
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
+    && previous.onOpenAuthSettings === next.onOpenAuthSettings
     && (previous.turn === next.turn || liveTurnSnapshotKey(previous.turn) === liveTurnSnapshotKey(next.turn)),
 );

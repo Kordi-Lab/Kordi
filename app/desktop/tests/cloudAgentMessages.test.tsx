@@ -11,6 +11,7 @@ import {
   cloudMessageMentionsNamedAgent,
   encodeCloudAgentCancel,
   encodeCloudAgentResponse,
+  isCloudAgentNoProviderConfiguredError,
   isCloudAgentControlMessage,
   isCloudAgentRuntimeSessionId,
   parseCloudAgentCancel,
@@ -21,7 +22,7 @@ import {
   cloudAgentRuntimeRouteForSession,
   cloudAgentRuntimeSessionId,
 } from '../src/features/cloud/cloudAgentRuntime';
-import { buildCloudBridgeHost } from '../src/features/cloud/cloudBridgeState';
+import { buildCloudBridgeHost, cloudMessageToBridgeMessage } from '../src/features/cloud/cloudBridgeState';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 
 const account: CloudAccount = {
@@ -153,6 +154,43 @@ test('cloud agent response envelope round trips without exposing metadata text',
     text: 'I am Kordi.',
   });
   assert.equal(parseCloudAgentResponse('normal text'), null);
+});
+
+test('cloud agent failed response envelope marks bridge replies failed', () => {
+  const encoded = encodeCloudAgentResponse({
+    requestId: 'msg_1',
+    text: 'No provider configured yet.',
+    deliveryState: 'failed',
+  });
+  const parsed = parseCloudAgentResponse(encoded);
+  assert.deepEqual(parsed, {
+    kind: 'agent-response',
+    requestId: 'msg_1',
+    text: 'No provider configured yet.',
+    deliveryState: 'failed',
+  });
+
+  const mapped = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_response',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: encoded,
+    createdAt: '2026-05-11T10:00:01Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+  });
+
+  assert.equal(mapped.deliveryState, 'failed');
+  assert.equal(mapped.text, 'No provider configured yet.');
+});
+
+test('cloud agent no-provider detector recognizes sidecar auth failures', () => {
+  assert.equal(isCloudAgentNoProviderConfiguredError(new Error('No OpenAI credentials are available. Add OPENAI_API_KEY or sign in with ChatGPT account access.')), true);
+  assert.equal(isCloudAgentNoProviderConfiguredError('No Anthropic credentials are available. Add ANTHROPIC_API_KEY.'), true);
+  assert.equal(isCloudAgentNoProviderConfiguredError('LM Studio local endpoint is not reachable'), true);
+  assert.equal(isCloudAgentNoProviderConfiguredError('Unknown model: openai/gpt-5.4'), true);
+  assert.equal(isCloudAgentNoProviderConfiguredError(new Error('network disconnected while sending cloud message')), false);
 });
 
 test('cloud agent mentions keep the current request native and sync prior cloud messages as context entries', () => {

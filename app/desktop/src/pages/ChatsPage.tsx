@@ -726,6 +726,7 @@ export function ChatsPage({
                   msg={msg}
                   onOpenSource={onOpenSource}
                   onOpenArtifact={onOpenArtifact}
+                  onOpenAuthSettings={onOpenAuthSettings}
                   onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                   onRequestBridgeContact={onRequestBridgeContact}
                   onForkMessage={handleForkMessage}
@@ -759,6 +760,7 @@ export function ChatsPage({
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onStopActiveTurn={onStopDesktopChatTurn}
                 onOpenArtifact={onOpenArtifact}
+                onOpenAuthSettings={onOpenAuthSettings}
               />
             ) : null}
             {queuedDesktopMessages.map((message) => (

@@ -49,6 +49,8 @@ export type UseComposerControllerArgs = {
   selectProjectSession: (projectId: string, sessionId: string) => void;
   desktopChatState: DesktopChatState | null;
   desktopBridgeState: DesktopBridgeState | null;
+  canonicalSessionState: CanonicalSessionState | null;
+  hasAnyDesktopAuth: boolean;
   canonicalHumanIdentityId?: string | null;
   setCanonicalSessionState: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;

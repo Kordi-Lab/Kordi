@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
+import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
 import {
   cloudGroupMessageSessionId,
@@ -10,6 +11,8 @@ import {
 import { bridgeConversationIdsToMarkReadOnUserActivity } from '@/features/bridge/readReceipts';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import type {
+  AppendCanonicalMessageRequest,
+  CanonicalSessionState,
   ComposerScope,
   Conversation,
   ConversationBridgeTarget,
@@ -22,9 +25,12 @@ import type {
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import {
+  appendCanonicalMessage,
   createDesktopChatSession,
+  openOrCreateCanonicalSession,
   fetchDesktopChatTurnState,
   startDesktopChatMessage,
+  upsertCanonicalMessage,
   updateDesktopChatSessionConfig,
   type DesktopChatContextMessage,
 } from '@/lib/desktop';
@@ -47,6 +53,7 @@ import {
   appendOptimisticCanonicalMessage,
   appendOptimisticOutboundMessage,
   failedPreparedCanonicalUserMessage,
+  optimisticSessionTitleFromMessage,
   findBridgeConversationForTarget,
   markOptimisticBridgeMessageFailed,
   markOptimisticCanonicalMessageFailed,
@@ -69,6 +76,147 @@ export function shouldShowBridgeSendFailureNotice(hasInlineFailureTarget: boolea
 
 export function shouldAppendOptimisticBridgeMessage(conversationId: string): boolean {
   return !isCloudBridgeConversationId(conversationId);
+}
+
+function generatedSelfAgentSessionId() {
+  const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `session:self-agent:${randomId}`;
+}
+
+export function shouldUseNoProviderSelfAgentShortcut({
+  activeConversationUsesBridgeRouting,
+  activeConvCanonicalSessionId,
+  canonicalSessionState,
+  hasAnyDesktopAuth,
+}: {
+  activeConversationUsesBridgeRouting: boolean;
+  activeConvCanonicalSessionId?: string | null;
+  canonicalSessionState: CanonicalSessionState | null;
+  hasAnyDesktopAuth: boolean;
+}) {
+  if (hasAnyDesktopAuth) return false;
+  if (activeConversationUsesBridgeRouting) return false;
+  const sessionId = activeConvCanonicalSessionId?.trim();
+  if (!sessionId) return true;
+  const session = canonicalSessionState?.sessions.find((candidate) => candidate.id === sessionId);
+  return !session || session.kind === 'self-agent';
+}
+
+function canonicalIdentityKind(state: CanonicalSessionState, identityId?: string | null): string | null {
+  return state.identities.find((identity) => identity.id === identityId)?.kind ?? null;
+}
+
+function ownedAgentIdentityId(state: CanonicalSessionState | null, fallbackPrimaryIdentityId?: string | null) {
+  const fallback = fallbackPrimaryIdentityId?.trim();
+  if (state && fallback && canonicalIdentityKind(state, fallback) === 'agent') return fallback;
+  return state?.identities.find((identity) => identity.kind === 'agent' && identity.ownerIdentityId === state.profile.humanIdentityId)?.id ?? null;
+}
+
+function mergeCanonicalSessionState(current: CanonicalSessionState | null, next: CanonicalSessionState | null): CanonicalSessionState | null {
+  if (!current) return next;
+  if (!next) return current;
+  const nextSessionIds = new Set(next.sessions.map((session) => session.id));
+  const nextMessageIds = new Set(next.messages.map((message) => message.id));
+  return {
+    ...next,
+    sessions: [
+      ...next.sessions,
+      ...current.sessions.filter((session) => !nextSessionIds.has(session.id)),
+    ],
+    messages: [
+      ...next.messages,
+      ...current.messages.filter((message) => !nextMessageIds.has(message.id)),
+    ],
+  };
+}
+
+function appendCanonicalRequestToLocalState(
+  current: CanonicalSessionState | null,
+  request: AppendCanonicalMessageRequest | null,
+): CanonicalSessionState | null {
+  if (!current || !request) return current;
+  const id = request.id?.trim() || `msg:local:${request.sessionId}:${request.sourceEventId ?? Date.now()}`;
+  if (current.messages.some((message) => message.id === id)) return current;
+  const createdAtMs = request.createdAtMs ?? Date.now();
+  const sequenceNum = current.messages
+    .filter((message) => message.sessionId === request.sessionId)
+    .reduce((max, message) => Math.max(max, message.sequenceNum), 0) + 1;
+  return {
+    ...current,
+    sessions: current.sessions.map((session) => (
+      session.id === request.sessionId
+        ? {
+            ...session,
+            updatedAtMs: Math.max(session.updatedAtMs, createdAtMs),
+            lastMessageAtMs: Math.max(session.lastMessageAtMs ?? 0, createdAtMs),
+          }
+        : session
+    )),
+    messages: [
+      ...current.messages,
+      {
+        id,
+        sessionId: request.sessionId,
+        senderIdentityId: request.senderIdentityId,
+        senderRole: request.senderRole,
+        messageKind: request.messageKind,
+        contentText: request.contentText,
+        content: request.content ?? {},
+        parentMessageId: request.parentMessageId,
+        delegatedExchangeId: request.delegatedExchangeId,
+        status: request.status ?? 'sent',
+        sequenceNum,
+        createdAtMs,
+        updatedAtMs: createdAtMs,
+        contentHash: null,
+        sourceTransport: request.sourceTransport,
+        sourceEventId: request.sourceEventId,
+      },
+    ],
+  };
+}
+
+export function canonicalNoProviderFailedAgentMessageRequest({
+  state,
+  sessionId,
+  requestMessageId,
+  now = Date.now(),
+}: {
+  state: CanonicalSessionState | null;
+  sessionId: string;
+  requestMessageId: string;
+  now?: number;
+}): AppendCanonicalMessageRequest | null {
+  if (!state) return null;
+  const session = state.sessions.find((candidate) => candidate.id === sessionId) ?? null;
+  if (!session) return null;
+  const agentIdentityId = ownedAgentIdentityId(state, session.primaryIdentityId);
+  if (!agentIdentityId) return null;
+  const notice = cloudAgentNoProviderNoticeText();
+  return {
+    id: `msg:no-provider:${requestMessageId}`,
+    sessionId,
+    senderIdentityId: agentIdentityId,
+    senderRole: 'owned-agent',
+    messageKind: 'agent-turn',
+    contentText: '',
+    content: {
+      sender: 'My Kordi',
+      timestampMs: now,
+      deliveryState: 'failed',
+      requestId: requestMessageId,
+      replyToMessageId: requestMessageId,
+      error: notice,
+    },
+    createdAtMs: now,
+    parentMessageId: requestMessageId,
+    delegatedExchangeId: null,
+    status: 'failed',
+    sourceTransport: 'desktop-chat-ui',
+    sourceEventId: `desktop-chat-ui-no-provider:${sessionId}:${requestMessageId}`,
+  };
 }
 
 export function localChatSendIsInFlightForTarget(
@@ -529,6 +677,8 @@ type UseChatMessageActionsArgs = Pick<
   | 'composerDrafts'
   | 'desktopBridgeState'
   | 'desktopChatState'
+  | 'canonicalSessionState'
+  | 'hasAnyDesktopAuth'
   | 'desktopLiveTurn'
   | 'isNativeShell'
   | 'isDesktopChatSending'
@@ -573,6 +723,8 @@ export function useChatMessageActions({
   composerDrafts,
   desktopBridgeState,
   desktopChatState,
+  canonicalSessionState,
+  hasAnyDesktopAuth,
   desktopLiveTurn,
   handleLocalSlashCommand,
   isNativeShell,
@@ -651,13 +803,27 @@ export function useChatMessageActions({
     resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
   }, [enqueueLocalQueuedMessage, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
 
-  const watchLocalTurnAndFlushQueue = useCallback((turn: DesktopChatTurnSnapshot) => {
-    void watchDesktopLiveTurn(turn).finally(() => {
+  const watchLocalTurnAndFlushQueue = useCallback((
+    turn: DesktopChatTurnSnapshot,
+    onComplete?: (finalTurn: DesktopChatTurnSnapshot) => Promise<void> | void,
+  ) => {
+    const cleanup = () => {
       if (localChatSendInFlightRef.current?.sessionId === turn.sessionId) {
         localChatSendInFlightRef.current = null;
       }
       flushQueuedDesktopMessagesForSessionRef.current(turn.sessionId);
-    });
+    };
+    if (turn.completed && isCloudAgentNoProviderConfiguredError(turn.error || turn.message || turn.assistantText)) {
+      void Promise.resolve(onComplete?.(turn)).finally(cleanup);
+      return;
+    }
+    void watchDesktopLiveTurn(turn)
+      .then(async () => {
+        if (!onComplete) return;
+        const finalTurn = await fetchDesktopChatTurnState(turn.id).catch(() => turn);
+        await onComplete(finalTurn);
+      })
+      .finally(cleanup);
   }, [localChatSendInFlightRef, watchDesktopLiveTurn]);
 
   const sendQueuedLocalMessage = useCallback(async (message: QueuedDesktopChatMessage) => {
@@ -914,6 +1080,83 @@ export function useChatMessageActions({
       return;
     }
 
+    const noProviderShortcutSessionId = activeConvCanonicalSessionId?.trim()
+      || (isTransientDraftConversation ? generatedSelfAgentSessionId() : null);
+    if (noProviderShortcutSessionId && shouldUseNoProviderSelfAgentShortcut({
+      activeConversationUsesBridgeRouting,
+      activeConvCanonicalSessionId: activeConvCanonicalSessionId?.trim() || null,
+      canonicalSessionState,
+      hasAnyDesktopAuth,
+    })) {
+      const sentAt = formatDesktopEventTime();
+      let canonicalBaseState = canonicalSessionState;
+      const existingCanonicalSession = canonicalSessionState?.sessions.find((session) => session.id === noProviderShortcutSessionId) ?? null;
+      if (!existingCanonicalSession && canonicalHumanIdentityId) {
+        const primaryIdentityId = ownedAgentIdentityId(canonicalSessionState);
+        if (primaryIdentityId) {
+          canonicalBaseState = await openOrCreateCanonicalSession({
+            id: noProviderShortcutSessionId,
+            kind: 'self-agent',
+            title: optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New session'),
+            status: 'active',
+            createdByIdentityId: canonicalHumanIdentityId,
+            primaryIdentityId,
+            participantIdentityIds: [canonicalHumanIdentityId, primaryIdentityId],
+            metadata: { createdFrom: 'chat-create-flow' },
+          });
+        }
+      }
+      const preparedCanonicalMessage = prepareCanonicalUserMessage(
+        noProviderShortcutSessionId,
+        canonicalHumanIdentityId,
+        text,
+        chatComposerAttachments,
+        sentAt,
+        'desktop-chat-ui',
+        'sent',
+      );
+      const failedReplyRequest = preparedCanonicalMessage
+        ? canonicalNoProviderFailedAgentMessageRequest({
+            state: canonicalBaseState,
+            sessionId: noProviderShortcutSessionId,
+            requestMessageId: preparedCanonicalMessage.messageId,
+          })
+        : null;
+      shouldAutoFollowChatRef.current = true;
+      setIsDesktopChatSending(true);
+      setDesktopChatError(null);
+      setPendingUserChatMessage(null);
+      if (isTransientDraftConversation) setActiveConvId(noProviderShortcutSessionId);
+      setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(
+        mergeCanonicalSessionState(current, canonicalBaseState),
+        preparedCanonicalMessage,
+      ));
+      setComposerDrafts((current: ComposerDraftState) => (
+        chatDraftSessionIdsToClearForSend(activeConvId, noProviderShortcutSessionId).reduce(
+          (next, sessionId) => updateScopeDraft(next, 'chat', sessionId, ''),
+          current,
+        )
+      ));
+      setChatComposerAttachments([]);
+      resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+      setIsDesktopChatSending(false);
+      if (preparedCanonicalMessage) {
+        void upsertCanonicalMessage(preparedCanonicalMessage.request)
+          .catch((error: unknown) => {
+            setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
+          });
+      }
+      if (failedReplyRequest) {
+        window.setTimeout(() => {
+          setCanonicalSessionState((current) => appendCanonicalRequestToLocalState(current, failedReplyRequest));
+          void appendCanonicalMessage(failedReplyRequest).catch((error: unknown) => {
+            setDesktopChatError(error instanceof Error ? error.message : 'Unable to save provider notice');
+          });
+        }, 450);
+      }
+      return;
+    }
+
     let materializedState: DesktopChatState | null = null;
     const ensureLocalSessionId = async () => {
       if (targetSessionId) {
@@ -980,6 +1223,74 @@ export function useChatMessageActions({
         'desktop-chat-ui',
         'sending',
       );
+      const noProviderLocalShortcut = shouldUseNoProviderSelfAgentShortcut({
+        activeConversationUsesBridgeRouting,
+        activeConvCanonicalSessionId,
+        canonicalSessionState,
+        hasAnyDesktopAuth,
+      });
+      if (noProviderLocalShortcut && preparedCanonicalMessage) {
+        const canonicalSessionId = parentSessionIdForMessage;
+        const existingCanonicalSession = canonicalSessionState?.sessions.find((session) => session.id === canonicalSessionId) ?? null;
+        let canonicalBaseState = canonicalSessionState;
+        if (!existingCanonicalSession && canonicalHumanIdentityId) {
+          const primaryIdentityId = ownedAgentIdentityId(canonicalSessionState);
+          if (primaryIdentityId) {
+            canonicalBaseState = await openOrCreateCanonicalSession({
+              id: canonicalSessionId,
+              kind: 'self-agent',
+              title: optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New session'),
+              status: 'active',
+              createdByIdentityId: canonicalHumanIdentityId,
+              primaryIdentityId,
+              participantIdentityIds: [canonicalHumanIdentityId, primaryIdentityId],
+              metadata: { createdFrom: 'chat-create-flow' },
+            });
+          }
+        }
+        const sentUserRequest = {
+          ...preparedCanonicalMessage.request,
+          status: 'sent',
+          content: {
+            ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
+            deliveryState: 'sent',
+          },
+        };
+        const failedReplyRequest = canonicalNoProviderFailedAgentMessageRequest({
+          state: canonicalBaseState,
+          sessionId: canonicalSessionId,
+          requestMessageId: preparedCanonicalMessage.messageId,
+        });
+        const nextCanonicalState = appendCanonicalRequestToLocalState(
+          appendCanonicalRequestToLocalState(canonicalBaseState, sentUserRequest),
+          failedReplyRequest,
+        );
+        if (nextCanonicalState) setCanonicalSessionState(nextCanonicalState);
+        setDesktopChatState((current) => {
+          const baseState = materializedState && current?.activeSessionId !== resolvedSessionId
+            ? materializedState
+            : current;
+          return baseState
+            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt)
+            : current;
+        });
+        setComposerDrafts((current: ComposerDraftState) => (
+          chatDraftSessionIdsToClearForSend(activeConvId, resolvedSessionId).reduce(
+            (next, sessionId) => updateScopeDraft(next, 'chat', sessionId, ''),
+            current,
+          )
+        ));
+        setChatComposerAttachments([]);
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+        localChatSendInFlightRef.current = null;
+        setIsDesktopChatSending(false);
+        void upsertCanonicalMessage(sentUserRequest)
+          .then(() => (failedReplyRequest ? appendCanonicalMessage(failedReplyRequest) : null))
+          .catch((error: unknown) => {
+            setDesktopChatError(error instanceof Error ? error.message : 'Unable to save provider notice');
+          });
+        return;
+      }
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
       setDesktopChatState((current) => {
         const baseState = materializedState && current?.activeSessionId !== resolvedSessionId
@@ -1004,7 +1315,36 @@ export function useChatMessageActions({
         })
         .then(() => startDesktopChatMessage(resolvedSessionId, text, attachmentPaths, null, restoredCloudContextMessages))
         .then((turn) => {
-          watchLocalTurnAndFlushQueue(turn);
+          watchLocalTurnAndFlushQueue(turn, async (finalTurn) => {
+            const noProviderFailure = isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message || finalTurn.assistantText);
+            if (!noProviderFailure || !activeConvCanonicalSessionId || !preparedCanonicalMessage) return;
+            const sentUserRequest = {
+              ...preparedCanonicalMessage.request,
+              status: 'sent',
+              content: {
+                ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
+                deliveryState: 'sent',
+              },
+            };
+            try {
+              const stateAfterUser = await upsertCanonicalMessage(sentUserRequest);
+              const failedReplyRequest = canonicalNoProviderFailedAgentMessageRequest({
+                state: stateAfterUser ?? canonicalSessionState,
+                sessionId: activeConvCanonicalSessionId,
+                requestMessageId: preparedCanonicalMessage.messageId,
+              });
+              const nextState = failedReplyRequest ? await appendCanonicalMessage(failedReplyRequest) : stateAfterUser;
+              if (nextState) setCanonicalSessionState(nextState);
+            } catch (error) {
+              setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+                current,
+                activeConvCanonicalSessionId,
+                preparedCanonicalMessage.messageId,
+                cloudAgentNoProviderNoticeText(),
+              ));
+              setDesktopChatError(error instanceof Error ? error.message : 'Unable to save provider notice');
+            }
+          });
           setIsDesktopChatSending(false);
         })
         .catch((error: unknown) => {
@@ -1013,6 +1353,16 @@ export function useChatMessageActions({
             localChatSendInFlightRef.current = null;
           }
           setIsDesktopChatSending(false);
+          if (isCloudAgentNoProviderConfiguredError(error) && activeConvCanonicalSessionId && preparedCanonicalMessage) {
+            setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+              current,
+              activeConvCanonicalSessionId,
+              preparedCanonicalMessage.messageId,
+              cloudAgentNoProviderNoticeText(),
+            ));
+            setDesktopChatError(null);
+            return;
+          }
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to send chat message');
         });
     } catch (error) {
@@ -1036,6 +1386,8 @@ export function useChatMessageActions({
     composerSelections.chat.thinking,
     desktopBridgeState,
     desktopChatState,
+    canonicalSessionState,
+    hasAnyDesktopAuth,
     desktopLiveTurn,
     handleLocalSlashCommand,
     isNativeShell,

@@ -1,3 +1,5 @@
+import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+
 import type {
   CanonicalIdentity,
   CanonicalSessionMessage,
@@ -352,6 +354,32 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
   }
 
   return duplicateIds;
+}
+
+function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
+  const syntheticRequestIds = new Set(
+    messages.flatMap((message) => {
+      if (message.sourceTransport !== 'desktop-chat-ui') return [];
+      if (message.messageKind !== 'agent-turn') return [];
+      if (message.status !== 'failed') return [];
+      const content = contentRecord(message.content);
+      if (!isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail))) return [];
+      return [message.parentMessageId, stringValue(content.replyToMessageId), stringValue(content.requestId)]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .map((value) => value.trim());
+    }),
+  );
+  if (syntheticRequestIds.size === 0) return new Set<string>();
+  return new Set(messages.flatMap((message) => {
+    if (message.sourceTransport !== 'desktop-chat') return [];
+    if (message.messageKind !== 'agent-turn') return [];
+    const content = contentRecord(message.content);
+    if (!isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail))) return [];
+    const requestIds = [message.parentMessageId, stringValue(content.replyToMessageId), stringValue(content.requestId)]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map((value) => value.trim());
+    return requestIds.some((requestId) => syntheticRequestIds.has(requestId)) ? [message.id] : [];
+  }));
 }
 
 function bridgeRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[]) {
@@ -733,6 +761,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoIds(sortedMessages);
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
     const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
+    const suppressedNoProviderRuntimeDuplicateIds = noProviderRuntimeDuplicateIds(sortedMessages);
     const suppressedCloudGroupAgentResponseDuplicateIds = duplicateCloudGroupAgentResponseIds(sortedMessages);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
     const suppressedAgedBridgeProcessingPlaceholderIds = new Set(
@@ -762,6 +791,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedLocalRuntimeEchoIds.has(message.id)
         || suppressedLocalRuntimeDuplicateIds.has(message.id)
         || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
+        || suppressedNoProviderRuntimeDuplicateIds.has(message.id)
         || suppressedCloudGroupAgentResponseDuplicateIds.has(message.id)
         || suppressedStaleProcessingPlaceholderIds.has(message.id)
         || suppressedAgedBridgeProcessingPlaceholderIds.has(message.id)
