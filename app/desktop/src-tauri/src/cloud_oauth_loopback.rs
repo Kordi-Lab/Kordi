@@ -178,7 +178,7 @@ fn completion_page_html(request_id: &str) -> String {
   <div class="page" aria-hidden="false">
     <div class="page-grain" aria-hidden="true"></div>
     <main class="card" role="status" aria-live="polite">
-      <div class="auth-label">KORDI LOGIN</div>
+      <div class="auth-label">kordi</div>
 
       <span class="state-marker" data-status-loading aria-hidden="true"></span>
       <span class="state-marker" data-status-success aria-hidden="true"></span>
@@ -323,8 +323,7 @@ fn completion_page_css() -> &'static str {
       font-size: 14px;
       line-height: 1;
       font-weight: 640;
-      letter-spacing: 0.20em;
-      text-transform: uppercase;
+      letter-spacing: -0.03em;
     }
 
     .state-marker { display: none; }
@@ -375,7 +374,7 @@ fn completion_page_css() -> &'static str {
         padding: 38px 28px 36px;
         border-radius: 34px;
       }
-      .auth-label { font-size: 12px; letter-spacing: 0.16em; }
+      .auth-label { font-size: 12px; letter-spacing: -0.025em; }
     }
     @media (prefers-reduced-motion: reduce) {
       .card, .title, .subtitle { animation: none; }
@@ -421,8 +420,8 @@ mod completion_page_tests {
             "page should boot in loading state"
         );
         assert!(
-            html.contains("KORDI LOGIN"),
-            "page should render the compact login label"
+            html.contains(">kordi</div>"),
+            "page should render only the lowercase kordi label"
         );
 
         // All three state blocks must be present so the swap between them is
@@ -450,7 +449,11 @@ mod completion_page_tests {
     fn copy_matches_brand_voice_for_each_state() {
         let html = completion_page_html("cloud_oauth_abc123");
 
-        assert!(html.contains("KORDI LOGIN"));
+        assert!(html.contains(">kordi</div>"));
+        assert!(
+            !html.contains("KORDI LOGIN"),
+            "callback eyebrow should only say lowercase kordi"
+        );
         assert!(html.contains("Completing Login"));
         assert!(html.contains("Login Successful"));
         assert!(html.contains("Login Failed"));
@@ -514,6 +517,10 @@ mod completion_page_tests {
         assert!(
             html.contains("-apple-system, BlinkMacSystemFont"),
             "callback page should use the same system font stack as the provider-style confirmation page"
+        );
+        assert!(
+            !html.contains("text-transform: uppercase"),
+            "callback label should not force the kordi wordmark into capitals"
         );
         assert!(
             html.contains("font-size: 40px;"),
