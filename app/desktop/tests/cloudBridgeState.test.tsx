@@ -34,6 +34,7 @@ import {
   loadCloudMessagesByPeerUntilStable,
   cloudInitialMessagesSettledForPeerKey,
   cloudSessionForksByIdEqual,
+  shouldRunLocalCloudAgentForCloudMessage,
   cachedCloudMessagesByPeerHasMessages,
   loadCachedCloudMessagesByPeer,
   saveCachedCloudMessagesByPeer,
@@ -1682,6 +1683,41 @@ test('cloud incoming local-agent mentions expose synced processing UI', () => {
   assert.equal(state.conversations[0].outreach?.targetKind, 'bridge-agent');
   assert.equal(state.conversations[0].outreach?.bridgeRequestId, 'msg_local_agent_request');
   assert.equal(state.conversations[0].outreach?.targetAgentId, 'cloud-local-agent');
+});
+
+test('cloud local agent runner ignores same-account self-agent sync messages', () => {
+  const selfRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_synced_self_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: '家人们谁懂啊',
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+    sessionId: 'local-self-session',
+  };
+  const incomingMention: CloudMessage = {
+    ...message,
+    messageId: 'msg_incoming_local_agent_request',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body: '@MeCloudKordi who are you?',
+    direction: 'incoming',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: account.accountId,
+    message: selfRequest,
+    peerMessages: [selfRequest],
+  }), false);
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: incomingMention,
+    peerMessages: [incomingMention],
+  }), true);
 });
 
 test('cloud outgoing self-agent mentions expose localhost-style local processing UI', () => {

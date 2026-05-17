@@ -50,7 +50,6 @@ import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   compactCloudAgentNativeContextMessages,
-  cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsLocalAgent,
   encodeCloudAgentCancel,
   encodeCloudAgentResponse,
@@ -578,6 +577,30 @@ function wait(ms: number): Promise<void> {
 function isRecentCloudAgentMention(createdAt: string): boolean {
   const createdAtMs = Date.parse(createdAt);
   return Number.isFinite(createdAtMs) && Date.now() - createdAtMs <= CLOUD_AGENT_MENTION_WINDOW_MS;
+}
+
+export function shouldRunLocalCloudAgentForCloudMessage({
+  account,
+  peerId,
+  message,
+  peerMessages,
+}: {
+  account: CloudAccount;
+  peerId: string;
+  message: CloudMessage;
+  peerMessages: CloudMessage[];
+}): boolean {
+  if (peerId === account.accountId) return false;
+  if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) return false;
+  if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
+  if (!cloudMessageMentionsLocalAgent(message.body, account, {
+    allowFirstPerson: message.fromAccountId === account.accountId,
+  })) return false;
+  if (!isRecentCloudAgentMention(message.createdAt)) return false;
+  return !peerMessages.some((candidate) => (
+    candidate.fromAccountId === account.accountId
+    && parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
+  ));
 }
 
 function isCloudAgentProcessingPlaceholderText(text: string): boolean {
@@ -2715,22 +2738,8 @@ export function useCloudBridgeState({
 
     for (const [peerId, messages] of Object.entries(messagesByPeer)) {
       for (const message of messages) {
-        if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) continue;
-        if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
-        const isSelfAgentRequest = peerId === account.accountId && cloudMessageIsSelfAgentRequest(message, account);
-        if (!isSelfAgentRequest && !cloudMessageMentionsLocalAgent(message.body, account, {
-          allowFirstPerson: message.fromAccountId === account.accountId,
-        })) continue;
-        if (!isRecentCloudAgentMention(message.createdAt)) continue;
+        if (!shouldRunLocalCloudAgentForCloudMessage({ account, peerId, message, peerMessages: messages })) continue;
         if (processedCloudAgentMentionIdsRef.current.has(message.messageId)) continue;
-        const alreadyAnswered = messages.some((candidate) => (
-          candidate.fromAccountId === account.accountId
-          && parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
-        ));
-        if (alreadyAnswered) {
-          processedCloudAgentMentionIdsRef.current.add(message.messageId);
-          continue;
-        }
 
         processedCloudAgentMentionIdsRef.current.add(message.messageId);
         void (async () => {
