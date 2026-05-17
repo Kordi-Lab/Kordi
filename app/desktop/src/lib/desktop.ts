@@ -77,6 +77,19 @@ export type DesktopCloudOAuthLoopbackStart = {
   redirectUrl: string;
 };
 
+export type DesktopCloudAccountStorageActivation = {
+  accountId: string;
+  storageRoot: string;
+  requiresReload: boolean;
+};
+
+export async function activateDesktopCloudAccountStorage(accountId: string): Promise<DesktopCloudAccountStorageActivation> {
+  if (!isNativeDesktopShell()) {
+    return { accountId, storageRoot: '', requiresReload: false };
+  }
+  return invokeDesktop<DesktopCloudAccountStorageActivation>('cloud_account_storage_activate', { accountId });
+}
+
 export async function prepareDesktopCloudOAuthLoopback(): Promise<DesktopCloudOAuthLoopbackStart | null> {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopCloudOAuthLoopbackStart>('cloud_oauth_loopback_prepare');

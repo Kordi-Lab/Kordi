@@ -33,6 +33,8 @@ import {
   mergeCloudMessagesByPeerSnapshot,
   loadCloudMessagesByPeerUntilStable,
   cloudInitialMessagesSettledForPeerKey,
+  cloudSessionForksByIdEqual,
+  shouldRunLocalCloudAgentForCloudMessage,
   cachedCloudMessagesByPeerHasMessages,
   loadCachedCloudMessagesByPeer,
   saveCachedCloudMessagesByPeer,
@@ -86,6 +88,27 @@ function memoryStorage(): Storage {
     setItem: (key: string, value: string) => { values.set(key, String(value)); },
   };
 }
+
+test('cloud session fork map equality compares structural fork lineage to prevent refresh loops', () => {
+  const left = {
+    child: {
+      forkSessionId: 'child',
+      parentSessionId: 'parent',
+      parentMessageId: 'msg:parent',
+      createdByAccountId: 'acct_me',
+      createdAt: '2026-05-17T09:00:00Z',
+    },
+  };
+  const right = {
+    child: { ...left.child },
+  };
+  const changed = {
+    child: { ...left.child, parentMessageId: 'msg:other' },
+  };
+
+  assert.equal(cloudSessionForksByIdEqual(left, right), true);
+  assert.equal(cloudSessionForksByIdEqual(left, changed), false);
+});
 
 test('cloud bridge state ignores poisoned localhost bridge state instead of merging it', () => {
   const cloudState = buildCloudDesktopBridgeState({
@@ -587,6 +610,137 @@ test('cloud self-agent canonical sync restores fork lineage metadata', () => {
       forkedFromMessageId: 'msg:cloud:self:parent-agent',
     },
   });
+});
+
+test('cloud self-agent canonical sync marks restored fork prefix as snapshots for the transcript divider', () => {
+  const parentUser: CloudMessage = {
+    messageId: 'msg_parent_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'original prompt',
+    createdAt: '2026-05-16T08:40:00.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'session:parent',
+  };
+  const parentAgent: CloudMessage = {
+    messageId: 'msg_parent_answer',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: encodeCloudAgentResponse({ requestId: parentUser.messageId, text: 'original answer' }),
+    createdAt: '2026-05-16T08:40:05.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'session:parent',
+  };
+  const forkCopiedUser: CloudMessage = {
+    ...parentUser,
+    messageId: 'msg_fork_copied_request',
+    sessionId: 'session:fork:child',
+  };
+  const forkCopiedAgent: CloudMessage = {
+    ...parentAgent,
+    messageId: 'msg_fork_copied_answer',
+    body: encodeCloudAgentResponse({ requestId: forkCopiedUser.messageId, text: 'original answer' }),
+    sessionId: 'session:fork:child',
+  };
+  const forkNewUser: CloudMessage = {
+    messageId: 'msg_fork_new_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'continued prompt',
+    createdAt: '2026-05-16T08:41:00.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'session:fork:child',
+  };
+  const state = {
+    sessions: [],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [forkNewUser, forkCopiedAgent, parentAgent, forkCopiedUser, parentUser],
+    state,
+    forksBySessionId: {
+      'session:fork:child': {
+        forkSessionId: 'session:fork:child',
+        parentSessionId: 'session:parent',
+        parentMessageId: 'msg:cloud:self:msg_parent_answer',
+        createdByAccountId: account.accountId,
+        createdAt: '2026-05-16T08:40:06.000Z',
+      },
+    },
+  });
+
+  assert.deepEqual(plan.messageRequests
+    .filter((request) => request.sessionId === 'session:fork:child')
+    .map((request) => ({ text: request.contentText, sourceTransport: request.sourceTransport })), [
+    { text: 'original prompt', sourceTransport: 'canonical-fork-snapshot' },
+    { text: 'original answer', sourceTransport: 'canonical-fork-snapshot' },
+    { text: 'continued prompt', sourceTransport: 'cloud-self-agent' },
+  ]);
+});
+
+test('cloud self-agent canonical sync patches existing restored fork prefix messages into snapshots', () => {
+  const parentUser: CloudMessage = {
+    messageId: 'msg_parent_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'original prompt',
+    createdAt: '2026-05-16T08:40:00.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'session:parent',
+  };
+  const forkCopiedUser: CloudMessage = {
+    ...parentUser,
+    messageId: 'msg_fork_copied_request',
+    sessionId: 'session:fork:child',
+  };
+  const state = {
+    sessions: [{ id: 'session:fork:child', kind: 'self-agent', title: 'original prompt', status: 'active', createdByIdentityId: 'human:acct_me', primaryIdentityId: 'agent:cloud-self:acct_me', projectId: null, projectName: null, relationshipIdentityId: null, metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 }],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [{ id: 'msg:cloud:self:msg_fork_copied_request', sessionId: 'session:fork:child', sequenceNum: 1, senderIdentityId: 'human:acct_me', senderRole: 'user', messageKind: 'text', contentText: 'original prompt', content: null, parentMessageId: null, status: 'sent', createdAtMs: Date.parse(parentUser.createdAt), updatedAtMs: Date.parse(parentUser.createdAt), sourceTransport: 'cloud-self-agent', sourceEventId: 'msg_fork_copied_request' }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [parentUser, forkCopiedUser],
+    state,
+    forksBySessionId: {
+      'session:fork:child': {
+        forkSessionId: 'session:fork:child',
+        parentSessionId: 'session:parent',
+        parentMessageId: null,
+        createdByAccountId: account.accountId,
+        createdAt: '2026-05-16T08:40:06.000Z',
+      },
+    },
+  });
+
+  assert.deepEqual(plan.messageRequests
+    .filter((request) => request.sessionId === 'session:fork:child')
+    .map((request) => ({
+      id: request.id,
+      sourceTransport: request.sourceTransport,
+    })), [
+    { id: 'msg:cloud:self:msg_fork_copied_request', sourceTransport: 'canonical-fork-snapshot' },
+  ]);
 });
 
 test('cloud self-agent canonical sync patches fork lineage onto existing restored sessions', () => {
@@ -1529,6 +1683,41 @@ test('cloud incoming local-agent mentions expose synced processing UI', () => {
   assert.equal(state.conversations[0].outreach?.targetKind, 'bridge-agent');
   assert.equal(state.conversations[0].outreach?.bridgeRequestId, 'msg_local_agent_request');
   assert.equal(state.conversations[0].outreach?.targetAgentId, 'cloud-local-agent');
+});
+
+test('cloud local agent runner ignores same-account self-agent sync messages', () => {
+  const selfRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_synced_self_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: '家人们谁懂啊',
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+    sessionId: 'local-self-session',
+  };
+  const incomingMention: CloudMessage = {
+    ...message,
+    messageId: 'msg_incoming_local_agent_request',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body: '@MeCloudKordi who are you?',
+    direction: 'incoming',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: account.accountId,
+    message: selfRequest,
+    peerMessages: [selfRequest],
+  }), false);
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: incomingMention,
+    peerMessages: [incomingMention],
+  }), true);
 });
 
 test('cloud outgoing self-agent mentions expose localhost-style local processing UI', () => {

@@ -50,7 +50,6 @@ import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   compactCloudAgentNativeContextMessages,
-  cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsLocalAgent,
   encodeCloudAgentCancel,
   encodeCloudAgentResponse,
@@ -580,6 +579,30 @@ function isRecentCloudAgentMention(createdAt: string): boolean {
   return Number.isFinite(createdAtMs) && Date.now() - createdAtMs <= CLOUD_AGENT_MENTION_WINDOW_MS;
 }
 
+export function shouldRunLocalCloudAgentForCloudMessage({
+  account,
+  peerId,
+  message,
+  peerMessages,
+}: {
+  account: CloudAccount;
+  peerId: string;
+  message: CloudMessage;
+  peerMessages: CloudMessage[];
+}): boolean {
+  if (peerId === account.accountId) return false;
+  if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) return false;
+  if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
+  if (!cloudMessageMentionsLocalAgent(message.body, account, {
+    allowFirstPerson: message.fromAccountId === account.accountId,
+  })) return false;
+  if (!isRecentCloudAgentMention(message.createdAt)) return false;
+  return !peerMessages.some((candidate) => (
+    candidate.fromAccountId === account.accountId
+    && parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
+  ));
+}
+
 function isCloudAgentProcessingPlaceholderText(text: string): boolean {
   return /^processing[.\s…]*$/iu.test(text.trim());
 }
@@ -679,6 +702,31 @@ export function mergeCloudMessagesByPeerSnapshot(
 
 export const CLOUD_MESSAGE_DISCOVERY_MAX_PASSES = 50;
 export const CLOUD_MESSAGES_LOCAL_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
+
+export function cloudSessionForksByIdEqual(
+  left: Record<string, CloudSessionForkSummary>,
+  right: Record<string, CloudSessionForkSummary>,
+): boolean {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length) return false;
+  for (let index = 0; index < leftKeys.length; index += 1) {
+    const key = leftKeys[index];
+    if (key !== rightKeys[index]) return false;
+    const leftFork = left[key];
+    const rightFork = right[key];
+    if (
+      leftFork.forkSessionId !== rightFork.forkSessionId
+      || leftFork.parentSessionId !== rightFork.parentSessionId
+      || leftFork.parentMessageId !== rightFork.parentMessageId
+      || leftFork.createdByAccountId !== rightFork.createdByAccountId
+      || leftFork.createdAt !== rightFork.createdAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
 
 function uniqueSortedPeerIds(values: Iterable<string>): string[] {
   return [...new Set([...values].map((value) => value.trim()).filter(Boolean))].sort();
@@ -946,6 +994,62 @@ function cloudSelfAgentCreatedAtMs(message: CloudMessage): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
+type CloudSelfAgentRestoreMessage = {
+  message: CloudMessage;
+  sessionId: string;
+  role: 'user' | 'agent';
+  text: string;
+  createdAtMs: number;
+  responseRequestId: string | null;
+};
+
+function normalizeCloudSelfAgentRestoreMessage(message: CloudMessage): CloudSelfAgentRestoreMessage | null {
+  const sessionId = cleanText(message.sessionId);
+  if (!sessionId) return null;
+  const response = parseCloudAgentResponse(message.body);
+  if (!response && (parseCloudAgentCancel(message.body) || parseCloudGroupControl(message.body))) return null;
+  const text = cleanText(response?.text ?? message.body);
+  if (!text) return null;
+  return {
+    message,
+    sessionId,
+    role: response ? 'agent' : 'user',
+    text,
+    createdAtMs: cloudSelfAgentCreatedAtMs(message),
+    responseRequestId: response?.requestId ?? null,
+  };
+}
+
+function restoredForkSnapshotCloudMessageIds(
+  messages: CloudSelfAgentRestoreMessage[],
+  forksBySessionId: Record<string, CloudSessionForkSummary>,
+): Set<string> {
+  const messagesBySessionId = new Map<string, CloudSelfAgentRestoreMessage[]>();
+  for (const message of messages) {
+    const bucket = messagesBySessionId.get(message.sessionId) ?? [];
+    bucket.push(message);
+    messagesBySessionId.set(message.sessionId, bucket);
+  }
+
+  const snapshotIds = new Set<string>();
+  for (const fork of Object.values(forksBySessionId)) {
+    const forkSessionId = cleanText(fork.forkSessionId);
+    const parentSessionId = cleanText(fork.parentSessionId);
+    if (!forkSessionId || !parentSessionId) continue;
+    const forkMessages = messagesBySessionId.get(forkSessionId) ?? [];
+    const parentMessages = messagesBySessionId.get(parentSessionId) ?? [];
+    if (forkMessages.length === 0 || parentMessages.length === 0) continue;
+
+    for (let index = 0; index < forkMessages.length && index < parentMessages.length; index += 1) {
+      const forkMessage = forkMessages[index];
+      const parentMessage = parentMessages[index];
+      if (forkMessage.role !== parentMessage.role || forkMessage.text !== parentMessage.text) break;
+      snapshotIds.add(forkMessage.message.messageId);
+    }
+  }
+  return snapshotIds;
+}
+
 function existingCanonicalMessageMatchesCloudSelfAgent(
   existing: CanonicalSessionMessage,
   input: { sessionId: string; role: 'user' | 'agent'; text: string; createdAtMs: number; cloudMessageId: string },
@@ -981,11 +1085,14 @@ export function planCloudSelfAgentCanonicalSync({
   const agentIdentityId = `agent:cloud-self:${account.accountId}`;
   const sorted = [...messages]
     .filter((message) => message.fromAccountId === account.accountId && message.toAccountId === account.accountId)
-    .filter((message) => cleanText(message.sessionId))
     .sort((left, right) => (
       cloudSelfAgentCreatedAtMs(left) - cloudSelfAgentCreatedAtMs(right)
       || left.messageId.localeCompare(right.messageId)
     ));
+  const normalizedMessages = sorted
+    .map(normalizeCloudSelfAgentRestoreMessage)
+    .filter((message): message is CloudSelfAgentRestoreMessage => Boolean(message));
+  const forkSnapshotCloudMessageIds = restoredForkSnapshotCloudMessageIds(normalizedMessages, forksBySessionId);
 
   const userTextByCloudMessageId = new Map<string, string>();
   const requestLocalMessageIdByCloudMessageId = new Map<string, string>();
@@ -1031,15 +1138,11 @@ export function planCloudSelfAgentCanonicalSync({
     });
   };
 
-  for (const message of sorted) {
-    const sessionId = cleanText(message.sessionId);
-    if (!sessionId) continue;
-    const response = parseCloudAgentResponse(message.body);
-    if (!response && (parseCloudAgentCancel(message.body) || parseCloudGroupControl(message.body))) continue;
-    const role = response ? 'agent' as const : 'user' as const;
-    const text = cleanText(response?.text ?? message.body);
-    if (!text) continue;
-    const createdAtMs = cloudSelfAgentCreatedAtMs(message);
+  for (const restoreMessage of normalizedMessages) {
+    const { message, sessionId, role, text, createdAtMs, responseRequestId } = restoreMessage;
+    const sourceTransport = forkSnapshotCloudMessageIds.has(message.messageId)
+      ? 'canonical-fork-snapshot'
+      : 'cloud-self-agent';
     const existingMatch = state.messages.find((existing) => existingCanonicalMessageMatchesCloudSelfAgent(existing, {
       sessionId,
       role,
@@ -1048,12 +1151,28 @@ export function planCloudSelfAgentCanonicalSync({
       cloudMessageId: message.messageId,
     }));
     if (existingMatch) {
-      if (!response) {
+      if (!responseRequestId) {
         userTextByCloudMessageId.set(message.messageId, text);
         requestLocalMessageIdByCloudMessageId.set(message.messageId, existingMatch.id);
         ensureSessionRequest(sessionId, text || 'My Kordi');
       } else {
-        ensureSessionRequest(sessionId, cleanText(userTextByCloudMessageId.get(response.requestId)) || cleanText(existingSessionById.get(sessionId)?.title) || 'My Kordi');
+        ensureSessionRequest(sessionId, cleanText(userTextByCloudMessageId.get(responseRequestId)) || cleanText(existingSessionById.get(sessionId)?.title) || 'My Kordi');
+      }
+      if (sourceTransport === 'canonical-fork-snapshot' && existingMatch.sourceTransport !== sourceTransport) {
+        messageRequests.push({
+          id: existingMatch.id,
+          sessionId,
+          senderIdentityId: existingMatch.senderIdentityId,
+          senderRole: existingMatch.senderRole,
+          messageKind: existingMatch.messageKind,
+          contentText: existingMatch.contentText,
+          content: existingMatch.content ?? null,
+          parentMessageId: existingMatch.parentMessageId ?? null,
+          status: existingMatch.status,
+          createdAtMs: existingMatch.createdAtMs,
+          sourceTransport,
+          sourceEventId: existingMatch.sourceEventId ?? message.messageId,
+        });
       }
       continue;
     }
@@ -1061,7 +1180,7 @@ export function planCloudSelfAgentCanonicalSync({
     const duplicateKey = [sessionId, role, createdAtMs.toString(), text].join('\u001f');
     const plannedDuplicateMessageId = plannedCanonicalMessageIdByDuplicateKey.get(duplicateKey);
     if (plannedDuplicateMessageId) {
-      if (!response) {
+      if (!responseRequestId) {
         userTextByCloudMessageId.set(message.messageId, text);
         requestLocalMessageIdByCloudMessageId.set(message.messageId, plannedDuplicateMessageId);
       }
@@ -1069,27 +1188,27 @@ export function planCloudSelfAgentCanonicalSync({
     }
 
     const canonicalMessageId = cloudSelfAgentCanonicalMessageId(message.messageId);
-    if (!response) {
+    if (!responseRequestId) {
       userTextByCloudMessageId.set(message.messageId, text);
       requestLocalMessageIdByCloudMessageId.set(message.messageId, canonicalMessageId);
     }
-    const parentMessageId = response ? requestLocalMessageIdByCloudMessageId.get(response.requestId) ?? null : null;
-    if (response && !parentMessageId) continue;
-    const title = cleanText(userTextByCloudMessageId.get(response?.requestId ?? message.messageId)) || 'My Kordi';
+    const parentMessageId = responseRequestId ? requestLocalMessageIdByCloudMessageId.get(responseRequestId) ?? null : null;
+    if (responseRequestId && !parentMessageId) continue;
+    const title = cleanText(userTextByCloudMessageId.get(responseRequestId ?? message.messageId)) || 'My Kordi';
     ensureSessionRequest(sessionId, title);
     plannedCanonicalMessageIdByDuplicateKey.set(duplicateKey, canonicalMessageId);
     messageRequests.push({
       id: canonicalMessageId,
       sessionId,
-      senderIdentityId: response ? agentIdentityId : localHumanIdentityId,
-      senderRole: response ? 'owned-agent' : 'user',
-      messageKind: response ? 'agent-turn' : 'text',
+      senderIdentityId: responseRequestId ? agentIdentityId : localHumanIdentityId,
+      senderRole: responseRequestId ? 'owned-agent' : 'user',
+      messageKind: responseRequestId ? 'agent-turn' : 'text',
       contentText: text,
-      content: response ? { cloudRequestMessageId: response.requestId } : null,
+      content: responseRequestId ? { cloudRequestMessageId: responseRequestId } : null,
       parentMessageId,
-      status: response ? 'complete' : 'sent',
+      status: responseRequestId ? 'complete' : 'sent',
       createdAtMs,
-      sourceTransport: 'cloud-self-agent',
+      sourceTransport,
       sourceEventId: message.messageId,
     });
   }
@@ -1312,6 +1431,7 @@ export function useCloudBridgeState({
   const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
   const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
+  const cloudSessionForksByIdRef = useRef<Record<string, CloudSessionForkSummary>>(cloudSessionForksById);
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
@@ -1349,6 +1469,10 @@ export function useCloudBridgeState({
     cloudSessionActivityRef.current = cloudSessionActivity;
     if (account && messagesCacheAccountRef.current === account.accountId) saveCachedCloudSessionActivity(account.accountId, cloudSessionActivity);
   }, [account, cloudSessionActivity]);
+
+  useEffect(() => {
+    cloudSessionForksByIdRef.current = cloudSessionForksById;
+  }, [cloudSessionForksById]);
 
   useEffect(() => {
     setMessagesByPeer((current) => {
@@ -1539,7 +1663,7 @@ export function useCloudBridgeState({
     try {
       let messagesByPeer = messagesByPeerRef.current;
       let sessionActivity = cloudSessionActivityRef.current;
-      let sessionForksById = cloudSessionForksById;
+      let sessionForksById = cloudSessionForksByIdRef.current;
       let fallbackRequired = false;
       for (let pass = 0; pass < 20; pass += 1) {
         const result = await syncCloudDiffOnce({
@@ -1568,13 +1692,15 @@ export function useCloudBridgeState({
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
       setCloudSessionActivity((current) => mergeCloudSessionActivity(current, sessionActivity));
-      setCloudSessionForksById(sessionForksById);
+      setCloudSessionForksById((current) => (
+        cloudSessionForksByIdEqual(current, sessionForksById) ? current : sessionForksById
+      ));
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
       syncingCloudDiffRef.current = false;
     }
-  }, [account, bootstrapPeerKey, client, cloudSessionForksById, refreshCloudBridgeMessages]);
+  }, [account, bootstrapPeerKey, client, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account) {
@@ -2612,22 +2738,8 @@ export function useCloudBridgeState({
 
     for (const [peerId, messages] of Object.entries(messagesByPeer)) {
       for (const message of messages) {
-        if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) continue;
-        if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
-        const isSelfAgentRequest = peerId === account.accountId && cloudMessageIsSelfAgentRequest(message, account);
-        if (!isSelfAgentRequest && !cloudMessageMentionsLocalAgent(message.body, account, {
-          allowFirstPerson: message.fromAccountId === account.accountId,
-        })) continue;
-        if (!isRecentCloudAgentMention(message.createdAt)) continue;
+        if (!shouldRunLocalCloudAgentForCloudMessage({ account, peerId, message, peerMessages: messages })) continue;
         if (processedCloudAgentMentionIdsRef.current.has(message.messageId)) continue;
-        const alreadyAnswered = messages.some((candidate) => (
-          candidate.fromAccountId === account.accountId
-          && parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
-        ));
-        if (alreadyAnswered) {
-          processedCloudAgentMentionIdsRef.current.add(message.messageId);
-          continue;
-        }
 
         processedCloudAgentMentionIdsRef.current.add(message.messageId);
         void (async () => {

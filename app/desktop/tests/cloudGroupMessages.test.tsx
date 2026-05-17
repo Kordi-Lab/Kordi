@@ -13,6 +13,7 @@ import {
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantFromContact,
+  cloudGroupParticipantsWithProfiles,
   cloudGroupRelatedControlsForSend,
   cloudGroupTargetAccountIds,
   cloudGroupTitleForOutgoingControl,
@@ -702,6 +703,17 @@ test('cloud group helpers split cloud recipients from bridge recipients', () => 
 
   assert.deepEqual(cloudGroupTargetAccountIds(targets), ['acct_b']);
   assert.deepEqual(nonCloudGroupTargets(targets), [{ hostId: 'local-bridge', nodeId: 'node_c' }]);
+});
+
+test('cloud group profile hydration preserves large stored signup avatar images', () => {
+  const avatarUrl = `data:image/png;base64,${'a'.repeat(100_000)}`;
+  const participants = cloudGroupParticipantsWithProfiles(
+    [{ accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' }],
+    [{ accountId: 'acct_peer', displayName: 'Korditest', avatarUrl }],
+  );
+
+  assert.equal(participants[0]?.displayName, 'Korditest');
+  assert.equal(participants[0]?.avatarUrl, avatarUrl);
 });
 
 test('cloud group self identity uses the stable cloud account id and uploaded avatar image', () => {

@@ -119,10 +119,15 @@ test('cloud diff sync applies task and artifact upsert events', () => {
 test('cloud sync cursor storage is per account', () => {
   const storage = memoryStorage();
   saveCloudSyncCursor('acct_me', '42', storage);
+  saveCloudSyncCursor('acct_other', '7', storage);
 
   assert.equal(cloudSyncCursorStorageKey('acct_me'), 'kordi.cloud.syncCursor.v1:acct_me');
+  assert.equal(cloudSyncCursorStorageKey('acct_other'), 'kordi.cloud.syncCursor.v1:acct_other');
   assert.equal(loadCloudSyncCursor('acct_me', storage), '42');
-  assert.equal(loadCloudSyncCursor('acct_other', storage), '0');
+  assert.equal(loadCloudSyncCursor('acct_other', storage), '7');
+  saveCloudSyncCursor('acct_me', '84', storage);
+  assert.equal(loadCloudSyncCursor('acct_me', storage), '84');
+  assert.equal(loadCloudSyncCursor('acct_other', storage), '7');
 });
 
 test('syncCloudDiffOnce advances cursor only after applying events', async () => {

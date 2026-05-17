@@ -149,3 +149,15 @@ test('IdentityAvatar with a real image avoids rendering the generated pixel avat
   assert.match(markup, /src="https:\/\/images\.test\/peer\.png"/);
   assert.doesNotMatch(markup, /<svg/);
 });
+
+test('IdentityAvatar falls back to the signup-style initials avatar when a human image is missing', () => {
+  const markup = renderToStaticMarkup(createElement(IdentityAvatar, {
+    kind: 'human',
+    seed: 'acct_peer',
+    name: 'Peer User',
+  }));
+
+  assert.match(markup, />PE<\/span>/);
+  assert.match(markup, /linear-gradient\(135deg,/);
+  assert.doesNotMatch(markup, /<svg/);
+});
