@@ -117,21 +117,32 @@ function cloudMessageAttachments(value: unknown): CloudMessageAttachment[] {
   return value.map(cloudMessageAttachmentFromRecord).filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
 }
 
-function syncableCloudGroupAvatarUrl(value?: string | null): string | null {
+function cloudAvatarUrlForLimit(value: string | null | undefined, maxDataUrlLength: number): string | null {
   const url = cleanText(value);
-  if (!url || url.length > 4096) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  if (/^data:image\/(?:png|jpeg|webp);base64,/i.test(url)) return url;
-  return null;
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url.length <= 4096 ? url : null;
+  if (!/^data:image\/(?:png|jpeg|webp);base64,/i.test(url)) return null;
+  return url.length <= maxDataUrlLength ? url : null;
 }
 
-function uniqueByAccount(participants: CloudGroupParticipant[]) {
+function syncableCloudGroupAvatarUrl(value?: string | null): string | null {
+  return cloudAvatarUrlForLimit(value, 4096);
+}
+
+function storedCloudProfileAvatarUrl(value?: string | null): string | null {
+  return cloudAvatarUrlForLimit(value, 256 * 1024);
+}
+
+function uniqueByAccount(
+  participants: CloudGroupParticipant[],
+  avatarUrlForParticipant: (value?: string | null) => string | null = syncableCloudGroupAvatarUrl,
+) {
   const byAccountId = new Map<string, CloudGroupParticipant>();
   for (const participant of participants) {
     const accountId = cloudAccountIdOrNull(participant.accountId) ?? '';
     const displayName = cleanText(participant.displayName) || accountId;
     if (!accountId) continue;
-    const avatarUrl = syncableCloudGroupAvatarUrl(participant.avatarUrl);
+    const avatarUrl = avatarUrlForParticipant(participant.avatarUrl);
     const existing = byAccountId.get(accountId);
     if (existing) {
       byAccountId.set(accountId, {
@@ -167,9 +178,9 @@ export function cloudGroupParticipantsWithProfiles(
     return {
       ...participant,
       displayName: cleanText(profile.displayName) || participant.displayName,
-      avatarUrl: cleanText(profile.avatarUrl) || participant.avatarUrl,
+      avatarUrl: storedCloudProfileAvatarUrl(profile.avatarUrl) || participant.avatarUrl,
     };
-  }));
+  }), storedCloudProfileAvatarUrl);
 }
 
 export type CloudGroupRelatedControl = {
