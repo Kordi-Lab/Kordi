@@ -212,6 +212,11 @@ export type CloudSessionActivity = {
   artifacts: CloudArtifactActivity[];
 };
 
+export type CloudSessionVisibility = {
+  hiddenSessionIds: string[];
+  deletedSessionIds: string[];
+};
+
 export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
   participantAccountIds: string[];
   clientUpdatedAt?: string | null;
@@ -620,6 +625,54 @@ export class CloudAuthClient {
         body: JSON.stringify({ peerAccountId }),
       },
       'Could not mark messages read.',
+    );
+  }
+
+  async listSessionVisibility(token: string): Promise<CloudSessionVisibility> {
+    const response = await this.send<CloudSessionVisibility>(
+      '/v1/cloud/sessions/visibility',
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load hidden cloud chats.',
+    );
+    return {
+      hiddenSessionIds: response?.hiddenSessionIds ?? [],
+      deletedSessionIds: response?.deletedSessionIds ?? [],
+    };
+  }
+
+  async hideCloudSession(token: string, sessionId: string): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/hidden`,
+      {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not hide cloud chat.',
+    );
+  }
+
+  async unhideCloudSession(token: string, sessionId: string): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/hidden`,
+      {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not unhide cloud chat.',
+    );
+  }
+
+  async deleteCloudSession(token: string, sessionId: string): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}`,
+      {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not remove cloud chat.',
     );
   }
 

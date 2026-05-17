@@ -61,7 +61,9 @@ const peer = cloudContactToContact({
 test('cloud bridge state does not replay stale localStorage messages before server sync settles', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /const visibleMessagesByPeer = initialMessagesSettled \? messagesByPeer : \{\};/);
+  assert.match(source, /if \(!initialMessagesSettled\) return \{\};[\s\S]*removeCloudSessionMessages\(account\.accountId, next, sessionId\)/);
+  assert.match(source, /loadCloudSessionVisibility\(account\?\.accountId\)/);
+  assert.match(source, /if \(!account \|\| messagesCacheAccountRef\.current !== account\.accountId\) return;[\s\S]*saveCloudSessionVisibility/);
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
   assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*cloudGroupControlMessagesForAccount/);
 });

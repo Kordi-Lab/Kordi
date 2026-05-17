@@ -98,7 +98,7 @@ import {
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
-import { syncCloudDiffOnce } from './cloudDiffSync';
+import { loadCloudSessionVisibility, removeCloudSessionMessages, saveCloudSessionVisibility, syncCloudDiffOnce } from './cloudDiffSync';
 import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
   cloneCloudSessionActivityForFork,
@@ -724,6 +724,14 @@ export function cloudSessionForksByIdEqual(
     ) {
       return false;
     }
+  }
+  return true;
+}
+
+function setsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) return false;
+  for (const value of left) {
+    if (!right.has(value)) return false;
   }
   return true;
 }
@@ -1369,6 +1377,9 @@ export type UseCloudBridgeStateResult = {
   sendCloudBridgeMessage(conversationId: string, text: string, attachments?: AttachmentItem[]): Promise<void>;
   sendCloudGroupControl(input: SendCloudGroupControlInput): Promise<void>;
   recordCloudSessionFork(input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }): Promise<void>;
+  hideCloudSession(sessionId: string): Promise<void>;
+  unhideCloudSession(sessionId: string): Promise<void>;
+  deleteCloudSession(sessionId: string): Promise<void>;
   cancelCloudBridgeAgentRequest(conversationId: string, requestId: string): Promise<void>;
   refreshCloudBridgeMessages(): Promise<void>;
   cloudSessionActivity: CloudSessionActivityStore;
@@ -1379,6 +1390,8 @@ export type UseCloudBridgeStateResult = {
   initialContactsSettled: boolean;
   initialMessagesSettled: boolean;
   cachedMessagesReady: boolean;
+  cloudHiddenSessionIds: Set<string>;
+  cloudDeletedSessionIds: Set<string>;
   cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
 };
 
@@ -1429,9 +1442,13 @@ export function useCloudBridgeState({
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>(() => loadCachedCloudMessagesByPeer(account?.accountId));
   const [cloudSessionActivity, setCloudSessionActivity] = useState<CloudSessionActivityStore>(() => loadCachedCloudSessionActivity(account?.accountId));
   const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
+  const [cloudHiddenSessionIds, setCloudHiddenSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).hiddenSessionIds);
+  const [cloudDeletedSessionIds, setCloudDeletedSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).deletedSessionIds);
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
   const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
   const cloudSessionForksByIdRef = useRef<Record<string, CloudSessionForkSummary>>(cloudSessionForksById);
+  const cloudHiddenSessionIdsRef = useRef<Set<string>>(cloudHiddenSessionIds);
+  const cloudDeletedSessionIdsRef = useRef<Set<string>>(cloudDeletedSessionIds);
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
@@ -1475,6 +1492,22 @@ export function useCloudBridgeState({
   }, [cloudSessionForksById]);
 
   useEffect(() => {
+    cloudHiddenSessionIdsRef.current = cloudHiddenSessionIds;
+  }, [cloudHiddenSessionIds]);
+
+  useEffect(() => {
+    cloudDeletedSessionIdsRef.current = cloudDeletedSessionIds;
+  }, [cloudDeletedSessionIds]);
+
+  useEffect(() => {
+    if (!account || messagesCacheAccountRef.current !== account.accountId) return;
+    saveCloudSessionVisibility(account.accountId, {
+      hiddenSessionIds: cloudHiddenSessionIds,
+      deletedSessionIds: cloudDeletedSessionIds,
+    });
+  }, [account, cloudDeletedSessionIds, cloudHiddenSessionIds]);
+
+  useEffect(() => {
     setMessagesByPeer((current) => {
       if (!account) {
         messagesCacheAccountRef.current = null;
@@ -1485,7 +1518,37 @@ export function useCloudBridgeState({
       return cloudMessagesByPeerEqual(current, cached) ? current : cached;
     });
     setCloudSessionActivity(account ? loadCachedCloudSessionActivity(account.accountId) : EMPTY_CLOUD_SESSION_ACTIVITY);
+    const visibility = loadCloudSessionVisibility(account?.accountId);
+    setCloudHiddenSessionIds(visibility.hiddenSessionIds);
+    setCloudDeletedSessionIds(visibility.deletedSessionIds);
   }, [account?.accountId]);
+
+  useEffect(() => {
+    if (!account) return;
+    let cancelled = false;
+    void loadSession()
+      .then(async (session) => {
+        if (!session?.token) return null;
+        return client.listSessionVisibility(session.token);
+      })
+      .then((visibility) => {
+        if (cancelled || !visibility) return;
+        const nextVisibility = {
+          hiddenSessionIds: new Set(visibility.hiddenSessionIds.map(cleanText).filter(Boolean)),
+          deletedSessionIds: new Set(visibility.deletedSessionIds.map(cleanText).filter(Boolean)),
+        };
+        saveCloudSessionVisibility(account.accountId, nextVisibility);
+        setCloudHiddenSessionIds(nextVisibility.hiddenSessionIds);
+        setCloudDeletedSessionIds(nextVisibility.deletedSessionIds);
+      })
+      .catch(() => {
+        // A visibility refresh failure should not block the existing message
+        // bootstrap; the next diff/full refresh can recover.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, client]);
 
   useEffect(() => {
     canonicalSessionStateRef.current = canonicalSessionState ?? null;
@@ -1664,6 +1727,8 @@ export function useCloudBridgeState({
       let messagesByPeer = messagesByPeerRef.current;
       let sessionActivity = cloudSessionActivityRef.current;
       let sessionForksById = cloudSessionForksByIdRef.current;
+      let hiddenSessionIds = cloudHiddenSessionIdsRef.current;
+      let deletedSessionIds = cloudDeletedSessionIdsRef.current;
       let fallbackRequired = false;
       for (let pass = 0; pass < 20; pass += 1) {
         const result = await syncCloudDiffOnce({
@@ -1671,6 +1736,8 @@ export function useCloudBridgeState({
           messagesByPeer,
           sessionActivity,
           sessionForksById,
+          hiddenSessionIds,
+          deletedSessionIds,
           fetchEvents: (cursor) => client.syncCloudEvents(session.token, cursor, 500),
         });
         if (result.fallbackRequired) {
@@ -1680,6 +1747,8 @@ export function useCloudBridgeState({
         messagesByPeer = result.messagesByPeer;
         sessionActivity = result.sessionActivity;
         sessionForksById = result.sessionForksById;
+        hiddenSessionIds = result.hiddenSessionIds;
+        deletedSessionIds = result.deletedSessionIds;
         if (!result.hasMore) break;
       }
       if (cancelledRef.current) return false;
@@ -1695,6 +1764,8 @@ export function useCloudBridgeState({
       setCloudSessionForksById((current) => (
         cloudSessionForksByIdEqual(current, sessionForksById) ? current : sessionForksById
       ));
+      setCloudHiddenSessionIds((current) => setsEqual(current, hiddenSessionIds) ? current : new Set(hiddenSessionIds));
+      setCloudDeletedSessionIds((current) => setsEqual(current, deletedSessionIds) ? current : new Set(deletedSessionIds));
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
@@ -2991,16 +3062,25 @@ export function useCloudBridgeState({
       .filter((session) => session.kind === 'self-agent');
     const cloudSessionTitlesById = Object.fromEntries(canonicalSelfAgentSessions
       .map((session) => [session.id, session.title]));
-    const hiddenCloudSessionIds = new Set(canonicalSelfAgentSessions
-      .map((session) => session.id.trim())
-      .filter(Boolean));
+    const hiddenCloudSessionIds = new Set([
+      ...canonicalSelfAgentSessions.map((session) => session.id.trim()).filter(Boolean),
+      ...cloudHiddenSessionIds,
+      ...cloudDeletedSessionIds,
+    ]);
     const canonicalSelfAgentSessionIds = new Set(canonicalSelfAgentSessions.map((session) => session.id));
     const suppressUnscopedSelfAgentConversation = (canonicalSessionState?.messages ?? []).some((message) => (
       canonicalSelfAgentSessionIds.has(message.sessionId)
       && message.sourceTransport !== 'canonical-fork-snapshot'
       && message.sourceTransport !== 'cloud-group-fork-snapshot'
     ));
-    const visibleMessagesByPeer = initialMessagesSettled ? messagesByPeer : {};
+    const visibleMessagesByPeer = (() => {
+      if (!initialMessagesSettled) return {};
+      let next = messagesByPeer;
+      for (const sessionId of hiddenCloudSessionIds) {
+        next = removeCloudSessionMessages(account.accountId, next, sessionId);
+      }
+      return next;
+    })();
     const generated = buildCloudDesktopBridgeState({
       account,
       contacts: cloudBridgeContacts,
@@ -3022,6 +3102,8 @@ export function useCloudBridgeState({
     canonicalSessionState,
     cloudBridgeOverride,
     cloudBridgeContacts,
+    cloudDeletedSessionIds,
+    cloudHiddenSessionIds,
     localAgentTurnsByRequestId,
     initialMessagesSettled,
     messagesByPeer,
@@ -3202,6 +3284,47 @@ export function useCloudBridgeState({
     void refreshCloudSessionActivity(forkSessionId);
   }, [account, client, refreshCloudSessionActivity]);
 
+  const hideCloudSession = useCallback(async (sessionId: string) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!trimmedSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.hideCloudSession(session.token, trimmedSessionId);
+    setCloudHiddenSessionIds((current) => new Set(current).add(trimmedSessionId));
+  }, [client]);
+
+  const unhideCloudSession = useCallback(async (sessionId: string) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!trimmedSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.unhideCloudSession(session.token, trimmedSessionId);
+    setCloudHiddenSessionIds((current) => {
+      if (!current.has(trimmedSessionId)) return current;
+      const next = new Set(current);
+      next.delete(trimmedSessionId);
+      return next;
+    });
+  }, [client]);
+
+  const deleteCloudSession = useCallback(async (sessionId: string) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!trimmedSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.deleteCloudSession(session.token, trimmedSessionId);
+    setCloudHiddenSessionIds((current) => {
+      if (!current.has(trimmedSessionId)) return current;
+      const next = new Set(current);
+      next.delete(trimmedSessionId);
+      return next;
+    });
+    setCloudDeletedSessionIds((current) => new Set(current).add(trimmedSessionId));
+    if (account) {
+      setMessagesByPeer((current) => removeCloudSessionMessages(account.accountId, current, trimmedSessionId));
+    }
+  }, [account, client]);
+
   const cancelCloudBridgeAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
     const trimmedRequestId = requestId.trim();
     if (!trimmedRequestId) throw new Error('Unable to resolve cloud agent request.');
@@ -3289,6 +3412,9 @@ export function useCloudBridgeState({
     sendCloudBridgeMessage,
     sendCloudGroupControl,
     recordCloudSessionFork,
+    hideCloudSession,
+    unhideCloudSession,
+    deleteCloudSession,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
     cloudSessionActivity,
@@ -3299,6 +3425,8 @@ export function useCloudBridgeState({
     initialContactsSettled: contacts.initialLoadSettled,
     initialMessagesSettled,
     cachedMessagesReady: Object.values(messagesByPeer).some((messages) => messages.length > 0),
+    cloudHiddenSessionIds,
+    cloudDeletedSessionIds,
     cloudSelfAgentSyncStatusBySessionId: visibleCloudSelfAgentSyncStatusBySessionId,
   };
 }

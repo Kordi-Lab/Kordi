@@ -151,9 +151,6 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         onAddChatGroupMembers={args.handleAddChatGroupMembers}
         onRemoveChatGroupMember={args.handleRemoveChatGroupMember}
         onSetChatGroupAdmin={args.handleSetChatGroupAdmin}
-        onArchiveChatSession={(sessionId) => {
-          void args.handleArchiveChatSession(sessionId);
-        }}
         onDeleteChatSession={(sessionId) => {
           void args.handleDeleteChatSession(sessionId);
         }}

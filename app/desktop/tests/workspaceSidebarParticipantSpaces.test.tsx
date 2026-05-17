@@ -172,7 +172,6 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onAddChatGroupMembers: () => {},
     onRemoveChatGroupMember: () => {},
     onSetChatGroupAdmin: () => {},
-    onArchiveChatSession: () => {},
     onDeleteChatSession: () => {},
     onMoveChatSessionToProject: () => {},
     onCreateProjectFromFolder: () => {},
@@ -787,7 +786,7 @@ test('participant-space child session rows use hashtag titles and show stable se
   assert.equal(participantSpaceSessionIdLabel({ id: 'session:group:child', canonicalSessionId: 'session:group:root' }), 'Session ID: session:group:child');
 });
 
-test('participant-space direct sessions expose archive and delete context menu targets', () => {
+test('participant-space direct sessions expose remove-chat context menu targets', () => {
   const target = sessionContextMenuTargetForConversation(conversation({
     id: 'session:bridge:humans:shu',
     canonicalSessionId: 'session:bridge:humans:shu',

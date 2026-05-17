@@ -6,8 +6,11 @@ import {
   applyCloudSyncEventsToMessagesByPeer,
   applyCloudSyncEventsToSessionActivity,
   applyCloudSyncEventsToSessionForks,
+  cloudSessionVisibilityStorageKey,
   cloudSyncCursorStorageKey,
+  loadCloudSessionVisibility,
   loadCloudSyncCursor,
+  saveCloudSessionVisibility,
   saveCloudSyncCursor,
   syncCloudDiffOnce,
   type CloudSyncEvent,
@@ -50,6 +53,70 @@ test('applyCloudSyncEventsToMessagesByPeer upserts messages idempotently by mess
   const twice = applyCloudSyncEventsToMessagesByPeer('acct_me', once, [event]);
 
   assert.deepEqual(twice, { acct_peer: [incoming] });
+});
+
+test('applyCloudSyncEventsToMessagesByPeer revives a removed session when a new message arrives', () => {
+  const removedMessage: CloudMessage = {
+    ...incoming,
+    messageId: 'msg_removed_update',
+    sessionId: 'session:removed',
+  };
+
+  const result = applyCloudSyncEventsToMessagesByPeer('acct_me', {}, [{
+    eventId: '12',
+    eventType: 'message.upsert',
+    peerAccountId: 'acct_peer',
+    messageId: 'msg_removed_update',
+    payload: { message: removedMessage },
+    occurredAt: '2026-05-13T00:02:00Z',
+  }], new Set(), new Set(['session:removed']));
+
+  assert.deepEqual(result, { acct_peer: [removedMessage] });
+});
+
+test('applyCloudSyncEventsToMessagesByPeer removes cached messages for deleted sessions', () => {
+  const deletedMessage: CloudMessage = {
+    ...incoming,
+    messageId: 'msg_deleted',
+    sessionId: 'session:deleted',
+  };
+
+  const result = applyCloudSyncEventsToMessagesByPeer('acct_me', { acct_peer: [deletedMessage] }, [{
+    eventId: '13',
+    eventType: 'session.deleted',
+    peerAccountId: 'session:deleted',
+    messageId: null,
+    payload: { sessionId: 'session:deleted', deletedAt: '2026-05-13T00:03:00Z' },
+    occurredAt: '2026-05-13T00:03:00Z',
+  }], new Set(), new Set());
+
+  assert.deepEqual(result, {});
+});
+
+test('applyCloudSyncEventsToMessagesByPeer shows updates that arrive after a remove event in the same sync batch', () => {
+  const updatedMessage: CloudMessage = {
+    ...incoming,
+    messageId: 'msg_batch_update',
+    sessionId: 'session:batch-removed',
+  };
+
+  const result = applyCloudSyncEventsToMessagesByPeer('acct_me', {}, [{
+    eventId: '14',
+    eventType: 'session.deleted',
+    peerAccountId: 'session:batch-removed',
+    messageId: null,
+    payload: { sessionId: 'session:batch-removed', deletedAt: '2026-05-13T00:04:00Z' },
+    occurredAt: '2026-05-13T00:04:00Z',
+  }, {
+    eventId: '15',
+    eventType: 'message.upsert',
+    peerAccountId: 'acct_peer',
+    messageId: 'msg_batch_update',
+    payload: { message: updatedMessage },
+    occurredAt: '2026-05-13T00:04:01Z',
+  }], new Set(), new Set());
+
+  assert.deepEqual(result, { acct_peer: [updatedMessage] });
 });
 
 test('applyCloudSyncEventsToMessagesByPeer applies read receipts to cached messages', () => {
@@ -116,6 +183,23 @@ test('cloud diff sync applies task and artifact upsert events', () => {
   assert.equal(next.artifactsBySessionId['session:group:1']?.[0]?.artifactId, 'docs/a.md');
 });
 
+test('cloud session visibility storage is per account and restores removed sessions synchronously', () => {
+  const storage = memoryStorage();
+  saveCloudSessionVisibility('acct_me', {
+    hiddenSessionIds: new Set(['session:hidden']),
+    deletedSessionIds: new Set(['session:removed']),
+  }, storage);
+  saveCloudSessionVisibility('acct_other', {
+    hiddenSessionIds: new Set(),
+    deletedSessionIds: new Set(['session:other']),
+  }, storage);
+
+  assert.equal(cloudSessionVisibilityStorageKey('acct_me'), 'kordi.cloud.sessionVisibility.v1:acct_me');
+  assert.deepEqual([...loadCloudSessionVisibility('acct_me', storage).hiddenSessionIds], ['session:hidden']);
+  assert.deepEqual([...loadCloudSessionVisibility('acct_me', storage).deletedSessionIds], ['session:removed']);
+  assert.deepEqual([...loadCloudSessionVisibility('acct_other', storage).deletedSessionIds], ['session:other']);
+});
+
 test('cloud sync cursor storage is per account', () => {
   const storage = memoryStorage();
   saveCloudSyncCursor('acct_me', '42', storage);
@@ -128,6 +212,69 @@ test('cloud sync cursor storage is per account', () => {
   saveCloudSyncCursor('acct_me', '84', storage);
   assert.equal(loadCloudSyncCursor('acct_me', storage), '84');
   assert.equal(loadCloudSyncCursor('acct_other', storage), '7');
+});
+
+test('syncCloudDiffOnce returns updated hidden and deleted visibility sets', async () => {
+  const storage = memoryStorage();
+  const result = await syncCloudDiffOnce({
+    accountId: 'acct_me',
+    cursorStorage: storage,
+    messagesByPeer: {},
+    fetchEvents: async () => ({
+      cursor: '12',
+      hasMore: false,
+      events: [{
+        eventId: '11',
+        eventType: 'session.hidden',
+        peerAccountId: 'session:hidden',
+        messageId: null,
+        payload: { sessionId: 'session:hidden', hiddenAt: '2026-05-13T00:04:00Z' },
+        occurredAt: '2026-05-13T00:04:00Z',
+      }, {
+        eventId: '12',
+        eventType: 'session.deleted',
+        peerAccountId: 'session:deleted',
+        messageId: null,
+        payload: { sessionId: 'session:deleted', deletedAt: '2026-05-13T00:05:00Z' },
+        occurredAt: '2026-05-13T00:05:00Z',
+      }],
+    }),
+  });
+
+  assert.equal(loadCloudSyncCursor('acct_me', storage), '12');
+  assert.deepEqual([...result.hiddenSessionIds], ['session:hidden']);
+  assert.deepEqual([...result.deletedSessionIds], ['session:deleted']);
+});
+
+test('syncCloudDiffOnce clears removed visibility when a later message update arrives', async () => {
+  const storage = memoryStorage();
+  const updatedMessage: CloudMessage = {
+    ...incoming,
+    messageId: 'msg_removed_later',
+    sessionId: 'session:removed-later',
+  };
+
+  const result = await syncCloudDiffOnce({
+    accountId: 'acct_me',
+    cursorStorage: storage,
+    messagesByPeer: {},
+    deletedSessionIds: new Set(['session:removed-later']),
+    fetchEvents: async () => ({
+      cursor: '13',
+      hasMore: false,
+      events: [{
+        eventId: '13',
+        eventType: 'message.upsert',
+        peerAccountId: 'acct_peer',
+        messageId: 'msg_removed_later',
+        payload: { message: updatedMessage },
+        occurredAt: '2026-05-13T00:06:00Z',
+      }],
+    }),
+  });
+
+  assert.deepEqual(result.messagesByPeer, { acct_peer: [updatedMessage] });
+  assert.deepEqual([...result.deletedSessionIds], []);
 });
 
 test('syncCloudDiffOnce advances cursor only after applying events', async () => {

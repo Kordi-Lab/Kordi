@@ -17,6 +17,12 @@ export function normalizeMentionSearch(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+export function shouldUseCloudSessionAction(edition: 'local' | 'cloud', sessionId: string) {
+  if (edition !== 'cloud') return false;
+  const trimmed = sessionId.trim();
+  return trimmed.startsWith('session:') || trimmed.startsWith('bridge:cloud:');
+}
+
 export function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
   const id = identityId?.trim();
   if (!state || !id) return null;

@@ -209,8 +209,7 @@ type WorkspaceSidebarProps = {
   onAddChatGroupMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
   onRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
   onSetChatGroupAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
-  onArchiveChatSession: (sessionId: string) => void;
-  onDeleteChatSession: (sessionId: string) => void;
+  onDeleteChatSession: (sessionId: string) => void | Promise<void>;
   onMoveChatSessionToProject: (sessionId: string, projectRoot: string) => void;
   onCreateProjectFromFolder: (folderPath: string, name?: string) => Promise<void> | void;
   onCreateProject: (name: string, parentDir?: string) => Promise<void> | void;
@@ -502,7 +501,6 @@ export function WorkspaceSidebar({
   onAddChatGroupMembers,
   onRemoveChatGroupMember,
   onSetChatGroupAdmin,
-  onArchiveChatSession,
   onDeleteChatSession,
   onMoveChatSessionToProject,
   onCreateProjectFromFolder,
@@ -1877,7 +1875,6 @@ export function WorkspaceSidebar({
           onClose={() => setSessionContextMenu(null)}
           onRename={setRenameSessionTarget}
           onMove={setMoveSessionTarget}
-          onArchive={onArchiveChatSession}
           onDelete={setRemoveSessionTarget}
         />
       ) : null}
