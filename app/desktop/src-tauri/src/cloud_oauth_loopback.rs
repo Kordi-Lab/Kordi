@@ -178,16 +178,16 @@ fn completion_page_html(request_id: &str) -> String {
   <div class="page" aria-hidden="false">
     <div class="page-grain" aria-hidden="true"></div>
     <main class="card" role="status" aria-live="polite">
-      <div class="auth-label">KORDI AUTHENTICATION</div>
+      <div class="auth-label">KORDI LOGIN</div>
 
       <span class="state-marker" data-status-loading aria-hidden="true"></span>
       <span class="state-marker" data-status-success aria-hidden="true"></span>
       <span class="state-marker" data-status-error aria-hidden="true"></span>
 
       <div class="copy">
-        <h1 class="title" data-title-loading>Completing Authentication</h1>
-        <h1 class="title" data-title-success>Authentication Successful</h1>
-        <h1 class="title" data-title-error>Authentication Failed</h1>
+        <h1 class="title" data-title-loading>Completing Login</h1>
+        <h1 class="title" data-title-success>Login Successful</h1>
+        <h1 class="title" data-title-error>Login Failed</h1>
 
         <p class="subtitle" data-sub-loading>Finishing the browser handoff with Kordi.</p>
         <p class="subtitle" data-sub-success>You can close this tab and return to Kordi.</p>
@@ -337,7 +337,7 @@ fn completion_page_css() -> &'static str {
       display: none;
       margin: 0;
       color: var(--ink-strong);
-      font-size: clamp(34px, 4vw, 50px);
+      font-size: 40px;
       line-height: 1.04;
       font-weight: 780;
       letter-spacing: -0.055em;
@@ -348,7 +348,7 @@ fn completion_page_css() -> &'static str {
       margin: 0;
       max-width: 26ch;
       color: var(--ink-soft);
-      font-size: clamp(18px, 2vw, 23px);
+      font-size: 22px;
       line-height: 1.55;
       font-weight: 570;
       letter-spacing: -0.018em;
@@ -421,8 +421,8 @@ mod completion_page_tests {
             "page should boot in loading state"
         );
         assert!(
-            html.contains("KORDI AUTHENTICATION"),
-            "page should render the compact authentication label"
+            html.contains("KORDI LOGIN"),
+            "page should render the compact login label"
         );
 
         // All three state blocks must be present so the swap between them is
@@ -450,10 +450,15 @@ mod completion_page_tests {
     fn copy_matches_brand_voice_for_each_state() {
         let html = completion_page_html("cloud_oauth_abc123");
 
-        assert!(html.contains("Completing Authentication"));
-        assert!(html.contains("Authentication Successful"));
-        assert!(html.contains("Authentication Failed"));
+        assert!(html.contains("KORDI LOGIN"));
+        assert!(html.contains("Completing Login"));
+        assert!(html.contains("Login Successful"));
+        assert!(html.contains("Login Failed"));
         assert!(html.contains("You can close this tab and return to Kordi."));
+        assert!(
+            !html.contains("Authentication Successful"),
+            "cloud login callback should say login, not authentication"
+        );
         assert!(
             !html.contains("READY"),
             "status should not use the large repeated pill treatment"
@@ -503,12 +508,20 @@ mod completion_page_tests {
     }
 
     #[test]
-    fn uses_provider_callback_system_font_stack() {
+    fn uses_provider_callback_system_font_stack_and_scale() {
         let html = completion_page_html("cloud_oauth_font");
 
         assert!(
             html.contains("-apple-system, BlinkMacSystemFont"),
             "callback page should use the same system font stack as the provider-style confirmation page"
+        );
+        assert!(
+            html.contains("font-size: 40px;"),
+            "callback title should use the same fixed title size as the provider-style confirmation page"
+        );
+        assert!(
+            html.contains("font-size: 22px;"),
+            "callback subtitle should use the same fixed subtitle size as the provider-style confirmation page"
         );
         assert!(
             !html.contains("Avenir Next"),
