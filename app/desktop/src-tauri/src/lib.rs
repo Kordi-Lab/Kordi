@@ -3,6 +3,7 @@ mod auth;
 mod bridge;
 mod canonical_sessions;
 mod chat;
+mod cloud_account_paths;
 mod cloud_oauth_loopback;
 mod cloud_session;
 mod project;
@@ -31,6 +32,21 @@ fn configure_cloud_app_data_dir(app: &tauri::App) {
     // ~/.korde. The Cloud bundle uses a separate identifier, so Tauri's app
     // data dir is isolated from the local build and from old Bridge state.
     unsafe { std::env::set_var("APP_DATA_DIR", app_data_dir) };
+}
+
+fn activate_stored_cloud_account_data_dir() {
+    if current_kordi_edition() != "cloud" {
+        return;
+    }
+    match cloud_session::cloud_session_load() {
+        Ok(Some(session)) => {
+            if let Err(err) = cloud_account_paths::cloud_account_storage_activate(session.account_id) {
+                eprintln!("[kordi] Unable to activate Cloud account storage: {err}");
+            }
+        }
+        Ok(None) => {}
+        Err(err) => eprintln!("[kordi] Unable to load Cloud session during storage setup: {err}"),
+    }
 }
 
 use auth::DesktopAuthManager;
@@ -89,6 +105,7 @@ pub fn run() {
         .manage(DesktopChatManager::default())
         .setup(|app| {
             configure_cloud_app_data_dir(app);
+            activate_stored_cloud_account_data_dir();
             let window = app
                 .get_webview_window("main")
                 .expect("main window should exist");
@@ -215,6 +232,9 @@ pub fn run() {
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
             chat::desktop_chat_turn_state,
+            cloud_account_paths::cloud_account_storage_activate,
+            cloud_account_paths::cloud_account_storage_current,
+            cloud_account_paths::cloud_account_storage_root,
             cloud_oauth_loopback::cloud_oauth_loopback_prepare,
             cloud_oauth_loopback::cloud_oauth_loopback_wait,
             cloud_session::cloud_session_store,

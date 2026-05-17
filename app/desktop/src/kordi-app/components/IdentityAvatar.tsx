@@ -1,6 +1,11 @@
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 
 import { Avatar } from '@/components/ui/avatar';
+import {
+  cloudSignupAvatarBackground,
+  cloudSignupAvatarInitials,
+  cloudSignupAvatarPalette,
+} from '@/features/cloud/signupAvatar';
 import { cn } from '@/lib/utils';
 import { useAvatarOverride } from './avatarOverrides';
 
@@ -15,12 +20,6 @@ export type IdentityAvatarProps = {
   className?: string;
   generatedClassName?: string;
 };
-
-const HUMAN_BACKGROUNDS = ['#f97316', '#14b8a6', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f59e0b', '#6366f1'];
-const HUMAN_ACCENTS = ['#fff7ed', '#ecfeff', '#f5f3ff', '#fdf2f8', '#f0fdf4', '#eff6ff'];
-const SKIN_TONES = ['#ffd7a8', '#f1b985', '#c98254', '#8f563b', '#5f3426', '#f6c29f'];
-const HAIR_COLORS = ['#20140f', '#3b2418', '#71411f', '#b76e32', '#f4d06f', '#1f2937', '#7c2d12'];
-const SHIRT_COLORS = ['#0f766e', '#1d4ed8', '#be123c', '#7c3aed', '#15803d', '#c2410c', '#334155'];
 
 const AGENT_IDENTICON_PALETTES = [
   { background: '#f6f8fa', foreground: '#0969da', accent: '#2da44e' },
@@ -157,22 +156,6 @@ function pick<T>(random: () => number, values: T[]) {
   return values[Math.floor(random() * values.length) % values.length];
 }
 
-function humanAvatarParts(seed: string) {
-  const random = createRandom(`human:${seed}`);
-  return {
-    background: pick(random, HUMAN_BACKGROUNDS),
-    accent: pick(random, HUMAN_ACCENTS),
-    skin: pick(random, SKIN_TONES),
-    hair: pick(random, HAIR_COLORS),
-    shirt: pick(random, SHIRT_COLORS),
-    hairStyle: Math.floor(random() * 10),
-    mouthStyle: Math.floor(random() * 4),
-    accessory: Math.floor(random() * 5),
-    softFeature: random() > 0.48,
-    cheek: random() > 0.42,
-  };
-}
-
 function agentIdenticonParts(seed: string) {
   const random = createRandom(`agent-identicon:${seed}`);
   const palette = pick(random, AGENT_IDENTICON_PALETTES);
@@ -209,116 +192,16 @@ function agentIdenticonParts(seed: string) {
   };
 }
 
-function PixelHumanAvatar({ seed, className }: { seed: string; className?: string }) {
-  const parts = humanAvatarParts(seed);
-  const hairCap = parts.hairStyle === 0;
-  const sidePart = parts.hairStyle === 1;
-  const bangs = parts.hairStyle === 2;
-  const cropped = parts.hairStyle === 3;
-  const straightFringe = parts.hairStyle === 4;
-  const longBob = parts.hairStyle === 5;
-  const longSidePart = parts.hairStyle === 6;
-  const twinBuns = parts.hairStyle === 7;
-  const ponytail = parts.hairStyle === 8;
-  const curlyLong = parts.hairStyle === 9;
-  const softStyling = parts.softFeature || longBob || longSidePart || twinBuns || ponytail || curlyLong;
-
+function HumanInitialsAvatar({ label, className }: { label: string; className?: string }) {
+  const palette = cloudSignupAvatarPalette(label);
   return (
-    <svg className={className} viewBox="0 0 64 64" role="img" aria-hidden="true" shapeRendering="crispEdges">
-      <rect width="64" height="64" fill={parts.background} />
-      <rect x="4" y="6" width="10" height="10" fill={parts.accent} opacity="0.28" />
-      <rect x="50" y="9" width="6" height="6" fill={parts.accent} opacity="0.34" />
-      <rect x="7" y="48" width="7" height="7" fill="#020617" opacity="0.14" />
-      <rect x="48" y="46" width="10" height="10" fill="#020617" opacity="0.12" />
-
-      {longBob || longSidePart || curlyLong ? <rect x="13" y="21" width="9" height="29" fill={parts.hair} /> : null}
-      {longBob || longSidePart || curlyLong ? <rect x="42" y="21" width="9" height="29" fill={parts.hair} /> : null}
-      {longBob ? <rect x="16" y="43" width="32" height="8" fill={parts.hair} /> : null}
-      {longSidePart ? <rect x="11" y="25" width="7" height="24" fill={parts.hair} /> : null}
-      {ponytail ? <rect x="43" y="22" width="8" height="24" fill={parts.hair} /> : null}
-      {ponytail ? <rect x="49" y="28" width="5" height="14" fill={parts.hair} /> : null}
-      {twinBuns ? <rect x="10" y="18" width="9" height="9" fill={parts.hair} /> : null}
-      {twinBuns ? <rect x="45" y="18" width="9" height="9" fill={parts.hair} /> : null}
-      {curlyLong ? <rect x="11" y="28" width="5" height="5" fill={parts.hair} /> : null}
-      {curlyLong ? <rect x="48" y="28" width="5" height="5" fill={parts.hair} /> : null}
-      {curlyLong ? <rect x="12" y="38" width="5" height="5" fill={parts.hair} /> : null}
-      {curlyLong ? <rect x="47" y="38" width="5" height="5" fill={parts.hair} /> : null}
-
-      <rect x="18" y="48" width="28" height="7" fill={parts.skin} />
-      <rect x="13" y="53" width="38" height="11" fill={parts.shirt} />
-      <rect x="27" y="53" width="4" height="5" fill={parts.accent} opacity="0.78" />
-      <rect x="33" y="53" width="4" height="5" fill={parts.accent} opacity="0.78" />
-
-      <rect x="14" y="27" width="5" height="11" fill={parts.skin} />
-      <rect x="45" y="27" width="5" height="11" fill={parts.skin} />
-      <rect x="18" y="18" width="28" height="29" fill={parts.skin} />
-      <rect x="19" y="43" width="26" height="4" fill="#000" opacity="0.08" />
-
-      {hairCap ? <rect x="17" y="15" width="30" height="10" fill={parts.hair} /> : null}
-      {hairCap ? <rect x="16" y="22" width="7" height="12" fill={parts.hair} /> : null}
-      {hairCap ? <rect x="41" y="22" width="7" height="9" fill={parts.hair} /> : null}
-
-      {sidePart ? <rect x="16" y="16" width="31" height="7" fill={parts.hair} /> : null}
-      {sidePart ? <rect x="16" y="23" width="13" height="6" fill={parts.hair} /> : null}
-      {sidePart ? <rect x="16" y="29" width="6" height="11" fill={parts.hair} /> : null}
-
-      {bangs ? <rect x="18" y="15" width="28" height="8" fill={parts.hair} /> : null}
-      {bangs ? <rect x="20" y="23" width="6" height="6" fill={parts.hair} /> : null}
-      {bangs ? <rect x="29" y="23" width="6" height="5" fill={parts.hair} /> : null}
-      {bangs ? <rect x="38" y="23" width="6" height="6" fill={parts.hair} /> : null}
-
-      {cropped ? <rect x="20" y="15" width="24" height="6" fill={parts.hair} /> : null}
-      {cropped ? <rect x="17" y="20" width="30" height="5" fill={parts.hair} /> : null}
-
-      {straightFringe ? <rect x="18" y="16" width="28" height="5" fill={parts.hair} /> : null}
-      {straightFringe ? <rect x="15" y="21" width="7" height="10" fill={parts.hair} /> : null}
-      {straightFringe ? <rect x="42" y="21" width="7" height="10" fill={parts.hair} /> : null}
-
-      {longBob ? <rect x="17" y="15" width="30" height="8" fill={parts.hair} /> : null}
-      {longBob ? <rect x="16" y="23" width="7" height="20" fill={parts.hair} /> : null}
-      {longBob ? <rect x="41" y="23" width="7" height="20" fill={parts.hair} /> : null}
-      {longBob ? <rect x="20" y="23" width="6" height="5" fill={parts.hair} /> : null}
-      {longBob ? <rect x="38" y="23" width="6" height="5" fill={parts.hair} /> : null}
-
-      {longSidePart ? <rect x="16" y="15" width="31" height="8" fill={parts.hair} /> : null}
-      {longSidePart ? <rect x="16" y="23" width="15" height="7" fill={parts.hair} /> : null}
-      {longSidePart ? <rect x="14" y="30" width="8" height="15" fill={parts.hair} /> : null}
-      {longSidePart ? <rect x="42" y="23" width="6" height="19" fill={parts.hair} /> : null}
-
-      {twinBuns ? <rect x="18" y="16" width="28" height="8" fill={parts.hair} /> : null}
-      {twinBuns ? <rect x="16" y="23" width="8" height="9" fill={parts.hair} /> : null}
-      {twinBuns ? <rect x="40" y="23" width="8" height="9" fill={parts.hair} /> : null}
-
-      {ponytail ? <rect x="18" y="15" width="28" height="8" fill={parts.hair} /> : null}
-      {ponytail ? <rect x="37" y="23" width="10" height="9" fill={parts.hair} /> : null}
-      {ponytail ? <rect x="16" y="23" width="8" height="8" fill={parts.hair} /> : null}
-
-      {curlyLong ? <rect x="17" y="15" width="30" height="8" fill={parts.hair} /> : null}
-      {curlyLong ? <rect x="15" y="22" width="8" height="8" fill={parts.hair} /> : null}
-      {curlyLong ? <rect x="41" y="22" width="8" height="8" fill={parts.hair} /> : null}
-      {curlyLong ? <rect x="17" y="30" width="5" height="5" fill={parts.hair} /> : null}
-      {curlyLong ? <rect x="42" y="30" width="5" height="5" fill={parts.hair} /> : null}
-
-      {parts.accessory === 1 ? <rect x="23" y="29" width="18" height="3" fill="#111827" opacity="0.86" /> : null}
-      {parts.accessory === 1 ? <rect x="22" y="31" width="7" height="6" fill="none" stroke="#111827" strokeWidth="2" /> : null}
-      {parts.accessory === 1 ? <rect x="35" y="31" width="7" height="6" fill="none" stroke="#111827" strokeWidth="2" /> : null}
-      {parts.accessory === 4 || softStyling ? <rect x="13" y="36" width="3" height="4" fill={parts.accent} opacity="0.88" /> : null}
-      {parts.accessory === 4 || softStyling ? <rect x="48" y="36" width="3" height="4" fill={parts.accent} opacity="0.88" /> : null}
-
-      {softStyling ? <rect x="23" y="30" width="6" height="2" fill="#111827" opacity="0.86" /> : null}
-      {softStyling ? <rect x="35" y="30" width="6" height="2" fill="#111827" opacity="0.86" /> : null}
-      <rect x="24" y="31" width="4" height="5" fill="#111827" />
-      <rect x="36" y="31" width="4" height="5" fill="#111827" />
-      <rect x="29" y="36" width="6" height="2" fill="#000" opacity="0.12" />
-      {parts.cheek ? <rect x="21" y="38" width="4" height="3" fill="#fb7185" opacity="0.38" /> : null}
-      {parts.cheek ? <rect x="39" y="38" width="4" height="3" fill="#fb7185" opacity="0.38" /> : null}
-      {parts.mouthStyle === 0 ? <rect x="28" y="42" width="8" height="2" fill="#7f1d1d" opacity="0.72" /> : null}
-      {parts.mouthStyle === 1 ? <rect x="27" y="41" width="10" height="2" fill="#7f1d1d" opacity="0.68" /> : null}
-      {parts.mouthStyle === 1 ? <rect x="29" y="43" width="6" height="2" fill="#7f1d1d" opacity="0.68" /> : null}
-      {parts.mouthStyle === 2 ? <rect x="29" y="42" width="6" height="2" fill="#111827" opacity="0.52" /> : null}
-      {parts.mouthStyle === 3 || softStyling ? <rect x="27" y="42" width="10" height="2" fill="#be123c" opacity="0.72" /> : null}
-      {parts.mouthStyle === 3 || softStyling ? <rect x="30" y="44" width="4" height="1" fill="#be123c" opacity="0.62" /> : null}
-    </svg>
+    <span
+      className={cn('grid h-full w-full place-items-center text-[13px] font-bold tracking-[0.03em]', className)}
+      style={{ background: cloudSignupAvatarBackground(palette), color: palette.foreground }}
+      aria-hidden="true"
+    >
+      {cloudSignupAvatarInitials(label)}
+    </span>
   );
 }
 
@@ -359,6 +242,9 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
   const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, avatarKey);
   const localOverride = useAvatarOverride(resolvedAvatarKey);
   const resolvedImageUrl = localOverride ?? imageUrl;
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const displayImageUrl = resolvedImageUrl && failedImageUrl !== resolvedImageUrl ? resolvedImageUrl : null;
+  const fallbackLabel = name?.trim() || normalizedSeed;
   const label = name?.trim() ? `${name} avatar` : `${kind === 'agent' ? 'Agent' : 'Human'} avatar`;
 
   return (
@@ -370,21 +256,21 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
       aria-label={label}
       data-avatar-kind={kind}
     >
-      {resolvedImageUrl ? (
+      {displayImageUrl ? (
         <div className="absolute inset-0 bg-slate-800/60" aria-hidden="true" />
       ) : kind === 'agent' ? (
         <AgentIdenticonAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
       ) : (
-        <PixelHumanAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
+        <HumanInitialsAvatar label={fallbackLabel} className={generatedClassName} />
       )}
-      {resolvedImageUrl ? (
+      {displayImageUrl ? (
         <img
-          src={resolvedImageUrl}
+          src={displayImageUrl}
           alt=""
           className="absolute inset-0 block h-full w-full object-cover"
           draggable={false}
-          onError={(event) => {
-            event.currentTarget.style.display = 'none';
+          onError={() => {
+            setFailedImageUrl(displayImageUrl);
           }}
         />
       ) : null}

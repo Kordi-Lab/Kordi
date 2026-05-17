@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  activateDesktopCloudAccountStorage,
   openDesktopExternalUrl,
   prepareDesktopCloudOAuthLoopback,
   waitForDesktopCloudOAuthLoopback,
+  type DesktopCloudAccountStorageActivation,
 } from '@/lib/desktop';
 
 import {
@@ -12,6 +14,7 @@ import {
   defaultCloudAuthClient,
   parseCloudOAuthHashResult,
   type CloudAccount,
+  type CloudAuthResult,
   type CloudOAuthProvider,
   type CloudProfileUpdateInput,
 } from './authClient';
@@ -51,6 +54,54 @@ export type UseCloudSessionOptions = {
   enabled?: boolean;
 };
 
+type CompleteCloudAuthResultOptions = {
+  result: CloudAuthResult;
+  currentAccountId: string | null;
+  saveSession?: (session: StoredSession) => Promise<void>;
+  activateAccountStorage?: (accountId: string) => Promise<DesktopCloudAccountStorageActivation>;
+  setAuthenticated: (account: CloudAccount) => void;
+  registerDevice: (input: {
+    accountId: string;
+    sessionToken: string;
+    account: CloudAccount;
+  }) => Promise<unknown>;
+  reloadWindow?: () => void;
+};
+
+export async function completeCloudAuthResult({
+  result,
+  currentAccountId,
+  saveSession: persistSession,
+  activateAccountStorage = activateDesktopCloudAccountStorage,
+  setAuthenticated: publishAuthenticated,
+  registerDevice,
+  reloadWindow,
+}: CompleteCloudAuthResultOptions): Promise<boolean> {
+  const session: StoredSession = {
+    token: result.session.token,
+    accountId: result.account.accountId,
+    expiresAt: result.session.expiresAt,
+  };
+  if (persistSession) {
+    await persistSession(session);
+  }
+  const activation = await activateAccountStorage(result.account.accountId);
+  const switchedAuthenticatedAccount = Boolean(
+    activation.storageRoot && currentAccountId && currentAccountId !== result.account.accountId,
+  );
+  if (activation.requiresReload || switchedAuthenticatedAccount) {
+    reloadWindow?.();
+    return false;
+  }
+  publishAuthenticated(result.account);
+  void registerDevice({
+    accountId: result.account.accountId,
+    sessionToken: result.session.token,
+    account: result.account,
+  }).catch(() => {});
+  return true;
+}
+
 export function useCloudSession({
   client,
   enabled = true,
@@ -60,8 +111,10 @@ export function useCloudSession({
   const [account, setAccount] = useState<CloudAccount | null>(null);
   const [error, setError] = useState<CloudAuthError | null>(null);
   const mountedRef = useRef(true);
+  const accountIdRef = useRef<string | null>(null);
 
   const setAuthenticated = useCallback((next: CloudAccount) => {
+    accountIdRef.current = next.accountId;
     if (!mountedRef.current) return;
     setAccount(next);
     setStatus('authenticated');
@@ -69,9 +122,16 @@ export function useCloudSession({
   }, []);
 
   const setSignedOut = useCallback(() => {
+    accountIdRef.current = null;
     if (!mountedRef.current) return;
     setAccount(null);
     setStatus('signed-out');
+  }, []);
+
+  const reloadForAccountStorageSwitch = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
   }, []);
 
   useEffect(() => {
@@ -102,22 +162,21 @@ export function useCloudSession({
       try {
         const oauthResult = typeof window !== 'undefined' ? parseCloudOAuthHashResult(window.location.hash) : null;
         if (oauthResult) {
-          await saveSession({
-            token: oauthResult.session.token,
-            accountId: oauthResult.account.accountId,
-            expiresAt: oauthResult.session.expiresAt,
+          const completed = await completeCloudAuthResult({
+            result: oauthResult,
+            currentAccountId: accountIdRef.current,
+            saveSession,
+            setAuthenticated: (next) => {
+              if (!cancelled && mountedRef.current) setAuthenticated(next);
+            },
+            registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
+            reloadWindow: reloadForAccountStorageSwitch,
           });
           if (typeof window !== 'undefined') {
             const cleanUrl = `${window.location.pathname}${window.location.search}`;
             window.history.replaceState(null, document.title, cleanUrl || '/');
           }
-          if (!cancelled && mountedRef.current) setAuthenticated(oauthResult.account);
-          void ensureCloudDeviceRegistered({
-            accountId: oauthResult.account.accountId,
-            sessionToken: oauthResult.session.token,
-            client: authClient,
-            account: oauthResult.account,
-          }).catch(() => {});
+          if (!completed) return;
           return;
         }
 
@@ -128,16 +187,24 @@ export function useCloudSession({
         }
         try {
           const me = await authClient.me(stored.token);
-          if (!cancelled && mountedRef.current) setAuthenticated(me);
           // Best-effort device registration on bootstrap. We don't await its
           // failure path — if the bridges register call fails, the user is
           // still authenticated; we'll retry next sign-in or app launch.
-          void ensureCloudDeviceRegistered({
-            accountId: me.accountId,
-            sessionToken: stored.token,
-            client: authClient,
-            account: me,
-          }).catch(() => {});
+          await completeCloudAuthResult({
+            result: {
+              account: me,
+              session: {
+                token: stored.token,
+                expiresAt: stored.expiresAt,
+              },
+            },
+            currentAccountId: accountIdRef.current,
+            setAuthenticated: (next) => {
+              if (!cancelled && mountedRef.current) setAuthenticated(next);
+            },
+            registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
+            reloadWindow: reloadForAccountStorageSwitch,
+          });
         } catch (caught) {
           if (caught instanceof CloudAuthError && caught.status === 401) {
             await clearSession();
@@ -155,24 +222,20 @@ export function useCloudSession({
       cancelled = true;
       mountedRef.current = false;
     };
-  }, [authClient, enabled, setAuthenticated, setSignedOut]);
+  }, [authClient, enabled, reloadForAccountStorageSwitch, setAuthenticated, setSignedOut]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
       try {
         const result = await authClient.login({ email, password });
-        await saveSession({
-          token: result.session.token,
-          accountId: result.account.accountId,
-          expiresAt: result.session.expiresAt,
+        await completeCloudAuthResult({
+          result,
+          currentAccountId: accountIdRef.current,
+          saveSession,
+          setAuthenticated,
+          registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
+          reloadWindow: reloadForAccountStorageSwitch,
         });
-        setAuthenticated(result.account);
-        void ensureCloudDeviceRegistered({
-          accountId: result.account.accountId,
-          sessionToken: result.session.token,
-          client: authClient,
-          account: result.account,
-        }).catch(() => {});
       } catch (caught) {
         if (caught instanceof CloudAuthError) {
           setError(caught);
@@ -187,25 +250,21 @@ export function useCloudSession({
         throw wrapped;
       }
     },
-    [authClient, setAuthenticated],
+    [authClient, reloadForAccountStorageSwitch, setAuthenticated],
   );
 
   const signUp = useCallback<UseCloudSessionResult['signUp']>(
     async ({ email, password, displayName, avatarUrl }) => {
       try {
         const result = await authClient.signup({ email, password, displayName, avatarUrl });
-        await saveSession({
-          token: result.session.token,
-          accountId: result.account.accountId,
-          expiresAt: result.session.expiresAt,
+        await completeCloudAuthResult({
+          result,
+          currentAccountId: accountIdRef.current,
+          saveSession,
+          setAuthenticated,
+          registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
+          reloadWindow: reloadForAccountStorageSwitch,
         });
-        setAuthenticated(result.account);
-        void ensureCloudDeviceRegistered({
-          accountId: result.account.accountId,
-          sessionToken: result.session.token,
-          client: authClient,
-          account: result.account,
-        }).catch(() => {});
       } catch (caught) {
         if (caught instanceof CloudAuthError) {
           setError(caught);
@@ -220,7 +279,7 @@ export function useCloudSession({
         throw wrapped;
       }
     },
-    [authClient, setAuthenticated],
+    [authClient, reloadForAccountStorageSwitch, setAuthenticated],
   );
 
   const signInWithProvider = useCallback(
@@ -235,18 +294,14 @@ export function useCloudSession({
           if (!oauthResult) {
             throw new CloudAuthError('unknown', 'OAuth sign-in did not return a valid Kordi session.', 0);
           }
-          await saveSession({
-            token: oauthResult.session.token,
-            accountId: oauthResult.account.accountId,
-            expiresAt: oauthResult.session.expiresAt,
+          await completeCloudAuthResult({
+            result: oauthResult,
+            currentAccountId: accountIdRef.current,
+            saveSession,
+            setAuthenticated,
+            registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
+            reloadWindow: reloadForAccountStorageSwitch,
           });
-          setAuthenticated(oauthResult.account);
-          void ensureCloudDeviceRegistered({
-            accountId: oauthResult.account.accountId,
-            sessionToken: oauthResult.session.token,
-            client: authClient,
-            account: oauthResult.account,
-          }).catch(() => {});
           return;
         }
 
@@ -271,7 +326,7 @@ export function useCloudSession({
         throw wrapped;
       }
     },
-    [authClient, setAuthenticated],
+    [authClient, reloadForAccountStorageSwitch, setAuthenticated],
   );
 
   const updateProfile = useCallback(
