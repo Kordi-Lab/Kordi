@@ -241,9 +241,7 @@ export function AuthPage({
       ) : (
         <AuthNavigationControls canGoBack={canGoBack} canGoForward={canGoForward} onBack={goBack} onForward={goForward} />
       )}
-      {provider ? (
-        <div className="truncate text-[18px] font-semibold tracking-tight text-white">{provider.label} auth</div>
-      ) : null}
+
     </div>
   ) : null;
 

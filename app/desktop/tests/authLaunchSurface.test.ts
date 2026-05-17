@@ -34,6 +34,7 @@ test('provider detail view keeps a persistent back control and scroll boundary',
   const providerDetail = readAuthSource('AuthProviderDetail.tsx');
 
   assert.match(authPage, /Back to providers/);
+  assert.doesNotMatch(authPage, /\{provider\.label\} auth/);
   assert.match(authPage, /showDetailPage[\s\S]*detailHeader[\s\S]*ScrollArea className="min-h-0 flex-1/);
   assert.match(providerDetail, /className="grid min-h-0 w-full gap-3\.5 pb-6"/);
   assert.doesNotMatch(providerDetail, /overflow-y-auto/);
@@ -55,7 +56,7 @@ test('auth pages avoid all-caps styling and use sentence-case detail chrome', ()
   const authPage = readAuthSource('AuthPage.tsx');
   const providerDetail = readAuthSource('AuthProviderDetail.tsx');
 
-  assert.match(authPage, /\{provider\.label\} auth/);
+  assert.doesNotMatch(authPage, /\{provider\.label\} auth/);
   assert.doesNotMatch(providerDetail, /What this provider is for/);
   assert.doesNotMatch(providerDetail, /Storage and cleanup/);
   assert.match(providerDetail, /<DetailSection title="Connect">/);
