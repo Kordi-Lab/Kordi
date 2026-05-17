@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, Circle, Sparkles } from 'lucide-react';
 import { formatDesktopDateTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -96,19 +96,11 @@ function firstConnectMethod(provider: AuthDisplayProvider, rawProviders: Desktop
   return { method: preferred, raw };
 }
 
-function providerSteps(provider: AuthDisplayProvider, isLocalModelControl: boolean): AuthStep[] {
-  if (isLocalModelControl) {
-    return [
-      { label: 'Choose provider', detail: provider.label, state: 'done' },
-      { label: 'Check local runtime', detail: 'Install, server, and model state', state: provider.configured ? 'done' : 'active' },
-      { label: 'Start chat', detail: provider.configured ? 'Ready when you are' : 'Available after a model is running', state: provider.configured ? 'active' : 'pending' },
-    ];
-  }
-
+function localProviderSteps(provider: AuthDisplayProvider): AuthStep[] {
   return [
     { label: 'Choose provider', detail: provider.label, state: 'done' },
-    { label: 'Connect access', detail: provider.configured ? provider.statusSummary : 'Sign in or add a key', state: provider.configured ? 'done' : 'active' },
-    { label: 'Start chat', detail: provider.configured ? 'Ready with this provider' : 'Available after access is saved', state: provider.configured ? 'active' : 'pending' },
+    { label: 'Check local runtime', detail: 'Install, server, and model state', state: provider.configured ? 'done' : 'active' },
+    { label: 'Start chat', detail: provider.configured ? 'Ready when you are' : 'Available after a model is running', state: provider.configured ? 'active' : 'pending' },
   ];
 }
 
@@ -169,7 +161,7 @@ export function AuthProviderDetail({
   const isLocalModelControl = (provider.id === 'lm-studio' || provider.id === 'ollama') && !!localEndpoint;
   const showCloudEnterChatCta = !isLocalModelControl && Boolean(onEnterChat) && hasActiveProfile;
   const primaryConnect = firstConnectMethod(provider, rawProviders);
-  const steps = useMemo(() => providerSteps(provider, isLocalModelControl), [provider, isLocalModelControl]);
+  const localRuntimeSteps = isLocalModelControl ? localProviderSteps(provider) : [];
 
   const handleRemoveAll = () => {
     if (!hasSavedProfiles) return;
@@ -303,9 +295,11 @@ export function AuthProviderDetail({
             </div>
           </div>
 
-          <div className="mt-5">
-            <StepFlow steps={steps} />
-          </div>
+          {isLocalModelControl ? (
+            <div className="mt-5">
+              <StepFlow steps={localRuntimeSteps} />
+            </div>
+          ) : null}
         </div>
 
         {isLocalModelControl ? (
