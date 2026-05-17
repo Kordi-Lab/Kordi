@@ -3,6 +3,7 @@ mod auth;
 mod bridge;
 mod canonical_sessions;
 mod chat;
+mod cloud_account_paths;
 mod cloud_oauth_loopback;
 mod cloud_session;
 mod project;
@@ -215,6 +216,9 @@ pub fn run() {
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
             chat::desktop_chat_turn_state,
+            cloud_account_paths::cloud_account_storage_activate,
+            cloud_account_paths::cloud_account_storage_current,
+            cloud_account_paths::cloud_account_storage_root,
             cloud_oauth_loopback::cloud_oauth_loopback_prepare,
             cloud_oauth_loopback::cloud_oauth_loopback_wait,
             cloud_session::cloud_session_store,
