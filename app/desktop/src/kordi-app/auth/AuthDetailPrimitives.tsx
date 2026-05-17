@@ -11,8 +11,8 @@ export function DetailSection({
   children: ReactNode;
 }) {
   return (
-    <section className="app-auth-detail-section overflow-hidden rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div className="border-b border-white/8 px-4 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">{title}</div>
+    <section className="app-auth-detail-section overflow-hidden rounded-[20px] bg-white/[0.035] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.055)]">
+      <div className="px-4 pb-1 pt-3 text-[13px] font-medium tracking-[-0.01em] text-slate-200">{title}</div>
       <div>{children}</div>
     </section>
   );

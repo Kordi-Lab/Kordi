@@ -126,8 +126,8 @@ export function lmStudioNeedsInstallRefresh(message?: string | null) {
   if (!message) return false;
   const normalized = message.toLowerCase();
   return normalized.includes('invalid passkey')
-    || normalized.includes('rejected the lms cli passkey')
-    || (normalized.includes('failed to authenticate') && normalized.includes('lms cli client'));
+    || normalized.includes('rejected the lms CLI passkey')
+    || (normalized.includes('failed to authenticate') && normalized.includes('lms CLI client'));
 }
 
 export function lmStudioDisplayError(error: unknown, fallback: string) {
@@ -210,7 +210,7 @@ function ReadinessStep({
 function RuntimeMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[14px] border border-white/8 bg-white/[0.035] px-3 py-2">
-      <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">{label}</div>
+      <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">{label}</div>
       <div className="mt-1 truncate font-mono text-[11px] text-slate-200">{value}</div>
     </div>
   );
@@ -736,7 +736,7 @@ export function LmStudioModelControlCenter({
       <div className="overflow-hidden rounded-[24px] border border-white/8 bg-white/[0.045] shadow-none">
         <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.06fr)_minmax(280px,0.94fr)]">
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-300">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-2.5 py-1 text-[11px] font-medium tracking-[-0.01em] text-slate-300">
               <Server className="h-3.5 w-3.5" /> LM Studio authentication
             </div>
             <div className="mt-3 max-w-[16rem] text-[21px] font-semibold leading-7 tracking-[-0.04em] text-white sm:max-w-[30rem]">
@@ -906,12 +906,12 @@ export function LmStudioModelControlCenter({
         {isSetupDetailsExpanded ? (
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           <div className="rounded-[16px] border border-white/8 bg-black/10 px-3 py-2">
-            <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">LM Studio app</div>
+            <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">LM Studio app</div>
             <div className="mt-1 break-all font-mono text-[11px] text-slate-200">{compactPath(environment?.appPath)}</div>
             {environment?.appVersion ? <div className="mt-1 text-[10px] text-slate-500">Version {environment.appVersion}</div> : null}
           </div>
           <div className="rounded-[16px] border border-white/8 bg-black/10 px-3 py-2">
-            <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">lms CLI</div>
+            <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">lms CLI</div>
             <div className="mt-1 break-all font-mono text-[11px] text-slate-200">{compactPath(environment?.cliPath)}</div>
             <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-500">
               {environment?.cliVersion ? <span>Version {environment.cliVersion}</span> : null}
@@ -919,12 +919,12 @@ export function LmStudioModelControlCenter({
             </div>
           </div>
           <div className="rounded-[16px] border border-white/8 bg-black/10 px-3 py-2">
-            <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">LM Studio home</div>
+            <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">LM Studio home</div>
             <div className="mt-1 break-all font-mono text-[11px] text-slate-200">{compactPath(environment?.homePath)}</div>
             {environment?.binPath ? <div className="mt-1 break-all font-mono text-[10px] text-slate-500">bin {compactPath(environment.binPath)}</div> : null}
           </div>
           <div className="rounded-[16px] border border-white/8 bg-black/10 px-3 py-2">
-            <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">Shell PATH</div>
+            <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">Shell path</div>
             <div className="mt-1 text-[11px] text-slate-200">{environment?.cliInShellPath ? 'lms is available from shell PATH' : 'lms is not in shell PATH yet'}</div>
             {environment?.shellConfigPaths.length ? <div className="mt-1 break-all font-mono text-[10px] text-slate-500">{environment.shellConfigPaths.map(compactPath).join(' · ')}</div> : null}
           </div>

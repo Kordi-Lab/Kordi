@@ -48,7 +48,14 @@ export function useDesktopAuthUiState({
     mode: 'oauth' | 'api-key',
     options?: { authority?: string; requireAuthority?: boolean },
   ) => {
-    openAuthSettings();
+    const shouldStayOnAuthGate = !startupGateSatisfied && !isAuthGateDismissed;
+
+    if (!shouldStayOnAuthGate) {
+      openAuthSettings();
+    } else {
+      clearDesktopAuthError();
+    }
+
     setActiveLoginProviderId(provider.id);
     setInlineAuthDialog({
       providerId: provider.id,
@@ -56,7 +63,7 @@ export function useDesktopAuthUiState({
       authority: options?.authority,
       requireAuthority: options?.requireAuthority,
     });
-  }, [openAuthSettings, setActiveLoginProviderId]);
+  }, [clearDesktopAuthError, isAuthGateDismissed, openAuthSettings, setActiveLoginProviderId, startupGateSatisfied]);
 
   const handleCloseInlineAuthDialog = useCallback(() => {
     setInlineAuthDialog(null);
@@ -78,9 +85,8 @@ export function useDesktopAuthUiState({
       && desktopAuthState !== null
       && !startupGateSatisfied
       && !(activeNav === 'settings' && activeSettingsSectionId === 'auth')
-      && !inlineAuthDialog
       && !isAuthGateDismissed
-  ), [activeNav, activeSettingsSectionId, desktopAuthState, inlineAuthDialog, isAuthGateDismissed, isDesktopAuthLoading, isNativeShell, startupGateSatisfied]);
+  ), [activeNav, activeSettingsSectionId, desktopAuthState, isAuthGateDismissed, isDesktopAuthLoading, isNativeShell, startupGateSatisfied]);
 
   return {
     inlineAuthDialog,
