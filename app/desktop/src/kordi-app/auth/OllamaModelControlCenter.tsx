@@ -195,7 +195,7 @@ function ReadinessStep({
 function RuntimeMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[14px] border border-white/8 bg-white/[0.035] px-3 py-2">
-      <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">{label}</div>
+      <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">{label}</div>
       <div className="mt-1 truncate font-mono text-[11px] text-slate-200">{value}</div>
     </div>
   );
@@ -808,7 +808,7 @@ export function OllamaModelControlCenter({
           <div className="mt-3 grid gap-3">
             <div className="grid gap-2 rounded-[18px] border border-white/8 bg-black/10 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
               <label className="min-w-0">
-                <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">Exact Ollama model</div>
+                <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">Exact Ollama model</div>
                 <input
                   value={exactModelDraft}
                   onChange={(event) => setExactModelDraft(event.target.value)}

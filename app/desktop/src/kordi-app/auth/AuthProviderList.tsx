@@ -17,8 +17,8 @@ type AuthProviderListProps = {
 };
 
 const GATE_PROVIDER_SUBTITLES: Record<string, string> = {
-  openai: 'ChatGPT & API',
-  anthropic: 'Claude & API',
+  openai: 'ChatGPT + API',
+  anthropic: 'Claude + API',
   'lm-studio': 'Local models',
   ollama: 'Local models',
   'google-gemini': 'Gemini API',
@@ -148,7 +148,7 @@ export function AuthProviderList({
                 onClick={() => { void onEnterChat(); }}
                 style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
               >
-                Enter chat
+                enter chat
               </Button>
             ) : null}
           </div>

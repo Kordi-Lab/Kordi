@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { CheckCircle2, Circle, Sparkles } from 'lucide-react';
 import { formatDesktopDateTime } from '@/lib/time';
+import { cn } from '@/lib/utils';
 import type { DesktopAuthProvider } from '@/kordi-app/types';
 import type { AuthDisplayProvider } from './model';
 import {
@@ -32,6 +34,12 @@ type AuthProviderDetailProps = {
   onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
 };
 
+type AuthStep = {
+  label: string;
+  detail: string;
+  state: 'done' | 'active' | 'pending';
+};
+
 function findRawProvider(rawProviders: DesktopAuthProvider[], providerId: string) {
   return rawProviders.find((item) => item.id === providerId) ?? null;
 }
@@ -47,6 +55,10 @@ function signInMethodButtonLabel(providerId: string, mode: 'oauth' | 'api-key', 
     return mode === 'oauth' ? 'Add another account' : 'Add another key';
   }
   return mode === 'oauth' ? 'Sign in' : 'Add key';
+}
+
+function methodLabel(mode: 'oauth' | 'api-key') {
+  return mode === 'oauth' ? 'Sign-in account' : 'API key';
 }
 
 function formatAuthTimestamp(timestampMs?: number | null) {
@@ -76,10 +88,60 @@ function buildProfileMeta(option: {
     .join(' • ');
 }
 
+function firstConnectMethod(provider: AuthDisplayProvider, rawProviders: DesktopAuthProvider[]) {
+  const preferred = provider.methods.find((method) => method.mode === 'oauth') ?? provider.methods[0] ?? null;
+  if (!preferred) return null;
+  const raw = findRawProvider(rawProviders, preferred.providerId);
+  if (!raw) return null;
+  return { method: preferred, raw };
+}
+
+function providerSteps(provider: AuthDisplayProvider, isLocalModelControl: boolean): AuthStep[] {
+  if (isLocalModelControl) {
+    return [
+      { label: 'Choose provider', detail: provider.label, state: 'done' },
+      { label: 'Check local runtime', detail: 'Install, server, and model state', state: provider.configured ? 'done' : 'active' },
+      { label: 'Start chat', detail: provider.configured ? 'Ready when you are' : 'Available after a model is running', state: provider.configured ? 'active' : 'pending' },
+    ];
+  }
+
+  return [
+    { label: 'Choose provider', detail: provider.label, state: 'done' },
+    { label: 'Connect access', detail: provider.configured ? provider.statusSummary : 'Sign in or add a key', state: provider.configured ? 'done' : 'active' },
+    { label: 'Start chat', detail: provider.configured ? 'Ready with this provider' : 'Available after access is saved', state: provider.configured ? 'active' : 'pending' },
+  ];
+}
+
+function StepFlow({ steps }: { steps: AuthStep[] }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-3">
+      {steps.map((step, index) => (
+        <div
+          key={step.label}
+          className={cn(
+            'rounded-[18px] px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.055)]',
+            step.state === 'done'
+              ? 'bg-emerald-300/[0.055] text-emerald-50'
+              : step.state === 'active'
+                ? 'bg-white/[0.07] text-white'
+                : 'bg-white/[0.03] text-slate-400',
+          )}
+        >
+          <div className="flex items-center gap-2 text-[12px] font-medium">
+            {step.state === 'done' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+            <span>{index + 1}. {step.label}</span>
+          </div>
+          <div className="mt-1.5 text-[11px] leading-4 opacity-75">{step.detail}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AuthProviderDetail({
   provider,
   rawProviders,
-  authPath,
+  authPath: _authPath,
   error,
   onOpenLogin,
   onSelectAuthChoice,
@@ -106,6 +168,8 @@ export function AuthProviderDetail({
   const localEndpoint = localProviderEndpoint(provider);
   const isLocalModelControl = (provider.id === 'lm-studio' || provider.id === 'ollama') && !!localEndpoint;
   const showCloudEnterChatCta = !isLocalModelControl && Boolean(onEnterChat) && hasActiveProfile;
+  const primaryConnect = firstConnectMethod(provider, rawProviders);
+  const steps = useMemo(() => providerSteps(provider, isLocalModelControl), [provider, isLocalModelControl]);
 
   const handleRemoveAll = () => {
     if (!hasSavedProfiles) return;
@@ -133,84 +197,118 @@ export function AuthProviderDetail({
     setPendingDeleteProfileId(null);
   };
 
+  const savedAccessSection = hasSavedProfiles ? (
+    <DetailSection title="Saved access">
+      {provider.methods.map((method, methodIndex) => (
+        <div key={`profiles-${provider.id}-${method.mode}`}>
+          {methodIndex > 0 && <SectionDivider />}
+          <div className="px-4 pb-1 pt-3 text-[12px] font-medium text-slate-400">
+            {methodLabel(method.mode)}
+          </div>
+          {method.options.map((option, optionIndex) => (
+            <div key={`${method.providerId}-${option.value}`}>
+              {optionIndex > 0 && <SectionDivider />}
+              <DetailRow
+                title={option.label}
+                meta={buildProfileMeta(option)}
+                detail={option.detail}
+                multiline
+                trailing={
+                  <>
+                    {option.active ? (
+                      <div className={authActiveBadgeClass}>Active</div>
+                    ) : (
+                      <AuthActionButton
+                        type="button"
+                        className={authButtonNeutralClass}
+                        onClick={() => onSelectAuthChoice(option.providerId, option.value)}
+                      >
+                        {option.profileId ? 'Use this profile' : 'Use environment'}
+                      </AuthActionButton>
+                    )}
+                    {option.profileId ? (
+                      pendingDeleteProfileId === option.profileId && pendingDeleteProviderId === option.providerId ? (
+                        <>
+                          <AuthActionButton type="button" className={authButtonDangerClass} onClick={confirmDeleteProfile}>
+                            Confirm delete
+                          </AuthActionButton>
+                          <AuthActionButton type="button" className={authButtonNeutralClass} onClick={cancelDeleteProfile}>
+                            Cancel
+                          </AuthActionButton>
+                        </>
+                      ) : (
+                        <AuthActionButton
+                          type="button"
+                          className={authButtonDangerClass}
+                          onClick={() => requestDeleteProfile(option.providerId, option.profileId!)}
+                        >
+                          Delete
+                        </AuthActionButton>
+                      )
+                    ) : (
+                      <div className="app-badge-neutral rounded-full px-2.5 py-0.5 text-[10px] leading-none">Environment</div>
+                    )}
+                  </>
+                }
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+    </DetailSection>
+  ) : null;
+
   return (
     <div
       className="relative z-10 block min-h-0 w-full min-w-0 max-w-none self-stretch pr-1 pointer-events-auto"
       style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
     >
       <div className="grid min-h-0 w-full gap-3.5 pb-6">
-      {error && (
-        <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-          {error}
+        {error && (
+          <div className="rounded-2xl border border-rose-400/24 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+            {error}
+          </div>
+        )}
+
+        <div className="rounded-[26px] bg-white/[0.045] px-5 py-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 max-w-[38rem]">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.055] px-2.5 py-1 text-[11px] font-medium text-slate-300">
+                <Sparkles className="h-3.5 w-3.5" /> {provider.configured ? 'Ready' : 'Setup needed'}
+              </div>
+              <div className="mt-3 text-[25px] font-semibold leading-8 tracking-[-0.04em] text-white">
+                {provider.configured ? `${provider.label} is connected` : `Connect ${provider.label}`}
+              </div>
+              <div className="mt-2 max-w-[58ch] text-[13px] leading-6 text-slate-300">
+                {isLocalModelControl
+                  ? 'Check the local app, server, and loaded model before starting chat.'
+                  : 'Use the provider account or API key you want Kordi to use for chat.'}
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+              {provider.configured && onEnterChat ? (
+                <AuthActionButton type="button" className={authButtonPrimaryClass} onClick={() => { void onEnterChat(); }}>
+                  Enter chat
+                </AuthActionButton>
+              ) : primaryConnect ? (
+                <AuthActionButton
+                  type="button"
+                  className={authButtonPrimaryClass}
+                  onClick={() => onOpenLogin(primaryConnect.raw, primaryConnect.method.mode)}
+                >
+                  {signInMethodButtonLabel(provider.id, primaryConnect.method.mode, primaryConnect.method.options.length > 0)}
+                </AuthActionButton>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <StepFlow steps={steps} />
+          </div>
         </div>
-      )}
 
-      <DetailSection title="What this provider is for">
-        <DetailRow title="Best for" detail={provider.loginHint} multiline />
-        <SectionDivider />
-        <DetailRow title="Saved access" detail={provider.statusSummary} multiline />
-        {provider.id === 'github-copilot' && (
-          <>
-            <SectionDivider />
-            <DetailRow title="Current GitHub host" detail={provider.authority || 'github.com'} />
-          </>
-        )}
-        {localEndpoint && (
-          <>
-            <SectionDivider />
-            <DetailRow
-              title="Local OpenAI-compatible endpoint"
-              detail={<span className="break-all font-mono text-[11px] text-slate-300">{localEndpoint}</span>}
-              multiline
-            />
-          </>
-        )}
-      </DetailSection>
-
-      <DetailSection title={isLocalModelControl ? 'Local model control center' : localEndpoint ? 'Local server setup' : 'Ways to connect'}>
-        {provider.id === 'github-copilot' ? (
-          (() => {
-            const raw = findRawProvider(rawProviders, 'github-copilot');
-            if (!raw) return null;
-
-            return (
-              <>
-                <DetailRow
-                  title="GitHub.com"
-                  detail="Use the standard GitHub sign-in flow for personal or team accounts on github.com."
-                  trailing={
-                    <AuthActionButton
-                      type="button"
-                      className={authButtonNeutralClass}
-                      onClick={() => onOpenLogin(raw, 'oauth', { authority: 'github.com' })}
-                    >
-                      Sign in
-                    </AuthActionButton>
-                  }
-                />
-                <SectionDivider />
-                <DetailRow
-                  title="GitHub Enterprise host"
-                  detail={provider.authority ? `Current host: ${provider.authority}` : 'Choose your GitHub Enterprise host, then start sign-in.'}
-                  trailing={
-                    <AuthActionButton
-                      type="button"
-                      className={authButtonNeutralClass}
-                      onClick={() =>
-                        onOpenLogin(raw, 'oauth', {
-                          authority: provider.authority ?? '',
-                          requireAuthority: true,
-                        })
-                      }
-                    >
-                      Choose host & sign in
-                    </AuthActionButton>
-                  }
-                />
-              </>
-            );
-          })()
-        ) : localEndpoint ? (
+        {isLocalModelControl ? (
           <LocalProviderSetup
             provider={provider}
             rawProviders={rawProviders}
@@ -220,174 +318,91 @@ export function AuthProviderDetail({
             onEnterChat={onEnterChat}
           />
         ) : (
-          provider.methods.map((method, index) => {
-            const raw = findRawProvider(rawProviders, method.providerId);
-            if (!raw) return null;
+          <>
+            <DetailSection title="Connect">
+              {provider.methods.map((method, index) => {
+                const raw = findRawProvider(rawProviders, method.providerId);
+                if (!raw) return null;
 
-            return (
-              <div key={`${provider.id}-${method.mode}`}>
-                {index > 0 && <SectionDivider />}
+                return (
+                  <div key={`${provider.id}-${method.mode}`}>
+                    {index > 0 && <SectionDivider />}
+                    <DetailRow
+                      title={method.title}
+                      detail={method.detail}
+                      multiline
+                      trailing={
+                        <AuthActionButton
+                          type="button"
+                          className={authButtonNeutralClass}
+                          onClick={() => onOpenLogin(raw, method.mode)}
+                        >
+                          {signInMethodButtonLabel(provider.id, method.mode, method.options.length > 0)}
+                        </AuthActionButton>
+                      }
+                    />
+                  </div>
+                );
+              })}
+            </DetailSection>
+
+            {savedAccessSection}
+
+            {showCloudEnterChatCta ? (
+              <DetailSection title="Start chatting">
                 <DetailRow
-                  title={method.title}
-                  detail={method.detail}
+                  title="Open chat"
+                  detail={`Use the active ${provider.label} profile and jump into a new chat.`}
+                  multiline
                   trailing={
                     <AuthActionButton
                       type="button"
-                      className={authButtonNeutralClass}
-                      onClick={() => onOpenLogin(raw, method.mode)}
+                      className={authButtonPrimaryClass}
+                      onClick={() => { void onEnterChat?.(); }}
                     >
-                      {signInMethodButtonLabel(provider.id, method.mode, method.options.length > 0)}
+                      Enter chat
                     </AuthActionButton>
                   }
                 />
-              </div>
-            );
-          })
+              </DetailSection>
+            ) : null}
+
+            {hasSavedProfiles ? (
+              <DetailSection title="Advanced">
+                <DetailRow
+                  title="Remove saved access"
+                  detail="Delete saved accounts and keys for this provider from Kordi's shared auth store. Environment variables are not removed here."
+                  trailing={
+                    confirmRemoveAll ? (
+                      <>
+                        <AuthActionButton type="button" className={authButtonDangerClass} onClick={handleRemoveAll}>
+                          Confirm remove all
+                        </AuthActionButton>
+                        <AuthActionButton type="button" className={authButtonNeutralClass} onClick={() => setConfirmRemoveAll(false)}>
+                          Cancel
+                        </AuthActionButton>
+                      </>
+                    ) : (
+                      <AuthActionButton
+                        type="button"
+                        className={authButtonDangerClass}
+                        onClick={() => {
+                          setPendingDeleteProviderId(null);
+                          setPendingDeleteProfileId(null);
+                          setConfirmRemoveAll(true);
+                        }}
+                        disabled={!hasSavedProfiles}
+                      >
+                        Remove all saved access
+                      </AuthActionButton>
+                    )
+                  }
+                  multiline
+                />
+              </DetailSection>
+            ) : null}
+          </>
         )}
-      </DetailSection>
-
-      {!isLocalModelControl ? (
-        <>
-          <DetailSection title="Saved accounts and keys">
-            {provider.methods.map((method, methodIndex) => (
-              <div key={`profiles-${provider.id}-${method.mode}`}>
-                {methodIndex > 0 && <SectionDivider />}
-                <div className="px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
-                  {method.mode === 'oauth' ? 'OAuth' : 'API key'}
-                </div>
-                {method.options.length > 0 ? (
-                  method.options.map((option, optionIndex) => (
-                    <div key={`${method.providerId}-${option.value}`}>
-                      {optionIndex > 0 && <SectionDivider />}
-                      <DetailRow
-                        title={option.label}
-                        meta={buildProfileMeta(option)}
-                        detail={option.detail}
-                        multiline
-                        trailing={
-                          <>
-                            {option.active ? (
-                              <div className={authActiveBadgeClass}>Active</div>
-                            ) : (
-                              <AuthActionButton
-                                type="button"
-                                className={authButtonNeutralClass}
-                                onClick={() => onSelectAuthChoice(option.providerId, option.value)}
-                              >
-                                {option.profileId ? 'Use this profile' : 'Use environment'}
-                              </AuthActionButton>
-                            )}
-                            {option.profileId ? (
-                              pendingDeleteProfileId === option.profileId && pendingDeleteProviderId === option.providerId ? (
-                                <>
-                                  <AuthActionButton
-                                    type="button"
-                                    className={authButtonDangerClass}
-                                    onClick={confirmDeleteProfile}
-                                  >
-                                    Confirm delete
-                                  </AuthActionButton>
-                                  <AuthActionButton
-                                    type="button"
-                                    className={authButtonNeutralClass}
-                                    onClick={cancelDeleteProfile}
-                                  >
-                                    Cancel
-                                  </AuthActionButton>
-                                </>
-                              ) : (
-                                <AuthActionButton
-                                  type="button"
-                                  className={authButtonDangerClass}
-                                  onClick={() => requestDeleteProfile(option.providerId, option.profileId!)}
-                                >
-                                  Delete
-                                </AuthActionButton>
-                              )
-                            ) : (
-                              <div className="app-badge-neutral rounded-full px-2.5 py-0.5 text-[10px] leading-none">Environment</div>
-                            )}
-                          </>
-                        }
-                      />
-                    </div>
-                  ))
-                ) : (
-                  <div className="px-4 pb-3 pt-2 text-[11px] leading-5 text-slate-400">
-                    {localEndpoint && method.mode === 'api-key'
-                      ? 'No saved key needed for the default local server.'
-                      : `No saved ${method.mode === 'oauth' ? 'sign-in accounts' : 'API keys'} yet.`}
-                  </div>
-                )}
-              </div>
-            ))}
-          </DetailSection>
-
-          {showCloudEnterChatCta ? (
-            <DetailSection title="Start chatting">
-              <DetailRow
-                title="Open chat with this provider"
-                detail={`Use the active ${provider.label} profile and jump straight into a new chat.`}
-                multiline
-                trailing={
-                  <AuthActionButton
-                    type="button"
-                    className={authButtonPrimaryClass}
-                    onClick={() => { void onEnterChat?.(); }}
-                  >
-                    Save & enter chat
-                  </AuthActionButton>
-                }
-              />
-            </DetailSection>
-          ) : null}
-
-          <DetailSection title="Storage and cleanup">
-            <DetailRow title="Shared auth store" detail={<span className="break-all">{authPath ?? 'Loading…'}</span>} multiline />
-            <SectionDivider />
-            <DetailRow
-              title="Remove saved access"
-              detail={localEndpoint
-                ? 'Delete optional saved API keys for this local provider from Kordi\'s shared auth store. The local endpoint itself is not changed.'
-                : 'Delete saved accounts and keys for this provider from Kordi\'s shared auth store. Environment variables are not removed here.'}
-              trailing={
-                confirmRemoveAll ? (
-                  <>
-                    <AuthActionButton
-                      type="button"
-                      className={authButtonDangerClass}
-                      onClick={handleRemoveAll}
-                    >
-                      Confirm remove all
-                    </AuthActionButton>
-                    <AuthActionButton
-                      type="button"
-                      className={authButtonNeutralClass}
-                      onClick={() => setConfirmRemoveAll(false)}
-                    >
-                      Cancel
-                    </AuthActionButton>
-                  </>
-                ) : (
-                  <AuthActionButton
-                    type="button"
-                    className={authButtonDangerClass}
-                    onClick={() => {
-                      setPendingDeleteProviderId(null);
-                      setPendingDeleteProfileId(null);
-                      setConfirmRemoveAll(true);
-                    }}
-                    disabled={!hasSavedProfiles}
-                  >
-                    Remove all saved access
-                  </AuthActionButton>
-                )
-              }
-              multiline
-            />
-          </DetailSection>
-        </>
-      ) : null}
       </div>
     </div>
   );

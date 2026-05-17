@@ -379,7 +379,7 @@ export default function AuthPopup({
           <div className="border-b border-white/8 px-4 py-2.5 sm:px-4.5">
             <div className="flex items-start justify-between gap-3.5">
           <div>
-            <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-300">
+            <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium tracking-[-0.01em] text-slate-300">
               <Shield className="h-3.5 w-3.5" />
               {embedded ? 'Authentication' : 'Authentication window'}
             </div>
@@ -401,7 +401,7 @@ export default function AuthPopup({
         {!embedded && (
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
-              <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-300">
+              <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium tracking-[-0.01em] text-slate-300">
                 <Shield className="h-3.5 w-3.5" />
                 {embedded ? 'Authentication' : 'Authentication window'}
               </div>
@@ -449,7 +449,7 @@ export default function AuthPopup({
                     : 'Saved keys stay available in Settings. Use this panel when you want to add another key without leaving the current flow.'}
                 </div>
                 <div className="app-input-shell rounded-[20px] px-3.5 py-3">
-                  <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-500">{provider.envVar || 'API key'}</div>
+                  <div className="mb-1.5 text-[11px] font-medium tracking-[-0.01em] text-slate-500">{provider.envVar || 'API key'}</div>
                   <input
                     type="password"
                     value={apiKeyDraft}
@@ -480,7 +480,7 @@ export default function AuthPopup({
 
                 {provider.id === 'github-copilot' && (requireAuthority || provider.authority) && (
                   <div className="rounded-[24px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-4 py-4">
-                    <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-500">GitHub host</div>
+                    <div className="mb-1.5 text-[11px] font-medium tracking-[-0.01em] text-slate-500">GitHub host</div>
                     <input
                       value={authorityDraft}
                       onChange={(event) => setAuthorityDraft(event.target.value)}
@@ -502,7 +502,7 @@ export default function AuthPopup({
 
                   {showInteractiveOAuthDetails && authAttempt?.authUrl && (
                     <div className="mt-2.5 rounded-[18px] bg-[color:var(--app-control-bg)] px-3 py-2.5">
-                      <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">Sign-in URL</div>
+                      <div className="mb-1 text-[11px] font-medium tracking-[-0.01em] text-slate-500">Sign-in URL</div>
                       <div className="break-all text-[11px] leading-5 text-slate-300">{authAttempt.authUrl}</div>
                       <div className="mt-3 flex justify-end">
                         <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => void copyText(authAttempt.authUrl!, setCopyFeedback)}>
@@ -515,8 +515,8 @@ export default function AuthPopup({
 
                   {showInteractiveOAuthDetails && authAttempt?.userCode && (
                     <div className="mt-2.5 rounded-[18px] bg-[color:var(--app-control-bg)] px-3 py-2.5">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Device code</div>
-                      <div className="mt-1 text-[17px] font-semibold tracking-[0.16em] text-white">{authAttempt.userCode}</div>
+                      <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">Device code</div>
+                      <div className="mt-1 text-[17px] font-semibold tracking-[0.04em] text-white">{authAttempt.userCode}</div>
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                         {authAttempt.verificationUrl ? (
                           <a href={authAttempt.verificationUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-slate-300 transition hover:text-white">
@@ -534,7 +534,7 @@ export default function AuthPopup({
 
                   {showInteractiveOAuthDetails && authAttempt?.canPasteCallback && (
                     <div className="mt-4">
-                      <div className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-500">Paste a callback manually</div>
+                      <div className="mb-1.5 text-[11px] font-medium tracking-[-0.01em] text-slate-500">Paste a callback manually</div>
                       <div className="app-input-shell rounded-[20px] px-3 py-3">
                         <textarea
                           value={manualCallbackDraft}
