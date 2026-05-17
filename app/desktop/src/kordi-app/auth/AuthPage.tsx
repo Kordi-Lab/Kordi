@@ -12,13 +12,6 @@ type AuthRoute =
   | { type: 'list' }
   | { type: 'detail'; providerId: string };
 
-function authPathPreview(authPath?: string) {
-  if (!authPath) return 'Loading…';
-
-  const segments = authPath.split('/').filter(Boolean);
-  if (segments.length <= 4) return authPath;
-  return `…/${segments.slice(-4).join('/')}`;
-}
 
 export type AuthPageProps = {
   variant: 'settings' | 'gate';
@@ -105,8 +98,6 @@ export function AuthPage({
   const showNativeNote = !isNativeShell && variant === 'settings';
   const visibleProviders = buildAuthDisplayProviders(authState);
   const configuredCount = visibleProviders.filter((item) => item.configured).length;
-  const useSplitHero = showHero ? layoutWidth >= 1180 : layoutWidth >= 1120;
-  const sharedAuthPathPreview = authPathPreview(authState?.authPath);
 
   const [routeState, setRouteState] = useState<{ history: AuthRoute[]; index: number }>({
     history: [{ type: 'list' }],
@@ -183,6 +174,7 @@ export function AuthPage({
           onSelectProvider={openProviderDetail}
           onRefresh={onRefresh}
           onEnterChat={onEnterChat ?? onDismissGate}
+          variant={showHero ? 'gate' : 'settings'}
         />
       );
     }
@@ -219,6 +211,7 @@ export function AuthPage({
     provider,
     showDetailPage,
     showNativeNote,
+    showHero,
     visibleProviders,
   ]);
 
@@ -253,82 +246,34 @@ export function AuthPage({
       }
     >
       {showHero ? (
-        <div className="app-modal-panel h-full min-h-0 w-full overflow-hidden rounded-[30px] border border-white/10 shadow-[var(--app-shadow-float)]">
-          <div className={cn('grid h-full min-h-0 w-full', useSplitHero ? 'grid-cols-[minmax(320px,0.86fr)_minmax(460px,1.08fr)]' : 'grid-rows-[auto_minmax(0,1fr)]')}>
-            <div
-              className={cn(
-                'flex min-h-0 flex-col bg-[linear-gradient(150deg,rgba(126,111,64,0.14),rgba(24,26,20,0.24)_52%,rgba(12,13,14,0.18))] px-8 py-8 text-white',
-                useSplitHero ? 'border-r border-white/8' : 'border-b border-white/8',
-              )}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="max-w-[31rem]">
-                  <h1 className="max-w-[11ch] text-[38px] font-semibold leading-[0.98] tracking-[-0.04em] text-white">
-                    Connect one provider before your first chat.
-                  </h1>
-
-                  <p className="mt-5 max-w-[45ch] text-[15px] leading-7 text-slate-300">
-                    Choose a provider on the right, then sign in, save an API key, or use a local model server. One working connection is enough to get started.
-                  </p>
-                </div>
-
-                {onDismissGate ? (
-                  <Button
-                    variant="secondary"
-                    className="h-9 shrink-0 rounded-full px-4 text-[12px] text-white"
-                    onClick={onDismissGate}
-                  >
-                    Do this later
-                  </Button>
-                ) : null}
+        <div className="app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(126,111,64,0.10),rgba(15,16,18,0.18)_48%,rgba(10,11,13,0.22))] px-8 py-8 shadow-[var(--app-shadow-float)]">
+          <div className="flex w-full max-w-[820px] flex-col gap-7">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-[34rem]">
+                <h1 className="text-[42px] font-semibold leading-[0.98] tracking-[-0.045em] text-white">
+                  Connect a provider
+                </h1>
+                <p className="mt-3 max-w-[34ch] text-[15px] leading-6 text-slate-300">
+                  Use cloud APIs or local models to start chatting.
+                </p>
               </div>
 
-              <div className="mt-8 grid gap-4">
-                <div className="app-surface-muted rounded-[24px] px-4 py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-white">Shared sign-in store</div>
-                      <div className="mt-1 text-[12px] leading-5 text-slate-400">Desktop and terminal sessions reuse the same auth file for this instance.</div>
-                    </div>
-                    <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-300">
-                      {configuredCount} of {visibleProviders.length} ready
-                    </div>
-                  </div>
-                  <div className="mt-3 rounded-[18px] border border-white/8 bg-black/10 px-3 py-2.5 text-[12px] font-medium tracking-[-0.01em] text-slate-200">
-                    {sharedAuthPathPreview}
-                  </div>
-                </div>
-
-                <div className="grid gap-2.5 text-[13px] text-slate-300">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-medium text-slate-200">1</div>
-                    <div>
-                      <div className="font-medium text-white">Pick a provider</div>
-                      <div className="mt-0.5 text-[12px] leading-5 text-slate-400">Start with whichever account or billing path you already use.</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-medium text-slate-200">2</div>
-                    <div>
-                      <div className="font-medium text-white">Choose sign-in, API key, or local server</div>
-                      <div className="mt-0.5 text-[12px] leading-5 text-slate-400">Local LM Studio and Ollama servers can be used without saving a key.</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 text-[12px] text-slate-400">You can always come back from Settings → Authentication.</div>
+              {onDismissGate ? (
+                <Button
+                  variant="secondary"
+                  className="h-9 shrink-0 rounded-full px-4 text-[12px] text-white"
+                  onClick={onDismissGate}
+                >
+                  Skip for now →
+                </Button>
+              ) : null}
             </div>
 
-            <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-5" style={{ WebkitAppRegion: 'no-drag' as const }}>
-              {detailHeader}
-              {showDetailPage ? (
-                <ScrollArea className="min-h-0 flex-1 pr-1">
-                  <div className="flex min-h-0 min-w-0 w-full max-w-none flex-col pb-2" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
-                </ScrollArea>
-              ) : (
-                <div className="flex min-h-0 min-w-0 w-full max-w-none flex-1 flex-col" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
-              )}
+            <div className="min-h-0">{content}</div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-4 text-[12px] text-slate-400">
+              <div>Shared authentication enabled</div>
+              <div>Details stay in Settings → Authentication.</div>
             </div>
           </div>
         </div>
