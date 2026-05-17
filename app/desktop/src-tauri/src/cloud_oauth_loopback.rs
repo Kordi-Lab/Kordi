@@ -241,7 +241,7 @@ fn completion_page_css() -> &'static str {
     html, body { margin: 0; padding: 0; }
     body {
       min-height: 100vh;
-      font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
       color: var(--ink-soft);
       background:
         radial-gradient(circle at 50% 23%, oklch(0.86 0 0 / 0.20), transparent 24rem),
@@ -499,6 +499,20 @@ mod completion_page_tests {
         assert!(
             html.contains("prefers-reduced-motion: reduce"),
             "reduced motion must collapse animations"
+        );
+    }
+
+    #[test]
+    fn uses_provider_callback_system_font_stack() {
+        let html = completion_page_html("cloud_oauth_font");
+
+        assert!(
+            html.contains("-apple-system, BlinkMacSystemFont"),
+            "callback page should use the same system font stack as the provider-style confirmation page"
+        );
+        assert!(
+            !html.contains("Avenir Next"),
+            "callback page should not use the previous Kordi in-app display font"
         );
     }
 
