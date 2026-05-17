@@ -227,6 +227,61 @@ test('sendMessage posts attachment metadata and parses returned attachments', as
   assert.equal(sent.attachments?.[0]?.downloadUrl, 'https://files.test/att_1');
 });
 
+test('listSessionVisibility loads hidden and deleted cloud session ids', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    hiddenSessionIds: ['session:hidden'],
+    deletedSessionIds: ['session:deleted'],
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const visibility = await client.listSessionVisibility('kordi_cs_xyz');
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/visibility');
+  assert.equal(calls[0].init?.method, 'GET');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+  assert.deepEqual(visibility, {
+    hiddenSessionIds: ['session:hidden'],
+    deletedSessionIds: ['session:deleted'],
+  });
+});
+
+test('hideCloudSession sends an authenticated PUT to the hidden route', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await client.hideCloudSession('kordi_cs_xyz', 'session:one');
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Aone/hidden');
+  assert.equal(calls[0].init?.method, 'PUT');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+});
+
+test('unhideCloudSession sends an authenticated DELETE to the hidden route', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await client.unhideCloudSession('kordi_cs_xyz', 'session:one');
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Aone/hidden');
+  assert.equal(calls[0].init?.method, 'DELETE');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+});
+
+test('deleteCloudSession sends an authenticated DELETE to the session route', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await client.deleteCloudSession('kordi_cs_xyz', 'session:one');
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Aone');
+  assert.equal(calls[0].init?.method, 'DELETE');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+});
+
 test('listSessionForks loads cloud fork lineage for a parent session', async () => {
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
     forks: [{

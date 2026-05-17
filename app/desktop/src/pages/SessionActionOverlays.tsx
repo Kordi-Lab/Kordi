@@ -26,7 +26,6 @@ type SessionContextMenuProps = {
   onClose: () => void;
   onRename: (target: SessionActionTarget) => void;
   onMove: (target: SessionActionTarget) => void;
-  onArchive: (sessionId: string) => void;
   onDelete: (target: SessionActionTarget) => void;
 };
 
@@ -35,7 +34,6 @@ export function SessionContextMenu({
   onClose,
   onRename,
   onMove,
-  onArchive,
   onDelete,
 }: SessionContextMenuProps) {
   return (
@@ -72,23 +70,13 @@ export function SessionContextMenu({
         ) : null}
         <button
           type="button"
-          className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
-          onClick={() => {
-            onArchive(target.sessionId);
-            onClose();
-          }}
-        >
-          Not show here
-        </button>
-        <button
-          type="button"
           className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-rose-100 transition hover:bg-rose-500/10"
           onClick={() => {
             onClose();
             onDelete({ sessionId: target.sessionId, sessionName: target.sessionName });
           }}
         >
-          Delete forever…
+          Remove chat…
         </button>
       </div>
     </div>
@@ -151,27 +139,64 @@ export function RenameSessionDialog({ target, onCancel, onConfirm }: RenameSessi
 type DeleteSessionDialogProps = {
   target: SessionActionTarget;
   onCancel: () => void;
-  onConfirm: (sessionId: string) => void;
+  onConfirm: (sessionId: string) => Promise<void> | void;
 };
 
 export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessionDialogProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cancel = () => {
+    if (isDeleting) return;
+    onCancel();
+  };
+
+  const confirm = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await onConfirm(target.sessionId);
+      onCancel();
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setError(`Could not remove chat: ${message}`);
+      setIsDeleting(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]" onMouseDown={onCancel}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]"
+      onMouseDown={cancel}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          cancel();
+        }
+      }}
+    >
       <div className="app-modal-panel w-full max-w-md rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="text-[16px] font-semibold">Delete forever?</div>
+        <div className="text-[16px] font-semibold">Remove chat?</div>
         <div className="mt-2 text-[13px] leading-6 text-slate-400">
-          This permanently removes <span className="font-medium text-slate-200">{target.sessionName}</span> from local runtime storage and canonical session storage. This cannot be undone.
+          <span className="font-medium text-slate-200">{target.sessionName}</span> will be removed from your chat list on this device and your signed-in cloud devices.
         </div>
+        <div className="mt-3 text-[13px] leading-6 text-slate-400">
+          It will show again when there is a new update in this chat.
+        </div>
+        {error ? (
+          <div className="mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100">
+            {error}
+          </div>
+        ) : null}
         <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
+          <Button variant="secondary" className="rounded-full px-4" autoFocus disabled={isDeleting} onClick={cancel}>Cancel</Button>
           <Button
             className="rounded-full bg-rose-500 px-4 text-white hover:bg-rose-400"
-            onClick={() => {
-              onConfirm(target.sessionId);
-              onCancel();
-            }}
+            disabled={isDeleting}
+            onClick={() => { void confirm(); }}
           >
-            Delete forever
+            {isDeleting ? 'Removing…' : 'Remove chat'}
           </Button>
         </div>
       </div>

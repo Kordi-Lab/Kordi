@@ -77,7 +77,6 @@ import {
   archiveDesktopChatSession,
   createDesktopProject,
   createDesktopProjectFromFolder,
-  deleteDesktopChatSessionForever,
   fetchCanonicalSessionState,
   moveDesktopChatSessionToProject,
   openOrCreateCanonicalSession,
@@ -114,6 +113,7 @@ import {
   removeSessionFromDesktopState,
   sessionMetadataRecord,
   sessionRenameNoticeText,
+  shouldUseCloudSessionAction,
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
 
@@ -315,6 +315,8 @@ export function useKordiAppModel() {
     sendCloudBridgeMessage,
     sendCloudGroupControl,
     recordCloudSessionFork,
+    hideCloudSession,
+    deleteCloudSession,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
     refreshCloudContacts,
@@ -325,6 +327,8 @@ export function useKordiAppModel() {
     initialContactsSettled,
     initialMessagesSettled,
     cachedMessagesReady,
+    cloudHiddenSessionIds,
+    cloudDeletedSessionIds,
     cloudSelfAgentSyncStatusBySessionId,
   } = useCloudBridgeState({
     account: kordiEdition === 'cloud' ? cloudSession.account : null,
@@ -487,6 +491,12 @@ export function useKordiAppModel() {
     void refreshCloudBridgeMessages();
   }, [refreshCanonicalState, refreshCloudBridgeMessages, refreshCloudContacts]);
 
+  const combinedHiddenSessionIds = useMemo(() => new Set([
+    ...locallyHiddenSessionIds,
+    ...cloudHiddenSessionIds,
+    ...cloudDeletedSessionIds,
+  ]), [cloudDeletedSessionIds, cloudHiddenSessionIds, locallyHiddenSessionIds]);
+
   const {
     chatConversations,
     filteredConversations,
@@ -522,7 +532,7 @@ export function useKordiAppModel() {
     desktopChatState,
     desktopBridgeState,
     canonicalSessionState,
-    hiddenSessionIds: locallyHiddenSessionIds,
+    hiddenSessionIds: combinedHiddenSessionIds,
     projectWorkspaces: projectsUi.projectWorkspaces,
     projectSelectedSessionIds,
     activeNav,
@@ -1160,14 +1170,22 @@ export function useKordiAppModel() {
   }, [appendRenameNotice, canonicalSessionState?.profile.humanIdentityId, desktopChatState?.sessions, isNativeShell, refreshCanonicalState, refreshDesktopChat, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, syncGroupSessionTitleRename]);
 
   const handleArchiveChatSession = useCallback(async (sessionId: string) => {
-    if (!isNativeShell || !sessionId.trim()) return;
+    const trimmedSessionId = sessionId.trim();
+    if (!isNativeShell || !trimmedSessionId) return;
 
-    optimisticallyRemoveChatSession(sessionId);
     try {
       setDesktopChatError(null);
-      const nextState = await archiveDesktopChatSession(sessionId, desktopChatState?.activeSessionId);
+      if (shouldUseCloudSessionAction(kordiEdition, trimmedSessionId)) {
+        await hideCloudSession(trimmedSessionId);
+        optimisticallyRemoveChatSession(trimmedSessionId);
+        await refreshCanonicalState();
+        return;
+      }
+
+      optimisticallyRemoveChatSession(trimmedSessionId);
+      const nextState = await archiveDesktopChatSession(trimmedSessionId, desktopChatState?.activeSessionId);
       setDesktopChatState(nextState);
-      if (activeConvId === sessionId || desktopChatState?.activeSessionId === sessionId) {
+      if (activeConvId === trimmedSessionId || desktopChatState?.activeSessionId === trimmedSessionId) {
         setActiveConvId(nextState.activeSessionId);
       }
       await refreshCanonicalState();
@@ -1175,27 +1193,47 @@ export function useKordiAppModel() {
       await refreshCanonicalState();
       const message = error instanceof Error ? error.message : 'Unable to hide session';
       setDesktopChatError(message.startsWith('Session not found') ? null : message);
+      if (shouldUseCloudSessionAction(kordiEdition, trimmedSessionId)) throw error;
     }
-  }, [activeConvId, desktopChatState?.activeSessionId, isNativeShell, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
+  }, [activeConvId, desktopChatState?.activeSessionId, hideCloudSession, isNativeShell, kordiEdition, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
 
   const handleDeleteChatSession = useCallback(async (sessionId: string) => {
-    if (!isNativeShell || !sessionId.trim()) return;
+    const trimmedSessionId = sessionId.trim();
+    if (!isNativeShell || !trimmedSessionId) return;
 
-    optimisticallyRemoveChatSession(sessionId);
     try {
       setDesktopChatError(null);
-      const nextState = await deleteDesktopChatSessionForever(sessionId, desktopChatState?.activeSessionId);
+      if (shouldUseCloudSessionAction(kordiEdition, trimmedSessionId)) {
+        await deleteCloudSession(trimmedSessionId);
+        optimisticallyRemoveChatSession(trimmedSessionId);
+        try {
+          const nextState = await archiveDesktopChatSession(trimmedSessionId, desktopChatState?.activeSessionId);
+          setDesktopChatState(nextState);
+          if (activeConvId === trimmedSessionId || desktopChatState?.activeSessionId === trimmedSessionId) {
+            setActiveConvId(nextState.activeSessionId);
+          }
+        } catch (localError) {
+          const localMessage = localError instanceof Error ? localError.message : String(localError);
+          if (!localMessage.startsWith('Session not found')) throw localError;
+        }
+        await refreshCanonicalState();
+        return;
+      }
+
+      optimisticallyRemoveChatSession(trimmedSessionId);
+      const nextState = await archiveDesktopChatSession(trimmedSessionId, desktopChatState?.activeSessionId);
       setDesktopChatState(nextState);
-      if (activeConvId === sessionId || desktopChatState?.activeSessionId === sessionId) {
+      if (activeConvId === trimmedSessionId || desktopChatState?.activeSessionId === trimmedSessionId) {
         setActiveConvId(nextState.activeSessionId);
       }
       await refreshCanonicalState();
     } catch (error) {
       await refreshCanonicalState();
-      const message = error instanceof Error ? error.message : 'Unable to delete session';
+      const message = error instanceof Error ? error.message : 'Unable to remove chat';
       setDesktopChatError(message.startsWith('Session not found') ? null : message);
+      if (shouldUseCloudSessionAction(kordiEdition, trimmedSessionId)) throw error;
     }
-  }, [activeConvId, desktopChatState?.activeSessionId, isNativeShell, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
+  }, [activeConvId, deleteCloudSession, desktopChatState?.activeSessionId, isNativeShell, kordiEdition, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
 
   const handleMoveChatSessionToProject = useCallback(async (sessionId: string, requestedProjectRoot: string) => {
     if (!isNativeShell || !sessionId.trim()) return;

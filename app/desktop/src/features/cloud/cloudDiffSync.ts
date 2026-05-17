@@ -4,9 +4,19 @@ import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloud
 export type CloudSyncEvent = AuthCloudSyncEvent;
 
 export const CLOUD_SYNC_CURSOR_PREFIX = 'kordi.cloud.syncCursor.v1:';
+export const CLOUD_SESSION_VISIBILITY_PREFIX = 'kordi.cloud.sessionVisibility.v1:';
+
+export type CloudSessionVisibilityState = {
+  hiddenSessionIds: Set<string>;
+  deletedSessionIds: Set<string>;
+};
 
 export function cloudSyncCursorStorageKey(accountId: string): string {
   return `${CLOUD_SYNC_CURSOR_PREFIX}${accountId.trim()}`;
+}
+
+export function cloudSessionVisibilityStorageKey(accountId: string): string {
+  return `${CLOUD_SESSION_VISIBILITY_PREFIX}${accountId.trim()}`;
 }
 
 function browserLocalStorage(): Storage | null {
@@ -51,6 +61,45 @@ export function saveCloudSyncCursor(accountId: string | null | undefined, cursor
   } catch {
     // Best effort. A failed cursor write only causes a future duplicate sync;
     // event application is idempotent by message id.
+  }
+}
+
+function normalizeSessionIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(cleanText).filter(Boolean))];
+}
+
+export function loadCloudSessionVisibility(
+  accountId: string | null | undefined,
+  storage: Storage | null = browserLocalStorage(),
+): CloudSessionVisibilityState {
+  const trimmedAccountId = accountId?.trim() ?? '';
+  if (!trimmedAccountId || !storage) return { hiddenSessionIds: new Set(), deletedSessionIds: new Set() };
+  try {
+    const parsed = objectRecord(JSON.parse(storage.getItem(cloudSessionVisibilityStorageKey(trimmedAccountId)) ?? '{}'));
+    return {
+      hiddenSessionIds: new Set(normalizeSessionIdList(parsed?.hiddenSessionIds)),
+      deletedSessionIds: new Set(normalizeSessionIdList(parsed?.deletedSessionIds)),
+    };
+  } catch {
+    return { hiddenSessionIds: new Set(), deletedSessionIds: new Set() };
+  }
+}
+
+export function saveCloudSessionVisibility(
+  accountId: string | null | undefined,
+  visibility: CloudSessionVisibilityState,
+  storage: Storage | null = browserLocalStorage(),
+): void {
+  const trimmedAccountId = accountId?.trim() ?? '';
+  if (!trimmedAccountId || !storage) return;
+  try {
+    storage.setItem(cloudSessionVisibilityStorageKey(trimmedAccountId), JSON.stringify({
+      hiddenSessionIds: [...visibility.hiddenSessionIds].map((value) => value.trim()).filter(Boolean),
+      deletedSessionIds: [...visibility.deletedSessionIds].map((value) => value.trim()).filter(Boolean),
+    }));
+  } catch {
+    // Best effort. Server visibility is still authoritative on next refresh.
   }
 }
 
@@ -102,6 +151,46 @@ function payloadMessage(event: CloudSyncEvent): CloudMessage | null {
   return normalizeCloudMessage(payload?.message);
 }
 
+function eventSessionId(event: CloudSyncEvent): string {
+  const payload = objectRecord(event.payload);
+  return cleanText(payload?.sessionId) || cleanText(event.peerAccountId);
+}
+
+function directPersonSessionId(accountId: string, peerId: string): string {
+  return `session:direct-person:${[accountId.trim(), peerId.trim()].filter(Boolean).sort().join(':')}`;
+}
+
+function messageSessionKeys(accountId: string, message: CloudMessage, eventPeerId?: string | null): string[] {
+  const keys = new Set<string>();
+  const sessionId = cleanText(message.sessionId);
+  if (sessionId) keys.add(sessionId);
+  const peerId = messagePeerId(accountId, message, eventPeerId);
+  if (peerId) {
+    keys.add(peerId);
+    keys.add(directPersonSessionId(accountId, peerId));
+  }
+  return [...keys];
+}
+
+function messageMatchesSession(accountId: string, message: CloudMessage, sessionId: string, peerId?: string | null): boolean {
+  return messageSessionKeys(accountId, message, peerId).includes(sessionId);
+}
+
+export function removeCloudSessionMessages(
+  accountId: string,
+  currentMessagesByPeer: Record<string, CloudMessage[]>,
+  sessionId: string,
+): Record<string, CloudMessage[]> {
+  const trimmedSessionId = sessionId.trim();
+  if (!trimmedSessionId) return currentMessagesByPeer;
+  const next: Record<string, CloudMessage[]> = {};
+  for (const [peerId, messages] of Object.entries(currentMessagesByPeer)) {
+    const retained = messages.filter((message) => !messageMatchesSession(accountId, message, trimmedSessionId, peerId));
+    if (retained.length > 0) next[peerId] = retained;
+  }
+  return next;
+}
+
 function readReceiptPayload(event: CloudSyncEvent): { messageIds: string[]; readAt: string } | null {
   const payload = objectRecord(event.payload);
   if (!payload) return null;
@@ -117,14 +206,44 @@ export function applyCloudSyncEventsToMessagesByPeer(
   accountId: string,
   currentMessagesByPeer: Record<string, CloudMessage[]>,
   events: CloudSyncEvent[],
+  initialHiddenSessionIds: ReadonlySet<string> = new Set(),
+  initialDeletedSessionIds: ReadonlySet<string> = new Set(),
 ): Record<string, CloudMessage[]> {
   let next = currentMessagesByPeer;
+  const hiddenSessionIds = new Set(initialHiddenSessionIds);
+  const deletedSessionIds = new Set(initialDeletedSessionIds);
   for (const event of events) {
+    if (event.eventType === 'session.hidden') {
+      const sessionId = eventSessionId(event);
+      if (sessionId && !deletedSessionIds.has(sessionId)) hiddenSessionIds.add(sessionId);
+      continue;
+    }
+
+    if (event.eventType === 'session.unhidden') {
+      const sessionId = eventSessionId(event);
+      if (sessionId) hiddenSessionIds.delete(sessionId);
+      continue;
+    }
+
+    if (event.eventType === 'session.deleted') {
+      const sessionId = eventSessionId(event);
+      if (!sessionId) continue;
+      hiddenSessionIds.delete(sessionId);
+      deletedSessionIds.add(sessionId);
+      next = removeCloudSessionMessages(accountId, next, sessionId);
+      continue;
+    }
+
     if (event.eventType === 'message.upsert') {
       const message = payloadMessage(event);
       if (!message) continue;
       const peerId = messagePeerId(accountId, message, event.peerAccountId);
       if (!peerId) continue;
+      const keys = messageSessionKeys(accountId, message, event.peerAccountId);
+      for (const key of keys) {
+        hiddenSessionIds.delete(key);
+        deletedSessionIds.delete(key);
+      }
       next = {
         ...next,
         [peerId]: upsertMessage(next[peerId] ?? [], message),
@@ -148,6 +267,42 @@ export function applyCloudSyncEventsToMessagesByPeer(
     }
   }
   return next;
+}
+
+export function applyCloudSyncEventsToSessionVisibility(
+  accountId: string,
+  current: CloudSessionVisibilityState,
+  events: CloudSyncEvent[],
+): CloudSessionVisibilityState {
+  const hiddenSessionIds = new Set(current.hiddenSessionIds);
+  const deletedSessionIds = new Set(current.deletedSessionIds);
+  for (const event of events) {
+    if (event.eventType === 'message.upsert') {
+      const message = payloadMessage(event);
+      if (!message) continue;
+      for (const key of messageSessionKeys(accountId, message, event.peerAccountId)) {
+        hiddenSessionIds.delete(key);
+        deletedSessionIds.delete(key);
+      }
+      continue;
+    }
+
+    const sessionId = eventSessionId(event);
+    if (!sessionId) continue;
+    if (event.eventType === 'session.hidden') {
+      if (!deletedSessionIds.has(sessionId)) hiddenSessionIds.add(sessionId);
+      continue;
+    }
+    if (event.eventType === 'session.unhidden') {
+      hiddenSessionIds.delete(sessionId);
+      continue;
+    }
+    if (event.eventType === 'session.deleted') {
+      hiddenSessionIds.delete(sessionId);
+      deletedSessionIds.add(sessionId);
+    }
+  }
+  return { hiddenSessionIds, deletedSessionIds };
 }
 
 export function applyCloudSyncEventsToSessionForks(
@@ -210,6 +365,8 @@ export type SyncCloudDiffOnceInput = {
   messagesByPeer: Record<string, CloudMessage[]>;
   sessionActivity?: CloudSessionActivityStore;
   sessionForksById?: Record<string, CloudSessionForkSummary>;
+  hiddenSessionIds?: ReadonlySet<string>;
+  deletedSessionIds?: ReadonlySet<string>;
   cursorStorage?: Storage | null;
   fetchEvents(cursor: string): Promise<CloudSyncResponse>;
 };
@@ -218,6 +375,8 @@ export type SyncCloudDiffOnceResult = {
   messagesByPeer: Record<string, CloudMessage[]>;
   sessionActivity: CloudSessionActivityStore;
   sessionForksById: Record<string, CloudSessionForkSummary>;
+  hiddenSessionIds: Set<string>;
+  deletedSessionIds: Set<string>;
   cursor: string;
   fallbackRequired: boolean;
   hasMore: boolean;
@@ -235,22 +394,30 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   const storage = input.cursorStorage ?? browserLocalStorage();
   const previousCursor = loadCloudSyncCursor(input.accountId, storage);
   let response: CloudSyncResponse;
+  const initialHiddenSessionIds = new Set(input.hiddenSessionIds ?? []);
+  const initialDeletedSessionIds = new Set(input.deletedSessionIds ?? []);
   try {
     response = await input.fetchEvents(previousCursor);
   } catch {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const nextCursor = normalizeCursor(response.cursor);
   if (cursorWentBackwards(previousCursor, nextCursor)) {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const events = response.events ?? [];
+  const visibility = applyCloudSyncEventsToSessionVisibility(input.accountId, {
+    hiddenSessionIds: initialHiddenSessionIds,
+    deletedSessionIds: initialDeletedSessionIds,
+  }, events);
   const messagesByPeer = applyCloudSyncEventsToMessagesByPeer(
     input.accountId,
     input.messagesByPeer,
     events,
+    initialHiddenSessionIds,
+    initialDeletedSessionIds,
   );
   const sessionActivity = applyCloudSyncEventsToSessionActivity(
     input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY,
@@ -258,5 +425,5 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   );
   const sessionForksById = applyCloudSyncEventsToSessionForks(input.sessionForksById ?? {}, events);
   saveCloudSyncCursor(input.accountId, nextCursor, storage);
-  return { messagesByPeer, sessionActivity, sessionForksById, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
+  return { messagesByPeer, sessionActivity, sessionForksById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
 }
