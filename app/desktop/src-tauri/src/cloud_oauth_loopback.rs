@@ -180,43 +180,43 @@ fn completion_page_html(request_id: &str) -> String {
     <main class="card" role="status" aria-live="polite">
       <div class="wordmark" aria-label="Kordi">Kordi</div>
 
-      <div class="pill" data-pill-loading>
-        <span class="pill-icon">
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <div class="status-line" data-status-loading>
+        <span class="status-icon">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
             <circle cx="8" cy="8" r="6" opacity="0.18" />
             <path d="M8 2 a6 6 0 0 1 6 6" />
           </svg>
         </span>
-        <span class="pill-label">Signing in</span>
+        <span>Completing sign-in</span>
       </div>
 
-      <div class="pill pill-success" data-pill-success>
-        <span class="pill-icon">
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <div class="status-line status-success" data-status-success>
+        <span class="status-icon">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3.5 8.4 6.6 11.4 12.6 5.2" />
           </svg>
         </span>
-        <span class="pill-label">Signed in</span>
+        <span>Signed in</span>
       </div>
 
-      <div class="pill pill-error" data-pill-error>
-        <span class="pill-icon">
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+      <div class="status-line status-error" data-status-error>
+        <span class="status-icon">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
             <path d="M5 5 11 11 M11 5 5 11" />
           </svg>
         </span>
-        <span class="pill-label">Sign-in failed</span>
+        <span>Sign-in failed</span>
       </div>
 
-      <h1 class="title" data-title-loading>Signing you in to Kordi</h1>
-      <h1 class="title" data-title-success>Kordi sign-in complete</h1>
-      <h1 class="title" data-title-error>Couldn't finish sign-in</h1>
+      <div class="copy">
+        <h1 class="title" data-title-loading>Finishing authentication</h1>
+        <h1 class="title" data-title-success>Authentication complete</h1>
+        <h1 class="title" data-title-error>Authentication failed</h1>
 
-      <p class="subtitle" data-sub-loading>Hold on — handing you back to the desktop app.</p>
-      <p class="subtitle" data-sub-success>Return to the Kordi desktop app to continue.</p>
-      <p class="subtitle" data-sub-error>Head back to Kordi and try again.</p>
-
-      <p class="hint">You can close this browser tab.</p>
+        <p class="subtitle" data-sub-loading>Checking the browser handoff with the desktop app.</p>
+        <p class="subtitle" data-sub-success>You can close this tab and continue in Kordi.</p>
+        <p class="subtitle" data-sub-error>Return to Kordi and start sign-in again.</p>
+      </div>
     </main>
   </div>
   <script>{script}</script>
@@ -237,62 +237,58 @@ fn completion_page_css() -> &'static str {
     r#"
     :root {
       color-scheme: light dark;
-      --bg: oklch(0.955 0.026 82);
-      --grain: oklch(0.35 0.03 82 / 0.05);
+      --page-bg: oklch(0.965 0.018 82);
+      --page-veil: oklch(0.995 0.006 82 / 0.72);
+      --grain: oklch(0.42 0.02 82 / 0.045);
       --grain-blend: multiply;
-      --grain-opacity: 0.18;
-      --card-bg: oklch(0.985 0.012 82);
-      --card-border: oklch(0.62 0.05 82 / 0.22);
-      --card-inset: oklch(1 0 0 / 0.42);
-      --card-shadow: 0 24px 60px -28px oklch(0.30 0.04 82 / 0.30),
-                     0 4px 14px -10px oklch(0.30 0.04 82 / 0.18);
-      --ink-strong: oklch(0.19 0.018 82);
-      --ink: oklch(0.32 0.018 82);
-      --ink-soft: oklch(0.46 0.022 82);
-      --ink-faint: oklch(0.55 0.022 82);
-      --wordmark-ink: oklch(0.22 0.022 82);
+      --surface: oklch(0.992 0.008 82);
+      --surface-lift: oklch(1 0 0 / 0.78);
+      --border: oklch(0.62 0.035 82 / 0.24);
+      --shadow-ambient: oklch(0.36 0.035 82 / 0.12);
+      --shadow-contact: oklch(0.30 0.028 82 / 0.10);
+      --ink-strong: oklch(0.18 0.018 82);
+      --ink: oklch(0.32 0.016 82);
+      --ink-soft: oklch(0.50 0.018 82);
+      --ink-faint: oklch(0.58 0.016 82);
+      --rule: oklch(0.70 0.025 82 / 0.26);
 
-      --pill-bg: oklch(0.94 0.024 82);
-      --pill-border: oklch(0.62 0.05 82 / 0.18);
-      --pill-ink: oklch(0.32 0.018 82);
-
-      --pill-success-bg: oklch(0.94 0.06 154);
-      --pill-success-border: oklch(0.66 0.13 154 / 0.32);
-      --pill-success-ink: oklch(0.38 0.13 154);
-
-      --pill-error-bg: oklch(0.95 0.05 28);
-      --pill-error-border: oklch(0.66 0.17 28 / 0.30);
-      --pill-error-ink: oklch(0.44 0.17 28);
+      --state-bg: oklch(0.94 0.026 82);
+      --state-border: oklch(0.58 0.040 82 / 0.20);
+      --state-ink: oklch(0.30 0.018 82);
+      --success-bg: oklch(0.91 0.055 154);
+      --success-border: oklch(0.62 0.12 154 / 0.30);
+      --success-ink: oklch(0.34 0.12 154);
+      --error-bg: oklch(0.93 0.048 28);
+      --error-border: oklch(0.62 0.14 28 / 0.32);
+      --error-ink: oklch(0.42 0.14 28);
     }
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg-dark: #0d0f13;
-        --grain: rgba(255, 255, 255, 0.045);
+        --page-bg: oklch(0.155 0.014 250);
+        --page-veil: oklch(0.18 0.014 250 / 0.70);
+        --grain: oklch(1 0 0 / 0.04);
         --grain-blend: screen;
-        --grain-opacity: 0.28;
-        --card-bg: oklch(0.20 0.012 246);
-        --card-border: oklch(0.40 0.018 246 / 0.32);
-        --card-inset: oklch(1 0 0 / 0.06);
-        --card-shadow: 0 30px 80px -34px oklch(0 0 0 / 0.55),
-                       0 6px 20px -12px oklch(0 0 0 / 0.40);
-        --ink-strong: oklch(0.96 0.012 82);
-        --ink: oklch(0.78 0.012 246);
-        --ink-soft: oklch(0.62 0.014 246);
-        --ink-faint: oklch(0.50 0.014 246);
-        --wordmark-ink: oklch(0.97 0.014 82);
+        --surface: oklch(0.205 0.014 250);
+        --surface-lift: oklch(1 0 0 / 0.055);
+        --border: oklch(0.44 0.022 250 / 0.34);
+        --shadow-ambient: oklch(0 0 0 / 0.42);
+        --shadow-contact: oklch(0 0 0 / 0.28);
+        --ink-strong: oklch(0.96 0.010 82);
+        --ink: oklch(0.78 0.012 250);
+        --ink-soft: oklch(0.64 0.014 250);
+        --ink-faint: oklch(0.53 0.014 250);
+        --rule: oklch(0.48 0.018 250 / 0.34);
 
-        --pill-bg: oklch(0.24 0.014 246);
-        --pill-border: oklch(0.42 0.018 246 / 0.36);
-        --pill-ink: oklch(0.78 0.014 246);
-
-        --pill-success-bg: oklch(0.30 0.07 154 / 0.55);
-        --pill-success-border: oklch(0.62 0.13 154 / 0.42);
-        --pill-success-ink: oklch(0.88 0.12 154);
-
-        --pill-error-bg: oklch(0.30 0.10 28 / 0.55);
-        --pill-error-border: oklch(0.62 0.16 28 / 0.42);
-        --pill-error-ink: oklch(0.88 0.12 28);
+        --state-bg: oklch(0.25 0.014 250);
+        --state-border: oklch(0.48 0.018 250 / 0.36);
+        --state-ink: oklch(0.78 0.014 250);
+        --success-bg: oklch(0.30 0.070 154 / 0.58);
+        --success-border: oklch(0.62 0.13 154 / 0.42);
+        --success-ink: oklch(0.88 0.12 154);
+        --error-bg: oklch(0.30 0.10 28 / 0.58);
+        --error-border: oklch(0.62 0.16 28 / 0.42);
+        --error-ink: oklch(0.88 0.12 28);
       }
     }
 
@@ -300,19 +296,20 @@ fn completion_page_css() -> &'static str {
     html, body { margin: 0; padding: 0; }
     body {
       min-height: 100vh;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
-      font-feature-settings: "ss01", "cv11";
+      font-family: "Avenir Next", "SF Pro Text", "Segoe UI", sans-serif;
+      font-feature-settings: "kern", "ss01", "cv11";
       color: var(--ink);
-      background: var(--bg);
+      background:
+        radial-gradient(circle at 50% 46%, var(--page-veil), transparent 34rem),
+        linear-gradient(135deg, oklch(0.985 0.012 82) 0%, var(--page-bg) 54%, oklch(0.935 0.020 82) 100%);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
     @media (prefers-color-scheme: dark) {
       body {
         background:
-          radial-gradient(circle at 14% 12%, oklch(0.55 0.10 246 / 0.10), transparent 36%),
-          radial-gradient(circle at 86% 18%, oklch(0.58 0.14 355 / 0.06), transparent 30%),
-          linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
+          radial-gradient(circle at 50% 42%, oklch(0.34 0.055 250 / 0.22), transparent 32rem),
+          linear-gradient(135deg, oklch(0.18 0.014 250) 0%, var(--page-bg) 60%, oklch(0.105 0.012 250) 100%);
       }
     }
 
@@ -321,108 +318,118 @@ fn completion_page_css() -> &'static str {
       min-height: 100vh;
       display: grid;
       place-items: center;
-      padding: 32px 20px;
+      padding: 28px;
+      overflow: hidden;
     }
     .page-grain {
       position: absolute;
-      inset: 0;
+      inset: -20%;
       pointer-events: none;
-      background-image: repeating-linear-gradient(
-        7deg,
-        var(--grain) 0 1px,
-        transparent 1px 9px
-      );
+      background-image:
+        repeating-linear-gradient(8deg, var(--grain) 0 1px, transparent 1px 10px),
+        radial-gradient(circle at 50% 45%, transparent 0 18rem, oklch(0.34 0.03 82 / 0.035) 42rem);
       mix-blend-mode: var(--grain-blend);
-      opacity: var(--grain-opacity);
+      opacity: 0.72;
+      transform: rotate(-1deg);
     }
 
     .card {
       position: relative;
-      width: min(380px, 100%);
-      padding: 28px 28px 24px;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 22px;
+      width: min(430px, calc(100vw - 48px));
+      padding: 28px 30px 30px;
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
       box-shadow:
-        inset 0 1px 0 var(--card-inset),
-        var(--card-shadow);
+        inset 0 1px 0 var(--surface-lift),
+        0 28px 70px -38px var(--shadow-ambient),
+        0 10px 28px -22px var(--shadow-contact);
       display: grid;
-      gap: 14px;
-      justify-items: start;
-      text-align: left;
-      animation: card-enter 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      gap: 18px;
+      animation: card-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
+    .card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: inherit;
+      background: linear-gradient(180deg, oklch(1 0 0 / 0.24), transparent 44%);
+    }
+    .wordmark,
+    .status-line,
+    .copy { position: relative; z-index: 1; }
     @keyframes card-enter {
-      from { opacity: 0; transform: translate3d(0, 6px, 0); }
-      to   { opacity: 1; transform: translate3d(0, 0, 0); }
+      from { opacity: 0; transform: translate3d(0, 5px, 0) scale(0.994); }
+      to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
     }
 
     .wordmark {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.025em;
-      color: var(--wordmark-ink);
+      font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+      font-size: 18px;
+      font-weight: 760;
+      letter-spacing: -0.035em;
+      color: var(--ink-strong);
       line-height: 1;
-      padding-bottom: 4px;
     }
 
-    .pill {
+    .status-line {
       display: none;
       align-items: center;
-      gap: 6px;
-      padding: 4px 10px 4px 8px;
-      border: 1px solid var(--pill-border);
-      background: var(--pill-bg);
-      color: var(--pill-ink);
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      animation: pill-enter 360ms cubic-bezier(0.22, 1, 0.36, 1) both 80ms;
+      gap: 8px;
+      color: var(--state-ink);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      animation: text-fade 280ms cubic-bezier(0.22, 1, 0.36, 1) both 70ms;
     }
-    .pill-icon {
+    .status-icon {
       display: inline-flex;
-      width: 14px;
-      height: 14px;
+      width: 18px;
+      height: 18px;
       align-items: center;
       justify-content: center;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: var(--state-bg);
+      color: currentColor;
     }
-    .pill-success { background: var(--pill-success-bg); border-color: var(--pill-success-border); color: var(--pill-success-ink); }
-    .pill-error   { background: var(--pill-error-bg);   border-color: var(--pill-error-border);   color: var(--pill-error-ink); }
+    .status-success { color: var(--success-ink); }
+    .status-success .status-icon { background: var(--success-bg); }
+    .status-error { color: var(--error-ink); }
+    .status-error .status-icon { background: var(--error-bg); }
 
-    [data-status="loading"] [data-pill-loading],
-    [data-status="success"] [data-pill-success],
-    [data-status="error"]   [data-pill-error] { display: inline-flex; }
+    [data-status="loading"] [data-status-loading],
+    [data-status="success"] [data-status-success],
+    [data-status="error"]   [data-status-error] { display: inline-flex; }
+    [data-status="loading"] .status-icon svg { animation: spin 1.1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    [data-status="loading"] .pill-icon svg { animation: spin 1.1s linear infinite; }
-
-    @keyframes pill-enter {
-      from { opacity: 0; transform: scale(0.94); }
-      to   { opacity: 1; transform: scale(1); }
+    .copy {
+      display: grid;
+      gap: 10px;
+      padding-top: 2px;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
     .title {
       display: none;
-      margin: 2px 0 0;
-      font-size: 22px;
-      line-height: 1.18;
-      font-weight: 600;
-      letter-spacing: -0.018em;
+      margin: 0;
+      font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+      font-size: clamp(30px, 5vw, 38px);
+      line-height: 1.04;
+      font-weight: 760;
+      letter-spacing: -0.042em;
       color: var(--ink-strong);
-      animation: text-fade 360ms cubic-bezier(0.22, 1, 0.36, 1) both 140ms;
+      animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 110ms;
     }
     .subtitle {
       display: none;
-      margin: -4px 0 0;
-      font-size: 14px;
+      margin: 0;
+      max-width: 28ch;
+      font-size: 15px;
       line-height: 1.55;
       color: var(--ink-soft);
-      max-width: 32ch;
-      animation: text-fade 360ms cubic-bezier(0.22, 1, 0.36, 1) both 200ms;
+      animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 160ms;
     }
     [data-status="loading"] [data-title-loading],
     [data-status="loading"] [data-sub-loading],
@@ -431,22 +438,18 @@ fn completion_page_css() -> &'static str {
     [data-status="error"]   [data-title-error],
     [data-status="error"]   [data-sub-error] { display: block; }
 
-    .hint {
-      margin: 8px 0 0;
-      font-size: 12px;
-      line-height: 1.45;
-      color: var(--ink-faint);
-      letter-spacing: 0.005em;
-      animation: text-fade 360ms cubic-bezier(0.22, 1, 0.36, 1) both 260ms;
-    }
     @keyframes text-fade {
       from { opacity: 0; transform: translate3d(0, 2px, 0); }
       to   { opacity: 1; transform: translate3d(0, 0, 0); }
     }
 
+    @media (max-width: 420px) {
+      .page { padding: 18px; }
+      .card { width: 100%; padding: 24px; border-radius: 22px; }
+    }
     @media (prefers-reduced-motion: reduce) {
-      .card, .pill, .title, .subtitle, .hint { animation: none; }
-      [data-status="loading"] .pill-icon svg { animation: none; }
+      .card, .status-line, .title, .subtitle { animation: none; }
+      [data-status="loading"] .status-icon svg { animation: none; }
     }
     "#
 }
@@ -484,15 +487,29 @@ mod completion_page_tests {
         // Page boots into the loading state via the data attribute on <html>,
         // so the success / error markup is pre-rendered but hidden until JS
         // toggles the attribute. That keeps the layout stable across states.
-        assert!(html.contains("data-status=\"loading\""), "page should boot in loading state");
-        assert!(html.contains(">Kordi</div>"), "wordmark should render Kordi");
+        assert!(
+            html.contains("data-status=\"loading\""),
+            "page should boot in loading state"
+        );
+        assert!(
+            html.contains(">Kordi</div>"),
+            "wordmark should render Kordi"
+        );
 
         // All three state blocks must be present so the swap between them is
         // just an attribute flip, never a layout shift.
-        for pill in ["data-pill-loading", "data-pill-success", "data-pill-error"] {
-            assert!(html.contains(pill), "missing pill state: {pill}");
+        for status in [
+            "data-status-loading",
+            "data-status-success",
+            "data-status-error",
+        ] {
+            assert!(html.contains(status), "missing status state: {status}");
         }
-        for title in ["data-title-loading", "data-title-success", "data-title-error"] {
+        for title in [
+            "data-title-loading",
+            "data-title-success",
+            "data-title-error",
+        ] {
             assert!(html.contains(title), "missing title state: {title}");
         }
         for sub in ["data-sub-loading", "data-sub-success", "data-sub-error"] {
@@ -504,20 +521,31 @@ mod completion_page_tests {
     fn copy_matches_brand_voice_for_each_state() {
         let html = completion_page_html("cloud_oauth_abc123");
 
-        assert!(html.contains("Signing you in to Kordi"));
-        assert!(html.contains("Kordi sign-in complete"));
-        assert!(html.contains("Couldn't finish sign-in"));
-        assert!(html.contains("Return to the Kordi desktop app"));
-        assert!(html.contains("You can close this browser tab"));
+        assert!(html.contains("Finishing authentication"));
+        assert!(html.contains("Authentication complete"));
+        assert!(html.contains("Authentication failed"));
+        assert!(html.contains("You can close this tab and continue in Kordi."));
+        assert!(
+            !html.contains("READY"),
+            "status should not use the large repeated pill treatment"
+        );
+        assert!(
+            !html.contains("Kordi sign-in complete"),
+            "success title should not repeat the wordmark"
+        );
     }
 
     #[test]
     fn script_posts_to_complete_endpoint_with_request_id() {
         let html = completion_page_html("cloud_oauth_xyz789");
-        assert!(html.contains("/complete/cloud_oauth_xyz789"),
-            "completion POST should target the request-specific endpoint");
-        assert!(html.contains("method: 'POST'"),
-            "completion ping must be a POST so the loopback server flips status");
+        assert!(
+            html.contains("/complete/cloud_oauth_xyz789"),
+            "completion POST should target the request-specific endpoint"
+        );
+        assert!(
+            html.contains("method: 'POST'"),
+            "completion ping must be a POST so the loopback server flips status"
+        );
     }
 
     #[test]
@@ -527,9 +555,18 @@ mod completion_page_tests {
         // OKLCH tokens tinted toward Kordi's warm saffron hue (82) — matches
         // the in-app `--app-cloud-login-*` palette without depending on the
         // bundled stylesheet (loopback HTTP server can't reach it).
-        assert!(html.contains("oklch(0.955 0.026 82)"), "light page bg should be the brand cream");
-        assert!(html.contains("prefers-color-scheme: dark"), "dark mode must be supported");
-        assert!(html.contains("prefers-reduced-motion: reduce"), "reduced motion must collapse animations");
+        assert!(
+            html.contains("oklch(0.965 0.018 82)"),
+            "light page bg should be the refined brand cream"
+        );
+        assert!(
+            html.contains("prefers-color-scheme: dark"),
+            "dark mode must be supported"
+        );
+        assert!(
+            html.contains("prefers-reduced-motion: reduce"),
+            "reduced motion must collapse animations"
+        );
     }
 
     #[test]
@@ -539,8 +576,10 @@ mod completion_page_tests {
         // The loopback server can't proxy external assets and we don't want
         // the callback page to phone home, so the page must be self-contained.
         for forbidden in ["fonts.googleapis", "fonts.gstatic", "cdn.", "https://"] {
-            assert!(!html.contains(forbidden),
-                "callback page must not reference external URL: {forbidden}");
+            assert!(
+                !html.contains(forbidden),
+                "callback page must not reference external URL: {forbidden}"
+            );
         }
 
         // Anti-slop checks: gradient-fill text and side-stripe borders are
