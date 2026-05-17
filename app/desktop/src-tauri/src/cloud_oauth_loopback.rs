@@ -178,44 +178,20 @@ fn completion_page_html(request_id: &str) -> String {
   <div class="page" aria-hidden="false">
     <div class="page-grain" aria-hidden="true"></div>
     <main class="card" role="status" aria-live="polite">
-      <div class="wordmark" aria-label="Kordi">Kordi</div>
+      <div class="auth-label">KORDI AUTHENTICATION</div>
 
-      <div class="status-line" data-status-loading>
-        <span class="status-icon">
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-            <circle cx="8" cy="8" r="6" opacity="0.18" />
-            <path d="M8 2 a6 6 0 0 1 6 6" />
-          </svg>
-        </span>
-        <span>Completing sign-in</span>
-      </div>
-
-      <div class="status-line status-success" data-status-success>
-        <span class="status-icon">
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3.5 8.4 6.6 11.4 12.6 5.2" />
-          </svg>
-        </span>
-        <span>Signed in</span>
-      </div>
-
-      <div class="status-line status-error" data-status-error>
-        <span class="status-icon">
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
-            <path d="M5 5 11 11 M11 5 5 11" />
-          </svg>
-        </span>
-        <span>Sign-in failed</span>
-      </div>
+      <span class="state-marker" data-status-loading aria-hidden="true"></span>
+      <span class="state-marker" data-status-success aria-hidden="true"></span>
+      <span class="state-marker" data-status-error aria-hidden="true"></span>
 
       <div class="copy">
-        <h1 class="title" data-title-loading>Finishing authentication</h1>
-        <h1 class="title" data-title-success>Authentication complete</h1>
-        <h1 class="title" data-title-error>Authentication failed</h1>
+        <h1 class="title" data-title-loading>Completing Authentication</h1>
+        <h1 class="title" data-title-success>Authentication Successful</h1>
+        <h1 class="title" data-title-error>Authentication Failed</h1>
 
-        <p class="subtitle" data-sub-loading>Checking the browser handoff with the desktop app.</p>
-        <p class="subtitle" data-sub-success>You can close this tab and continue in Kordi.</p>
-        <p class="subtitle" data-sub-error>Return to Kordi and start sign-in again.</p>
+        <p class="subtitle" data-sub-loading>Finishing the browser handoff with Kordi.</p>
+        <p class="subtitle" data-sub-success>You can close this tab and return to Kordi.</p>
+        <p class="subtitle" data-sub-error>Return to Kordi and try signing in again.</p>
       </div>
     </main>
   </div>
@@ -227,68 +203,37 @@ fn completion_page_html(request_id: &str) -> String {
     )
 }
 
-// Self-contained palette. All tokens are mirrored from the in-app
-// `--app-cloud-login-*` variables so the loopback page reads as the same
-// product, but we inline the values because the loopback HTTP server
-// has no access to the bundled stylesheet. Hue 82 (warm saffron) tints
-// every neutral toward the Kordi brand; status accents stay
-// monochromatic per state. See `.impeccable.md` Design Context.
+// Self-contained callback page matching OAuth provider confirmation pages:
+// a dark ambient canvas, one centered confirmation card, and no external
+// assets. It intentionally avoids the in-app cream surface because this page
+// lives in the browser after provider auth rather than inside the desktop UI.
 fn completion_page_css() -> &'static str {
     r#"
     :root {
-      color-scheme: light dark;
-      --page-bg: oklch(0.965 0.018 82);
-      --page-veil: oklch(0.995 0.006 82 / 0.72);
-      --grain: oklch(0.42 0.02 82 / 0.045);
-      --grain-blend: multiply;
-      --surface: oklch(0.992 0.008 82);
-      --surface-lift: oklch(1 0 0 / 0.78);
-      --border: oklch(0.62 0.035 82 / 0.24);
-      --shadow-ambient: oklch(0.36 0.035 82 / 0.12);
-      --shadow-contact: oklch(0.30 0.028 82 / 0.10);
-      --ink-strong: oklch(0.18 0.018 82);
-      --ink: oklch(0.32 0.016 82);
-      --ink-soft: oklch(0.50 0.018 82);
-      --ink-faint: oklch(0.58 0.016 82);
-      --rule: oklch(0.70 0.025 82 / 0.26);
-
-      --state-bg: oklch(0.94 0.026 82);
-      --state-border: oklch(0.58 0.040 82 / 0.20);
-      --state-ink: oklch(0.30 0.018 82);
-      --success-bg: oklch(0.91 0.055 154);
-      --success-border: oklch(0.62 0.12 154 / 0.30);
-      --success-ink: oklch(0.34 0.12 154);
-      --error-bg: oklch(0.93 0.048 28);
-      --error-border: oklch(0.62 0.14 28 / 0.32);
-      --error-ink: oklch(0.42 0.14 28);
+      color-scheme: dark light;
+      --page-bg: oklch(0.145 0.006 250);
+      --page-bg-deep: oklch(0.105 0.004 250);
+      --glow-a: oklch(0.72 0.010 250 / 0.34);
+      --glow-b: oklch(0.50 0.012 250 / 0.18);
+      --surface: oklch(0.165 0.006 250 / 0.78);
+      --surface-top: oklch(0.22 0.006 250 / 0.22);
+      --border: oklch(0.50 0.006 250 / 0.26);
+      --label-border: oklch(0.72 0.010 250 / 0.22);
+      --label-bg: oklch(0.28 0.006 250 / 0.22);
+      --ink-strong: oklch(0.985 0.004 250);
+      --ink-soft: oklch(0.82 0.010 250);
+      --ink-muted: oklch(0.70 0.010 250);
+      --shadow: oklch(0 0 0 / 0.34);
     }
 
     @media (prefers-color-scheme: dark) {
-      :root {
-        --page-bg: oklch(0.155 0.014 250);
-        --page-veil: oklch(0.18 0.014 250 / 0.70);
-        --grain: oklch(1 0 0 / 0.04);
-        --grain-blend: screen;
-        --surface: oklch(0.205 0.014 250);
-        --surface-lift: oklch(1 0 0 / 0.055);
-        --border: oklch(0.44 0.022 250 / 0.34);
-        --shadow-ambient: oklch(0 0 0 / 0.42);
-        --shadow-contact: oklch(0 0 0 / 0.28);
-        --ink-strong: oklch(0.96 0.010 82);
-        --ink: oklch(0.78 0.012 250);
-        --ink-soft: oklch(0.64 0.014 250);
-        --ink-faint: oklch(0.53 0.014 250);
-        --rule: oklch(0.48 0.018 250 / 0.34);
+      :root { color-scheme: dark; }
+    }
 
-        --state-bg: oklch(0.25 0.014 250);
-        --state-border: oklch(0.48 0.018 250 / 0.36);
-        --state-ink: oklch(0.78 0.014 250);
-        --success-bg: oklch(0.30 0.070 154 / 0.58);
-        --success-border: oklch(0.62 0.13 154 / 0.42);
-        --success-ink: oklch(0.88 0.12 154);
-        --error-bg: oklch(0.30 0.10 28 / 0.58);
-        --error-border: oklch(0.62 0.16 28 / 0.42);
-        --error-ink: oklch(0.88 0.12 28);
+    @media (prefers-color-scheme: light) {
+      :root {
+        --page-bg: oklch(0.18 0.006 250);
+        --page-bg-deep: oklch(0.12 0.004 250);
       }
     }
 
@@ -296,21 +241,15 @@ fn completion_page_css() -> &'static str {
     html, body { margin: 0; padding: 0; }
     body {
       min-height: 100vh;
-      font-family: "Avenir Next", "SF Pro Text", "Segoe UI", sans-serif;
-      font-feature-settings: "kern", "ss01", "cv11";
-      color: var(--ink);
+      font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+      color: var(--ink-soft);
       background:
-        radial-gradient(circle at 50% 46%, var(--page-veil), transparent 34rem),
-        linear-gradient(135deg, oklch(0.985 0.012 82) 0%, var(--page-bg) 54%, oklch(0.935 0.020 82) 100%);
+        radial-gradient(circle at 50% 23%, oklch(0.86 0 0 / 0.20), transparent 24rem),
+        radial-gradient(circle at 42% 42%, oklch(0.66 0.006 250 / 0.22), transparent 30rem),
+        linear-gradient(180deg, var(--page-bg) 0%, var(--page-bg-deep) 78%);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-    }
-    @media (prefers-color-scheme: dark) {
-      body {
-        background:
-          radial-gradient(circle at 50% 42%, oklch(0.34 0.055 250 / 0.22), transparent 32rem),
-          linear-gradient(135deg, oklch(0.18 0.014 250) 0%, var(--page-bg) 60%, oklch(0.105 0.012 250) 100%);
-      }
+      text-rendering: geometricPrecision;
     }
 
     .page {
@@ -318,118 +257,103 @@ fn completion_page_css() -> &'static str {
       min-height: 100vh;
       display: grid;
       place-items: center;
-      padding: 28px;
+      padding: 32px;
       overflow: hidden;
+    }
+    .page::before {
+      content: "";
+      position: absolute;
+      width: min(900px, 78vw);
+      height: min(520px, 52vh);
+      left: 50%;
+      top: 33%;
+      transform: translate(-50%, -50%);
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 50% 44%, var(--glow-a), transparent 58%),
+        radial-gradient(circle at 46% 66%, var(--glow-b), transparent 72%);
+      filter: blur(52px);
+      opacity: 0.92;
+      pointer-events: none;
     }
     .page-grain {
       position: absolute;
-      inset: -20%;
+      inset: 0;
       pointer-events: none;
-      background-image:
-        repeating-linear-gradient(8deg, var(--grain) 0 1px, transparent 1px 10px),
-        radial-gradient(circle at 50% 45%, transparent 0 18rem, oklch(0.34 0.03 82 / 0.035) 42rem);
-      mix-blend-mode: var(--grain-blend);
-      opacity: 0.72;
-      transform: rotate(-1deg);
+      background-image: radial-gradient(circle at 50% 50%, transparent 0 42%, oklch(0 0 0 / 0.34) 100%);
     }
 
     .card {
       position: relative;
-      width: min(430px, calc(100vw - 48px));
-      padding: 28px 30px 30px;
+      width: min(740px, calc(100vw - 64px));
+      min-height: 250px;
+      padding: 50px 64px 48px;
       overflow: hidden;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      box-shadow:
-        inset 0 1px 0 var(--surface-lift),
-        0 28px 70px -38px var(--shadow-ambient),
-        0 10px 28px -22px var(--shadow-contact);
       display: grid;
-      gap: 18px;
+      justify-items: center;
+      align-content: center;
+      gap: 26px;
+      text-align: center;
+      background:
+        linear-gradient(180deg, var(--surface-top), transparent 42%),
+        var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 42px;
+      box-shadow:
+        inset 0 1px 0 oklch(1 0 0 / 0.045),
+        0 30px 86px -44px var(--shadow),
+        0 8px 28px -22px oklch(0 0 0 / 0.80);
       animation: card-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
-    .card::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      border-radius: inherit;
-      background: linear-gradient(180deg, oklch(1 0 0 / 0.24), transparent 44%);
-    }
-    .wordmark,
-    .status-line,
-    .copy { position: relative; z-index: 1; }
     @keyframes card-enter {
-      from { opacity: 0; transform: translate3d(0, 5px, 0) scale(0.994); }
+      from { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.996); }
       to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
     }
 
-    .wordmark {
-      font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
-      font-size: 18px;
-      font-weight: 760;
-      letter-spacing: -0.035em;
-      color: var(--ink-strong);
-      line-height: 1;
-    }
-
-    .status-line {
-      display: none;
-      align-items: center;
-      gap: 8px;
-      color: var(--state-ink);
-      font-size: 12px;
-      font-weight: 650;
-      letter-spacing: 0.01em;
-      animation: text-fade 280ms cubic-bezier(0.22, 1, 0.36, 1) both 70ms;
-    }
-    .status-icon {
+    .auth-label {
       display: inline-flex;
-      width: 18px;
-      height: 18px;
       align-items: center;
       justify-content: center;
-      flex: 0 0 auto;
+      min-height: 36px;
+      padding: 7px 18px 6px;
+      border: 1px solid var(--label-border);
       border-radius: 999px;
-      background: var(--state-bg);
-      color: currentColor;
+      background: var(--label-bg);
+      color: var(--ink-soft);
+      font-size: 14px;
+      line-height: 1;
+      font-weight: 640;
+      letter-spacing: 0.20em;
+      text-transform: uppercase;
     }
-    .status-success { color: var(--success-ink); }
-    .status-success .status-icon { background: var(--success-bg); }
-    .status-error { color: var(--error-ink); }
-    .status-error .status-icon { background: var(--error-bg); }
 
-    [data-status="loading"] [data-status-loading],
-    [data-status="success"] [data-status-success],
-    [data-status="error"]   [data-status-error] { display: inline-flex; }
-    [data-status="loading"] .status-icon svg { animation: spin 1.1s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
+    .state-marker { display: none; }
     .copy {
       display: grid;
-      gap: 10px;
-      padding-top: 2px;
+      justify-items: center;
+      gap: 20px;
     }
     .title {
       display: none;
       margin: 0;
-      font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
-      font-size: clamp(30px, 5vw, 38px);
-      line-height: 1.04;
-      font-weight: 760;
-      letter-spacing: -0.042em;
       color: var(--ink-strong);
-      animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 110ms;
+      font-size: clamp(34px, 4vw, 50px);
+      line-height: 1.04;
+      font-weight: 780;
+      letter-spacing: -0.055em;
+      animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 90ms;
     }
     .subtitle {
       display: none;
       margin: 0;
-      max-width: 28ch;
-      font-size: 15px;
-      line-height: 1.55;
+      max-width: 26ch;
       color: var(--ink-soft);
-      animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 160ms;
+      font-size: clamp(18px, 2vw, 23px);
+      line-height: 1.55;
+      font-weight: 570;
+      letter-spacing: -0.018em;
+      text-wrap: balance;
+      animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 140ms;
     }
     [data-status="loading"] [data-title-loading],
     [data-status="loading"] [data-sub-loading],
@@ -439,17 +363,22 @@ fn completion_page_css() -> &'static str {
     [data-status="error"]   [data-sub-error] { display: block; }
 
     @keyframes text-fade {
-      from { opacity: 0; transform: translate3d(0, 2px, 0); }
+      from { opacity: 0; transform: translate3d(0, 3px, 0); }
       to   { opacity: 1; transform: translate3d(0, 0, 0); }
     }
 
-    @media (max-width: 420px) {
-      .page { padding: 18px; }
-      .card { width: 100%; padding: 24px; border-radius: 22px; }
+    @media (max-width: 640px) {
+      .page { padding: 20px; }
+      .card {
+        width: 100%;
+        min-height: 230px;
+        padding: 38px 28px 36px;
+        border-radius: 34px;
+      }
+      .auth-label { font-size: 12px; letter-spacing: 0.16em; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .card, .status-line, .title, .subtitle { animation: none; }
-      [data-status="loading"] .status-icon svg { animation: none; }
+      .card, .title, .subtitle { animation: none; }
     }
     "#
 }
@@ -492,8 +421,8 @@ mod completion_page_tests {
             "page should boot in loading state"
         );
         assert!(
-            html.contains(">Kordi</div>"),
-            "wordmark should render Kordi"
+            html.contains("KORDI AUTHENTICATION"),
+            "page should render the compact authentication label"
         );
 
         // All three state blocks must be present so the swap between them is
@@ -521,10 +450,10 @@ mod completion_page_tests {
     fn copy_matches_brand_voice_for_each_state() {
         let html = completion_page_html("cloud_oauth_abc123");
 
-        assert!(html.contains("Finishing authentication"));
-        assert!(html.contains("Authentication complete"));
-        assert!(html.contains("Authentication failed"));
-        assert!(html.contains("You can close this tab and continue in Kordi."));
+        assert!(html.contains("Completing Authentication"));
+        assert!(html.contains("Authentication Successful"));
+        assert!(html.contains("Authentication Failed"));
+        assert!(html.contains("You can close this tab and return to Kordi."));
         assert!(
             !html.contains("READY"),
             "status should not use the large repeated pill treatment"
@@ -552,12 +481,16 @@ mod completion_page_tests {
     fn page_carries_brand_palette_and_dark_mode_support() {
         let html = completion_page_html("cloud_oauth_palette");
 
-        // OKLCH tokens tinted toward Kordi's warm saffron hue (82) — matches
-        // the in-app `--app-cloud-login-*` palette without depending on the
-        // bundled stylesheet (loopback HTTP server can't reach it).
+        // The OAuth callback should align with provider callback pages: dark,
+        // centered, and quiet by default, with a blurred ambient field behind
+        // a single confirmation card.
         assert!(
-            html.contains("oklch(0.965 0.018 82)"),
-            "light page bg should be the refined brand cream"
+            html.contains("--page-bg: oklch(0.145 0.006 250)"),
+            "default page bg should be the dark callback surface"
+        );
+        assert!(
+            html.contains("filter: blur(52px)"),
+            "page should carry the soft blurred provider-callback glow"
         );
         assert!(
             html.contains("prefers-color-scheme: dark"),
