@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Circle, Sparkles } from 'lucide-react';
 import { formatDesktopDateTime } from '@/lib/time';
-import { cn } from '@/lib/utils';
 import type { DesktopAuthProvider } from '@/kordi-app/types';
 import type { AuthDisplayProvider } from './model';
 import {
@@ -32,12 +30,6 @@ type AuthProviderDetailProps = {
   onRefreshAuth: () => void | Promise<void>;
   onDismissGate?: () => void;
   onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
-};
-
-type AuthStep = {
-  label: string;
-  detail: string;
-  state: 'done' | 'active' | 'pending';
 };
 
 function findRawProvider(rawProviders: DesktopAuthProvider[], providerId: string) {
@@ -88,40 +80,6 @@ function buildProfileMeta(option: {
     .join(' • ');
 }
 
-function localProviderSteps(provider: AuthDisplayProvider): AuthStep[] {
-  return [
-    { label: 'Choose provider', detail: provider.label, state: 'done' },
-    { label: 'Check local runtime', detail: 'Install, server, and model state', state: provider.configured ? 'done' : 'active' },
-    { label: 'Start chat', detail: provider.configured ? 'Ready when you are' : 'Available after a model is running', state: provider.configured ? 'active' : 'pending' },
-  ];
-}
-
-function StepFlow({ steps }: { steps: AuthStep[] }) {
-  return (
-    <div className="grid gap-2 sm:grid-cols-3">
-      {steps.map((step, index) => (
-        <div
-          key={step.label}
-          className={cn(
-            'rounded-[18px] px-3.5 py-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.055)]',
-            step.state === 'done'
-              ? 'bg-emerald-300/[0.055] text-emerald-50'
-              : step.state === 'active'
-                ? 'bg-white/[0.07] text-white'
-                : 'bg-white/[0.03] text-slate-400',
-          )}
-        >
-          <div className="flex items-center gap-2 text-[12px] font-medium">
-            {step.state === 'done' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-            <span>{index + 1}. {step.label}</span>
-          </div>
-          <div className="mt-1.5 text-[11px] leading-4 opacity-75">{step.detail}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function AuthProviderDetail({
   provider,
   rawProviders,
@@ -152,7 +110,6 @@ export function AuthProviderDetail({
   const localEndpoint = localProviderEndpoint(provider);
   const isLocalModelControl = (provider.id === 'lm-studio' || provider.id === 'ollama') && !!localEndpoint;
   const showCloudEnterChatCta = !isLocalModelControl && Boolean(onEnterChat) && hasActiveProfile;
-  const localRuntimeSteps = isLocalModelControl ? localProviderSteps(provider) : [];
 
   const handleRemoveAll = () => {
     if (!hasSavedProfiles) return;
@@ -252,36 +209,6 @@ export function AuthProviderDetail({
             {error}
           </div>
         )}
-
-        {isLocalModelControl ? (
-          <div className="rounded-[26px] bg-white/[0.045] px-5 py-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0 max-w-[38rem]">
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.055] px-2.5 py-1 text-[11px] font-medium text-slate-300">
-                  <Sparkles className="h-3.5 w-3.5" /> {provider.configured ? 'Ready' : 'Setup needed'}
-                </div>
-                <div className="mt-3 text-[25px] font-semibold leading-8 tracking-[-0.04em] text-white">
-                  {provider.configured ? `${provider.label} is connected` : `Connect ${provider.label}`}
-                </div>
-                <div className="mt-2 max-w-[58ch] text-[13px] leading-6 text-slate-300">
-                  Check the local app, server, and loaded model before starting chat.
-                </div>
-              </div>
-
-              {provider.configured && onEnterChat ? (
-                <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                  <AuthActionButton type="button" className={authButtonPrimaryClass} onClick={() => { void onEnterChat(); }}>
-                    Enter chat
-                  </AuthActionButton>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-5">
-              <StepFlow steps={localRuntimeSteps} />
-            </div>
-          </div>
-        ) : null}
 
         {isLocalModelControl ? (
           <LocalProviderSetup
