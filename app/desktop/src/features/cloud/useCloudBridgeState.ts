@@ -680,6 +680,31 @@ export function mergeCloudMessagesByPeerSnapshot(
 export const CLOUD_MESSAGE_DISCOVERY_MAX_PASSES = 50;
 export const CLOUD_MESSAGES_LOCAL_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
 
+export function cloudSessionForksByIdEqual(
+  left: Record<string, CloudSessionForkSummary>,
+  right: Record<string, CloudSessionForkSummary>,
+): boolean {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  if (leftKeys.length !== rightKeys.length) return false;
+  for (let index = 0; index < leftKeys.length; index += 1) {
+    const key = leftKeys[index];
+    if (key !== rightKeys[index]) return false;
+    const leftFork = left[key];
+    const rightFork = right[key];
+    if (
+      leftFork.forkSessionId !== rightFork.forkSessionId
+      || leftFork.parentSessionId !== rightFork.parentSessionId
+      || leftFork.parentMessageId !== rightFork.parentMessageId
+      || leftFork.createdByAccountId !== rightFork.createdByAccountId
+      || leftFork.createdAt !== rightFork.createdAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function uniqueSortedPeerIds(values: Iterable<string>): string[] {
   return [...new Set([...values].map((value) => value.trim()).filter(Boolean))].sort();
 }
@@ -1383,6 +1408,7 @@ export function useCloudBridgeState({
   const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
   const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
+  const cloudSessionForksByIdRef = useRef<Record<string, CloudSessionForkSummary>>(cloudSessionForksById);
   const messagesCacheAccountRef = useRef<string | null>(account?.accountId ?? null);
   const [initialMessagesSettledPeerKey, setInitialMessagesSettledPeerKey] = useState<string | null>(null);
   const canonicalSessionStateRef = useRef<CanonicalSessionState | null>(canonicalSessionState ?? null);
@@ -1420,6 +1446,10 @@ export function useCloudBridgeState({
     cloudSessionActivityRef.current = cloudSessionActivity;
     if (account && messagesCacheAccountRef.current === account.accountId) saveCachedCloudSessionActivity(account.accountId, cloudSessionActivity);
   }, [account, cloudSessionActivity]);
+
+  useEffect(() => {
+    cloudSessionForksByIdRef.current = cloudSessionForksById;
+  }, [cloudSessionForksById]);
 
   useEffect(() => {
     setMessagesByPeer((current) => {
@@ -1610,7 +1640,7 @@ export function useCloudBridgeState({
     try {
       let messagesByPeer = messagesByPeerRef.current;
       let sessionActivity = cloudSessionActivityRef.current;
-      let sessionForksById = cloudSessionForksById;
+      let sessionForksById = cloudSessionForksByIdRef.current;
       let fallbackRequired = false;
       for (let pass = 0; pass < 20; pass += 1) {
         const result = await syncCloudDiffOnce({
@@ -1639,13 +1669,15 @@ export function useCloudBridgeState({
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
       setCloudSessionActivity((current) => mergeCloudSessionActivity(current, sessionActivity));
-      setCloudSessionForksById(sessionForksById);
+      setCloudSessionForksById((current) => (
+        cloudSessionForksByIdEqual(current, sessionForksById) ? current : sessionForksById
+      ));
       setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
       syncingCloudDiffRef.current = false;
     }
-  }, [account, bootstrapPeerKey, client, cloudSessionForksById, refreshCloudBridgeMessages]);
+  }, [account, bootstrapPeerKey, client, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account) {

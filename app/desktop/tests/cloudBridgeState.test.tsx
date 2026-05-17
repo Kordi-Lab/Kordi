@@ -33,6 +33,7 @@ import {
   mergeCloudMessagesByPeerSnapshot,
   loadCloudMessagesByPeerUntilStable,
   cloudInitialMessagesSettledForPeerKey,
+  cloudSessionForksByIdEqual,
   cachedCloudMessagesByPeerHasMessages,
   loadCachedCloudMessagesByPeer,
   saveCachedCloudMessagesByPeer,
@@ -86,6 +87,27 @@ function memoryStorage(): Storage {
     setItem: (key: string, value: string) => { values.set(key, String(value)); },
   };
 }
+
+test('cloud session fork map equality compares structural fork lineage to prevent refresh loops', () => {
+  const left = {
+    child: {
+      forkSessionId: 'child',
+      parentSessionId: 'parent',
+      parentMessageId: 'msg:parent',
+      createdByAccountId: 'acct_me',
+      createdAt: '2026-05-17T09:00:00Z',
+    },
+  };
+  const right = {
+    child: { ...left.child },
+  };
+  const changed = {
+    child: { ...left.child, parentMessageId: 'msg:other' },
+  };
+
+  assert.equal(cloudSessionForksByIdEqual(left, right), true);
+  assert.equal(cloudSessionForksByIdEqual(left, changed), false);
+});
 
 test('cloud bridge state ignores poisoned localhost bridge state instead of merging it', () => {
   const cloudState = buildCloudDesktopBridgeState({
