@@ -70,6 +70,7 @@ type CompleteCloudAuthResultOptions = {
 
 export async function completeCloudAuthResult({
   result,
+  currentAccountId,
   saveSession: persistSession,
   activateAccountStorage = activateDesktopCloudAccountStorage,
   setAuthenticated: publishAuthenticated,
@@ -85,7 +86,10 @@ export async function completeCloudAuthResult({
     await persistSession(session);
   }
   const activation = await activateAccountStorage(result.account.accountId);
-  if (activation.requiresReload) {
+  const switchedAuthenticatedAccount = Boolean(
+    activation.storageRoot && currentAccountId && currentAccountId !== result.account.accountId,
+  );
+  if (activation.requiresReload || switchedAuthenticatedAccount) {
     reloadWindow?.();
     return false;
   }
