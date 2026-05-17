@@ -85,9 +85,8 @@ export function useDesktopAuthUiState({
       && desktopAuthState !== null
       && !startupGateSatisfied
       && !(activeNav === 'settings' && activeSettingsSectionId === 'auth')
-      && !inlineAuthDialog
       && !isAuthGateDismissed
-  ), [activeNav, activeSettingsSectionId, desktopAuthState, inlineAuthDialog, isAuthGateDismissed, isDesktopAuthLoading, isNativeShell, startupGateSatisfied]);
+  ), [activeNav, activeSettingsSectionId, desktopAuthState, isAuthGateDismissed, isDesktopAuthLoading, isNativeShell, startupGateSatisfied]);
 
   return {
     inlineAuthDialog,

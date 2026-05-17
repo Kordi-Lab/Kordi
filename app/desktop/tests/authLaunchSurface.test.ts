@@ -67,3 +67,10 @@ test('login from the first-run gate opens the auth page without routing into set
   assert.match(uiState, /const shouldStayOnAuthGate = !startupGateSatisfied && !isAuthGateDismissed/);
   assert.match(uiState, /if \(!shouldStayOnAuthGate\) \{\s*openAuthSettings\(\);\s*\}/);
 });
+
+test('inline provider configuration keeps the first-run gate behind it', () => {
+  const uiState = readFileSync(new URL('../src/features/auth/useDesktopAuthUiState.ts', import.meta.url), 'utf8');
+  const showGateExpression = uiState.match(/const showAuthGate = useMemo\(\(\) => \([\s\S]*?\), \[/)?.[0] ?? '';
+
+  assert.doesNotMatch(showGateExpression, /&& !inlineAuthDialog/);
+});
