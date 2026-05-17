@@ -59,10 +59,17 @@ pub fn cloud_account_storage_activate(account_id: String) -> Result<CloudAccount
     std::fs::create_dir_all(&storage_root)
         .map_err(|err| format!("cloud_account_storage_create_failed: {err}"))?;
 
+    let current = active_storage()
+        .lock()
+        .map_err(|_| "cloud_account_storage_lock_failed".to_string())?
+        .clone();
+    let requires_reload = current
+        .as_ref()
+        .is_some_and(|active| active.account_id != account_id);
     let activation = CloudAccountStorageActivation {
         account_id,
         storage_root: storage_root.to_string_lossy().to_string(),
-        requires_reload: true,
+        requires_reload,
     };
     unsafe { std::env::set_var("KORDI_STORAGE_ROOT", parent) };
     *active_storage().lock().map_err(|_| "cloud_account_storage_lock_failed".to_string())? =
@@ -153,7 +160,20 @@ mod tests {
             let env_root = PathBuf::from(std::env::var("KORDI_STORAGE_ROOT").unwrap());
             assert_eq!(env_root.join("kordi"), PathBuf::from(&activation.storage_root));
             assert!(PathBuf::from(&activation.storage_root).starts_with(dir.join("accounts")));
-            assert!(activation.requires_reload);
+            assert!(!activation.requires_reload);
+        });
+    }
+
+    #[test]
+    fn switching_accounts_requires_reload_boundary() {
+        with_app_data_dir(|_| {
+            let first = cloud_account_storage_activate("acct_alpha".to_string()).unwrap();
+            let second = cloud_account_storage_activate("acct_beta".to_string()).unwrap();
+            let third = cloud_account_storage_activate("acct_beta".to_string()).unwrap();
+
+            assert!(!first.requires_reload);
+            assert!(second.requires_reload);
+            assert!(!third.requires_reload);
         });
     }
 }
