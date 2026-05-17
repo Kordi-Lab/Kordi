@@ -241,11 +241,15 @@ export function cloudMessageToBridgeMessage(
     timeLabel: formatCloudBridgeTime(timestampMs),
     timestampMs,
     requestId: agentResponse?.requestId ?? agentRequestId,
-    deliveryState: options.cancelledRequestIds?.has(message.messageId)
-      ? 'cancelled'
-      : message.direction === 'outgoing'
-        ? (message.readAt ? 'read' : 'delivered')
-        : null,
+    deliveryState: agentResponse?.deliveryState === 'failed'
+      ? 'failed'
+      : options.cancelledRequestIds?.has(message.messageId)
+        ? 'cancelled'
+        : message.direction === 'outgoing'
+          ? (message.readAt ? 'read' : 'delivered')
+          : agentResponse?.deliveryState === 'complete'
+            ? 'complete'
+            : null,
     detail: undefined,
     attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
     localTurn: agentResponse?.requestId ? options.localAgentTurnsByRequestId?.[agentResponse.requestId] ?? null : null,
@@ -298,7 +302,8 @@ function cloudAgentOfflineBridgeMessage({
   targetOwnerName: string;
   targetAgentName: string;
 }): DesktopBridgeConversationMessage {
-  const timestampMs = Math.max((Date.parse(request.createdAt) || Date.now()) + CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS, Date.now());
+  const requestCreatedAtMs = Date.parse(request.createdAt) || Date.parse(request.deliveredAt ?? '') || 0;
+  const timestampMs = requestCreatedAtMs + CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS;
   return {
     id: `cloud-agent-offline:${request.messageId}`,
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),

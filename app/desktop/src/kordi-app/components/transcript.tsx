@@ -391,6 +391,7 @@ function MessageBubbleView({
   onStopBridgeAgentRequest,
   onNavigateToMessage,
   onOpenArtifact,
+  onOpenAuthSettings,
   onRequestBridgeContact,
   onForkMessage,
   messageForks,
@@ -403,6 +404,7 @@ function MessageBubbleView({
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onNavigateToMessage?: (messageId: string) => void;
   onOpenArtifact?: (artifactId: string) => void;
+  onOpenAuthSettings?: () => void;
   onRequestBridgeContact?: () => Promise<void> | void;
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
@@ -649,6 +651,7 @@ function MessageBubbleView({
           onStopBridgeAgentRequest={onStopBridgeAgentRequest}
           onNavigateToMessage={onNavigateToMessage}
           onOpenArtifact={onOpenArtifact}
+          onOpenAuthSettings={onOpenAuthSettings}
         />
       </div>
     );
@@ -836,6 +839,7 @@ export const MessageBubble = memo(
   (previous, next) => previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
+    && previous.onOpenAuthSettings === next.onOpenAuthSettings
     && previous.onRequestBridgeContact === next.onRequestBridgeContact
     && previous.onForkMessage === next.onForkMessage
     && previous.onOpenForkSession === next.onOpenForkSession

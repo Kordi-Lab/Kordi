@@ -34,6 +34,8 @@ type UseComposerMessageActionsArgs = Pick<
   | 'selectProjectSession'
   | 'desktopChatState'
   | 'desktopBridgeState'
+  | 'canonicalSessionState'
+  | 'hasAnyDesktopAuth'
   | 'canonicalHumanIdentityId'
   | 'setCanonicalSessionState'
   | 'desktopLiveTurn'
@@ -91,6 +93,8 @@ export function useComposerMessageActions({
   selectProjectSession,
   desktopChatState,
   desktopBridgeState,
+  canonicalSessionState,
+  hasAnyDesktopAuth,
   canonicalHumanIdentityId,
   setCanonicalSessionState,
   desktopLiveTurn,
@@ -204,6 +208,8 @@ export function useComposerMessageActions({
     activeConvMessages,
     activeConvMentionScope,
     attachmentSummaryText,
+    canonicalSessionState,
+    hasAnyDesktopAuth,
     canonicalHumanIdentityId,
     chatComposerAttachments,
     composerSelections,

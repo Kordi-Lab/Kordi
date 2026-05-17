@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
+import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { contactRequests as demoContactRequests, projects, settingsSections } from '@/kordi-app/data';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
@@ -284,6 +284,59 @@ export function useKordiAppModel() {
     composerDrafts: composerDraftsView,
   });
 
+  const defaultCloudAgentRuntimeRoute = useMemo<DesktopChatMessageRoute | null>(() => {
+    if (!isNativeShell) return null;
+    const authProviders = buildAuthDisplayProviders(desktopAuthState);
+    const chatModel = composerUi.composerSelections.chat.model?.trim() || '';
+    const selectedProviderId = chatModel ? resolveComposerProviderId('chat', chatModel) : null;
+    const normalizedSelectedProviderId = normalizeSelectedProviderId(selectedProviderId) ?? selectedProviderId;
+    const selectedProvider = normalizedSelectedProviderId
+      ? authProviders.find((provider) => provider.id === normalizedSelectedProviderId)
+      : null;
+    const selectedModelIsAvailable = chatModelOptions.some((option) => option.value === chatModel);
+
+    let routeModel: string | null = selectedProvider?.configured && selectedModelIsAvailable ? chatModel : null;
+    let routeProviderId: string | null = selectedProvider?.configured ? selectedProviderId : null;
+
+    if (!routeModel) {
+      const normalizedActiveProviderId = normalizeSelectedProviderId(activeLoginProviderId);
+      const fallbackProvider = authProviders.find((provider) => provider.configured && provider.id === normalizedActiveProviderId)
+        ?? authProviders.find((provider) => provider.configured && provider.methods.some((method) => method.options.some((option) => option.active)))
+        ?? authProviders.find((provider) => provider.configured)
+        ?? null;
+      routeProviderId = fallbackProvider?.id ?? null;
+      routeModel = routeProviderId ? preferredModelValueForProvider(routeProviderId) : null;
+    }
+
+    if (!routeModel) return null;
+
+    const modelProviderId = routeProviderId ?? routeModel.split('/')[0] ?? null;
+    const normalizedModelProviderId = normalizeSelectedProviderId(modelProviderId) ?? modelProviderId;
+    const authOption = composerAuthByScope.optionsByScope.chat.find((option) => (
+      (normalizeSelectedProviderId(option.providerId) ?? option.providerId) === normalizedModelProviderId
+      && option.active
+    )) ?? composerAuthByScope.optionsByScope.chat.find((option) => (
+      (normalizeSelectedProviderId(option.providerId) ?? option.providerId) === normalizedModelProviderId
+    )) ?? null;
+
+    return {
+      model: routeModel,
+      authProvider: authOption?.providerId ?? routeProviderId,
+      authChoice: authOption?.value ?? null,
+      thinking: composerUi.composerSelections.chat.thinking ?? null,
+    };
+  }, [
+    activeLoginProviderId,
+    chatModelOptions,
+    composerAuthByScope.optionsByScope.chat,
+    composerUi.composerSelections.chat.model,
+    composerUi.composerSelections.chat.thinking,
+    desktopAuthState,
+    isNativeShell,
+    preferredModelValueForProvider,
+    resolveComposerProviderId,
+  ]);
+
   const {
     settingsContentRef,
     isSessionPanelCollapsed,
@@ -335,8 +388,8 @@ export function useKordiAppModel() {
     activeConversationId: activeConvId,
     canonicalSessionState,
     setCanonicalSessionState,
-    incrementLocalSessionUnread: incrementUnreadForSession,
     cloudAgentRuntimeRoutesBySessionId,
+    defaultCloudAgentRuntimeRoute,
   });
 
   // main-cloud keeps a Bridge-shaped UI adapter for existing components, but the
@@ -960,6 +1013,8 @@ export function useKordiAppModel() {
     selectProjectSession,
     desktopChatState,
     desktopBridgeState,
+    canonicalSessionState,
+    hasAnyDesktopAuth: authStateHasChatReadyProvider(desktopAuthState, chatModelOptions),
     canonicalHumanIdentityId: canonicalSessionState?.profile.humanIdentityId,
     setCanonicalSessionState,
     desktopLiveTurn: activeDesktopLiveTurn,

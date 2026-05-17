@@ -8,6 +8,7 @@ import type {
   MessageMention,
 } from '@/kordi-app/types';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/bridge/agentPlaceholderText';
+import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
@@ -350,7 +351,8 @@ export function mapCanonicalMessage(
   const completed = canonicalMessageIsComplete(message, content);
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
-  const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled;
+  const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
+  const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
   const bridgeAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
   const bridgeConversationId = stringValue(content.bridgeConversationId)?.trim();
   const bridgeRequestId = stringValue(content.requestId)?.trim();
@@ -436,7 +438,7 @@ export function mapCanonicalMessage(
   const isProcessingAgentPlaceholder = isAgentTurn
     && deliveryState === 'processing'
     && isProcessingPlaceholderText(rawDisplayText);
-  const displayText = isProcessingAgentPlaceholder || bridgeAgentFailure ? '' : rawDisplayText;
+  const displayText = isProcessingAgentPlaceholder || bridgeAgentFailure || noProviderFailure ? '' : rawDisplayText;
   const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
   const cancelledTurnText = cancelled
     ? (displayText.trim() || (cancelledByRole ? `Request canceled by ${cancelledByRole}.` : 'Request canceled.'))
@@ -478,7 +480,7 @@ export function mapCanonicalMessage(
           tools: visibleTools,
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
-          error: cancelled ? null : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? 'Message failed') : null,
+          error: cancelled ? null : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? (noProviderFailure ? rawDisplayText : null) ?? 'Message failed') : null,
           replyToMessageId,
           pendingBridgeAgentRequest,
         }

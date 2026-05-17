@@ -14,7 +14,31 @@ export type CloudAgentResponseEnvelope = {
   kind: 'agent-response';
   requestId: string;
   text: string;
+  deliveryState?: 'complete' | 'failed';
 };
+
+export const CLOUD_AGENT_NO_PROVIDER_NOTICE = 'No provider configured yet.';
+
+export function isCloudAgentNoProviderConfiguredError(value: unknown): boolean {
+  const message = value instanceof Error ? value.message : String(value ?? '');
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    /no\s+\w+\s+credentials\s+are\s+available/.test(normalized)
+    || normalized.includes('no provider configured')
+    || normalized.includes('no usable provider credential')
+    || normalized.includes('no saved accounts or keys')
+    || normalized.includes('unknown model:')
+    || normalized.includes('add openai_api_key')
+    || normalized.includes('add anthropic_api_key')
+    || normalized.includes('lm studio local endpoint is not reachable')
+    || normalized.includes('ollama local endpoint is not reachable')
+  );
+}
+
+export function cloudAgentNoProviderNoticeText(): string {
+  return CLOUD_AGENT_NO_PROVIDER_NOTICE;
+}
 
 export type CloudAgentCancelEnvelope = {
   kind: 'agent-cancel';
@@ -35,11 +59,12 @@ function decodeBase64Url(value: string): string {
   return new TextDecoder().decode(bytes);
 }
 
-export function encodeCloudAgentResponse(input: { requestId: string; text: string }): string {
+export function encodeCloudAgentResponse(input: { requestId: string; text: string; deliveryState?: 'complete' | 'failed' }): string {
   const envelope: CloudAgentResponseEnvelope = {
     kind: 'agent-response',
     requestId: input.requestId,
     text: input.text,
+    ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
   };
   return `${CLOUD_AGENT_RESPONSE_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
 }
@@ -50,10 +75,14 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
     const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_RESPONSE_PREFIX.length))) as Partial<CloudAgentResponseEnvelope>;
     if (parsed.kind !== 'agent-response') return null;
     if (typeof parsed.requestId !== 'string' || typeof parsed.text !== 'string') return null;
+    const deliveryState = parsed.deliveryState === 'failed' || parsed.deliveryState === 'complete'
+      ? parsed.deliveryState
+      : undefined;
     return {
       kind: 'agent-response',
       requestId: parsed.requestId,
       text: parsed.text,
+      ...(deliveryState ? { deliveryState } : {}),
     };
   } catch {
     return null;

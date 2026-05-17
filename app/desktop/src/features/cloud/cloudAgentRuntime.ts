@@ -52,7 +52,8 @@ export function compactCloudAgentRuntimeRoute(route?: DesktopChatMessageRoute | 
 export function cloudAgentRuntimeRouteForSession(
   routesByRuntimeSessionId: Record<string, DesktopChatMessageRoute> | null | undefined,
   runtimeSessionId: string | null | undefined,
+  fallbackRoute?: DesktopChatMessageRoute | null,
 ): DesktopChatMessageRoute | null {
   const route = runtimeSessionId ? routesByRuntimeSessionId?.[runtimeSessionId] : null;
-  return compactCloudAgentRuntimeRoute(route);
+  return compactCloudAgentRuntimeRoute(route) ?? compactCloudAgentRuntimeRoute(fallbackRoute);
 }

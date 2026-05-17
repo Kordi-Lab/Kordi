@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import {
   buildCloudDesktopBridgeState,
+  CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS,
   cloudBridgeConversationId,
   cloudDirectPersonSessionId,
   cloudContactsToCanonicalIdentityRequests,
@@ -39,6 +40,7 @@ import {
   loadCachedCloudMessagesByPeer,
   saveCachedCloudMessagesByPeer,
 } from '../src/features/cloud/useCloudBridgeState';
+import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
 const account: CloudAccount = {
@@ -56,6 +58,22 @@ const peer = cloudContactToContact({
   avatarUrl: null,
   nodeId: 'node_peer',
   createdAt: '2026-05-11T00:00:00Z',
+});
+
+test('cloud agent runtime routes fall back to current composer route for unconfigured cloud sessions', () => {
+  const route = cloudAgentRuntimeRouteForSession({}, 'cloud-agent:acct_me:session:group:one', {
+    model: 'anthropic/claude-opus-4-7',
+    authProvider: 'anthropic',
+    authChoice: 'o_auth',
+    thinking: 'medium',
+  });
+
+  assert.deepEqual(route, {
+    model: 'anthropic/claude-opus-4-7',
+    authProvider: 'anthropic',
+    authChoice: 'o_auth',
+    thinking: 'medium',
+  });
 });
 
 test('cloud bridge state does not replay stale localStorage messages before server sync settles', () => {
@@ -1785,6 +1803,7 @@ test('cloud outgoing remote-agent mentions become offline replies after timeout'
   const offlineMessage = state.conversations[0].messages.find((candidate) => candidate.id === 'cloud-agent-offline:msg_agent_request_offline');
   assert.equal(offlineMessage?.deliveryState, 'failed');
   assert.equal(offlineMessage?.text, "Peer Person and Peer Person's Kordi are offline.");
+  assert.equal(offlineMessage?.timestampMs, Date.parse(request.createdAt) + CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS);
 
   const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const offlineTurn = view.messages.find((candidate) => candidate.role === 'external-agent')?.turn;

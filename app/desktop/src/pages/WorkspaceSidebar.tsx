@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
@@ -1034,6 +1034,12 @@ export function WorkspaceSidebar({
     () => new Map(allSidebarSessions.map((row) => [row.session.id, row])),
     [allSidebarSessions],
   );
+  const activeSidebarSessionId = (activeConvId || '').trim();
+  const sidebarSessionIsActive = useCallback((session?: ParticipantSpaceItem['sessions'][number]) => Boolean(
+    session
+      && activeSidebarSessionId
+      && (activeSidebarSessionId === session.id || activeSidebarSessionId === session.canonicalSessionId),
+  ), [activeSidebarSessionId]);
   const unreadBySessionIdWithForkDescendants = useMemo(() => {
     const cache = new Map<string, number>();
     const visit = (sessionId: string, seen: Set<string>): number => {
@@ -1064,13 +1070,14 @@ export function WorkspaceSidebar({
     for (const space of participantSpaces) {
       const sessionIds = new Set<string>();
       for (const session of space.sessions) collect(session.id, sessionIds, new Set());
-      const unread = [...sessionIds].reduce((sum, sessionId) => (
-        sum + Math.max(0, allSidebarSessionRowsById.get(sessionId)?.session.unread ?? 0)
-      ), 0);
+      const unread = [...sessionIds].reduce((sum, sessionId) => {
+        const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
+        return sum + (sidebarSessionIsActive(rowSession) ? 0 : Math.max(0, rowSession?.unread ?? 0));
+      }, 0);
       unreadBySpaceId.set(space.id, unread);
     }
     return unreadBySpaceId;
-  }, [allSidebarSessionRowsById, globalForkLineage, participantSpaces]);
+  }, [allSidebarSessionRowsById, globalForkLineage, participantSpaces, sidebarSessionIsActive]);
   const contactUnread = contactParticipantSpaces.reduce((sum, space) => (
     sum + Math.max(0, unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread)
   ), 0);

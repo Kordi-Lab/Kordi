@@ -143,14 +143,16 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     }, 96);
   }, [clearScheduledLiveTurnSnapshot, commitLiveTurnSnapshot]);
 
-  const removeLiveTurnSnapshot = useCallback((sessionId: string) => {
+  const removeLiveTurnSnapshot = useCallback((sessionId: string, expectedTurnId?: string | null) => {
     clearScheduledLiveTurnSnapshot(sessionId);
-    if (desktopLiveTurnsBySessionRef.current[sessionId]) {
+    const currentRefTurn = desktopLiveTurnsBySessionRef.current[sessionId];
+    if (currentRefTurn && (!expectedTurnId || currentRefTurn.id === expectedTurnId)) {
       const { [sessionId]: _removed, ...rest } = desktopLiveTurnsBySessionRef.current;
       desktopLiveTurnsBySessionRef.current = rest;
     }
     setDesktopLiveTurnsBySession((current) => {
-      if (!current[sessionId]) return current;
+      const currentTurn = current[sessionId];
+      if (!currentTurn || (expectedTurnId && currentTurn.id !== expectedTurnId)) return current;
       const { [sessionId]: _removed, ...rest } = current;
       return rest;
     });
@@ -321,8 +323,6 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     const isBackgroundSession = visibleLocalSessionId !== turn.sessionId
       && latestDesktopSessionIdRef.current !== turn.sessionId;
 
-    removeLiveTurnSnapshot(turn.sessionId);
-
     setDesktopChatState((current) => {
       if (!current) return current;
 
@@ -375,6 +375,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         },
       };
     });
+
+    window.setTimeout(() => removeLiveTurnSnapshot(turn.sessionId, turn.id), 180);
 
     if (!completedMessage) {
       if (!isBackgroundSession) {
