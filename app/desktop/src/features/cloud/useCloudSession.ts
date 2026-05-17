@@ -64,7 +64,7 @@ type CompleteCloudAuthResultOptions = {
     accountId: string;
     sessionToken: string;
     account: CloudAccount;
-  }) => Promise<void>;
+  }) => Promise<unknown>;
   reloadWindow?: () => void;
 };
 
