@@ -75,9 +75,10 @@ test('inline provider configuration keeps the first-run gate behind it', () => {
   assert.doesNotMatch(showGateExpression, /&& !inlineAuthDialog/);
 });
 
-test('cloud provider hero does not repeat the connect action as a step card', () => {
+test('cloud provider detail does not repeat connect actions in the upper hero', () => {
   const providerDetail = readAuthSource('AuthProviderDetail.tsx');
 
   assert.doesNotMatch(providerDetail, /Connect access/);
-  assert.match(providerDetail, /isLocalModelControl \? \(\s*<div className="mt-5">\s*<StepFlow/);
+  assert.match(providerDetail, /\{isLocalModelControl \? \(\s*<div className="rounded-\[26px\]/);
+  assert.doesNotMatch(providerDetail, /primaryConnect\.method/);
 });

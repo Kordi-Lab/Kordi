@@ -88,14 +88,6 @@ function buildProfileMeta(option: {
     .join(' • ');
 }
 
-function firstConnectMethod(provider: AuthDisplayProvider, rawProviders: DesktopAuthProvider[]) {
-  const preferred = provider.methods.find((method) => method.mode === 'oauth') ?? provider.methods[0] ?? null;
-  if (!preferred) return null;
-  const raw = findRawProvider(rawProviders, preferred.providerId);
-  if (!raw) return null;
-  return { method: preferred, raw };
-}
-
 function localProviderSteps(provider: AuthDisplayProvider): AuthStep[] {
   return [
     { label: 'Choose provider', detail: provider.label, state: 'done' },
@@ -160,7 +152,6 @@ export function AuthProviderDetail({
   const localEndpoint = localProviderEndpoint(provider);
   const isLocalModelControl = (provider.id === 'lm-studio' || provider.id === 'ollama') && !!localEndpoint;
   const showCloudEnterChatCta = !isLocalModelControl && Boolean(onEnterChat) && hasActiveProfile;
-  const primaryConnect = firstConnectMethod(provider, rawProviders);
   const localRuntimeSteps = isLocalModelControl ? localProviderSteps(provider) : [];
 
   const handleRemoveAll = () => {
@@ -262,45 +253,35 @@ export function AuthProviderDetail({
           </div>
         )}
 
-        <div className="rounded-[26px] bg-white/[0.045] px-5 py-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 max-w-[38rem]">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.055] px-2.5 py-1 text-[11px] font-medium text-slate-300">
-                <Sparkles className="h-3.5 w-3.5" /> {provider.configured ? 'Ready' : 'Setup needed'}
+        {isLocalModelControl ? (
+          <div className="rounded-[26px] bg-white/[0.045] px-5 py-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 max-w-[38rem]">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.055] px-2.5 py-1 text-[11px] font-medium text-slate-300">
+                  <Sparkles className="h-3.5 w-3.5" /> {provider.configured ? 'Ready' : 'Setup needed'}
+                </div>
+                <div className="mt-3 text-[25px] font-semibold leading-8 tracking-[-0.04em] text-white">
+                  {provider.configured ? `${provider.label} is connected` : `Connect ${provider.label}`}
+                </div>
+                <div className="mt-2 max-w-[58ch] text-[13px] leading-6 text-slate-300">
+                  Check the local app, server, and loaded model before starting chat.
+                </div>
               </div>
-              <div className="mt-3 text-[25px] font-semibold leading-8 tracking-[-0.04em] text-white">
-                {provider.configured ? `${provider.label} is connected` : `Connect ${provider.label}`}
-              </div>
-              <div className="mt-2 max-w-[58ch] text-[13px] leading-6 text-slate-300">
-                {isLocalModelControl
-                  ? 'Check the local app, server, and loaded model before starting chat.'
-                  : 'Use the provider account or API key you want Kordi to use for chat.'}
-              </div>
-            </div>
 
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
               {provider.configured && onEnterChat ? (
-                <AuthActionButton type="button" className={authButtonPrimaryClass} onClick={() => { void onEnterChat(); }}>
-                  Enter chat
-                </AuthActionButton>
-              ) : primaryConnect ? (
-                <AuthActionButton
-                  type="button"
-                  className={authButtonPrimaryClass}
-                  onClick={() => onOpenLogin(primaryConnect.raw, primaryConnect.method.mode)}
-                >
-                  {signInMethodButtonLabel(provider.id, primaryConnect.method.mode, primaryConnect.method.options.length > 0)}
-                </AuthActionButton>
+                <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                  <AuthActionButton type="button" className={authButtonPrimaryClass} onClick={() => { void onEnterChat(); }}>
+                    Enter chat
+                  </AuthActionButton>
+                </div>
               ) : null}
             </div>
-          </div>
 
-          {isLocalModelControl ? (
             <div className="mt-5">
               <StepFlow steps={localRuntimeSteps} />
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {isLocalModelControl ? (
           <LocalProviderSetup
