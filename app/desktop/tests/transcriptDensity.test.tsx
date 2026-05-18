@@ -64,6 +64,32 @@ test('no-provider failed agent turn renders red inline text with authentication 
   assert.doesNotMatch(markup, /rounded-full border border-rose/);
 });
 
+test('unknown-model provider failures render as the compact authentication notice', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-unknown-model',
+    sessionId: 'session-1',
+    prompt: '@MyKordi what are you doing',
+    status: 'failed',
+    message: 'Failed',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    error: 'Unknown model: openai/gpt-5.4',
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn,
+    historical: true,
+    onOpenAuthSettings: () => undefined,
+  }));
+
+  assert.match(markup, /No provider configured yet/);
+  assert.match(markup, />Open authentication</);
+  assert.doesNotMatch(markup, /Unknown model: openai\/gpt-5\.4/);
+});
+
 test('no-provider live turn skips the source quote so it does not flash a longer reply card', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-no-provider-source',
@@ -153,6 +179,33 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /text-slate-400/);
   assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
   assert.match(markup, /Processing/);
+});
+
+test('empty pending agent turn does not immediately render a source quote before output exists', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-pending-source-delay',
+    sessionId: 'session-1',
+    prompt: '@MyKordi what are you doing',
+    status: 'starting',
+    message: 'Working…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+    sourceMessage: {
+      messageId: 'msg:request',
+      senderLabel: 'Me',
+      text: '@MyKordi what are you doing',
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+
+  assert.doesNotMatch(markup, /app-source-message-quote/);
+  assert.doesNotMatch(markup, /@MyKordi what are you doing/);
 });
 
 test('renders initial generic working status as starting until a real tool phase appears', () => {

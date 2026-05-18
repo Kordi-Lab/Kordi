@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
-import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
 import { SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
@@ -809,7 +809,13 @@ function LiveChatTurnCardView({
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
   const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
-  const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage && !noProviderConfiguredError);
+  const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : visibleTurn.error;
+  const emptyStartingTurn = !visibleTurn.completed
+    && visibleTurn.status === 'starting'
+    && !hasAssistant
+    && !hasTimelineActivity
+    && !visibleTurn.error;
+  const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage && !noProviderConfiguredError && !emptyStartingTurn);
   const hasResponseSurface = Boolean(
     shouldShowSourceQuote
       || showLiveStatusHeader
@@ -890,9 +896,9 @@ function LiveChatTurnCardView({
             />
           ) : null}
 
-          {visibleTurn.error ? (
+          {displayedError ? (
             <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300 [&_.app-live-turn-auth-action]:whitespace-nowrap">
-              {visibleTurn.error}
+              {displayedError}
               {showOpenAuthAction ? (
                 <button
                   type="button"
