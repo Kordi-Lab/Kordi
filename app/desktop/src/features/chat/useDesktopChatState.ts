@@ -17,6 +17,7 @@ import {
   desktopStateIncludesCompletedTurn,
   liveTurnSnapshotChanged,
   mergeDesktopTurnSnapshot,
+  shouldPollDesktopLiveTurn,
   suppressIncompleteLiveTurnEcho,
   turnHasHistoricalArtifacts,
 } from './desktopLiveTurns';
@@ -489,7 +490,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   useEffect(() => {
     if (!isNativeShell) return;
     for (const turn of Object.values(desktopLiveTurnsBySession)) {
-      if (turn.completed || turn.id.startsWith('local-agent-starting:')) continue;
+      if (!shouldPollDesktopLiveTurn(turn)) continue;
       void watchDesktopLiveTurn(turn);
     }
   }, [desktopLiveTurnsBySession, isNativeShell, watchDesktopLiveTurn]);

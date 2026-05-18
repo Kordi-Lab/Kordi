@@ -6,6 +6,7 @@ import {
   buildCompletedDesktopAssistantMessage,
   desktopAssistantMessageMatchesTurn,
   mergeDesktopTurnSnapshot,
+  shouldPollDesktopLiveTurn,
   suppressIncompleteLiveTurnEcho,
 } from '../src/features/chat/desktopLiveTurns';
 
@@ -24,6 +25,13 @@ function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurn
     ...overrides,
   };
 }
+
+test('synthetic no-provider pending turns are not polled from the desktop runtime', () => {
+  assert.equal(shouldPollDesktopLiveTurn(turn({ id: 'turn:no-provider-pending:msg:ui:abc' })), false);
+  assert.equal(shouldPollDesktopLiveTurn(turn({ id: 'local-agent-starting:session-1' })), false);
+  assert.equal(shouldPollDesktopLiveTurn(turn({ id: 'turn-runtime-1' })), true);
+  assert.equal(shouldPollDesktopLiveTurn(turn({ id: 'turn-complete', completed: true })), false);
+});
 
 test('desktop live turn snapshot merge preserves richer streaming text and tool output', () => {
   const current = turn({

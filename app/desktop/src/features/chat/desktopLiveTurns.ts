@@ -1,5 +1,13 @@
 import type { DesktopChatMessage, DesktopChatState, DesktopChatTurnSnapshot, Message } from '@/kordi-app/types';
 
+export const NO_PROVIDER_PENDING_LIVE_TURN_PREFIX = 'turn:no-provider-pending:';
+
+export function shouldPollDesktopLiveTurn(turn: DesktopChatTurnSnapshot): boolean {
+  return !turn.completed
+    && !turn.id.startsWith('local-agent-starting:')
+    && !turn.id.startsWith(NO_PROVIDER_PENDING_LIVE_TURN_PREFIX);
+}
+
 export function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnapshot, finishedAt: string): DesktopChatMessage {
   const assistantText = turn.assistantText.trim();
   const fallbackText = turn.error?.trim() || turn.message?.trim() || '';

@@ -39,6 +39,7 @@ import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalS
 import type { UseComposerControllerArgs } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
+import { NO_PROVIDER_PENDING_LIVE_TURN_PREFIX } from '../desktopLiveTurns';
 import {
   localAgentRuntimeText,
   localHumanAddressLabels,
@@ -190,7 +191,7 @@ export function noProviderPendingLiveTurn({
   now?: number;
 }): DesktopChatTurnSnapshot {
   return {
-    id: `turn:no-provider-pending:${requestMessageId}`,
+    id: `${NO_PROVIDER_PENDING_LIVE_TURN_PREFIX}${requestMessageId}`,
     sessionId,
     prompt: text.trim(),
     status: 'starting',
