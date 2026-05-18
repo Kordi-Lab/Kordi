@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
-import { contactRequests as demoContactRequests, projects, settingsSections } from '@/kordi-app/data';
+import {
+  contactRequests as demoContactRequests,
+  normalizeNavIdForEdition,
+  normalizeSettingsSectionIdForEdition,
+  projects,
+  settingsSectionsForEdition,
+} from '@/kordi-app/data';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useKordiDesktopActivity } from '@/app/useKordiDesktopActivity';
@@ -226,6 +232,26 @@ export function useKordiAppModel() {
     isNativeShell,
   });
 
+  const visibleSettingsSections = useMemo(
+    () => settingsSectionsForEdition(kordiEdition),
+    [kordiEdition],
+  );
+  const visibleActiveSettingsSectionId = normalizeSettingsSectionIdForEdition(
+    kordiEdition,
+    settingsUi.activeSettingsSectionId,
+  );
+
+  useEffect(() => {
+    const nextActiveNav = normalizeNavIdForEdition(kordiEdition, activeNav);
+    if (nextActiveNav !== activeNav) setActiveNav(nextActiveNav);
+  }, [activeNav, kordiEdition, setActiveNav]);
+
+  useEffect(() => {
+    if (visibleActiveSettingsSectionId !== settingsUi.activeSettingsSectionId) {
+      settingsUi.setActiveSettingsSectionId(visibleActiveSettingsSectionId);
+    }
+  }, [settingsUi.activeSettingsSectionId, settingsUi.setActiveSettingsSectionId, visibleActiveSettingsSectionId]);
+
   const startupGateSatisfied = useMemo(
     () => authStateSatisfiesStartupGate(desktopAuthState),
     [desktopAuthState],
@@ -241,7 +267,7 @@ export function useKordiAppModel() {
   } = useDesktopAuthUiState({
     isNativeShell,
     activeNav,
-    activeSettingsSectionId: settingsUi.activeSettingsSectionId,
+    activeSettingsSectionId: visibleActiveSettingsSectionId,
     desktopAuthState,
     isDesktopAuthLoading,
     startupGateSatisfied,
@@ -658,7 +684,8 @@ export function useKordiAppModel() {
     activeProjectArtifacts,
   } = useKordiDesktopActivity({
     activeContactRequestId: contactsUi.activeContactRequestId,
-    activeSettingsSectionId: settingsUi.activeSettingsSectionId,
+    activeSettingsSectionId: visibleActiveSettingsSectionId,
+    settingsSections: visibleSettingsSections,
     contactRequests,
     activeBridgeHost,
     activeNav,
@@ -2019,7 +2046,7 @@ export function useKordiAppModel() {
     setActiveConvId,
     activeProjectId,
     activeProjectSessionId,
-    activeSettingsSectionId: settingsUi.activeSettingsSectionId,
+    activeSettingsSectionId: visibleActiveSettingsSectionId,
     isSingleWorkspacePage,
     collapseChatSessions,
     showSessionRail,
@@ -2132,7 +2159,7 @@ export function useKordiAppModel() {
     settingsRailWidth,
     settingsContentRef,
     setActiveSettingsSectionId: settingsUi.setActiveSettingsSectionId,
-    settingsSections,
+    settingsSections: visibleSettingsSections,
     activeSettingsSection,
     authSettingsLayoutWidth,
     desktopAuthState,

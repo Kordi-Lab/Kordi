@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
-import { settingsSections } from '@/kordi-app/data';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type {
   ContactRequest,
@@ -88,6 +87,7 @@ export function activeChatLiveTurnForConversation({
 type UseKordiDesktopActivityArgs = {
   activeContactRequestId: string;
   activeSettingsSectionId: SettingsSectionId;
+  settingsSections: SettingsSection[];
   contactRequests: ContactRequest[];
   activeBridgeHost: DesktopBridgeHost | null;
   activeNav: NavId;
@@ -111,6 +111,7 @@ type UseKordiDesktopActivityArgs = {
 export function useKordiDesktopActivity({
   activeContactRequestId,
   activeSettingsSectionId,
+  settingsSections,
   contactRequests,
   activeBridgeHost,
   activeNav,
