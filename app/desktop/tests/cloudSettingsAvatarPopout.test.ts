@@ -39,6 +39,13 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /initialTab/);
 });
 
+test('cloud profile updates publish to observers and the edited account', () => {
+  const routes = readFileSync(new URL('../../../bridges/cloud-server/src/auth/routes.rs', import.meta.url), 'utf8');
+
+  assert.match(routes, /observer_account_ids\.insert\(session\.account_id\.clone\(\)\)/);
+  assert.match(routes, /for observer_account_id in observer_account_ids/);
+});
+
 test('cloud contact websocket refreshes when a contact profile changes', () => {
   assert.equal(shouldRefreshCloudContactsForWsSubject('kordi.events.account.profile.updated.acct_peer'), true);
   assert.equal(shouldRefreshCloudContactsForWsSubject('kordi.events.account.signed_up.acct_peer'), false);

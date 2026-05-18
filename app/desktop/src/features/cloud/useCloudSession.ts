@@ -11,6 +11,7 @@ import {
 import {
   CloudAuthClient,
   CloudAuthError,
+  cloudWebSocketUrl,
   defaultCloudAuthClient,
   parseCloudOAuthHashResult,
   type CloudAccount,
@@ -53,6 +54,31 @@ export type UseCloudSessionOptions = {
    * supplying a stubbed session value externally. */
   enabled?: boolean;
 };
+
+const CLOUD_PROFILE_REFRESH_INTERVAL_MS = 15_000;
+const CLOUD_PROFILE_UPDATED_SUBJECT_PREFIX = 'kordi.events.account.profile.updated.';
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function shouldRefreshCloudSessionProfileForWsSubject(subject: string | undefined | null, accountId: string | undefined | null): boolean {
+  const cleanAccountId = accountId?.trim();
+  return Boolean(cleanAccountId && subject === `${CLOUD_PROFILE_UPDATED_SUBJECT_PREFIX}${cleanAccountId}`);
+}
+
+export function applyCloudSessionProfileUpdate(account: CloudAccount | null, payload: unknown): CloudAccount | null {
+  if (!account) return null;
+  const record = objectRecord(payload);
+  if (record?.account_id !== account.accountId) return null;
+  const displayName = typeof record.display_name === 'string' ? record.display_name : account.displayName;
+  const avatarUrl = typeof record.avatar_url === 'string' ? record.avatar_url : account.avatarUrl;
+  return {
+    ...account,
+    displayName,
+    avatarUrl,
+  };
+}
 
 type CompleteCloudAuthResultOptions = {
   result: CloudAuthResult;
@@ -112,9 +138,11 @@ export function useCloudSession({
   const [error, setError] = useState<CloudAuthError | null>(null);
   const mountedRef = useRef(true);
   const accountIdRef = useRef<string | null>(null);
+  const accountRef = useRef<CloudAccount | null>(null);
 
   const setAuthenticated = useCallback((next: CloudAccount) => {
     accountIdRef.current = next.accountId;
+    accountRef.current = next;
     if (!mountedRef.current) return;
     setAccount(next);
     setStatus('authenticated');
@@ -123,6 +151,7 @@ export function useCloudSession({
 
   const setSignedOut = useCallback(() => {
     accountIdRef.current = null;
+    accountRef.current = null;
     if (!mountedRef.current) return;
     setAccount(null);
     setStatus('signed-out');
@@ -148,6 +177,72 @@ export function useCloudSession({
       window.removeEventListener(CLOUD_SESSION_SIGNED_OUT_EVENT, handleSignedOut);
     };
   }, [enabled, setAuthenticated, setSignedOut]);
+
+  useEffect(() => {
+    if (!enabled || status !== 'authenticated' || !account?.accountId || typeof window === 'undefined') return;
+    let cancelled = false;
+
+    const refreshAccount = async () => {
+      try {
+        const stored = await loadSession();
+        if (!stored?.token || cancelled) return;
+        const next = await authClient.me(stored.token);
+        if (!cancelled && next.accountId === account.accountId) setAuthenticated(next);
+      } catch {
+        // Session bootstrap/sign-out owns auth failure handling. Profile sync is
+        // best-effort so temporary network errors do not kick users out.
+      }
+    };
+
+    const timer = window.setInterval(() => { void refreshAccount(); }, CLOUD_PROFILE_REFRESH_INTERVAL_MS);
+    window.addEventListener('focus', refreshAccount);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshAccount);
+    };
+  }, [account?.accountId, authClient, enabled, setAuthenticated, status]);
+
+  useEffect(() => {
+    if (!enabled || status !== 'authenticated' || !account?.accountId || typeof WebSocket === 'undefined') return;
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+
+    void loadSession()
+      .then((stored) => {
+        if (cancelled || !stored?.token) return;
+        ws = new WebSocket(cloudWebSocketUrl(stored.token));
+        ws.onmessage = (event) => {
+          try {
+            const frame = JSON.parse(typeof event.data === 'string' ? event.data : '');
+            const subject = typeof frame?.subject === 'string' ? frame.subject : '';
+            if (!shouldRefreshCloudSessionProfileForWsSubject(subject, account.accountId)) return;
+            const patched = applyCloudSessionProfileUpdate(accountRef.current, frame?.payload);
+            if (patched) {
+              setAuthenticated(patched);
+              return;
+            }
+            void authClient.me(stored.token).then((next) => {
+              if (!cancelled && next.accountId === account.accountId) setAuthenticated(next);
+            }).catch(() => undefined);
+          } catch {
+            // Ignore malformed frames. The polling fallback will repair stale profile state.
+          }
+        };
+        ws.onclose = () => {
+          if (ws) ws = null;
+        };
+        ws.onerror = () => {
+          ws?.close();
+        };
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      ws?.close();
+    };
+  }, [account?.accountId, authClient, enabled, setAuthenticated, status]);
 
   useEffect(() => {
     mountedRef.current = true;

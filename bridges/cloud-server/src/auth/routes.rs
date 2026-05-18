@@ -5,7 +5,7 @@
 //! `ServerState`. Every handler is straight-line async — no DbRunner
 //! closures, no spawn_blocking — because sqlx is async-native.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
@@ -1055,13 +1055,18 @@ async fn update_me(
             .fetch_all(state.db_pool())
             .await
             .unwrap_or_default();
-            if !observers.is_empty() {
+            let mut observer_account_ids: HashSet<String> = observers
+                .into_iter()
+                .map(|(observer_account_id,)| observer_account_id)
+                .collect();
+            observer_account_ids.insert(session.account_id.clone());
+            if !observer_account_ids.is_empty() {
                 let events = state.events().clone();
                 let account_id = account.account_id.clone();
                 let display_name = account.display_name.clone();
                 let avatar_url = account.avatar_url.clone();
                 tokio::spawn(async move {
-                    for (observer_account_id,) in observers {
+                    for observer_account_id in observer_account_ids {
                         events
                             .publish_profile_updated(
                                 &account_id,

@@ -11,6 +11,10 @@ import {
   type SessionStorageBackend,
   type StoredSession,
 } from '../src/features/cloud/session';
+import {
+  applyCloudSessionProfileUpdate,
+  shouldRefreshCloudSessionProfileForWsSubject,
+} from '../src/features/cloud/useCloudSession';
 
 class FakeBackend implements SessionStorageBackend {
   cached: StoredSession | null = null;
@@ -78,6 +82,34 @@ test('memory fallback (no backend override, no Tauri) survives within a process'
   } finally {
     console.warn = originalWarn;
   }
+});
+
+test('profile update websocket subjects target the signed-in account session', () => {
+  assert.equal(shouldRefreshCloudSessionProfileForWsSubject('kordi.events.account.profile.updated.acct_1', 'acct_1'), true);
+  assert.equal(shouldRefreshCloudSessionProfileForWsSubject('kordi.events.account.profile.updated.acct_2', 'acct_1'), false);
+  assert.equal(shouldRefreshCloudSessionProfileForWsSubject('kordi.events.contact.request.acct_1', 'acct_1'), false);
+});
+
+test('profile update payload patches the current cloud session account', () => {
+  const account = {
+    accountId: 'acct_1',
+    displayName: 'Old name',
+    primaryEmail: 'old@example.com',
+    avatarUrl: 'data:image/png;base64,old',
+    nodeId: 'node_1',
+    passwordSet: true,
+  };
+
+  assert.deepEqual(applyCloudSessionProfileUpdate(account, {
+    account_id: 'acct_1',
+    display_name: 'New name',
+    avatar_url: 'data:image/png;base64,new',
+  }), {
+    ...account,
+    displayName: 'New name',
+    avatarUrl: 'data:image/png;base64,new',
+  });
+  assert.equal(applyCloudSessionProfileUpdate(account, { account_id: 'acct_2', display_name: 'Other' }), null);
 });
 
 test('clearSessionAndNotifySignedOut clears storage and broadcasts logout for other Cloud session hooks', async () => {
