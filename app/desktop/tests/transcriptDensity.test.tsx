@@ -64,6 +64,40 @@ test('no-provider failed agent turn renders red inline text with authentication 
   assert.doesNotMatch(markup, /rounded-full border border-rose/);
 });
 
+test('no-provider live turn skips the source quote so it does not flash a longer reply card', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-no-provider-source',
+    sessionId: 'session-1',
+    prompt: '@MyKordi what are you doing',
+    status: 'failed',
+    message: 'Failed',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    error: 'No provider configured yet.',
+    sourceMessage: {
+      messageId: 'msg:request',
+      senderLabel: 'Me',
+      text: '@MyKordi what are you doing',
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn,
+    historical: true,
+    onOpenAuthSettings: () => undefined,
+  }));
+
+  assert.match(markup, /No provider configured yet/);
+  assert.match(markup, />Open authentication</);
+  assert.doesNotMatch(markup, /app-source-message-quote/);
+  assert.doesNotMatch(markup, /app-live-assistant-answer-surface/);
+  assert.doesNotMatch(markup, /@MyKordi what are you doing/);
+});
+
 test('contact request row shows accept progress while sending the greeting', () => {
   const request: ContactRequest = {
     id: 'request-1',

@@ -808,8 +808,10 @@ function LiveChatTurnCardView({
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
+  const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
+  const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage && !noProviderConfiguredError);
   const hasResponseSurface = Boolean(
-    visibleTurn.sourceMessage
+    shouldShowSourceQuote
       || showLiveStatusHeader
       || isCompressionStatus
       || hasTimelineActivity
@@ -817,13 +819,15 @@ function LiveChatTurnCardView({
       || changedFileRows.length > 0,
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
-  const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
+  const showOpenAuthAction = Boolean(onOpenAuthSettings && noProviderConfiguredError);
 
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
         <div className={cn('app-live-turn-response-panel', hasResponseSurface && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,42rem)] space-y-2.5')}>
-          <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
+          {shouldShowSourceQuote ? (
+            <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
+          ) : null}
           {showLiveStatusHeader ? (
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
               <ProcessingStatusCircle className="h-3.5 w-3.5" />
