@@ -58,6 +58,23 @@ function cloudProfileRows(account: CloudAccount | null) {
   ].filter((row): row is { label: string; value: string } => Boolean(row));
 }
 
+export function cloudProfileSaveInput({
+  displayNameDraft,
+  avatarUrlDraft,
+  originalAvatarUrl,
+}: {
+  displayNameDraft: string;
+  avatarUrlDraft: string;
+  originalAvatarUrl: string;
+}): CloudProfileUpdateInput {
+  const input: CloudProfileUpdateInput = { displayName: displayNameDraft.trim() };
+  const nextAvatarUrl = avatarUrlDraft.trim();
+  if (nextAvatarUrl && nextAvatarUrl !== originalAvatarUrl.trim()) {
+    input.avatarUrl = nextAvatarUrl;
+  }
+  return input;
+}
+
 export function CloudAccountSettingsDialog({
   isOpen,
   initialTab = 'profile',
@@ -91,19 +108,33 @@ export function CloudAccountSettingsDialog({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const openedAccountIdRef = useRef<string | null>(null);
+  const wasOpenRef = useRef(false);
+  const originalAvatarUrlRef = useRef('');
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      openedAccountIdRef.current = null;
+      return;
+    }
+    const accountId = account?.accountId ?? null;
+    if (wasOpenRef.current && openedAccountIdRef.current === accountId) return;
+
+    wasOpenRef.current = true;
+    openedAccountIdRef.current = accountId;
     setActiveTab(initialTab);
     if (initialTab === 'auth' || initialTab === 'appearance') {
       setActiveSettingsSectionId(initialTab);
     }
+    const nextAvatarUrl = cloudAvatarImageUrl(account?.avatarUrl) || '';
+    originalAvatarUrlRef.current = nextAvatarUrl;
     setDisplayNameDraft(account?.displayName?.trim() || '');
-    setAvatarUrlDraft(cloudAvatarImageUrl(account?.avatarUrl) || '');
+    setAvatarUrlDraft(nextAvatarUrl);
     setProfileError('');
     setIsSavingProfile(false);
     setIsSigningOut(false);
-  }, [account, initialTab, isOpen, setActiveSettingsSectionId]);
+  }, [account?.accountId, account?.avatarUrl, account?.displayName, initialTab, isOpen, setActiveSettingsSectionId]);
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return;
@@ -142,10 +173,15 @@ export function CloudAccountSettingsDialog({
     try {
       setIsSavingProfile(true);
       setProfileError('');
-      await onUpdateProfile({
-        displayName: nextDisplayName,
-        avatarUrl: avatarUrlDraft.trim() || undefined,
+      const input = cloudProfileSaveInput({
+        displayNameDraft,
+        avatarUrlDraft,
+        originalAvatarUrl: originalAvatarUrlRef.current,
       });
+      await onUpdateProfile(input);
+      if (input.avatarUrl) {
+        originalAvatarUrlRef.current = input.avatarUrl;
+      }
     } catch (caught) {
       setProfileError(caught instanceof Error ? caught.message : 'Could not save profile.');
     } finally {
@@ -194,12 +230,18 @@ export function CloudAccountSettingsDialog({
           Display name
           <input
             value={displayNameDraft}
-            onChange={(event) => setDisplayNameDraft(event.currentTarget.value)}
+            onChange={(event) => {
+              setDisplayNameDraft(event.currentTarget.value);
+              if (profileError) setProfileError('');
+            }}
             className="app-input-shell h-10 rounded-[14px] px-3 text-[13px] text-white outline-none"
             placeholder="Your display name"
           />
         </label>
-        <Button type="button" variant="secondary" className="h-10 rounded-full px-4 text-[12px]" onClick={() => fileInputRef.current?.click()}>
+        <Button type="button" variant="secondary" className="h-10 rounded-full px-4 text-[12px]" onClick={() => {
+          setProfileError('');
+          fileInputRef.current?.click();
+        }}>
           Upload avatar
         </Button>
         <input

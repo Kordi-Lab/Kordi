@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { shouldRefreshCloudContactsForWsSubject } from '../src/features/cloud/useCloudContacts';
+import { cloudProfileSaveInput } from '../src/pages/CloudAccountSettingsDialog';
 
 function readSource(relativePath: string): string {
   return readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8');
@@ -35,7 +36,7 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /AuthPage/);
   assert.match(modal, /SettingsValueControl/);
   assert.match(modal, /fileToAvatarDataUrl/);
-  assert.match(modal, /onUpdateProfile\(\{/);
+  assert.match(modal, /onUpdateProfile\(input\)/);
   assert.match(modal, /initialTab/);
 });
 
@@ -56,6 +57,32 @@ test('profile sign out action is styled as destructive red', () => {
   assert.match(modal, /text-rose-200/);
   assert.match(modal, /border-rose-400\/20/);
   assert.match(modal, /hover:bg-rose-500\/15/);
+});
+
+test('profile save omits an unchanged avatar so legacy or external avatars do not fail validation', () => {
+  assert.deepEqual(cloudProfileSaveInput({
+    displayNameDraft: 'Renamed user',
+    avatarUrlDraft: 'https://images.example/avatar.png',
+    originalAvatarUrl: 'https://images.example/avatar.png',
+  }), {
+    displayName: 'Renamed user',
+  });
+
+  assert.deepEqual(cloudProfileSaveInput({
+    displayNameDraft: 'Renamed user',
+    avatarUrlDraft: 'data:image/jpeg;base64,new',
+    originalAvatarUrl: 'https://images.example/avatar.png',
+  }), {
+    displayName: 'Renamed user',
+    avatarUrl: 'data:image/jpeg;base64,new',
+  });
+});
+
+test('profile editor does not reset avatar drafts while open for same account sync updates', () => {
+  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+
+  assert.match(modal, /openedAccountIdRef/);
+  assert.doesNotMatch(modal, /\}, \[account, initialTab, isOpen, setActiveSettingsSectionId\]\);/);
 });
 
 test('cloud profile updates publish to observers and the edited account', () => {
