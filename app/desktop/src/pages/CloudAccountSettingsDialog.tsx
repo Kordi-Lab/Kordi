@@ -284,21 +284,25 @@ export function CloudAccountSettingsDialog({
   );
 
   const authPanel = (
-    <AuthPage
-      variant="settings"
-      layoutWidth={Math.min(authSettingsLayoutWidth, 720)}
-      isNativeShell={isNativeShell}
-      authState={desktopAuthState}
-      isLoading={isDesktopAuthLoading}
-      error={desktopAuthError}
-      selectedProviderId={activeLoginProviderId}
-      onSelectProvider={selectAuthProvider}
-      onOpenLogin={openLoginFlow}
-      onRefresh={() => { void refreshDesktopAuth(); }}
-      onSelectAuthChoice={(providerId, choice) => { void handleSelectAuthChoice(providerId, choice); }}
-      onRemoveAuthProfile={(providerId, profileId) => { void handleRemoveAuthProfile(providerId, profileId); }}
-      onLogoutProvider={(providerId) => { void handleLogoutProvider(providerId); }}
-    />
+    <div className="max-w-[620px]">
+      <AuthPage
+        variant="settings"
+        layoutWidth={Math.min(authSettingsLayoutWidth, 620)}
+        settingsLayoutMode="fluid"
+        showSettingsHeader={false}
+        isNativeShell={isNativeShell}
+        authState={desktopAuthState}
+        isLoading={isDesktopAuthLoading}
+        error={desktopAuthError}
+        selectedProviderId={activeLoginProviderId}
+        onSelectProvider={selectAuthProvider}
+        onOpenLogin={openLoginFlow}
+        onRefresh={() => { void refreshDesktopAuth(); }}
+        onSelectAuthChoice={(providerId, choice) => { void handleSelectAuthChoice(providerId, choice); }}
+        onRemoveAuthProfile={(providerId, profileId) => { void handleRemoveAuthProfile(providerId, profileId); }}
+        onLogoutProvider={(providerId) => { void handleLogoutProvider(providerId); }}
+      />
+    </div>
   );
 
   const themePanel = (

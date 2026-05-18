@@ -276,8 +276,11 @@ function looksLikeSessionId(value: string) {
 export function formatSessionIdSubtitle(value?: string | null) {
   const trimmed = value?.trim() ?? '';
   if (!trimmed) return '';
-  if (/^session id:/i.test(trimmed)) return trimmed;
-  return looksLikeSessionId(trimmed) ? `Session ID: ${trimmed}` : trimmed;
+  if (/^session id:/i.test(trimmed)) return 'Direct chat';
+  if (trimmed.startsWith('session:group:')) return 'Group';
+  if (trimmed.startsWith('session:direct-agent:')) return 'Agent chat';
+  if (trimmed.startsWith('session:direct-person:')) return 'Direct chat';
+  return looksLikeSessionId(trimmed) ? 'Direct chat' : trimmed;
 }
 
 export function conversationDisplayName(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'name' | 'participants' | 'messages'>) {

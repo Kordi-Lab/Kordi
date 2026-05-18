@@ -125,7 +125,7 @@ export function useProjectMessageActions({
 
     const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, null, { targetKind: 'bridge-agent' });
     if (mentionedTarget) {
-      setDesktopChatError('Localhost Bridge communication was removed from main-cloud.');
+      setDesktopChatError('This chat is unavailable. Try again from the chat list.');
       return;
     }
 

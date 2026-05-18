@@ -182,7 +182,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
 
         <form className="mt-4 grid gap-2" onSubmit={handleLookup}>
           <label className="grid gap-1">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.10em] text-slate-400">
+            <span className="text-[11px] font-semibold tracking-[0.02em] text-slate-400">
               Kordi ID to add
             </span>
             <input
@@ -250,8 +250,8 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
 
         <section className="mt-5">
           <div className="flex items-baseline justify-between">
-            <h3 className="text-[12px] font-semibold uppercase tracking-[0.10em] text-slate-400">
-              Your cloud contacts
+            <h3 className="text-[12px] font-semibold tracking-[0.02em] text-slate-400">
+              Your contacts
             </h3>
             <span className="text-[11px] text-slate-500">
               {contacts ? `${contacts.length} total` : '…'}

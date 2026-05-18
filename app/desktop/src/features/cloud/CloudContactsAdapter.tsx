@@ -91,7 +91,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     const trimmed = rawId.trim();
     if (!trimmed) return;
     if (!trimmed.startsWith('acct_')) {
-      throw new Error('Cloud account IDs start with "acct_".');
+      throw new Error('Kordi IDs start with "acct_".');
     }
     await cloud.sendRequest(trimmed);
   };

@@ -83,7 +83,7 @@ export function participantSpaceSessionRowTitle(title: string) {
 export function participantSpaceSessionIdLabel(session: { id?: string | null; canonicalSessionId?: string | null }) {
   const sessionId = (session.id || session.canonicalSessionId || '').trim();
   if (!sessionId || sessionId === 'draft:local-chat' || sessionId.startsWith('draft:')) return '';
-  return `Session ID: ${sessionId}`;
+  return formatSessionIdSubtitle(sessionId);
 }
 
 function participantSpaceSessionPreviewText(preview: string) {
@@ -337,12 +337,11 @@ export function CloudProfileLogoutAction({
         'flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-semibold text-red-200',
         'transition hover:bg-red-400/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-60',
       )}
-      aria-label="Logout of Cloud account"
+      aria-label="Logout of account"
       disabled={disabled}
       onClick={() => void onSignOut()}
     >
       <span>Logout</span>
-      <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-red-200/70">Cloud</span>
     </button>
   );
 }
@@ -552,10 +551,10 @@ export function WorkspaceSidebar({
       ? `${formatUnreadCount(totalUnread)} unread`
       : 'all caught up';
   const bridgeSyncAriaLabel = isBridgePolling
-    ? 'Bridge is syncing missed messages'
+    ? 'Messages are syncing'
     : totalUnread > 0
-      ? `Bridge sync idle, ${formatUnreadCount(totalUnread)} unread`
-      : 'Bridge sync idle, all caught up';
+      ? `Messages idle, ${formatUnreadCount(totalUnread)} unread`
+      : 'Messages idle, all caught up';
   const showSidebarCreateButton = currentKordiEdition() !== 'cloud';
   const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
@@ -1522,7 +1521,7 @@ export function WorkspaceSidebar({
             <div className="grid gap-1 text-[12px]">
               <div className="rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
                 <div className="truncate font-medium text-slate-100">{profileDisplayName}</div>
-                <div className="mt-0.5 truncate text-[11px] text-slate-400">{cloudAccount ? 'Cloud account' : 'Local profile'}</div>
+                <div className="mt-0.5 truncate text-[11px] text-slate-400">{cloudAccount ? 'Account' : 'Local profile'}</div>
               </div>
               {profileRows.length > 0 ? profileRows.map((row) => (
                 <div

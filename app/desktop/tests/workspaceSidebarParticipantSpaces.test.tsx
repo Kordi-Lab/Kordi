@@ -224,11 +224,12 @@ test('WorkspaceSidebar cloud profile uses the provider image avatar instead of a
   assert.doesNotMatch(profileAvatarMarkup, /shape-rendering="crispEdges"/);
 });
 
-test('CloudProfileLogoutAction renders a Cloud-only logout menu item', () => {
+test('CloudProfileLogoutAction renders a destructive account logout menu item', () => {
   const markup = renderToStaticMarkup(createElement(CloudProfileLogoutAction, { onSignOut: async () => undefined }));
 
   assert.match(markup, /Logout/);
-  assert.match(markup, /aria-label="Logout of Cloud account"/);
+  assert.match(markup, /aria-label="Logout of account"/);
+  assert.doesNotMatch(markup, />Cloud<\/span>/);
 });
 
 test('WorkspaceSidebar renders direct human participant spaces as one flat chat row without session actions', () => {
@@ -780,10 +781,10 @@ test('ChatCreateDialog group picker requires at least 2 people and excludes agen
   assert.doesNotMatch(markup, /Helper Kordi/);
 });
 
-test('participant-space child session rows use hashtag titles and show stable session ids', () => {
+test('participant-space child session rows use hashtag titles and hide raw session ids', () => {
   assert.equal(participantSpaceSessionRowTitle('Hi shu'), '# Hi shu');
   assert.equal(participantSpaceSessionRowTitle('# Existing'), '# Existing');
-  assert.equal(participantSpaceSessionIdLabel({ id: 'session:group:child', canonicalSessionId: 'session:group:root' }), 'Session ID: session:group:child');
+  assert.equal(participantSpaceSessionIdLabel({ id: 'session:group:child', canonicalSessionId: 'session:group:root' }), 'Group');
 });
 
 test('participant-space direct sessions expose remove-chat context menu targets', () => {
@@ -1189,7 +1190,8 @@ test('WorkspaceSidebar aligns child session hashtags and keeps last-message meta
   assert.match(markup, /# 今天吃什么/);
   assert.match(markup, /data-session-message-count="1"/);
   assert.match(markup, /data-session-preview-line="今天吃什么 · 1 message"/);
-  assert.match(markup, /data-session-id-label="Session ID: session:group-duplicate-preview"/);
+  assert.match(markup, /data-session-id-label="Direct chat"/);
+  assert.doesNotMatch(markup, /Session ID: session:group-duplicate-preview/);
   assert.match(markup, /app-participant-space-session-preview/);
   assert.match(markup, /app-participant-space-session-title/);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*display:\s*grid/s);

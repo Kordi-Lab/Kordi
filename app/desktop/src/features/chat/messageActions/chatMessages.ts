@@ -976,7 +976,7 @@ export function useChatMessageActions({
 
     if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId)) {
       if (!sendCloudBridgeMessage || !setCloudBridgeState) {
-        setDesktopChatError('Cloud chat is still loading. Try again in a moment.');
+        setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
       const sentAt = formatDesktopEventTime();
@@ -993,7 +993,7 @@ export function useChatMessageActions({
         }
         await sendCloudBridgeMessage(activeConvId, text, chatComposerAttachments);
       } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send cloud message');
+        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
         if (shouldAppendOptimisticBridgeMessage(activeConvId)) {
           setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
         }
@@ -1012,15 +1012,15 @@ export function useChatMessageActions({
       hasCloudGroupRecipients: cloudGroupTargetIds.length > 0,
     })) {
       if (!activeConvCanonicalSessionId) {
-        setDesktopChatError('Unable to resolve Cloud group session.');
+        setDesktopChatError('Unable to open group chat.');
         return;
       }
       if (!sendCloudGroupControl) {
-        setDesktopChatError('Cloud group chat is still loading. Try again in a moment.');
+        setDesktopChatError('Group chat is still loading. Try again in a moment.');
         return;
       }
       if (cloudGroupTargetIds.length === 0) {
-        setDesktopChatError('Unable to resolve Cloud group recipients.');
+        setDesktopChatError('Unable to resolve group recipients.');
         return;
       }
       const sentAt = formatDesktopEventTime();
@@ -1067,7 +1067,7 @@ export function useChatMessageActions({
           attachments: chatComposerAttachments,
         });
       } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send Cloud group mention');
+        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send group mention');
         setDesktopChatError(failureDetail);
         setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
           current,
@@ -1088,12 +1088,12 @@ export function useChatMessageActions({
     }
 
     if (mentionedTarget && activeConversationUsesBridgeRouting) {
-      setDesktopChatError('Localhost Bridge communication was removed from main-cloud.');
+      setDesktopChatError('This chat is unavailable. Try again from the chat list.');
       return;
     }
 
     if (activeConversationUsesBridgeRouting && !localAgentMentioned) {
-      setDesktopChatError('Localhost Bridge communication was removed from main-cloud.');
+      setDesktopChatError('This chat is unavailable. Try again from the chat list.');
       return;
     }
 
@@ -1231,7 +1231,7 @@ export function useChatMessageActions({
     };
 
     if (mentionedTarget) {
-      setDesktopChatError('Localhost Bridge communication was removed from main-cloud.');
+      setDesktopChatError('This chat is unavailable. Try again from the chat list.');
       return;
     }
 

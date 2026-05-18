@@ -33,6 +33,8 @@ export type AuthPageProps = {
   onLogoutProvider: (providerId: string) => void;
   onDismissGate?: () => void;
   onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
+  showSettingsHeader?: boolean;
+  settingsLayoutMode?: 'fixed' | 'fluid';
 };
 
 export function AuthPage({
@@ -51,6 +53,8 @@ export function AuthPage({
   onLogoutProvider,
   onDismissGate,
   onEnterChat,
+  showSettingsHeader = true,
+  settingsLayoutMode = 'fixed',
 }: AuthPageProps) {
   const showHero = variant === 'gate';
   const showNativeNote = !isNativeShell && variant === 'settings';
@@ -181,12 +185,19 @@ export function AuthPage({
       style={
         showHero
           ? { WebkitAppRegion: 'no-drag' as const }
-          : {
-              width: `${layoutWidth}px`,
-              minWidth: `${layoutWidth}px`,
-              maxWidth: `${layoutWidth}px`,
-              WebkitAppRegion: 'no-drag' as const,
-            }
+          : settingsLayoutMode === 'fluid'
+        ? {
+            width: '100%',
+            minWidth: 0,
+            maxWidth: '100%',
+            WebkitAppRegion: 'no-drag' as const,
+          }
+        : {
+            width: `${layoutWidth}px`,
+            minWidth: `${layoutWidth}px`,
+            maxWidth: `${layoutWidth}px`,
+            WebkitAppRegion: 'no-drag' as const,
+          }
       }
     >
       {showHero ? (
@@ -234,14 +245,14 @@ export function AuthPage({
         )
       ) : (
         <div className="app-auth-settings-page flex h-full min-h-0 w-full flex-col overflow-hidden" style={{ WebkitAppRegion: 'no-drag' as const }}>
-          {!showDetailPage && (
+          {showSettingsHeader && !showDetailPage ? (
             <div className="mb-5 shrink-0">
               <div className="text-[18px] font-semibold tracking-tight text-white">Authentication</div>
               <div className="mt-2 max-w-2xl text-[13px] leading-5 text-slate-400">
-                Connect Kordi to cloud accounts or local model servers, manage saved accounts and optional keys, and switch which access method is active.
+                Connect model providers, manage saved accounts and optional keys, and switch which access method is active.
               </div>
             </div>
-          )}
+          ) : null}
 
           {detailHeader}
           {settingsDetailContent}

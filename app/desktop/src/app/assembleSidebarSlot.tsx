@@ -59,11 +59,11 @@ function SidebarSlot({ args }: SidebarSlotProps) {
       const trimmed = rawId.trim();
       if (!trimmed) return null;
       if (!trimmed.startsWith('acct_')) {
-        throw new Error('Cloud account IDs start with "acct_".');
+        throw new Error('Kordi IDs start with "acct_".');
       }
       const session = await loadSession();
       if (!session?.token) {
-        throw new Error('Cloud session not ready yet.');
+        throw new Error('Account is not ready yet.');
       }
       try {
         const profile = await cloudAuthClient.getProfile(session.token, trimmed);
@@ -89,12 +89,12 @@ function SidebarSlot({ args }: SidebarSlotProps) {
   const onAddContactByNodeId = async (rawId: string) => {
     if (isCloud) {
       if (!cloudSession.account) {
-        throw new Error('Cloud session not ready yet — try again in a moment.');
+        throw new Error('Account is not ready yet — try again in a moment.');
       }
       const trimmed = rawId.trim();
       if (!trimmed) return;
       if (!trimmed.startsWith('acct_')) {
-        throw new Error('Cloud account IDs start with "acct_".');
+        throw new Error('Kordi IDs start with "acct_".');
       }
       await cloud.sendRequest(trimmed);
       return;

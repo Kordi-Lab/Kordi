@@ -722,8 +722,7 @@
   margin-bottom: 10px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--utility-muted-text);
 }
 
@@ -797,7 +796,7 @@
 .app-right-detail-rail .app-detail-kicker {
   margin-bottom: 12px;
   font-size: 11px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.02em;
 }
 
 .app-inspector-heading {
