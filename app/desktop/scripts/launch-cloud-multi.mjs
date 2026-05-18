@@ -90,7 +90,7 @@ if (process.env.KORDI_CLOUD_USE_LOCAL_TUNNEL === '1') {
     ensureTunnel();
 }
 
-const DEFAULT_CLOUD_API_BASE = 'https://korde-product-cloud.35.188.85.31.sslip.io';
+const DEFAULT_CLOUD_API_BASE = 'https://coordinar.io';
 const cloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE ?? DEFAULT_CLOUD_API_BASE;
 const forwardedArgs = process.argv.slice(2);
 const env = {
