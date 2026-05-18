@@ -1448,7 +1448,7 @@ export function WorkspaceSidebar({
               />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-semibold text-slate-100">{profileDisplayName}</div>
-                <div className="mt-0.5 truncate text-[11px] text-slate-400">Cloud account</div>
+                <div className="mt-0.5 truncate text-[11px] text-slate-400">Account</div>
               </div>
             </div>
             <div className="grid gap-1 text-[12px]">

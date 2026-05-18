@@ -39,6 +39,17 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /initialTab/);
 });
 
+test('profile modal is distilled to one avatar and no cloud explanation copy', () => {
+  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const sidebar = readSource('pages/WorkspaceSidebar.tsx');
+
+  assert.equal((modal.match(/<IdentityAvatar/g) ?? []).length, 1);
+  assert.doesNotMatch(modal, /Update the name and avatar other Cloud users see/);
+  assert.doesNotMatch(modal, /Cloud account/);
+  assert.doesNotMatch(modal, /Cloud identity/);
+  assert.doesNotMatch(sidebar, />Cloud account</);
+});
+
 test('cloud profile updates publish to observers and the edited account', () => {
   const routes = readFileSync(new URL('../../../bridges/cloud-server/src/auth/routes.rs', import.meta.url), 'utf8');
 

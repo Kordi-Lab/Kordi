@@ -47,7 +47,7 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
 };
 
 function profileDisplayName(account: CloudAccount | null) {
-  return account?.displayName?.trim() || account?.primaryEmail?.trim() || 'Cloud profile';
+  return account?.displayName?.trim() || account?.primaryEmail?.trim() || 'Profile';
 }
 
 function cloudProfileRows(account: CloudAccount | null) {
@@ -181,41 +181,16 @@ export function CloudAccountSettingsDialog({
   };
 
   const profilePanel = (
-    <div className="grid gap-4">
-      <div className="app-surface-muted rounded-[24px] p-5">
-        <div className="flex flex-wrap items-center gap-4">
-          <IdentityAvatar
-            kind="human"
-            seed={avatarSeed}
-            name={displayNameDraft || displayName}
-            imageUrl={avatarUrlDraft || undefined}
-            className="h-16 w-16 border border-white/10"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="text-[17px] font-semibold tracking-tight text-white">Profile</div>
-            <div className="mt-1 max-w-[38rem] text-[13px] leading-5 text-slate-400">
-              Update the name and avatar other Cloud users see in contacts, shared chats, and participant lists.
-            </div>
-          </div>
-          <Button type="button" variant="secondary" className="h-9 rounded-full px-4 text-[12px]" onClick={() => fileInputRef.current?.click()}>
-            Upload avatar
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = '';
-              handleAvatarFile(file);
-            }}
-          />
-        </div>
-      </div>
-
-      <div className="app-surface-muted rounded-[24px] p-5">
-        <label className="grid gap-2 text-[12px] font-medium text-slate-300">
+    <div className="app-surface-muted rounded-[24px] p-5">
+      <div className="flex flex-wrap items-end gap-4">
+        <IdentityAvatar
+          kind="human"
+          seed={avatarSeed}
+          name={displayNameDraft || displayName}
+          imageUrl={avatarUrlDraft || undefined}
+          className="h-12 w-12 border border-white/10"
+        />
+        <label className="grid min-w-[16rem] flex-1 gap-2 text-[12px] font-medium text-slate-300">
           Display name
           <input
             value={displayNameDraft}
@@ -224,23 +199,37 @@ export function CloudAccountSettingsDialog({
             placeholder="Your display name"
           />
         </label>
-        {profileError ? <div className="mt-3 text-[12px] text-rose-200">{profileError}</div> : null}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="grid gap-1 text-[11px] text-slate-500">
-            {cloudProfileRows(account).map((row) => (
-              <div key={row.label}><span className="text-slate-400">{row.label}:</span> {row.value}</div>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            {onSignOut ? (
-              <Button type="button" variant="secondary" className="h-9 rounded-full px-4 text-[12px]" disabled={isSigningOut} onClick={signOut}>
-                {isSigningOut ? 'Signing out…' : 'Sign out'}
-              </Button>
-            ) : null}
-            <Button type="button" className="h-9 rounded-full px-4 text-[12px]" disabled={isSavingProfile} onClick={saveProfile}>
-              {isSavingProfile ? 'Saving…' : 'Save profile'}
+        <Button type="button" variant="secondary" className="h-10 rounded-full px-4 text-[12px]" onClick={() => fileInputRef.current?.click()}>
+          Upload avatar
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            handleAvatarFile(file);
+          }}
+        />
+      </div>
+      {profileError ? <div className="mt-3 text-[12px] text-rose-200">{profileError}</div> : null}
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+        <div className="grid gap-1 text-[11px] text-slate-500">
+          {cloudProfileRows(account).map((row) => (
+            <div key={row.label}><span className="text-slate-400">{row.label}:</span> {row.value}</div>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          {onSignOut ? (
+            <Button type="button" variant="secondary" className="h-9 rounded-full px-4 text-[12px]" disabled={isSigningOut} onClick={signOut}>
+              {isSigningOut ? 'Signing out…' : 'Sign out'}
             </Button>
-          </div>
+          ) : null}
+          <Button type="button" className="h-9 rounded-full px-4 text-[12px]" disabled={isSavingProfile} onClick={saveProfile}>
+            {isSavingProfile ? 'Saving…' : 'Save profile'}
+          </Button>
         </div>
       </div>
     </div>
@@ -300,12 +289,9 @@ export function CloudAccountSettingsDialog({
         className="app-modal-panel grid h-[min(720px,calc(100vh-48px))] w-[min(920px,calc(100vw-48px))] overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(126,111,64,0.10),rgba(15,16,18,0.22)_46%,rgba(10,11,13,0.28))] text-white shadow-[var(--app-shadow-float)] md:grid-cols-[220px_minmax(0,1fr)]"
       >
         <div className="flex min-h-0 flex-col border-r border-white/10 p-4">
-          <div className="mb-4 flex items-center gap-3">
-            <IdentityAvatar kind="human" seed={avatarSeed} name={displayName} imageUrl={cloudAvatarImageUrl(account.avatarUrl)} className="h-10 w-10 border border-white/10" />
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold text-white">{displayName}</div>
-              <div className="truncate text-[11px] text-slate-400">Cloud account</div>
-            </div>
+          <div className="mb-4 min-w-0 px-3 py-2">
+            <div className="truncate text-[13px] font-semibold text-white">{displayName}</div>
+            <div className="mt-0.5 truncate text-[11px] text-slate-400">Account</div>
           </div>
           <div className="grid gap-1">
             {tabs.map((tab) => {
@@ -334,13 +320,11 @@ export function CloudAccountSettingsDialog({
               <div className="text-[18px] font-semibold tracking-tight text-white">
                 {activeTab === 'profile' ? 'Profile' : activeTab === 'auth' ? 'Authentication' : 'Theme'}
               </div>
-              <div className="mt-1 max-w-[42rem] text-[12px] leading-5 text-slate-400">
-                {activeTab === 'profile'
-                  ? 'Manage the Cloud identity shown to you and your contacts.'
-                  : activeTab === 'auth'
-                    ? 'Connect model providers and manage saved access.'
-                    : 'Adjust the interface palette.'}
-              </div>
+              {activeTab !== 'profile' ? (
+                <div className="mt-1 max-w-[42rem] text-[12px] leading-5 text-slate-400">
+                  {activeTab === 'auth' ? 'Connect model providers and manage saved access.' : 'Adjust the interface palette.'}
+                </div>
+              ) : null}
             </div>
             <button type="button" className="grid h-9 w-9 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white" onClick={onClose} aria-label="Close account settings">
               <X className="h-4 w-4" />
