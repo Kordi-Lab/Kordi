@@ -50,6 +50,14 @@ test('profile modal is distilled to one avatar and no cloud explanation copy', (
   assert.doesNotMatch(sidebar, />Cloud account</);
 });
 
+test('profile sign out action is styled as destructive red', () => {
+  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+
+  assert.match(modal, /text-rose-200/);
+  assert.match(modal, /border-rose-400\/20/);
+  assert.match(modal, /hover:bg-rose-500\/15/);
+});
+
 test('cloud profile updates publish to observers and the edited account', () => {
   const routes = readFileSync(new URL('../../../bridges/cloud-server/src/auth/routes.rs', import.meta.url), 'utf8');
 
