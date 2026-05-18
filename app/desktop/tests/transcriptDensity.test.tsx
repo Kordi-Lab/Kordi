@@ -90,7 +90,7 @@ test('unknown-model provider failures render as the compact authentication notic
   assert.doesNotMatch(markup, /Unknown model: openai\/gpt-5\.4/);
 });
 
-test('no-provider live turn skips the source quote so it does not flash a longer reply card', () => {
+test('no-provider live turn keeps the source quote so reply context stays stable', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-no-provider-source',
     sessionId: 'session-1',
@@ -119,9 +119,9 @@ test('no-provider live turn skips the source quote so it does not flash a longer
 
   assert.match(markup, /No provider configured yet/);
   assert.match(markup, />Open authentication</);
-  assert.doesNotMatch(markup, /app-source-message-quote/);
-  assert.doesNotMatch(markup, /app-live-assistant-answer-surface/);
-  assert.doesNotMatch(markup, /@MyKordi what are you doing/);
+  assert.match(markup, /app-source-message-quote/);
+  assert.match(markup, /app-live-assistant-answer-surface/);
+  assert.match(markup, /@MyKordi what are you doing/);
 });
 
 test('contact request row shows accept progress while sending the greeting', () => {
@@ -181,7 +181,7 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /Processing/);
 });
 
-test('empty pending agent turn does not immediately render a source quote before output exists', () => {
+test('empty pending agent turn renders processing with its source quote', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-pending-source-delay',
     sessionId: 'session-1',
@@ -204,8 +204,9 @@ test('empty pending agent turn does not immediately render a source quote before
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
-  assert.doesNotMatch(markup, /app-source-message-quote/);
-  assert.doesNotMatch(markup, /@MyKordi what are you doing/);
+  assert.match(markup, /app-source-message-quote/);
+  assert.match(markup, /@MyKordi what are you doing/);
+  assert.match(markup, /Starting…/);
 });
 
 test('renders initial generic working status as starting until a real tool phase appears', () => {

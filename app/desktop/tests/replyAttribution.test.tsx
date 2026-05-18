@@ -83,6 +83,58 @@ test('buildReplyAttribution adds generic reply count and source quote without re
   assert.equal(bobProcessing.turn?.sourceMessage?.messageId, 'msg:request');
 });
 
+test('buildReplyAttribution deduplicates repeated no-provider replies for one request and agent', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:request',
+      text: '@MyKordi hello',
+    }),
+    {
+      id: 'msg:no-provider-1',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: 'No provider configured yet.',
+      time: '10:01',
+      replyToMessageId: 'msg:request',
+      turn: turn({
+        id: 'turn-no-provider-1',
+        status: 'failed',
+        message: 'Failed',
+        assistantText: '',
+        completed: true,
+        succeeded: false,
+        error: 'No provider configured yet.',
+      }),
+    },
+    {
+      id: 'msg:no-provider-2',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: 'No provider configured yet.',
+      time: '10:01',
+      replyToMessageId: 'msg:request',
+      turn: turn({
+        id: 'turn-no-provider-2',
+        status: 'failed',
+        message: 'Failed',
+        assistantText: '',
+        completed: true,
+        succeeded: false,
+        error: 'Unknown model: openai/gpt-5.4',
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages);
+
+  assert.equal(result.messages.length, 2);
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(replyStatusText(result.messages[0]?.replySummary), '1 reply');
+  assert.equal(result.messages[1]?.id, 'msg:no-provider-1');
+});
+
 test('shouldInferLatestHumanReplyTarget enables fallback linking for person, external-agent, and group chats', () => {
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'person', participantSpaceId: null, canonicalParticipantCount: 2 }), true);
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'external-agent', participantSpaceId: null, canonicalParticipantCount: 2 }), true);

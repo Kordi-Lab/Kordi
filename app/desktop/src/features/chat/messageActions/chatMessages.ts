@@ -178,6 +178,35 @@ function appendCanonicalRequestToLocalState(
   };
 }
 
+export function noProviderPendingLiveTurn({
+  sessionId,
+  requestMessageId,
+  text,
+  now = Date.now(),
+}: {
+  sessionId: string;
+  requestMessageId: string;
+  text: string;
+  now?: number;
+}): DesktopChatTurnSnapshot {
+  return {
+    id: `turn:no-provider-pending:${requestMessageId}`,
+    sessionId,
+    prompt: text.trim(),
+    status: 'starting',
+    message: 'Working…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    startedAtMs: now,
+    completedAtMs: null,
+    error: null,
+    replyToMessageId: requestMessageId,
+  };
+}
+
 export function canonicalNoProviderFailedAgentMessageRequest({
   state,
   sessionId,
@@ -1122,6 +1151,13 @@ export function useChatMessageActions({
             requestMessageId: preparedCanonicalMessage.messageId,
           })
         : null;
+      const pendingNoProviderTurn = preparedCanonicalMessage
+        ? noProviderPendingLiveTurn({
+            sessionId: noProviderShortcutSessionId,
+            requestMessageId: preparedCanonicalMessage.messageId,
+            text,
+          })
+        : null;
       shouldAutoFollowChatRef.current = true;
       setIsDesktopChatSending(true);
       setDesktopChatError(null);
@@ -1131,6 +1167,12 @@ export function useChatMessageActions({
         mergeCanonicalSessionState(current, canonicalBaseState),
         preparedCanonicalMessage,
       ));
+      if (pendingNoProviderTurn) {
+        setDesktopLiveTurnsBySession((current) => ({
+          ...current,
+          [pendingNoProviderTurn.sessionId]: pendingNoProviderTurn,
+        }));
+      }
       setComposerDrafts((current: ComposerDraftState) => (
         chatDraftSessionIdsToClearForSend(activeConvId, noProviderShortcutSessionId).reduce(
           (next, sessionId) => updateScopeDraft(next, 'chat', sessionId, ''),
@@ -1148,6 +1190,13 @@ export function useChatMessageActions({
       }
       if (failedReplyRequest) {
         window.setTimeout(() => {
+          if (pendingNoProviderTurn) {
+            setDesktopLiveTurnsBySession((current) => {
+              if (current[pendingNoProviderTurn.sessionId]?.id !== pendingNoProviderTurn.id) return current;
+              const { [pendingNoProviderTurn.sessionId]: _removed, ...rest } = current;
+              return rest;
+            });
+          }
           setCanonicalSessionState((current) => appendCanonicalRequestToLocalState(current, failedReplyRequest));
           void appendCanonicalMessage(failedReplyRequest).catch((error: unknown) => {
             setDesktopChatError(error instanceof Error ? error.message : 'Unable to save provider notice');
@@ -1261,11 +1310,23 @@ export function useChatMessageActions({
           sessionId: canonicalSessionId,
           requestMessageId: preparedCanonicalMessage.messageId,
         });
-        const nextCanonicalState = appendCanonicalRequestToLocalState(
-          appendCanonicalRequestToLocalState(canonicalBaseState, sentUserRequest),
-          failedReplyRequest,
-        );
+        if (!failedReplyRequest) {
+          localChatSendInFlightRef.current = null;
+          setIsDesktopChatSending(false);
+          setDesktopChatError(cloudAgentNoProviderNoticeText());
+          return;
+        }
+        const pendingNoProviderTurn = noProviderPendingLiveTurn({
+          sessionId: canonicalSessionId,
+          requestMessageId: preparedCanonicalMessage.messageId,
+          text,
+        });
+        const nextCanonicalState = appendCanonicalRequestToLocalState(canonicalBaseState, sentUserRequest);
         if (nextCanonicalState) setCanonicalSessionState(nextCanonicalState);
+        setDesktopLiveTurnsBySession((current) => ({
+          ...current,
+          [pendingNoProviderTurn.sessionId]: pendingNoProviderTurn,
+        }));
         setDesktopChatState((current) => {
           const baseState = materializedState && current?.activeSessionId !== resolvedSessionId
             ? materializedState
@@ -1284,11 +1345,20 @@ export function useChatMessageActions({
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         localChatSendInFlightRef.current = null;
         setIsDesktopChatSending(false);
-        void upsertCanonicalMessage(sentUserRequest)
-          .then(() => (failedReplyRequest ? appendCanonicalMessage(failedReplyRequest) : null))
-          .catch((error: unknown) => {
+        void upsertCanonicalMessage(sentUserRequest).catch((error: unknown) => {
+          setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
+        });
+        window.setTimeout(() => {
+          setDesktopLiveTurnsBySession((current) => {
+            if (current[pendingNoProviderTurn.sessionId]?.id !== pendingNoProviderTurn.id) return current;
+            const { [pendingNoProviderTurn.sessionId]: _removed, ...rest } = current;
+            return rest;
+          });
+          setCanonicalSessionState((current) => appendCanonicalRequestToLocalState(current, failedReplyRequest));
+          void appendCanonicalMessage(failedReplyRequest).catch((error: unknown) => {
             setDesktopChatError(error instanceof Error ? error.message : 'Unable to save provider notice');
           });
+        }, 450);
         return;
       }
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));

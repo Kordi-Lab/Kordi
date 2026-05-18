@@ -810,12 +810,7 @@ function LiveChatTurnCardView({
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
   const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
   const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : visibleTurn.error;
-  const emptyStartingTurn = !visibleTurn.completed
-    && visibleTurn.status === 'starting'
-    && !hasAssistant
-    && !hasTimelineActivity
-    && !visibleTurn.error;
-  const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage && !noProviderConfiguredError && !emptyStartingTurn);
+  const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean(
     shouldShowSourceQuote
       || showLiveStatusHeader
