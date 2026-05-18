@@ -298,14 +298,14 @@ export function useComposerMessageActions({
     }
     try {
       if (isCloudBridgeConversationId(conversationId) || isCloudGroupAgentConversationId(conversationId)) {
-        if (!requestId?.trim()) throw new Error('Unable to stop cloud agent request');
-        if (!cancelCloudBridgeAgentRequest) throw new Error('Cloud chat is still loading. Try again in a moment.');
+        if (!requestId?.trim()) throw new Error('Unable to stop request');
+        if (!cancelCloudBridgeAgentRequest) throw new Error('Chat is still loading. Try again in a moment.');
         await cancelCloudBridgeAgentRequest(conversationId, requestId);
         return;
       }
-      throw new Error('Localhost Bridge communication was removed from main-cloud.');
+      throw new Error('This chat is unavailable. Try again from the chat list.');
     } catch (error) {
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop bridge outreach');
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to stop request');
       throw error;
     }
   }, [cancelCloudBridgeAgentRequest, setDesktopChatError, setIsDesktopChatSending, setPendingBridgeOutreach]);

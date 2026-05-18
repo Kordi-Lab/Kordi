@@ -40,6 +40,21 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /initialTab/);
 });
 
+test('cloud authentication tab suppresses nested auth header and stays narrow', () => {
+  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const authPage = readSource('kordi-app/auth/AuthPage.tsx');
+  const providerList = readSource('kordi-app/auth/AuthProviderList.tsx');
+
+  assert.match(modal, /showSettingsHeader=\{false\}/);
+  assert.match(modal, /settingsLayoutMode="fluid"/);
+  assert.match(modal, /max-w-\[620px\]/);
+  assert.doesNotMatch(modal, /Connect Kordi to cloud accounts or local model servers/);
+  assert.match(authPage, /showSettingsHeader = true/);
+  assert.match(authPage, /settingsLayoutMode = 'fixed'/);
+  assert.doesNotMatch(providerList, /Pick a cloud account/);
+  assert.match(providerList, /Pick a provider\. One working connection is enough\./);
+});
+
 test('profile modal is distilled to one avatar and no cloud explanation copy', () => {
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
   const sidebar = readSource('pages/WorkspaceSidebar.tsx');

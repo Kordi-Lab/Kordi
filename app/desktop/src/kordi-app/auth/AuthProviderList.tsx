@@ -109,7 +109,7 @@ export function AuthProviderList({
       className="app-surface-muted app-auth-provider-list flex h-full min-h-0 w-full min-w-0 max-w-none flex-1 flex-col self-stretch overflow-hidden rounded-[24px] border border-white/6 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
       style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
     >
-      <div className="mb-3 flex shrink-0 items-start justify-between gap-3 px-2 py-1">
+      <div className="mb-3 flex shrink-0 items-start justify-between gap-2 px-2 py-1">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="text-[14px] font-medium tracking-[-0.015em] text-white">Choose a provider</div>
@@ -117,14 +117,14 @@ export function AuthProviderList({
               {configuredCount} saved · {providers.length} total
             </div>
           </div>
-          <div className="mt-1.5 max-w-[42ch] text-[12px] leading-5 text-slate-400">
-            Pick a cloud account or a local model server. One working connection is enough.
+          <div className="mt-1.5 max-w-[34ch] text-[12px] leading-5 text-slate-400">
+            Pick a provider. One working connection is enough.
           </div>
         </div>
         <Button
           type="button"
           variant="secondary"
-          className="app-control-chip h-9 shrink-0 rounded-full border-0 px-3.5 text-[12px]"
+          className="app-control-chip h-9 shrink-0 rounded-full border-0 px-3 text-[12px]"
           onClick={onRefresh}
           style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
         >

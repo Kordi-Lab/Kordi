@@ -99,7 +99,7 @@ export function BridgeConfigPage({
             <CardHeader>
               <div className="space-y-3">
                 <div>
-                  <CardTitle className="text-base">Bridge</CardTitle>
+                  <CardTitle className="text-base">Connections</CardTitle>
                   <div className="mt-1 text-[12px] leading-5 text-slate-400">
                     Start by choosing a host, then drill in only when you need to adjust how you appear, which agents you use, or who you can reach.
                   </div>

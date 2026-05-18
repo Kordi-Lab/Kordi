@@ -252,26 +252,14 @@ test('defaults the live local agent sender to My Kordi instead of bare Kordi', (
   }), 'My Kordi');
 });
 
-test('formatSessionIdSubtitle labels raw ids for display', () => {
-  assert.equal(
-    formatSessionIdSubtitle('63138d66-0f5b-40dd-90ea-605f7cdb9ba0'),
-    'Session ID: 63138d66-0f5b-40dd-90ea-605f7cdb9ba0',
-  );
+test('formatSessionIdSubtitle hides raw ids behind friendly labels', () => {
+  assert.equal(formatSessionIdSubtitle('63138d66-0f5b-40dd-90ea-605f7cdb9ba0'), 'Direct chat');
   assert.equal(formatSessionIdSubtitle('  '), '');
   assert.equal(formatSessionIdSubtitle('Direct human chat'), 'Direct human chat');
-  assert.equal(
-    formatSessionIdSubtitle('session:bridge:bridge:bridge_18e6ee0dbc0d4785a3454a64129fe23b:kd_4FiDc8WETK5o26Ece6XvHFm6b8g9'),
-    'Session ID: session:bridge:bridge:bridge_18e6ee0dbc0d4785a3454a64129fe23b:kd_4FiDc8WETK5o26Ece6XvHFm6b8g9',
-  );
-  assert.equal(
-    formatSessionIdSubtitle('session:bridge:humans:c49e4abc'),
-    'Session ID: session:bridge:humans:c49e4abc',
-  );
-  assert.equal(
-    formatSessionIdSubtitle('session:group:437f306a-6278-4b64-a635-79a71d2cb3e0'),
-    'Session ID: session:group:437f306a-6278-4b64-a635-79a71d2cb3e0',
-  );
-  assert.equal(formatSessionIdSubtitle('session:direct-agent:next-id'), 'Session ID: session:direct-agent:next-id');
+  assert.equal(formatSessionIdSubtitle('session:direct-person:acct_a:acct_b'), 'Direct chat');
+  assert.equal(formatSessionIdSubtitle('session:group:437f306a-6278-4b64-a635-79a71d2cb3e0'), 'Group');
+  assert.equal(formatSessionIdSubtitle('session:direct-agent:next-id'), 'Agent chat');
+  assert.equal(formatSessionIdSubtitle('session:bridge:humans:c49e4abc'), 'Direct chat');
 });
 
 function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {

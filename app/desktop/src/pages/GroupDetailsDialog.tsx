@@ -263,7 +263,7 @@ export function GroupDetailsDialog({
 
           <div className="min-h-0 overflow-auto pr-1">
             <div className="mb-3">
-              <div className="app-group-management-section-label mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em]">Participants</div>
+              <div className="app-group-management-section-label mb-1.5 text-[10.5px] font-semibold tracking-[0.02em]">Participants</div>
               <div className="space-y-1">
                 {members.map((member) => {
                   const admin = adminIds.has(member.id);
@@ -304,7 +304,7 @@ export function GroupDetailsDialog({
             </div>
 
             <div>
-              <div className="app-group-management-section-label mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em]">
+              <div className="app-group-management-section-label mb-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold tracking-[0.02em]">
                 <UserPlus className="h-3.5 w-3.5" /> Add people
               </div>
               <div className="max-h-36 space-y-1 overflow-auto pr-1">

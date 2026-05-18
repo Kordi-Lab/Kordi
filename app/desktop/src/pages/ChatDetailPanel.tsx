@@ -308,14 +308,14 @@ function ChatDetailPanelView({
 
         {activeConversationIsBridge && activeBridgeConversation ? (
           <section className="app-detail-section">
-            <div className="app-detail-kicker">Bridge delivery</div>
+            <div className="app-detail-kicker">Delivery</div>
             <div className="app-inspector-meta-list">
               <MetaRow label="Host" value={activeBridgeConversationHostUrl || 'Unknown'} valueClassName="max-w-[11rem] truncate" />
               <MetaRow label="Peer node" value={activeBridgeConversation.peerNodeId} valueClassName="max-w-[11rem] truncate" />
               <MetaRow label="Runtime" value={activeBridgeConversation.peerRuntime} />
               <MetaRow
                 label="Project"
-                value={activeBridgeConversation.projectName || activeBridgeConversation.projectId || 'Direct bridge chat'}
+                value={activeBridgeConversation.projectName || activeBridgeConversation.projectId || 'Direct chat'}
                 valueClassName="max-w-[11rem] truncate"
               />
               {activeBridgeConversation.peerTyping ? <MetaRow label="Typing" value={`${activeBridgeConversation.title} is typing…`} /> : null}
@@ -373,9 +373,9 @@ function ChatDetailPanelView({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Delivery context</div>
           <div className="app-inspector-meta-list">
-            <MetaRow label="Bridges" value={activeConv.bridges.join(' • ')} />
+            <MetaRow label="Connections" value={activeConversationIsBridge ? 'Connected' : activeConv.bridges.join(' • ')} />
             <MetaRow label="Source" value={activeConversationIsBridge ? (activeBridgeConversationHostNodeId || 'desktop node') : 'cc_node_01'} />
-            <MetaRow label="Transport" value={activeConversationIsBridge ? (activeBridgeConversation?.peerRuntime === 'person' ? 'Direct realtime' : 'Bridge relay') : 'Encrypted'} />
+            <MetaRow label="Transport" value={activeConversationIsBridge ? (activeBridgeConversation?.peerRuntime === 'person' ? 'Direct realtime' : 'Relay') : 'Encrypted'} />
             {activeConversationIsBridge && activeBridgeConversation?.peerTyping ? (
               <MetaRow label="Typing" value={`${activeBridgeConversation.title} is typing…`} />
             ) : null}
@@ -393,7 +393,7 @@ function ChatDetailPanelView({
           artifacts={artifacts}
           activeArtifactId={activeArtifactId}
           onSelectArtifact={onSelectArtifact}
-          emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local generated artifacts yet.' : 'No generated code or docs in this session yet.'}
+          emptyMessage={activeConversationIsBridge ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
         />
       </div>
     );
@@ -406,7 +406,7 @@ function ChatDetailPanelView({
         liveTurn={activeLiveTurn?.sessionId === activeSessionId ? activeLiveTurn : null}
         taskActivities={activeConv.taskActivities ?? []}
         targetParticipants={activeConv.canonicalParticipants ?? []}
-        emptyMessage={activeConversationIsBridge ? 'Bridge conversations do not have local task activity yet.' : 'No planning or execution task activity in this session yet.'}
+        emptyMessage={activeConversationIsBridge ? 'No planning or execution task activity in this chat yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}
         onOpenArtifact={onOpenArtifact}
         onNavigateToResponse={onNavigateToResponse}

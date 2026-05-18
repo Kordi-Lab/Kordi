@@ -446,7 +446,7 @@ export function useKordiAppModel() {
   });
 
   const removedLocalBridgeAction = useCallback(async (..._args: unknown[]) => {
-    const message = 'Localhost Bridge communication was removed from main-cloud.';
+    const message = 'This connection action is unavailable.';
     setDesktopBridgeError(message);
     throw new Error(message);
   }, []);
@@ -460,7 +460,7 @@ export function useKordiAppModel() {
       await navigator.clipboard.writeText(value);
       setDesktopBridgeError(successMessage);
     } catch (error) {
-      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to copy bridge details');
+      setDesktopBridgeError(error instanceof Error ? error.message : 'Unable to copy details');
     }
   }, []);
 
@@ -472,7 +472,7 @@ export function useKordiAppModel() {
   }, []);
   const openBridgeWizard = useCallback(() => {
     setBridgeWizardOpen(false);
-    setDesktopBridgeError('Localhost Bridge communication was removed from main-cloud.');
+    setDesktopBridgeError('This connection action is unavailable.');
   }, []);
   const handleBridgeWizardPrimary = removedLocalBridgeAction;
   const handleOpenBridgeConfigFolder = removedLocalBridgeAction;
@@ -833,7 +833,7 @@ export function useKordiAppModel() {
         activeConv.canonicalSessionId ?? activeConv.id ?? activeConvId,
       );
       if (!runtimeSessionId) {
-        setDesktopChatError('Cloud account is still loading. Try again in a moment.');
+        setDesktopChatError('Account is still loading. Try again in a moment.');
         return;
       }
       setCloudAgentRuntimeRoutesBySessionId((current) => ({

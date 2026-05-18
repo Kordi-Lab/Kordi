@@ -2155,7 +2155,7 @@ export function useCloudBridgeState({
     const sessionTitleUpdateTitle = cloudSessionTitleUpdateTitle(envelope);
     const explicitGroupTitle = shouldApplyCloudGroupTitleUpdate(envelope) ? cloudGroupNonGenericTitle(envelope.groupTitle) : null;
     const isSelfAuthoredControl = envelope.actor.accountId === account.accountId || envelope.createdByAccountId === account.accountId;
-    const groupTitle = explicitGroupTitle || 'Cloud group';
+    const groupTitle = explicitGroupTitle || 'Group';
     const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
     const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
     const forkMetadata = envelope.fork ? {
@@ -3424,7 +3424,7 @@ export function useCloudBridgeState({
       return;
     }
     const firstFailure = firstCloudGroupSendFailure(results);
-    throw firstFailure instanceof Error ? firstFailure : new Error(String(firstFailure || 'Cloud group message failed.'));
+    throw firstFailure instanceof Error ? firstFailure : new Error(String(firstFailure || 'Group message failed.'));
   }, [account, client, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
   const refreshCloudSessionActivity = useCallback(async (sessionId: string) => {
@@ -3524,7 +3524,7 @@ export function useCloudBridgeState({
 
   const cancelCloudBridgeAgentRequest = useCallback(async (conversationId: string, requestId: string) => {
     const trimmedRequestId = requestId.trim();
-    if (!trimmedRequestId) throw new Error('Unable to resolve cloud agent request.');
+    if (!trimmedRequestId) throw new Error('Unable to resolve request.');
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
 
@@ -3590,7 +3590,7 @@ export function useCloudBridgeState({
     }
 
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);
-    if (!peerId || !account) throw new Error('Unable to resolve cloud agent request.');
+    if (!peerId || !account) throw new Error('Unable to resolve request.');
     mergeMessage(optimisticCloudAgentCancelMessage({
       account,
       peerAccountId: peerId,
