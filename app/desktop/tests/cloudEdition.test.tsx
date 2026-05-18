@@ -350,3 +350,12 @@ test('cloud edition app root renders account login before the chat shell', () =>
   assert.doesNotMatch(markup, /No provider connected yet/);
   assert.doesNotMatch(markup, /Ask your agent/);
 });
+
+test('cloud login gate reads persisted theme preference before shell mount', () => {
+  const source = readSource('src/KordiApp.tsx');
+
+  assert.match(source, /readStoredThemeMode/);
+  assert.match(source, /resolveThemeMode\(themeMode, readSystemTheme\(\)\)/);
+  assert.match(source, /setTheme\(resolveThemeMode\(themeMode, mediaQuery\.matches \? 'light' : 'dark'\)\)/);
+  assert.doesNotMatch(source, /const \[theme, setTheme\] = useState<ResolvedThemeMode>\(\(\) => readSystemTheme\(\)\)/);
+});
