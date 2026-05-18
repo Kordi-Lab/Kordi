@@ -196,6 +196,37 @@ impl EventBus {
         );
         self.publish_raw(subject, body).await;
     }
+
+    /// Fire `kordi.events.account.profile.updated.<observer_account_id>` so
+    /// contacts with an open Cloud websocket can refresh display name/avatar.
+    pub async fn publish_profile_updated(
+        &self,
+        account_id: &str,
+        observer_account_id: &str,
+        display_name: Option<&str>,
+        avatar_url: Option<&str>,
+    ) {
+        if self.inner.is_none() {
+            return;
+        }
+        let payload = AccountProfileUpdated {
+            event_type: "account.profile.updated",
+            account_id,
+            observer_account_id,
+            display_name,
+            avatar_url,
+            occurred_at: chrono::Utc::now().to_rfc3339(),
+        };
+        let body = match serde_json::to_vec(&payload) {
+            Ok(value) => Bytes::from(value),
+            Err(err) => {
+                eprintln!("[events] serialize account.profile.updated: {err}");
+                return;
+            }
+        };
+        let subject = format!("kordi.events.account.profile.updated.{observer_account_id}");
+        self.publish_raw(subject, body).await;
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -314,5 +345,15 @@ struct ContactRequestEvent<'a> {
     request_id: &'a str,
     from_account_id: &'a str,
     to_account_id: &'a str,
+    occurred_at: String,
+}
+
+#[derive(Serialize)]
+struct AccountProfileUpdated<'a> {
+    event_type: &'static str,
+    account_id: &'a str,
+    observer_account_id: &'a str,
+    display_name: Option<&'a str>,
+    avatar_url: Option<&'a str>,
     occurred_at: String,
 }

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
-import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
 import { SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
@@ -808,8 +808,11 @@ function LiveChatTurnCardView({
   const liveTurnActive = !historical && !visibleTurn.completed;
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
+  const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
+  const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : visibleTurn.error;
+  const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean(
-    visibleTurn.sourceMessage
+    shouldShowSourceQuote
       || showLiveStatusHeader
       || isCompressionStatus
       || hasTimelineActivity
@@ -817,13 +820,15 @@ function LiveChatTurnCardView({
       || changedFileRows.length > 0,
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
-  const showOpenAuthAction = Boolean(onOpenAuthSettings && visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
+  const showOpenAuthAction = Boolean(onOpenAuthSettings && noProviderConfiguredError);
 
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
         <div className={cn('app-live-turn-response-panel', hasResponseSurface && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,42rem)] space-y-2.5')}>
-          <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
+          {shouldShowSourceQuote ? (
+            <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
+          ) : null}
           {showLiveStatusHeader ? (
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
               <ProcessingStatusCircle className="h-3.5 w-3.5" />
@@ -886,9 +891,9 @@ function LiveChatTurnCardView({
             />
           ) : null}
 
-          {visibleTurn.error ? (
+          {displayedError ? (
             <div className="app-live-turn-error app-live-turn-error-text max-w-full break-words px-0.5 text-[12px] font-medium leading-5 text-rose-300 [&_.app-live-turn-auth-action]:whitespace-nowrap">
-              {visibleTurn.error}
+              {displayedError}
               {showOpenAuthAction ? (
                 <button
                   type="button"

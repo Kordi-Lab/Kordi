@@ -178,7 +178,11 @@ export function removeCloudContactRequestSnapshot(
 }
 
 export function shouldRefreshCloudContactsForWsSubject(subject: string | undefined | null): boolean {
-  return Boolean(subject?.startsWith('kordi.events.contact.request.') || subject?.startsWith('kordi.events.contact.added.'));
+  return Boolean(
+    subject?.startsWith('kordi.events.contact.request.')
+      || subject?.startsWith('kordi.events.contact.added.')
+      || subject?.startsWith('kordi.events.account.profile.updated.'),
+  );
 }
 
 function cloudContactsStoreFor(accountId: string): CloudContactsStore {

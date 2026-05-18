@@ -5,7 +5,7 @@
 //! `ServerState`. Every handler is straight-line async — no DbRunner
 //! closures, no spawn_blocking — because sqlx is async-native.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
@@ -1047,7 +1047,39 @@ async fn update_me(
         );
     }
     match account_response_row(state.db_pool(), &session.account_id).await {
-        Ok(Some(account)) => Json(account).into_response(),
+        Ok(Some(account)) => {
+            let observers: Vec<(String,)> = query_as(
+                "SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1",
+            )
+            .bind(&session.account_id)
+            .fetch_all(state.db_pool())
+            .await
+            .unwrap_or_default();
+            let mut observer_account_ids: HashSet<String> = observers
+                .into_iter()
+                .map(|(observer_account_id,)| observer_account_id)
+                .collect();
+            observer_account_ids.insert(session.account_id.clone());
+            if !observer_account_ids.is_empty() {
+                let events = state.events().clone();
+                let account_id = account.account_id.clone();
+                let display_name = account.display_name.clone();
+                let avatar_url = account.avatar_url.clone();
+                tokio::spawn(async move {
+                    for observer_account_id in observer_account_ids {
+                        events
+                            .publish_profile_updated(
+                                &account_id,
+                                &observer_account_id,
+                                display_name.as_deref(),
+                                avatar_url.as_deref(),
+                            )
+                            .await;
+                    }
+                });
+            }
+            Json(account).into_response()
+        }
         Ok(None) => err(
             "account_missing",
             "Account no longer exists.",

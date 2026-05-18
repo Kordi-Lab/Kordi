@@ -60,13 +60,23 @@ export function authStateHasChatReadyProvider(
   authState: DesktopAuthState | null,
   modelOptions: Array<{ provider?: string | null }> = [],
 ) {
-  if (authStateSatisfiesStartupGate(authState)) return true;
+  const modelProviderIds = new Set(
+    modelOptions
+      .map((option) => option.provider?.trim())
+      .filter((provider): provider is string => Boolean(provider))
+      .map((provider) => normalizeSelectedProviderId(provider) ?? provider),
+  );
 
-  return modelOptions.some((option) => {
-    const provider = option.provider?.trim();
-    if (!provider) return false;
-    return isLocalProvider(normalizeSelectedProviderId(provider) ?? provider);
-  });
+  if (buildAuthDisplayProviders(authState).some((provider) => {
+    if (!provider.configured) return false;
+    const providerId = normalizeSelectedProviderId(provider.id) ?? provider.id;
+    return modelProviderIds.has(providerId)
+      || localProviderHasSavedModel(providerId, provider.preferredModel);
+  })) {
+    return true;
+  }
+
+  return [...modelProviderIds].some((provider) => isLocalProvider(provider));
 }
 
 function localProviderFallback(providerId: 'lm-studio' | 'ollama'): DesktopAuthProvider {

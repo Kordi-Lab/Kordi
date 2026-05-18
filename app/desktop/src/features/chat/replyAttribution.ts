@@ -1,3 +1,4 @@
+import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import type {
   Conversation,
   DesktopChatTurnSnapshot,
@@ -229,6 +230,18 @@ function withSourceMessage(message: Message, sourceMessage: MessageSourceReferen
   };
 }
 
+function noProviderReplyDedupeKey(message: Message, sourceMessage: MessageSourceReference) {
+  const errorText = cleanText(message.turn?.error) || cleanText(message.text);
+  if (!isCloudAgentNoProviderConfiguredError(errorText)) return null;
+  return [
+    sourceMessage.messageId,
+    cleanText(message.sender),
+    cleanText(message.senderType),
+    cleanText(message.role),
+    'no-provider',
+  ].join('\u0000');
+}
+
 export function shouldInferLatestHumanReplyTarget(
   conversation:
     | Pick<
@@ -287,6 +300,7 @@ export function buildReplyAttribution(
     return withId;
   });
 
+  const seenNoProviderReplyKeys = new Set<string>();
   const linkedMessages = messagesWithIds.map((message, index) => {
     const messageId = messageIds[index];
     if (isHumanRequest(message)) {
@@ -300,9 +314,15 @@ export function buildReplyAttribution(
     const sourceMessage = sourceByMessageId.get(replyTargetId);
     if (!sourceMessage) return message;
 
+    const noProviderDedupeKey = noProviderReplyDedupeKey(message, sourceMessage);
+    if (noProviderDedupeKey) {
+      if (seenNoProviderReplyKeys.has(noProviderDedupeKey)) return null;
+      seenNoProviderReplyKeys.add(noProviderDedupeKey);
+    }
+
     addReplySummary(summariesByRequestId, sourceMessage.messageId, messageId, completedReplyCountable(message));
     return withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage);
-  });
+  }).filter((message): message is Message => Boolean(message));
 
   const linkedLiveTurn = (() => {
     if (!liveTurn) return undefined;

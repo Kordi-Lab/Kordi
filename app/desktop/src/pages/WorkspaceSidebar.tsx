@@ -9,6 +9,8 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Settings,
+  UserRound,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +19,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import { fileToAvatarDataUrl } from '@/kordi-app/components/avatarOverrides';
+import { CloudAccountSettingsDialog, type CloudAccountSettingsConfig, type CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
@@ -235,6 +237,9 @@ type WorkspaceSidebarProps = {
   activeBridgeHost: BridgeHostSummary | null;
   localProfileAvatarSeed?: string | null;
   cloudAccount?: CloudAccount | null;
+  cloudAccountDialogTab?: CloudAccountSettingsTabId | null;
+  setCloudAccountDialogTab?: Dispatch<SetStateAction<CloudAccountSettingsTabId | null>>;
+  cloudSettings?: CloudAccountSettingsConfig;
   onUpdateCloudProfile?: (input: { displayName?: string; avatarUrl?: string }) => Promise<void>;
   onCloudSignOut?: () => Promise<void> | void;
   isBridgePolling: boolean;
@@ -527,6 +532,9 @@ export function WorkspaceSidebar({
   activeBridgeHost,
   localProfileAvatarSeed,
   cloudAccount,
+  cloudAccountDialogTab: controlledCloudAccountDialogTab,
+  setCloudAccountDialogTab: setControlledCloudAccountDialogTab,
+  cloudSettings,
   onUpdateCloudProfile,
   onCloudSignOut,
   isBridgePolling,
@@ -556,13 +564,12 @@ export function WorkspaceSidebar({
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
-  const [isEditingCloudProfile, setIsEditingCloudProfile] = useState(false);
-  const [cloudProfileNameDraft, setCloudProfileNameDraft] = useState('');
-  const [cloudProfileAvatarUrlDraft, setCloudProfileAvatarUrlDraft] = useState('');
-  const [cloudProfileSaving, setCloudProfileSaving] = useState(false);
-  const [cloudProfileError, setCloudProfileError] = useState('');
-  const [cloudSignOutBusy, setCloudSignOutBusy] = useState(false);
-  const cloudProfileFileRef = useRef<HTMLInputElement | null>(null);
+  const [localCloudAccountDialogTab, setLocalCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
+  const isCloudAccountDialogControlled = Boolean(setControlledCloudAccountDialogTab);
+  const cloudAccountDialogTab = isCloudAccountDialogControlled
+    ? (controlledCloudAccountDialogTab ?? null)
+    : localCloudAccountDialogTab;
+  const setCloudAccountDialogTab = setControlledCloudAccountDialogTab ?? setLocalCloudAccountDialogTab;
   const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
   const profilePopoverRef = useRef<HTMLDivElement | null>(null);
   // Computed each time the popover opens, so the surface anchors to the avatar's
@@ -622,55 +629,6 @@ export function WorkspaceSidebar({
     : localProfileAvatarSeed || currentLocalProfileAvatarSeed;
   const profileImageUrl = cloudAccount ? cloudAvatarImageUrl(cloudAccount.avatarUrl) : null;
 
-  useEffect(() => {
-    if (!cloudAccount) return;
-    setCloudProfileNameDraft(cloudAccount.displayName?.trim() || '');
-    setCloudProfileAvatarUrlDraft(cloudAvatarImageUrl(cloudAccount.avatarUrl) || '');
-    setCloudProfileError('');
-  }, [cloudAccount]);
-
-  const saveCloudProfile = async () => {
-    if (!cloudAccount || !onUpdateCloudProfile || cloudProfileSaving) return;
-    setCloudProfileSaving(true);
-    setCloudProfileError('');
-    try {
-      await onUpdateCloudProfile({
-        displayName: cloudProfileNameDraft.trim(),
-        avatarUrl: cloudProfileAvatarUrlDraft.trim() || undefined,
-      });
-      setIsEditingCloudProfile(false);
-    } catch (caught) {
-      setCloudProfileError(caught instanceof Error ? caught.message : 'Could not update profile.');
-    } finally {
-      setCloudProfileSaving(false);
-    }
-  };
-
-  const handleCloudProfileAvatarFile = (file: File | undefined) => {
-    if (!file) return;
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      setCloudProfileError('Choose a PNG, JPEG, or WebP image.');
-      return;
-    }
-    void fileToAvatarDataUrl(file)
-      .then((dataUrl) => {
-        setCloudProfileAvatarUrlDraft(dataUrl);
-      })
-      .catch((caught) => setCloudProfileError(caught instanceof Error ? caught.message : 'Could not use that image.'));
-  };
-
-  const handleCloudSignOut = async () => {
-    if (!onCloudSignOut || cloudSignOutBusy) return;
-    setCloudSignOutBusy(true);
-    setCloudProfileError('');
-    try {
-      await onCloudSignOut();
-      setIsProfileCardOpen(false);
-    } catch (caught) {
-      setCloudProfileError(caught instanceof Error ? caught.message : 'Could not log out.');
-      setCloudSignOutBusy(false);
-    }
-  };
 
   const activeParticipantSpaceId = participantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
@@ -683,6 +641,11 @@ export function WorkspaceSidebar({
     setActiveNav('chats');
     setChatCreateAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     setIsChatCreateDialogOpen(true);
+  };
+
+  const openCloudAccountDialog = (tab: CloudAccountSettingsTabId) => {
+    setIsProfileCardOpen(false);
+    setCloudAccountDialogTab(tab);
   };
 
   useEffect(() => {
@@ -1455,7 +1418,89 @@ export function WorkspaceSidebar({
           </div>
         </div>
 
-        {isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
+        {cloudSettings && cloudAccount && onUpdateCloudProfile ? (
+          <CloudAccountSettingsDialog
+            {...cloudSettings}
+            isOpen={cloudAccountDialogTab !== null}
+            initialTab={cloudAccountDialogTab ?? 'profile'}
+            account={cloudAccount}
+            localProfileAvatarSeed={localProfileAvatarSeed}
+            onClose={() => setCloudAccountDialogTab(null)}
+            onUpdateProfile={onUpdateCloudProfile}
+            onSignOut={onCloudSignOut}
+          />
+        ) : null}
+
+        {cloudSettings && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
+          <div
+            ref={profilePopoverRef}
+            role="dialog"
+            aria-label="Account menu"
+            style={{
+              position: 'fixed',
+              left: profilePopoverAnchor.left,
+              bottom: profilePopoverAnchor.bottom,
+              zIndex: 170,
+            }}
+            className={cn(
+              'app-popover app-profile-popover',
+              'w-[22rem] rounded-[18px] border px-4 py-3 text-foreground',
+            )}
+          >
+            <div className="mb-3 flex items-center gap-3">
+              <IdentityAvatar
+                kind="human"
+                seed={profileAvatarSeed}
+                name={profileDisplayName}
+                imageUrl={profileImageUrl}
+                className="h-10 w-10 border border-white/10"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold text-slate-100">{profileDisplayName}</div>
+                <div className="mt-0.5 truncate text-[11px] text-slate-400">Account</div>
+              </div>
+            </div>
+            <div className="grid gap-1 text-[12px]">
+              {profileRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-slate-100">{row.label}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-400">{row.value}</div>
+                  </div>
+                  {row.copyable ? (
+                    <CloudProfileRowCopyButton label={row.label} value={row.value} />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-1 border-t border-white/10 pt-3">
+              <button
+                type="button"
+                className="app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium text-slate-100 transition hover:text-white"
+                onClick={() => openCloudAccountDialog('profile')}
+                aria-label="Open profile settings"
+              >
+                <span className="flex items-center gap-2.5"><UserRound className="h-4 w-4 text-slate-400" />Profile</span>
+                <ChevronRightIcon className="h-4 w-4 text-slate-500" />
+              </button>
+              <button
+                type="button"
+                className="app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium text-slate-100 transition hover:text-white"
+                onClick={() => openCloudAccountDialog('auth')}
+                aria-label="Open account settings"
+              >
+                <span className="flex items-center gap-2.5"><Settings className="h-4 w-4 text-slate-400" />Settings</span>
+                <ChevronRightIcon className="h-4 w-4 text-slate-500" />
+              </button>
+            </div>
+          </div>,
+          document.querySelector('.bridge-app') ?? document.body,
+        ) : null}
+
+        {!cloudSettings && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
           <div
             ref={profilePopoverRef}
             role="dialog"
@@ -1473,72 +1518,12 @@ export function WorkspaceSidebar({
           >
             <div className="mb-3 flex items-center justify-between gap-3 text-[12px] font-medium text-slate-100">
               <span>Profile</span>
-              {cloudAccount && onUpdateCloudProfile ? (
-                <button
-                  type="button"
-                  className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white"
-                  onClick={() => setIsEditingCloudProfile((editing) => !editing)}
-                >
-                  {isEditingCloudProfile ? 'Cancel' : 'Edit'}
-                </button>
-              ) : null}
             </div>
             <div className="grid gap-1 text-[12px]">
               <div className="rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
                 <div className="truncate font-medium text-slate-100">{profileDisplayName}</div>
                 <div className="mt-0.5 truncate text-[11px] text-slate-400">{cloudAccount ? 'Cloud account' : 'Local profile'}</div>
               </div>
-              {cloudAccount && isEditingCloudProfile ? (
-                <div className="grid gap-2 rounded-[12px] px-3 py-2.5">
-                  <label className="grid gap-1 text-[11px] font-medium text-slate-300">
-                    Display name
-                    <input
-                      value={cloudProfileNameDraft}
-                      onChange={(event) => setCloudProfileNameDraft(event.currentTarget.value)}
-                      className={cn(
-                        'h-9 rounded-[10px] border border-white/10 bg-white/[0.04] px-3',
-                        'text-[12px] text-slate-100 outline-none focus:border-sky-300/60',
-                      )}
-                    />
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <IdentityAvatar
-                      kind="human"
-                      seed={profileAvatarSeed}
-                      name={cloudProfileNameDraft || profileDisplayName}
-                      imageUrl={cloudProfileAvatarUrlDraft || undefined}
-                      className="h-9 w-9 border border-white/10"
-                    />
-                    <button
-                      type="button"
-                      className="rounded-[8px] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10"
-                      onClick={() => cloudProfileFileRef.current?.click()}
-                    >
-                      Upload
-                    </button>
-                    <input
-                      ref={cloudProfileFileRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"                      className="sr-only"
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0];
-                        event.currentTarget.value = '';
-                        handleCloudProfileAvatarFile(file);
-                      }}
-                    />
-                  </div>
-                  {cloudProfileError ? <div className="text-[11px] text-red-300">{cloudProfileError}</div> : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-8 rounded-[10px]"
-                    disabled={cloudProfileSaving}
-                    onClick={() => void saveCloudProfile()}
-                  >
-                    {cloudProfileSaving ? 'Saving…' : 'Save profile'}
-                  </Button>
-                </div>
-              ) : null}
               {profileRows.length > 0 ? profileRows.map((row) => (
                 <div
                   key={row.label}
@@ -1557,11 +1542,6 @@ export function WorkspaceSidebar({
                   Profile details are stored locally.
                 </div>
               )}
-              {cloudAccount && onCloudSignOut ? (
-                <div className="mt-2 border-t border-white/10 pt-2">
-                  <CloudProfileLogoutAction onSignOut={handleCloudSignOut} disabled={cloudSignOutBusy} />
-                </div>
-              ) : null}
             </div>
           </div>,
           document.querySelector('.bridge-app') ?? document.body,

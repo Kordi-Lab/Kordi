@@ -64,6 +64,66 @@ test('no-provider failed agent turn renders red inline text with authentication 
   assert.doesNotMatch(markup, /rounded-full border border-rose/);
 });
 
+test('unknown-model provider failures render as the compact authentication notice', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-unknown-model',
+    sessionId: 'session-1',
+    prompt: '@MyKordi what are you doing',
+    status: 'failed',
+    message: 'Failed',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    error: 'Unknown model: openai/gpt-5.4',
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn,
+    historical: true,
+    onOpenAuthSettings: () => undefined,
+  }));
+
+  assert.match(markup, /No provider configured yet/);
+  assert.match(markup, />Open authentication</);
+  assert.doesNotMatch(markup, /Unknown model: openai\/gpt-5\.4/);
+});
+
+test('no-provider live turn keeps the source quote so reply context stays stable', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-no-provider-source',
+    sessionId: 'session-1',
+    prompt: '@MyKordi what are you doing',
+    status: 'failed',
+    message: 'Failed',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    error: 'No provider configured yet.',
+    sourceMessage: {
+      messageId: 'msg:request',
+      senderLabel: 'Me',
+      text: '@MyKordi what are you doing',
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn,
+    historical: true,
+    onOpenAuthSettings: () => undefined,
+  }));
+
+  assert.match(markup, /No provider configured yet/);
+  assert.match(markup, />Open authentication</);
+  assert.match(markup, /app-source-message-quote/);
+  assert.match(markup, /app-live-assistant-answer-surface/);
+  assert.match(markup, /@MyKordi what are you doing/);
+});
+
 test('contact request row shows accept progress while sending the greeting', () => {
   const request: ContactRequest = {
     id: 'request-1',
@@ -119,6 +179,34 @@ test('renders bridge agent stop control beside pending processing text', () => {
   assert.match(markup, /text-slate-400/);
   assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
   assert.match(markup, /Processing/);
+});
+
+test('empty pending agent turn renders processing with its source quote', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-pending-source-delay',
+    sessionId: 'session-1',
+    prompt: '@MyKordi what are you doing',
+    status: 'starting',
+    message: 'Working…',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+    sourceMessage: {
+      messageId: 'msg:request',
+      senderLabel: 'Me',
+      text: '@MyKordi what are you doing',
+      attachmentCount: 0,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+
+  assert.match(markup, /app-source-message-quote/);
+  assert.match(markup, /@MyKordi what are you doing/);
+  assert.match(markup, /Starting…/);
 });
 
 test('renders initial generic working status as starting until a real tool phase appears', () => {

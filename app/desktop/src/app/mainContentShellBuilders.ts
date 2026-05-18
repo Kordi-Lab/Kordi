@@ -146,6 +146,7 @@ export function buildProjectsPageProps(args: MainContentShellArgs): ComponentPro
     onSendProjectMessage: args.handleSendProjectMessage,
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,
+    onOpenAccountAuthentication: args.openCloudAccountAuthentication,
   };
 }
 
@@ -229,5 +230,6 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onSelectSession: args.handleSelectChatSession,
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),
     onOpenAuthSettings: args.openAuthSettings,
+    onOpenAccountAuthentication: args.openCloudAccountAuthentication,
   };
 }

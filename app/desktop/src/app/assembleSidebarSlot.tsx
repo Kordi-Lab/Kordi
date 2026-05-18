@@ -184,6 +184,27 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         activeBridgeHost={args.activeBridgeHost}
         localProfileAvatarSeed={args.localProfileAvatarSeed}
         cloudAccount={isCloud ? cloudSession.account : null}
+        cloudAccountDialogTab={args.cloudAccountDialogTab}
+        setCloudAccountDialogTab={args.setCloudAccountDialogTab}
+        cloudSettings={isCloud ? {
+          settingsSections: args.settingsSections,
+          activeSettingsSectionId: args.activeSettingsSectionId,
+          setActiveSettingsSectionId: args.setActiveSettingsSectionId,
+          authSettingsLayoutWidth: args.authSettingsLayoutWidth,
+          isNativeShell: args.isNativeShell,
+          desktopAuthState: args.desktopAuthState,
+          isDesktopAuthLoading: args.isDesktopAuthLoading,
+          desktopAuthError: args.desktopAuthError,
+          activeLoginProviderId: args.activeLoginProviderId,
+          selectAuthProvider: args.selectAuthProvider,
+          openLoginFlow: args.openLoginFlow,
+          refreshDesktopAuth: args.refreshDesktopAuth,
+          handleSelectAuthChoice: args.handleSelectAuthChoice,
+          handleRemoveAuthProfile: args.handleRemoveAuthProfile,
+          handleLogoutProvider: args.handleLogoutProvider,
+          themeMode: args.themeMode,
+          setThemeMode: args.setThemeMode,
+        } : undefined}
         onUpdateCloudProfile={isCloud ? async (input) => { await cloudSession.updateProfile(input); } : undefined}
         onCloudSignOut={isCloud ? async () => { await cloudSession.signOut(); } : undefined}
         isBridgePolling={args.isBridgePolling}

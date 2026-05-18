@@ -279,6 +279,7 @@ type ChatsPageProps = {
   onSendChatMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
+  onOpenAccountAuthentication?: () => void;
 };
 
 export function ChatsPage({
@@ -342,7 +343,13 @@ export function ChatsPage({
   onSendChatMessage,
   hasAnyAuth,
   onOpenAuthSettings,
+  onOpenAccountAuthentication,
 }: ChatsPageProps) {
+  const openAuthentication = onOpenAccountAuthentication ?? onOpenAuthSettings;
+  const authNoticeDescription = onOpenAccountAuthentication
+    ? 'Connect a provider, save an API key, or choose a local LM Studio/Ollama server before starting AI chats.'
+    : 'Connect a cloud provider, save an API key, or choose a local LM Studio/Ollama server in Authentication before starting AI chats.';
+  const authNoticeActionLabel = 'Open authentication';
   const visibleDesktopLiveTurn = desktopLiveTurn ?? (!isNativeShell ? activeConv.previewLiveTurn ?? null : null);
   const isCompressionActive = visibleDesktopLiveTurn?.status === 'compacting';
   const activeLiveTurnIsRunning = Boolean(
@@ -708,8 +715,9 @@ export function ChatsPage({
       {!hasAnyAuth && !activeConversationIsBridge ? (
         <AuthNoticeBanner
           title="No provider connected yet"
-          description="Connect a cloud provider, save an API key, or choose a local LM Studio/Ollama server in Authentication before starting AI chats."
-          onAction={onOpenAuthSettings}
+          description={authNoticeDescription}
+          actionLabel={authNoticeActionLabel}
+          onAction={onOpenAccountAuthentication ?? onOpenAuthSettings}
         />
       ) : null}
 
@@ -726,7 +734,7 @@ export function ChatsPage({
                   msg={msg}
                   onOpenSource={onOpenSource}
                   onOpenArtifact={onOpenArtifact}
-                  onOpenAuthSettings={onOpenAuthSettings}
+                  onOpenAuthSettings={openAuthentication}
                   onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                   onRequestBridgeContact={onRequestBridgeContact}
                   onForkMessage={handleForkMessage}
@@ -760,7 +768,7 @@ export function ChatsPage({
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onStopActiveTurn={onStopDesktopChatTurn}
                 onOpenArtifact={onOpenArtifact}
-                onOpenAuthSettings={onOpenAuthSettings}
+                onOpenAuthSettings={openAuthentication}
               />
             ) : null}
             {queuedDesktopMessages.map((message) => (

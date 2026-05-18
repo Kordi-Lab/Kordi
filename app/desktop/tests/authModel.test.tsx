@@ -28,6 +28,16 @@ function authProvider(overrides: Partial<DesktopAuthProvider> = {}): DesktopAuth
   };
 }
 
+function authOption(method: string) {
+  return {
+    value: 'default',
+    method,
+    source: 'kordi auth.json',
+    label: 'Default',
+    active: true,
+  };
+}
+
 function authState(overrides: Partial<DesktopAuthState> = {}): DesktopAuthState {
   return {
     authPath: '/tmp/kordi-auth.json',
@@ -65,7 +75,22 @@ test('authStateHasChatReadyProvider accepts discovered local runtime models with
 
   assert.equal(authStateHasChatReadyProvider(unauthenticatedState, [{ provider: 'lm-studio' }]), true);
   assert.equal(authStateHasChatReadyProvider(unauthenticatedState, [{ provider: 'openai' }]), false);
-  assert.equal(authStateHasChatReadyProvider(authState({ hasAnyAuth: true }), []), true);
+  assert.equal(authStateHasChatReadyProvider(authState({ hasAnyAuth: true }), []), false);
+});
+
+test('authStateHasChatReadyProvider requires a configured provider with available models', () => {
+  assert.equal(authStateHasChatReadyProvider(authState({
+    hasAnyAuth: true,
+    providers: [authProvider({ configured: true })],
+  }), []), false);
+  assert.equal(authStateHasChatReadyProvider(authState({
+    hasAnyAuth: true,
+    providers: [authProvider({ configured: true, options: [authOption('API key')] })],
+  }), [{ provider: 'openai' }]), true);
+  assert.equal(authStateHasChatReadyProvider(authState({
+    hasAnyAuth: true,
+    providers: [authProvider({ id: 'openai-codex', configured: true, options: [authOption('OAuth')] })],
+  }), [{ provider: 'openai' }]), true);
 });
 
 test('authStateSatisfiesStartupGate ignores unsaved discovered local runtime models', () => {

@@ -6,8 +6,9 @@ import { navItemsForEdition, normalizeNavIdForEdition } from '../src/kordi-app/d
 import { normalizeSettingsSectionIdForEdition, settingsSectionsForEdition } from '../src/kordi-app/data/settings';
 
 test('cloud navigation hides projects and redirects stale project nav to chats', () => {
-  assert.deepEqual(navItemsForEdition('cloud').map((item) => item.id), ['chats', 'contacts', 'agents', 'settings']);
+  assert.deepEqual(navItemsForEdition('cloud').map((item) => item.id), ['chats', 'contacts', 'agents']);
   assert.equal(normalizeNavIdForEdition('cloud', 'projects'), 'chats');
+  assert.equal(normalizeNavIdForEdition('cloud', 'settings'), 'chats');
   assert.equal(normalizeNavIdForEdition('local', 'projects'), 'projects');
 });
 

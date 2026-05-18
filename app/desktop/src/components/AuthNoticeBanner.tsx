@@ -12,7 +12,7 @@ type AuthNoticeBannerProps = {
 export function AuthNoticeBanner({
   title,
   description,
-  actionLabel = 'Open Authentication',
+  actionLabel = 'Open authentication',
   onAction,
 }: AuthNoticeBannerProps) {
   return (

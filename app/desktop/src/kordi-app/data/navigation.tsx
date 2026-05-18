@@ -17,12 +17,12 @@ export const allNavItems: NavItem[] = [
 
 export function navItemsForEdition(edition: KordiEdition): NavItem[] {
   return edition === 'cloud'
-    ? allNavItems.filter((item) => item.id !== 'projects')
+    ? allNavItems.filter((item) => item.id !== 'projects' && item.id !== 'settings')
     : allNavItems;
 }
 
 export function normalizeNavIdForEdition(edition: KordiEdition, navId: NavId): NavId {
-  if (edition === 'cloud' && navId === 'projects') return 'chats';
+  if (edition === 'cloud' && (navId === 'projects' || navId === 'settings')) return 'chats';
   return navId;
 }
 

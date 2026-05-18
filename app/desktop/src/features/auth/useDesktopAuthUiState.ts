@@ -14,6 +14,7 @@ type UseDesktopAuthUiStateArgs = {
   setActiveSettingsSectionId: (sectionId: SettingsSectionId) => void;
   setActiveLoginProviderId: (providerId: string) => void;
   clearDesktopAuthError: () => void;
+  openAuthSurface?: () => void;
 };
 
 export function useDesktopAuthUiState({
@@ -27,6 +28,7 @@ export function useDesktopAuthUiState({
   setActiveSettingsSectionId,
   setActiveLoginProviderId,
   clearDesktopAuthError,
+  openAuthSurface,
 }: UseDesktopAuthUiStateArgs) {
   const [inlineAuthDialog, setInlineAuthDialog] = useState<{
     providerId: string;
@@ -38,10 +40,14 @@ export function useDesktopAuthUiState({
 
   const openAuthSettings = useCallback(() => {
     setIsAuthGateDismissed(true);
-    setActiveNav('settings');
-    setActiveSettingsSectionId('auth');
+    if (openAuthSurface) {
+      openAuthSurface();
+    } else {
+      setActiveNav('settings');
+      setActiveSettingsSectionId('auth');
+    }
     clearDesktopAuthError();
-  }, [clearDesktopAuthError, setActiveNav, setActiveSettingsSectionId]);
+  }, [clearDesktopAuthError, openAuthSurface, setActiveNav, setActiveSettingsSectionId]);
 
   const openLoginFlow = useCallback((
     provider: DesktopAuthProvider,
