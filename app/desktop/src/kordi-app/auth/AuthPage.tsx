@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -35,48 +35,6 @@ export type AuthPageProps = {
   onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
 };
 
-function AuthNavigationControls({
-  canGoBack,
-  canGoForward,
-  onBack,
-  onForward,
-}: {
-  canGoBack: boolean;
-  canGoForward: boolean;
-  onBack: () => void;
-  onForward: () => void;
-}) {
-  return (
-    <div className="inline-flex items-center overflow-hidden rounded-[20px] border border-white/8 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <button
-        type="button"
-        aria-label="Go back"
-        disabled={!canGoBack}
-        onClick={onBack}
-        className={cn(
-          'grid h-9 w-11 place-items-center text-slate-300 transition',
-          canGoBack ? 'hover:bg-white/[0.06] hover:text-white' : 'cursor-not-allowed text-slate-600',
-        )}
-      >
-        <ChevronLeft className="h-[18px] w-[18px]" />
-      </button>
-      <div className="h-6 w-px bg-white/10" />
-      <button
-        type="button"
-        aria-label="Go forward"
-        disabled={!canGoForward}
-        onClick={onForward}
-        className={cn(
-          'grid h-9 w-11 place-items-center text-slate-300 transition',
-          canGoForward ? 'hover:bg-white/[0.06] hover:text-white' : 'cursor-not-allowed text-slate-600',
-        )}
-      >
-        <ChevronRight className="h-[18px] w-[18px]" />
-      </button>
-    </div>
-  );
-}
-
 export function AuthPage({
   variant,
   layoutWidth,
@@ -99,12 +57,7 @@ export function AuthPage({
   const visibleProviders = buildAuthDisplayProviders(authState);
   const configuredCount = visibleProviders.filter((item) => item.configured).length;
 
-  const [routeState, setRouteState] = useState<{ history: AuthRoute[]; index: number }>({
-    history: [{ type: 'list' }],
-    index: 0,
-  });
-
-  const currentRoute = routeState.history[routeState.index] ?? { type: 'list' };
+  const [currentRoute, setCurrentRoute] = useState<AuthRoute>({ type: 'list' });
   const detailProviderId =
     currentRoute.type === 'detail'
       ? normalizeSelectedProviderId(currentRoute.providerId)
@@ -119,37 +72,18 @@ export function AuthPage({
     if (currentRoute.type !== 'detail') return;
     if (provider) return;
 
-    setRouteState({ history: [{ type: 'list' }], index: 0 });
+    setCurrentRoute({ type: 'list' });
   }, [currentRoute.type, provider]);
 
   const openProviderDetail = (providerId: string) => {
     onSelectProvider(providerId);
-    setRouteState((current) => ({
-      history: [...current.history.slice(0, current.index + 1), { type: 'detail', providerId }],
-      index: current.index + 1,
-    }));
-  };
-
-  const goBack = () => {
-    setRouteState((current) => ({
-      ...current,
-      index: Math.max(0, current.index - 1),
-    }));
-  };
-
-  const goForward = () => {
-    setRouteState((current) => ({
-      ...current,
-      index: Math.min(current.history.length - 1, current.index + 1),
-    }));
+    setCurrentRoute({ type: 'detail', providerId });
   };
 
   const goToProviderList = () => {
-    setRouteState({ history: [{ type: 'list' }], index: 0 });
+    setCurrentRoute({ type: 'list' });
   };
 
-  const canGoBack = routeState.index > 0;
-  const canGoForward = routeState.index < routeState.history.length - 1;
   const showDetailPage = currentRoute.type === 'detail' && !!provider;
 
   const content = useMemo(() => {
@@ -220,30 +154,26 @@ export function AuthPage({
   ]);
 
   const detailHeader = showDetailPage ? (
-    <div
-      className={cn(
-        'flex items-center gap-3',
-        showHero
-          ? 'shrink-0 pb-4'
-          : 'app-main-panel sticky top-0 z-30 -mt-5 mb-4 border-b border-[color:var(--app-divider)] px-0 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.16)]',
-      )}
-    >
-      {showHero ? (
-        <Button
-          type="button"
-          variant="secondary"
-          className="app-control-chip h-9 rounded-full border-0 px-3.5 text-[12px] text-white"
-          onClick={goToProviderList}
-        >
-          <ChevronLeft className="mr-1.5 h-3.5 w-3.5" />
-          Back to providers
-        </Button>
-      ) : (
-        <AuthNavigationControls canGoBack={canGoBack} canGoForward={canGoForward} onBack={goBack} onForward={goForward} />
-      )}
-
+    <div className="flex shrink-0 items-center gap-3 pb-4">
+      <Button
+        type="button"
+        variant="secondary"
+        className="app-control-chip h-9 rounded-full border-0 px-3.5 text-[12px] text-white"
+        onClick={goToProviderList}
+      >
+        <ChevronLeft className="mr-1.5 h-3.5 w-3.5" />
+        Back to providers
+      </Button>
     </div>
   ) : null;
+
+  const settingsDetailContent = showDetailPage ? (
+    <ScrollArea className="min-h-0 flex-1 pr-2">
+      <div className="min-h-0 w-full min-w-0 max-w-none" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+    </ScrollArea>
+  ) : (
+    <div className="flex min-h-0 w-full min-w-0 max-w-none flex-1 flex-col overflow-hidden" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+  );
 
   return (
     <div
@@ -313,8 +243,8 @@ export function AuthPage({
             </div>
           )}
 
-          {detailHeader ? <div className="shrink-0">{detailHeader}</div> : null}
-          <div className="flex min-h-0 w-full min-w-0 max-w-none flex-1 flex-col overflow-hidden" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+          {detailHeader}
+          {settingsDetailContent}
         </div>
       )}
     </div>
