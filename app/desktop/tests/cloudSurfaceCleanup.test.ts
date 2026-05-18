@@ -29,3 +29,10 @@ test('app model wires cloud surface cleanup into shell state', () => {
   assert.match(source, /normalizeSettingsSectionIdForEdition/);
   assert.match(source, /visibleSettingsSections/);
 });
+
+test('cloud sidebar removes the global plus launcher', () => {
+  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /showSidebarCreateButton\s*=\s*currentKordiEdition\(\) !== 'cloud'/);
+  assert.match(source, /showSidebarCreateButton \? \(/);
+});
