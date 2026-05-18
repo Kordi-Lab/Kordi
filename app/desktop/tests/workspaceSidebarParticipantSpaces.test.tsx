@@ -604,14 +604,16 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.match(shellCss, /\.app-participant-space-row-meta\s*{[^}]*align-self:\s*end/s);
   assert.match(shellCss, /\.app-participant-space-inline-group\s*{[^}]*box-shadow:\s*inset 0 -1px 0/s);
   assert.match(shellCss, /\.app-participant-space-inline-group-expanded\s*{[^}]*background:\s*var\(--app-control-bg\);[^}]*box-shadow:\s*none/s);
-  assert.match(shellCss, /\.app-participant-space-row-shell-active\s*{[^}]*border-color:\s*transparent;[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 68%, var\(--app-control-bg\)\);[^}]*box-shadow:\s*0 0 0 1px var\(--app-accent-ring\)/s);
+  assert.match(shellCss, /\.app-participant-space-row-shell-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-accent-ring\) 92%, var\(--app-divider\)\);[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 82%, var\(--app-control-bg\)\);[^}]*box-shadow:\s*0 0 0 1px color-mix\(in oklab, var\(--app-accent-ring\) 38%, transparent\)/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\)/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*padding:/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-button\s*{[^}]*display:\s*grid/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-detail\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 48%, var\(--utility-muted-text\)\)/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*border:\s*0;[^}]*border-radius:\s*8px/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*border:\s*1px solid transparent;[^}]*border-radius:\s*10px/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-preview\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 62%, var\(--utility-foreground\)\)/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*border:\s*0;[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 72%, var\(--app-control-bg\)\);[^}]*box-shadow:\s*none/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-accent-ring\) 86%, var\(--app-divider\)\);[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 82%, var\(--app-control-bg\)\);[^}]*box-shadow:\s*0 0 0 1px color-mix\(in oklab, var\(--app-accent-ring\) 34%, transparent\)/s);
+  assert.match(shellCss, /\.app-participant-space-inline-group:not\(\.app-participant-space-inline-group-expanded\) \.app-participant-space-row-actions\s*{[^}]*opacity:\s*0\.46/s);
+  assert.doesNotMatch(shellCss, /\.bridge-app\.theme-light \.app-workspace-sidebar \.app-session-row-active,[\s\S]*?\{\s*box-shadow:\s*none;/s);
 });
 
 test('Bridge sync subtitle CSS uses color and reduced-motion-safe animation', () => {

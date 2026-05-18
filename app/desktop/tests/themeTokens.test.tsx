@@ -25,7 +25,8 @@ test('chat sidebar timestamps use the tertiary text token', () => {
 
   assert.match(shellCss, /\.app-session-meta-time\s*{[^}]*color:\s*var\(--utility-meta-text\)/s);
   assert.match(shellCss, /\.app-session-meta-time-active\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 72%, var\(--utility-foreground\)\)/s);
-  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid transparent;[^}]*box-shadow:\s*0 0 0 1px var\(--app-accent-ring\)/s);
+  assert.match(shellCss, /\.app-session-row\s*{[^}]*box-shadow:\s*none/s);
+  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid color-mix\(in oklab, var\(--app-accent-ring\) 92%, var\(--app-divider\)\);[^}]*box-shadow:\s*0 0 0 1px color-mix\(in oklab, var\(--app-accent-ring\) 42%, transparent\)/s);
 });
 
 test('glassmorphism tokens are declared in both themes and frame bgs are translucent', () => {
