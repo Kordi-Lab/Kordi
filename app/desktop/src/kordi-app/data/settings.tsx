@@ -11,6 +11,8 @@ import {
   User,
 } from 'lucide-react';
 
+import type { KordiEdition } from '@/features/cloud/edition';
+import { currentKordiEdition } from '@/features/cloud/edition';
 import { DEFAULT_BRIDGE_OWNER_NAME } from '@/features/bridge/constants';
 
 export type SettingsSectionId =
@@ -48,7 +50,7 @@ export type SettingsSection = {
   items: SettingsItem[];
 };
 
-export const settingsSections: SettingsSection[] = [
+export const allSettingsSections: SettingsSection[] = [
   {
     id: 'general',
     label: 'General',
@@ -131,7 +133,7 @@ export const settingsSections: SettingsSection[] = [
     label: 'Authentication',
     icon: KeyRound,
     title: 'Authentication',
-    description: 'Connect Kordi to model providers, manage saved accounts and keys, and switch which access method is active.',
+    description: 'Connect Kordi to cloud accounts or local model servers, manage saved accounts and optional keys, and switch which access method is active.',
     items: [],
   },
   {
@@ -226,3 +228,30 @@ export const settingsSections: SettingsSection[] = [
     ],
   },
 ];
+
+export function settingsSectionsForEdition(edition: KordiEdition): SettingsSection[] {
+  if (edition !== 'cloud') return allSettingsSections;
+
+  const auth = allSettingsSections.find((section) => section.id === 'auth');
+  const appearance = allSettingsSections.find((section) => section.id === 'appearance');
+  if (!auth || !appearance) return allSettingsSections;
+
+  return [
+    auth,
+    {
+      ...appearance,
+      label: 'Theme',
+      title: 'Theme',
+      description: 'Primary interface palette for all bridge surfaces.',
+      items: appearance.items.filter((item) => item.control?.type === 'theme'),
+    },
+  ];
+}
+
+export function normalizeSettingsSectionIdForEdition(edition: KordiEdition, sectionId: SettingsSectionId): SettingsSectionId {
+  return settingsSectionsForEdition(edition).some((section) => section.id === sectionId)
+    ? sectionId
+    : 'auth';
+}
+
+export const settingsSections: SettingsSection[] = settingsSectionsForEdition(currentKordiEdition());
