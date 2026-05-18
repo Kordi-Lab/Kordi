@@ -9,6 +9,8 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Settings,
+  UserRound,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +19,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import { CloudAccountSettingsDialog, type CloudAccountSettingsConfig } from '@/pages/CloudAccountSettingsDialog';
+import { CloudAccountSettingsDialog, type CloudAccountSettingsConfig, type CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
@@ -558,6 +560,7 @@ export function WorkspaceSidebar({
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
+  const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
   const profilePopoverRef = useRef<HTMLDivElement | null>(null);
   // Computed each time the popover opens, so the surface anchors to the avatar's
@@ -565,7 +568,7 @@ export function WorkspaceSidebar({
   const [profilePopoverAnchor, setProfilePopoverAnchor] = useState<{ left: number; bottom: number } | null>(null);
 
   useLayoutEffect(() => {
-    if (!isProfileCardOpen || cloudSettings) {
+    if (!isProfileCardOpen) {
       setProfilePopoverAnchor(null);
       return;
     }
@@ -583,10 +586,10 @@ export function WorkspaceSidebar({
     return () => {
       window.removeEventListener('resize', measure);
     };
-  }, [cloudSettings, isProfileCardOpen]);
+  }, [isProfileCardOpen]);
 
   useEffect(() => {
-    if (!isProfileCardOpen || cloudSettings) return;
+    if (!isProfileCardOpen) return;
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
@@ -603,7 +606,7 @@ export function WorkspaceSidebar({
       window.removeEventListener('mousedown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [cloudSettings, isProfileCardOpen]);
+  }, [isProfileCardOpen]);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
@@ -629,6 +632,11 @@ export function WorkspaceSidebar({
     setActiveNav('chats');
     setChatCreateAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     setIsChatCreateDialogOpen(true);
+  };
+
+  const openCloudAccountDialog = (tab: CloudAccountSettingsTabId) => {
+    setIsProfileCardOpen(false);
+    setCloudAccountDialogTab(tab);
   };
 
   useEffect(() => {
@@ -1404,13 +1412,83 @@ export function WorkspaceSidebar({
         {cloudSettings && cloudAccount && onUpdateCloudProfile ? (
           <CloudAccountSettingsDialog
             {...cloudSettings}
-            isOpen={isProfileCardOpen}
+            isOpen={cloudAccountDialogTab !== null}
+            initialTab={cloudAccountDialogTab ?? 'profile'}
             account={cloudAccount}
             localProfileAvatarSeed={localProfileAvatarSeed}
-            onClose={() => setIsProfileCardOpen(false)}
+            onClose={() => setCloudAccountDialogTab(null)}
             onUpdateProfile={onUpdateCloudProfile}
             onSignOut={onCloudSignOut}
           />
+        ) : null}
+
+        {cloudSettings && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
+          <div
+            ref={profilePopoverRef}
+            role="dialog"
+            aria-label="Account menu"
+            style={{
+              position: 'fixed',
+              left: profilePopoverAnchor.left,
+              bottom: profilePopoverAnchor.bottom,
+              zIndex: 170,
+            }}
+            className={cn(
+              'app-popover app-profile-popover',
+              'w-[22rem] rounded-[18px] border px-4 py-3 text-foreground',
+            )}
+          >
+            <div className="mb-3 flex items-center gap-3">
+              <IdentityAvatar
+                kind="human"
+                seed={profileAvatarSeed}
+                name={profileDisplayName}
+                imageUrl={profileImageUrl}
+                className="h-10 w-10 border border-white/10"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold text-slate-100">{profileDisplayName}</div>
+                <div className="mt-0.5 truncate text-[11px] text-slate-400">Cloud account</div>
+              </div>
+            </div>
+            <div className="grid gap-1 text-[12px]">
+              {profileRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-slate-100">{row.label}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-400">{row.value}</div>
+                  </div>
+                  {row.copyable ? (
+                    <CloudProfileRowCopyButton label={row.label} value={row.value} />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid gap-1 border-t border-white/10 pt-3">
+              <button
+                type="button"
+                className="app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium text-slate-100 transition hover:text-white"
+                onClick={() => openCloudAccountDialog('profile')}
+                aria-label="Open profile settings"
+              >
+                <span className="flex items-center gap-2.5"><UserRound className="h-4 w-4 text-slate-400" />Profile</span>
+                <ChevronRightIcon className="h-4 w-4 text-slate-500" />
+              </button>
+              <button
+                type="button"
+                className="app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium text-slate-100 transition hover:text-white"
+                onClick={() => openCloudAccountDialog('auth')}
+                aria-label="Open account settings"
+              >
+                <span className="flex items-center gap-2.5"><Settings className="h-4 w-4 text-slate-400" />Settings</span>
+                <ChevronRightIcon className="h-4 w-4 text-slate-500" />
+              </button>
+            </div>
+          </div>,
+          document.querySelector('.bridge-app') ?? document.body,
         ) : null}
 
         {!cloudSettings && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(

@@ -8,13 +8,17 @@ function readSource(relativePath: string): string {
   return readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8');
 }
 
-test('cloud avatar opens a centered account settings modal', () => {
+test('cloud avatar opens a small account menu before the centered settings modal', () => {
   const sidebar = readSource('pages/WorkspaceSidebar.tsx');
   const slot = readSource('app/assembleSidebarSlot.tsx');
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
 
-  assert.match(sidebar, /CloudAccountSettingsDialog/);
-  assert.match(sidebar, /cloudSettings && cloudAccount && onUpdateCloudProfile \? \(/);
+  assert.match(sidebar, /aria-label="Account menu"/);
+  assert.match(sidebar, /Open profile settings/);
+  assert.match(sidebar, /Open account settings/);
+  assert.match(sidebar, /CloudProfileRowCopyButton label=\{row\.label\} value=\{row\.value\}/);
+  assert.match(sidebar, /cloudAccountDialogTab !== null/);
+  assert.doesNotMatch(sidebar, /isOpen=\{isProfileCardOpen\}/);
   assert.match(slot, /cloudSettings=\{isCloud \? \{/);
   assert.match(modal, /role="dialog"/);
   assert.match(modal, /aria-label="Account settings"/);
@@ -32,6 +36,7 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /SettingsValueControl/);
   assert.match(modal, /fileToAvatarDataUrl/);
   assert.match(modal, /onUpdateProfile\(\{/);
+  assert.match(modal, /initialTab/);
 });
 
 test('cloud contact websocket refreshes when a contact profile changes', () => {

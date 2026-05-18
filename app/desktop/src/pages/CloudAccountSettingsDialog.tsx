@@ -14,7 +14,7 @@ import type { CloudAccount, CloudProfileUpdateInput } from '@/features/cloud/aut
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { cn } from '@/lib/utils';
 
-type CloudAccountSettingsTabId = 'profile' | 'auth' | 'appearance';
+export type CloudAccountSettingsTabId = 'profile' | 'auth' | 'appearance';
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSection[];
@@ -38,6 +38,7 @@ export type CloudAccountSettingsConfig = {
 
 type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   isOpen: boolean;
+  initialTab?: CloudAccountSettingsTabId;
   account: CloudAccount | null;
   localProfileAvatarSeed?: string | null;
   onClose: () => void;
@@ -59,6 +60,7 @@ function cloudProfileRows(account: CloudAccount | null) {
 
 export function CloudAccountSettingsDialog({
   isOpen,
+  initialTab = 'profile',
   account,
   localProfileAvatarSeed,
   onClose,
@@ -92,12 +94,16 @@ export function CloudAccountSettingsDialog({
 
   useEffect(() => {
     if (!isOpen) return;
+    setActiveTab(initialTab);
+    if (initialTab === 'auth' || initialTab === 'appearance') {
+      setActiveSettingsSectionId(initialTab);
+    }
     setDisplayNameDraft(account?.displayName?.trim() || '');
     setAvatarUrlDraft(cloudAvatarImageUrl(account?.avatarUrl) || '');
     setProfileError('');
     setIsSavingProfile(false);
     setIsSigningOut(false);
-  }, [account, isOpen]);
+  }, [account, initialTab, isOpen, setActiveSettingsSectionId]);
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined') return;
