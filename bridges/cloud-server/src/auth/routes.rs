@@ -1047,7 +1047,34 @@ async fn update_me(
         );
     }
     match account_response_row(state.db_pool(), &session.account_id).await {
-        Ok(Some(account)) => Json(account).into_response(),
+        Ok(Some(account)) => {
+            let observers: Vec<(String,)> = query_as(
+                "SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1",
+            )
+            .bind(&session.account_id)
+            .fetch_all(state.db_pool())
+            .await
+            .unwrap_or_default();
+            if !observers.is_empty() {
+                let events = state.events().clone();
+                let account_id = account.account_id.clone();
+                let display_name = account.display_name.clone();
+                let avatar_url = account.avatar_url.clone();
+                tokio::spawn(async move {
+                    for (observer_account_id,) in observers {
+                        events
+                            .publish_profile_updated(
+                                &account_id,
+                                &observer_account_id,
+                                display_name.as_deref(),
+                                avatar_url.as_deref(),
+                            )
+                            .await;
+                    }
+                });
+            }
+            Json(account).into_response()
+        }
         Ok(None) => err(
             "account_missing",
             "Account no longer exists.",
