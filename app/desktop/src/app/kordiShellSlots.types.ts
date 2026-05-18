@@ -3,6 +3,7 @@ import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStat
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
+import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import type {
   Agent,
   BridgeAgentRequestControl,
@@ -64,6 +65,9 @@ export type AssembleKordiShellSlotsArgs = {
   activeProjectId: string;
   activeProjectSessionId: string;
   activeSettingsSectionId: SettingsSectionId;
+  cloudAccountDialogTab: CloudAccountSettingsTabId | null;
+  setCloudAccountDialogTab: Dispatch<SetStateAction<CloudAccountSettingsTabId | null>>;
+  openCloudAccountAuthentication?: () => void;
   isSingleWorkspacePage: boolean;
   collapseChatSessions: boolean;
   showSessionRail: boolean;
@@ -383,6 +387,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeSettingsSectionId'
   | 'setActiveSettingsSectionId'
   | 'settingsSections'
+  | 'cloudAccountDialogTab'
+  | 'setCloudAccountDialogTab'
   | 'authSettingsLayoutWidth'
   | 'desktopAuthState'
   | 'isDesktopAuthLoading'
@@ -490,6 +496,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeLoginProviderId'
   | 'selectAuthProvider'
   | 'openAuthSettings'
+  | 'openCloudAccountAuthentication'
   | 'openLoginFlow'
   | 'refreshDesktopAuth'
   | 'handleSelectAuthChoice'

@@ -184,6 +184,8 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         activeBridgeHost={args.activeBridgeHost}
         localProfileAvatarSeed={args.localProfileAvatarSeed}
         cloudAccount={isCloud ? cloudSession.account : null}
+        cloudAccountDialogTab={args.cloudAccountDialogTab}
+        setCloudAccountDialogTab={args.setCloudAccountDialogTab}
         cloudSettings={isCloud ? {
           settingsSections: args.settingsSections,
           activeSettingsSectionId: args.activeSettingsSectionId,

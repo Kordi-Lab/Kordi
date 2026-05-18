@@ -237,6 +237,8 @@ type WorkspaceSidebarProps = {
   activeBridgeHost: BridgeHostSummary | null;
   localProfileAvatarSeed?: string | null;
   cloudAccount?: CloudAccount | null;
+  cloudAccountDialogTab?: CloudAccountSettingsTabId | null;
+  setCloudAccountDialogTab?: Dispatch<SetStateAction<CloudAccountSettingsTabId | null>>;
   cloudSettings?: CloudAccountSettingsConfig;
   onUpdateCloudProfile?: (input: { displayName?: string; avatarUrl?: string }) => Promise<void>;
   onCloudSignOut?: () => Promise<void> | void;
@@ -530,6 +532,8 @@ export function WorkspaceSidebar({
   activeBridgeHost,
   localProfileAvatarSeed,
   cloudAccount,
+  cloudAccountDialogTab: controlledCloudAccountDialogTab,
+  setCloudAccountDialogTab: setControlledCloudAccountDialogTab,
   cloudSettings,
   onUpdateCloudProfile,
   onCloudSignOut,
@@ -560,7 +564,12 @@ export function WorkspaceSidebar({
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
-  const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
+  const [localCloudAccountDialogTab, setLocalCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
+  const isCloudAccountDialogControlled = Boolean(setControlledCloudAccountDialogTab);
+  const cloudAccountDialogTab = isCloudAccountDialogControlled
+    ? (controlledCloudAccountDialogTab ?? null)
+    : localCloudAccountDialogTab;
+  const setCloudAccountDialogTab = setControlledCloudAccountDialogTab ?? setLocalCloudAccountDialogTab;
   const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
   const profilePopoverRef = useRef<HTMLDivElement | null>(null);
   // Computed each time the popover opens, so the surface anchors to the avatar's

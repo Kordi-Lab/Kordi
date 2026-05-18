@@ -92,6 +92,18 @@ test('cloud profile updates publish to observers and the edited account', () => 
   assert.match(routes, /for observer_account_id in observer_account_ids/);
 });
 
+test('auth notice opens the cloud account settings authentication panel', () => {
+  const chatsPage = readSource('pages/ChatsPage.tsx');
+  const builders = readSource('app/mainContentShellBuilders.ts');
+  const types = readSource('app/kordiShellSlots.types.ts');
+
+  assert.match(chatsPage, /actionLabel=\{authNoticeActionLabel\}/);
+  assert.match(chatsPage, /description=\{authNoticeDescription\}/);
+  assert.match(chatsPage, /onAction=\{onOpenAccountAuthentication \?\? onOpenAuthSettings\}/);
+  assert.match(builders, /onOpenAccountAuthentication: args\.openCloudAccountAuthentication/);
+  assert.match(types, /openCloudAccountAuthentication\?: \(\) => void/);
+});
+
 test('cloud contact websocket refreshes when a contact profile changes', () => {
   assert.equal(shouldRefreshCloudContactsForWsSubject('kordi.events.account.profile.updated.acct_peer'), true);
   assert.equal(shouldRefreshCloudContactsForWsSubject('kordi.events.account.signed_up.acct_peer'), false);

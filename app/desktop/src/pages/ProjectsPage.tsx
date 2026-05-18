@@ -136,6 +136,7 @@ type ProjectsPageProps = {
   onSendProjectMessage: (draftOverride?: string) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
+  onOpenAccountAuthentication?: () => void;
 };
 
 export function ProjectsPage({
@@ -191,7 +192,10 @@ export function ProjectsPage({
   onSendProjectMessage,
   hasAnyAuth,
   onOpenAuthSettings,
+  onOpenAccountAuthentication,
 }: ProjectsPageProps) {
+  const openAuthentication = onOpenAccountAuthentication ?? onOpenAuthSettings;
+  const authNoticeActionLabel = 'Open authentication';
   const canSubmitProjectMessage = projectComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
   const activeProjectLiveTurn = desktopLiveTurn?.sessionId === activeProjectSession.id ? desktopLiveTurn : undefined;
   const transcriptMessages = suppressLiveTurnEchoMessages(activeProjectSession.messages, activeProjectLiveTurn);
@@ -323,8 +327,9 @@ export function ProjectsPage({
       {!hasAnyAuth ? (
         <AuthNoticeBanner
           title="No provider connected yet"
-          description="Connect a cloud provider, save an API key, or choose a local LM Studio/Ollama server before running project conversations."
-          onAction={onOpenAuthSettings}
+          description="Connect a provider, save an API key, or choose a local LM Studio/Ollama server before running project conversations."
+          actionLabel={authNoticeActionLabel}
+          onAction={openAuthentication}
         />
       ) : null}
 
@@ -349,6 +354,7 @@ export function ProjectsPage({
                 sender={liveTurnSender}
                 onStopActiveTurn={onStopDesktopChatTurn}
                 onOpenArtifact={onOpenArtifact}
+                onOpenAuthSettings={openAuthentication}
               />
             ) : null}
           </motion.div>

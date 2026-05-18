@@ -17,6 +17,7 @@ import { useKordiShellViewModel } from '@/app/useKordiShellViewModel';
 import { useKordiUiEffects } from '@/app/useKordiUiEffects';
 import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
+import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
@@ -127,6 +128,7 @@ export function useKordiAppModel() {
   const isNativeShell = isNativeDesktopShell();
   const kordiEdition = currentKordiEdition();
   const cloudSession = useCloudSession({ enabled: kordiEdition === 'cloud' });
+  const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
   // reached the user is past it, so we deliberately don't carry a duplicate
@@ -257,6 +259,11 @@ export function useKordiAppModel() {
     [desktopAuthState],
   );
 
+  const openCloudAccountAuthentication = useCallback(() => {
+    setCloudAccountDialogTab('auth');
+    clearDesktopAuthError();
+  }, [clearDesktopAuthError]);
+
   const {
     inlineAuthDialog,
     openAuthSettings,
@@ -275,6 +282,7 @@ export function useKordiAppModel() {
     setActiveSettingsSectionId: settingsUi.setActiveSettingsSectionId,
     setActiveLoginProviderId,
     clearDesktopAuthError,
+    openAuthSurface: kordiEdition === 'cloud' ? openCloudAccountAuthentication : undefined,
   });
 
   // The chat draft key must match the value passed as `activeConvId` to
@@ -2047,6 +2055,9 @@ export function useKordiAppModel() {
     activeProjectId,
     activeProjectSessionId,
     activeSettingsSectionId: visibleActiveSettingsSectionId,
+    cloudAccountDialogTab,
+    setCloudAccountDialogTab,
+    openCloudAccountAuthentication: kordiEdition === 'cloud' ? openCloudAccountAuthentication : undefined,
     isSingleWorkspacePage,
     collapseChatSessions,
     showSessionRail,
