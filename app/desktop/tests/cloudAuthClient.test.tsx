@@ -146,8 +146,8 @@ test('me returns the parsed account', async () => {
   assert.equal(account.passwordSet, true);
 });
 
-test('cloud API defaults to the public cloud origin, not localhost', () => {
-  assert.equal(cloudApiBaseUrl({}), 'https://kordi.cloud');
+test('cloud API defaults to the coordinar production origin, not localhost', () => {
+  assert.equal(cloudApiBaseUrl({}), 'https://coordinar.io');
   assert.equal(cloudApiBaseUrl({ VITE_KORDI_CLOUD_API_BASE: ' http://127.0.0.1:17081/ ' }), 'http://127.0.0.1:17081');
 });
 
