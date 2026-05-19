@@ -19,6 +19,7 @@ test('desktop release metadata is set for V0.0.1.beta2', () => {
   const tauri = readJson('../src-tauri/tauri.conf.json');
   const cargoToml = readText('../src-tauri/Cargo.toml');
   const cargoLock = readText('../src-tauri/Cargo.lock');
+  const workspaceCargoLock = readText('../../../Cargo.lock');
 
   assert.equal(releaseName, 'V0.0.1.beta2');
   assert.equal(pkg.version, appVersion);
@@ -27,4 +28,5 @@ test('desktop release metadata is set for V0.0.1.beta2', () => {
   assert.equal(tauri.version, appVersion);
   assert.match(cargoToml, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.2"/);
   assert.match(cargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.2"/);
+  assert.match(workspaceCargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.2"/);
 });
