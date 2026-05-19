@@ -16,6 +16,7 @@ import {
   type CloudContactRequest,
   type CloudContactSummary,
   type CloudMessage,
+  type CloudPublicProfile,
 } from './authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { loadSession } from './session';
@@ -28,6 +29,7 @@ export type UseCloudContactsResult = {
   initialLoadSettled: boolean;
   refresh(): Promise<void>;
   sendRequest(peerAccountId: string, message?: string): Promise<void>;
+  lookupProfile(accountId: string): Promise<CloudPublicProfile | null>;
   acceptRequest(requestId: string): Promise<void>;
   rejectRequest(requestId: string): Promise<void>;
 };
@@ -362,6 +364,18 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     [client, store],
   );
 
+  const lookupProfile = useCallback(
+    async (accountId: string) => {
+      if (!store) throw new Error('Not signed in.');
+      const session = await loadSession();
+      if (!session?.token) throw new Error('Not signed in.');
+      const trimmed = accountId.trim();
+      if (!trimmed) return null;
+      return client.getProfile(session.token, trimmed);
+    },
+    [client, store],
+  );
+
   const acceptRequest = useCallback(
     async (requestId: string) => {
       if (!store) throw new Error('Not signed in.');
@@ -413,6 +427,7 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     initialLoadSettled: snapshot.initialLoadSettled,
     refresh: fetchData,
     sendRequest,
+    lookupProfile,
     acceptRequest,
     rejectRequest,
   };

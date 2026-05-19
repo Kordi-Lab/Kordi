@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -73,4 +74,15 @@ test('contacts request header uses attention count only for pending requests', (
 
   assert.match(markup, /app-badge-attention[^>]*>2</);
   assert.match(markup, />Review 2 pending requests\.</);
+});
+
+test('contacts add surface uses account search copy without bridge implementation wording', () => {
+  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /Search by exact account ID/);
+  assert.match(source, /Send an approval request/);
+  assert.doesNotMatch(source, /Bridge node ID/);
+  assert.doesNotMatch(source, /Add by node ID/);
+  assert.doesNotMatch(source, /Bridge users/);
+  assert.doesNotMatch(source, /Visible users/);
 });
