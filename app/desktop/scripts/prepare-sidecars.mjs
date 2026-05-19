@@ -7,8 +7,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const appRoot = resolve(__dirname, '..');
 const workspaceConfigPath = join(appRoot, 'kordi.workspace.json');
-const workspaceConfig = JSON.parse(readFileSync(workspaceConfigPath, 'utf8'));
 const binariesDir = join(appRoot, 'src-tauri', 'binaries');
+
+export function resolveBuiltBinaryPath({ repoPath, configuredBinaryPath, cargoTargetDir }) {
+  if (cargoTargetDir && configuredBinaryPath.includes('/target/release/')) {
+    return join(cargoTargetDir, 'release', configuredBinaryPath.split('/target/release/').at(-1));
+  }
+  if (cargoTargetDir && configuredBinaryPath.startsWith('target/release/')) {
+    return join(cargoTargetDir, 'release', configuredBinaryPath.slice('target/release/'.length));
+  }
+  return join(repoPath, configuredBinaryPath);
+}
 
 function detectTargetTriple() {
   if (process.env.TAURI_ENV_TARGET_TRIPLE) {
@@ -71,47 +80,59 @@ function copyBinary(label, sourcePath, targetName) {
   console.log(`[kordi] Copied ${label} -> ${targetPath}`);
 }
 
-const targetTriple = detectTargetTriple();
+export function prepareSidecars() {
+  const workspaceConfig = JSON.parse(readFileSync(workspaceConfigPath, 'utf8'));
+  const targetTriple = detectTargetTriple();
 
-const kordiRuntimeRepo = ensureRepo(
-  'Kordi runtime',
-  workspaceConfig.kordiRuntimePath ?? workspaceConfig.bbAgentPath,
-);
-const kordiRuntimeManifestPath =
-  workspaceConfig.kordiRuntimeManifestPath
-  ?? workspaceConfig.bbAgentManifestPath
-  ?? 'crates/cli/Cargo.toml';
-const bridgesRepo = ensureRepo('Bridges', workspaceConfig.bridgesPath);
-const bridgesManifestPath =
-  workspaceConfig.bridgesManifestPath ?? 'cli/Cargo.toml';
+  const kordiRuntimeRepo = ensureRepo(
+    'Kordi runtime',
+    workspaceConfig.kordiRuntimePath ?? workspaceConfig.bbAgentPath,
+  );
+  const kordiRuntimeManifestPath =
+    workspaceConfig.kordiRuntimeManifestPath
+    ?? workspaceConfig.bbAgentManifestPath
+    ?? 'crates/cli/Cargo.toml';
+  const bridgesRepo = ensureRepo('Bridges', workspaceConfig.bridgesPath);
+  const bridgesManifestPath =
+    workspaceConfig.bridgesManifestPath ?? 'cli/Cargo.toml';
 
-console.log('[kordi] Building Kordi runtime sidecar...');
-run(
-  'cargo',
-  ['build', '--release', '--manifest-path', kordiRuntimeManifestPath],
-  kordiRuntimeRepo
-);
-
-console.log('[kordi] Building Bridges sidecar...');
-run(
-  'cargo',
-  ['build', '--release', '--manifest-path', bridgesManifestPath],
-  bridgesRepo
-);
-
-copyBinary(
-  'Kordi runtime',
-  join(
+  console.log('[kordi] Building Kordi runtime sidecar...');
+  run(
+    'cargo',
+    ['build', '--release', '--manifest-path', kordiRuntimeManifestPath],
     kordiRuntimeRepo,
-    workspaceConfig.kordiRuntimeBinary ?? workspaceConfig.bbAgentBinary,
-  ),
-  `kordi-${targetTriple}`
-);
+  );
 
-copyBinary(
-  'Bridges',
-  join(bridgesRepo, workspaceConfig.bridgesBinary),
-  `bridges-${targetTriple}`
-);
+  console.log('[kordi] Building Bridges sidecar...');
+  run(
+    'cargo',
+    ['build', '--release', '--manifest-path', bridgesManifestPath],
+    bridgesRepo,
+  );
 
-console.log('[kordi] Sidecars are ready for Tauri.');
+  copyBinary(
+    'Kordi runtime',
+    resolveBuiltBinaryPath({
+      repoPath: kordiRuntimeRepo,
+      configuredBinaryPath: workspaceConfig.kordiRuntimeBinary ?? workspaceConfig.bbAgentBinary,
+      cargoTargetDir: process.env.CARGO_TARGET_DIR ?? '',
+    }),
+    `kordi-${targetTriple}`,
+  );
+
+  copyBinary(
+    'Bridges',
+    resolveBuiltBinaryPath({
+      repoPath: bridgesRepo,
+      configuredBinaryPath: workspaceConfig.bridgesBinary,
+      cargoTargetDir: process.env.CARGO_TARGET_DIR ?? '',
+    }),
+    `bridges-${targetTriple}`,
+  );
+
+  console.log('[kordi] Sidecars are ready for Tauri.');
+}
+
+if (process.argv[1] === __filename) {
+  prepareSidecars();
+}
