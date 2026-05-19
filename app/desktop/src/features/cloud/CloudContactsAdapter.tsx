@@ -13,6 +13,7 @@ import type { ComponentProps } from 'react';
 
 import { CLOUD_HOST_SENTINEL, cloudContactToContact, isPendingIncomingCloudContactRequest, useCloudContacts } from './useCloudContacts';
 import type { CloudAccount } from './authClient';
+import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactClass, ContactRequest } from '@/kordi-app/types';
 
@@ -91,9 +92,26 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     const trimmed = rawId.trim();
     if (!trimmed) return;
     if (!trimmed.startsWith('acct_')) {
-      throw new Error('Kordi IDs start with "acct_".');
+      throw new Error('Account IDs start with "acct_".');
     }
     await cloud.sendRequest(trimmed);
+  };
+
+  const onLookupContact = async (rawId: string): Promise<AddContactLookupResult | null> => {
+    const trimmed = rawId.trim();
+    if (!trimmed) return null;
+    if (!trimmed.startsWith('acct_')) {
+      throw new Error('Account IDs start with "acct_".');
+    }
+    const profile = await cloud.lookupProfile(trimmed);
+    if (!profile) return null;
+    return {
+      accountId: profile.accountId,
+      displayName: profile.displayName,
+      avatarUrl: profile.avatarUrl,
+      isSelf: profile.accountId === account.accountId,
+      isContact: cloud.contacts.some((contact) => cloudAccountIdForContact(contact) === profile.accountId),
+    };
   };
 
   // When the active selection is a cloud row, the parent pipeline has
@@ -131,6 +149,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       onAcceptRequest={onAcceptRequest}
       onRejectRequest={onRejectRequest}
       onAddContactByNodeId={onAddContactByNodeId}
+      onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}
     />
   );

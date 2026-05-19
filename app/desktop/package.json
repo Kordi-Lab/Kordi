@@ -22,8 +22,9 @@
     "tauri:dev:multi:prepare": "node scripts/multi-instance/prepare-env.mjs",
     "tauri:dev:multi:reset": "node scripts/multi-instance/reset.mjs",
     "tauri:dev:multi:smoke": "node scripts/multi-instance/smoke.mjs",
-    "tauri:build": "pnpm tauri:prepare-sidecars && tauri build",
-    "tauri:build:cloud": "VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud pnpm tauri:prepare-sidecars && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud tauri build --config src-tauri/tauri.cloud.conf.json"
+    "release:secret-guard": "node scripts/assert-no-release-secrets.mjs",
+    "tauri:build": "pnpm release:secret-guard && pnpm tauri:prepare-sidecars && tauri build",
+    "tauri:build:cloud": "pnpm release:secret-guard && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud pnpm tauri:prepare-sidecars && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud tauri build --config src-tauri/tauri.cloud.conf.json"
   },
   "dependencies": {
     "@radix-ui/react-tabs": "^1.1.13",

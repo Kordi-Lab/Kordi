@@ -75,7 +75,7 @@ test('cloud contact and group fallbacks use product-facing names', () => {
   const bridgeStateSource = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
   assert.doesNotMatch(contactsAdapterSource, /Cloud account IDs/);
-  assert.match(contactsAdapterSource, /Kordi IDs start with/);
+  assert.match(contactsAdapterSource, /Account IDs start with/);
   assert.doesNotMatch(bridgeStateSource, /'Cloud group'/);
   assert.doesNotMatch(bridgeStateSource, /Cloud group message failed/);
   assert.doesNotMatch(bridgeStateSource, /cloud agent request/);

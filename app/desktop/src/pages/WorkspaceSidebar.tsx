@@ -393,7 +393,7 @@ function SidebarSessionMetaColumn({
   const hasStatusLine = Boolean((unreadCount && unreadCount > 0) || indicator);
   return (
     <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
-      <span className={cn('app-session-meta-time whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums tracking-[0.03em]', active && 'app-session-meta-time-active')}>
+      <span className={cn('app-session-meta-time whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums', active && 'app-session-meta-time-active')}>
         {timeLabel}
       </span>
       {reserveStatusSpace || hasStatusLine ? (
@@ -776,7 +776,7 @@ export function WorkspaceSidebar({
             ) : null}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <span className="app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</span>
+                <span className="app-session-row-title app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</span>
                 {hasForks ? (
                   <span
                     className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-full bg-white/[0.06] px-1.5 text-[9.5px] font-medium tabular-nums text-slate-300"
@@ -1220,7 +1220,7 @@ export function WorkspaceSidebar({
                 <Split className="h-3 w-3" />
               </span>
             ) : null}
-            <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</span>
+            <span className="app-session-row-title min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={sessionRowTitle}>{sessionRowTitle}</span>
             <div className="inline-flex shrink-0 items-center gap-1.5">
               {hasForks ? (
                 <span
@@ -1234,7 +1234,7 @@ export function WorkspaceSidebar({
               ) : null}
               <SidebarUnreadBadge count={session.unread} scope="agent-session" />
               <SidebarSessionStatusIndicator indicator={session.statusIndicator} />
-              <span className={cn('app-session-meta-time whitespace-nowrap text-[10px] font-medium leading-none tabular-nums tracking-[0.03em] text-slate-400', isActive && 'app-session-meta-time-active')}>
+              <span className={cn('app-session-meta-time whitespace-nowrap text-[10px] font-medium leading-none tabular-nums text-slate-400', isActive && 'app-session-meta-time-active')}>
                 {rowTimeLabel}
               </span>
             </div>

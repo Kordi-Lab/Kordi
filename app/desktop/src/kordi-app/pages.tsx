@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Eye, LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, LoaderCircle, Plus, Search, Trash2, UserPlus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -7,6 +7,7 @@ import { selfObjectLabel } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { BridgeChip, ContactRequestRow, ContactRow } from './components';
 import { EditableIdentityAvatar } from './components/EditableIdentityAvatar';
+import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
 import { getContactSortLetter } from './utils';
 
@@ -21,6 +22,7 @@ type ContactsPageProps = {
   onAcceptRequest?: (request: ContactRequest) => Promise<void> | void;
   onRejectRequest?: (request: ContactRequest) => Promise<void> | void;
   onAddContactByNodeId?: (nodeId: string) => Promise<void> | void;
+  onLookupContact?: (idOrEmail: string) => Promise<AddContactLookupResult | null>;
   contactSearch: string;
   onContactSearchChange: (value: string) => void;
   expandedContactGroups: Record<ContactClass, boolean>;
@@ -47,6 +49,7 @@ export function ContactsPage({
   onAcceptRequest,
   onRejectRequest,
   onAddContactByNodeId,
+  onLookupContact,
   contactSearch,
   onContactSearchChange,
   expandedContactGroups,
@@ -65,6 +68,9 @@ export function ContactsPage({
   const [contactNodeId, setContactNodeId] = useState('');
   const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'error'>('idle');
   const [addContactError, setAddContactError] = useState('');
+  const [lookupState, setLookupState] = useState<'idle' | 'searching' | 'error'>('idle');
+  const [lookupError, setLookupError] = useState('');
+  const [lookupResult, setLookupResult] = useState<AddContactLookupResult | null>(null);
   const [requestingContactNodeId, setRequestingContactNodeId] = useState<string | null>(null);
   const [requestedContactNodeIds, setRequestedContactNodeIds] = useState<string[]>([]);
   const [removeContactState, setRemoveContactState] = useState<'idle' | 'saving' | 'error'>('idle');
@@ -77,7 +83,29 @@ export function ContactsPage({
     setRemoveContactError('');
   }, [activeContact.id, contactOverlayMode]);
 
-  const submitAddContact = async (nodeIdInput = contactNodeId) => {
+  const performContactLookup = async () => {
+    if (!onLookupContact) return;
+    const accountId = contactNodeId.trim();
+    if (!accountId) return;
+    setLookupState('searching');
+    setLookupError('');
+    setLookupResult(null);
+    try {
+      const result = await onLookupContact(accountId);
+      if (!result) {
+        setLookupState('error');
+        setLookupError('No account found.');
+        return;
+      }
+      setLookupResult(result);
+      setLookupState('idle');
+    } catch (error) {
+      setLookupState('error');
+      setLookupError(error instanceof Error ? error.message : 'Search failed.');
+    }
+  };
+
+  const submitAddContact = async (nodeIdInput = lookupResult?.accountId ?? contactNodeId) => {
     const nodeId = nodeIdInput.trim();
     if (!nodeId || !onAddContactByNodeId || addContactState === 'saving') return;
     setAddContactState('saving');
@@ -87,7 +115,10 @@ export function ContactsPage({
       await onAddContactByNodeId(nodeId);
       setAddContactState('sent');
       setRequestedContactNodeIds((current) => (current.includes(nodeId) ? current : [...current, nodeId]));
-      if (contactNodeId.trim() === nodeId) setContactNodeId('');
+      if (contactNodeId.trim() === nodeId) {
+        setContactNodeId('');
+        setLookupResult(null);
+      }
     } catch (error) {
       setAddContactState('error');
       setAddContactError(error instanceof Error ? error.message : 'Unable to send contact request');
@@ -239,56 +270,68 @@ export function ContactsPage({
                 className="app-surface-muted mb-4 rounded-2xl px-3 py-3"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void submitAddContact();
+                  if (lookupResult) {
+                    void submitAddContact(lookupResult.accountId);
+                  } else {
+                    void performContactLookup();
+                  }
                 }}
               >
-                <div className="mb-2 text-[12px] font-medium text-white">Visible users</div>
-                <div className="mb-3 grid gap-1.5">
-                  {addableContacts.length > 0 ? addableContacts.map((contact) => {
-                    const nodeId = contact.bridgePeerNodeId?.trim() ?? '';
-                    return (
-                      <div key={contact.id} className="app-chat-create-list-item flex items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-[12.5px] font-medium leading-4 text-slate-100">{contact.name}</div>
-                          <div className="mt-px truncate text-[10.5px] leading-4 text-slate-400">{contact.subtitle || contact.detail || nodeId}</div>
-                        </div>
-                        <Button
-                          type="button"
-                          className="h-7 shrink-0 rounded-[10px] px-2.5 text-[11px]"
-                          disabled={addableContactButtonDisabled(contact)}
-                          onClick={() => {
-                            void submitAddContact(nodeId);
-                          }}
-                        >
-                          {addableContactButtonLabel(contact)}
-                        </Button>
-                      </div>
-                    );
-                  }) : (
-                    <div className="rounded-[12px] border border-white/10 px-2.5 py-2 text-[11px] text-slate-400">No visible users to request right now.</div>
-                  )}
-                </div>
-                <div className="mb-2 text-[12px] font-medium text-white">Add by node ID</div>
+                <div className="mb-1 text-[12px] font-medium text-white">Add contact</div>
+                <div className="mb-3 text-[11px] leading-4 text-slate-400">Search by exact account ID, then send an approval request.</div>
                 <div className="flex gap-2">
                   <input
                     value={contactNodeId}
                     onChange={(event) => {
                       setContactNodeId(event.target.value);
+                      setLookupResult(null);
+                      setLookupState('idle');
+                      setLookupError('');
                       if (addContactState !== 'saving') setAddContactState('idle');
                     }}
-                    placeholder="Bridge node ID, e.g. kd_..."
+                    placeholder="Account ID, e.g. acct_..."
                     className="app-input-shell h-8 min-w-0 flex-1 rounded-[12px] px-2.5 text-[12px] text-slate-100 outline-none"
                   />
-                  <Button type="submit" className="h-8 rounded-[12px] px-3 text-[12px]" disabled={!contactNodeId.trim() || addContactState === 'saving'}>
-                    {addContactState === 'saving' ? 'Sending…' : 'Request'}
+                  <Button type="submit" className="h-8 rounded-[12px] px-3 text-[12px]" disabled={!contactNodeId.trim() || lookupState === 'searching' || addContactState === 'saving'}>
+                    {lookupResult
+                      ? (addContactState === 'saving' ? 'Sending…' : 'Send request')
+                      : (lookupState === 'searching' ? 'Searching…' : 'Search')}
                   </Button>
                 </div>
-                <div className="mt-2 text-[10.5px] leading-4 text-slate-400" aria-live="polite">
+                {lookupResult ? (
+                  <div className="app-chat-create-list-item mt-3 flex items-center justify-between gap-2 rounded-[12px] border px-2.5 py-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-[12.5px] font-medium leading-4 text-slate-100">{lookupResult.displayName || lookupResult.accountId}</div>
+                      <div className="mt-px truncate text-[10.5px] leading-4 text-slate-400">{lookupResult.accountId}</div>
+                    </div>
+                    {lookupResult.isSelf ? (
+                      <span className="text-[11px] text-slate-400">That's you</span>
+                    ) : lookupResult.isContact ? (
+                      <span className="text-[11px] text-slate-400">Already added</span>
+                    ) : (
+                      <Button
+                        type="button"
+                        className="h-8 w-8 shrink-0 rounded-full p-0"
+                        aria-label={`Send request to ${lookupResult.displayName || lookupResult.accountId}`}
+                        title="Send request"
+                        disabled={addContactState === 'saving' || requestedContactNodeIds.includes(lookupResult.accountId)}
+                        onClick={() => { void submitAddContact(lookupResult.accountId); }}
+                      >
+                        <UserPlus className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
+                <div className="mt-2 min-h-4 text-[10.5px] leading-4 text-slate-400" aria-live="polite">
                   {addContactState === 'sent'
                     ? 'Request sent. They will appear in contacts after approval.'
                     : addContactState === 'error'
                       ? addContactError || 'Unable to send contact request.'
-                      : 'Use this for private or unlisted Bridge users.'}
+                      : lookupState === 'error'
+                        ? lookupError || 'No account found.'
+                        : lookupResult
+                          ? 'Send an approval request to start chatting after they accept.'
+                          : 'Enter the account ID your contact shared with you.'}
                 </div>
               </form>
             )}

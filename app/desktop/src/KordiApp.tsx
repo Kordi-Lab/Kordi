@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
+import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { currentKordiEdition, shouldShowCloudLoginGate, type CloudSessionStatus, type KordiEdition } from '@/features/cloud/edition';
 import { applyKordiMainWindowSize } from '@/features/cloud/loginWindow';
@@ -17,15 +18,21 @@ function readSystemTheme(): ResolvedThemeMode {
 // runs after KordiAppShell mounts. Before that — on the cloud login gate and
 // the restoring-session splash — nothing else applies a theme class, so the
 // dark/light tokens never reach those screens. This hook syncs the body class
-// to the current system preference while the gate/splash is up; once the
-// shell mounts, its effect takes over with the user's saved preference.
+// to the persisted theme preference; `auto` follows system while the
+// gate/splash is up. Once the shell mounts, its effect takes over.
 function useGateThemeClass() {
-  const [theme, setTheme] = useState<ResolvedThemeMode>(() => readSystemTheme());
+  const [theme, setTheme] = useState<ResolvedThemeMode>(() => {
+    const themeMode = readStoredThemeMode();
+    return resolveThemeMode(themeMode, readSystemTheme());
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const themeMode = readStoredThemeMode();
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
-    const handle = () => setTheme(mediaQuery.matches ? 'light' : 'dark');
+    const handle = () => {
+      setTheme(resolveThemeMode(themeMode, mediaQuery.matches ? 'light' : 'dark'));
+    };
     handle();
     mediaQuery.addEventListener('change', handle);
     return () => mediaQuery.removeEventListener('change', handle);

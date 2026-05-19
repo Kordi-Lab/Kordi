@@ -9,9 +9,7 @@ use sqlx_postgres::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::attachments::S3Config;
-use crate::auth::rate_limit::{
-    CloudRateLimitConfig, CloudRateLimiter, RateLimiterError,
-};
+use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimiterError};
 use crate::events::{EventBus, EventBusError};
 use crate::pg::{init_pool, PgPoolError};
 
@@ -23,7 +21,11 @@ pub struct ServerState {
 
 impl ServerState {
     pub fn new(pool: PgPool, events: EventBus) -> Self {
-        Self { pool, events, s3: None }
+        Self {
+            pool,
+            events,
+            s3: None,
+        }
     }
 
     pub fn with_s3(mut self, s3: S3Config) -> Self {
@@ -54,10 +56,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
     )
 }
 
-pub fn router_with_rate_limiter(
-    state: Arc<ServerState>,
-    rate_limiter: CloudRateLimiter,
-) -> Router {
+pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRateLimiter) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -111,6 +110,51 @@ impl std::error::Error for RunError {}
 /// required; `nats_url` and `redis_url` are optional — when unset the
 /// server falls back to no-op events and an in-memory limiter so
 /// dev/CI work without those dependencies.
+fn redact_url_credentials(value: &str) -> String {
+    let Some(scheme_end) = value.find("://") else {
+        return value.to_string();
+    };
+    let scheme_prefix_end = scheme_end + 3;
+    let after_scheme = &value[scheme_prefix_end..];
+    let Some(at_index) = after_scheme.find('@') else {
+        return value.to_string();
+    };
+    let credentials = &after_scheme[..at_index];
+    let Some(password_separator) = credentials.find(':') else {
+        return value.to_string();
+    };
+
+    format!(
+        "{}{}:***@{}",
+        &value[..scheme_prefix_end],
+        &credentials[..password_separator],
+        &after_scheme[at_index + 1..]
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_url_credentials;
+
+    #[test]
+    fn redacts_credentials_from_logged_urls() {
+        assert_eq!(
+            redact_url_credentials(
+                "redis://default:secret-password@redis.kordi-cloud.svc.cluster.local:6379/0"
+            ),
+            "redis://default:***@redis.kordi-cloud.svc.cluster.local:6379/0"
+        );
+        assert_eq!(
+            redact_url_credentials("redis://default:secret/with+reserved=chars@redis.kordi-cloud.svc.cluster.local:6379/0"),
+            "redis://default:***@redis.kordi-cloud.svc.cluster.local:6379/0"
+        );
+        assert_eq!(
+            redact_url_credentials("nats://nats.kordi-cloud.svc.cluster.local:4222"),
+            "nats://nats.kordi-cloud.svc.cluster.local:4222"
+        );
+    }
+}
+
 pub async fn run(
     port: u16,
     database_url: &str,
@@ -130,15 +174,16 @@ pub async fn run(
     };
     let rate_limiter = match redis_url {
         Some(url) => {
-            println!("Kordi cloud server connecting to Redis at {url}");
+            println!(
+                "Kordi cloud server connecting to Redis at {}",
+                redact_url_credentials(url)
+            );
             CloudRateLimiter::redis(url, CloudRateLimitConfig::production())
                 .await
                 .map_err(RunError::RateLimiter)?
         }
         None => {
-            println!(
-                "Kordi cloud server starting without Redis (rate limiter is in-memory)"
-            );
+            println!("Kordi cloud server starting without Redis (rate limiter is in-memory)");
             CloudRateLimiter::memory(CloudRateLimitConfig::production())
         }
     };

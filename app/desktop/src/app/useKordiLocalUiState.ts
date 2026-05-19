@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 
+import { readStoredThemeMode, resolveThemeMode, writeStoredThemeMode } from '@/app/themePreference';
 import { readStoredComposerAttachments, writeStoredComposerAttachments } from '@/features/chat/composerAttachments';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
@@ -42,9 +43,18 @@ export function useKordiLocalUiState() {
   const [activeSettingsSectionId, setActiveSettingsSectionId] = useState<(typeof settingsSections)[number]['id']>('general');
   const [activeSourcePreview, setActiveSourcePreview] = useState<EditFilePreview | null>(null);
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
-  const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => readStoredThemeMode());
+  const setThemeMode: Dispatch<SetStateAction<ThemeMode>> = useCallback((nextThemeModeOrUpdater) => {
+    setThemeModeState((currentThemeMode) => {
+      const nextThemeMode = typeof nextThemeModeOrUpdater === 'function'
+        ? nextThemeModeOrUpdater(currentThemeMode)
+        : nextThemeModeOrUpdater;
+      writeStoredThemeMode(nextThemeMode);
+      return nextThemeMode;
+    });
+  }, []);
   const [systemThemeMode, setSystemThemeMode] = useState<ResolvedThemeMode>(() => getSystemThemeMode());
-  const resolvedThemeMode: ResolvedThemeMode = themeMode === 'auto' ? systemThemeMode : themeMode;
+  const resolvedThemeMode: ResolvedThemeMode = resolveThemeMode(themeMode, systemThemeMode);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;

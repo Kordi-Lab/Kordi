@@ -25,7 +25,8 @@ test('chat sidebar timestamps use the tertiary text token', () => {
 
   assert.match(shellCss, /\.app-session-meta-time\s*{[^}]*color:\s*var\(--utility-meta-text\)/s);
   assert.match(shellCss, /\.app-session-meta-time-active\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 72%, var\(--utility-foreground\)\)/s);
-  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid transparent;[^}]*box-shadow:\s*0 0 0 1px var\(--app-accent-ring\)/s);
+  assert.match(shellCss, /\.app-session-row\s*{[^}]*box-shadow:\s*none/s);
+  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid color-mix\(in oklab, var\(--app-accent-ring\) 92%, var\(--app-divider\)\);[^}]*box-shadow:\s*0 0 0 1px color-mix\(in oklab, var\(--app-accent-ring\) 42%, transparent\)/s);
 });
 
 test('glassmorphism tokens are declared in both themes and frame bgs are translucent', () => {
@@ -55,6 +56,20 @@ test('glassmorphism tokens are declared in both themes and frame bgs are translu
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-shell-bg:\s*linear-gradient\(180deg,\s*rgba\(252,\s*252,\s*253,\s*0\.72\)/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*rgba\(250,\s*250,\s*251,\s*0\.66\);/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
+});
+
+test('light agent workspace uses cool slate surfaces instead of warm beige panels', () => {
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const agentBlockStart = themeOverridesCss.indexOf('.bridge-app.theme-light .app-agent-shell');
+  const agentBlockEnd = themeOverridesCss.indexOf('.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section', agentBlockStart);
+  const agentLightBlock = themeOverridesCss.slice(agentBlockStart, agentBlockEnd);
+
+  assert.ok(agentBlockStart >= 0 && agentBlockEnd > agentBlockStart, 'expected to find the light agent theme block');
+  assert.match(agentLightBlock, /\.app-agent-shell\s*{[^}]*border-color:\s*color-mix\(in oklab, rgb\(148 163 184\) 26%, transparent\);[^}]*background:\s*color-mix\(in oklab, rgb\(226 232 240\) 48%, transparent\)/s);
+  assert.match(agentLightBlock, /\.app-agent-sidebar\s*{[^}]*background:\s*color-mix\(in oklab, rgb\(248 250 252\) 86%, transparent\)/s);
+  assert.match(agentLightBlock, /\.app-agent-detail-pane\s*{[^}]*background:\s*color-mix\(in oklab, rgb\(241 245 249\) 78%, transparent\)/s);
+  assert.match(agentLightBlock, /\.app-agent-content-pane\s*{[^}]*border-left-color:\s*color-mix\(in oklab, rgb\(148 163 184\) 28%, transparent\);[^}]*background:\s*color-mix\(in oklab, rgb\(238 242 247\) 82%, transparent\)/s);
+  assert.doesNotMatch(agentLightBlock, /rgb\(245 241 232\)|rgba\(255, 252, 244|rgba\(247, 244, 235|rgba\(243, 239, 229|rgba\(73, 62, 54/);
 });
 
 test('shell.css applies backdrop-filter and a paper-grain layer on the workspace shell', () => {
