@@ -13,16 +13,33 @@ mod workspace;
 
 use std::process::Command;
 
-fn current_kordi_edition() -> String {
-    std::env::var("KORDI_EDITION")
-        .or_else(|_| std::env::var("VITE_KORDI_EDITION"))
+fn is_cloud_edition_context(
+    kordi_edition: Option<&str>,
+    vite_kordi_edition: Option<&str>,
+    bundle_identifier: &str,
+) -> bool {
+    let explicit = kordi_edition
+        .or(vite_kordi_edition)
         .unwrap_or_default()
         .trim()
-        .to_ascii_lowercase()
+        .to_ascii_lowercase();
+    match explicit.as_str() {
+        "cloud" => true,
+        "local" => false,
+        _ => bundle_identifier == "io.kordi.cloud",
+    }
 }
 
-fn configure_cloud_app_data_dir(app: &tauri::App) {
-    if current_kordi_edition() != "cloud" || std::env::var_os("APP_DATA_DIR").is_some() {
+fn is_cloud_edition_app(app: &tauri::App) -> bool {
+    is_cloud_edition_context(
+        std::env::var("KORDI_EDITION").ok().as_deref(),
+        std::env::var("VITE_KORDI_EDITION").ok().as_deref(),
+        &app.config().identifier,
+    )
+}
+
+fn configure_cloud_app_data_dir(app: &tauri::App, is_cloud_edition: bool) {
+    if !is_cloud_edition || std::env::var_os("APP_DATA_DIR").is_some() {
         return;
     }
     let Ok(app_data_dir) = app.path().app_data_dir() else {
@@ -34,8 +51,8 @@ fn configure_cloud_app_data_dir(app: &tauri::App) {
     unsafe { std::env::set_var("APP_DATA_DIR", app_data_dir) };
 }
 
-fn activate_stored_cloud_account_data_dir() {
-    if current_kordi_edition() != "cloud" {
+fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
+    if !is_cloud_edition {
         return;
     }
     match cloud_session::cloud_session_load() {
@@ -54,6 +71,27 @@ use bridge::DesktopBridgeManager;
 use chat::DesktopChatManager;
 use tauri::Manager;
 use workspace::DesktopWorkspaceStatus;
+
+#[cfg(test)]
+mod edition_tests {
+    use super::is_cloud_edition_context;
+
+    #[test]
+    fn cloud_bundle_identifier_enables_cloud_edition_without_runtime_env() {
+        assert!(is_cloud_edition_context(None, None, "io.kordi.cloud"));
+    }
+
+    #[test]
+    fn desktop_bundle_identifier_defaults_to_local_edition() {
+        assert!(!is_cloud_edition_context(None, None, "io.kordi.desktop"));
+    }
+
+    #[test]
+    fn explicit_runtime_edition_overrides_bundle_identifier() {
+        assert!(!is_cloud_edition_context(Some("local"), None, "io.kordi.cloud"));
+        assert!(is_cloud_edition_context(Some("cloud"), None, "io.kordi.desktop"));
+    }
+}
 
 #[tauri::command]
 fn desktop_workspace_status() -> DesktopWorkspaceStatus {
@@ -104,16 +142,13 @@ pub fn run() {
         .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
         .setup(|app| {
-            configure_cloud_app_data_dir(app);
-            activate_stored_cloud_account_data_dir();
+            let is_cloud_edition = is_cloud_edition_app(app);
+            configure_cloud_app_data_dir(app, is_cloud_edition);
+            activate_stored_cloud_account_data_dir(is_cloud_edition);
             let window = app
                 .get_webview_window("main")
                 .expect("main window should exist");
-            window.set_title(if current_kordi_edition() == "cloud" {
-                "Kordi Cloud"
-            } else {
-                "Kordi"
-            })?;
+            window.set_title("Kordi")?;
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }
