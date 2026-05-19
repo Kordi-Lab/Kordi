@@ -6,7 +6,13 @@ import { spawnSync } from 'node:child_process';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = dirname(scriptDir);
-const defaultBundleDir = join(desktopRoot, 'src-tauri', 'target', 'release', 'bundle', 'dmg');
+
+export function defaultDmgBundleDir({ cargoTargetDir = process.env.CARGO_TARGET_DIR ?? '' } = {}) {
+  if (cargoTargetDir) {
+    return join(cargoTargetDir, 'release', 'bundle', 'dmg');
+  }
+  return join(desktopRoot, 'src-tauri', 'target', 'release', 'bundle', 'dmg');
+}
 
 export function validateDmgVolumeLayout(volumePath, { appName }) {
   if (!appName || typeof appName !== 'string') {
@@ -29,7 +35,7 @@ export function validateDmgVolumeLayout(volumePath, { appName }) {
   }
 }
 
-export function findNewestDmg(bundleDir = defaultBundleDir, { appName } = {}) {
+export function findNewestDmg(bundleDir = defaultDmgBundleDir(), { appName } = {}) {
   const resolvedDir = resolve(bundleDir);
   if (!existsSync(resolvedDir)) {
     throw new Error(`DMG bundle directory does not exist: ${resolvedDir}`);
@@ -105,8 +111,8 @@ function readArgValue(args, name, fallback) {
 
 export function parseCliArgs(args) {
   return {
-    appName: readArgValue(args, '--app-name', 'Kordi Cloud'),
-    bundleDir: readArgValue(args, '--bundle-dir', defaultBundleDir),
+    appName: readArgValue(args, '--app-name', 'Kordi'),
+    bundleDir: readArgValue(args, '--bundle-dir', defaultDmgBundleDir()),
     dmgPath: readArgValue(args, '--dmg', ''),
   };
 }
