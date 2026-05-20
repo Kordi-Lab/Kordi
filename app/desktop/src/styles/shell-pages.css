@@ -9,6 +9,16 @@
   background: color-mix(in oklab, var(--app-control-bg) 32%, transparent);
 }
 
+.app-auth-provider-gate-card:hover,
+.app-auth-provider-gate-card:focus-visible {
+  background: color-mix(in oklab, var(--app-control-active) 38%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--app-control-active) 40%, transparent),
+    inset 0 1px 0 color-mix(in oklab, white 18%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, black 6%, transparent);
+  outline: none;
+}
+
 .app-auth-settings-page .app-auth-provider-row.bg-white\/\[0\.065\] {
   background: color-mix(in oklab, var(--app-control-active) 46%, transparent);
   box-shadow: none;

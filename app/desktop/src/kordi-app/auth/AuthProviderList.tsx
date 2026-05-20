@@ -77,10 +77,7 @@ export function AuthProviderList({
                 type="button"
                 onClick={() => onSelectProvider(provider.id)}
                 className={cn(
-                  'group flex min-h-[88px] w-full cursor-pointer items-center gap-3 rounded-[22px] bg-white/[0.032] px-4 py-4 text-left transition shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]',
-                  selected
-                    ? 'bg-white/[0.065] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.075),0_14px_34px_-26px_rgba(0,0,0,0.65)]'
-                    : 'hover:bg-white/[0.055] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.075)]',
+                  'app-auth-provider-gate-card group flex min-h-[88px] w-full cursor-pointer items-center gap-3 rounded-[22px] bg-white/[0.032] px-4 py-4 text-left shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]',
                 )}
                 style={{ WebkitAppRegion: 'no-drag' as const }}
               >

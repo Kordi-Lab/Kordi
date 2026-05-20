@@ -22,11 +22,21 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
 
   assert.match(providerList, /variant\?: 'settings' \| 'gate'/);
   assert.match(providerList, /grid-cols-\[repeat\(2,minmax\(0,1fr\)\)\]/);
+  assert.match(providerList, /app-auth-provider-gate-card/);
+  assert.doesNotMatch(providerList, /app-auth-provider-gate-card-selected/);
+  assert.doesNotMatch(providerList, /col-span-2/);
   assert.match(providerList, /ChatGPT \+ API/);
   assert.match(providerList, /Claude \+ API/);
   assert.doesNotMatch(providerList, /\buppercase\b/);
   assert.doesNotMatch(providerList, /saved of/);
   assert.doesNotMatch(providerList, /provider\.loginHint/);
+
+  const shellPages = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const gateHoverRule = shellPages.match(/\.app-auth-provider-gate-card:hover,[\s\S]*?\n}\n/)?.[0] ?? '';
+  assert.match(gateHoverRule, /background:/);
+  assert.match(gateHoverRule, /box-shadow:/);
+  assert.doesNotMatch(gateHoverRule, /translateY|scale\(|animation:/);
+  assert.doesNotMatch(shellPages, /app-auth-provider-selected/);
 });
 
 test('provider detail view keeps a persistent back control and scroll boundary', () => {
