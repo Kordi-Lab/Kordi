@@ -20,6 +20,31 @@ const imageMessage = {
   }],
 };
 
+const multiImageMessage = {
+  ...imageMessage,
+  attachments: [
+    imageMessage.attachments[0],
+    {
+      kind: 'image' as const,
+      name: 'Screenshot 2026-05-20 20.54.15.png',
+      sizeBytes: 61 * 1024,
+      attachmentId: 'att_2',
+      localPath: null,
+      previewUrl: 'https://files.test/preview-2.png',
+      mimeType: 'image/png',
+    },
+    {
+      kind: 'image' as const,
+      name: 'Screenshot 2026-05-20 20.54.16.png',
+      sizeBytes: 168 * 1024,
+      attachmentId: 'att_3',
+      localPath: null,
+      previewUrl: 'https://files.test/preview-3.png',
+      mimeType: 'image/png',
+    },
+  ],
+};
+
 test('attachment image preview identity changes when local cache path becomes available', () => {
   const pending = attachmentPreviewIdentity({
     kind: 'image',
@@ -52,11 +77,23 @@ test('image attachments render as clickable lightweight previews without heavy f
   assert.match(markup, /Screenshot 2026-05-20\.png/);
 });
 
+test('multiple image attachments render as a banner-free collage', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: multiImageMessage }));
+
+  assert.match(markup, /data-attachment-image-collage="true"/);
+  assert.match(markup, /data-attachment-image-count="3"/);
+  assert.match(markup, /app-attachment-image-tile/);
+  assert.doesNotMatch(markup, /61 KB/);
+  assert.doesNotMatch(markup, /168 KB/);
+  assert.doesNotMatch(markup, />Screenshot 2026-05-20 20\.54\.15\.png<\/span>/);
+  assert.doesNotMatch(markup, /app-attachment-image-footer/);
+});
+
 test('image attachment actions are available from context menu instead of sticky under-image buttons', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
 
   assert.match(markup, /data-attachment-image-context-target="true"/);
-  assert.match(markup, /title="Right-click for image actions"/);
+  assert.match(markup, /Right-click for image actions/);
   assert.doesNotMatch(markup, /aria-label="Download Screenshot 2026-05-20\.png"/);
 });
 

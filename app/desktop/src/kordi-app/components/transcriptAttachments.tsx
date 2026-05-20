@@ -251,7 +251,7 @@ function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachme
 
 function BrokenImagePreview({ attachment }: { attachment: MessageAttachment }) {
   return (
-    <div className="app-attachment-image-fallback flex h-28 flex-col items-center justify-center gap-2 rounded-[15px] border border-dashed border-current/18 bg-current/[0.035] px-4 text-center">
+    <div className="app-attachment-image-fallback flex h-full min-h-28 flex-col items-center justify-center gap-2 rounded-[15px] border border-dashed border-current/18 bg-current/[0.035] px-4 text-center">
       <div className="app-attachment-image-fallback-icon flex h-9 w-9 items-center justify-center rounded-2xl border border-current/12 bg-current/[0.04]">
         <ImageOff className="h-4 w-4" />
       </div>
@@ -309,52 +309,59 @@ export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onCon
   );
 }
 
-function AttachmentImageCard({ attachment, index, onOpenPreview, onOpenContextMenu }: {
+function imageTileClass(index: number, totalCount: number) {
+  if (totalCount <= 1) return 'col-span-6 row-span-3';
+  if (totalCount === 2) return 'col-span-3 row-span-3';
+  if (totalCount === 3) return index === 0 ? 'col-span-6 row-span-2' : 'col-span-3 row-span-2';
+  if (totalCount === 4) return 'col-span-3 row-span-2';
+  if (totalCount === 5) return index < 2 ? 'col-span-3 row-span-2' : 'col-span-2 row-span-2';
+  if (totalCount === 6) return 'col-span-2 row-span-2';
+  return index < 2 ? 'col-span-3 row-span-2' : 'col-span-2 row-span-2';
+}
+
+function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onOpenContextMenu }: {
   attachment: MessageAttachment;
   index: number;
+  totalCount: number;
   onOpenPreview: (attachment: MessageAttachment, previewUrl: string) => void;
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
   const previewUrl = attachmentPreviewUrl(attachment);
-  const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
-  const metadataLabel = [sizeLabel, attachment.formatLabel].filter(Boolean).join(' • ');
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl && !previewFailed);
+  const singleImage = totalCount <= 1;
 
   return (
     <div
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
-      className="app-attachment-image-card overflow-hidden rounded-[18px] border border-current/10 bg-current/[0.025] p-1.5 shadow-[0_10px_28px_rgba(2,8,23,0.10)]"
+      className={cn('app-attachment-image-card app-attachment-image-tile overflow-hidden bg-black/5', imageTileClass(index, totalCount))}
     >
       {showImage && previewUrl ? (
         <button
           type="button"
           data-attachment-image-preview-trigger="true"
           data-attachment-image-context-target="true"
-          title="Right-click for image actions"
+          title={`${displayName} · Right-click for image actions`}
           onClick={() => onOpenPreview(attachment, previewUrl)}
           onContextMenu={(event) => onOpenContextMenu(attachment, event)}
-          className="group block w-full overflow-hidden rounded-[14px] bg-black/5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70"
+          className="group block h-full w-full overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20"
           aria-label={`Preview ${attachment.name || 'attached image'}`}
         >
           <img
             src={previewUrl}
             alt={attachment.name || 'Attached image'}
-            className="block max-h-[320px] w-full object-contain transition duration-150 group-hover:scale-[1.01]"
+            className={cn(
+              'block h-full w-full transition duration-150 group-hover:scale-[1.015]',
+              singleImage ? 'max-h-[320px] object-contain' : 'object-cover',
+            )}
             onError={() => setPreviewFailed(true)}
           />
         </button>
       ) : (
         <BrokenImagePreview attachment={attachment} />
       )}
-      <div className="mt-1.5 flex items-center justify-between gap-2 px-1 text-[10px] text-current/62">
-        <span className="min-w-0 truncate">{displayName}</span>
-        <div className="flex shrink-0 items-center gap-2">
-          {metadataLabel ? <span className="whitespace-nowrap uppercase tracking-[0.12em]">{metadataLabel}</span> : null}
-        </div>
-      </div>
     </div>
   );
 }
@@ -391,12 +398,17 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
     <>
       <div className="flex flex-col gap-2">
         {previewImageAttachments.length > 0 ? (
-          <div className={cn('grid gap-2', previewImageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
+          <div
+            data-attachment-image-collage="true"
+            data-attachment-image-count={previewImageAttachments.length}
+            className="grid grid-cols-6 auto-rows-[7rem] gap-1 overflow-hidden rounded-[18px] border border-current/10 bg-current/10 p-1 shadow-[0_10px_28px_rgba(2,8,23,0.10)]"
+          >
             {previewImageAttachments.map((attachment, index) => (
               <AttachmentImageCard
                 key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
                 attachment={attachment}
                 index={index}
+                totalCount={previewImageAttachments.length}
                 onOpenPreview={(nextAttachment, previewUrl) => setLightboxAttachment({ attachment: nextAttachment, previewUrl })}
                 onOpenContextMenu={openContextMenu}
               />
