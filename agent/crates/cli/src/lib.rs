@@ -17,6 +17,7 @@ pub mod task_operator;
 mod tool_registry;
 pub mod turn_runner;
 
+pub mod cloud_fallback_runtime;
 pub mod desktop_runtime;
 pub mod login;
 pub mod oauth;
