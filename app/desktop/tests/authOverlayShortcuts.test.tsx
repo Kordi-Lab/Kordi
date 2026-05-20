@@ -38,12 +38,15 @@ test('first-run auth gate receives an enter-chat shortcut handler', () => {
   assert.equal(typeof authPage.props.onEnterChat, 'function');
 });
 
-test('inline auth popup receives an enter-chat shortcut handler for cloud provider saves', () => {
+test('inline auth popup renders above account settings modal and keeps enter-chat shortcut handler', () => {
   const slots = assembleOverlaySlots(overlayArgs({
     showAuthGate: false,
     inlineAuthDialog: { providerId: 'openai', mode: 'api-key' },
   }) as never);
-  const popup = slots.inlineAuthDialog as never as { props: Record<string, unknown> };
+  const overlay = slots.inlineAuthDialog as never as { props: { className: string; children: { props: Record<string, unknown> } } };
+  const popup = overlay.props.children;
 
+  assert.match(overlay.props.className, /fixed inset-0/);
+  assert.match(overlay.props.className, /z-\[220\]/);
   assert.equal(typeof popup.props.onEnterChat, 'function');
 });

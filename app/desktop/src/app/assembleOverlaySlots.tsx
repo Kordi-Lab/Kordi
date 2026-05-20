@@ -43,17 +43,25 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
   ) : null;
 
   const inlineAuthDialog = args.inlineAuthDialog ? (
-    <AuthPopup
-      embedded
-      providerId={args.inlineAuthDialog.providerId}
-      mode={args.inlineAuthDialog.mode}
-      authority={args.inlineAuthDialog.authority}
-      requireAuthority={args.inlineAuthDialog.requireAuthority}
-      authState={args.desktopAuthState}
-      onRequestClose={args.handleCloseInlineAuthDialog}
-      onAuthUpdated={args.refreshDesktopAuth}
-      onEnterChat={onEnterChat}
-    />
+    <div
+      className="app-overlay fixed inset-0 z-[220] flex items-center justify-center bg-black/35 p-4 backdrop-blur-[10px]"
+      style={{ WebkitAppRegion: 'no-drag' as const }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) args.handleCloseInlineAuthDialog();
+      }}
+    >
+      <AuthPopup
+        embedded
+        providerId={args.inlineAuthDialog.providerId}
+        mode={args.inlineAuthDialog.mode}
+        authority={args.inlineAuthDialog.authority}
+        requireAuthority={args.inlineAuthDialog.requireAuthority}
+        authState={args.desktopAuthState}
+        onRequestClose={args.handleCloseInlineAuthDialog}
+        onAuthUpdated={args.refreshDesktopAuth}
+        onEnterChat={onEnterChat}
+      />
+    </div>
   ) : null;
 
   const windowResizeHandles: ReactNode = (
