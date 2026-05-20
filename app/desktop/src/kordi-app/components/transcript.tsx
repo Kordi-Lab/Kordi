@@ -672,6 +672,7 @@ function MessageBubbleView({
   const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasText = msg.text.trim().length > 0;
   const hasAttachments = (msg.attachments?.length ?? 0) > 0;
+  const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
@@ -722,17 +723,22 @@ function MessageBubbleView({
           <span className="app-message-avatar-spacer h-7 w-7 shrink-0" aria-hidden="true" />
         ) : null}
         <div className={cn(
-          'min-w-0 shadow-sm',
+          'min-w-0',
+          hasOnlyImageAttachments ? 'bg-transparent shadow-none' : 'shadow-sm',
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
-            ? cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
+            ? hasOnlyImageAttachments
+              ? 'w-fit max-w-[31rem] p-0'
+              : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
-              ? cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
+              ? hasOnlyImageAttachments
+                ? 'w-fit max-w-[31rem] p-0'
+                : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
               : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
-          bubble,
+          !hasOnlyImageAttachments && bubble,
         )}>
-        {isOwnHumanMessage ? <MessageBubbleShapeBackdrop side="own" /> : null}
-        {isPeerHumanMessage ? <MessageBubbleShapeBackdrop side="peer" /> : null}
+        {isOwnHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="own" /> : null}
+        {isPeerHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="peer" /> : null}
         {showInlineHumanSender ? (
           <div
             className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
@@ -762,12 +768,14 @@ function MessageBubbleView({
                 {hasAttachments ? <AttachmentPreview msg={msg} /> : null}
                 {hasText ? <div className="whitespace-pre-wrap break-words">{renderTextWithMentionPills(msg.text, msg.mentions)}</div> : null}
               </div>
-              <MessageFooter
-                time={msg.time}
-                status={isOwnHumanMessage ? deliveryStatus : undefined}
-                detail={footerDetail}
-                isUser={isOwnHumanMessage}
-              />
+              {!hasOnlyImageAttachments ? (
+                <MessageFooter
+                  time={msg.time}
+                  status={isOwnHumanMessage ? deliveryStatus : undefined}
+                  detail={footerDetail}
+                  isUser={isOwnHumanMessage}
+                />
+              ) : null}
             </>
           )
         ) : (

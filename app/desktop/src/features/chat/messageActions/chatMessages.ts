@@ -75,8 +75,8 @@ export function shouldShowBridgeSendFailureNotice(hasInlineFailureTarget: boolea
   return !hasInlineFailureTarget;
 }
 
-export function shouldAppendOptimisticBridgeMessage(conversationId: string): boolean {
-  return !isCloudBridgeConversationId(conversationId);
+export function shouldAppendOptimisticBridgeMessage(_conversationId: string): boolean {
+  return true;
 }
 
 function generatedSelfAgentSessionId() {
@@ -981,6 +981,7 @@ export function useChatMessageActions({
       }
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      const appendedOptimisticBridgeMessage = shouldAppendOptimisticBridgeMessage(activeConvId);
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
@@ -988,13 +989,16 @@ export function useChatMessageActions({
         setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
         setChatComposerAttachments([]);
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-        if (shouldAppendOptimisticBridgeMessage(activeConvId)) {
+        if (appendedOptimisticBridgeMessage) {
           setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text)));
         }
         await sendCloudBridgeMessage(activeConvId, text, chatComposerAttachments);
+        if (appendedOptimisticBridgeMessage && isCloudBridgeConversationId(activeConvId)) {
+          setCloudBridgeState(null);
+        }
       } catch (error) {
         const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
-        if (shouldAppendOptimisticBridgeMessage(activeConvId)) {
+        if (appendedOptimisticBridgeMessage) {
           setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
         }
         setDesktopChatError(failureDetail);

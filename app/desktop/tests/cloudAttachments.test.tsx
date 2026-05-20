@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 
 import {
+  clearCloudAttachmentLocalPathCacheForTests,
   cloudMessageAttachmentToMessageAttachment,
   resolveCloudMessageAttachments,
   uploadCloudFiles,
   uploadComposerAttachments,
 } from '../src/features/cloud/cloudAttachments';
 import type { CloudAuthClient } from '../src/features/cloud/authClient';
+
+afterEach(() => {
+  clearCloudAttachmentLocalPathCacheForTests();
+});
 
 test('cloud attachment metadata maps to transcript attachment metadata without exposing object-store URLs', () => {
   assert.deepEqual(cloudMessageAttachmentToMessageAttachment({
@@ -176,6 +181,45 @@ test('uploadComposerAttachments seeds local cache so own sent image preview surv
   });
 
   assert.equal(result[0]?.localPath, '/tmp/local-screenshot.png');
+});
+
+test('cloudMessageAttachmentToMessageAttachment uses upload cache for immediate own-sent preview', async () => {
+  const client = {
+    async uploadAttachment(_token: string, blob: Blob) {
+      return {
+        attachmentId: 'att_immediate_preview',
+        objectKey: 'attachments/acct/att_immediate_preview',
+        sizeBytes: blob.size,
+        contentType: blob.type,
+        sha256Hex: null,
+        finalizedAt: '2026-05-20T00:00:00Z',
+      };
+    },
+  } as Pick<CloudAuthClient, 'uploadAttachment'>;
+
+  await uploadComposerAttachments({
+    token: 'kordi_cs_xyz',
+    client,
+    attachments: [{
+      id: 'local-1',
+      path: '/tmp/kordi/Screenshot 2026-05-20.png',
+      name: 'Screenshot 2026-05-20.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 138 * 1024,
+    }],
+    readAttachment: async () => [1, 2, 3],
+  });
+
+  const mapped = cloudMessageAttachmentToMessageAttachment({
+    attachmentId: 'att_immediate_preview',
+    name: 'Screenshot 2026-05-20.png',
+    kind: 'image',
+    mimeType: 'image/png',
+    sizeBytes: 138 * 1024,
+  });
+
+  assert.equal(mapped.localPath, '/tmp/kordi/Screenshot 2026-05-20.png');
 });
 
 test('uploadComposerAttachments reads staged local files and preserves display metadata', async () => {

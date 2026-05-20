@@ -237,6 +237,33 @@ test('renders initial generic working status as starting until a real tool phase
   assert.doesNotMatch(markup, /Working…/);
 });
 
+test('image-only human messages use compact frosted attachment padding', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '',
+    time: '21:09',
+    attachments: [{
+      kind: 'image',
+      name: 'Screenshot 2026-05-20.png',
+      previewUrl: 'https://files.test/preview.png',
+      mimeType: 'image/png',
+    }],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /max-w-\[31rem\]/);
+  assert.match(markup, /p-0/);
+  assert.match(markup, /bg-transparent/);
+  assert.match(markup, /shadow-none/);
+  assert.doesNotMatch(markup, /app-message-bubble-shape/);
+  assert.doesNotMatch(markup, /app-message-footer/);
+  assert.doesNotMatch(markup, /px-4 py-2\.5/);
+});
+
 test('renders failed own message delivery as a compact red exclamation', () => {
   const message: Message = {
     role: 'user',

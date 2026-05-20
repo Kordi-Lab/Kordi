@@ -10,7 +10,17 @@ export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
 const cloudAttachmentLocalPathCache = new Map<string, string>();
 
+export function cachedCloudAttachmentLocalPath(attachmentId: string | null | undefined) {
+  const id = attachmentId?.trim();
+  return id ? cloudAttachmentLocalPathCache.get(id) ?? null : null;
+}
+
+export function clearCloudAttachmentLocalPathCacheForTests() {
+  cloudAttachmentLocalPathCache.clear();
+}
+
 export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessageAttachment) {
+  const localPath = attachment.localPath ?? cachedCloudAttachmentLocalPath(attachment.attachmentId);
   return {
     kind: attachment.kind,
     name: attachment.name,
@@ -18,7 +28,7 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
     sizeBytes: attachment.sizeBytes ?? null,
     previewUrl: null,
     downloadUrl: null,
-    localPath: attachment.localPath ?? null,
+    localPath,
     attachmentId: attachment.attachmentId,
   };
 }
