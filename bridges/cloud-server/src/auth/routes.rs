@@ -2575,6 +2575,7 @@ const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 const CLOUD_AGENT_RUNTIME_STALE_SECONDS: i64 = 12;
+const CLOUD_AGENT_FALLBACK_GRACE_SECONDS: i64 = 45;
 
 fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
     let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
@@ -3296,8 +3297,8 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
         return;
     }
     let pool = state.db_pool();
-    let status: Option<(Option<String>,)> = match query_as(
-        "SELECT a.display_name \
+    let status: Option<(Option<String>, String)> = match query_as(
+        "SELECT a.display_name, s.reachability_state \
          FROM cloud_agent_runtime_status s \
          JOIN cloud_accounts a ON a.account_id = s.account_id \
          WHERE s.account_id = $1 \
@@ -3316,9 +3317,20 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
         Ok(value) => value,
         Err(_) => return,
     };
-    let Some((owner_display_name,)) = status else {
+    let Some((owner_display_name, _reachability_state)) = status else {
         return;
     };
+    let request_created_at = DateTime::parse_from_rfc3339(&request.created_at)
+        .map(|value| value.with_timezone(&Utc))
+        .ok();
+    let Some(request_created_at) = request_created_at else {
+        return;
+    };
+    if Utc::now().signed_duration_since(request_created_at)
+        < ChronoDuration::seconds(CLOUD_AGENT_FALLBACK_GRACE_SECONDS)
+    {
+        return;
+    }
     let peer_rows: Vec<(String, String)> = match query_as(
         "SELECT from_account_id, body FROM cloud_messages \
          WHERE ((from_account_id = $1 AND to_account_id = $2) \

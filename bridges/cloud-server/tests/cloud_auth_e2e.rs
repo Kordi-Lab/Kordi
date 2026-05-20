@@ -1036,6 +1036,38 @@ async fn offline_agent_fallback_inserts_direct_paused_response() {
     let sent = read_json(send_resp).await;
     let request_id = sent["message"]["messageId"].as_str().unwrap();
 
+    let fresh_messages_resp = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),
+            &sender_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(fresh_messages_resp.status(), StatusCode::OK);
+    let fresh_listed = read_json(fresh_messages_resp).await;
+    let fresh_response = fresh_listed["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| {
+            message["fromAccountId"] == owner_account_id
+                && message["body"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("kordi-cloud-agent-response:")
+        });
+    assert!(fresh_response.is_none(), "fresh offline requests should stay processing before fallback claims them");
+
+    sqlx_core::query::query(
+        "UPDATE cloud_messages SET created_at = $1 WHERE message_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::seconds(90)).to_rfc3339())
+    .bind(request_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
     let messages_resp = router
         .oneshot(get_with_token(
             &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),
@@ -1133,6 +1165,15 @@ async fn stale_online_agent_fallback_is_claimed_on_message_refresh() {
         .unwrap();
     assert_eq!(status_resp.status(), StatusCode::OK);
 
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_runtime_status SET updated_at = $1 WHERE account_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::seconds(30)).to_rfc3339())
+    .bind(&owner_account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
     let send_resp = router
         .clone()
         .oneshot(post_json_with_token(
@@ -1154,16 +1195,7 @@ async fn stale_online_agent_fallback_is_claimed_on_message_refresh() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(immediate_responses.0, 0, "fresh online runtime should not be claimed immediately");
-
-    sqlx_core::query::query(
-        "UPDATE cloud_agent_runtime_status SET updated_at = $1 WHERE account_id = $2",
-    )
-    .bind((chrono::Utc::now() - chrono::Duration::seconds(30)).to_rfc3339())
-    .bind(&owner_account_id)
-    .execute(&pool)
-    .await
-    .unwrap();
+    assert_eq!(immediate_responses.0, 0, "fresh requests to a stale-online runtime should not get an immediate hard-coded fallback");
 
     let pre_refresh_responses: (i64,) = sqlx_core::query_as::query_as(
         "SELECT COUNT(*) FROM cloud_messages WHERE from_account_id = $1 AND to_account_id = $2 AND body LIKE 'kordi-cloud-agent-response:%'",
@@ -1174,6 +1206,38 @@ async fn stale_online_agent_fallback_is_claimed_on_message_refresh() {
     .await
     .unwrap();
     assert_eq!(pre_refresh_responses.0, 0, "test must prove refresh performs the claim");
+
+    let fresh_messages_resp = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),
+            &sender_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(fresh_messages_resp.status(), StatusCode::OK);
+    let fresh_listed = read_json(fresh_messages_resp).await;
+    let fresh_response = fresh_listed["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| {
+            message["fromAccountId"] == owner_account_id
+                && message["body"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("kordi-cloud-agent-response:")
+        });
+    assert!(fresh_response.is_none(), "fresh requests to a stale-online runtime should stay pending so the real desktop agent can answer first");
+
+    sqlx_core::query::query(
+        "UPDATE cloud_messages SET created_at = $1 WHERE message_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::seconds(90)).to_rfc3339())
+    .bind(&request_id)
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let messages_resp = router
         .clone()
