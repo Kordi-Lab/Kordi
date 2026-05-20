@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { Download, ExternalLink, FileText, Image, ImageOff, LoaderCircle, X } from 'lucide-react';
+import { Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
@@ -270,16 +270,15 @@ function AttachmentFileCard({ attachment, index, isSending = false }: { attachme
   );
 }
 
-function BrokenImagePreview({ attachment }: { attachment: MessageAttachment }) {
+function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   return (
-    <div className="app-attachment-image-fallback flex h-full min-h-28 flex-col items-center justify-center gap-2 rounded-[15px] border border-dashed border-current/18 bg-current/[0.035] px-4 text-center">
-      <div className="app-attachment-image-fallback-icon flex h-9 w-9 items-center justify-center rounded-2xl border border-current/12 bg-current/[0.04]">
-        <ImageOff className="h-4 w-4" />
-      </div>
-      <div>
-        <div className="app-attachment-image-fallback-title text-[11px] font-medium">Preview unavailable</div>
-        <div className="app-attachment-image-fallback-name mt-0.5 max-w-[13rem] truncate text-[10px]">{displayAttachmentName(attachment.name, attachment.kind)}</div>
-      </div>
+    <div
+      data-attachment-image-loading="true"
+      aria-label="Loading attached image"
+      className={cn('relative flex h-full min-h-28 overflow-hidden rounded-[15px] bg-black/[0.055]', className)}
+    >
+      <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.10)_42%,transparent_74%)] opacity-70 motion-safe:animate-[app-attachment-shimmer_1.45s_ease-in-out_infinite]" aria-hidden="true" />
+      <span className="sr-only">Loading attached image</span>
     </div>
   );
 }
@@ -340,6 +339,7 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const previewUrl = attachmentPreviewUrl(attachment);
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl && !previewFailed);
@@ -349,31 +349,34 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
     <div
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
+      data-attachment-image-context-target="true"
       className={cn('app-attachment-image-card app-attachment-image-tile overflow-hidden bg-transparent', imageTileClass(index, totalCount))}
+      onContextMenu={(event) => onOpenContextMenu(attachment, event)}
     >
       {showImage && previewUrl ? (
         <button
           type="button"
           data-attachment-image-preview-trigger="true"
-          data-attachment-image-context-target="true"
           title={`${displayName} · Right-click for image actions`}
           onClick={() => onOpenPreview(attachment, previewUrl)}
-          onContextMenu={(event) => onOpenContextMenu(attachment, event)}
-          className="group block h-full w-full overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20"
+          className="group relative block h-full w-full overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20"
           aria-label={`Preview ${attachment.name || 'attached image'}`}
         >
+          {!imageLoaded ? <AttachmentImageLoadingSurface className="absolute inset-0" /> : null}
           <img
             src={previewUrl}
             alt={attachment.name || 'Attached image'}
             className={cn(
-              'block h-full w-full transition duration-150 group-hover:scale-[1.015]',
+              'relative block h-full w-full transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-hover:scale-[1.015]',
+              imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.985]',
               singleImage ? 'max-h-[320px] object-contain' : 'object-cover',
             )}
+            onLoad={() => setImageLoaded(true)}
             onError={() => setPreviewFailed(true)}
           />
         </button>
       ) : (
-        <BrokenImagePreview attachment={attachment} />
+        <AttachmentImageLoadingSurface />
       )}
     </div>
   );

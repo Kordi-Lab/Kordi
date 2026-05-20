@@ -126,6 +126,16 @@
   }
 }
 
+@keyframes app-attachment-shimmer {
+  from {
+    transform: translate3d(-115%, 0, 0);
+  }
+
+  to {
+    transform: translate3d(115%, 0, 0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-message-bubble {
     animation: none;

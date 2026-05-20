@@ -141,6 +141,34 @@ test('sending file attachments show the same progress indicator', () => {
   assert.match(markup, /animate-spin/);
 });
 
+test('remote images without a completed local preview render a quiet loading tile instead of unavailable chrome', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: {
+      ...imageMessage,
+      statusChips: [],
+      attachments: [{
+        ...imageMessage.attachments[0],
+        localPath: null,
+        previewUrl: null,
+      }],
+    },
+  }));
+
+  assert.match(markup, /data-attachment-image-loading="true"/);
+  assert.match(markup, /aria-label="Loading attached image"/);
+  assert.doesNotMatch(markup, /Preview unavailable/);
+  assert.doesNotMatch(markup, /app-attachment-image-fallback/);
+  assert.doesNotMatch(markup, />Screenshot 2026-05-20\.png</);
+});
+
+test('loaded image previews enter with smooth opacity and scale transition classes', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
+
+  assert.match(markup, /transition-\[opacity,transform\]/);
+  assert.match(markup, /duration-300/);
+  assert.match(markup, /ease-\[cubic-bezier\(0\.22,1,0\.36,1\)\]/);
+});
+
 test('attachment image lightbox renders as a centered modal with close affordance', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentImageLightbox, {
     attachment: imageMessage.attachments[0],
