@@ -112,6 +112,23 @@ pub fn is_cloud_agent_response_body(body: &str) -> bool {
     body.starts_with(CLOUD_AGENT_RESPONSE_PREFIX)
 }
 
+fn cloud_agent_response_request_id(body: &str) -> Option<String> {
+    let encoded = body.strip_prefix(CLOUD_AGENT_RESPONSE_PREFIX)?;
+    let decoded = base64::Engine::decode(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+        encoded,
+    )
+    .ok()?;
+    let envelope = serde_json::from_slice::<serde_json::Value>(&decoded).ok()?;
+    if envelope.get("kind").and_then(|kind| kind.as_str()) != Some("agent-response") {
+        return None;
+    }
+    envelope
+        .get("requestId")
+        .and_then(|request_id| request_id.as_str())
+        .map(str::to_string)
+}
+
 pub fn is_cloud_agent_control_body(body: &str) -> bool {
     body.starts_with(CLOUD_AGENT_RESPONSE_PREFIX)
         || body.starts_with(CLOUD_AGENT_CANCEL_PREFIX)
@@ -148,7 +165,9 @@ pub fn should_start_direct_fallback(candidate: &CloudAgentFallbackCandidate<'_>)
     }
     !candidate.peer_messages.iter().any(|message| {
         message.from_account_id == candidate.owner_account_id
-            && is_cloud_agent_response_body(message.body)
+            && cloud_agent_response_request_id(message.body)
+                .as_deref()
+                .is_some_and(|request_id| request_id == candidate.request_message_id)
     })
 }
 
@@ -205,18 +224,36 @@ mod tests {
 
     #[test]
     fn existing_agent_response_suppresses_duplicate_fallback() {
+        let response = encode_cloud_agent_response("msg_request", "already handled", "failed");
         let request = CloudAgentFallbackCandidate {
             owner_display_name: Some("Alice"),
             request_body: "@Alice Kordi summarize this",
             request_message_id: "msg_request",
             peer_messages: vec![CloudAgentPeerMessage {
                 from_account_id: "acct_alice",
-                body: "kordi-cloud-agent-response:abc",
+                body: &response,
             }],
             owner_account_id: "acct_alice",
         };
 
         assert!(!should_start_direct_fallback(&request));
+    }
+
+    #[test]
+    fn previous_agent_response_for_different_request_does_not_suppress_new_fallback() {
+        let old_response = encode_cloud_agent_response("msg_old_request", "old answer", "complete");
+        let request = CloudAgentFallbackCandidate {
+            owner_display_name: Some("Alice"),
+            request_body: "@Alice Kordi are you still there?",
+            request_message_id: "msg_new_request",
+            peer_messages: vec![CloudAgentPeerMessage {
+                from_account_id: "acct_alice",
+                body: &old_response,
+            }],
+            owner_account_id: "acct_alice",
+        };
+
+        assert!(should_start_direct_fallback(&request));
     }
 
     #[test]
