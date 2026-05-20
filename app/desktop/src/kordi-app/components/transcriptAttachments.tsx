@@ -400,7 +400,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
           <div
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
-            className="grid grid-cols-6 auto-rows-[7rem] gap-1 overflow-hidden rounded-[18px] border border-current/10 bg-current/10 p-1 shadow-[0_10px_28px_rgba(2,8,23,0.10)]"
+            className="grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] bg-white/[0.045] p-0.5 shadow-[0_14px_36px_rgba(2,8,23,0.14)] ring-1 ring-white/14 backdrop-blur-xl supports-[backdrop-filter]:bg-white/[0.03]"
           >
             {previewImageAttachments.map((attachment, index) => (
               <AttachmentImageCard

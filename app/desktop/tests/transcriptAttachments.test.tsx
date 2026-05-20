@@ -83,6 +83,9 @@ test('multiple image attachments render as a banner-free collage', () => {
   assert.match(markup, /data-attachment-image-collage="true"/);
   assert.match(markup, /data-attachment-image-count="3"/);
   assert.match(markup, /app-attachment-image-tile/);
+  assert.match(markup, /max-w-\[min\(100%,29rem\)\]/);
+  assert.match(markup, /backdrop-blur-xl/);
+  assert.doesNotMatch(markup, /bg-current\/10/);
   assert.doesNotMatch(markup, /61 KB/);
   assert.doesNotMatch(markup, /168 KB/);
   assert.doesNotMatch(markup, />Screenshot 2026-05-20 20\.54\.15\.png<\/span>/);
