@@ -112,21 +112,29 @@ pub fn is_cloud_agent_response_body(body: &str) -> bool {
     body.starts_with(CLOUD_AGENT_RESPONSE_PREFIX)
 }
 
-fn cloud_agent_response_request_id(body: &str) -> Option<String> {
-    let encoded = body.strip_prefix(CLOUD_AGENT_RESPONSE_PREFIX)?;
+fn cloud_agent_control_request_id(body: &str, prefix: &str, kind: &str) -> Option<String> {
+    let encoded = body.strip_prefix(prefix)?;
     let decoded = base64::Engine::decode(
         &base64::engine::general_purpose::URL_SAFE_NO_PAD,
         encoded,
     )
     .ok()?;
     let envelope = serde_json::from_slice::<serde_json::Value>(&decoded).ok()?;
-    if envelope.get("kind").and_then(|kind| kind.as_str()) != Some("agent-response") {
+    if envelope.get("kind").and_then(|value| value.as_str()) != Some(kind) {
         return None;
     }
     envelope
         .get("requestId")
         .and_then(|request_id| request_id.as_str())
         .map(str::to_string)
+}
+
+fn cloud_agent_response_request_id(body: &str) -> Option<String> {
+    cloud_agent_control_request_id(body, CLOUD_AGENT_RESPONSE_PREFIX, "agent-response")
+}
+
+fn cloud_agent_cancel_request_id(body: &str) -> Option<String> {
+    cloud_agent_control_request_id(body, CLOUD_AGENT_CANCEL_PREFIX, "agent-cancel")
 }
 
 pub fn is_cloud_agent_control_body(body: &str) -> bool {
@@ -164,10 +172,13 @@ pub fn should_start_direct_fallback(candidate: &CloudAgentFallbackCandidate<'_>)
         return false;
     }
     !candidate.peer_messages.iter().any(|message| {
-        message.from_account_id == candidate.owner_account_id
-            && cloud_agent_response_request_id(message.body)
-                .as_deref()
-                .is_some_and(|request_id| request_id == candidate.request_message_id)
+        cloud_agent_cancel_request_id(message.body)
+            .as_deref()
+            .is_some_and(|request_id| request_id == candidate.request_message_id)
+            || (message.from_account_id == candidate.owner_account_id
+                && cloud_agent_response_request_id(message.body)
+                    .as_deref()
+                    .is_some_and(|request_id| request_id == candidate.request_message_id))
     })
 }
 
@@ -254,6 +265,33 @@ mod tests {
         };
 
         assert!(should_start_direct_fallback(&request));
+    }
+
+    #[test]
+    fn cancelled_request_suppresses_late_fallback() {
+        let cancel = format!(
+            "{CLOUD_AGENT_CANCEL_PREFIX}{}",
+            base64::Engine::encode(
+                &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                serde_json::to_vec(&serde_json::json!({
+                    "kind": "agent-cancel",
+                    "requestId": "msg_cancelled_request",
+                }))
+                .unwrap(),
+            )
+        );
+        let request = CloudAgentFallbackCandidate {
+            owner_display_name: Some("Alice"),
+            request_body: "@Alice Kordi are you there?",
+            request_message_id: "msg_cancelled_request",
+            peer_messages: vec![CloudAgentPeerMessage {
+                from_account_id: "acct_sender",
+                body: &cancel,
+            }],
+            owner_account_id: "acct_alice",
+        };
+
+        assert!(!should_start_direct_fallback(&request));
     }
 
     #[test]
