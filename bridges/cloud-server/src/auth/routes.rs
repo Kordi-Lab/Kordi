@@ -1668,14 +1668,21 @@ async fn logout(
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
-    let _ = query("DELETE FROM cloud_agent_provider_auth_snapshots WHERE account_id = $1")
-        .bind(&session.account_id)
-        .execute(pool)
-        .await;
-    let _ = query("DELETE FROM cloud_agent_runtime_status WHERE account_id = $1")
-        .bind(&session.account_id)
-        .execute(pool)
-        .await;
+    let now = Utc::now().to_rfc3339();
+    let _ = query(
+        "INSERT INTO cloud_agent_runtime_status \
+         (account_id, reachability_state, local_execution_state, readonly_fallback_enabled, updated_at) \
+         VALUES ($1, 'offline', 'paused', TRUE, $2) \
+         ON CONFLICT (account_id) DO UPDATE SET \
+           reachability_state = 'offline', \
+           local_execution_state = 'paused', \
+           readonly_fallback_enabled = TRUE, \
+           updated_at = EXCLUDED.updated_at",
+    )
+    .bind(&session.account_id)
+    .bind(&now)
+    .execute(pool)
+    .await;
     let _ = write_audit(
         pool,
         Some(&session.account_id),

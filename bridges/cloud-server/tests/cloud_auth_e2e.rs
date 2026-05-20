@@ -1428,14 +1428,17 @@ async fn logout_invalidates_session_token() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(snapshot_rows.0, 0, "logout must remove server-side provider auth snapshots");
+    assert_eq!(snapshot_rows.0, 1, "logout preserves provider auth for server-side read-only replies");
 
-    let runtime_rows: (i64,) = sqlx_core::query_as::query_as(
-        "SELECT COUNT(*) FROM cloud_agent_runtime_status WHERE account_id = $1",
+    let runtime_row: (String, String, bool,) = sqlx_core::query_as::query_as(
+        "SELECT reachability_state, local_execution_state, readonly_fallback_enabled \
+         FROM cloud_agent_runtime_status WHERE account_id = $1",
     )
     .bind(&account_id)
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(runtime_rows.0, 0, "logout must remove server-side runtime reachability");
+    assert_eq!(runtime_row.0, "offline");
+    assert_eq!(runtime_row.1, "paused");
+    assert!(runtime_row.2, "logout keeps the cloud read-only fallback reachable");
 }
