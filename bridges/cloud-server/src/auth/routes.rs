@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use axum::extract::{ConnectInfo, Query, Request, State};
+use axum::extract::{ConnectInfo, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -351,6 +351,42 @@ pub struct MessageResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CloudAgentRuntimeStatusRequest {
+    #[serde(rename = "reachabilityState")]
+    pub reachability_state: String,
+    #[serde(rename = "localExecutionState")]
+    pub local_execution_state: String,
+    #[serde(rename = "readonlyFallbackEnabled")]
+    pub readonly_fallback_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizedCloudAgentRuntimeStatus {
+    pub reachability_state: String,
+    pub local_execution_state: String,
+    pub readonly_fallback_enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CloudAgentRuntimeStatusSummary {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(rename = "reachabilityState")]
+    pub reachability_state: String,
+    #[serde(rename = "localExecutionState")]
+    pub local_execution_state: String,
+    #[serde(rename = "readonlyFallbackEnabled")]
+    pub readonly_fallback_enabled: bool,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CloudAgentRuntimeStatusResponse {
+    pub status: CloudAgentRuntimeStatusSummary,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct MessagesQuery {
     #[serde(rename = "peerAccountId")]
     pub peer_account_id: String,
@@ -603,6 +639,14 @@ pub fn routes_with_config(
         )
         .route("/v1/cloud/messages", get(list_messages).post(send_message))
         .route("/v1/cloud/messages/read", post(mark_messages_read))
+        .route(
+            "/v1/cloud/agents/runtime-status",
+            put(upsert_cloud_agent_runtime_status),
+        )
+        .route(
+            "/v1/cloud/agents/:account_id/runtime-status",
+            get(get_cloud_agent_runtime_status),
+        )
         .route("/v1/cloud/sync", get(sync_cloud_events))
         .route(
             "/v1/cloud/sessions/visibility",
@@ -1048,13 +1092,12 @@ async fn update_me(
     }
     match account_response_row(state.db_pool(), &session.account_id).await {
         Ok(Some(account)) => {
-            let observers: Vec<(String,)> = query_as(
-                "SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1",
-            )
-            .bind(&session.account_id)
-            .fetch_all(state.db_pool())
-            .await
-            .unwrap_or_default();
+            let observers: Vec<(String,)> =
+                query_as("SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1")
+                    .bind(&session.account_id)
+                    .fetch_all(state.db_pool())
+                    .await
+                    .unwrap_or_default();
             let mut observer_account_ids: HashSet<String> = observers
                 .into_iter()
                 .map(|(observer_account_id,)| observer_account_id)
@@ -2590,6 +2633,37 @@ fn normalize_cloud_message_body(body: &str) -> Result<String, &'static str> {
         .collect::<String>())
 }
 
+pub fn normalize_cloud_agent_runtime_status(
+    req: CloudAgentRuntimeStatusRequest,
+) -> Result<NormalizedCloudAgentRuntimeStatus, &'static str> {
+    let reachability_state = req.reachability_state.trim().to_ascii_lowercase();
+    let local_execution_state = req.local_execution_state.trim().to_ascii_lowercase();
+    if !matches!(reachability_state.as_str(), "online" | "offline") {
+        return Err("invalid_reachability_state");
+    }
+    if !matches!(local_execution_state.as_str(), "available" | "paused") {
+        return Err("invalid_local_execution_state");
+    }
+    if reachability_state == "offline" && local_execution_state == "available" {
+        return Err("offline_local_execution");
+    }
+    Ok(NormalizedCloudAgentRuntimeStatus {
+        reachability_state,
+        local_execution_state,
+        readonly_fallback_enabled: req.readonly_fallback_enabled,
+    })
+}
+
+fn default_cloud_agent_runtime_status(account_id: &str) -> CloudAgentRuntimeStatusSummary {
+    CloudAgentRuntimeStatusSummary {
+        account_id: account_id.to_string(),
+        reachability_state: "offline".to_string(),
+        local_execution_state: "paused".to_string(),
+        readonly_fallback_enabled: false,
+        updated_at: None,
+    }
+}
+
 fn cloud_message_session_id(
     requested_session_id: Option<&str>,
     from_account_id: &str,
@@ -2635,6 +2709,37 @@ fn cloud_message_effective_created_at(
 
 fn cloud_message_requires_accepted_contact(body: &str) -> bool {
     !body.trim_start().starts_with(CLOUD_GROUP_CONTROL_PREFIX)
+}
+
+#[cfg(test)]
+mod cloud_agent_runtime_status_tests {
+    use super::{normalize_cloud_agent_runtime_status, CloudAgentRuntimeStatusRequest};
+
+    #[test]
+    fn runtime_status_preserves_offline_readonly_fallback() {
+        let normalized = normalize_cloud_agent_runtime_status(CloudAgentRuntimeStatusRequest {
+            reachability_state: "offline".to_string(),
+            local_execution_state: "paused".to_string(),
+            readonly_fallback_enabled: true,
+        })
+        .expect("offline fallback status should be accepted");
+
+        assert_eq!(normalized.reachability_state, "offline");
+        assert_eq!(normalized.local_execution_state, "paused");
+        assert!(normalized.readonly_fallback_enabled);
+    }
+
+    #[test]
+    fn runtime_status_rejects_local_execution_when_offline() {
+        let error = normalize_cloud_agent_runtime_status(CloudAgentRuntimeStatusRequest {
+            reachability_state: "offline".to_string(),
+            local_execution_state: "available".to_string(),
+            readonly_fallback_enabled: true,
+        })
+        .expect_err("offline local execution must be rejected");
+
+        assert_eq!(error, "offline_local_execution");
+    }
 }
 
 #[cfg(test)]
@@ -2898,6 +3003,105 @@ async fn sync_cloud_events(
         events,
     })
     .into_response()
+}
+
+async fn upsert_cloud_agent_runtime_status(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(req): Json<CloudAgentRuntimeStatusRequest>,
+) -> Response {
+    let normalized = match normalize_cloud_agent_runtime_status(req) {
+        Ok(value) => value,
+        Err(code) => {
+            return err("invalid_runtime_status", code, StatusCode::BAD_REQUEST);
+        }
+    };
+    let now = Utc::now().to_rfc3339();
+    let pool = state.db_pool();
+    if query(
+        "INSERT INTO cloud_agent_runtime_status \
+         (account_id, reachability_state, local_execution_state, readonly_fallback_enabled, updated_at) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (account_id) DO UPDATE SET \
+           reachability_state = EXCLUDED.reachability_state, \
+           local_execution_state = EXCLUDED.local_execution_state, \
+           readonly_fallback_enabled = EXCLUDED.readonly_fallback_enabled, \
+           updated_at = EXCLUDED.updated_at",
+    )
+    .bind(&session.account_id)
+    .bind(&normalized.reachability_state)
+    .bind(&normalized.local_execution_state)
+    .bind(normalized.readonly_fallback_enabled)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not update agent runtime status.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    Json(CloudAgentRuntimeStatusResponse {
+        status: CloudAgentRuntimeStatusSummary {
+            account_id: session.account_id,
+            reachability_state: normalized.reachability_state,
+            local_execution_state: normalized.local_execution_state,
+            readonly_fallback_enabled: normalized.readonly_fallback_enabled,
+            updated_at: Some(now),
+        },
+    })
+    .into_response()
+}
+
+async fn get_cloud_agent_runtime_status(
+    State(state): State<Arc<ServerState>>,
+    Extension(_session): Extension<CloudSession>,
+    Path(account_id): Path<String>,
+) -> Response {
+    let account_id = account_id.trim().to_string();
+    if !is_cloud_account_id(&account_id) {
+        return err(
+            "invalid_account_id",
+            "Invalid account id.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let pool = state.db_pool();
+    let row: Option<(String, String, bool, String)> = match query_as(
+        "SELECT reachability_state, local_execution_state, readonly_fallback_enabled, updated_at \
+         FROM cloud_agent_runtime_status WHERE account_id = $1",
+    )
+    .bind(&account_id)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not load agent runtime status.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let status = row
+        .map(
+            |(reachability_state, local_execution_state, readonly_fallback_enabled, updated_at)| {
+                CloudAgentRuntimeStatusSummary {
+                    account_id: account_id.clone(),
+                    reachability_state,
+                    local_execution_state,
+                    readonly_fallback_enabled,
+                    updated_at: Some(updated_at),
+                }
+            },
+        )
+        .unwrap_or_else(|| default_cloud_agent_runtime_status(&account_id));
+
+    Json(CloudAgentRuntimeStatusResponse { status }).into_response()
 }
 
 /// `POST /v1/cloud/messages` — send a 1:1 message to a peer the caller

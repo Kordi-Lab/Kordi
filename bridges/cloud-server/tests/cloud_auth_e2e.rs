@@ -110,6 +110,16 @@ fn put_with_token(uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn put_json_with_token(uri: &str, token: &str, body: serde_json::Value) -> Request<Body> {
+    Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
 fn delete_with_token(uri: &str, token: &str) -> Request<Body> {
     Request::builder()
         .method("DELETE")
@@ -896,6 +906,61 @@ async fn cloud_sync_returns_read_receipt_events() {
         read_event["payload"]["messageIds"].as_array().unwrap(),
         &vec![json!(message_id)]
     );
+}
+
+#[tokio::test]
+async fn cloud_agent_runtime_status_records_offline_readonly_fallback() {
+    let Some(pool) = try_pool().await else { return };
+    let email = unique_email("agent-runtime-status");
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let router = fast_router(state);
+
+    let signup_resp = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(signup_resp.status(), StatusCode::CREATED);
+    let signup = read_json(signup_resp).await;
+    let token = signup["session"]["token"].as_str().unwrap().to_string();
+    let account_id = signup["account"]["accountId"].as_str().unwrap().to_string();
+
+    let update_resp = router
+        .clone()
+        .oneshot(put_json_with_token(
+            "/v1/cloud/agents/runtime-status",
+            &token,
+            json!({
+                "reachabilityState": "offline",
+                "localExecutionState": "paused",
+                "readonlyFallbackEnabled": true,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(update_resp.status(), StatusCode::OK);
+    let updated = read_json(update_resp).await;
+    assert_eq!(updated["status"]["accountId"], account_id);
+    assert_eq!(updated["status"]["reachabilityState"], "offline");
+    assert_eq!(updated["status"]["localExecutionState"], "paused");
+    assert_eq!(updated["status"]["readonlyFallbackEnabled"], true);
+
+    let load_resp = router
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/agents/{account_id}/runtime-status"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(load_resp.status(), StatusCode::OK);
+    let loaded = read_json(load_resp).await;
+    assert_eq!(loaded["status"]["accountId"], account_id);
+    assert_eq!(loaded["status"]["reachabilityState"], "offline");
+    assert_eq!(loaded["status"]["localExecutionState"], "paused");
+    assert_eq!(loaded["status"]["readonlyFallbackEnabled"], true);
 }
 
 #[tokio::test]
