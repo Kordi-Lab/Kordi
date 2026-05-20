@@ -52,6 +52,14 @@ test('image attachments render as clickable lightweight previews without heavy f
   assert.match(markup, /Screenshot 2026-05-20\.png/);
 });
 
+test('image attachment actions are available from context menu instead of sticky under-image buttons', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
+
+  assert.match(markup, /data-attachment-image-context-target="true"/);
+  assert.match(markup, /title="Right-click for image actions"/);
+  assert.doesNotMatch(markup, /aria-label="Download Screenshot 2026-05-20\.png"/);
+});
+
 test('attachment image lightbox renders as a centered modal with close affordance', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentImageLightbox, {
     attachment: imageMessage.attachments[0],
@@ -61,6 +69,8 @@ test('attachment image lightbox renders as a centered modal with close affordanc
 
   assert.match(markup, /role="dialog"/);
   assert.match(markup, /data-attachment-image-lightbox="true"/);
+  assert.match(markup, /data-attachment-image-lightbox-panel="true"/);
+  assert.match(markup, /items-center justify-center/);
   assert.match(markup, /Preview image/);
   assert.match(markup, /Close image preview/);
 });

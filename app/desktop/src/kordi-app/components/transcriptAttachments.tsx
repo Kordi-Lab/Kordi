@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { Download, ExternalLink, FileText, Image, ImageOff, X } from 'lucide-react';
 
@@ -80,7 +81,7 @@ function formatAttachmentSize(sizeBytes?: number | null) {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
+function AttachmentActions({ attachment, variant = 'icon' }: { attachment: MessageAttachment; variant?: 'icon' | 'menu' }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +128,38 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
     }
   }
 
+  if (variant === 'menu') {
+    const menuButtonClass = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[12px] text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-55';
+    return (
+      <div className="flex min-w-[170px] flex-col gap-1">
+        <button
+          type="button"
+          onClick={() => void handleDownload()}
+          disabled={isDownloading}
+          className={menuButtonClass}
+          aria-label={`Download ${attachment.name}`}
+        >
+          <Download className="h-3.5 w-3.5" />
+          <span>{downloadedPath ? 'Download again' : 'Download'}</span>
+        </button>
+        {canOpen ? (
+          <button
+            type="button"
+            onClick={() => void handleOpen()}
+            className={menuButtonClass}
+            aria-label={`Open ${attachment.name} with local app`}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span>Open with local app</span>
+          </button>
+        ) : null}
+        {isDownloading ? <span className="px-3 pb-1 text-[10px] text-slate-400">Downloading…</span> : null}
+        {downloadedPath && !isDownloading ? <span className="px-3 pb-1 text-[10px] text-slate-400">Downloaded</span> : null}
+        {error ? <span className="max-w-[190px] px-3 pb-1 text-[10px] text-rose-300">{error}</span> : null}
+      </div>
+    );
+  }
+
   const actionButtonClass = 'h-7 w-7 rounded-full border-white/10 bg-white/5 p-0 text-slate-200 hover:bg-white/10';
 
   return (
@@ -162,6 +195,34 @@ function AttachmentActions({ attachment }: { attachment: MessageAttachment }) {
       {downloadedPath && !isDownloading ? <span className="text-[10px] text-slate-400">Downloaded</span> : null}
       {error ? <span className="max-w-[160px] text-right text-[10px] text-rose-300">{error}</span> : null}
     </div>
+  );
+}
+
+function PortalLayer({ children }: { children: ReactNode }) {
+  if (typeof document === 'undefined' || !document.body) return <>{children}</>;
+  return createPortal(children, document.body);
+}
+
+type AttachmentContextMenuState = {
+  attachment: MessageAttachment;
+  x: number;
+  y: number;
+};
+
+function AttachmentContextMenu({ state, onClose }: { state: AttachmentContextMenuState; onClose: () => void }) {
+  return (
+    <PortalLayer>
+      <div className="fixed inset-0 z-[230]" onMouseDown={onClose} onContextMenu={(event) => event.preventDefault()}>
+        <div
+          data-attachment-image-context-menu="true"
+          className="absolute rounded-[14px] border border-white/12 bg-slate-950/94 p-1.5 shadow-[0_18px_55px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+          style={{ left: state.x, top: state.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <AttachmentActions attachment={state.attachment} variant="menu" />
+        </div>
+      </div>
+    </PortalLayer>
   );
 }
 
@@ -202,10 +263,11 @@ function BrokenImagePreview({ attachment }: { attachment: MessageAttachment }) {
   );
 }
 
-export function AttachmentImageLightbox({ attachment, previewUrl, onClose }: {
+export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onContextMenu }: {
   attachment: MessageAttachment;
   previewUrl: string;
   onClose: () => void;
+  onContextMenu?: (event: MouseEvent) => void;
 }) {
   return (
     <div
@@ -218,7 +280,7 @@ export function AttachmentImageLightbox({ attachment, previewUrl, onClose }: {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/14 bg-slate-950/92 shadow-[0_30px_90px_rgba(0,0,0,0.48)]">
+      <div data-attachment-image-lightbox-panel="true" className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/14 bg-slate-950/92 shadow-[0_30px_90px_rgba(0,0,0,0.48)]">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-slate-100">
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium">{displayAttachmentName(attachment.name, attachment.kind)}</div>
@@ -238,20 +300,20 @@ export function AttachmentImageLightbox({ attachment, previewUrl, onClose }: {
             src={previewUrl}
             alt={attachment.name || 'Attached image'}
             className="max-h-[min(78vh,900px)] max-w-full rounded-[16px] object-contain shadow-2xl shadow-black/30"
+            title="Right-click for image actions"
+            onContextMenu={onContextMenu}
           />
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-white/10 px-4 py-3 text-slate-200">
-          <AttachmentActions attachment={attachment} />
         </div>
       </div>
     </div>
   );
 }
 
-function AttachmentImageCard({ attachment, index, onOpenPreview }: {
+function AttachmentImageCard({ attachment, index, onOpenPreview, onOpenContextMenu }: {
   attachment: MessageAttachment;
   index: number;
   onOpenPreview: (attachment: MessageAttachment, previewUrl: string) => void;
+  onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
   const previewUrl = attachmentPreviewUrl(attachment);
@@ -270,7 +332,10 @@ function AttachmentImageCard({ attachment, index, onOpenPreview }: {
         <button
           type="button"
           data-attachment-image-preview-trigger="true"
+          data-attachment-image-context-target="true"
+          title="Right-click for image actions"
           onClick={() => onOpenPreview(attachment, previewUrl)}
+          onContextMenu={(event) => onOpenContextMenu(attachment, event)}
           className="group block w-full overflow-hidden rounded-[14px] bg-black/5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70"
           aria-label={`Preview ${attachment.name || 'attached image'}`}
         >
@@ -288,7 +353,6 @@ function AttachmentImageCard({ attachment, index, onOpenPreview }: {
         <span className="min-w-0 truncate">{displayName}</span>
         <div className="flex shrink-0 items-center gap-2">
           {metadataLabel ? <span className="whitespace-nowrap uppercase tracking-[0.12em]">{metadataLabel}</span> : null}
-          <AttachmentActions attachment={attachment} />
         </div>
       </div>
     </div>
@@ -300,15 +364,24 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
   const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
   const [lightboxAttachment, setLightboxAttachment] = useState<{ attachment: MessageAttachment; previewUrl: string } | null>(null);
+  const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
+
+  function openContextMenu(attachment: MessageAttachment, event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenuState({ attachment, x: event.clientX, y: event.clientY });
+  }
 
   useEffect(() => {
-    if (!lightboxAttachment) return;
+    if (!lightboxAttachment && !contextMenuState) return;
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setLightboxAttachment(null);
+      if (event.key !== 'Escape') return;
+      setLightboxAttachment(null);
+      setContextMenuState(null);
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lightboxAttachment]);
+  }, [contextMenuState, lightboxAttachment]);
 
   if (attachments.length === 0) {
     return null;
@@ -325,6 +398,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
                 attachment={attachment}
                 index={index}
                 onOpenPreview={(nextAttachment, previewUrl) => setLightboxAttachment({ attachment: nextAttachment, previewUrl })}
+                onOpenContextMenu={openContextMenu}
               />
             ))}
           </div>
@@ -338,11 +412,17 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
         ) : null}
       </div>
       {lightboxAttachment ? (
-        <AttachmentImageLightbox
-          attachment={lightboxAttachment.attachment}
-          previewUrl={lightboxAttachment.previewUrl}
-          onClose={() => setLightboxAttachment(null)}
-        />
+        <PortalLayer>
+          <AttachmentImageLightbox
+            attachment={lightboxAttachment.attachment}
+            previewUrl={lightboxAttachment.previewUrl}
+            onClose={() => setLightboxAttachment(null)}
+            onContextMenu={(event) => openContextMenu(lightboxAttachment.attachment, event)}
+          />
+        </PortalLayer>
+      ) : null}
+      {contextMenuState ? (
+        <AttachmentContextMenu state={contextMenuState} onClose={() => setContextMenuState(null)} />
       ) : null}
     </>
   );
