@@ -284,7 +284,6 @@ export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onCon
         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-slate-100">
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium">{displayAttachmentName(attachment.name, attachment.kind)}</div>
-            <div className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">Image preview</div>
           </div>
           <button
             type="button"

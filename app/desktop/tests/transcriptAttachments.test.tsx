@@ -109,5 +109,6 @@ test('attachment image lightbox renders as a centered modal with close affordanc
   assert.match(markup, /data-attachment-image-lightbox-panel="true"/);
   assert.match(markup, /items-center justify-center/);
   assert.match(markup, /Preview image/);
+  assert.doesNotMatch(markup, />Image preview</);
   assert.match(markup, /Close image preview/);
 });
