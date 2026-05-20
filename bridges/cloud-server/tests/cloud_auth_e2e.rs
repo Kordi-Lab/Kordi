@@ -1335,7 +1335,7 @@ async fn cloud_agent_provider_auth_snapshot_is_owner_scoped_and_does_not_return_
 async fn logout_invalidates_session_token() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("logout");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = fast_router(state);
 
     let signup_resp = router
@@ -1346,10 +1346,67 @@ async fn logout_invalidates_session_token() {
         ))
         .await
         .unwrap();
-    let token = read_json(signup_resp).await["session"]["token"]
+    let signup = read_json(signup_resp).await;
+    let token = signup["session"]["token"]
         .as_str()
         .unwrap()
         .to_string();
+    let account_id = signup["account"]["accountId"].as_str().unwrap().to_string();
+
+    let runtime_resp = router
+        .clone()
+        .oneshot(put_json_with_token(
+            "/v1/cloud/agents/runtime-status",
+            &token,
+            json!({
+                "reachabilityState": "online",
+                "localExecutionState": "available",
+                "readonlyFallbackEnabled": true,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(runtime_resp.status(), StatusCode::OK);
+
+    let snapshot_resp = router
+        .clone()
+        .oneshot(put_json_with_token(
+            "/v1/cloud/agents/provider-auth-snapshot",
+            &token,
+            json!({
+                "formatVersion": 2,
+                "authJson": {
+                    "version": 2,
+                    "profiles": {
+                        "openai": [{ "id": "profile-openai", "type": "api_key", "key": "sk-test" }]
+                    },
+                    "active_auth_profiles": { "openai": "profile-openai" }
+                },
+                "activeProvider": "openai",
+                "activeProfileId": "profile-openai",
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(snapshot_resp.status(), StatusCode::OK);
+
+    let pre_logout_snapshot_rows: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_agent_provider_auth_snapshots WHERE account_id = $1",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(pre_logout_snapshot_rows.0, 1);
+
+    let pre_logout_runtime_rows: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_agent_runtime_status WHERE account_id = $1",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(pre_logout_runtime_rows.0, 1);
 
     let logout_resp = router
         .clone()
@@ -1363,4 +1420,22 @@ async fn logout_invalidates_session_token() {
         .await
         .unwrap();
     assert_eq!(me_after.status(), StatusCode::UNAUTHORIZED);
+
+    let snapshot_rows: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_agent_provider_auth_snapshots WHERE account_id = $1",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(snapshot_rows.0, 0, "logout must remove server-side provider auth snapshots");
+
+    let runtime_rows: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_agent_runtime_status WHERE account_id = $1",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(runtime_rows.0, 0, "logout must remove server-side runtime reachability");
 }

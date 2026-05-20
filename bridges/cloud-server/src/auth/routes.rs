@@ -1668,6 +1668,14 @@ async fn logout(
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
+    let _ = query("DELETE FROM cloud_agent_provider_auth_snapshots WHERE account_id = $1")
+        .bind(&session.account_id)
+        .execute(pool)
+        .await;
+    let _ = query("DELETE FROM cloud_agent_runtime_status WHERE account_id = $1")
+        .bind(&session.account_id)
+        .execute(pool)
+        .await;
     let _ = write_audit(
         pool,
         Some(&session.account_id),
