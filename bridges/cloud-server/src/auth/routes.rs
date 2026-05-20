@@ -33,6 +33,7 @@ use crate::auth::password::{
     PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
+use crate::cloud_readonly_agent::generate_readonly_cloud_agent_response;
 use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
     SESSION_TOKEN_PREFIX,
@@ -3363,10 +3364,41 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
         return;
     }
 
+    let generated_response = match query_as::<_, (Value, Option<String>, Option<String>)>(
+        "SELECT auth_json, active_provider, active_profile_id \
+         FROM cloud_agent_provider_auth_snapshots \
+         WHERE account_id = $1",
+    )
+    .bind(&request.to_account_id)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(Some((auth_json, active_provider, active_profile_id))) => {
+            let client = reqwest::Client::new();
+            generate_readonly_cloud_agent_response(
+                &client,
+                &auth_json,
+                active_provider.as_deref(),
+                active_profile_id.as_deref(),
+                &request.body,
+                owner_display_name.as_deref(),
+            )
+            .await
+        }
+        _ => None,
+    };
+
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
     let created_at = Utc::now().to_rfc3339();
-    let response_text = local_execution_paused_message(owner_display_name.as_deref());
-    let body = encode_cloud_agent_response(&request.message_id, &response_text, "failed");
+    let (response_text, delivery_state) = generated_response
+        .map(|text| (text, "complete"))
+        .unwrap_or_else(|| {
+            (
+                local_execution_paused_message(owner_display_name.as_deref()),
+                "failed",
+            )
+        });
+    let body = encode_cloud_agent_response(&request.message_id, &response_text, delivery_state);
     if query(
         "INSERT INTO cloud_messages \
          (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \

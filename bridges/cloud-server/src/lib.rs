@@ -7,6 +7,7 @@
 
 pub mod attachments;
 pub mod auth;
+pub mod cloud_readonly_agent;
 pub mod events;
 pub mod messages;
 pub mod offline_agent;
