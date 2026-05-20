@@ -37,6 +37,10 @@ use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
     SESSION_TOKEN_PREFIX,
 };
+use crate::offline_agent::{
+    encode_cloud_agent_response, local_execution_paused_message, should_start_direct_fallback,
+    CloudAgentFallbackCandidate, CloudAgentPeerMessage,
+};
 use crate::server::ServerState;
 
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
@@ -2708,7 +2712,9 @@ fn default_cloud_agent_runtime_status(account_id: &str) -> CloudAgentRuntimeStat
 }
 
 fn clean_optional_text(value: Option<String>) -> Option<String> {
-    value.map(|raw| raw.trim().to_string()).filter(|value| !value.is_empty())
+    value
+        .map(|raw| raw.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 pub fn normalize_cloud_agent_provider_auth_snapshot(
@@ -2811,7 +2817,9 @@ mod cloud_agent_runtime_status_tests {
 
 #[cfg(test)]
 mod cloud_agent_provider_auth_snapshot_tests {
-    use super::{normalize_cloud_agent_provider_auth_snapshot, CloudAgentProviderAuthSnapshotRequest};
+    use super::{
+        normalize_cloud_agent_provider_auth_snapshot, CloudAgentProviderAuthSnapshotRequest,
+    };
     use serde_json::json;
 
     #[test]
@@ -2835,21 +2843,26 @@ mod cloud_agent_provider_auth_snapshot_tests {
 
         assert_eq!(normalized.format_version, 2);
         assert_eq!(normalized.active_provider.as_deref(), Some("openai"));
-        assert_eq!(normalized.active_profile_id.as_deref(), Some("profile-openai"));
-        assert_eq!(normalized.auth_json["profiles"]["openai"][0]["key"], "sk-test");
+        assert_eq!(
+            normalized.active_profile_id.as_deref(),
+            Some("profile-openai")
+        );
+        assert_eq!(
+            normalized.auth_json["profiles"]["openai"][0]["key"],
+            "sk-test"
+        );
     }
 
     #[test]
     fn provider_auth_snapshot_rejects_empty_auth_json() {
-        let error = normalize_cloud_agent_provider_auth_snapshot(
-            CloudAgentProviderAuthSnapshotRequest {
+        let error =
+            normalize_cloud_agent_provider_auth_snapshot(CloudAgentProviderAuthSnapshotRequest {
                 format_version: 2,
                 auth_json: json!({}),
                 active_provider: Some("openai".to_string()),
                 active_profile_id: None,
-            },
-        )
-        .expect_err("empty auth json must be rejected");
+            })
+            .expect_err("empty auth json must be rejected");
 
         assert_eq!(error, "empty_auth_json");
     }
@@ -3274,6 +3287,143 @@ async fn upsert_cloud_agent_provider_auth_snapshot(
     .into_response()
 }
 
+async fn maybe_insert_offline_direct_agent_fallback_response(
+    state: Arc<ServerState>,
+    request: &MessageSummary,
+) {
+    if request.from_account_id == request.to_account_id {
+        return;
+    }
+    let pool = state.db_pool();
+    let status: Option<(Option<String>,)> = match query_as(
+        "SELECT a.display_name \
+         FROM cloud_agent_runtime_status s \
+         JOIN cloud_accounts a ON a.account_id = s.account_id \
+         WHERE s.account_id = $1 \
+           AND s.reachability_state = 'offline' \
+           AND s.local_execution_state = 'paused' \
+           AND s.readonly_fallback_enabled = TRUE",
+    )
+    .bind(&request.to_account_id)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let Some((owner_display_name,)) = status else {
+        return;
+    };
+    let peer_rows: Vec<(String, String)> = match query_as(
+        "SELECT from_account_id, body FROM cloud_messages \
+         WHERE ((from_account_id = $1 AND to_account_id = $2) \
+             OR (from_account_id = $2 AND to_account_id = $1)) \
+         ORDER BY created_at ASC",
+    )
+    .bind(&request.from_account_id)
+    .bind(&request.to_account_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let peer_messages = peer_rows
+        .iter()
+        .map(|(from_account_id, body)| CloudAgentPeerMessage {
+            from_account_id,
+            body,
+        })
+        .collect::<Vec<_>>();
+    let candidate = CloudAgentFallbackCandidate {
+        owner_display_name: owner_display_name.as_deref(),
+        owner_account_id: &request.to_account_id,
+        request_body: &request.body,
+        request_message_id: &request.message_id,
+        peer_messages,
+    };
+    if !should_start_direct_fallback(&candidate) {
+        return;
+    }
+
+    let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+    let created_at = Utc::now().to_rfc3339();
+    let response_text = local_execution_paused_message(owner_display_name.as_deref());
+    let body = encode_cloud_agent_response(&request.message_id, &response_text, "failed");
+    if query(
+        "INSERT INTO cloud_messages \
+         (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6)",
+    )
+    .bind(&message_id)
+    .bind(&request.to_account_id)
+    .bind(&request.from_account_id)
+    .bind(&body)
+    .bind(&created_at)
+    .bind(request.session_id.as_deref())
+    .execute(pool)
+    .await
+    .is_err()
+    {
+        return;
+    }
+
+    let owner_summary = MessageSummary {
+        message_id: message_id.clone(),
+        from_account_id: request.to_account_id.clone(),
+        to_account_id: request.from_account_id.clone(),
+        body: body.clone(),
+        session_id: request.session_id.clone(),
+        created_at: created_at.clone(),
+        delivered_at: Some(created_at.clone()),
+        read_at: None,
+        direction: "outgoing".to_string(),
+        attachments: Vec::new(),
+    };
+    let recipient_summary = MessageSummary {
+        direction: "incoming".to_string(),
+        ..owner_summary.clone()
+    };
+    let _ = append_cloud_sync_event(
+        pool,
+        &request.to_account_id,
+        "message.upsert",
+        Some(&request.from_account_id),
+        Some(&message_id),
+        message_sync_payload(&owner_summary),
+        &created_at,
+    )
+    .await;
+    let _ = append_cloud_sync_event(
+        pool,
+        &request.from_account_id,
+        "message.upsert",
+        Some(&request.to_account_id),
+        Some(&message_id),
+        message_sync_payload(&recipient_summary),
+        &created_at,
+    )
+    .await;
+
+    let events = state.events().clone();
+    let from = request.to_account_id.clone();
+    let to = request.from_account_id.clone();
+    let session_id = request.session_id.clone();
+    tokio::spawn(async move {
+        events
+            .publish_message_arrived(
+                &message_id,
+                &from,
+                &to,
+                &body,
+                &created_at,
+                session_id.as_deref(),
+                serde_json::json!([]),
+            )
+            .await;
+    });
+}
+
 /// `POST /v1/cloud/messages` — send a 1:1 message to a peer the caller
 /// already has in their contacts. Body is plain UTF-8 for now; E2EE
 /// is a later session (it'll migrate writes to `server_messages`).
@@ -3582,6 +3732,8 @@ async fn send_message(
             );
         }
     }
+
+    maybe_insert_offline_direct_agent_fallback_response(state.clone(), &summary).await;
 
     (
         StatusCode::CREATED,

@@ -94,6 +94,20 @@ pub fn message_mentions_named_agent(text: &str, owner_name: &str) -> bool {
     })
 }
 
+pub fn encode_cloud_agent_response(request_id: &str, text: &str, delivery_state: &str) -> String {
+    let envelope = serde_json::json!({
+        "kind": "agent-response",
+        "requestId": request_id,
+        "text": text,
+        "deliveryState": delivery_state,
+    });
+    let encoded = base64::Engine::encode(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+        serde_json::to_vec(&envelope).unwrap_or_default(),
+    );
+    format!("{CLOUD_AGENT_RESPONSE_PREFIX}{encoded}")
+}
+
 pub fn is_cloud_agent_response_body(body: &str) -> bool {
     body.starts_with(CLOUD_AGENT_RESPONSE_PREFIX)
 }
@@ -151,6 +165,15 @@ pub fn local_execution_paused_message(owner_display_name: Option<&str>) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine as _;
+
+    fn decode_cloud_agent_response_for_tests(body: &str) -> serde_json::Value {
+        let encoded = body.trim_start_matches(CLOUD_AGENT_RESPONSE_PREFIX);
+        let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(encoded)
+            .unwrap();
+        serde_json::from_slice(&decoded).unwrap()
+    }
 
     #[test]
     fn named_owner_mention_targets_remote_agent() {
@@ -194,6 +217,18 @@ mod tests {
         };
 
         assert!(!should_start_direct_fallback(&request));
+    }
+
+    #[test]
+    fn encodes_agent_response_envelope_for_fallback_reply() {
+        let body =
+            encode_cloud_agent_response("msg_request", "local execution is paused", "failed");
+        assert!(body.starts_with("kordi-cloud-agent-response:"));
+        let envelope = decode_cloud_agent_response_for_tests(&body);
+        assert_eq!(envelope["kind"], "agent-response");
+        assert_eq!(envelope["requestId"], "msg_request");
+        assert_eq!(envelope["text"], "local execution is paused");
+        assert_eq!(envelope["deliveryState"], "failed");
     }
 
     #[test]
