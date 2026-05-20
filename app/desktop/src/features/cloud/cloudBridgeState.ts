@@ -524,15 +524,7 @@ export function buildCloudBridgeConversation({
     .filter((value): value is string => Boolean(value)));
   const answeredRequestIds = new Set(responseRequestIds);
   for (const requestId of cancelledRequestIds) answeredRequestIds.add(requestId);
-  const timedOutAgentRequestIds = new Set(agentRequests
-    .filter((message) => {
-      if (answeredRequestIds.has(message.messageId)) return false;
-      const targetAccountId = requestTargetAccountIds.get(message.messageId);
-      if (!targetAccountId || targetAccountId === account.accountId) return false;
-      const createdAtMs = Date.parse(message.createdAt);
-      return Number.isFinite(createdAtMs) && Date.now() - createdAtMs >= CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS;
-    })
-    .map((message) => message.messageId));
+  const timedOutAgentRequestIds = new Set<string>();
   const pendingAgentRequests = agentRequests.filter((message) => {
     if (answeredRequestIds.has(message.messageId) || timedOutAgentRequestIds.has(message.messageId)) return false;
     if (requestTargetAccountIds.get(message.messageId) !== account.accountId) return true;

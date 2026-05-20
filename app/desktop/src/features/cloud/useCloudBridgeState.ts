@@ -121,7 +121,7 @@ export const CLOUD_AGENT_TURN_POLL_MS = 500;
 export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 5_000;
-export const CLOUD_AGENT_RUNTIME_HEARTBEAT_MS = 20_000;
+export const CLOUD_AGENT_RUNTIME_HEARTBEAT_MS = 5_000;
 
 export function cloudBootstrapPeerIds(
   account: CloudAccount | null | undefined,
@@ -1554,6 +1554,7 @@ export function useCloudBridgeState({
   useEffect(() => {
     if (!account) return;
     let cancelled = false;
+    let lastOnlineStatusAt = 0;
     const publishOnlineStatus = async () => {
       const session = await loadSession();
       if (!session?.token || cancelled) return;
@@ -1562,20 +1563,55 @@ export function useCloudBridgeState({
         localExecutionState: 'available',
         readonlyFallbackEnabled: true,
       });
+      lastOnlineStatusAt = Date.now();
+    };
+    const publishOfflineStatus = async () => {
+      const session = await loadSession();
+      if (!session?.token) return;
+      await client.syncCloudAgentRuntimeStatus(session.token, {
+        reachabilityState: 'offline',
+        localExecutionState: 'paused',
+        readonlyFallbackEnabled: true,
+      });
+    };
+    const publishOnlineStatusIfVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (Date.now() - lastOnlineStatusAt < 1_000) return;
+      void publishOnlineStatus().catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-agent-runtime] status heartbeat failed', error);
+      });
     };
     void publishOnlineStatus().catch((error) => {
       // eslint-disable-next-line no-console
       console.warn('[cloud-agent-runtime] status heartbeat failed', error);
     });
-    const interval = window.setInterval(() => {
-      void publishOnlineStatus().catch((error) => {
+    const interval = window.setInterval(publishOnlineStatusIfVisible, CLOUD_AGENT_RUNTIME_HEARTBEAT_MS);
+    const handleFocus = () => publishOnlineStatusIfVisible();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') publishOnlineStatusIfVisible();
+    };
+    const handlePageHide = () => {
+      void publishOfflineStatus().catch((error) => {
         // eslint-disable-next-line no-console
-        console.warn('[cloud-agent-runtime] status heartbeat failed', error);
+        console.warn('[cloud-agent-runtime] offline status failed', error);
       });
-    }, CLOUD_AGENT_RUNTIME_HEARTBEAT_MS);
+    };
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      void publishOfflineStatus().catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-agent-runtime] offline status failed', error);
+      });
     };
   }, [account, client]);
 

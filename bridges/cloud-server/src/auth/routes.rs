@@ -2574,7 +2574,7 @@ const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
-const CLOUD_AGENT_RUNTIME_STALE_SECONDS: i64 = 45;
+const CLOUD_AGENT_RUNTIME_STALE_SECONDS: i64 = 12;
 
 fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
     let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
