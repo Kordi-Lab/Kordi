@@ -9,8 +9,9 @@ pub mod attachments;
 pub mod auth;
 pub mod events;
 pub mod messages;
+pub mod offline_agent;
 pub mod pg;
 pub mod server;
 pub mod ws;
 
-pub use server::{router, run, ServerState};
+pub use server::{ServerState, router, run};
