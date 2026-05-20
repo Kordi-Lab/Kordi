@@ -280,29 +280,22 @@ export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onCon
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div data-attachment-image-lightbox-panel="true" className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/14 bg-slate-950/92 shadow-[0_30px_90px_rgba(0,0,0,0.48)]">
-        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-slate-100">
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-medium">{displayAttachmentName(attachment.name, attachment.kind)}</div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/8 text-slate-200 transition hover:bg-white/14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
-            aria-label="Close image preview"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center bg-black/24 p-3">
-          <img
-            src={previewUrl}
-            alt={attachment.name || 'Attached image'}
-            className="max-h-[min(78vh,900px)] max-w-full rounded-[16px] object-contain shadow-2xl shadow-black/30"
-            title="Right-click for image actions"
-            onContextMenu={onContextMenu}
-          />
-        </div>
+      <div data-attachment-image-lightbox-panel="true" className="relative flex max-h-full w-full max-w-5xl items-center justify-center overflow-hidden rounded-[24px] bg-transparent">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/45 text-white/90 shadow-lg shadow-black/25 backdrop-blur-md transition hover:bg-black/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+          aria-label="Close image preview"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <img
+          src={previewUrl}
+          alt={attachment.name || 'Attached image'}
+          className="max-h-[min(84vh,940px)] max-w-full rounded-[18px] object-contain shadow-2xl shadow-black/35"
+          title="Right-click for image actions"
+          onContextMenu={onContextMenu}
+        />
       </div>
     </div>
   );
@@ -335,7 +328,7 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
     <div
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
-      className={cn('app-attachment-image-card app-attachment-image-tile overflow-hidden bg-black/5', imageTileClass(index, totalCount))}
+      className={cn('app-attachment-image-card app-attachment-image-tile overflow-hidden bg-transparent', imageTileClass(index, totalCount))}
     >
       {showImage && previewUrl ? (
         <button
@@ -400,7 +393,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
           <div
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
-            className="grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] bg-white/[0.045] p-0.5 shadow-[0_14px_36px_rgba(2,8,23,0.14)] ring-1 ring-white/14 backdrop-blur-xl supports-[backdrop-filter]:bg-white/[0.03]"
+            className="grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0 shadow-[0_10px_26px_rgba(2,8,23,0.12)]"
           >
             {previewImageAttachments.map((attachment, index) => (
               <AttachmentImageCard

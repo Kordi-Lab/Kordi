@@ -84,7 +84,9 @@ test('multiple image attachments render as a banner-free collage', () => {
   assert.match(markup, /data-attachment-image-count="3"/);
   assert.match(markup, /app-attachment-image-tile/);
   assert.match(markup, /max-w-\[min\(100%,29rem\)\]/);
-  assert.match(markup, /backdrop-blur-xl/);
+  assert.doesNotMatch(markup, /backdrop-blur-xl/);
+  assert.doesNotMatch(markup, /ring-white/);
+  assert.doesNotMatch(markup, /bg-white\//);
   assert.doesNotMatch(markup, /bg-current\/10/);
   assert.doesNotMatch(markup, /61 KB/);
   assert.doesNotMatch(markup, /168 KB/);
@@ -113,5 +115,7 @@ test('attachment image lightbox renders as a centered modal with close affordanc
   assert.match(markup, /items-center justify-center/);
   assert.match(markup, /Preview image/);
   assert.doesNotMatch(markup, />Image preview</);
+  assert.doesNotMatch(markup, />Screenshot 2026-05-20\.png</);
+  assert.doesNotMatch(markup, /border-b border-white\/10/);
   assert.match(markup, /Close image preview/);
 });

@@ -256,7 +256,11 @@ test('image-only human messages use compact frosted attachment padding', () => {
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /max-w-\[31rem\]/);
-  assert.match(markup, /p-1\.5/);
+  assert.match(markup, /p-0/);
+  assert.match(markup, /bg-transparent/);
+  assert.match(markup, /shadow-none/);
+  assert.doesNotMatch(markup, /app-message-bubble-shape/);
+  assert.doesNotMatch(markup, /app-message-footer/);
   assert.doesNotMatch(markup, /px-4 py-2\.5/);
 });
 
