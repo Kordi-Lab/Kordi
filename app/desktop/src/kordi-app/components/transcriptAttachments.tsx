@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { Download, ExternalLink, FileText, Image, ImageOff } from 'lucide-react';
+import { Download, ExternalLink, FileText, Image, ImageOff, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
@@ -190,42 +190,106 @@ function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachme
 
 function BrokenImagePreview({ attachment }: { attachment: MessageAttachment }) {
   return (
-    <div className="app-attachment-image-fallback flex h-36 flex-col items-center justify-center gap-2 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.16),rgba(15,23,42,0.58))] px-4 text-center">
-      <div className="app-attachment-image-fallback-icon flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/6 shadow-inner shadow-black/20">
-        <ImageOff className="h-5 w-5" />
+    <div className="app-attachment-image-fallback flex h-28 flex-col items-center justify-center gap-2 rounded-[15px] border border-dashed border-current/18 bg-current/[0.035] px-4 text-center">
+      <div className="app-attachment-image-fallback-icon flex h-9 w-9 items-center justify-center rounded-2xl border border-current/12 bg-current/[0.04]">
+        <ImageOff className="h-4 w-4" />
       </div>
       <div>
-        <div className="app-attachment-image-fallback-title text-[12px] font-medium">Preview unavailable</div>
-        <div className="app-attachment-image-fallback-name mt-0.5 max-w-[14rem] truncate text-[10px]">{displayAttachmentName(attachment.name, attachment.kind)}</div>
+        <div className="app-attachment-image-fallback-title text-[11px] font-medium">Preview unavailable</div>
+        <div className="app-attachment-image-fallback-name mt-0.5 max-w-[13rem] truncate text-[10px]">{displayAttachmentName(attachment.name, attachment.kind)}</div>
       </div>
     </div>
   );
 }
 
-function AttachmentImageCard({ attachment, index }: { attachment: MessageAttachment; index: number }) {
+export function AttachmentImageLightbox({ attachment, previewUrl, onClose }: {
+  attachment: MessageAttachment;
+  previewUrl: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      data-attachment-image-lightbox="true"
+      className="fixed inset-0 z-[220] flex items-center justify-center bg-black/72 px-5 py-6 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Preview image"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/14 bg-slate-950/92 shadow-[0_30px_90px_rgba(0,0,0,0.48)]">
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-slate-100">
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-medium">{displayAttachmentName(attachment.name, attachment.kind)}</div>
+            <div className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">Image preview</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/8 text-slate-200 transition hover:bg-white/14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+            aria-label="Close image preview"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-black/24 p-3">
+          <img
+            src={previewUrl}
+            alt={attachment.name || 'Attached image'}
+            className="max-h-[min(78vh,900px)] max-w-full rounded-[16px] object-contain shadow-2xl shadow-black/30"
+          />
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-white/10 px-4 py-3 text-slate-200">
+          <AttachmentActions attachment={attachment} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttachmentImageCard({ attachment, index, onOpenPreview }: {
+  attachment: MessageAttachment;
+  index: number;
+  onOpenPreview: (attachment: MessageAttachment, previewUrl: string) => void;
+}) {
   const [previewFailed, setPreviewFailed] = useState(false);
   const previewUrl = attachmentPreviewUrl(attachment);
   const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
   const metadataLabel = [sizeLabel, attachment.formatLabel].filter(Boolean).join(' • ');
+  const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl && !previewFailed);
 
   return (
-    <div key={`${attachment.name}-${index}`} className="app-attachment-image-card overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
-      {showImage ? (
-        <img
-          src={previewUrl}
-          alt={attachment.name || 'Attached image'}
-          className="block max-h-[320px] w-full object-cover"
-          onError={() => setPreviewFailed(true)}
-        />
+    <div
+      key={`${attachment.name}-${index}`}
+      data-attachment-image-card="true"
+      className="app-attachment-image-card overflow-hidden rounded-[18px] border border-current/10 bg-current/[0.025] p-1.5 shadow-[0_10px_28px_rgba(2,8,23,0.10)]"
+    >
+      {showImage && previewUrl ? (
+        <button
+          type="button"
+          data-attachment-image-preview-trigger="true"
+          onClick={() => onOpenPreview(attachment, previewUrl)}
+          className="group block w-full overflow-hidden rounded-[14px] bg-black/5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70"
+          aria-label={`Preview ${attachment.name || 'attached image'}`}
+        >
+          <img
+            src={previewUrl}
+            alt={attachment.name || 'Attached image'}
+            className="block max-h-[320px] w-full object-contain transition duration-150 group-hover:scale-[1.01]"
+            onError={() => setPreviewFailed(true)}
+          />
+        </button>
       ) : (
         <BrokenImagePreview attachment={attachment} />
       )}
-      <div className="app-attachment-image-footer flex items-center justify-between gap-2 px-3 py-2 text-[11px]">
-        <span className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.14em]">
-          {metadataLabel || 'IMAGE'}
-        </span>
-        <AttachmentActions attachment={attachment} />
+      <div className="mt-1.5 flex items-center justify-between gap-2 px-1 text-[10px] text-current/62">
+        <span className="min-w-0 truncate">{displayName}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          {metadataLabel ? <span className="whitespace-nowrap uppercase tracking-[0.12em]">{metadataLabel}</span> : null}
+          <AttachmentActions attachment={attachment} />
+        </div>
       </div>
     </div>
   );
@@ -235,27 +299,51 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
   const attachments = msg.attachments ?? [];
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
   const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
+  const [lightboxAttachment, setLightboxAttachment] = useState<{ attachment: MessageAttachment; previewUrl: string } | null>(null);
+
+  useEffect(() => {
+    if (!lightboxAttachment) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setLightboxAttachment(null);
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxAttachment]);
 
   if (attachments.length === 0) {
     return null;
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {previewImageAttachments.length > 0 ? (
-        <div className={cn('grid gap-2', previewImageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
-          {previewImageAttachments.map((attachment, index) => (
-            <AttachmentImageCard key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`} attachment={attachment} index={index} />
-          ))}
-        </div>
+    <>
+      <div className="flex flex-col gap-2">
+        {previewImageAttachments.length > 0 ? (
+          <div className={cn('grid gap-2', previewImageAttachments.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
+            {previewImageAttachments.map((attachment, index) => (
+              <AttachmentImageCard
+                key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
+                attachment={attachment}
+                index={index}
+                onOpenPreview={(nextAttachment, previewUrl) => setLightboxAttachment({ attachment: nextAttachment, previewUrl })}
+              />
+            ))}
+          </div>
+        ) : null}
+        {downloadableAttachments.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {downloadableAttachments.map((attachment, index) => (
+              <AttachmentFileCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {lightboxAttachment ? (
+        <AttachmentImageLightbox
+          attachment={lightboxAttachment.attachment}
+          previewUrl={lightboxAttachment.previewUrl}
+          onClose={() => setLightboxAttachment(null)}
+        />
       ) : null}
-      {downloadableAttachments.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          {downloadableAttachments.map((attachment, index) => (
-            <AttachmentFileCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} />
-          ))}
-        </div>
-      ) : null}
-    </div>
+    </>
   );
 }
