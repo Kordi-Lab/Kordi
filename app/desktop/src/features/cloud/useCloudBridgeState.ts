@@ -121,6 +121,7 @@ export const CLOUD_AGENT_TURN_POLL_MS = 500;
 export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 5_000;
+export const CLOUD_AGENT_RUNTIME_HEARTBEAT_MS = 20_000;
 
 export function cloudBootstrapPeerIds(
   account: CloudAccount | null | undefined,
@@ -1549,6 +1550,34 @@ export function useCloudBridgeState({
       cancelledRef.current = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!account) return;
+    let cancelled = false;
+    const publishOnlineStatus = async () => {
+      const session = await loadSession();
+      if (!session?.token || cancelled) return;
+      await client.syncCloudAgentRuntimeStatus(session.token, {
+        reachabilityState: 'online',
+        localExecutionState: 'available',
+        readonlyFallbackEnabled: true,
+      });
+    };
+    void publishOnlineStatus().catch((error) => {
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-agent-runtime] status heartbeat failed', error);
+    });
+    const interval = window.setInterval(() => {
+      void publishOnlineStatus().catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-agent-runtime] status heartbeat failed', error);
+      });
+    }, CLOUD_AGENT_RUNTIME_HEARTBEAT_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [account, client]);
 
   useEffect(() => {
     messagesByPeerRef.current = messagesByPeer;

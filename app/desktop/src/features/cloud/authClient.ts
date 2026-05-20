@@ -217,6 +217,23 @@ export type CloudSessionVisibility = {
   deletedSessionIds: string[];
 };
 
+export type CloudAgentRuntimeReachabilityState = 'online' | 'offline';
+export type CloudAgentRuntimeLocalExecutionState = 'available' | 'paused';
+
+export type CloudAgentRuntimeStatusInput = {
+  reachabilityState: CloudAgentRuntimeReachabilityState;
+  localExecutionState: CloudAgentRuntimeLocalExecutionState;
+  readonlyFallbackEnabled: boolean;
+};
+
+export type CloudAgentRuntimeStatusSummary = {
+  accountId: string;
+  reachabilityState: CloudAgentRuntimeReachabilityState;
+  localExecutionState: CloudAgentRuntimeLocalExecutionState;
+  readonlyFallbackEnabled: boolean;
+  updatedAt: string | null;
+};
+
 export type CloudAgentProviderAuthSnapshotInput = {
   formatVersion: number;
   authJson: unknown;
@@ -553,6 +570,24 @@ export class CloudAuthClient {
     );
     if (!response) throw new Error('Empty response from cloud server.');
     return { ...response.message, attachments: response.message.attachments ?? [] };
+  }
+
+  async syncCloudAgentRuntimeStatus(token: string, input: CloudAgentRuntimeStatusInput): Promise<CloudAgentRuntimeStatusSummary> {
+    const response = await this.send<{ status: CloudAgentRuntimeStatusSummary }>(
+      '/v1/cloud/agents/runtime-status',
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          reachabilityState: input.reachabilityState,
+          localExecutionState: input.localExecutionState,
+          readonlyFallbackEnabled: input.readonlyFallbackEnabled,
+        }),
+      },
+      'Could not sync agent runtime status.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.status;
   }
 
   async syncCloudAgentProviderAuthSnapshot(token: string, input: CloudAgentProviderAuthSnapshotInput): Promise<CloudAgentProviderAuthSnapshotSummary> {

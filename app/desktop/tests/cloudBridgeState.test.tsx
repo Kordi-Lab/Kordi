@@ -76,6 +76,15 @@ test('cloud agent runtime routes fall back to current composer route for unconfi
   });
 });
 
+test('cloud bridge state publishes cloud agent runtime heartbeat with fallback enabled', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /CLOUD_AGENT_RUNTIME_HEARTBEAT_MS/);
+  assert.match(source, /syncCloudAgentRuntimeStatus\(session\.token, \{[\s\S]*reachabilityState: 'online'/);
+  assert.match(source, /localExecutionState: 'available'/);
+  assert.match(source, /readonlyFallbackEnabled: true/);
+});
+
 test('cloud bridge state does not replay stale localStorage messages before server sync settles', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 

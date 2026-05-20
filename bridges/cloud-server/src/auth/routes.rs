@@ -2574,6 +2574,7 @@ const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
+const CLOUD_AGENT_RUNTIME_STALE_SECONDS: i64 = 45;
 
 fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
     let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
@@ -3300,11 +3301,15 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
          FROM cloud_agent_runtime_status s \
          JOIN cloud_accounts a ON a.account_id = s.account_id \
          WHERE s.account_id = $1 \
-           AND s.reachability_state = 'offline' \
-           AND s.local_execution_state = 'paused' \
-           AND s.readonly_fallback_enabled = TRUE",
+           AND s.readonly_fallback_enabled = TRUE \
+           AND ( \
+             (s.reachability_state = 'offline' AND s.local_execution_state = 'paused') \
+             OR (s.reachability_state = 'online' \
+                 AND s.updated_at::timestamptz < now() - ($2::TEXT || ' seconds')::interval) \
+           )",
     )
     .bind(&request.to_account_id)
+    .bind(CLOUD_AGENT_RUNTIME_STALE_SECONDS)
     .fetch_optional(pool)
     .await
     {
