@@ -1075,6 +1075,141 @@ async fn offline_agent_fallback_inserts_direct_paused_response() {
 }
 
 #[tokio::test]
+async fn stale_online_agent_fallback_is_claimed_on_message_refresh() {
+    let Some(pool) = try_pool().await else { return };
+    let owner_email = unique_email("stale-agent-owner");
+    let sender_email = unique_email("stale-agent-sender");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+
+    let owner_signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&owner_email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(owner_signup.status(), StatusCode::CREATED);
+    let owner = read_json(owner_signup).await;
+    let owner_token = owner["session"]["token"].as_str().unwrap().to_string();
+    let owner_account_id = owner["account"]["accountId"].as_str().unwrap().to_string();
+
+    let sender_signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&sender_email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(sender_signup.status(), StatusCode::CREATED);
+    let sender = read_json(sender_signup).await;
+    let sender_token = sender["session"]["token"].as_str().unwrap().to_string();
+    let sender_account_id = sender["account"]["accountId"].as_str().unwrap().to_string();
+
+    sqlx_core::query::query(
+        "INSERT INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES ($1, $2, $3), ($2, $1, $3)",
+    )
+    .bind(&owner_account_id)
+    .bind(&sender_account_id)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let status_resp = router
+        .clone()
+        .oneshot(put_json_with_token(
+            "/v1/cloud/agents/runtime-status",
+            &owner_token,
+            json!({
+                "reachabilityState": "online",
+                "localExecutionState": "available",
+                "readonlyFallbackEnabled": true,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(status_resp.status(), StatusCode::OK);
+
+    let send_resp = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &sender_token,
+            json!({ "peerAccountId": owner_account_id, "body": "Can @E2E Kordi answer after going stale?" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(send_resp.status(), StatusCode::CREATED);
+    let sent = read_json(send_resp).await;
+    let request_id = sent["message"]["messageId"].as_str().unwrap().to_string();
+
+    let immediate_responses: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_messages WHERE from_account_id = $1 AND to_account_id = $2 AND body LIKE 'kordi-cloud-agent-response:%'",
+    )
+    .bind(&owner_account_id)
+    .bind(&sender_account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(immediate_responses.0, 0, "fresh online runtime should not be claimed immediately");
+
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_runtime_status SET updated_at = $1 WHERE account_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::seconds(30)).to_rfc3339())
+    .bind(&owner_account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let pre_refresh_responses: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*) FROM cloud_messages WHERE from_account_id = $1 AND to_account_id = $2 AND body LIKE 'kordi-cloud-agent-response:%'",
+    )
+    .bind(&owner_account_id)
+    .bind(&sender_account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(pre_refresh_responses.0, 0, "test must prove refresh performs the claim");
+
+    let messages_resp = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),
+            &sender_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(messages_resp.status(), StatusCode::OK);
+    let listed = read_json(messages_resp).await;
+    let response = listed["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| {
+            message["fromAccountId"] == owner_account_id
+                && message["body"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("kordi-cloud-agent-response:")
+        })
+        .expect("refresh should claim stale online fallback request");
+    let encoded = response["body"]
+        .as_str()
+        .unwrap()
+        .trim_start_matches("kordi-cloud-agent-response:");
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(encoded)
+        .unwrap();
+    let envelope: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+    assert_eq!(envelope["requestId"], request_id);
+    assert_eq!(envelope["deliveryState"], "failed");
+}
+
+#[tokio::test]
 async fn cloud_agent_provider_auth_snapshot_is_owner_scoped_and_does_not_return_secret_json() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("agent-auth-snapshot");

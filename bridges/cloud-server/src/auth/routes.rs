@@ -3429,6 +3429,55 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
     });
 }
 
+async fn claim_stale_offline_direct_agent_fallback_responses_for_conversation(
+    state: Arc<ServerState>,
+    account_id: &str,
+    peer_account_id: &str,
+) {
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+    )> = match query_as(
+        "SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, delivered_at, read_at \
+         FROM cloud_messages \
+         WHERE ((from_account_id = $1 AND to_account_id = $2) \
+             OR (from_account_id = $2 AND to_account_id = $1)) \
+         ORDER BY created_at ASC \
+         LIMIT $3",
+    )
+    .bind(account_id)
+    .bind(peer_account_id)
+    .bind(MESSAGE_LIST_MAX_LIMIT)
+    .fetch_all(state.db_pool())
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return,
+    };
+
+    for (message_id, from_account_id, to_account_id, body, session_id, created_at, delivered_at, read_at) in rows {
+        let summary = MessageSummary {
+            message_id,
+            from_account_id,
+            to_account_id,
+            body,
+            session_id,
+            created_at,
+            delivered_at,
+            read_at,
+            direction: String::new(),
+            attachments: Vec::new(),
+        };
+        maybe_insert_offline_direct_agent_fallback_response(state.clone(), &summary).await;
+    }
+}
+
 /// `POST /v1/cloud/messages` — send a 1:1 message to a peer the caller
 /// already has in their contacts. Body is plain UTF-8 for now; E2EE
 /// is a later session (it'll migrate writes to `server_messages`).
@@ -3849,6 +3898,13 @@ async fn list_messages(
         .clamp(1, MESSAGE_LIST_MAX_LIMIT);
 
     let pool = state.db_pool();
+
+    claim_stale_offline_direct_agent_fallback_responses_for_conversation(
+        state.clone(),
+        &session.account_id,
+        &peer,
+    )
+    .await;
 
     let rows: Vec<(
         String,
