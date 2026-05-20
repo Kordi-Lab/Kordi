@@ -3388,6 +3388,38 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
         _ => None,
     };
 
+    let peer_rows: Vec<(String, String)> = match query_as(
+        "SELECT from_account_id, body FROM cloud_messages \
+         WHERE ((from_account_id = $1 AND to_account_id = $2) \
+             OR (from_account_id = $2 AND to_account_id = $1)) \
+         ORDER BY created_at ASC",
+    )
+    .bind(&request.from_account_id)
+    .bind(&request.to_account_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let peer_messages = peer_rows
+        .iter()
+        .map(|(from_account_id, body)| CloudAgentPeerMessage {
+            from_account_id,
+            body,
+        })
+        .collect::<Vec<_>>();
+    let candidate = CloudAgentFallbackCandidate {
+        owner_display_name: owner_display_name.as_deref(),
+        owner_account_id: &request.to_account_id,
+        request_body: &request.body,
+        request_message_id: &request.message_id,
+        peer_messages,
+    };
+    if !should_start_direct_fallback(&candidate) {
+        return;
+    }
+
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
     let created_at = Utc::now().to_rfc3339();
     let (response_text, delivery_state) = generated_response
