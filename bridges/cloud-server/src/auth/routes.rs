@@ -3364,13 +3364,29 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
         return;
     }
 
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(_) => return,
+    };
+    let lock_acquired: (bool,) = match query_as("SELECT pg_try_advisory_xact_lock(hashtext($1))")
+        .bind(&request.message_id)
+        .fetch_one(&mut *tx)
+        .await
+    {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    if !lock_acquired.0 {
+        return;
+    }
+
     let generated_response = match query_as::<_, (Value, Option<String>, Option<String>)>(
         "SELECT auth_json, active_provider, active_profile_id \
          FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1",
     )
     .bind(&request.to_account_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     {
         Ok(Some((auth_json, active_provider, active_profile_id))) => {
@@ -3396,7 +3412,7 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
     )
     .bind(&request.from_account_id)
     .bind(&request.to_account_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await
     {
         Ok(value) => value,
@@ -3442,10 +3458,13 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
     .bind(&body)
     .bind(&created_at)
     .bind(request.session_id.as_deref())
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .is_err()
     {
+        return;
+    }
+    if tx.commit().await.is_err() {
         return;
     }
 
