@@ -964,6 +964,64 @@ async fn cloud_agent_runtime_status_records_offline_readonly_fallback() {
 }
 
 #[tokio::test]
+async fn cloud_agent_provider_auth_snapshot_is_owner_scoped_and_does_not_return_secret_json() {
+    let Some(pool) = try_pool().await else { return };
+    let email = unique_email("agent-auth-snapshot");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+
+    let signup_resp = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(signup_resp.status(), StatusCode::CREATED);
+    let signup = read_json(signup_resp).await;
+    let token = signup["session"]["token"].as_str().unwrap().to_string();
+    let account_id = signup["account"]["accountId"].as_str().unwrap().to_string();
+
+    let snapshot_resp = router
+        .clone()
+        .oneshot(put_json_with_token(
+            "/v1/cloud/agents/provider-auth-snapshot",
+            &token,
+            json!({
+                "formatVersion": 2,
+                "authJson": {
+                    "version": 2,
+                    "profiles": {
+                        "openai": [{ "id": "profile-openai", "type": "api_key", "key": "sk-test" }]
+                    },
+                    "active_auth_profiles": { "openai": "profile-openai" },
+                    "active_auth_methods": { "openai": "api_key" }
+                },
+                "activeProvider": "openai",
+                "activeProfileId": "profile-openai",
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(snapshot_resp.status(), StatusCode::OK);
+    let snapshot = read_json(snapshot_resp).await;
+    assert_eq!(snapshot["snapshot"]["accountId"], account_id);
+    assert_eq!(snapshot["snapshot"]["formatVersion"], 2);
+    assert_eq!(snapshot["snapshot"]["activeProvider"], "openai");
+    assert!(snapshot["snapshot"].get("authJson").is_none());
+
+    let stored: (serde_json::Value,) = sqlx_core::query_as::query_as(
+        "SELECT auth_json FROM cloud_agent_provider_auth_snapshots WHERE account_id = $1",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored.0["profiles"]["openai"][0]["key"], "sk-test");
+}
+
+#[tokio::test]
 async fn logout_invalidates_session_token() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("logout");

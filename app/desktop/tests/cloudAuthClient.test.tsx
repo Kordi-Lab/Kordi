@@ -227,6 +227,45 @@ test('sendMessage posts attachment metadata and parses returned attachments', as
   assert.equal(sent.attachments?.[0]?.downloadUrl, 'https://files.test/att_1');
 });
 
+test('syncCloudAgentProviderAuthSnapshot uploads local auth JSON without returning secrets', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    snapshot: {
+      accountId: 'acct_me',
+      formatVersion: 2,
+      activeProvider: 'openai',
+      activeProfileId: 'profile-openai',
+      updatedAt: '2026-05-20T00:00:00Z',
+    },
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const result = await client.syncCloudAgentProviderAuthSnapshot('kordi_cs_xyz', {
+    formatVersion: 2,
+    authJson: {
+      version: 2,
+      profiles: { openai: [{ id: 'profile-openai', type: 'api_key', key: 'sk-test' }] },
+    },
+    activeProvider: 'openai',
+    activeProfileId: 'profile-openai',
+  });
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/agents/provider-auth-snapshot');
+  assert.equal(calls[0].init?.method, 'PUT');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+  assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
+    formatVersion: 2,
+    authJson: {
+      version: 2,
+      profiles: { openai: [{ id: 'profile-openai', type: 'api_key', key: 'sk-test' }] },
+    },
+    activeProvider: 'openai',
+    activeProfileId: 'profile-openai',
+  });
+  assert.equal(result.activeProvider, 'openai');
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'authJson'), false);
+});
+
 test('listSessionVisibility loads hidden and deleted cloud session ids', async () => {
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
     hiddenSessionIds: ['session:hidden'],

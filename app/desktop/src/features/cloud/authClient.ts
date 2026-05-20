@@ -217,6 +217,21 @@ export type CloudSessionVisibility = {
   deletedSessionIds: string[];
 };
 
+export type CloudAgentProviderAuthSnapshotInput = {
+  formatVersion: number;
+  authJson: unknown;
+  activeProvider?: string | null;
+  activeProfileId?: string | null;
+};
+
+export type CloudAgentProviderAuthSnapshotSummary = {
+  accountId: string;
+  formatVersion: number;
+  activeProvider: string | null;
+  activeProfileId: string | null;
+  updatedAt: string;
+};
+
 export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
   participantAccountIds: string[];
   clientUpdatedAt?: string | null;
@@ -538,6 +553,25 @@ export class CloudAuthClient {
     );
     if (!response) throw new Error('Empty response from cloud server.');
     return { ...response.message, attachments: response.message.attachments ?? [] };
+  }
+
+  async syncCloudAgentProviderAuthSnapshot(token: string, input: CloudAgentProviderAuthSnapshotInput): Promise<CloudAgentProviderAuthSnapshotSummary> {
+    const response = await this.send<{ snapshot: CloudAgentProviderAuthSnapshotSummary }>(
+      '/v1/cloud/agents/provider-auth-snapshot',
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          formatVersion: input.formatVersion,
+          authJson: input.authJson,
+          ...(input.activeProvider?.trim() ? { activeProvider: input.activeProvider.trim() } : {}),
+          ...(input.activeProfileId?.trim() ? { activeProfileId: input.activeProfileId.trim() } : {}),
+        }),
+      },
+      'Could not sync provider authentication.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return response.snapshot;
   }
 
   async initiateAttachment(token: string): Promise<CloudAttachmentInitiateResult> {

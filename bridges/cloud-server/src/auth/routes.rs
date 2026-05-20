@@ -387,6 +387,45 @@ pub struct CloudAgentRuntimeStatusResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CloudAgentProviderAuthSnapshotRequest {
+    #[serde(rename = "formatVersion")]
+    pub format_version: i32,
+    #[serde(rename = "authJson")]
+    pub auth_json: Value,
+    #[serde(rename = "activeProvider")]
+    pub active_provider: Option<String>,
+    #[serde(rename = "activeProfileId")]
+    pub active_profile_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NormalizedCloudAgentProviderAuthSnapshot {
+    pub format_version: i32,
+    pub auth_json: Value,
+    pub active_provider: Option<String>,
+    pub active_profile_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CloudAgentProviderAuthSnapshotSummary {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(rename = "formatVersion")]
+    pub format_version: i32,
+    #[serde(rename = "activeProvider")]
+    pub active_provider: Option<String>,
+    #[serde(rename = "activeProfileId")]
+    pub active_profile_id: Option<String>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CloudAgentProviderAuthSnapshotResponse {
+    pub snapshot: CloudAgentProviderAuthSnapshotSummary,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct MessagesQuery {
     #[serde(rename = "peerAccountId")]
     pub peer_account_id: String,
@@ -646,6 +685,10 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/agents/:account_id/runtime-status",
             get(get_cloud_agent_runtime_status),
+        )
+        .route(
+            "/v1/cloud/agents/provider-auth-snapshot",
+            put(upsert_cloud_agent_provider_auth_snapshot),
         )
         .route("/v1/cloud/sync", get(sync_cloud_events))
         .route(
@@ -2664,6 +2707,30 @@ fn default_cloud_agent_runtime_status(account_id: &str) -> CloudAgentRuntimeStat
     }
 }
 
+fn clean_optional_text(value: Option<String>) -> Option<String> {
+    value.map(|raw| raw.trim().to_string()).filter(|value| !value.is_empty())
+}
+
+pub fn normalize_cloud_agent_provider_auth_snapshot(
+    req: CloudAgentProviderAuthSnapshotRequest,
+) -> Result<NormalizedCloudAgentProviderAuthSnapshot, &'static str> {
+    if req.format_version <= 0 {
+        return Err("invalid_format_version");
+    }
+    let Some(object) = req.auth_json.as_object() else {
+        return Err("invalid_auth_json");
+    };
+    if object.is_empty() {
+        return Err("empty_auth_json");
+    }
+    Ok(NormalizedCloudAgentProviderAuthSnapshot {
+        format_version: req.format_version,
+        auth_json: req.auth_json,
+        active_provider: clean_optional_text(req.active_provider),
+        active_profile_id: clean_optional_text(req.active_profile_id),
+    })
+}
+
 fn cloud_message_session_id(
     requested_session_id: Option<&str>,
     from_account_id: &str,
@@ -2739,6 +2806,52 @@ mod cloud_agent_runtime_status_tests {
         .expect_err("offline local execution must be rejected");
 
         assert_eq!(error, "offline_local_execution");
+    }
+}
+
+#[cfg(test)]
+mod cloud_agent_provider_auth_snapshot_tests {
+    use super::{normalize_cloud_agent_provider_auth_snapshot, CloudAgentProviderAuthSnapshotRequest};
+    use serde_json::json;
+
+    #[test]
+    fn provider_auth_snapshot_preserves_local_auth_json_shape() {
+        let normalized = normalize_cloud_agent_provider_auth_snapshot(
+            CloudAgentProviderAuthSnapshotRequest {
+                format_version: 2,
+                auth_json: json!({
+                    "version": 2,
+                    "profiles": {
+                        "openai": [{ "id": "profile-openai", "method": "api_key", "type": "api_key", "key": "sk-test" }]
+                    },
+                    "active_auth_profiles": { "openai": "profile-openai" },
+                    "active_auth_methods": { "openai": "api_key" }
+                }),
+                active_provider: Some(" openai ".to_string()),
+                active_profile_id: Some(" profile-openai ".to_string()),
+            },
+        )
+        .expect("local auth json snapshot should be accepted");
+
+        assert_eq!(normalized.format_version, 2);
+        assert_eq!(normalized.active_provider.as_deref(), Some("openai"));
+        assert_eq!(normalized.active_profile_id.as_deref(), Some("profile-openai"));
+        assert_eq!(normalized.auth_json["profiles"]["openai"][0]["key"], "sk-test");
+    }
+
+    #[test]
+    fn provider_auth_snapshot_rejects_empty_auth_json() {
+        let error = normalize_cloud_agent_provider_auth_snapshot(
+            CloudAgentProviderAuthSnapshotRequest {
+                format_version: 2,
+                auth_json: json!({}),
+                active_provider: Some("openai".to_string()),
+                active_profile_id: None,
+            },
+        )
+        .expect_err("empty auth json must be rejected");
+
+        assert_eq!(error, "empty_auth_json");
     }
 }
 
@@ -3102,6 +3215,63 @@ async fn get_cloud_agent_runtime_status(
         .unwrap_or_else(|| default_cloud_agent_runtime_status(&account_id));
 
     Json(CloudAgentRuntimeStatusResponse { status }).into_response()
+}
+
+async fn upsert_cloud_agent_provider_auth_snapshot(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(req): Json<CloudAgentProviderAuthSnapshotRequest>,
+) -> Response {
+    let normalized = match normalize_cloud_agent_provider_auth_snapshot(req) {
+        Ok(value) => value,
+        Err(code) => {
+            return err(
+                "invalid_provider_auth_snapshot",
+                code,
+                StatusCode::BAD_REQUEST,
+            );
+        }
+    };
+    let now = Utc::now().to_rfc3339();
+    let pool = state.db_pool();
+    if query(
+        "INSERT INTO cloud_agent_provider_auth_snapshots \
+         (account_id, format_version, auth_json, active_provider, active_profile_id, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6) \
+         ON CONFLICT (account_id) DO UPDATE SET \
+           format_version = EXCLUDED.format_version, \
+           auth_json = EXCLUDED.auth_json, \
+           active_provider = EXCLUDED.active_provider, \
+           active_profile_id = EXCLUDED.active_profile_id, \
+           updated_at = EXCLUDED.updated_at",
+    )
+    .bind(&session.account_id)
+    .bind(normalized.format_version)
+    .bind(&normalized.auth_json)
+    .bind(normalized.active_provider.as_deref())
+    .bind(normalized.active_profile_id.as_deref())
+    .bind(&now)
+    .execute(pool)
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not update provider authentication snapshot.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    Json(CloudAgentProviderAuthSnapshotResponse {
+        snapshot: CloudAgentProviderAuthSnapshotSummary {
+            account_id: session.account_id,
+            format_version: normalized.format_version,
+            active_provider: normalized.active_provider,
+            active_profile_id: normalized.active_profile_id,
+            updated_at: now,
+        },
+    })
+    .into_response()
 }
 
 /// `POST /v1/cloud/messages` — send a 1:1 message to a peer the caller
