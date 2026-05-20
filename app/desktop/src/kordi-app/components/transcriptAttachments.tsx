@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { Download, ExternalLink, FileText, Image, ImageOff, X } from 'lucide-react';
+import { Download, ExternalLink, FileText, Image, ImageOff, LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
@@ -226,7 +226,27 @@ function AttachmentContextMenu({ state, onClose }: { state: AttachmentContextMen
   );
 }
 
-function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachment; index: number }) {
+function isAttachmentSending(msg: Message) {
+  return (msg.statusChips ?? []).some((chip) => {
+    const normalized = chip.trim().toLowerCase();
+    return normalized === 'sending' || normalized === 'pending';
+  });
+}
+
+function AttachmentSendingIndicator({ className }: { className?: string }) {
+  return (
+    <div
+      data-attachment-sending-indicator="true"
+      className={cn('pointer-events-none absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-medium text-white/92 shadow-lg shadow-black/20 backdrop-blur-md', className)}
+      aria-label="Sending attachment"
+    >
+      <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
+      <span>Sending…</span>
+    </div>
+  );
+}
+
+function AttachmentFileCard({ attachment, index, isSending = false }: { attachment: MessageAttachment; index: number; isSending?: boolean }) {
   const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
   const label = [attachment.formatLabel || (isArchiveAttachment(attachment) ? 'ARCHIVE' : 'FILE'), sizeLabel]
     .filter(Boolean)
@@ -234,7 +254,7 @@ function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachme
   const Icon = attachment.kind === 'image' ? Image : FileText;
 
   return (
-    <div key={`${attachment.name}-${index}`} className="flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
+    <div key={`${attachment.name}-${index}`} className="relative flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
         <Icon className="h-4 w-4" />
       </div>
@@ -245,6 +265,7 @@ function AttachmentFileCard({ attachment, index }: { attachment: MessageAttachme
         </div>
       </div>
       <AttachmentActions attachment={attachment} />
+      {isSending ? <AttachmentSendingIndicator /> : null}
     </div>
   );
 }
@@ -364,6 +385,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
   const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
   const [lightboxAttachment, setLightboxAttachment] = useState<{ attachment: MessageAttachment; previewUrl: string } | null>(null);
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
+  const isSending = isAttachmentSending(msg);
 
   function openContextMenu(attachment: MessageAttachment, event: MouseEvent) {
     event.preventDefault();
@@ -393,7 +415,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
           <div
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
-            className="grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0 shadow-[0_10px_26px_rgba(2,8,23,0.12)]"
+            className="relative grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0 shadow-[0_10px_26px_rgba(2,8,23,0.12)]"
           >
             {previewImageAttachments.map((attachment, index) => (
               <AttachmentImageCard
@@ -405,12 +427,13 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
                 onOpenContextMenu={openContextMenu}
               />
             ))}
+            {isSending ? <AttachmentSendingIndicator /> : null}
           </div>
         ) : null}
         {downloadableAttachments.length > 0 ? (
           <div className="flex flex-col gap-2">
             {downloadableAttachments.map((attachment, index) => (
-              <AttachmentFileCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} />
+              <AttachmentFileCard key={`${attachment.name}-${index}`} attachment={attachment} index={index} isSending={isSending} />
             ))}
           </div>
         ) : null}

@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AttachmentImageLightbox, AttachmentPreview, attachmentPreviewIdentity } from '../src/kordi-app/components/transcriptAttachments';
+import type { Message } from '../src/kordi-app/types';
 
 const imageMessage = {
   role: 'user' as const,
@@ -43,6 +44,25 @@ const multiImageMessage = {
       mimeType: 'image/png',
     },
   ],
+};
+
+const fileMessage: Message = {
+  role: 'user',
+  sender: 'Me',
+  senderType: 'human',
+  isOwnMessage: true,
+  text: '',
+  time: '19:45',
+  statusChips: ['sending'],
+  attachments: [{
+    kind: 'file',
+    name: 'notes.pdf',
+    sizeBytes: 420 * 1024,
+    attachmentId: 'att_file_1',
+    localPath: '/tmp/notes.pdf',
+    previewUrl: null,
+    mimeType: 'application/pdf',
+  }],
 };
 
 test('attachment image preview identity changes when local cache path becomes available', () => {
@@ -100,6 +120,25 @@ test('image attachment actions are available from context menu instead of sticky
   assert.match(markup, /data-attachment-image-context-target="true"/);
   assert.match(markup, /Right-click for image actions/);
   assert.doesNotMatch(markup, /aria-label="Download Screenshot 2026-05-20\.png"/);
+});
+
+test('sending image attachments show an overlay progress indicator without restoring chrome', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...imageMessage, statusChips: ['sending'] },
+  }));
+
+  assert.match(markup, /data-attachment-sending-indicator="true"/);
+  assert.match(markup, /Sending…/);
+  assert.match(markup, /animate-spin/);
+  assert.doesNotMatch(markup, /app-attachment-image-footer/);
+});
+
+test('sending file attachments show the same progress indicator', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: fileMessage }));
+
+  assert.match(markup, /data-attachment-sending-indicator="true"/);
+  assert.match(markup, /Sending…/);
+  assert.match(markup, /animate-spin/);
 });
 
 test('attachment image lightbox renders as a centered modal with close affordance', () => {

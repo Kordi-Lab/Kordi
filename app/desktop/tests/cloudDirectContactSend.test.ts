@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import { shouldAppendOptimisticBridgeMessage } from '../src/features/chat/messageActions/chatMessages';
 import { cloudSessionIdForBridgeSend } from '../src/features/cloud/cloudBridgeState';
 
-test('direct Cloud contact sends do not use generic Bridge optimistic rows', () => {
-  assert.equal(shouldAppendOptimisticBridgeMessage('bridge:cloud:acct_peer:person'), false);
+test('direct Cloud contact sends use an optimistic row so attachments preview immediately', () => {
+  assert.equal(shouldAppendOptimisticBridgeMessage('bridge:cloud:acct_peer:person'), true);
   assert.equal(shouldAppendOptimisticBridgeMessage('bridge:local:node_peer:person'), true);
 });
 
