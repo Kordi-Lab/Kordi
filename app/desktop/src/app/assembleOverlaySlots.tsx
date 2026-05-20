@@ -1,10 +1,16 @@
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 import AuthPopup from '@/AuthPopup';
 import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 
 import type { OverlayShellArgs } from '@/app/kordiShellSlots.types';
+
+function OverlayPortal({ children }: { children: ReactNode }) {
+  if (typeof document === 'undefined') return <>{children}</>;
+  return createPortal(children, document.querySelector('.bridge-app') ?? document.body);
+}
 
 export function assembleOverlaySlots(args: OverlayShellArgs) {
   const onEnterChat = (preferredModelValue?: string) => openLocalAgentChatFromArgs(args, preferredModelValue);
@@ -43,25 +49,27 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
   ) : null;
 
   const inlineAuthDialog = args.inlineAuthDialog ? (
-    <div
-      className="app-overlay fixed inset-0 z-[220] flex items-center justify-center bg-black/35 p-4 backdrop-blur-[10px]"
-      style={{ WebkitAppRegion: 'no-drag' as const }}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) args.handleCloseInlineAuthDialog();
-      }}
-    >
-      <AuthPopup
-        embedded
-        providerId={args.inlineAuthDialog.providerId}
-        mode={args.inlineAuthDialog.mode}
-        authority={args.inlineAuthDialog.authority}
-        requireAuthority={args.inlineAuthDialog.requireAuthority}
-        authState={args.desktopAuthState}
-        onRequestClose={args.handleCloseInlineAuthDialog}
-        onAuthUpdated={args.refreshDesktopAuth}
-        onEnterChat={onEnterChat}
-      />
-    </div>
+    <OverlayPortal>
+      <div
+        className="app-overlay fixed inset-0 z-[260] flex items-center justify-center bg-black/35 p-4 backdrop-blur-[10px]"
+        style={{ WebkitAppRegion: 'no-drag' as const }}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) args.handleCloseInlineAuthDialog();
+        }}
+      >
+        <AuthPopup
+          embedded
+          providerId={args.inlineAuthDialog.providerId}
+          mode={args.inlineAuthDialog.mode}
+          authority={args.inlineAuthDialog.authority}
+          requireAuthority={args.inlineAuthDialog.requireAuthority}
+          authState={args.desktopAuthState}
+          onRequestClose={args.handleCloseInlineAuthDialog}
+          onAuthUpdated={args.refreshDesktopAuth}
+          onEnterChat={onEnterChat}
+        />
+      </div>
+    </OverlayPortal>
   ) : null;
 
   const windowResizeHandles: ReactNode = (

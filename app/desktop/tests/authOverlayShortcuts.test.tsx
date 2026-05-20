@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { assembleOverlaySlots } from '../src/app/assembleOverlaySlots';
@@ -43,10 +44,19 @@ test('inline auth popup renders above account settings modal and keeps enter-cha
     showAuthGate: false,
     inlineAuthDialog: { providerId: 'openai', mode: 'api-key' },
   }) as never);
-  const overlay = slots.inlineAuthDialog as never as { props: { className: string; children: { props: Record<string, unknown> } } };
-  const popup = overlay.props.children;
+  const overlay = slots.inlineAuthDialog as never as { props: { children: { props: { className: string; children: { props: Record<string, unknown> } } } } };
+  const portalSafeOverlay = overlay.props.children;
+  const popup = portalSafeOverlay.props.children;
 
-  assert.match(overlay.props.className, /fixed inset-0/);
-  assert.match(overlay.props.className, /z-\[220\]/);
+  assert.match(portalSafeOverlay.props.className, /fixed inset-0/);
+  assert.match(portalSafeOverlay.props.className, /z-\[260\]/);
   assert.equal(typeof popup.props.onEnterChat, 'function');
+});
+
+test('inline auth popup portals outside the app shell stacking context', () => {
+  const source = readFileSync(new URL('../src/app/assembleOverlaySlots.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /createPortal/);
+  assert.match(source, /document\.querySelector\('\.bridge-app'\) \?\? document\.body/);
+  assert.match(source, /function OverlayPortal/);
 });
