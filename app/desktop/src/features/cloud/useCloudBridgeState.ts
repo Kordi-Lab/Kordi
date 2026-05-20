@@ -7,6 +7,7 @@ import {
   appendCanonicalMessage,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
+  fetchDesktopCloudAgentProviderAuthSnapshot,
   fetchCanonicalSessionState,
   openOrCreateCanonicalSession,
   renameCanonicalSession,
@@ -1555,6 +1556,19 @@ export function useCloudBridgeState({
     if (!account) return;
     let cancelled = false;
     let lastOnlineStatusAt = 0;
+    let lastProviderAuthSnapshotAt = 0;
+    const publishProviderAuthSnapshot = async (token: string) => {
+      if (Date.now() - lastProviderAuthSnapshotAt < 60_000) return;
+      const snapshot = await fetchDesktopCloudAgentProviderAuthSnapshot();
+      if (!snapshot || cancelled) return;
+      await client.syncCloudAgentProviderAuthSnapshot(token, {
+        formatVersion: snapshot.formatVersion,
+        authJson: snapshot.authJson,
+        activeProvider: snapshot.activeProvider ?? undefined,
+        activeProfileId: snapshot.activeProfileId ?? undefined,
+      });
+      lastProviderAuthSnapshotAt = Date.now();
+    };
     const publishOnlineStatus = async () => {
       const session = await loadSession();
       if (!session?.token || cancelled) return;
@@ -1563,6 +1577,7 @@ export function useCloudBridgeState({
         localExecutionState: 'available',
         readonlyFallbackEnabled: true,
       });
+      await publishProviderAuthSnapshot(session.token);
       lastOnlineStatusAt = Date.now();
     };
     const publishOfflineStatus = async () => {

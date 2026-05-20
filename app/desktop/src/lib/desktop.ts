@@ -8,6 +8,7 @@ import type {
   DesktopArtifactPreview,
   DesktopAuthAttemptSnapshot,
   DesktopAuthState,
+  DesktopCloudAgentProviderAuthSnapshot,
   DesktopBridgeCreateOutreachRequest,
   DesktopBridgeInvite,
   DesktopBridgeState,
@@ -118,6 +119,11 @@ export async function writeDesktopWorkspaceTextFile(path: string, contents: stri
 export async function fetchDesktopAuthState() {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopAuthState>('desktop_auth_state');
+}
+
+export async function fetchDesktopCloudAgentProviderAuthSnapshot() {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<DesktopCloudAgentProviderAuthSnapshot | null>('desktop_cloud_agent_provider_auth_snapshot');
 }
 
 export async function saveDesktopApiKey(provider: string, key: string) {

@@ -174,6 +174,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_remove_session_participant,
             canonical_sessions::desktop_canonical_set_session_participant_role,
             auth::desktop_auth_state,
+            auth::desktop_cloud_agent_provider_auth_snapshot,
             auth::desktop_save_api_key,
             auth::desktop_set_local_provider_port,
             auth::desktop_logout,

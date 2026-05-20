@@ -52,6 +52,15 @@ pub struct DesktopAuthState {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DesktopCloudAgentProviderAuthSnapshot {
+    pub format_version: i32,
+    pub auth_json: serde_json::Value,
+    pub active_provider: Option<String>,
+    pub active_profile_id: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopAuthAttemptSnapshot {
     pub id: String,
     pub provider: String,
@@ -319,6 +328,56 @@ fn update_attempt(
 #[tauri::command]
 pub fn desktop_auth_state() -> DesktopAuthState {
     build_auth_state()
+}
+
+#[tauri::command]
+pub fn desktop_cloud_agent_provider_auth_snapshot(
+) -> Result<Option<DesktopCloudAgentProviderAuthSnapshot>, String> {
+    let path = kordi_cli::login::auth_path();
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|err| format!("Could not read provider authentication: {err}"))?;
+    let auth_json: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|err| format!("Could not parse provider authentication: {err}"))?;
+    if !auth_json.is_object() {
+        return Ok(None);
+    }
+    let format_version = auth_json
+        .get("version")
+        .and_then(|value| value.as_i64())
+        .unwrap_or(1)
+        .clamp(1, i32::MAX as i64) as i32;
+    let active_provider = auth_json
+        .get("last_provider")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            auth_json
+                .get("profiles")
+                .and_then(|value| value.as_object())
+                .and_then(|profiles| profiles.keys().next().cloned())
+        });
+    let active_profile_id = active_provider.as_deref().and_then(|provider| {
+        auth_json
+            .get("active_auth_profiles")
+            .and_then(|value| value.as_object())
+            .and_then(|profiles| profiles.get(provider))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    });
+
+    Ok(Some(DesktopCloudAgentProviderAuthSnapshot {
+        format_version,
+        auth_json,
+        active_provider,
+        active_profile_id,
+    }))
 }
 
 #[tauri::command]

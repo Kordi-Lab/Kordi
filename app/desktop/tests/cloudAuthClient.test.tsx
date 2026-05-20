@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -255,6 +256,16 @@ test('syncCloudAgentRuntimeStatus publishes local execution capability', async (
     readonlyFallbackEnabled: true,
   });
   assert.equal(result.localExecutionState, 'available');
+});
+
+test('cloud bridge runtime publishes provider auth snapshots without auto-login', () => {
+  const hookSource = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const desktopSource = readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
+
+  assert.match(desktopSource, /desktop_cloud_agent_provider_auth_snapshot/);
+  assert.match(hookSource, /fetchDesktopCloudAgentProviderAuthSnapshot/);
+  assert.match(hookSource, /syncCloudAgentProviderAuthSnapshot/);
+  assert.doesNotMatch(hookSource, /desktop_start_oauth_login/);
 });
 
 test('syncCloudAgentProviderAuthSnapshot uploads local auth JSON without returning secrets', async () => {

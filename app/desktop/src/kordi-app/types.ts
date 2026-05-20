@@ -615,6 +615,13 @@ export type DesktopAuthState = {
   providers: DesktopAuthProvider[];
 };
 
+export type DesktopCloudAgentProviderAuthSnapshot = {
+  formatVersion: number;
+  authJson: unknown;
+  activeProvider?: string | null;
+  activeProfileId?: string | null;
+};
+
 export type DesktopAuthAttemptSnapshot = {
   id: string;
   provider: string;
