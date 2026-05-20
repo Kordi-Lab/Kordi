@@ -508,12 +508,33 @@ export function buildCloudBridgeConversation({
       requestTargetAccountIds.set(message.messageId, account.accountId);
     }
   }
+  const preferredAgentResponseIdsByRequestId = new Map<string, string>();
+  const preferredAgentResponseRankByRequestId = new Map<string, number>();
+  const preferredAgentResponseTimeByRequestId = new Map<string, number>();
+  for (const message of messages) {
+    const response = parseCloudAgentResponse(message.body);
+    if (!response) continue;
+    const expectedResponderAccountId = requestTargetAccountIds.get(response.requestId);
+    if (expectedResponderAccountId && message.fromAccountId !== expectedResponderAccountId) continue;
+    const rank = response.deliveryState === 'complete' ? 2 : response.deliveryState === 'failed' ? 0 : 1;
+    const timestamp = Date.parse(message.createdAt);
+    const createdAtMs = Number.isFinite(timestamp) ? timestamp : 0;
+    const existingRank = preferredAgentResponseRankByRequestId.get(response.requestId);
+    const existingTime = preferredAgentResponseTimeByRequestId.get(response.requestId) ?? 0;
+    if (existingRank === undefined || rank > existingRank || (rank === existingRank && createdAtMs >= existingTime)) {
+      preferredAgentResponseIdsByRequestId.set(response.requestId, message.messageId);
+      preferredAgentResponseRankByRequestId.set(response.requestId, rank);
+      preferredAgentResponseTimeByRequestId.set(response.requestId, createdAtMs);
+    }
+  }
   const visibleCloudMessages = messages.filter((message) => {
     if (isCloudAgentControlMessage(message.body) || isCloudGroupControlMessage(message.body)) return false;
     const response = parseCloudAgentResponse(message.body);
     if (!response) return true;
     const expectedResponderAccountId = requestTargetAccountIds.get(response.requestId);
-    return !expectedResponderAccountId || message.fromAccountId === expectedResponderAccountId;
+    if (expectedResponderAccountId && message.fromAccountId !== expectedResponderAccountId) return false;
+    const preferredResponseId = preferredAgentResponseIdsByRequestId.get(response.requestId);
+    return !preferredResponseId || preferredResponseId === message.messageId;
   });
   const agentRequests = messages.filter((message) => {
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;

@@ -1584,6 +1584,47 @@ test('cloud first-person self-agent requests hide accidental duplicate peer resp
   assert.equal(responses[0].id, validResponse.messageId);
 });
 
+test('cloud remote-agent complete response replaces earlier paused fallback for same request', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_remote_agent_duplicate_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi which model?',
+    direction: 'outgoing',
+    createdAt: '2026-05-11T10:00:00Z',
+  };
+  const pausedFallback: CloudMessage = {
+    ...message,
+    messageId: 'msg_remote_agent_paused_fallback',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'local execution is paused', deliveryState: 'failed' }),
+    direction: 'incoming',
+    createdAt: '2026-05-11T10:00:01Z',
+  };
+  const realResponse: CloudMessage = {
+    ...message,
+    messageId: 'msg_remote_agent_real_response',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'I am using the desktop Kordi runtime.', deliveryState: 'complete' }),
+    direction: 'incoming',
+    createdAt: '2026-05-11T10:00:05Z',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request, pausedFallback, realResponse] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  const responses = state.conversations[0].messages.filter((candidate) => candidate.requestId === request.messageId && candidate.id !== request.messageId);
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].id, realResponse.messageId);
+  assert.equal(responses[0].text, 'I am using the desktop Kordi runtime.');
+});
+
 test('cloud remote-agent responses render with the remote owner agent identity', () => {
   const request: CloudMessage = {
     ...message,
