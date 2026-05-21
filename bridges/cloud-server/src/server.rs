@@ -200,6 +200,7 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
+    crate::auth::routes::spawn_cloud_agent_fallback_sweeper(state.clone());
     let app = router_with_rate_limiter(state, rate_limiter);
     let addr = format!("0.0.0.0:{port}");
     println!("Kordi cloud server on {addr}");

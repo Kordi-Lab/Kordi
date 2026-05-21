@@ -2592,6 +2592,7 @@ const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 const CLOUD_AGENT_RUNTIME_STALE_SECONDS: i64 = 12;
 const CLOUD_AGENT_FALLBACK_GRACE_SECONDS: i64 = 45;
+const CLOUD_AGENT_FALLBACK_SWEEP_SECONDS: u64 = 5;
 
 fn cloud_agent_fallback_grace_seconds() -> i64 {
     std::env::var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS")
@@ -3561,6 +3562,70 @@ fn schedule_offline_direct_agent_fallback_response(
         tokio::time::sleep(std::time::Duration::from_millis(delay_millis)).await;
         maybe_insert_offline_direct_agent_fallback_response(state, &request).await;
     });
+}
+
+pub fn spawn_cloud_agent_fallback_sweeper(state: Arc<ServerState>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+            CLOUD_AGENT_FALLBACK_SWEEP_SECONDS,
+        ));
+        loop {
+            interval.tick().await;
+            sweep_stale_offline_direct_agent_fallback_responses(state.clone()).await;
+        }
+    });
+}
+
+async fn sweep_stale_offline_direct_agent_fallback_responses(state: Arc<ServerState>) {
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+    )> = match query_as(
+        "SELECT m.message_id, m.from_account_id, m.to_account_id, m.body, m.session_id, \
+                m.created_at, m.delivered_at, m.read_at \
+         FROM cloud_messages m \
+         JOIN cloud_agent_runtime_status s ON s.account_id = m.to_account_id \
+         WHERE m.from_account_id <> m.to_account_id \
+           AND m.created_at::timestamptz < now() - ($1::TEXT || ' seconds')::interval \
+           AND s.readonly_fallback_enabled = TRUE \
+           AND ( \
+             (s.reachability_state = 'offline' AND s.local_execution_state = 'paused') \
+             OR (s.reachability_state = 'online' \
+                 AND s.updated_at::timestamptz < now() - ($2::TEXT || ' seconds')::interval) \
+           ) \
+         ORDER BY m.created_at ASC \
+         LIMIT 100",
+    )
+    .bind(cloud_agent_fallback_grace_seconds())
+    .bind(CLOUD_AGENT_RUNTIME_STALE_SECONDS)
+    .fetch_all(state.db_pool())
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return,
+    };
+
+    for (message_id, from_account_id, to_account_id, body, session_id, created_at, delivered_at, read_at) in rows {
+        let summary = MessageSummary {
+            message_id,
+            from_account_id,
+            to_account_id,
+            body,
+            session_id,
+            created_at,
+            delivered_at,
+            read_at,
+            direction: String::new(),
+            attachments: Vec::new(),
+        };
+        maybe_insert_offline_direct_agent_fallback_response(state.clone(), &summary).await;
+    }
 }
 
 async fn claim_stale_offline_direct_agent_fallback_responses_for_conversation(
