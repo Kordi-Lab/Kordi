@@ -30,7 +30,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::session::lookup_session;
@@ -110,7 +110,7 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
         }
     };
 
-    let (mut sender, mut receiver) = socket.split();
+    let mut socket = socket;
 
     // Initial frame so the client knows the subscription is live.
     let hello = serde_json::to_string(&ConnectedFrame {
@@ -118,18 +118,26 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
         account_id: &account_id,
     })
     .unwrap_or_else(|_| String::from(r#"{"event":"connected"}"#));
-    if sender.send(Message::Text(hello)).await.is_err() {
+    if socket.send(Message::Text(hello)).await.is_err() {
         return;
     }
 
+    let mut peer_close_seen = false;
     loop {
         tokio::select! {
             biased;
 
-            incoming = receiver.next() => match incoming {
-                Some(Ok(Message::Close(_))) | None => break,
+            incoming = socket.recv() => match incoming {
+                Some(Ok(Message::Close(_))) => {
+                    // Tungstenite queues the peer close response when the close
+                    // frame is read. Keep polling until the stream reports EOF
+                    // so the response can flush instead of resetting TCP.
+                    peer_close_seen = true;
+                    continue;
+                }
+                None => break,
                 Some(Ok(Message::Ping(p))) => {
-                    if sender.send(Message::Pong(p)).await.is_err() { break; }
+                    if socket.send(Message::Pong(p)).await.is_err() { break; }
                 }
                 Some(Ok(_)) => {
                     // Client text/binary frames are ignored for now —
@@ -145,7 +153,7 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
             event = general_sub.next() => match event {
                 Some(msg) => {
                     let Some(body) = envelope_body(msg.subject.as_str(), &msg.payload) else { continue; };
-                    if sender.send(Message::Text(body)).await.is_err() { break; }
+                    if socket.send(Message::Text(body)).await.is_err() { break; }
                 }
                 None => break,
             },
@@ -153,11 +161,17 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
             event = contact_request_sub.next() => match event {
                 Some(msg) => {
                     let Some(body) = envelope_body(msg.subject.as_str(), &msg.payload) else { continue; };
-                    if sender.send(Message::Text(body)).await.is_err() { break; }
+                    if socket.send(Message::Text(body)).await.is_err() { break; }
                 }
                 None => break,
             },
         }
+    }
+
+    // Complete server-initiated shutdowns gracefully. For peer-initiated closes
+    // we already kept polling until tungstenite flushed the close response.
+    if !peer_close_seen {
+        let _ = socket.close().await;
     }
 
     // Best-effort unsubscribe on the way out so the broker doesn't keep
@@ -200,7 +214,13 @@ async fn idle_without_nats(mut socket: WebSocket, account_id: &str) {
     let _ = socket.send(Message::Text(frame)).await;
     while let Some(msg) = socket.recv().await {
         match msg {
-            Ok(Message::Close(_)) | Err(_) => break,
+            Ok(Message::Close(_)) => {
+                // Tungstenite queues the peer close response when the close
+                // frame is read. Keep polling until the stream reports EOF so
+                // the response can flush instead of resetting the TCP stream.
+                continue;
+            }
+            Err(_) => break,
             _ => {}
         }
     }
@@ -222,7 +242,49 @@ fn parse_json_or_string(bytes: &[u8]) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use super::account_event_subjects;
+    use super::{account_event_subjects, idle_without_nats};
+    use axum::Router;
+    use axum::extract::ws::WebSocketUpgrade;
+    use axum::response::IntoResponse;
+    use axum::routing::get;
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::connect_async;
+    use tokio_tungstenite::tungstenite::Message as ClientMessage;
+
+    async fn no_auth_ws(ws: WebSocketUpgrade) -> impl IntoResponse {
+        ws.on_upgrade(|socket| async move { idle_without_nats(socket, "acct_test").await })
+    }
+
+    #[tokio::test]
+    async fn noop_websocket_echoes_client_close_frame() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test websocket listener");
+        let addr = listener.local_addr().expect("test websocket listener addr");
+        let app = Router::new().route("/ws", get(no_auth_ws));
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let (mut client, _) = connect_async(format!("ws://{addr}/ws"))
+            .await
+            .expect("connect test websocket");
+        let hello = client.next().await.expect("hello frame").expect("hello ok");
+        assert!(
+            hello.is_text(),
+            "expected connected text frame, got {hello:?}"
+        );
+
+        client
+            .send(ClientMessage::Close(None))
+            .await
+            .expect("send client close");
+        let server_close = client.next().await.expect("server close frame");
+        assert!(
+            matches!(server_close, Ok(ClientMessage::Close(_))),
+            "expected server close frame, got {server_close:?}",
+        );
+    }
 
     #[test]
     fn account_event_subjects_include_contact_request_events() {

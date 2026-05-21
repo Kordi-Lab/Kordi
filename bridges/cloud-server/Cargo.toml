@@ -51,3 +51,4 @@ sqlx-macros = { version = "0.8", default-features = false, features = ["migrate"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+tokio-tungstenite = "0.24"
