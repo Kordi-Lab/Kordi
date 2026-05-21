@@ -5,6 +5,8 @@ import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionMessage,
   DesktopBridgeSessionParticipant,
+  MessageForwardReference,
+  MessageQuoteReference,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
@@ -53,6 +55,8 @@ export type CloudGroupControlEnvelope = {
     requestId?: string | null;
     forkSnapshot?: boolean | null;
     attachments?: CloudMessageAttachment[];
+    quote?: MessageQuoteReference | null;
+    forwardedFrom?: MessageForwardReference | null;
   } | null;
 };
 
@@ -62,6 +66,31 @@ function cleanText(value?: string | null) {
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function cloudGroupQuoteReference(value: unknown): MessageQuoteReference | null {
+  const record = objectRecord(value);
+  const messageId = cleanText(typeof record.messageId === 'string' ? record.messageId : null);
+  const text = cleanText(typeof record.text === 'string' ? record.text : null);
+  if (!messageId || !text) return null;
+  return {
+    messageId,
+    senderLabel: typeof record.senderLabel === 'string' ? record.senderLabel : null,
+    text,
+    time: typeof record.time === 'string' ? record.time : null,
+  };
+}
+
+function cloudGroupForwardReference(value: unknown): MessageForwardReference | null {
+  const record = objectRecord(value);
+  const sourceMessageId = cleanText(typeof record.sourceMessageId === 'string' ? record.sourceMessageId : null);
+  if (!sourceMessageId) return null;
+  return {
+    sourceMessageId,
+    sourceSessionId: typeof record.sourceSessionId === 'string' ? record.sourceSessionId : null,
+    senderLabel: typeof record.senderLabel === 'string' ? record.senderLabel : null,
+    sourceChatLabel: typeof record.sourceChatLabel === 'string' ? record.sourceChatLabel : null,
+  };
 }
 
 export function cloudGroupForkPayloadFromSessionMetadata(
@@ -349,6 +378,8 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
         forkSnapshot: candidate.forkSnapshot === true,
         attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
+        quote: cloudGroupQuoteReference((candidate as { quote?: unknown }).quote),
+        forwardedFrom: cloudGroupForwardReference((candidate as { forwardedFrom?: unknown }).forwardedFrom),
       };
     }
     const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);

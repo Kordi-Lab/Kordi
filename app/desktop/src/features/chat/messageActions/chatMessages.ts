@@ -1069,6 +1069,8 @@ export function useChatMessageActions({
             senderAccountId: '',
             text,
             createdAtMs: Date.now(),
+            ...(interactionMetadata.quote ? { quote: interactionMetadata.quote } : {}),
+            ...(interactionMetadata.forwardedFrom ? { forwardedFrom: interactionMetadata.forwardedFrom } : {}),
           },
           attachments: chatComposerAttachments,
         });

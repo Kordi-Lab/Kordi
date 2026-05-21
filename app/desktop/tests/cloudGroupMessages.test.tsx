@@ -521,6 +521,30 @@ test('cloud group agent response targets include original sender even when parti
   }), ['acct_requester']);
 });
 
+test('cloud group controls preserve quote and forwarded metadata', () => {
+  const parsed = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:main',
+    groupTitle: 'Main',
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' }],
+    message: {
+      id: 'msg:forwarded',
+      senderAccountId: 'acct_me',
+      text: 'Forwarded body',
+      createdAtMs: 1,
+      quote: { messageId: 'msg:source', senderLabel: 'Alice', text: 'Original context', time: '10:29' },
+      forwardedFrom: { sourceMessageId: 'msg:news', sourceSessionId: 'session:news', senderLabel: 'Odaily资讯速递', sourceChatLabel: 'News' },
+    },
+  }));
+
+  assert.equal(parsed?.message?.quote?.messageId, 'msg:source');
+  assert.equal(parsed?.message?.quote?.senderLabel, 'Alice');
+  assert.equal(parsed?.message?.forwardedFrom?.sourceMessageId, 'msg:news');
+  assert.equal(parsed?.message?.forwardedFrom?.senderLabel, 'Odaily资讯速递');
+});
+
 test('cloud group read helper marks inbound controls read when their group session is open', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',

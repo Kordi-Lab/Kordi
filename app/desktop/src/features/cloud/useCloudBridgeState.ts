@@ -2295,6 +2295,13 @@ export function useCloudBridgeState({
     const mappedAttachments = currentSession?.token
       ? await resolveCloudMessageAttachments({ token: currentSession.token, client, attachments: cloudAttachments })
       : cloudAttachments.map(cloudMessageAttachmentToMessageAttachment);
+    const humanMessageInteractionContent = !senderIsAgent && (mappedAttachments.length > 0 || envelope.message.quote || envelope.message.forwardedFrom)
+      ? {
+          ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
+          ...(envelope.message.quote ? { quote: envelope.message.quote } : {}),
+          ...(envelope.message.forwardedFrom ? { forwardedFrom: envelope.message.forwardedFrom } : {}),
+        }
+      : undefined;
 
     if (messageAlreadyExists && existingCloudGroupMessage && mappedAttachments.some((attachment) => attachment.localPath)) {
       const content = objectContent(existingCloudGroupMessage.content);
@@ -2395,7 +2402,7 @@ export function useCloudBridgeState({
           requestId: messageReplyToId,
           replyToMessageId: messageReplyToId,
           ...(agentDeliveryState === 'failed' ? { error: envelope.message.text || 'Message failed' } : {}),
-        } : mappedAttachments.length > 0 ? { attachments: mappedAttachments } : undefined,
+        } : humanMessageInteractionContent,
         createdAtMs: envelope.message.createdAtMs,
         parentMessageId: senderIsAgent ? messageReplyToId : null,
         status: agentStatus,
