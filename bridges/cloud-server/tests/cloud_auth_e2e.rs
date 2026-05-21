@@ -53,6 +53,14 @@ fn unique_email(prefix: &str) -> String {
     format!("{prefix}-{}@e2e.local", uuid::Uuid::new_v4().simple())
 }
 
+fn encode_group_control_for_test(value: serde_json::Value) -> String {
+    format!(
+        "kordi-cloud-group:{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&value).unwrap())
+    )
+}
+
 fn signup_body(email: &str, password: &str) -> Body {
     Body::from(
         json!({
@@ -1207,6 +1215,134 @@ async fn offline_agent_fallback_claims_without_message_refresh() {
     std::env::remove_var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS");
 
     panic!("offline cloud agent fallback was not claimed without a message refresh");
+}
+
+#[tokio::test]
+async fn offline_group_agent_fallback_inserts_group_agent_response() {
+    std::env::set_var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS", "1");
+    let Some(pool) = try_pool().await else { return };
+    let owner_email = unique_email("offline-group-agent-owner");
+    let sender_email = unique_email("offline-group-agent-sender");
+    let observer_email = unique_email("offline-group-agent-observer");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+
+    let owner_signup = router
+        .clone()
+        .oneshot(post("/v1/cloud/auth/signup", signup_body(&owner_email, "correct horse")))
+        .await
+        .unwrap();
+    assert_eq!(owner_signup.status(), StatusCode::CREATED);
+    let owner = read_json(owner_signup).await;
+    let owner_token = owner["session"]["token"].as_str().unwrap().to_string();
+    let owner_account_id = owner["account"]["accountId"].as_str().unwrap().to_string();
+
+    let sender_signup = router
+        .clone()
+        .oneshot(post("/v1/cloud/auth/signup", signup_body(&sender_email, "correct horse")))
+        .await
+        .unwrap();
+    assert_eq!(sender_signup.status(), StatusCode::CREATED);
+    let sender = read_json(sender_signup).await;
+    let sender_token = sender["session"]["token"].as_str().unwrap().to_string();
+    let sender_account_id = sender["account"]["accountId"].as_str().unwrap().to_string();
+
+    let observer_signup = router
+        .clone()
+        .oneshot(post("/v1/cloud/auth/signup", signup_body(&observer_email, "correct horse")))
+        .await
+        .unwrap();
+    assert_eq!(observer_signup.status(), StatusCode::CREATED);
+    let observer = read_json(observer_signup).await;
+    let observer_account_id = observer["account"]["accountId"].as_str().unwrap().to_string();
+
+    let status_resp = router
+        .clone()
+        .oneshot(put_json_with_token(
+            "/v1/cloud/agents/runtime-status",
+            &owner_token,
+            json!({
+                "reachabilityState": "offline",
+                "localExecutionState": "paused",
+                "readonlyFallbackEnabled": true,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(status_resp.status(), StatusCode::OK);
+
+    let group_id = format!("session:group:{}", uuid::Uuid::new_v4());
+    let request_group_message_id = format!("msg:ui:{}", uuid::Uuid::new_v4());
+    let created_at_ms = chrono::Utc::now().timestamp_millis();
+    let participants = json!([
+        { "accountId": sender_account_id, "displayName": "Sender", "avatarUrl": null, "role": "admin" },
+        { "accountId": owner_account_id, "displayName": "E2E", "avatarUrl": null, "role": "person" },
+        { "accountId": observer_account_id, "displayName": "Observer", "avatarUrl": null, "role": "person" }
+    ]);
+    let body = encode_group_control_for_test(json!({
+        "kind": "group-message",
+        "groupId": group_id,
+        "groupSpaceId": group_id,
+        "groupTitle": null,
+        "createdByAccountId": sender_account_id,
+        "actor": { "accountId": sender_account_id, "displayName": "Sender", "avatarUrl": null, "role": "person" },
+        "participants": participants,
+        "message": {
+            "id": request_group_message_id,
+            "senderAccountId": sender_account_id,
+            "text": "Can @E2EKordi answer in this group?",
+            "createdAtMs": created_at_ms,
+            "senderKind": "human"
+        }
+    }));
+
+    let send_resp = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &sender_token,
+            json!({
+                "peerAccountId": owner_account_id,
+                "body": body,
+                "sessionId": group_id,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(send_resp.status(), StatusCode::CREATED);
+
+    for _ in 0..30 {
+        let rows: Vec<(String, String, String)> = sqlx_core::query_as::query_as(
+            "SELECT message_id, to_account_id, body FROM cloud_messages \
+             WHERE from_account_id = $1 AND body LIKE 'kordi-cloud-group:%' \
+             ORDER BY created_at ASC",
+        )
+        .bind(&owner_account_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        for (_message_id, to_account_id, body) in rows {
+            let encoded = body.trim_start_matches("kordi-cloud-group:");
+            let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(encoded)
+                .unwrap();
+            let envelope: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+            let message = &envelope["message"];
+            if message["senderKind"] == "agent"
+                && message["senderAccountId"] == owner_account_id
+                && message["requestId"] == request_group_message_id
+            {
+                assert_eq!(message["deliveryState"], "failed");
+                assert_ne!(to_account_id, owner_account_id);
+                std::env::remove_var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS");
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    std::env::remove_var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS");
+
+    panic!("offline group cloud agent fallback was not inserted");
 }
 
 #[tokio::test]

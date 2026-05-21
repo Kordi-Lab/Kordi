@@ -39,8 +39,8 @@ use crate::auth::session::{
     SESSION_TOKEN_PREFIX,
 };
 use crate::offline_agent::{
-    encode_cloud_agent_response, local_execution_paused_message, should_start_direct_fallback,
-    CloudAgentFallbackCandidate, CloudAgentPeerMessage,
+    encode_cloud_agent_response, local_execution_paused_message, message_mentions_named_agent,
+    should_start_direct_fallback, CloudAgentFallbackCandidate, CloudAgentPeerMessage,
 };
 use crate::server::ServerState;
 
@@ -2631,6 +2631,70 @@ fn syncable_cloud_avatar_url(value: &str) -> Option<String> {
     None
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudGroupParticipantEnvelope {
+    #[serde(rename = "accountId")]
+    account_id: String,
+    #[serde(rename = "displayName")]
+    display_name: String,
+    #[serde(rename = "avatarUrl")]
+    avatar_url: Option<String>,
+    role: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudGroupMessageEnvelope {
+    id: String,
+    #[serde(rename = "senderAccountId")]
+    sender_account_id: String,
+    text: String,
+    #[serde(rename = "createdAtMs")]
+    created_at_ms: i64,
+    #[serde(rename = "senderKind", skip_serializing_if = "Option::is_none")]
+    sender_kind: Option<String>,
+    #[serde(rename = "senderDisplayName", skip_serializing_if = "Option::is_none")]
+    sender_display_name: Option<String>,
+    #[serde(rename = "deliveryState", skip_serializing_if = "Option::is_none")]
+    delivery_state: Option<String>,
+    #[serde(rename = "replyToMessageId", skip_serializing_if = "Option::is_none")]
+    reply_to_message_id: Option<String>,
+    #[serde(rename = "requestId", skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudGroupControlEnvelopeForFallback {
+    kind: String,
+    #[serde(rename = "groupId")]
+    group_id: String,
+    #[serde(rename = "groupSpaceId")]
+    group_space_id: Option<String>,
+    #[serde(rename = "groupTitle")]
+    group_title: Option<String>,
+    #[serde(rename = "createdByAccountId")]
+    created_by_account_id: String,
+    actor: CloudGroupParticipantEnvelope,
+    participants: Vec<CloudGroupParticipantEnvelope>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fork: Option<Value>,
+    message: Option<CloudGroupMessageEnvelope>,
+}
+
+fn decode_cloud_group_control_envelope(
+    body: &str,
+) -> Option<CloudGroupControlEnvelopeForFallback> {
+    let encoded = body.trim().strip_prefix(CLOUD_GROUP_CONTROL_PREFIX)?;
+    let decoded = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    serde_json::from_slice::<CloudGroupControlEnvelopeForFallback>(&decoded).ok()
+}
+
+fn encode_cloud_group_control_envelope(
+    envelope: &CloudGroupControlEnvelopeForFallback,
+) -> Option<String> {
+    let encoded = URL_SAFE_NO_PAD.encode(serde_json::to_vec(envelope).ok()?);
+    Some(format!("{CLOUD_GROUP_CONTROL_PREFIX}{encoded}"))
+}
+
 fn sanitize_cloud_group_participant(value: &mut Value) -> bool {
     let Some(object) = value.as_object_mut() else {
         return false;
@@ -3548,6 +3612,394 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
     });
 }
 
+fn cloud_group_fallback_targets(
+    envelope: &CloudGroupControlEnvelopeForFallback,
+    request: &MessageSummary,
+) -> Vec<CloudGroupParticipantEnvelope> {
+    let Some(message) = envelope.message.as_ref() else {
+        return Vec::new();
+    };
+    if envelope.kind != "group-message" || message.sender_kind.as_deref() == Some("agent") {
+        return Vec::new();
+    }
+    let mut targets = envelope
+        .participants
+        .iter()
+        .filter(|participant| participant.account_id != message.sender_account_id)
+        .filter(|participant| message_mentions_named_agent(&message.text, &participant.display_name))
+        .cloned()
+        .collect::<Vec<_>>();
+    targets.sort_by(|left, right| left.account_id.cmp(&right.account_id));
+    targets.dedup_by(|left, right| left.account_id == right.account_id);
+    targets.retain(|participant| participant.account_id != request.from_account_id);
+    targets
+}
+
+fn cloud_group_response_target_account_ids(
+    envelope: &CloudGroupControlEnvelopeForFallback,
+    request: &MessageSummary,
+    owner_account_id: &str,
+) -> Vec<String> {
+    let mut ids = HashSet::new();
+    let mut add = |value: &str| {
+        let value = value.trim();
+        if !value.is_empty() && value != owner_account_id {
+            ids.insert(value.to_string());
+        }
+    };
+    add(&request.from_account_id);
+    add(&request.to_account_id);
+    add(&envelope.created_by_account_id);
+    add(&envelope.actor.account_id);
+    if let Some(message) = envelope.message.as_ref() {
+        add(&message.sender_account_id);
+    }
+    for participant in &envelope.participants {
+        add(&participant.account_id);
+    }
+    let mut ids = ids.into_iter().collect::<Vec<_>>();
+    ids.sort();
+    ids
+}
+
+fn cloud_group_agent_response_exists(
+    rows: &[(String, String)],
+    target_account_id: &str,
+    request_group_message_id: &str,
+) -> bool {
+    rows.iter().any(|(from_account_id, body)| {
+        if from_account_id != target_account_id {
+            return false;
+        }
+        let Some(envelope) = decode_cloud_group_control_envelope(body) else {
+            return false;
+        };
+        let Some(message) = envelope.message else {
+            return false;
+        };
+        message.sender_account_id == target_account_id
+            && message.sender_kind.as_deref() == Some("agent")
+            && (message.request_id.as_deref() == Some(request_group_message_id)
+                || message.reply_to_message_id.as_deref() == Some(request_group_message_id))
+    })
+}
+
+fn cloud_group_readonly_prompt(
+    rows: &[(String, String)],
+    group_id: &str,
+    request_group_message_id: &str,
+    request_text: &str,
+) -> String {
+    let mut seen = HashSet::new();
+    let mut lines = Vec::new();
+    for (_from_account_id, body) in rows {
+        let Some(envelope) = decode_cloud_group_control_envelope(body) else {
+            continue;
+        };
+        if envelope.group_id != group_id {
+            continue;
+        }
+        let Some(message) = envelope.message else {
+            continue;
+        };
+        if message.id == request_group_message_id || message.text.trim().is_empty() {
+            continue;
+        }
+        if !seen.insert(message.id.clone()) {
+            continue;
+        }
+        let author = message
+            .sender_display_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .or_else(|| {
+                envelope
+                    .participants
+                    .iter()
+                    .find(|participant| participant.account_id == message.sender_account_id)
+                    .map(|participant| participant.display_name.clone())
+            })
+            .unwrap_or_else(|| "Group participant".to_string());
+        if message.delivery_state.as_deref() == Some("processing") {
+            continue;
+        }
+        lines.push(format!("- {author}: {}", message.text.trim()));
+    }
+    let history = if lines.is_empty() {
+        "No earlier group messages are available.".to_string()
+    } else {
+        lines.join("\n")
+    };
+    format!(
+        "Group chat history before the request:\n{history}\n\nLatest request:\n{}",
+        request_text.trim()
+    )
+}
+
+async fn maybe_insert_offline_group_agent_fallback_response(
+    state: Arc<ServerState>,
+    request: &MessageSummary,
+) {
+    let Some(envelope) = decode_cloud_group_control_envelope(&request.body) else {
+        return;
+    };
+    let Some(group_message) = envelope.message.as_ref() else {
+        return;
+    };
+    if envelope.kind != "group-message" || group_message.sender_kind.as_deref() == Some("agent") {
+        return;
+    }
+    let request_created_at = DateTime::parse_from_rfc3339(&request.created_at)
+        .map(|value| value.with_timezone(&Utc))
+        .ok();
+    let Some(request_created_at) = request_created_at else {
+        return;
+    };
+    if Utc::now().signed_duration_since(request_created_at)
+        < ChronoDuration::seconds(cloud_agent_fallback_grace_seconds())
+    {
+        return;
+    }
+    let targets = cloud_group_fallback_targets(&envelope, request);
+    if targets.is_empty() {
+        return;
+    }
+
+    for target in targets {
+        maybe_insert_offline_group_agent_fallback_for_target(
+            state.clone(),
+            request,
+            &envelope,
+            group_message,
+            &target,
+        )
+        .await;
+    }
+}
+
+async fn maybe_insert_offline_group_agent_fallback_for_target(
+    state: Arc<ServerState>,
+    request: &MessageSummary,
+    envelope: &CloudGroupControlEnvelopeForFallback,
+    group_message: &CloudGroupMessageEnvelope,
+    target: &CloudGroupParticipantEnvelope,
+) {
+    let pool = state.db_pool();
+    let status: Option<(Option<String>,)> = match query_as(
+        "SELECT a.display_name \
+         FROM cloud_agent_runtime_status s \
+         JOIN cloud_accounts a ON a.account_id = s.account_id \
+         WHERE s.account_id = $1 \
+           AND s.readonly_fallback_enabled = TRUE \
+           AND ( \
+             (s.reachability_state = 'offline' AND s.local_execution_state = 'paused') \
+             OR (s.reachability_state = 'online' \
+                 AND s.updated_at::timestamptz < now() - ($2::TEXT || ' seconds')::interval) \
+           )",
+    )
+    .bind(&target.account_id)
+    .bind(CLOUD_AGENT_RUNTIME_STALE_SECONDS)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    let Some((account_display_name,)) = status else {
+        return;
+    };
+    let owner_display_name = account_display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(target.display_name.trim());
+
+    let lock_key = format!("group-agent:{}:{}", group_message.id, target.account_id);
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(_) => return,
+    };
+    let lock_acquired: (bool,) = match query_as("SELECT pg_try_advisory_xact_lock(hashtext($1))")
+        .bind(&lock_key)
+        .fetch_one(&mut *tx)
+        .await
+    {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    if !lock_acquired.0 {
+        return;
+    }
+
+    let group_rows: Vec<(String, String)> = match query_as(
+        "SELECT from_account_id, body FROM cloud_messages \
+         WHERE session_id = $1 AND body LIKE $2 \
+         ORDER BY created_at ASC",
+    )
+    .bind(&envelope.group_id)
+    .bind(format!("{}%", CLOUD_GROUP_CONTROL_PREFIX))
+    .fetch_all(&mut *tx)
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    if cloud_group_agent_response_exists(&group_rows, &target.account_id, &group_message.id) {
+        return;
+    }
+
+    let generated_response = match query_as::<_, (Value, Option<String>, Option<String>)>(
+        "SELECT auth_json, active_provider, active_profile_id \
+         FROM cloud_agent_provider_auth_snapshots \
+         WHERE account_id = $1",
+    )
+    .bind(&target.account_id)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(Some((auth_json, active_provider, active_profile_id))) => {
+            let client = reqwest::Client::new();
+            let prompt = cloud_group_readonly_prompt(
+                &group_rows,
+                &envelope.group_id,
+                &group_message.id,
+                &group_message.text,
+            );
+            generate_readonly_cloud_agent_response(
+                &client,
+                &auth_json,
+                active_provider.as_deref(),
+                active_profile_id.as_deref(),
+                &prompt,
+                Some(owner_display_name),
+            )
+            .await
+        }
+        _ => None,
+    };
+
+    let (response_text, delivery_state) = generated_response
+        .map(|text| (text, "complete".to_string()))
+        .unwrap_or_else(|| {
+            (
+                local_execution_paused_message(Some(owner_display_name)),
+                "failed".to_string(),
+            )
+        });
+    let response_created_at = Utc::now();
+    let response_created_at_ms = response_created_at.timestamp_millis();
+    let response_group_message_id = format!("msg:cloud-agent-server:{}", uuid::Uuid::new_v4().simple());
+    let mut response_envelope = envelope.clone();
+    response_envelope.kind = "group-message".to_string();
+    response_envelope.actor = target.clone();
+    response_envelope.group_title = None;
+    response_envelope.message = Some(CloudGroupMessageEnvelope {
+        id: response_group_message_id,
+        sender_account_id: target.account_id.clone(),
+        text: response_text,
+        created_at_ms: response_created_at_ms,
+        sender_kind: Some("agent".to_string()),
+        sender_display_name: Some(format!("{}'s Kordi", owner_display_name)),
+        delivery_state: Some(delivery_state),
+        reply_to_message_id: Some(group_message.id.clone()),
+        request_id: Some(group_message.id.clone()),
+    });
+    let Some(body) = encode_cloud_group_control_envelope(&response_envelope) else {
+        return;
+    };
+    let created_at = response_created_at.to_rfc3339();
+    let target_account_ids = cloud_group_response_target_account_ids(envelope, request, &target.account_id);
+    if target_account_ids.is_empty() {
+        return;
+    }
+    let mut inserted_rows = Vec::new();
+    for recipient_account_id in target_account_ids {
+        let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
+        if query(
+            "INSERT INTO cloud_messages \
+             (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
+             VALUES ($1, $2, $3, $4, $5, $5, $6)",
+        )
+        .bind(&message_id)
+        .bind(&target.account_id)
+        .bind(&recipient_account_id)
+        .bind(&body)
+        .bind(&created_at)
+        .bind(&envelope.group_id)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+        {
+            return;
+        }
+        inserted_rows.push((message_id, recipient_account_id));
+    }
+    if tx.commit().await.is_err() {
+        return;
+    }
+
+    for (message_id, recipient_account_id) in inserted_rows {
+        let owner_summary = MessageSummary {
+            message_id: message_id.clone(),
+            from_account_id: target.account_id.clone(),
+            to_account_id: recipient_account_id.clone(),
+            body: body.clone(),
+            session_id: Some(envelope.group_id.clone()),
+            created_at: created_at.clone(),
+            delivered_at: Some(created_at.clone()),
+            read_at: None,
+            direction: "outgoing".to_string(),
+            attachments: Vec::new(),
+        };
+        let recipient_summary = MessageSummary {
+            direction: "incoming".to_string(),
+            ..owner_summary.clone()
+        };
+        let _ = append_cloud_sync_event(
+            pool,
+            &target.account_id,
+            "message.upsert",
+            Some(&recipient_account_id),
+            Some(&message_id),
+            message_sync_payload(&owner_summary),
+            &created_at,
+        )
+        .await;
+        let _ = append_cloud_sync_event(
+            pool,
+            &recipient_account_id,
+            "message.upsert",
+            Some(&target.account_id),
+            Some(&message_id),
+            message_sync_payload(&recipient_summary),
+            &created_at,
+        )
+        .await;
+
+        let events = state.events().clone();
+        let from = target.account_id.clone();
+        let to = recipient_account_id.clone();
+        let body = body.clone();
+        let session_id = envelope.group_id.clone();
+        let created_at = created_at.clone();
+        tokio::spawn(async move {
+            events
+                .publish_message_arrived(
+                    &message_id,
+                    &from,
+                    &to,
+                    &body,
+                    &created_at,
+                    Some(&session_id),
+                    serde_json::json!([]),
+                )
+                .await;
+        });
+    }
+}
+
 fn schedule_offline_direct_agent_fallback_response(
     state: Arc<ServerState>,
     request: MessageSummary,
@@ -3560,7 +4012,8 @@ fn schedule_offline_direct_agent_fallback_response(
         .saturating_add(250);
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(delay_millis)).await;
-        maybe_insert_offline_direct_agent_fallback_response(state, &request).await;
+        maybe_insert_offline_direct_agent_fallback_response(state.clone(), &request).await;
+        maybe_insert_offline_group_agent_fallback_response(state, &request).await;
     });
 }
 
@@ -3625,6 +4078,7 @@ async fn sweep_stale_offline_direct_agent_fallback_responses(state: Arc<ServerSt
             attachments: Vec::new(),
         };
         maybe_insert_offline_direct_agent_fallback_response(state.clone(), &summary).await;
+        maybe_insert_offline_group_agent_fallback_response(state.clone(), &summary).await;
     }
 }
 
@@ -3674,6 +4128,7 @@ async fn claim_stale_offline_direct_agent_fallback_responses_for_conversation(
             attachments: Vec::new(),
         };
         maybe_insert_offline_direct_agent_fallback_response(state.clone(), &summary).await;
+        maybe_insert_offline_group_agent_fallback_response(state.clone(), &summary).await;
     }
 }
 
@@ -3987,6 +4442,7 @@ async fn send_message(
     }
 
     maybe_insert_offline_direct_agent_fallback_response(state.clone(), &summary).await;
+    maybe_insert_offline_group_agent_fallback_response(state.clone(), &summary).await;
     schedule_offline_direct_agent_fallback_response(state.clone(), summary.clone());
 
     (

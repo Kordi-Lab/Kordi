@@ -75,7 +75,7 @@ fn mention_tokens(text: &str) -> Vec<String> {
     out
 }
 
-pub fn message_mentions_named_agent(text: &str, owner_name: &str) -> bool {
+pub fn mention_matches_agent_name(text: &str, owner_name: &str) -> bool {
     let keys = owner_agent_keys(owner_name);
     if keys.is_empty() {
         return false;
@@ -152,6 +152,10 @@ pub fn is_cloud_agent_control_body(body: &str) -> bool {
             .is_some_and(|kind| kind == "group-message")
 }
 
+pub fn message_mentions_named_agent(text: &str, owner_name: &str) -> bool {
+    mention_matches_agent_name(text, owner_name)
+}
+
 pub fn should_start_direct_fallback(candidate: &CloudAgentFallbackCandidate<'_>) -> bool {
     if candidate.owner_account_id.trim().is_empty()
         || candidate.request_message_id.trim().is_empty()
@@ -168,7 +172,7 @@ pub fn should_start_direct_fallback(candidate: &CloudAgentFallbackCandidate<'_>)
     else {
         return false;
     };
-    if !message_mentions_named_agent(candidate.request_body, owner_display_name) {
+    if !mention_matches_agent_name(candidate.request_body, owner_display_name) {
         return false;
     }
     !candidate.peer_messages.iter().any(|message| {
