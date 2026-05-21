@@ -53,6 +53,8 @@ import type {
   DesktopChatTurnSnapshot,
   EditFilePreview,
   Message,
+  MessageForwardReference,
+  MessageQuoteReference,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
@@ -73,6 +75,132 @@ import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
+
+type ForwardDestination = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+};
+
+function interactionMessageText(message: Message) {
+  return (message.text || message.turn?.assistantText || '').trim();
+}
+
+function interactionExcerpt(message: Message) {
+  const text = interactionMessageText(message);
+  if (text) return text.length > 180 ? `${text.slice(0, 177).trimEnd()}…` : text;
+  const attachmentCount = message.attachments?.length ?? 0;
+  return attachmentCount > 0 ? `${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}` : '';
+}
+
+function quoteReferenceForMessage(message: Message): MessageQuoteReference | null {
+  const messageId = (message.id || message.entryId || '').trim();
+  const text = interactionExcerpt(message);
+  if (!messageId || !text) return null;
+  return {
+    messageId,
+    senderLabel: message.sender || (message.isOwnMessage ? 'Me' : null),
+    text,
+    time: message.time || null,
+  };
+}
+
+function forwardReferenceForMessage(message: Message, conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'name'>): MessageForwardReference | null {
+  const sourceMessageId = (message.id || message.entryId || '').trim();
+  if (!sourceMessageId) return null;
+  return {
+    sourceMessageId,
+    sourceSessionId: conversation.canonicalSessionId || conversation.id,
+    senderLabel: message.sender || (message.isOwnMessage ? 'Me' : null),
+    sourceChatLabel: conversation.name,
+  };
+}
+
+export function ComposerInteractionPreview({
+  quote,
+  forward,
+  onClearQuote,
+  onClearForward,
+}: {
+  quote?: MessageQuoteReference | null;
+  forward?: MessageForwardReference | null;
+  onClearQuote: () => void;
+  onClearForward: () => void;
+}) {
+  if (!quote && !forward) return null;
+  return (
+    <div className="mb-2 space-y-1.5">
+      {quote ? (
+        <div data-composer-quote-preview="true" className="flex items-start gap-2 rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2">
+          <div className="mt-0.5 h-9 w-0.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
+          <div className="min-w-0 flex-1 text-left">
+            <div className="truncate text-[12px] font-semibold text-emerald-300">Replying to {quote.senderLabel || 'message'}</div>
+            <div className="line-clamp-2 whitespace-pre-wrap text-[12px] leading-4 text-slate-300">{quote.text}</div>
+          </div>
+          <button type="button" onClick={onClearQuote} aria-label="Remove quote" className="shrink-0 rounded-full p-1 text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-100">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
+      {forward ? (
+        <div data-composer-forward-preview="true" className="flex items-center gap-2 rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-2">
+          <div className="min-w-0 flex-1 text-left">
+            <div className="truncate text-[12px] font-semibold text-emerald-300">Forwarded from {forward.senderLabel || forward.sourceChatLabel || 'message'}</div>
+            {forward.sourceChatLabel ? <div className="truncate text-[11px] text-slate-400">To be sent with Telegram-style forwarded header</div> : null}
+          </div>
+          <button type="button" onClick={onClearForward} aria-label="Remove forward" className="shrink-0 rounded-full p-1 text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-100">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ForwardDestinationPicker({
+  activeSessionId,
+  destinations,
+  onSelect,
+  onClose,
+}: {
+  activeSessionId: string;
+  destinations: ForwardDestination[];
+  onSelect: (sessionId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[220]" role="dialog" aria-modal="true" aria-label="Forward to">
+      <div className="absolute inset-0 bg-black/20" onMouseDown={onClose} aria-hidden="true" />
+      <div className="absolute bottom-24 left-1/2 max-h-[min(28rem,70vh)] w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-[22px] border border-white/10 bg-[var(--app-modal-bg)] shadow-[var(--app-shadow-float)] backdrop-blur-xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <div className="text-[14px] font-semibold text-white">Forward to</div>
+          <button type="button" onClick={onClose} aria-label="Close forward picker" className="rounded-full p-1 text-slate-400 transition hover:bg-white/[0.08] hover:text-slate-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="max-h-[22rem] overflow-y-auto p-2">
+          {destinations.map((destination) => {
+            const active = destination.id === activeSessionId;
+            return (
+              <button
+                key={destination.id}
+                type="button"
+                onClick={() => onSelect(destination.id)}
+                className="flex w-full items-center justify-between gap-3 rounded-[14px] px-3 py-2.5 text-left text-slate-100 transition hover:bg-white/[0.07]"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium">{destination.title}</span>
+                  {destination.subtitle ? <span className="block truncate text-[11px] text-slate-400">{destination.subtitle}</span> : null}
+                </span>
+                {active ? <span className="shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] text-slate-300">Current</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function shouldShowConversationTypeBadge(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'type' | 'forkedFromSessionId'>): boolean {
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
@@ -382,6 +510,40 @@ export function ChatsPage({
         void onForkChatMessage(activeConv.id, entryId);
       }
     : undefined;
+  const [composerQuote, setComposerQuote] = useState<MessageQuoteReference | null>(null);
+  const [composerForward, setComposerForward] = useState<MessageForwardReference | null>(null);
+  const [pendingForwardSource, setPendingForwardSource] = useState<MessageForwardReference | null>(null);
+  const forwardDestinations = useMemo<ForwardDestination[]>(() => {
+    const destinations = new Map<string, ForwardDestination>();
+    destinations.set(activeConv.id, { id: activeConv.id, title: activeConv.name, subtitle: activeConv.subtitle });
+    if (activeConv.canonicalSessionId && activeConv.canonicalSessionId !== activeConv.id) {
+      destinations.set(activeConv.canonicalSessionId, { id: activeConv.canonicalSessionId, title: activeConv.name, subtitle: activeConv.subtitle });
+    }
+    for (const session of desktopChatState?.sessions ?? []) {
+      destinations.set(session.id, { id: session.id, title: session.title || 'Untitled chat', subtitle: session.subtitle });
+    }
+    return [...destinations.values()];
+  }, [activeConv.canonicalSessionId, activeConv.id, activeConv.name, activeConv.subtitle, desktopChatState?.sessions]);
+  const handleQuoteMessage = (message: Message) => {
+    const quote = quoteReferenceForMessage(message);
+    if (!quote) return;
+    setComposerQuote(quote);
+    setComposerForward(null);
+    focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+  };
+  const handleForwardMessage = (message: Message) => {
+    const forward = forwardReferenceForMessage(message, activeConv);
+    if (!forward) return;
+    setPendingForwardSource(forward);
+  };
+  const handleSelectForwardDestination = (sessionId: string) => {
+    if (!pendingForwardSource) return;
+    setComposerForward(pendingForwardSource);
+    setComposerQuote(null);
+    setPendingForwardSource(null);
+    onSelectSession?.(sessionId);
+    focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+  };
 
   // If the active session is itself a fork, show a backlink at the top
   // of the transcript so the user can navigate to the source session.
@@ -740,6 +902,8 @@ export function ChatsPage({
                   onForkMessage={handleForkMessage}
                   messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
                   onOpenForkSession={onSelectSession}
+                  onQuoteMessage={handleQuoteMessage}
+                  onForwardMessage={handleForwardMessage}
                   isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                   isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
                 />
@@ -777,6 +941,15 @@ export function ChatsPage({
           </motion.div>
         </ScrollArea>
       </div>
+
+      {pendingForwardSource ? (
+        <ForwardDestinationPicker
+          activeSessionId={activeConv.canonicalSessionId || activeConv.id}
+          destinations={forwardDestinations}
+          onSelect={handleSelectForwardDestination}
+          onClose={() => setPendingForwardSource(null)}
+        />
+      ) : null}
 
       <div className="shrink-0 px-5 pb-4 pt-3">
         <AnimatePresence initial={false}>
@@ -830,6 +1003,12 @@ export function ChatsPage({
                   }
                   event.currentTarget.value = '';
                 }}
+              />
+              <ComposerInteractionPreview
+                quote={composerQuote}
+                forward={composerForward}
+                onClearQuote={() => setComposerQuote(null)}
+                onClearForward={() => setComposerForward(null)}
               />
               {chatComposerAttachments.length > 0 ? (
                 <div className="mb-1 flex flex-wrap items-center gap-1.5">
