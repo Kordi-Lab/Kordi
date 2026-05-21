@@ -546,6 +546,7 @@ export function cloudGroupAgentMentionResponseState(input: {
   const targetAccountId = cleanText(input.targetAccountId);
   if (!requestMessageId || !targetAccountId) return null;
   const targetAgentIdentityId = `agent:cloud:${targetAccountId}`;
+  let sawProcessing = false;
   for (const message of input.messages) {
     if (message.senderIdentityId !== targetAgentIdentityId) continue;
     if (message.sourceTransport !== 'cloud-group-agent') continue;
@@ -555,10 +556,13 @@ export function cloudGroupAgentMentionResponseState(input: {
       || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
     if (linkedRequestId !== requestMessageId) continue;
     const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
-    if (message.status === 'processing' || deliveryState === 'processing') return 'processing';
+    if (message.status === 'processing' || deliveryState === 'processing') {
+      sawProcessing = true;
+      continue;
+    }
     return 'terminal';
   }
-  return null;
+  return sawProcessing ? 'processing' : null;
 }
 
 export function cloudGroupAgentMentionHasResponse(input: {

@@ -6,7 +6,8 @@ import { shouldUseCloudSessionAction } from '../src/app/useKordiAppModelHelpers'
 import { buildCanonicalIndexes } from '../src/features/canonical/readModel/indexes';
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import { canonicalNoProviderFailedAgentMessageRequest, shouldUseNoProviderSelfAgentShortcut } from '../src/features/chat/messageActions/chatMessages';
-import type { CanonicalSessionState } from '../src/kordi-app/types';
+import { cloudGroupAgentMentionResponseState } from '../src/features/cloud/cloudGroupMessages';
+import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
 test('shouldUseCloudSessionAction routes cloud session ids but leaves local runtime ids alone', () => {
   assert.equal(shouldUseCloudSessionAction('cloud', 'session:direct-person:acct_a:acct_b'), true);
@@ -185,6 +186,53 @@ test('late cloud group processing events cannot demote completed agent replies',
   assert.match(guardBlock, /existingStableRowDeliveryState/);
   assert.match(guardBlock, /existingStableRowStatus !== 'processing'/);
   assert.match(guardBlock, /existingStableRowDeliveryState !== 'processing'/);
+});
+
+test('cloud group terminal agent replies win over stale processing rows', () => {
+  const messages: CanonicalSessionMessage[] = [
+    {
+      id: 'msg:cloud-agent-processing:req-1:acct_333',
+      sessionId: 'session:group:one',
+      senderIdentityId: 'agent:cloud:acct_333',
+      senderRole: 'external-agent',
+      messageKind: 'agent-turn',
+      contentText: 'processing...',
+      content: { deliveryState: 'processing', requestId: 'req-1', replyToMessageId: 'req-1' },
+      parentMessageId: 'req-1',
+      delegatedExchangeId: null,
+      status: 'processing',
+      sequenceNum: 2,
+      createdAtMs: 20,
+      updatedAtMs: 20,
+      contentHash: null,
+      sourceTransport: 'cloud-group-agent',
+      sourceEventId: 'cloud-group-agent:processing',
+    },
+    {
+      id: 'msg:cloud-agent-offline:req-1:acct_333',
+      sessionId: 'session:group:one',
+      senderIdentityId: 'agent:cloud:acct_333',
+      senderRole: 'external-agent',
+      messageKind: 'agent-turn',
+      contentText: 'I am using the cloud fallback model.',
+      content: { deliveryState: 'complete', requestId: 'req-1', replyToMessageId: 'req-1' },
+      parentMessageId: 'req-1',
+      delegatedExchangeId: null,
+      status: 'received',
+      sequenceNum: 3,
+      createdAtMs: 30,
+      updatedAtMs: 30,
+      contentHash: null,
+      sourceTransport: 'cloud-group-agent',
+      sourceEventId: 'cloud-group-agent:terminal',
+    },
+  ];
+
+  assert.equal(cloudGroupAgentMentionResponseState({
+    requestMessageId: 'req-1',
+    targetAccountId: 'acct_333',
+    messages,
+  }), 'terminal');
 });
 
 test('cloud group replay only marks an event processed after apply succeeds', () => {
