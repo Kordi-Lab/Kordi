@@ -153,6 +153,12 @@ test('synthetic no-provider replies suppress duplicate imported desktop runtime 
   assert.equal(messages.find((message) => message.role === 'owned-agent')?.turn?.error, 'No provider configured yet.');
 });
 
+test('cloud bridge message refreshes are single-flight to avoid transport saturation', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /cloudMessagesRefreshFlightRef/);
+  assert.match(source, /requestSingleFlightRun\(cloudMessagesRefreshFlightRef\.current/);
+});
+
 test('cloud group read state is driven by cloud metadata, not transient local unread increments', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /incrementLocalSessionUnread\?\.\(envelope\.groupId/);

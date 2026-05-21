@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 
 import {
   adoptCloudProfileIdentity,
@@ -1552,6 +1553,7 @@ export function useCloudBridgeState({
   const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
   const [cloudHiddenSessionIds, setCloudHiddenSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).hiddenSessionIds);
   const [cloudDeletedSessionIds, setCloudDeletedSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).deletedSessionIds);
+  const cloudMessagesRefreshFlightRef = useRef(createSingleFlightState());
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
   const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
   const cloudSessionForksByIdRef = useRef<Record<string, CloudSessionForkSummary>>(cloudSessionForksById);
@@ -1872,38 +1874,41 @@ export function useCloudBridgeState({
   }, [account, contactIdentitySignature, contacts.contacts, localHumanIdentityId, setCanonicalSessionState]);
 
   const refreshCloudBridgeMessages = useCallback(async () => {
-    const retainedPeerIds = Object.keys(messagesByPeerRef.current);
-    const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
-    if (!account || initialPeerIds.length === 0) {
-      setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
-      setInitialMessagesSettledPeerKey(bootstrapPeerKey);
-      return;
-    }
-    const session = await loadSession();
-    if (!session?.token) {
-      setInitialMessagesSettledPeerKey(null);
-      return;
-    }
+    const run = requestSingleFlightRun(cloudMessagesRefreshFlightRef.current, async () => {
+      const retainedPeerIds = Object.keys(messagesByPeerRef.current);
+      const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
+      if (!account || initialPeerIds.length === 0) {
+        setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
+        setInitialMessagesSettledPeerKey(bootstrapPeerKey);
+        return;
+      }
+      const session = await loadSession();
+      if (!session?.token) {
+        setInitialMessagesSettledPeerKey(null);
+        return;
+      }
 
-    const loaded = await loadCloudMessagesByPeerUntilStable({
-      accountId: account.accountId,
-      initialPeerIds,
-      existingMessagesByPeer: messagesByPeerRef.current,
-      listMessages: (peerId) => client.listMessages(session.token, peerId),
-      resolveMessageAttachments: async (messages) => Promise.all(messages.map(async (message) => ({
-        ...message,
-        attachments: message.attachments?.length
-          ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
-          : [],
-      }))),
-    });
+      const loaded = await loadCloudMessagesByPeerUntilStable({
+        accountId: account.accountId,
+        initialPeerIds,
+        existingMessagesByPeer: messagesByPeerRef.current,
+        listMessages: (peerId) => client.listMessages(session.token, peerId),
+        resolveMessageAttachments: async (messages) => Promise.all(messages.map(async (message) => ({
+          ...message,
+          attachments: message.attachments?.length
+            ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+            : [],
+        }))),
+      });
 
-    if (cancelledRef.current) return;
-    setMessagesByPeer((current) => {
-      const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
-      return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      if (cancelledRef.current) return;
+      setMessagesByPeer((current) => {
+        const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
+        return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      });
+      setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
     });
-    setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
+    await (run ?? cloudMessagesRefreshFlightRef.current.currentPromise ?? Promise.resolve());
   }, [account, bootstrapPeerKey, client]);
 
   const syncCloudBridgeDiff = useCallback(async () => {
