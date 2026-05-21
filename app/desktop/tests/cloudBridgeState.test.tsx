@@ -18,6 +18,7 @@ import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/feature
 import { cloudGroupForkPayloadFromSessionMetadata, cloudGroupParticipantsWithProfiles, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
+  CLOUD_MESSAGES_REFRESH_MS,
   cloudAgentMentionCandidates,
   cloudBootstrapPeerIds,
   cloudGroupAgentCancelRoleForRequest,
@@ -58,6 +59,10 @@ const peer = cloudContactToContact({
   avatarUrl: null,
   nodeId: 'node_peer',
   createdAt: '2026-05-11T00:00:00Z',
+});
+
+test('cloud bridge polling interval avoids saturating local tunnel previews', () => {
+  assert.ok(CLOUD_MESSAGES_REFRESH_MS >= 2_000);
 });
 
 test('cloud agent runtime routes fall back to current composer route for unconfigured cloud sessions', () => {
