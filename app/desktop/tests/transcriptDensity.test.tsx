@@ -432,7 +432,7 @@ test('renders plain My Kordi replies on a subtle assistant surface', () => {
   assert.doesNotMatch(markup, /app-message-bubble-own|app-message-bubble-peer/);
 });
 
-test('renders peer human sender names inside the bubble with colorful bold styling', () => {
+test('renders peer human sender names inside the bubble with restrained accent styling', () => {
   const message: Message = {
     role: 'person',
     sender: 'xin hai Mouse',
@@ -447,8 +447,9 @@ test('renders peer human sender names inside the bubble with colorful bold styli
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /app-chat-bubble-peer[\s\S]*app-message-inline-sender/);
-  assert.match(markup, /app-message-inline-sender[^>]*font-semibold/);
-  assert.match(markup, /--app-message-sender-accent/);
+  assert.match(markup, /app-message-inline-sender[^>]*font-medium/);
+  assert.doesNotMatch(markup, /app-message-inline-sender[^>]*font-semibold/);
+  assert.match(markup, /--app-message-sender-accent:oklch\(0\.68 0\.075 /);
   assert.match(markup, />xin hai Mouse</);
   assert.doesNotMatch(markup, /app-message-meta px-1[\s\S]*xin hai Mouse/);
 });

@@ -130,7 +130,7 @@ function senderAccentStyle(label?: string | null): CSSProperties {
     hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
   }
   const hue = Math.abs(hash) % 360;
-  return { '--app-message-sender-accent': `oklch(0.72 0.15 ${hue})` } as CSSProperties;
+  return { '--app-message-sender-accent': `oklch(0.68 0.075 ${hue})` } as CSSProperties;
 }
 
 function mentionPill(label: string, key: string) {
@@ -741,7 +741,7 @@ function MessageBubbleView({
         {isPeerHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="peer" /> : null}
         {showInlineHumanSender ? (
           <div
-            className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
+            className="app-message-inline-sender mb-1 truncate text-[12px] font-medium leading-4"
             style={senderAccentStyle(msg.sender)}
           >
             {msg.sender}

@@ -677,7 +677,7 @@
 }
 
 .app-message-inline-sender {
-  color: var(--app-message-sender-accent, color-mix(in oklab, rgb(244 114 182) 76%, var(--utility-foreground)));
+  color: color-mix(in oklab, var(--app-message-sender-accent, var(--utility-muted-text)) 72%, var(--utility-foreground));
 }
 
 .app-message-reply-line {
