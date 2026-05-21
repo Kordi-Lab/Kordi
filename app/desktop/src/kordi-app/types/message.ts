@@ -93,6 +93,20 @@ export type MessageReplySummary = {
   targetMessageId?: string | null;
 };
 
+export type MessageQuoteReference = {
+  messageId: string;
+  senderLabel?: string | null;
+  text: string;
+  time?: string | null;
+};
+
+export type MessageForwardReference = {
+  sourceMessageId: string;
+  sourceSessionId?: string | null;
+  senderLabel?: string | null;
+  sourceChatLabel?: string | null;
+};
+
 export type Message = {
   id?: string;
   /** Stable id of the underlying session entry, when the message maps
@@ -114,6 +128,8 @@ export type Message = {
   replyToMessageId?: string | null;
   replyAliasIds?: string[];
   replySummary?: MessageReplySummary;
+  quote?: MessageQuoteReference | null;
+  forwardedFrom?: MessageForwardReference | null;
   sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;
   edit?: {

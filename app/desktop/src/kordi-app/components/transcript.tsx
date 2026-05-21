@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -145,6 +145,101 @@ function isMentionBoundary(text: string, index: number, length: number) {
   const before = text[index - 1] ?? '';
   const after = text[index + length] ?? '';
   return (!before || /\s/.test(before)) && (!after || /[\s:;,.!?—-]/.test(after));
+}
+
+function messageVisibleText(msg: Message) {
+  const turnText = msg.turn?.assistantText?.trim();
+  return (msg.text || turnText || '').trim();
+}
+
+function messageInteractionExcerpt(msg: Message) {
+  const text = messageVisibleText(msg);
+  if (text) return text.length > 180 ? `${text.slice(0, 177).trimEnd()}…` : text;
+  const attachmentCount = msg.attachments?.length ?? 0;
+  if (attachmentCount > 0) return `${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`;
+  return '';
+}
+
+export function canUseMessageInteractions(msg: Message) {
+  if (msg.role === 'system' || msg.role === 'action' || msg.role === 'edit') return false;
+  if (msg.turn && !msg.turn.completed) return false;
+  const primaryStatus = primaryMessageStatus(msg);
+  if (primaryStatus && ['sending', 'processing'].includes(primaryStatus)) return false;
+  return Boolean(messageInteractionExcerpt(msg));
+}
+
+export function MessageInteractionMenu({
+  message,
+  x,
+  y,
+  onQuote,
+  onForward,
+  onClose,
+}: {
+  message: Message;
+  x: number;
+  y: number;
+  onQuote: (message: Message) => void;
+  onForward: (message: Message) => void;
+  onClose: () => void;
+}) {
+  if (!canUseMessageInteractions(message)) {
+    return <div data-message-interaction-disabled="true" />;
+  }
+  const style = { left: x, top: y } as CSSProperties;
+  return (
+    <>
+      <div className="fixed inset-0 z-[210]" onMouseDown={onClose} aria-hidden="true" />
+      <div
+        role="menu"
+        data-message-interaction-menu="true"
+        className="fixed z-[211] min-w-36 rounded-[14px] border border-white/10 bg-[color:var(--app-panel-bg)] p-1.5 text-[13px] text-slate-100 shadow-[var(--app-shadow-float)] backdrop-blur-xl"
+        style={style}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center rounded-[10px] px-3 py-2 text-left transition hover:bg-white/[0.08] focus:outline-none focus-visible:bg-white/[0.08]"
+          onClick={(event) => {
+            event.preventDefault();
+            onQuote(message);
+            onClose();
+          }}
+        >
+          Quote
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center rounded-[10px] px-3 py-2 text-left transition hover:bg-white/[0.08] focus:outline-none focus-visible:bg-white/[0.08]"
+          onClick={(event) => {
+            event.preventDefault();
+            onForward(message);
+            onClose();
+          }}
+        >
+          Forward
+        </button>
+      </div>
+    </>
+  );
+}
+
+function MessageQuotePreview({ sender, text }: { sender?: string | null; text: string }) {
+  return (
+    <div className="app-message-quote-preview mb-2 rounded-[10px] border-l-2 border-emerald-400/80 bg-black/10 px-2.5 py-1.5 text-left">
+      {sender ? <div className="truncate text-[11px] font-semibold leading-4 text-emerald-300">{sender}</div> : null}
+      <div className="line-clamp-2 whitespace-pre-wrap break-words text-[11.5px] leading-4 text-slate-300">{text}</div>
+    </div>
+  );
+}
+
+function MessageForwardedHeader({ sender }: { sender?: string | null }) {
+  return (
+    <div className="app-message-forwarded-header mb-1 text-left text-[12px] font-semibold leading-4 text-emerald-400">
+      Forwarded from {sender || 'message'}
+    </div>
+  );
 }
 
 function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
@@ -396,6 +491,8 @@ function MessageBubbleView({
   onForkMessage,
   messageForks,
   onOpenForkSession,
+  onQuoteMessage,
+  onForwardMessage,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
 }: {
@@ -409,10 +506,13 @@ function MessageBubbleView({
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
   onOpenForkSession?: (sessionId: string) => void;
+  onQuoteMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
 }) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
+  const [interactionMenu, setInteractionMenu] = useState<{ x: number; y: number } | null>(null);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
 
@@ -439,6 +539,23 @@ function MessageBubbleView({
   ) : null;
 
   const [isForkListOpen, setIsForkListOpen] = useState(false);
+  const openMessageInteractionMenu = (event: ReactMouseEvent) => {
+    if (!onQuoteMessage && !onForwardMessage) return;
+    if (!canUseMessageInteractions(msg)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setInteractionMenu({ x: event.clientX, y: event.clientY });
+  };
+  const interactionMenuNode = interactionMenu ? (
+    <MessageInteractionMenu
+      message={msg}
+      x={interactionMenu.x}
+      y={interactionMenu.y}
+      onQuote={onQuoteMessage ?? (() => {})}
+      onForward={onForwardMessage ?? (() => {})}
+      onClose={() => setInteractionMenu(null)}
+    />
+  ) : null;
   const forks = messageForks ?? [];
   const forkCount = forks.length;
   const forkChip = forkCount > 0 ? (
@@ -634,7 +751,9 @@ function MessageBubbleView({
         id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
         data-transcript-message-root="true"
         className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
+        onContextMenu={openMessageInteractionMenu}
       >
+        {interactionMenuNode}
         {msg.id && msg.turn.id && msg.id !== msg.turn.id ? (
           <span id={transcriptMessageDomId(msg.turn.id)} data-transcript-message-anchor="true" className="sr-only" aria-hidden="true" />
         ) : null}
@@ -645,6 +764,8 @@ function MessageBubbleView({
           {forkButton}
           {forkChip}
         </div>
+        {msg.quote ? <MessageQuotePreview sender={msg.quote.senderLabel} text={msg.quote.text} /> : null}
+        {msg.forwardedFrom ? <MessageForwardedHeader sender={msg.forwardedFrom.senderLabel || msg.forwardedFrom.sourceChatLabel} /> : null}
         <LiveChatTurnCard
           turn={msg.turn}
           historical={msg.turn.completed}
@@ -696,6 +817,7 @@ function MessageBubbleView({
     <div
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
       data-transcript-message-root="true"
+      onContextMenu={openMessageInteractionMenu}
       className={cn(
         'flex flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
@@ -705,6 +827,7 @@ function MessageBubbleView({
         showContactRequestAction ? 'w-full' : '',
       )}
     >
+      {interactionMenuNode}
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
           {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
@@ -747,6 +870,8 @@ function MessageBubbleView({
             {msg.sender}
           </div>
         ) : null}
+        {msg.forwardedFrom ? <MessageForwardedHeader sender={msg.forwardedFrom.senderLabel || msg.forwardedFrom.sourceChatLabel} /> : null}
+        {msg.quote ? <MessageQuotePreview sender={msg.quote.senderLabel} text={msg.quote.text} /> : null}
         {showCompactFooter ? (
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
@@ -834,6 +959,8 @@ function messageSnapshotKey(msg: Message) {
     msg.replyToMessageId ?? '',
     msg.replyAliasIds?.join('|') ?? '',
     msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
+    msg.quote ? [msg.quote.messageId, msg.quote.senderLabel ?? '', msg.quote.text].join(':') : '',
+    msg.forwardedFrom ? [msg.forwardedFrom.sourceMessageId, msg.forwardedFrom.senderLabel ?? '', msg.forwardedFrom.sourceChatLabel ?? ''].join(':') : '',
     msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? ''].join(':') : '',
     msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
     msg.mentions?.map((mention) => mention.label).join('|') ?? '',
@@ -851,6 +978,8 @@ export const MessageBubble = memo(
     && previous.onRequestBridgeContact === next.onRequestBridgeContact
     && previous.onForkMessage === next.onForkMessage
     && previous.onOpenForkSession === next.onOpenForkSession
+    && previous.onQuoteMessage === next.onQuoteMessage
+    && previous.onForwardMessage === next.onForwardMessage
     && previous.messageForks === next.messageForks
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext

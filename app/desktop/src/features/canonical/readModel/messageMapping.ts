@@ -5,7 +5,9 @@ import type {
   DesktopChatToolSnapshot,
   Message,
   MessageAttachment,
+  MessageForwardReference,
   MessageMention,
+  MessageQuoteReference,
 } from '@/kordi-app/types';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/bridge/agentPlaceholderText';
 import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
@@ -76,6 +78,31 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
   });
 
   return attachments.length > 0 ? attachments : undefined;
+}
+
+export function canonicalMessageQuote(value: unknown): MessageQuoteReference | undefined {
+  const record = contentRecord(value);
+  const messageId = stringValue(record.messageId)?.trim();
+  const text = stringValue(record.text)?.trim();
+  if (!messageId || !text) return undefined;
+  return {
+    messageId,
+    senderLabel: stringValue(record.senderLabel) ?? null,
+    text,
+    time: stringValue(record.time) ?? null,
+  };
+}
+
+export function canonicalMessageForward(value: unknown): MessageForwardReference | undefined {
+  const record = contentRecord(value);
+  const sourceMessageId = stringValue(record.sourceMessageId)?.trim();
+  if (!sourceMessageId) return undefined;
+  return {
+    sourceMessageId,
+    sourceSessionId: stringValue(record.sourceSessionId) ?? null,
+    senderLabel: stringValue(record.senderLabel) ?? null,
+    sourceChatLabel: stringValue(record.sourceChatLabel) ?? null,
+  };
 }
 
 export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
@@ -467,6 +494,8 @@ export function mapCanonicalMessage(
     mentions: canonicalMentions(content.mentions),
     replyToMessageId: replyToMessageId ?? undefined,
     replyAliasIds: replyAliasIds.length ? replyAliasIds : undefined,
+    quote: canonicalMessageQuote(content.quote),
+    forwardedFrom: canonicalMessageForward(content.forwardedFrom),
     statusChips: role === 'user' && canonicalUserStatusChip(message, content) ? [canonicalUserStatusChip(message, content)!] : undefined,
     turn: isAgentTurn
       ? {
