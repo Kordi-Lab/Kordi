@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import {
   CloudAuthClient,
   CloudAuthError,
+  closeCloudWebSocketQuietly,
   cloudApiBaseUrl,
   cloudWebSocketUrl,
   parseCloudOAuthHashResult,
@@ -161,6 +162,39 @@ test('cloud WebSocket URL derives from the cloud API origin', () => {
     cloudWebSocketUrl('token with space', 'http://127.0.0.1:17081'),
     'ws://127.0.0.1:17081/v1/cloud/ws?token=token+with+space',
   );
+});
+
+test('quiet WebSocket close does not close sockets before the handshake completes', () => {
+  let closeCount = 0;
+  const listeners: Record<string, Array<() => void>> = {};
+  const socket = {
+    readyState: 0,
+    close: () => { closeCount += 1; },
+    addEventListener: (event: string, listener: () => void) => {
+      listeners[event] = [...(listeners[event] ?? []), listener];
+    },
+  } as unknown as WebSocket;
+
+  closeCloudWebSocketQuietly(socket);
+
+  assert.equal(closeCount, 0);
+  assert.equal(listeners.open?.length, 1);
+  (socket as unknown as { readyState: number }).readyState = 1;
+  listeners.open?.[0]?.();
+  assert.equal(closeCount, 1);
+});
+
+test('quiet WebSocket close closes already-open sockets immediately', () => {
+  let closeCount = 0;
+  const socket = {
+    readyState: 1,
+    close: () => { closeCount += 1; },
+    addEventListener: () => { throw new Error('open socket should not register delayed close'); },
+  } as unknown as WebSocket;
+
+  closeCloudWebSocketQuietly(socket);
+
+  assert.equal(closeCount, 1);
 });
 
 test('network failures surface as CloudAuthError with code network_error', async () => {

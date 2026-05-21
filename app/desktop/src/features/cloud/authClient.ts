@@ -299,6 +299,29 @@ export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): s
   return url.toString();
 }
 
+export function closeCloudWebSocketQuietly(socket: WebSocket | null | undefined): void {
+  if (!socket) return;
+  const openState = typeof WebSocket === 'undefined' ? 1 : WebSocket.OPEN;
+  const connectingState = typeof WebSocket === 'undefined' ? 0 : WebSocket.CONNECTING;
+  try {
+    if (socket.readyState === openState) {
+      socket.close();
+      return;
+    }
+    if (socket.readyState === connectingState) {
+      socket.addEventListener('open', () => {
+        try {
+          if (socket.readyState === openState) socket.close();
+        } catch {
+          // Best effort cleanup; avoid surfacing dev-tunnel close noise.
+        }
+      }, { once: true });
+    }
+  } catch {
+    // Best effort cleanup; a failed close should not create visible app errors.
+  }
+}
+
 export type CloudAuthClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;

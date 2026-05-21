@@ -11,6 +11,7 @@ import {
 import {
   CloudAuthClient,
   CloudAuthError,
+  closeCloudWebSocketQuietly,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   parseCloudOAuthHashResult,
@@ -233,14 +234,14 @@ export function useCloudSession({
           if (ws) ws = null;
         };
         ws.onerror = () => {
-          ws?.close();
+          closeCloudWebSocketQuietly(ws);
         };
       })
       .catch(() => undefined);
 
     return () => {
       cancelled = true;
-      ws?.close();
+      closeCloudWebSocketQuietly(ws);
     };
   }, [account?.accountId, authClient, enabled, setAuthenticated, status]);
 

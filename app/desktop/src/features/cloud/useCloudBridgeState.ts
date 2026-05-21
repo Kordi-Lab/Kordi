@@ -30,6 +30,7 @@ import type {
 } from '@/kordi-app/types';
 import {
   CloudAuthClient,
+  closeCloudWebSocketQuietly,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
@@ -2903,7 +2904,7 @@ export function useCloudBridgeState({
     void open();
     return () => {
       cancelled = true;
-      ws?.close();
+      closeCloudWebSocketQuietly(ws);
     };
   }, [account]);
 

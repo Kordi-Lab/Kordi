@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   CloudAuthClient,
+  closeCloudWebSocketQuietly,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
@@ -146,16 +147,15 @@ export function useCloudConversation(
           console.warn('[cloud-ws] frame parse failed', err);
         }
       };
-      ws.onerror = (event) => {
-        // eslint-disable-next-line no-console
-        console.warn('[cloud-ws] error', event);
+      ws.onerror = () => {
+        closeCloudWebSocketQuietly(ws);
       };
     };
     void open();
 
     return () => {
       cancelled = true;
-      ws?.close();
+      closeCloudWebSocketQuietly(ws);
     };
   }, [account, peerAccountId, mergeMessage]);
 

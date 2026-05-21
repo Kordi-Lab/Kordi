@@ -10,6 +10,7 @@ import type { Contact, ContactRequest } from '@/kordi-app/types';
 
 import {
   CloudAuthClient,
+  closeCloudWebSocketQuietly,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
@@ -306,7 +307,7 @@ function ensureCloudContactsWebSocket(store: CloudContactsStore, client: CloudAu
         if (store.ws === ws) store.ws = null;
       };
       ws.onerror = () => {
-        ws.close();
+        closeCloudWebSocketQuietly(ws);
       };
     })
     .finally(() => {
@@ -341,7 +342,7 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
       if (store.listeners.size === 0) {
         if (store.pollTimer && typeof window !== 'undefined') window.clearInterval(store.pollTimer);
         store.pollTimer = null;
-        store.ws?.close();
+        closeCloudWebSocketQuietly(store.ws);
         store.ws = null;
       }
     };
