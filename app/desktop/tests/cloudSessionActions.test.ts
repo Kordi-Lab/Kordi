@@ -157,16 +157,14 @@ test('cloud group read state is driven by cloud metadata, not transient local un
   assert.doesNotMatch(source, /incrementLocalSessionUnread\?\.\(envelope\.groupId/);
 });
 
-test('cloud group requesting placeholder times out to no-provider notice instead of processing forever', () => {
+test('cloud group requesting placeholder does not become a local no-provider error', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
   assert.match(source, /CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS/);
   const timeoutIndex = source.indexOf('window.setTimeout(() => {');
   assert.ok(timeoutIndex >= 0, 'expected requesting placeholder timeout');
-  const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 2500);
-  assert.match(timeoutBlock, /cloudGroupAgentNoProviderFallbackRequest\(\{/);
-  assert.match(source, /error:\s*cloudAgentNoProviderNoticeText\(\)/);
-  assert.match(source, /status:\s*'failed'/);
-  assert.match(source, /sourceTransport:\s*'cloud-group-agent'/);
+  const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 800);
+  assert.doesNotMatch(timeoutBlock, /cloudGroupAgentNoProviderFallbackRequest/);
+  assert.match(timeoutBlock, /setCloudGroupRequestPlaceholderProcessing/);
 });
 
 test('cloud group no-provider catch broadcasts a failed agent response to requesters', () => {

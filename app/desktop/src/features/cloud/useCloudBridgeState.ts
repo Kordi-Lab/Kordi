@@ -506,41 +506,6 @@ function upsertCanonicalRequestIntoLocalState(
   return { ...current, messages };
 }
 
-function cloudGroupAgentNoProviderFallbackRequest(input: {
-  sessionId: string;
-  requestMessageId: string;
-  targetAccountId: string;
-  targetAgentDisplayName?: string | null;
-  createdAtMs?: number | null;
-}): AppendCanonicalMessageRequest {
-  const createdAtMs = typeof input.createdAtMs === 'number' && Number.isFinite(input.createdAtMs)
-    ? input.createdAtMs
-    : Date.now();
-  const requestMessageId = input.requestMessageId.trim();
-  const targetAccountId = input.targetAccountId.trim();
-  return {
-    id: `msg:cloud-agent-offline:${requestMessageId}:${targetAccountId}`,
-    sessionId: input.sessionId,
-    senderIdentityId: `agent:cloud:${targetAccountId}`,
-    senderRole: 'external-agent',
-    messageKind: 'agent-turn',
-    contentText: '',
-    content: {
-      sender: input.targetAgentDisplayName?.trim() || 'Kordi',
-      timestampMs: createdAtMs,
-      deliveryState: 'failed',
-      requestId: requestMessageId,
-      replyToMessageId: requestMessageId,
-      error: cloudAgentNoProviderNoticeText(),
-    },
-    parentMessageId: requestMessageId,
-    status: 'failed',
-    createdAtMs,
-    sourceTransport: 'cloud-group-agent',
-    sourceEventId: `cloud-group-agent-no-provider-timeout:${requestMessageId}:${targetAccountId}`,
-  };
-}
-
 function removeCloudGroupOfflinePlaceholder(
   current: CanonicalSessionState | null,
   noticeId: string,
@@ -1987,38 +1952,25 @@ export function useCloudBridgeState({
       });
       const requestReachedCloud = cloudAgentRequestReachedCloud(candidate.requestMessage);
       const hasOfflineNotice = existingNotice?.status === 'failed';
-      if (responseState || hasOfflineNotice) {
+      if (responseState) {
         const timerId = cloudGroupOfflineTimersRef.current.get(key);
         if (timerId !== undefined) window.clearTimeout(timerId);
         cloudGroupOfflineTimersRef.current.delete(key);
-        setCanonicalSessionState((current) => (
-          responseState === 'processing'
-            ? setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId)
-            : removeCloudGroupOfflinePlaceholder(current, noticeId)
-        ));
+        setCanonicalSessionState((current) => {
+          if (responseState === 'processing') return setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId);
+          const withoutOfflinePlaceholder = removeCloudGroupOfflinePlaceholder(current, noticeId) ?? current;
+          return removeCanonicalMessageById(withoutOfflinePlaceholder, noticeId) ?? withoutOfflinePlaceholder;
+        });
         continue;
+      }
+      if (hasOfflineNotice) {
+        setCanonicalSessionState((current) => removeCanonicalMessageById(current, noticeId) ?? current);
       }
       if (cloudGroupOfflineTimersRef.current.has(key)) continue;
 
       const timeoutId = window.setTimeout(() => {
         cloudGroupOfflineTimersRef.current.delete(key);
-        const failedNoticeRequest = cloudGroupAgentNoProviderFallbackRequest({
-          sessionId: candidate.requestMessage.sessionId,
-          requestMessageId: candidate.requestMessage.id,
-          targetAccountId: candidate.targetAccountId,
-          targetAgentDisplayName: candidate.targetAgentDisplayName,
-          createdAtMs: Date.now(),
-        });
-        setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, failedNoticeRequest));
-        void upsertCanonicalMessage(failedNoticeRequest)
-          .then((nextState) => {
-            canonicalSessionStateRef.current = nextState;
-            setCanonicalSessionState(nextState);
-          })
-          .catch((error) => {
-            // eslint-disable-next-line no-console
-            console.warn('[cloud-group-agent-requesting] failed to persist no-provider fallback', error);
-          });
+        setCanonicalSessionState((current) => setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId));
       }, CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS);
       cloudGroupOfflineTimersRef.current.set(key, timeoutId);
 
@@ -2315,8 +2267,9 @@ export function useCloudBridgeState({
       setCanonicalSessionState(nextState);
       return;
     }
+    const senderIsAgent = envelope.message.senderKind === 'agent';
     const senderHumanIdentityId = identityIdByAccount.get(envelope.message.senderAccountId);
-    if (!senderHumanIdentityId) {
+    if (!senderHumanIdentityId && !senderIsAgent) {
       setCanonicalSessionState(nextState);
       return;
     }
@@ -2345,8 +2298,7 @@ export function useCloudBridgeState({
       )) ?? null;
     const messageAlreadyExists = Boolean(existingCloudGroupMessage);
 
-    const senderIsAgent = envelope.message.senderKind === 'agent';
-    const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
+    const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId!;
     const messageReplyToId = envelope.message.replyToMessageId?.trim()
       || envelope.message.requestId?.trim()
       || null;
