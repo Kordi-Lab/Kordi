@@ -2593,6 +2593,14 @@ const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 const CLOUD_AGENT_RUNTIME_STALE_SECONDS: i64 = 12;
 const CLOUD_AGENT_FALLBACK_GRACE_SECONDS: i64 = 45;
 
+fn cloud_agent_fallback_grace_seconds() -> i64 {
+    std::env::var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| (0..=3600).contains(value))
+        .unwrap_or(CLOUD_AGENT_FALLBACK_GRACE_SECONDS)
+}
+
 fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
     let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
     account_ids.sort_unstable();
@@ -3343,7 +3351,7 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
         return;
     };
     if Utc::now().signed_duration_since(request_created_at)
-        < ChronoDuration::seconds(CLOUD_AGENT_FALLBACK_GRACE_SECONDS)
+        < ChronoDuration::seconds(cloud_agent_fallback_grace_seconds())
     {
         return;
     }
@@ -3536,6 +3544,22 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
                 serde_json::json!([]),
             )
             .await;
+    });
+}
+
+fn schedule_offline_direct_agent_fallback_response(
+    state: Arc<ServerState>,
+    request: MessageSummary,
+) {
+    if request.from_account_id == request.to_account_id {
+        return;
+    }
+    let delay_millis = (cloud_agent_fallback_grace_seconds().max(0) as u64)
+        .saturating_mul(1_000)
+        .saturating_add(250);
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(delay_millis)).await;
+        maybe_insert_offline_direct_agent_fallback_response(state, &request).await;
     });
 }
 
@@ -3898,6 +3922,7 @@ async fn send_message(
     }
 
     maybe_insert_offline_direct_agent_fallback_response(state.clone(), &summary).await;
+    schedule_offline_direct_agent_fallback_response(state.clone(), summary.clone());
 
     (
         StatusCode::CREATED,
