@@ -25,6 +25,7 @@ import {
   cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentProcessingMessageForRequest,
   cloudGroupAgentProcessingSlotForResponse,
+  cloudGroupTerminalAgentReplyAlreadyStable,
   optimisticCloudAgentCancelMessage,
   cloudSelfAgentDerivedSyncedStatusBySessionId,
   planCloudSelfAgentSync,
@@ -63,6 +64,48 @@ const peer = cloudContactToContact({
 
 test('cloud bridge polling interval avoids saturating local tunnel previews', () => {
   assert.ok(CLOUD_MESSAGES_REFRESH_MS >= 2_000);
+});
+
+test('duplicate terminal cloud group agent replies keep the existing stable slot', () => {
+  const existing: CanonicalSessionMessage = {
+    id: 'msg:cloud-agent-offline:msg_request:acct_owner',
+    sessionId: 'session:group:one',
+    senderIdentityId: 'agent:cloud:acct_owner',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'done',
+    content: {
+      deliveryState: 'complete',
+      requestId: 'msg_request',
+      replyToMessageId: 'msg_request',
+    },
+    parentMessageId: 'msg_request',
+    status: 'received',
+    sequenceNum: 2,
+    createdAtMs: 200,
+    updatedAtMs: 200,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: 'cloud-group-agent:cloud_first',
+  };
+
+  assert.equal(cloudGroupTerminalAgentReplyAlreadyStable(existing, {
+    groupId: 'session:group:one',
+    requestId: 'msg_request',
+    senderAccountId: 'acct_owner',
+    deliveryState: 'complete',
+    text: 'done',
+  }), true);
+  assert.equal(cloudGroupTerminalAgentReplyAlreadyStable({
+    ...existing,
+    status: 'processing',
+    content: { deliveryState: 'processing', requestId: 'msg_request' },
+  }, {
+    groupId: 'session:group:one',
+    requestId: 'msg_request',
+    senderAccountId: 'acct_owner',
+    deliveryState: 'complete',
+    text: 'done',
+  }), false);
 });
 
 test('cloud agent runtime routes fall back to current composer route for unconfigured cloud sessions', () => {

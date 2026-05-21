@@ -614,6 +614,41 @@ function setCloudGroupRequestPlaceholderProcessing(
   return changed ? { ...marked, messages: nextMessages } : marked;
 }
 
+export function cloudGroupTerminalAgentReplyAlreadyStable(
+  existing: CanonicalSessionMessage | null | undefined,
+  incoming: {
+    groupId: string;
+    requestId: string;
+    senderAccountId: string;
+    deliveryState?: string | null;
+    text?: string | null;
+  },
+): boolean {
+  if (!existing) return false;
+  const groupId = cleanText(incoming.groupId);
+  const requestId = cleanText(incoming.requestId);
+  const senderAccountId = cleanText(incoming.senderAccountId);
+  if (!groupId || !requestId || !senderAccountId) return false;
+  if (existing.sessionId !== groupId || existing.senderIdentityId !== `agent:cloud:${senderAccountId}`) return false;
+  if (!existing.sourceTransport?.startsWith('cloud-group-agent')) return false;
+  const content = objectContent(existing.content);
+  const linkedRequestId = cleanText(existing.parentMessageId)
+    || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+    || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+  if (linkedRequestId !== requestId) return false;
+
+  const incomingDeliveryState = cleanText(incoming.deliveryState).toLowerCase() || 'complete';
+  if (incomingDeliveryState === 'processing') return false;
+  const existingDeliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+  if (existing.status === 'processing' || existingDeliveryState === 'processing') return false;
+  if (existingDeliveryState === 'complete' && incomingDeliveryState === 'complete') {
+    return cleanText(existing.contentText) === cleanText(incoming.text);
+  }
+  if (existingDeliveryState === 'failed' && incomingDeliveryState === 'failed') return true;
+  if (existingDeliveryState === 'cancelled' && incomingDeliveryState === 'cancelled') return true;
+  return false;
+}
+
 function cloudGroupControlAlreadyMaterialized(
   current: CanonicalSessionState | null,
   cloudMessage: CloudMessage,
@@ -2495,10 +2530,18 @@ export function useCloudBridgeState({
         ? existingStableRowStatus !== 'processing' && existingStableRowDeliveryState !== 'processing'
         : false;
       if (existingStableRowTerminalLocked && agentDeliveryState === 'processing') {
-        setCanonicalSessionState(nextState);
         return true;
       }
       const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
+      if (senderIsAgent && replacementAgentSlot && cloudGroupTerminalAgentReplyAlreadyStable(replacementAgentSlot, {
+        groupId: envelope.groupId,
+        requestId: messageReplyToId ?? '',
+        senderAccountId: envelope.message.senderAccountId,
+        deliveryState: agentDeliveryState,
+        text: envelope.message.text,
+      })) {
+        return true;
+      }
       const shouldUpdateStableAgentSlot = Boolean(replacementAgentSlot);
       const agentStatus = senderIsAgent && agentDeliveryState === 'processing'
         ? 'processing'
