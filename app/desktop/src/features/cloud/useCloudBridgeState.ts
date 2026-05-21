@@ -33,6 +33,7 @@ import {
   CloudAuthClient,
   closeCloudWebSocketQuietly,
   cloudWebSocketUrl,
+  cloudWebSocketsEnabled,
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudMessage,
@@ -2885,7 +2886,7 @@ export function useCloudBridgeState({
   }, [account]);
 
   useEffect(() => {
-    if (!account) return;
+    if (!account || !cloudWebSocketsEnabled()) return;
     // Pin the WS lifecycle to `account` only. Earlier the deps included
     // `mergeMessage` and `refreshCloudBridgeMessages`, both of whose
     // identities flip transitively when canonicalSessionState updates

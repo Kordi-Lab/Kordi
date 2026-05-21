@@ -22,6 +22,13 @@
 //   KORDI_CLOUD_SSH_ZONE=zone
 //   KORDI_CLOUD_VM_PORT=17082
 //   KORDI_CLOUD_LOCAL_PORT=17081
+//
+// The remote hop binds VM_PORT on 127.0.0.1 and forwards to the k3s
+// ClusterIP for svc/kordi-cloud-server. This avoids using the VM's port
+// 17081 directly and avoids kubectl port-forward CLOSE_WAIT buildup under
+// three WebView preview instances. The remote hop is started detached;
+// the local SSH process only owns -L forwarding, which keeps the tunnel
+// responsive under many browser connections.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync } from 'node:fs';
@@ -57,14 +64,32 @@ function ensureTunnel() {
     const logFile = join(logsDir, 'cloud-tunnel.log');
     const out = openSync(logFile, 'a');
     const cmd = 'gcloud';
+    const remoteCommand = [
+        'set -e',
+        `if ss -ltn | grep -q "127.0.0.1:${VM_PORT}"; then exit 0; fi`,
+        'SVC_IP=$(kubectl -n kordi-cloud get svc kordi-cloud-server -o jsonpath=\'{.spec.clusterIP}\')',
+        `nohup socat TCP-LISTEN:${VM_PORT},fork,bind=127.0.0.1,reuseaddr,backlog=128 TCP:\${SVC_IP}:17081 >/tmp/kordi-cloud-socat-${VM_PORT}.log 2>&1 < /dev/null &`,
+    ].join('; ');
+    console.log(`[kordi] Ensuring remote cloud tunnel hop on ${SSH_TARGET}:127.0.0.1:${VM_PORT} (log -> ${logFile})`);
+    const remote = spawnSync(cmd, [
+        'compute', 'ssh', SSH_TARGET,
+        '--zone', SSH_ZONE,
+        '--command',
+        remoteCommand,
+    ], { stdio: ['ignore', out, out] });
+    if (remote.status !== 0) {
+        console.error(`[kordi] Could not start remote cloud tunnel hop. Tail ${logFile} for diagnostics.`);
+        process.exit(remote.status ?? 1);
+    }
+
     const args = [
         'compute', 'ssh', SSH_TARGET,
         '--zone', SSH_ZONE,
-        '--ssh-flag', `-L ${LOCAL_PORT}:127.0.0.1:${VM_PORT}`,
-        '--command',
-        `kubectl -n kordi-cloud port-forward svc/kordi-cloud-server ${VM_PORT}:17081`,
+        '--',
+        '-N',
+        '-L', `${LOCAL_PORT}:127.0.0.1:${VM_PORT}`,
     ];
-    console.log(`[kordi] Opening cloud tunnel: gcloud compute ssh ${SSH_TARGET} (log -> ${logFile})`);
+    console.log(`[kordi] Opening local cloud tunnel: gcloud compute ssh ${SSH_TARGET} (log -> ${logFile})`);
     const child = spawn(cmd, args, {
         detached: true,
         stdio: ['ignore', out, out],

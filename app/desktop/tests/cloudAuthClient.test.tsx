@@ -8,6 +8,7 @@ import {
   closeCloudWebSocketQuietly,
   cloudApiBaseUrl,
   cloudWebSocketUrl,
+  cloudWebSocketsEnabled,
   parseCloudOAuthHashResult,
 } from '../src/features/cloud/authClient';
 
@@ -162,6 +163,12 @@ test('cloud WebSocket URL derives from the cloud API origin', () => {
     cloudWebSocketUrl('token with space', 'http://127.0.0.1:17081'),
     'ws://127.0.0.1:17081/v1/cloud/ws?token=token+with+space',
   );
+});
+
+test('cloud WebSocket is disabled for the local takotako tunnel preview', () => {
+  assert.equal(cloudWebSocketsEnabled('http://127.0.0.1:17081'), false);
+  assert.equal(cloudWebSocketsEnabled('http://localhost:17081'), false);
+  assert.equal(cloudWebSocketsEnabled('https://coordinar.io'), true);
 });
 
 test('quiet WebSocket close does not close sockets before the handshake completes', () => {

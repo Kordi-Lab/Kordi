@@ -299,6 +299,18 @@ export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): s
   return url.toString();
 }
 
+export function cloudWebSocketsEnabled(baseUrl = cloudApiBaseUrl()): boolean {
+  try {
+    const url = new URL(baseUrl);
+    if ((url.hostname === '127.0.0.1' || url.hostname === 'localhost') && url.port === '17081') {
+      return false;
+    }
+  } catch {
+    return true;
+  }
+  return true;
+}
+
 export function closeCloudWebSocketQuietly(socket: WebSocket | null | undefined): void {
   if (!socket) return;
   const openState = typeof WebSocket === 'undefined' ? 1 : WebSocket.OPEN;

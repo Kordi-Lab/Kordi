@@ -12,6 +12,7 @@ import {
   CloudAuthClient,
   closeCloudWebSocketQuietly,
   cloudWebSocketUrl,
+  cloudWebSocketsEnabled,
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudContactRequest,
@@ -266,7 +267,7 @@ async function refreshCloudContactsStore(store: CloudContactsStore, client: Clou
 }
 
 function ensureCloudContactsWebSocket(store: CloudContactsStore, client: CloudAuthClient) {
-  if (store.ws || store.wsOpening || typeof WebSocket === 'undefined') return;
+  if (store.ws || store.wsOpening || typeof WebSocket === 'undefined' || !cloudWebSocketsEnabled()) return;
   store.wsOpening = true;
   void loadSession()
     .then((session) => {
