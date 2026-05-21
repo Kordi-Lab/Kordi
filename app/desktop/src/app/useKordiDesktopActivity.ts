@@ -71,6 +71,11 @@ export function visibleLocalSessionIdForActivity({
   return visibleSessionId;
 }
 
+function visibleActiveChatLiveTurn(turn: DesktopChatTurnSnapshot | null | undefined) {
+  if (!turn) return null;
+  return turn.completed ? null : turn;
+}
+
 export function activeChatLiveTurnForConversation({
   activeConv,
   desktopLiveTurnsBySession,
@@ -78,10 +83,10 @@ export function activeChatLiveTurnForConversation({
   activeConv: { id: string; canonicalSessionId?: string | null };
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot | null | undefined>;
 }) {
-  const directTurn = desktopLiveTurnsBySession[activeConv.id];
+  const directTurn = visibleActiveChatLiveTurn(desktopLiveTurnsBySession[activeConv.id]);
   if (directTurn) return directTurn;
   const canonicalSessionId = activeConv.canonicalSessionId?.trim();
-  return canonicalSessionId ? desktopLiveTurnsBySession[canonicalSessionId] ?? null : null;
+  return canonicalSessionId ? visibleActiveChatLiveTurn(desktopLiveTurnsBySession[canonicalSessionId]) : null;
 }
 
 type UseKordiDesktopActivityArgs = {

@@ -32,6 +32,32 @@ test('activity marks bridge-backed chat sessions as visible local sessions for u
   }), null);
 });
 
+test('active bridge conversations do not show completed live-turn errors after canonical reply arrives', () => {
+  const completedErrorTurn = {
+    id: 'turn-error',
+    sessionId: 'session:group:one',
+    prompt: '@333sKordi hi',
+    status: 'failed',
+    message: 'No provider configured yet.',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    error: 'No provider configured yet.',
+  };
+
+  assert.equal(activeChatLiveTurnForConversation({
+    activeConv: {
+      id: 'session:group:one',
+      canonicalSessionId: 'session:group:one',
+    },
+    desktopLiveTurnsBySession: {
+      'session:group:one': completedErrorTurn,
+    },
+  }), null);
+});
+
 test('active bridge conversations read live turns from their canonical contact session id', () => {
   const turn = {
     id: 'turn-1',
