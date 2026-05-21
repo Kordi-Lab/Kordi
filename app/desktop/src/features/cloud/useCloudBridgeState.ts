@@ -618,6 +618,13 @@ function cloudGroupControlAlreadyMaterialized(
   const senderIdentityId = `agent:cloud:${groupMessage.senderAccountId}`;
   const deliveryState = cleanText(groupMessage.deliveryState).toLowerCase();
   const terminalResponse = deliveryState && deliveryState !== 'processing';
+  if (!terminalResponse) {
+    return cloudGroupAgentMentionResponseState({
+      requestMessageId: requestId,
+      targetAccountId: groupMessage.senderAccountId,
+      messages: current.messages,
+    }) !== null;
+  }
   return current.messages.some((message) => {
     if (message.sessionId !== envelope.groupId || message.senderIdentityId !== senderIdentityId) return false;
     if (message.sourceTransport !== 'cloud-group-agent') return false;
@@ -626,7 +633,6 @@ function cloudGroupControlAlreadyMaterialized(
       || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
       || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
     if (linkedRequestId !== requestId) return false;
-    if (!terminalResponse) return message.status === 'processing';
     const existingDeliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
     return message.status !== 'processing' && existingDeliveryState !== 'processing';
   });

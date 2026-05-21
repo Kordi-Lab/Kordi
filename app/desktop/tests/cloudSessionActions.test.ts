@@ -235,6 +235,14 @@ test('cloud group terminal agent replies win over stale processing rows', () => 
   }), 'terminal');
 });
 
+test('cloud group replay treats terminal responses as materializing stale processing events', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const materializedIndex = source.indexOf('function cloudGroupControlAlreadyMaterialized');
+  assert.ok(materializedIndex >= 0, 'expected cloud group materialization guard');
+  const materializedBlock = source.slice(materializedIndex, materializedIndex + 1800);
+  assert.match(materializedBlock, /if \(!terminalResponse\)[\s\S]*cloudGroupAgentMentionResponseState\(\{/);
+});
+
 test('cloud group replay only marks an event processed after apply succeeds', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
   assert.match(source, /processingCloudGroupControlIdsRef/);
