@@ -60,6 +60,7 @@ import {
   markOptimisticCanonicalMessageFailed,
   persistCanonicalUserMessage,
   prepareCanonicalUserMessage,
+  type ComposerInteractionMetadata,
 } from './optimistic';
 import type { PendingBridgeOutreach } from './types';
 
@@ -919,7 +920,7 @@ export function useChatMessageActions({
     flushQueuedDesktopMessagesForSessionRef.current(activeConvId);
   }, [activeConvId, activeConversationIsBridge, desktopLiveTurn, isNativeShell, localChatSendInFlightRef, queuedDesktopMessagesBySession]);
 
-  return useCallback(async (draftOverride?: string) => {
+  return useCallback(async (draftOverride?: string, interactionMetadata: ComposerInteractionMetadata = {}) => {
     if (!isNativeShell) return;
     const rawText = draftOverride ?? composerDrafts.chat;
     const text = rawText.trim();
@@ -1037,6 +1038,7 @@ export function useChatMessageActions({
         'cloud-group-ui',
         'sent',
         mentionForBridgeTarget(mentionedTarget),
+        interactionMetadata,
       );
       if (preparedCanonicalMessage) {
         preparedCanonicalMessage.request.content = {
@@ -1148,6 +1150,8 @@ export function useChatMessageActions({
         sentAt,
         'desktop-chat-ui',
         'sent',
+        [],
+        interactionMetadata,
       );
       const failedReplyRequest = preparedCanonicalMessage
         ? canonicalNoProviderFailedAgentMessageRequest({
@@ -1276,6 +1280,8 @@ export function useChatMessageActions({
         sentAt,
         'desktop-chat-ui',
         'sending',
+        [],
+        interactionMetadata,
       );
       const noProviderLocalShortcut = shouldUseNoProviderSelfAgentShortcut({
         activeConversationUsesBridgeRouting,

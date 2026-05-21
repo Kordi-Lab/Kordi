@@ -8,7 +8,9 @@ import type {
   DesktopBridgeConversation,
   DesktopBridgeState,
   DesktopChatState,
+  MessageForwardReference,
   MessageMention,
+  MessageQuoteReference,
 } from '@/kordi-app/types';
 import { appendCanonicalMessageFast } from '@/lib/desktop';
 
@@ -268,6 +270,11 @@ export function findBridgeConversationForTarget(
   )) ?? null;
 }
 
+export type ComposerInteractionMetadata = {
+  quote?: MessageQuoteReference | null;
+  forwardedFrom?: MessageForwardReference | null;
+};
+
 export type PreparedCanonicalUserMessage = {
   messageId: string;
   timestampMs: number;
@@ -302,9 +309,12 @@ export function prepareCanonicalUserMessage(
   sourceTransport: 'desktop-chat-ui' | 'desktop-bridge-ui' | 'cloud-group-ui',
   status = 'sending',
   mentions: MessageMention[] = [],
+  interactionMetadata: ComposerInteractionMetadata = {},
 ): PreparedCanonicalUserMessage | null {
   if (!senderIdentityId) return null;
 
+  const quote = interactionMetadata.quote ?? null;
+  const forwardedFrom = interactionMetadata.forwardedFrom ?? null;
   const timestampMs = Date.now();
   const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -326,9 +336,11 @@ export function prepareCanonicalUserMessage(
         timestampMs,
         attachments: toOptimisticAttachments(attachments),
         mentions,
+        ...(quote ? { quote } : {}),
+        ...(forwardedFrom ? { forwardedFrom } : {}),
       },
       createdAtMs: timestampMs,
-      parentMessageId: null,
+      parentMessageId: quote?.messageId ?? null,
       delegatedExchangeId: null,
       status,
       sourceTransport,

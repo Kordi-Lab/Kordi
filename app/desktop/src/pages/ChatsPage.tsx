@@ -62,6 +62,7 @@ import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/fea
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
+import type { ComposerInteractionMetadata } from '@/features/chat/messageActions/optimistic';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
@@ -404,7 +405,7 @@ type ChatsPageProps = {
   onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
   onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   onSelectSession?: (sessionId: string) => void;
-  onSendChatMessage: (draftOverride?: string) => void;
+  onSendChatMessage: (draftOverride?: string, interactionMetadata?: ComposerInteractionMetadata) => void;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
   onOpenAccountAuthentication?: () => void;
@@ -512,7 +513,7 @@ export function ChatsPage({
     : undefined;
   const [composerQuote, setComposerQuote] = useState<MessageQuoteReference | null>(null);
   const [composerForward, setComposerForward] = useState<MessageForwardReference | null>(null);
-  const [pendingForwardSource, setPendingForwardSource] = useState<MessageForwardReference | null>(null);
+  const [pendingForwardSource, setPendingForwardSource] = useState<{ reference: MessageForwardReference; text: string } | null>(null);
   const forwardDestinations = useMemo<ForwardDestination[]>(() => {
     const destinations = new Map<string, ForwardDestination>();
     destinations.set(activeConv.id, { id: activeConv.id, title: activeConv.name, subtitle: activeConv.subtitle });
@@ -533,16 +534,27 @@ export function ChatsPage({
   };
   const handleForwardMessage = (message: Message) => {
     const forward = forwardReferenceForMessage(message, activeConv);
-    if (!forward) return;
-    setPendingForwardSource(forward);
+    const text = interactionMessageText(message);
+    if (!forward || !text) return;
+    setPendingForwardSource({ reference: forward, text });
   };
   const handleSelectForwardDestination = (sessionId: string) => {
     if (!pendingForwardSource) return;
-    setComposerForward(pendingForwardSource);
+    setComposerForward(pendingForwardSource.reference);
     setComposerQuote(null);
+    setChatComposerText(pendingForwardSource.text);
     setPendingForwardSource(null);
     onSelectSession?.(sessionId);
     focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+  };
+  const sendChatMessageWithInteractions = (draftOverride?: string) => {
+    const metadata: ComposerInteractionMetadata = {
+      ...(composerQuote ? { quote: composerQuote } : {}),
+      ...(composerForward ? { forwardedFrom: composerForward } : {}),
+    };
+    onSendChatMessage(draftOverride, metadata);
+    if (composerQuote) setComposerQuote(null);
+    if (composerForward) setComposerForward(null);
   };
 
   // If the active session is itself a fork, show a backlink at the top
@@ -1107,7 +1119,7 @@ export function ChatsPage({
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
-                    onSendChatMessage(event.currentTarget.value);
+                    sendChatMessageWithInteractions(event.currentTarget.value);
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
@@ -1247,7 +1259,7 @@ export function ChatsPage({
               ) : null}
               <Button
                 className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
-                onClick={() => onSendChatMessage()}
+                onClick={() => sendChatMessageWithInteractions()}
                 disabled={false}
                 title={activeLiveTurnIsRunning ? 'Queue message for this session' : 'Send message'}
                 aria-label="Send message"
