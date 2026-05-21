@@ -4,7 +4,12 @@
 
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{
+    body::Body,
+    http::{header, HeaderValue, Response},
+    middleware::{self, Next},
+    Router,
+};
 use sqlx_postgres::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -64,17 +69,48 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
 
     let ws_router = Router::new()
         .route("/v1/cloud/ws", axum::routing::get(crate::ws::ws_handler))
-        .with_state(state.clone());
+        .with_state(state.clone())
+        .layer(cors.clone());
 
-    Router::new()
+    let http_router = Router::new()
         .merge(crate::auth::routes::routes_with_config(
             state.clone(),
             crate::auth::password::PasswordHasherConfig::production(),
             rate_limiter,
         ))
-        .merge(ws_router)
         .route("/health", axum::routing::get(health))
-        .layer(cors)
+        .layer(cors);
+    let http_router = if close_http_connections_after_response() {
+        http_router.layer(middleware::from_fn(add_connection_close_header))
+    } else {
+        http_router
+    };
+
+    Router::new().merge(http_router).merge(ws_router)
+}
+
+fn close_http_connections_after_response() -> bool {
+    std::env::var("KORDI_CLOUD_HTTP_CONNECTION_CLOSE").is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
+fn mark_connection_close(response: &mut Response<Body>) {
+    response
+        .headers_mut()
+        .insert(header::CONNECTION, HeaderValue::from_static("close"));
+}
+
+async fn add_connection_close_header(
+    request: axum::extract::Request,
+    next: Next,
+) -> Response<Body> {
+    let mut response = next.run(request).await;
+    mark_connection_close(&mut response);
+    response
 }
 
 async fn health() -> axum::Json<serde_json::Value> {
@@ -134,7 +170,21 @@ fn redact_url_credentials(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::redact_url_credentials;
+    use axum::{body::Body, http::Response};
+
+    use super::{mark_connection_close, redact_url_credentials};
+
+    #[test]
+    fn connection_close_header_is_added_for_tunnel_preview_responses() {
+        let mut response = Response::new(Body::empty());
+
+        mark_connection_close(&mut response);
+
+        assert_eq!(
+            response.headers().get(axum::http::header::CONNECTION),
+            Some(&axum::http::HeaderValue::from_static("close"))
+        );
+    }
 
     #[test]
     fn redacts_credentials_from_logged_urls() {

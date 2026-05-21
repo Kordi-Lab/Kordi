@@ -133,6 +133,10 @@ spec:
               value: "https://coordinar.io"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
               value: "http://127.0.0.1:,http://localhost:,https://coordinar.io"
+            - name: KORDI_CLOUD_HTTP_CONNECTION_CLOSE
+              # Keep local SSH/kubectl preview tunnels from exhausting SSH channels
+              # on idle browser fetch connections. The WebSocket route is excluded.
+              value: "1"
           readinessProbe:
             httpGet:
               path: /health
