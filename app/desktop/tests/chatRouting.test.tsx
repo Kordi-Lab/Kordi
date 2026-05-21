@@ -488,6 +488,55 @@ test('canonical read model keeps existing local transcript when canonical has eq
   assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), false);
 });
 
+test('canonical read model prefers canonical transcript when it has a missing completed agent response', () => {
+  const existingMessages = [
+    { id: 'local-user', role: 'user' as const, text: '@333sKordi hi', time: '11:41', isOwnMessage: true },
+    {
+      id: 'local-processing',
+      role: 'owned-agent' as const,
+      text: '',
+      time: '11:41',
+      turn: {
+        id: 'turn:local-processing',
+        sessionId: 'session:group:one',
+        prompt: '@333sKordi hi',
+        status: 'thinking',
+        message: 'Thinking…',
+        assistantText: '',
+        thinkingText: 'Inspecting the request',
+        tools: [],
+        completed: false,
+        succeeded: false,
+      },
+    },
+  ];
+  const canonicalMessages = [
+    { id: 'canonical-user', role: 'user' as const, text: '@333sKordi hi', time: '11:41', isOwnMessage: true },
+    {
+      id: 'canonical-agent',
+      role: 'external-agent' as const,
+      sender: "333's Kordi",
+      senderType: 'agent' as const,
+      text: '',
+      time: '11:42',
+      turn: {
+        id: 'canonical-turn:agent',
+        sessionId: 'session:group:one',
+        prompt: '',
+        status: 'complete',
+        message: 'Complete',
+        assistantText: 'Yes — I’m online. How can I help?',
+        thinkingText: '',
+        tools: [],
+        completed: true,
+        succeeded: true,
+      },
+    },
+  ];
+
+  assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), true);
+});
+
 test('canonical read model prefers equal-count canonical transcript when it adds fork snapshot markers', () => {
   const existingMessages = [
     { id: 'local-old', role: 'user' as const, text: 'old question', time: '11:41', isOwnMessage: true },

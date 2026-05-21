@@ -8,7 +8,7 @@ import type {
 } from '@/kordi-app/types';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 
-import { stringValue } from './messageMapping';
+import { isProcessingPlaceholderText, stringValue } from './messageMapping';
 
 export type ConversationSubtitleBuilder = (messages: Message[], fallback?: string) => string;
 
@@ -20,7 +20,16 @@ function normalizedMessageResponseText(message: Message) {
   return messageResponseText(message).replace(/\s+/g, ' ').toLowerCase();
 }
 
+function agentMessageHasRuntimeDetailsToPreserve(message: Message) {
+  if (message.role !== 'owned-agent' && message.role !== 'external-agent') return false;
+  const responseText = normalizedMessageResponseText(message);
+  const visibleResponse = responseText && !isProcessingPlaceholderText(responseText);
+  return Boolean(visibleResponse || (message.turn?.tools.length ?? 0) > 0);
+}
+
 function canonicalHasMissingCompletedAgentResponse(existingMessages: Message[], canonicalMessages: Message[]) {
+  if (existingMessages.some(agentMessageHasRuntimeDetailsToPreserve)) return false;
+
   const existingTexts = new Set(
     existingMessages
       .map(normalizedMessageResponseText)
@@ -47,6 +56,7 @@ function transcriptTurnRichness(messages: Message[]) {
 
 export function shouldUseCanonicalMessages(existingMessages: Message[], canonicalMessages: Message[]) {
   if (canonicalMessages.length === 0) return false;
+  if (canonicalHasMissingCompletedAgentResponse(existingMessages, canonicalMessages)) return true;
   const existingHasLiveTurn = existingMessages.some((message) => message.turn && !message.turn.completed);
   if (existingHasLiveTurn) {
     const canonicalHasLiveTurn = canonicalMessages.some((message) => message.turn && !message.turn.completed);
@@ -65,8 +75,6 @@ export function shouldUseCanonicalMessages(existingMessages: Message[], canonica
   const canonicalHasForkSnapshotMarkers = canonicalMessages.some((message) => message.isForkSnapshot === true);
   const existingHasForkSnapshotMarkers = existingMessages.some((message) => message.isForkSnapshot === true);
   if (canonicalHasForkSnapshotMarkers && !existingHasForkSnapshotMarkers) return true;
-
-  if (canonicalHasMissingCompletedAgentResponse(existingMessages, canonicalMessages)) return true;
 
   const placeholderOnly = existingMessages.length === 1
     && existingMessages[0]?.role === 'system'
