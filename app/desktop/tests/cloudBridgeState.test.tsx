@@ -35,6 +35,7 @@ import {
   cloudInitialMessagesSettledForPeerKey,
   cloudSessionForksByIdEqual,
   shouldRunLocalCloudAgentForCloudMessage,
+  shouldStartCloudGroupAgentResponseRetry,
   cachedCloudMessagesByPeerHasMessages,
   loadCachedCloudMessagesByPeer,
   saveCachedCloudMessagesByPeer,
@@ -250,6 +251,19 @@ test('cloud bridge messages preserve resolved attachment local paths for inline 
   assert.equal(mapped.attachments?.[0]?.localPath, '/tmp/kordi-cache/Screenshot.png');
 });
 
+test('cloud group agent response retry does not resend while waiting for cloud echo', () => {
+  const retrying = new Set<string>();
+  const sentAwaitingCloud = new Set<string>();
+  const retryKey = 'msg:local:msg:cloud-agent:turn';
+
+  assert.equal(shouldStartCloudGroupAgentResponseRetry({ retryKey, retrying, sentAwaitingCloud }), true);
+  sentAwaitingCloud.add(retryKey);
+  assert.equal(shouldStartCloudGroupAgentResponseRetry({ retryKey, retrying, sentAwaitingCloud }), false);
+  sentAwaitingCloud.delete(retryKey);
+  retrying.add(retryKey);
+  assert.equal(shouldStartCloudGroupAgentResponseRetry({ retryKey, retrying, sentAwaitingCloud }), false);
+});
+
 test('direct Cloud contact agent mentions are not treated as Cloud group placeholders', () => {
   const state = {
     profile: { humanIdentityId: 'human:me', displayName: 'Me' },
@@ -284,6 +298,47 @@ test('direct Cloud contact agent mentions are not treated as Cloud group placeho
   } satisfies CanonicalSessionState;
 
   assert.deepEqual(cloudAgentMentionCandidates(state, 'acct_me'), []);
+});
+
+test('cloud group agent mention candidates include peer-authored group requests', () => {
+  const now = Date.now();
+  const state = {
+    profile: { humanIdentityId: 'human:me', displayName: 'Me' },
+    sessions: [],
+    identities: [
+      { id: 'human:peer', kind: 'human', displayName: 'Peer Person', source: 'bridge', bridgeNodeId: 'acct_peer', humanId: 'acct_peer', ownerIdentityId: null, sourceHostId: 'cloud', agentId: null, avatarKey: 'peer', profileImageUrl: null, metadata: null, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:cloud:acct_peer', kind: 'agent', displayName: "Peer Person's Kordi", source: 'bridge', bridgeNodeId: 'cloud-agent:acct_peer', humanId: 'acct_peer', ownerIdentityId: 'human:peer', sourceHostId: 'cloud', agentId: 'cloud-agent:acct_peer', avatarKey: 'peer-agent', profileImageUrl: null, metadata: null, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [],
+    messages: [{
+      id: 'msg_group_request',
+      sessionId: 'session:group:one',
+      senderIdentityId: 'human:sender',
+      senderRole: 'person',
+      messageKind: 'text',
+      contentText: '@PeerKordi hi',
+      content: { mentions: [{ targetKind: 'bridge-agent', bridgeHostId: 'cloud', humanId: 'acct_peer', label: "Peer's Kordi" }] },
+      parentMessageId: null,
+      delegatedExchangeId: null,
+      status: 'received',
+      sequenceNum: 1,
+      createdAtMs: now,
+      updatedAtMs: now,
+      contentHash: null,
+      sourceTransport: 'cloud-group',
+      sourceEventId: 'cloud-group:msg_group_request',
+    }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: null,
+  } satisfies CanonicalSessionState;
+
+  const candidates = cloudAgentMentionCandidates(state, 'acct_observer');
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.requestMessage.id, 'msg_group_request');
+  assert.equal(candidates[0]?.targetAccountId, 'acct_peer');
 });
 
 test('cloud group agent mention candidates ignore inherited fork snapshot rows', () => {

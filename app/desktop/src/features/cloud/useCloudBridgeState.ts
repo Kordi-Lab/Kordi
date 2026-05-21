@@ -400,6 +400,18 @@ type CloudAgentMentionCandidateOptions = {
   keepStaleIds?: ReadonlySet<string>;
 };
 
+export function shouldStartCloudGroupAgentResponseRetry({
+  retryKey,
+  retrying,
+  sentAwaitingCloud,
+}: {
+  retryKey: string;
+  retrying: ReadonlySet<string>;
+  sentAwaitingCloud: ReadonlySet<string>;
+}) {
+  return !retrying.has(retryKey) && !sentAwaitingCloud.has(retryKey);
+}
+
 export function cloudAgentMentionCandidates(
   state: CanonicalSessionState,
   accountId: string,
@@ -415,7 +427,7 @@ export function cloudAgentMentionCandidates(
 
   return state.messages.flatMap((message): CloudAgentMentionCandidate[] => {
     if (message.sourceTransport === 'canonical-fork-snapshot') return [];
-    if (message.senderRole !== 'user' || message.status === 'failed') return [];
+    if (!['user', 'person'].includes(message.senderRole) || message.status === 'failed') return [];
     if (message.sessionId.trim().startsWith('session:direct-person:')) return [];
     if (
       recentSinceMs !== undefined
@@ -1561,6 +1573,7 @@ export function useCloudBridgeState({
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const processingCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const retryingCloudGroupAgentResponseIdsRef = useRef<Set<string>>(new Set());
+  const sentCloudGroupAgentResponseRetryIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
@@ -1959,6 +1972,8 @@ export function useCloudBridgeState({
       setCloudBridgeOverrideState(null);
       setInitialMessagesSettledPeerKey(null);
       cloudSelfAgentForkRefreshKeyRef.current = null;
+      retryingCloudGroupAgentResponseIdsRef.current.clear();
+      sentCloudGroupAgentResponseRetryIdsRef.current.clear();
       return;
     }
     void syncCloudBridgeDiff().then((diffSynced) => {
@@ -2998,6 +3013,7 @@ export function useCloudBridgeState({
   useEffect(() => {
     if (!account || !canonicalSessionState || !initialMessagesSettled) return;
     const allCloudMessages = Object.values(messagesByPeer).flat();
+    const pendingRetryKeys = new Set<string>();
     for (const localMessage of canonicalSessionState.messages) {
       if (!cloudGroupLocalAgentTerminalReplyNeedsCloudSend({
         localAccountId: account.accountId,
@@ -3025,7 +3041,12 @@ export function useCloudBridgeState({
       });
       if (targetAccountIds.length === 0) continue;
       const retryKey = `${localMessage.id}:${responseMessageId}`;
-      if (retryingCloudGroupAgentResponseIdsRef.current.has(retryKey)) continue;
+      pendingRetryKeys.add(retryKey);
+      if (!shouldStartCloudGroupAgentResponseRetry({
+        retryKey,
+        retrying: retryingCloudGroupAgentResponseIdsRef.current,
+        sentAwaitingCloud: sentCloudGroupAgentResponseRetryIdsRef.current,
+      })) continue;
       retryingCloudGroupAgentResponseIdsRef.current.add(retryKey);
       void (async () => {
         const session = await loadSession();
@@ -3071,14 +3092,21 @@ export function useCloudBridgeState({
         );
         const fulfilled = sent.filter((result): result is PromiseFulfilledResult<CloudMessage> => result.status === 'fulfilled');
         if (fulfilled.length === 0) throw new Error('Cloud group agent response retry failed.');
+        sentCloudGroupAgentResponseRetryIdsRef.current.add(retryKey);
         fulfilled.forEach((result) => mergeMessage(result.value));
         void refreshCloudBridgeMessages();
       })().catch((error) => {
+        sentCloudGroupAgentResponseRetryIdsRef.current.delete(retryKey);
         // eslint-disable-next-line no-console
         console.warn('[cloud-group-agent-mention] response retry failed', error);
       }).finally(() => {
         retryingCloudGroupAgentResponseIdsRef.current.delete(retryKey);
       });
+    }
+    for (const sentRetryKey of sentCloudGroupAgentResponseRetryIdsRef.current) {
+      if (!pendingRetryKeys.has(sentRetryKey)) {
+        sentCloudGroupAgentResponseRetryIdsRef.current.delete(sentRetryKey);
+      }
     }
   }, [account, canonicalSessionState, client, initialMessagesSettled, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
