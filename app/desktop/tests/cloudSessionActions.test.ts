@@ -162,9 +162,43 @@ test('cloud group requesting placeholder does not become a local no-provider err
   assert.match(source, /CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS/);
   const timeoutIndex = source.indexOf('window.setTimeout(() => {');
   assert.ok(timeoutIndex >= 0, 'expected requesting placeholder timeout');
-  const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 800);
+  const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 900);
   assert.doesNotMatch(timeoutBlock, /cloudGroupAgentNoProviderFallbackRequest/);
-  assert.match(timeoutBlock, /setCloudGroupRequestPlaceholderProcessing/);
+  assert.match(timeoutBlock, /markCloudGroupRequestPlaceholderProcessing/);
+});
+
+test('cloud group requesting timeout refreshes server messages instead of consuming the sync cursor forever', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const timeoutIndex = source.indexOf('window.setTimeout(() => {');
+  assert.ok(timeoutIndex >= 0, 'expected requesting placeholder timeout');
+  const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 900);
+  assert.match(timeoutBlock, /markCloudGroupRequestPlaceholderProcessing/);
+  assert.doesNotMatch(timeoutBlock, /setCloudGroupRequestPlaceholderProcessing/);
+  assert.match(timeoutBlock, /refreshCloudBridgeMessages\(\)/);
+});
+
+test('late cloud group processing events cannot demote completed agent replies', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const guardIndex = source.indexOf('const existingStableRowTerminalLocked');
+  assert.ok(guardIndex >= 0, 'expected stable row terminal guard');
+  const guardBlock = source.slice(Math.max(0, guardIndex - 500), guardIndex + 800);
+  assert.match(guardBlock, /existingStableRowDeliveryState/);
+  assert.match(guardBlock, /existingStableRowStatus !== 'processing'/);
+  assert.match(guardBlock, /existingStableRowDeliveryState !== 'processing'/);
+});
+
+test('cloud group replay only marks an event processed after apply succeeds', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /processingCloudGroupControlIdsRef/);
+  assert.match(source, /\.then\(\(applied\) => \{/);
+  const replayEffectIndex = source.indexOf('const replayMessages = cloudGroupControlMessagesForAccount');
+  assert.ok(replayEffectIndex >= 0, 'expected cloud group replay effect');
+  const replayBlock = source.slice(replayEffectIndex, replayEffectIndex + 2200);
+  assert.match(replayBlock, /cloudGroupControlAlreadyMaterialized/);
+  assert.match(replayBlock, /processedCloudGroupControlIdsRef\.current\.delete\(replayKey\)/);
+  assert.match(replayBlock, /processingCloudGroupControlIdsRef\.current\.add\(replayKey\)/);
+  assert.doesNotMatch(replayBlock, /processedCloudGroupControlIdsRef\.current\.add\(replayKey\);\s*void applyCloudGroupControl/);
+  assert.match(source, /canonicalSessionState\?\.messages, initialMessagesSettled, messagesByPeer/);
 });
 
 test('cloud group no-provider catch broadcasts a failed agent response to requesters', () => {
