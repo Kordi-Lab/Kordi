@@ -599,6 +599,41 @@ export function cloudGroupAgentMentionCloudResponseState(input: {
   return sawProcessing ? 'processing' : null;
 }
 
+export function cloudGroupAgentResponseMessageIdFromSourceEvent(sourceEventId?: string | null): string | null {
+  const value = cleanText(sourceEventId);
+  const prefix = 'cloud-group-agent:';
+  if (!value.startsWith(prefix)) return null;
+  const messageId = cleanText(value.slice(prefix.length));
+  return messageId || null;
+}
+
+export function cloudGroupLocalAgentTerminalReplyNeedsCloudSend(input: {
+  localAccountId: string;
+  message: CanonicalSessionMessage;
+  cloudMessages: CloudMessage[];
+}): boolean {
+  const localAccountId = cleanText(input.localAccountId);
+  if (!localAccountId || input.message.sourceTransport !== 'cloud-group-agent') return false;
+  if (input.message.senderIdentityId !== `agent:cloud:${localAccountId}`) return false;
+  const content = objectRecord(input.message.content);
+  const requestMessageId = cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+    || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null)
+    || cleanText(input.message.parentMessageId);
+  if (!requestMessageId || !cloudGroupAgentResponseMessageIdFromSourceEvent(input.message.sourceEventId)) return false;
+  const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+  const isTerminal = input.message.status === 'complete'
+    || input.message.status === 'failed'
+    || deliveryState === 'complete'
+    || deliveryState === 'failed'
+    || deliveryState === 'cancelled';
+  if (!isTerminal || deliveryState === 'processing') return false;
+  return cloudGroupAgentMentionCloudResponseState({
+    requestMessageId,
+    targetAccountId: localAccountId,
+    messages: input.cloudMessages,
+  }) !== 'terminal';
+}
+
 export function cloudGroupAgentRequestingNoticeRequest(input: {
   sessionId: string;
   requestMessageId: string;

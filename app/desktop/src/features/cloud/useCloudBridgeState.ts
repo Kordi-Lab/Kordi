@@ -69,6 +69,8 @@ import {
   cloudGroupAgentConversationId,
   cloudGroupAgentMentionCloudResponseState,
   cloudGroupAgentMentionResponseState,
+  cloudGroupAgentResponseMessageIdFromSourceEvent,
+  cloudGroupLocalAgentTerminalReplyNeedsCloudSend,
   cloudGroupAgentRequestingNoticeMessage,
   cloudGroupAgentRequestingNoticeRequest,
   cloudGroupForkPayloadFromSessionMetadata,
@@ -1558,6 +1560,7 @@ export function useCloudBridgeState({
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const processingCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
+  const retryingCloudGroupAgentResponseIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
@@ -2991,6 +2994,93 @@ export function useCloudBridgeState({
       return changed ? { ...current, sessions } : current;
     });
   }, [account, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
+
+  useEffect(() => {
+    if (!account || !canonicalSessionState || !initialMessagesSettled) return;
+    const allCloudMessages = Object.values(messagesByPeer).flat();
+    for (const localMessage of canonicalSessionState.messages) {
+      if (!cloudGroupLocalAgentTerminalReplyNeedsCloudSend({
+        localAccountId: account.accountId,
+        message: localMessage,
+        cloudMessages: allCloudMessages,
+      })) continue;
+      const content = objectContent(localMessage.content);
+      const requestMessageId = cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+        || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null)
+        || cleanText(localMessage.parentMessageId);
+      const responseMessageId = cloudGroupAgentResponseMessageIdFromSourceEvent(localMessage.sourceEventId);
+      if (!requestMessageId || !responseMessageId) continue;
+      const requestCloudMessage = allCloudMessages.find((message) => {
+        const envelope = parseCloudGroupControl(message.body);
+        return envelope?.kind === 'group-message'
+          && envelope.groupId === localMessage.sessionId
+          && envelope.message?.id === requestMessageId;
+      });
+      const requestEnvelope = requestCloudMessage ? parseCloudGroupControl(requestCloudMessage.body) : null;
+      if (!requestCloudMessage || !requestEnvelope?.message) continue;
+      const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
+        localAccountId: account.accountId,
+        envelope: requestEnvelope,
+        requestCloudMessage,
+      });
+      if (targetAccountIds.length === 0) continue;
+      const retryKey = `${localMessage.id}:${responseMessageId}`;
+      if (retryingCloudGroupAgentResponseIdsRef.current.has(retryKey)) continue;
+      retryingCloudGroupAgentResponseIdsRef.current.add(retryKey);
+      void (async () => {
+        const session = await loadSession();
+        if (!session?.token) throw new Error('Not signed in.');
+        const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null) === 'failed'
+          || localMessage.status === 'failed'
+          ? 'failed'
+          : 'complete';
+        const responseText = deliveryState === 'complete'
+          ? localMessage.contentText.trim()
+          : cleanText(typeof content.error === 'string' ? content.error : null) || localMessage.contentText.trim();
+        const responseCreatedAtMs = localMessage.createdAtMs || Date.now();
+        const participants = cloudGroupUniqueParticipants([
+          requestEnvelope.actor,
+          ...requestEnvelope.participants,
+          cloudGroupSelfParticipant(account, 'person'),
+        ]);
+        const responseBody = encodeCloudGroupControl({
+          kind: 'group-message',
+          groupId: requestEnvelope.groupId,
+          groupSpaceId: requestEnvelope.groupSpaceId?.trim() || requestEnvelope.groupId,
+          groupTitle: null,
+          createdByAccountId: requestEnvelope.createdByAccountId,
+          actor: cloudGroupSelfParticipant(account, 'person'),
+          participants,
+          message: {
+            id: responseMessageId,
+            senderAccountId: account.accountId,
+            text: responseText,
+            createdAtMs: responseCreatedAtMs,
+            senderKind: 'agent',
+            senderDisplayName: `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`,
+            deliveryState,
+            replyToMessageId: requestMessageId,
+            requestId: requestMessageId,
+          },
+        });
+        const sent = await Promise.allSettled(
+          targetAccountIds.map((targetAccountId) => client.sendMessage(session.token, targetAccountId, responseBody, {
+            sessionId: requestEnvelope.groupId,
+            clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
+          })),
+        );
+        const fulfilled = sent.filter((result): result is PromiseFulfilledResult<CloudMessage> => result.status === 'fulfilled');
+        if (fulfilled.length === 0) throw new Error('Cloud group agent response retry failed.');
+        fulfilled.forEach((result) => mergeMessage(result.value));
+        void refreshCloudBridgeMessages();
+      })().catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-group-agent-mention] response retry failed', error);
+      }).finally(() => {
+        retryingCloudGroupAgentResponseIdsRef.current.delete(retryKey);
+      });
+    }
+  }, [account, canonicalSessionState, client, initialMessagesSettled, mergeMessage, messagesByPeer, refreshCloudBridgeMessages]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;

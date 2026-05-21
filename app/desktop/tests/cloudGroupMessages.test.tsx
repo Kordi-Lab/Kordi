@@ -32,6 +32,8 @@ import {
   cloudGroupAgentMentionHasResponse,
   cloudGroupAgentMentionResponseState,
   cloudGroupAgentMentionCloudResponseState,
+  cloudGroupLocalAgentTerminalReplyNeedsCloudSend,
+  cloudGroupAgentResponseMessageIdFromSourceEvent,
   cloudGroupAgentOfflineNoticeRequest,
   cloudGroupAgentRequestingNoticeMessage,
 } from '../src/features/cloud/cloudGroupMessages';
@@ -432,6 +434,73 @@ test('cloud group detects already-synced cloud agent responses before canonical 
       { messageId: 'cloud_terminal', fromAccountId: 'acct_target', toAccountId: 'acct_me', body: terminalBody, createdAt: '2026-05-21T00:00:02Z', deliveredAt: null, readAt: null, direction: 'incoming' },
     ],
   }), 'terminal');
+});
+
+test('cloud group retries locally completed agent replies that were not sent to cloud peers', () => {
+  const localReply = {
+    id: 'msg:cloud-agent-processing:req-1:acct_333',
+    sessionId: 'session:group:one',
+    senderIdentityId: 'agent:cloud:acct_333',
+    senderRole: 'owned-agent',
+    messageKind: 'agent-turn',
+    contentText: 'done',
+    content: { requestId: 'req-1', replyToMessageId: 'req-1', deliveryState: 'complete' },
+    parentMessageId: 'req-1',
+    status: 'complete',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: 'cloud-group-agent:msg:cloud-agent:final-turn',
+  } as const;
+  const processingBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:one',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_333', displayName: '333', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_333', displayName: '333', avatarUrl: null, role: 'person' }],
+    message: {
+      id: 'msg:cloud-agent-processing:req-1:acct_333',
+      senderAccountId: 'acct_333',
+      text: 'processing...',
+      createdAtMs: 1,
+      senderKind: 'agent',
+      deliveryState: 'processing',
+      replyToMessageId: 'req-1',
+      requestId: 'req-1',
+    },
+  });
+  const terminalBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:one',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_333', displayName: '333', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_333', displayName: '333', avatarUrl: null, role: 'person' }],
+    message: {
+      id: 'msg:cloud-agent:final-turn',
+      senderAccountId: 'acct_333',
+      text: 'done',
+      createdAtMs: 2,
+      senderKind: 'agent',
+      deliveryState: 'complete',
+      replyToMessageId: 'req-1',
+      requestId: 'req-1',
+    },
+  });
+
+  assert.equal(cloudGroupAgentResponseMessageIdFromSourceEvent(localReply.sourceEventId), 'msg:cloud-agent:final-turn');
+  assert.equal(cloudGroupLocalAgentTerminalReplyNeedsCloudSend({
+    localAccountId: 'acct_333',
+    message: localReply,
+    cloudMessages: [{ messageId: 'cloud_processing', fromAccountId: 'acct_333', toAccountId: 'acct_me', body: processingBody, createdAt: '2026-05-21T00:00:01Z', deliveredAt: null, readAt: null, direction: 'outgoing' }],
+  }), true);
+  assert.equal(cloudGroupLocalAgentTerminalReplyNeedsCloudSend({
+    localAccountId: 'acct_333',
+    message: localReply,
+    cloudMessages: [{ messageId: 'cloud_terminal', fromAccountId: 'acct_333', toAccountId: 'acct_me', body: terminalBody, createdAt: '2026-05-21T00:00:02Z', deliveredAt: null, readAt: null, direction: 'outgoing' }],
+  }), false);
 });
 
 test('cloud group requesting notice shows a temporary smooth waiting state', () => {
