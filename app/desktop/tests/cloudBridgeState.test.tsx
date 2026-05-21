@@ -26,6 +26,7 @@ import {
   cloudGroupAgentProcessingMessageForRequest,
   cloudGroupAgentProcessingSlotForResponse,
   cloudGroupTerminalAgentReplyAlreadyStable,
+  cloudGroupTerminalAgentResponseForRequest,
   optimisticCloudAgentCancelMessage,
   cloudSelfAgentDerivedSyncedStatusBySessionId,
   planCloudSelfAgentSync,
@@ -64,6 +65,44 @@ const peer = cloudContactToContact({
 
 test('cloud bridge polling interval avoids saturating local tunnel previews', () => {
   assert.ok(CLOUD_MESSAGES_REFRESH_MS >= 2_000);
+});
+
+test('late cloud group processing notices are ignored after a terminal reply exists', () => {
+  const terminal: CanonicalSessionMessage = {
+    id: 'msg:cloud-agent:turn-one',
+    sessionId: 'session:group:one',
+    senderIdentityId: 'agent:cloud:acct_owner',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'done',
+    content: { deliveryState: 'complete', requestId: 'msg_request', replyToMessageId: 'msg_request' },
+    parentMessageId: 'msg_request',
+    status: 'received',
+    sequenceNum: 2,
+    createdAtMs: 200,
+    updatedAtMs: 200,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: 'cloud-group-agent:cloud_terminal',
+  };
+  const processing: CanonicalSessionMessage = {
+    ...terminal,
+    id: 'msg:cloud-agent-processing:msg_request:acct_owner',
+    contentText: 'processing...',
+    content: { deliveryState: 'processing', requestId: 'msg_request', replyToMessageId: 'msg_request' },
+    status: 'processing',
+    sourceEventId: 'cloud-group-agent:cloud_processing',
+  };
+
+  assert.equal(cloudGroupTerminalAgentResponseForRequest([terminal], {
+    groupId: 'session:group:one',
+    requestId: 'msg_request',
+    senderAccountId: 'acct_owner',
+  })?.id, terminal.id);
+  assert.equal(cloudGroupTerminalAgentResponseForRequest([processing], {
+    groupId: 'session:group:one',
+    requestId: 'msg_request',
+    senderAccountId: 'acct_owner',
+  }), null);
 });
 
 test('duplicate terminal cloud group agent replies keep the existing stable slot', () => {

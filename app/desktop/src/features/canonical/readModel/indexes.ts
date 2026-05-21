@@ -515,13 +515,16 @@ function duplicateCloudGroupAgentResponseIds(messages: CanonicalSessionMessage[]
 
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   const staleIds = new Set<string>();
-  const completedAgentResponses = messages.filter((message) => (
-    (message.senderRole === 'owned-agent' || message.senderRole === 'external-agent')
-    && message.messageKind === 'agent-turn'
-    && !isProcessingPlaceholderText(message.contentText)
-    && message.contentText.trim()
-    && !['draft', 'sending', 'processing'].includes(message.status.trim().toLowerCase())
-  ));
+  const completedAgentResponses = messages.filter((message) => {
+    if (message.senderRole !== 'owned-agent' && message.senderRole !== 'external-agent') return false;
+    if (message.messageKind !== 'agent-turn') return false;
+    if (isProcessingPlaceholderText(message.contentText)) return false;
+    const content = contentRecord(message.content);
+    const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+    const status = message.status.trim().toLowerCase();
+    if (['draft', 'sending', 'processing'].includes(status) || deliveryState === 'processing') return false;
+    return Boolean(message.contentText.trim() || deliveryState === 'failed' || status === 'failed');
+  });
   const laterHumanActivity = messages.filter(isHumanConversationActivity);
 
   for (const placeholder of messages.filter(isStaleableProcessingPlaceholder)) {

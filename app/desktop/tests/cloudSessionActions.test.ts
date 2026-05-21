@@ -194,6 +194,32 @@ test('late cloud group processing events cannot demote completed agent replies',
   assert.match(guardBlock, /existingStableRowDeliveryState !== 'processing'/);
 });
 
+test('cloud group failed terminal rows hide stale processing placeholders in read model', () => {
+  const state: CanonicalSessionState = {
+    profile: { id: 'profile:me', humanIdentityId: 'human:me' },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:cloud:acct_owner', kind: 'agent', displayName: 'Owner Kordi', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_owner', agentId: 'cloud-agent:acct_owner', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: 'session:group:one', kind: 'group', title: 'Group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [],
+    messages: [
+      { id: 'msg:cloud-agent-processing:req-1:acct_owner', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_owner', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { deliveryState: 'processing', requestId: 'req-1', replyToMessageId: 'req-1' }, parentMessageId: 'req-1', delegatedExchangeId: null, status: 'processing', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-group-agent:processing' },
+      { id: 'msg:cloud-agent-failed:req-1:acct_owner', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_owner', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: '', content: { deliveryState: 'failed', error: 'No provider configured yet.', requestId: 'req-1', replyToMessageId: 'req-1' }, parentMessageId: 'req-1', delegatedExchangeId: null, status: 'failed', sequenceNum: 2, createdAtMs: 20, updatedAtMs: 20, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-group-agent:failed' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const messages = buildCanonicalIndexes(state).canonicalMessagesBySessionId.get('session:group:one') ?? [];
+  assert.equal(messages.filter((message) => message.role === 'external-agent').length, 1);
+  assert.equal(messages.find((message) => message.role === 'external-agent')?.turn?.status, 'failed');
+  assert.equal(messages.find((message) => message.text === 'processing...'), undefined);
+});
+
 test('cloud group terminal agent replies win over stale processing rows', () => {
   const messages: CanonicalSessionMessage[] = [
     {

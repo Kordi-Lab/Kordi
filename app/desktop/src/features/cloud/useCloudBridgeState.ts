@@ -223,6 +223,32 @@ export function optimisticCloudAgentCancelMessage({
   };
 }
 
+export function cloudGroupTerminalAgentResponseForRequest(
+  messages: CanonicalSessionMessage[],
+  input: {
+    groupId: string;
+    requestId: string;
+    senderAccountId: string;
+  },
+): CanonicalSessionMessage | null {
+  const groupId = cleanText(input.groupId);
+  const requestId = cleanText(input.requestId);
+  const senderAccountId = cleanText(input.senderAccountId);
+  if (!groupId || !requestId || !senderAccountId) return null;
+  const senderIdentityId = `agent:cloud:${senderAccountId}`;
+  return messages.find((message) => {
+    if (message.sessionId !== groupId || message.senderIdentityId !== senderIdentityId) return false;
+    if (!message.sourceTransport?.startsWith('cloud-group-agent')) return false;
+    const content = objectContent(message.content);
+    const linkedRequestId = cleanText(message.parentMessageId)
+      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+    if (linkedRequestId !== requestId) return false;
+    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+    return message.status !== 'processing' && deliveryState !== 'processing';
+  }) ?? null;
+}
+
 export function cloudGroupAgentProcessingMessageForRequest(
   messages: CanonicalSessionMessage[],
   groupId: string,
@@ -2532,6 +2558,21 @@ export function useCloudBridgeState({
       if (existingStableRowTerminalLocked && agentDeliveryState === 'processing') {
         return true;
       }
+      const existingTerminalResponse = senderIsAgent && messageReplyToId
+        ? cloudGroupTerminalAgentResponseForRequest(
+          [canonicalState, nextState]
+            .filter((state): state is CanonicalSessionState => Boolean(state))
+            .flatMap((state) => state.messages),
+          {
+            groupId: envelope.groupId,
+            requestId: messageReplyToId,
+            senderAccountId: envelope.message.senderAccountId,
+          },
+        )
+        : null;
+      if (existingTerminalResponse && agentDeliveryState === 'processing') {
+        return true;
+      }
       const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
       if (senderIsAgent && replacementAgentSlot && cloudGroupTerminalAgentReplyAlreadyStable(replacementAgentSlot, {
         groupId: envelope.groupId,
@@ -2813,6 +2854,7 @@ export function useCloudBridgeState({
             clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
           })),
         );
+        sentCloudGroupAgentResponseRetryIdsRef.current.add(`${processingMessageId}:${responseMessageId}`);
         sent.forEach((result) => {
           if (result.status === 'fulfilled') mergeMessage(result.value);
         });
@@ -2881,6 +2923,7 @@ export function useCloudBridgeState({
                 clientCreatedAt: new Date(responseCreatedAtMs).toISOString(),
               })),
             );
+            sentCloudGroupAgentResponseRetryIdsRef.current.add(`${processingMessageId}:${responseMessageId}`);
             sent.forEach((result) => {
               if (result.status === 'fulfilled') mergeMessage(result.value);
             });
