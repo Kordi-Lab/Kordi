@@ -2590,7 +2590,6 @@ const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
-const CLOUD_AGENT_RUNTIME_STALE_SECONDS: i64 = 12;
 const CLOUD_AGENT_FALLBACK_GRACE_SECONDS: i64 = 45;
 const CLOUD_AGENT_FALLBACK_SWEEP_SECONDS: u64 = 5;
 
@@ -2792,6 +2791,17 @@ pub fn normalize_cloud_agent_runtime_status(
     })
 }
 
+#[cfg(test)]
+fn cloud_agent_runtime_allows_readonly_fallback_claim(
+    reachability_state: &str,
+    local_execution_state: &str,
+    readonly_fallback_enabled: bool,
+) -> bool {
+    readonly_fallback_enabled
+        && reachability_state == "offline"
+        && local_execution_state == "paused"
+}
+
 fn default_cloud_agent_runtime_status(account_id: &str) -> CloudAgentRuntimeStatusSummary {
     CloudAgentRuntimeStatusSummary {
         account_id: account_id.to_string(),
@@ -2877,7 +2887,7 @@ fn cloud_message_requires_accepted_contact(body: &str) -> bool {
 
 #[cfg(test)]
 mod cloud_agent_runtime_status_tests {
-    use super::{normalize_cloud_agent_runtime_status, CloudAgentRuntimeStatusRequest};
+    use super::{cloud_agent_runtime_allows_readonly_fallback_claim, normalize_cloud_agent_runtime_status, CloudAgentRuntimeStatusRequest};
 
     #[test]
     fn runtime_status_preserves_offline_readonly_fallback() {
@@ -2903,6 +2913,13 @@ mod cloud_agent_runtime_status_tests {
         .expect_err("offline local execution must be rejected");
 
         assert_eq!(error, "offline_local_execution");
+    }
+
+    #[test]
+    fn readonly_fallback_claim_requires_explicit_offline_paused_owner() {
+        assert!(cloud_agent_runtime_allows_readonly_fallback_claim("offline", "paused", true));
+        assert!(!cloud_agent_runtime_allows_readonly_fallback_claim("online", "available", true));
+        assert!(!cloud_agent_runtime_allows_readonly_fallback_claim("offline", "paused", false));
     }
 }
 
@@ -3386,27 +3403,23 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
         return;
     }
     let pool = state.db_pool();
-    let status: Option<(Option<String>, String)> = match query_as(
-        "SELECT a.display_name, s.reachability_state \
+    let status: Option<(Option<String>,)> = match query_as(
+        "SELECT a.display_name \
          FROM cloud_agent_runtime_status s \
          JOIN cloud_accounts a ON a.account_id = s.account_id \
          WHERE s.account_id = $1 \
            AND s.readonly_fallback_enabled = TRUE \
-           AND ( \
-             (s.reachability_state = 'offline' AND s.local_execution_state = 'paused') \
-             OR (s.reachability_state = 'online' \
-                 AND s.updated_at::timestamptz < now() - ($2::TEXT || ' seconds')::interval) \
-           )",
+           AND s.reachability_state = 'offline' \
+           AND s.local_execution_state = 'paused'",
     )
     .bind(&request.to_account_id)
-    .bind(CLOUD_AGENT_RUNTIME_STALE_SECONDS)
     .fetch_optional(pool)
     .await
     {
         Ok(value) => value,
         Err(_) => return,
     };
-    let Some((owner_display_name, _reachability_state)) = status else {
+    let Some((owner_display_name,)) = status else {
         return;
     };
     let request_created_at = DateTime::parse_from_rfc3339(&request.created_at)
@@ -3793,14 +3806,10 @@ async fn maybe_insert_offline_group_agent_fallback_for_target(
          JOIN cloud_accounts a ON a.account_id = s.account_id \
          WHERE s.account_id = $1 \
            AND s.readonly_fallback_enabled = TRUE \
-           AND ( \
-             (s.reachability_state = 'offline' AND s.local_execution_state = 'paused') \
-             OR (s.reachability_state = 'online' \
-                 AND s.updated_at::timestamptz < now() - ($2::TEXT || ' seconds')::interval) \
-           )",
+           AND s.reachability_state = 'offline' \
+           AND s.local_execution_state = 'paused'",
     )
     .bind(&target.account_id)
-    .bind(CLOUD_AGENT_RUNTIME_STALE_SECONDS)
     .fetch_optional(pool)
     .await
     {
@@ -4047,16 +4056,12 @@ async fn sweep_stale_offline_direct_agent_fallback_responses(state: Arc<ServerSt
          WHERE m.from_account_id <> m.to_account_id \
            AND m.created_at::timestamptz < now() - ($1::TEXT || ' seconds')::interval \
            AND s.readonly_fallback_enabled = TRUE \
-           AND ( \
-             (s.reachability_state = 'offline' AND s.local_execution_state = 'paused') \
-             OR (s.reachability_state = 'online' \
-                 AND s.updated_at::timestamptz < now() - ($2::TEXT || ' seconds')::interval) \
-           ) \
+           AND s.reachability_state = 'offline' \
+           AND s.local_execution_state = 'paused' \
          ORDER BY m.created_at ASC \
          LIMIT 100",
     )
     .bind(cloud_agent_fallback_grace_seconds())
-    .bind(CLOUD_AGENT_RUNTIME_STALE_SECONDS)
     .fetch_all(state.db_pool())
     .await
     {

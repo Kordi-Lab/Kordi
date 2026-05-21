@@ -1346,7 +1346,153 @@ async fn offline_group_agent_fallback_inserts_group_agent_response() {
 }
 
 #[tokio::test]
-async fn stale_online_agent_fallback_is_claimed_on_message_refresh() {
+async fn stale_online_group_agent_fallback_is_not_claimed_on_message_refresh() {
+    std::env::set_var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS", "1");
+    let Some(pool) = try_pool().await else { return };
+    let owner_email = unique_email("stale-group-agent-owner");
+    let sender_email = unique_email("stale-group-agent-sender");
+    let observer_email = unique_email("stale-group-agent-observer");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+
+    let owner_signup = router
+        .clone()
+        .oneshot(post("/v1/cloud/auth/signup", signup_body(&owner_email, "correct horse")))
+        .await
+        .unwrap();
+    assert_eq!(owner_signup.status(), StatusCode::CREATED);
+    let owner = read_json(owner_signup).await;
+    let owner_token = owner["session"]["token"].as_str().unwrap().to_string();
+    let owner_account_id = owner["account"]["accountId"].as_str().unwrap().to_string();
+
+    let sender_signup = router
+        .clone()
+        .oneshot(post("/v1/cloud/auth/signup", signup_body(&sender_email, "correct horse")))
+        .await
+        .unwrap();
+    assert_eq!(sender_signup.status(), StatusCode::CREATED);
+    let sender = read_json(sender_signup).await;
+    let sender_token = sender["session"]["token"].as_str().unwrap().to_string();
+    let sender_account_id = sender["account"]["accountId"].as_str().unwrap().to_string();
+
+    let observer_signup = router
+        .clone()
+        .oneshot(post("/v1/cloud/auth/signup", signup_body(&observer_email, "correct horse")))
+        .await
+        .unwrap();
+    assert_eq!(observer_signup.status(), StatusCode::CREATED);
+    let observer = read_json(observer_signup).await;
+    let observer_account_id = observer["account"]["accountId"].as_str().unwrap().to_string();
+
+    let status_resp = router
+        .clone()
+        .oneshot(put_json_with_token(
+            "/v1/cloud/agents/runtime-status",
+            &owner_token,
+            json!({
+                "reachabilityState": "online",
+                "localExecutionState": "available",
+                "readonlyFallbackEnabled": true,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(status_resp.status(), StatusCode::OK);
+
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_runtime_status SET updated_at = $1 WHERE account_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::seconds(30)).to_rfc3339())
+    .bind(&owner_account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let group_id = format!("session:group:{}", uuid::Uuid::new_v4());
+    let request_group_message_id = format!("msg:ui:{}", uuid::Uuid::new_v4());
+    let participants = json!([
+        { "accountId": sender_account_id, "displayName": "Sender", "avatarUrl": null, "role": "admin" },
+        { "accountId": owner_account_id, "displayName": "E2E", "avatarUrl": null, "role": "person" },
+        { "accountId": observer_account_id, "displayName": "Observer", "avatarUrl": null, "role": "person" }
+    ]);
+    let body = encode_group_control_for_test(json!({
+        "kind": "group-message",
+        "groupId": group_id,
+        "groupSpaceId": group_id,
+        "groupTitle": null,
+        "createdByAccountId": sender_account_id,
+        "actor": { "accountId": sender_account_id, "displayName": "Sender", "avatarUrl": null, "role": "person" },
+        "participants": participants,
+        "message": {
+            "id": request_group_message_id,
+            "senderAccountId": sender_account_id,
+            "text": "Can @E2EKordi wait for the online desktop?",
+            "createdAtMs": chrono::Utc::now().timestamp_millis(),
+            "senderKind": "human"
+        }
+    }));
+
+    let send_resp = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &sender_token,
+            json!({
+                "peerAccountId": owner_account_id,
+                "body": body,
+                "sessionId": group_id,
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(send_resp.status(), StatusCode::CREATED);
+    let sent = read_json(send_resp).await;
+    let request_cloud_message_id = sent["message"]["messageId"].as_str().unwrap().to_string();
+
+    sqlx_core::query::query(
+        "UPDATE cloud_messages SET created_at = $1 WHERE message_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::seconds(90)).to_rfc3339())
+    .bind(&request_cloud_message_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let messages_resp = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),
+            &sender_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(messages_resp.status(), StatusCode::OK);
+
+    let rows: Vec<(String,)> = sqlx_core::query_as::query_as(
+        "SELECT body FROM cloud_messages WHERE from_account_id = $1 AND session_id = $2 AND body LIKE 'kordi-cloud-group:%'",
+    )
+    .bind(&owner_account_id)
+    .bind(&group_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    for (body,) in rows {
+        let encoded = body.trim_start_matches("kordi-cloud-group:");
+        let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(encoded).unwrap();
+        let envelope: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+        let message = &envelope["message"];
+        assert!(
+            !(message["senderKind"] == "agent"
+                && message["senderAccountId"] == owner_account_id
+                && message["requestId"] == request_group_message_id),
+            "stale-online mentioned owners must not trigger group read-only fallback"
+        );
+    }
+    std::env::remove_var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS");
+}
+
+#[tokio::test]
+async fn stale_online_agent_fallback_is_not_claimed_on_message_refresh() {
     let Some(pool) = try_pool().await else { return };
     let owner_email = unique_email("stale-agent-owner");
     let sender_email = unique_email("stale-agent-sender");
@@ -1444,7 +1590,7 @@ async fn stale_online_agent_fallback_is_claimed_on_message_refresh() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(pre_refresh_responses.0, 0, "test must prove refresh performs the claim");
+    assert_eq!(pre_refresh_responses.0, 0, "no fallback should exist before the stale-online refresh check");
 
     let fresh_messages_resp = router
         .clone()
@@ -1498,18 +1644,11 @@ async fn stale_online_agent_fallback_is_claimed_on_message_refresh() {
                     .as_str()
                     .unwrap_or_default()
                     .starts_with("kordi-cloud-agent-response:")
-        })
-        .expect("refresh should claim stale online fallback request");
-    let encoded = response["body"]
-        .as_str()
-        .unwrap()
-        .trim_start_matches("kordi-cloud-agent-response:");
-    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(encoded)
-        .unwrap();
-    let envelope: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
-    assert_eq!(envelope["requestId"], request_id);
-    assert_eq!(envelope["deliveryState"], "failed");
+        });
+    assert!(
+        response.is_none(),
+        "stale-online owners must not trigger read-only fallback; only explicit offline/logout should claim request {request_id}"
+    );
 }
 
 #[tokio::test]
