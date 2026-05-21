@@ -67,6 +67,7 @@ import {
 } from './cloudAgentRuntime';
 import {
   cloudGroupAgentConversationId,
+  cloudGroupAgentMentionCloudResponseState,
   cloudGroupAgentMentionResponseState,
   cloudGroupAgentRequestingNoticeMessage,
   cloudGroupAgentRequestingNoticeRequest,
@@ -1999,11 +2000,19 @@ export function useCloudBridgeState({
       const hasRequestingNotice = existingNotice?.sourceTransport === 'cloud-group-agent-offline' && existingNotice.status !== 'failed';
       if (Date.now() - candidate.requestMessage.createdAtMs > CLOUD_AGENT_MENTION_WINDOW_MS && !hasRequestingNotice) continue;
       activeKeys.add(key);
-      const responseState = cloudGroupAgentMentionResponseState({
+      const canonicalResponseState = cloudGroupAgentMentionResponseState({
         requestMessageId: candidate.requestMessage.id,
         targetAccountId: candidate.targetAccountId,
         messages: canonicalSessionState.messages,
       });
+      const cloudResponseState = cloudGroupAgentMentionCloudResponseState({
+        requestMessageId: candidate.requestMessage.id,
+        targetAccountId: candidate.targetAccountId,
+        messages: Object.values(messagesByPeer).flat(),
+      });
+      const responseState = canonicalResponseState === 'terminal' || cloudResponseState === 'terminal'
+        ? 'terminal'
+        : canonicalResponseState ?? cloudResponseState;
       const requestReachedCloud = cloudAgentRequestReachedCloud(candidate.requestMessage);
       const hasOfflineNotice = existingNotice?.status === 'failed';
       if (responseState) {

@@ -573,6 +573,32 @@ export function cloudGroupAgentMentionHasResponse(input: {
   return cloudGroupAgentMentionResponseState(input) !== null;
 }
 
+export function cloudGroupAgentMentionCloudResponseState(input: {
+  requestMessageId: string;
+  targetAccountId: string;
+  messages: CloudMessage[];
+}): CloudGroupAgentMentionResponseState | null {
+  const requestMessageId = cleanText(input.requestMessageId);
+  const targetAccountId = cleanText(input.targetAccountId);
+  if (!requestMessageId || !targetAccountId) return null;
+  let sawProcessing = false;
+  for (const message of input.messages) {
+    const envelope = parseCloudGroupControl(message.body);
+    const groupMessage = envelope?.kind === 'group-message' ? envelope.message : null;
+    if (!groupMessage || groupMessage.senderKind !== 'agent') continue;
+    if (cleanText(groupMessage.senderAccountId) !== targetAccountId) continue;
+    const linkedRequestId = cleanText(groupMessage.replyToMessageId) || cleanText(groupMessage.requestId);
+    if (linkedRequestId !== requestMessageId) continue;
+    const deliveryState = cleanText(groupMessage.deliveryState).toLowerCase();
+    if (deliveryState === 'processing' || (!deliveryState && groupMessage.text.trim().toLowerCase() === 'processing...')) {
+      sawProcessing = true;
+      continue;
+    }
+    return 'terminal';
+  }
+  return sawProcessing ? 'processing' : null;
+}
+
 export function cloudGroupAgentRequestingNoticeRequest(input: {
   sessionId: string;
   requestMessageId: string;

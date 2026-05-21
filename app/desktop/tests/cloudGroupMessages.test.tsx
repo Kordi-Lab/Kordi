@@ -31,6 +31,7 @@ import {
   shouldRouteMentionThroughCloudGroup,
   cloudGroupAgentMentionHasResponse,
   cloudGroupAgentMentionResponseState,
+  cloudGroupAgentMentionCloudResponseState,
   cloudGroupAgentOfflineNoticeRequest,
   cloudGroupAgentRequestingNoticeMessage,
 } from '../src/features/cloud/cloudGroupMessages';
@@ -383,6 +384,54 @@ test('cloud group detects whether an offline candidate already sent an agent res
       { id: 'msg_other', sessionId: 'session:group:one', senderIdentityId: 'agent:cloud:acct_other', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { requestId: 'msg_request', deliveryState: 'processing' }, parentMessageId: 'msg_request', status: 'processing', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'cloud-group-agent' },
     ],
   }), false);
+});
+
+test('cloud group detects already-synced cloud agent responses before canonical replay finishes', () => {
+  const requestBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:one',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_target', displayName: 'Target', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_target', displayName: 'Target', avatarUrl: null, role: 'person' }],
+    message: {
+      id: 'msg:cloud-agent-processing:msg_request:acct_target',
+      senderAccountId: 'acct_target',
+      text: 'processing...',
+      createdAtMs: 1,
+      senderKind: 'agent',
+      deliveryState: 'processing',
+      replyToMessageId: 'msg_request',
+      requestId: 'msg_request',
+    },
+  });
+  const terminalBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:one',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_target', displayName: 'Target', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_target', displayName: 'Target', avatarUrl: null, role: 'person' }],
+    message: {
+      id: 'msg:cloud-agent:final',
+      senderAccountId: 'acct_target',
+      text: 'done',
+      createdAtMs: 2,
+      senderKind: 'agent',
+      deliveryState: 'complete',
+      replyToMessageId: 'msg_request',
+      requestId: 'msg_request',
+    },
+  });
+
+  assert.equal(cloudGroupAgentMentionCloudResponseState({
+    requestMessageId: 'msg_request',
+    targetAccountId: 'acct_target',
+    messages: [
+      { messageId: 'cloud_processing', fromAccountId: 'acct_target', toAccountId: 'acct_me', body: requestBody, createdAt: '2026-05-21T00:00:01Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+      { messageId: 'cloud_terminal', fromAccountId: 'acct_target', toAccountId: 'acct_me', body: terminalBody, createdAt: '2026-05-21T00:00:02Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), 'terminal');
 });
 
 test('cloud group requesting notice shows a temporary smooth waiting state', () => {
