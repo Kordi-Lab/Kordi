@@ -124,6 +124,8 @@ function localAgentMentionKeys(account: CloudAccount, options: { allowFirstPerso
   const names = [
     account.displayName,
     account.primaryEmail?.split('@')[0],
+    account.accountId,
+    account.nodeId,
   ]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));

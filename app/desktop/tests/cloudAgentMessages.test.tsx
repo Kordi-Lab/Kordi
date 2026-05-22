@@ -79,6 +79,15 @@ test('cloud agent runtime route is reflected on the synthetic local cloud agent 
 });
 
 test('cloud agent mention matching recognizes local Kordi labels', () => {
+  const accountIdOnly: CloudAccount = {
+    accountId: 'acct_a7c079a04854473fbc684068a029fc35',
+    displayName: '',
+    primaryEmail: '111@gmail.com',
+    avatarUrl: null,
+    nodeId: null,
+    passwordSet: true,
+  };
+  assert.equal(cloudMessageMentionsLocalAgent('@accta7c079a04854473fbc684068a029fc35sKordi hi', accountIdOnly, { allowFirstPerson: false }), true);
   assert.equal(cloudMessageMentionsLocalAgent('@Shuyheres who are you?', account), false);
   assert.equal(cloudMessageMentionsLocalAgent('@ShuyheresKordi who are you?', account), true);
   assert.equal(cloudMessageMentionsLocalAgent('@ShuyheressKordi who are you?', account), true);
