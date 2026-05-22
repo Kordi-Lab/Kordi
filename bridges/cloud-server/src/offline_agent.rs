@@ -75,8 +75,7 @@ fn mention_tokens(text: &str) -> Vec<String> {
     out
 }
 
-pub fn mention_matches_agent_name(text: &str, owner_name: &str) -> bool {
-    let keys = owner_agent_keys(owner_name);
+fn mention_matches_agent_keys(text: &str, keys: &[String]) -> bool {
     if keys.is_empty() {
         return false;
     }
@@ -92,6 +91,10 @@ pub fn mention_matches_agent_name(text: &str, owner_name: &str) -> bool {
             keys.iter().any(|key| normalized_part.starts_with(key))
         })
     })
+}
+
+pub fn mention_matches_agent_name(text: &str, owner_name: &str) -> bool {
+    mention_matches_agent_keys(text, &owner_agent_keys(owner_name))
 }
 
 pub fn encode_cloud_agent_response(request_id: &str, text: &str, delivery_state: &str) -> String {
@@ -165,14 +168,12 @@ pub fn should_start_direct_fallback(candidate: &CloudAgentFallbackCandidate<'_>)
     if is_cloud_agent_control_body(candidate.request_body) {
         return false;
     }
-    let Some(owner_display_name) = candidate
+    let mention_keys = candidate
         .owner_display_name
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return false;
-    };
-    if !mention_matches_agent_name(candidate.request_body, owner_display_name) {
+        .map(owner_agent_keys)
+        .filter(|keys| !keys.is_empty())
+        .unwrap_or_else(|| owner_agent_keys(candidate.owner_account_id));
+    if !mention_matches_agent_keys(candidate.request_body, &mention_keys) {
         return false;
     }
     !candidate.peer_messages.iter().any(|message| {
@@ -235,6 +236,19 @@ mod tests {
             "@kordi summarize this",
             "Alice"
         ));
+    }
+
+    #[test]
+    fn account_id_owner_mention_targets_remote_agent_when_display_name_missing() {
+        let request = CloudAgentFallbackCandidate {
+            owner_display_name: None,
+            request_body: "@accta7c079a04854473fbc684068a029fc35sKordi are you online?",
+            request_message_id: "msg_request",
+            peer_messages: vec![],
+            owner_account_id: "acct_a7c079a04854473fbc684068a029fc35",
+        };
+
+        assert!(should_start_direct_fallback(&request));
     }
 
     #[test]
