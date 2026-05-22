@@ -59,6 +59,18 @@ test('mention participant menu uses its own solid surface instead of the shared 
   assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
 });
 
+test('mention participant menu does not render a header or shortcut hint', () => {
+  const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
+    items: options,
+    selectedIndex: 0,
+    onSelect: () => undefined,
+  }));
+
+  assert.doesNotMatch(html, /Mention participant/);
+  assert.doesNotMatch(html, /Tab select/);
+  assert.doesNotMatch(html, /app-composer-mention-menu-header/);
+});
+
 test('mention participant selected row has an opaque readable state', () => {
   const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
     items: options,

@@ -173,11 +173,7 @@ export function ComposerMentionMenu({
 
   return (
     <div className="app-composer-mention-menu absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[24px] border px-2 py-2 shadow-[var(--app-shadow-float)]">
-      <div className="app-composer-mention-menu-header flex items-center justify-between gap-3 border-b px-3 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.14em]">
-        <span>Mention participant</span>
-        <span className="app-composer-mention-menu-hint normal-case tracking-normal">↵ / Tab select</span>
-      </div>
-      <div className="max-h-[min(28rem,54vh)] overflow-y-auto pr-1 pt-1">
+      <div className="max-h-[min(28rem,54vh)] overflow-y-auto pr-1">
         <div className="space-y-0.5">
           {items.map((item, index) => {
             const active = index === selectedIndex;
