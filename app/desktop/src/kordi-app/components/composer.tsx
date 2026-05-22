@@ -172,10 +172,10 @@ export function ComposerMentionMenu({
   if (items.length === 0) return null;
 
   return (
-    <div className="app-modal-panel absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] px-2 py-2 shadow-[var(--app-shadow-float)] backdrop-blur-2xl">
-      <div className="flex items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-3 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
+    <div className="app-composer-mention-menu absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[24px] border px-2 py-2 shadow-[var(--app-shadow-float)]">
+      <div className="app-composer-mention-menu-header flex items-center justify-between gap-3 border-b px-3 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.14em]">
         <span>Mention participant</span>
-        <span className="normal-case tracking-normal text-slate-600">↵ / Tab select</span>
+        <span className="app-composer-mention-menu-hint normal-case tracking-normal">↵ / Tab select</span>
       </div>
       <div className="max-h-[min(28rem,54vh)] overflow-y-auto pr-1 pt-1">
         <div className="space-y-0.5">
@@ -191,21 +191,21 @@ export function ComposerMentionMenu({
                   onSelect(item.value);
                 }}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-[16px] px-3 py-2 text-left text-[13px] transition',
-                  active ? 'bg-white/[0.06] text-white' : 'text-slate-300 hover:bg-white/[0.03] hover:text-white',
+                  'app-composer-mention-menu-item flex w-full items-center gap-3 rounded-[16px] px-3 py-2 text-left text-[13px] transition',
+                  active && 'app-composer-mention-menu-item-active',
                 )}
               >
-                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/[0.04] ring-1 ring-white/10">
+                <div className="app-composer-mention-menu-icon grid h-7 w-7 shrink-0 place-items-center rounded-full">
                   <Icon className={cn('h-4 w-4', item.targetKind === 'bridge-agent' ? 'text-violet-300' : 'text-sky-300')} />
                 </div>
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="truncate font-medium"><AtSign className="mr-0.5 inline h-3.5 w-3.5 align-[-2px] text-slate-500" />{item.label}</span>
-                    <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px]', active ? 'bg-white/10 text-slate-200' : 'bg-white/[0.04] text-slate-500')}>
+                    <span className={cn('app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[10px]', active && 'app-composer-mention-menu-kind-active')}>
                       {item.targetKind === 'bridge-agent' ? 'agent' : 'person'}
                     </span>
                   </div>
-                  {item.detail ? <div className={cn('truncate text-[12px]', active ? 'text-slate-300' : 'text-slate-500')}>{item.detail}</div> : null}
+                  {item.detail ? <div className={cn('app-composer-mention-menu-detail truncate text-[12px]', active && 'app-composer-mention-menu-detail-active')}>{item.detail}</div> : null}
                 </div>
                 {item.unreadCount && item.unreadCount > 0 ? (
                   <span className={cn(
