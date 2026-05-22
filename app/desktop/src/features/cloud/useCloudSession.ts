@@ -86,6 +86,7 @@ type CompleteCloudAuthResultOptions = {
   result: CloudAuthResult;
   currentAccountId: string | null;
   saveSession?: (session: StoredSession) => Promise<void>;
+  publishRuntimeOnline?: (token: string) => Promise<unknown>;
   activateAccountStorage?: (accountId: string) => Promise<DesktopCloudAccountStorageActivation>;
   setAuthenticated: (account: CloudAccount) => void;
   registerDevice: (input: {
@@ -100,6 +101,7 @@ export async function completeCloudAuthResult({
   result,
   currentAccountId,
   saveSession: persistSession,
+  publishRuntimeOnline,
   activateAccountStorage = activateDesktopCloudAccountStorage,
   setAuthenticated: publishAuthenticated,
   registerDevice,
@@ -112,6 +114,14 @@ export async function completeCloudAuthResult({
   };
   if (persistSession) {
     await persistSession(session);
+  }
+  if (publishRuntimeOnline) {
+    try {
+      await publishRuntimeOnline(result.session.token);
+    } catch {
+      // Do not block successful sign-in if the early runtime heartbeat fails;
+      // the normal Cloud bridge heartbeat will retry after the app is mounted.
+    }
   }
   const activation = await activateAccountStorage(result.account.accountId);
   const switchedAuthenticatedAccount = Boolean(
@@ -164,6 +174,12 @@ export function useCloudSession({
       window.location.reload();
     }
   }, []);
+
+  const publishRuntimeOnline = useCallback((token: string) => authClient.syncCloudAgentRuntimeStatus(token, {
+    reachabilityState: 'online',
+    localExecutionState: 'available',
+    readonlyFallbackEnabled: true,
+  }), [authClient]);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
@@ -263,6 +279,7 @@ export function useCloudSession({
             result: oauthResult,
             currentAccountId: accountIdRef.current,
             saveSession,
+            publishRuntimeOnline,
             setAuthenticated: (next) => {
               if (!cancelled && mountedRef.current) setAuthenticated(next);
             },
@@ -296,6 +313,7 @@ export function useCloudSession({
               },
             },
             currentAccountId: accountIdRef.current,
+            publishRuntimeOnline,
             setAuthenticated: (next) => {
               if (!cancelled && mountedRef.current) setAuthenticated(next);
             },
@@ -319,7 +337,7 @@ export function useCloudSession({
       cancelled = true;
       mountedRef.current = false;
     };
-  }, [authClient, enabled, reloadForAccountStorageSwitch, setAuthenticated, setSignedOut]);
+  }, [authClient, enabled, publishRuntimeOnline, reloadForAccountStorageSwitch, setAuthenticated, setSignedOut]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -329,6 +347,7 @@ export function useCloudSession({
           result,
           currentAccountId: accountIdRef.current,
           saveSession,
+          publishRuntimeOnline,
           setAuthenticated,
           registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
           reloadWindow: reloadForAccountStorageSwitch,
@@ -347,7 +366,7 @@ export function useCloudSession({
         throw wrapped;
       }
     },
-    [authClient, reloadForAccountStorageSwitch, setAuthenticated],
+    [authClient, publishRuntimeOnline, reloadForAccountStorageSwitch, setAuthenticated],
   );
 
   const signUp = useCallback<UseCloudSessionResult['signUp']>(
@@ -358,6 +377,7 @@ export function useCloudSession({
           result,
           currentAccountId: accountIdRef.current,
           saveSession,
+          publishRuntimeOnline,
           setAuthenticated,
           registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
           reloadWindow: reloadForAccountStorageSwitch,
@@ -376,7 +396,7 @@ export function useCloudSession({
         throw wrapped;
       }
     },
-    [authClient, reloadForAccountStorageSwitch, setAuthenticated],
+    [authClient, publishRuntimeOnline, reloadForAccountStorageSwitch, setAuthenticated],
   );
 
   const signInWithProvider = useCallback(
@@ -395,6 +415,7 @@ export function useCloudSession({
             result: oauthResult,
             currentAccountId: accountIdRef.current,
             saveSession,
+            publishRuntimeOnline,
             setAuthenticated,
             registerDevice: (input) => ensureCloudDeviceRegistered({ ...input, client: authClient }),
             reloadWindow: reloadForAccountStorageSwitch,
@@ -423,7 +444,7 @@ export function useCloudSession({
         throw wrapped;
       }
     },
-    [authClient, reloadForAccountStorageSwitch, setAuthenticated],
+    [authClient, publishRuntimeOnline, reloadForAccountStorageSwitch, setAuthenticated],
   );
 
   const updateProfile = useCallback(
