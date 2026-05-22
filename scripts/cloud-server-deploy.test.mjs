@@ -20,9 +20,8 @@ test('cloud server sync preserves remote Cargo target while deleting stale sourc
   assert.doesNotMatch(script, /rm -rf \$\{REMOTE_DIR\}\.old|mv \$\{REMOTE_DIR\} \$\{REMOTE_DIR\}\.old/);
 });
 
-test('takotako preview uses a short explicit offline-agent fallback grace window', async () => {
+test('takotako preview does not configure a timer-based offline-agent fallback grace window', async () => {
   const manifest = await readFile(k3sManifestPath, 'utf8');
 
-  assert.match(manifest, /name: KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS/);
-  assert.match(manifest, /value: "8"/);
+  assert.doesNotMatch(manifest, /KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS/);
 });

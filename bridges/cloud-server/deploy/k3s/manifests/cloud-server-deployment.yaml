@@ -137,10 +137,6 @@ spec:
               # Keep local SSH/kubectl preview tunnels from exhausting SSH channels
               # on idle browser fetch connections. The WebSocket route is excluded.
               value: "1"
-            - name: KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS
-              # Owner fallback only claims explicit offline/paused agents; keep
-              # the preview responsive instead of waiting the conservative default.
-              value: "8"
           readinessProbe:
             httpGet:
               path: /health

@@ -1044,38 +1044,6 @@ async fn offline_agent_fallback_inserts_direct_paused_response() {
     let sent = read_json(send_resp).await;
     let request_id = sent["message"]["messageId"].as_str().unwrap();
 
-    let fresh_messages_resp = router
-        .clone()
-        .oneshot(get_with_token(
-            &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),
-            &sender_token,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(fresh_messages_resp.status(), StatusCode::OK);
-    let fresh_listed = read_json(fresh_messages_resp).await;
-    let fresh_response = fresh_listed["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|message| {
-            message["fromAccountId"] == owner_account_id
-                && message["body"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .starts_with("kordi-cloud-agent-response:")
-        });
-    assert!(fresh_response.is_none(), "fresh offline requests should stay processing before fallback claims them");
-
-    sqlx_core::query::query(
-        "UPDATE cloud_messages SET created_at = $1 WHERE message_id = $2",
-    )
-    .bind((chrono::Utc::now() - chrono::Duration::seconds(90)).to_rfc3339())
-    .bind(request_id)
-    .execute(&pool)
-    .await
-    .unwrap();
-
     let messages_resp = router
         .oneshot(get_with_token(
             &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),

@@ -2590,16 +2590,7 @@ const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
-const CLOUD_AGENT_FALLBACK_GRACE_SECONDS: i64 = 45;
 const CLOUD_AGENT_FALLBACK_SWEEP_SECONDS: u64 = 5;
-
-fn cloud_agent_fallback_grace_seconds() -> i64 {
-    std::env::var("KORDI_CLOUD_AGENT_FALLBACK_GRACE_SECONDS")
-        .ok()
-        .and_then(|value| value.parse::<i64>().ok())
-        .filter(|value| (0..=3600).contains(value))
-        .unwrap_or(CLOUD_AGENT_FALLBACK_GRACE_SECONDS)
-}
 
 fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
     let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
@@ -2802,6 +2793,19 @@ fn cloud_agent_runtime_allows_readonly_fallback_claim(
         && local_execution_state == "paused"
 }
 
+#[cfg(test)]
+fn cloud_agent_runtime_requires_fallback_grace(
+    reachability_state: &str,
+    local_execution_state: &str,
+    readonly_fallback_enabled: bool,
+) -> bool {
+    !cloud_agent_runtime_allows_readonly_fallback_claim(
+        reachability_state,
+        local_execution_state,
+        readonly_fallback_enabled,
+    )
+}
+
 fn default_cloud_agent_runtime_status(account_id: &str) -> CloudAgentRuntimeStatusSummary {
     CloudAgentRuntimeStatusSummary {
         account_id: account_id.to_string(),
@@ -2887,7 +2891,7 @@ fn cloud_message_requires_accepted_contact(body: &str) -> bool {
 
 #[cfg(test)]
 mod cloud_agent_runtime_status_tests {
-    use super::{cloud_agent_runtime_allows_readonly_fallback_claim, normalize_cloud_agent_runtime_status, CloudAgentRuntimeStatusRequest};
+    use super::{cloud_agent_runtime_allows_readonly_fallback_claim, cloud_agent_runtime_requires_fallback_grace, normalize_cloud_agent_runtime_status, CloudAgentRuntimeStatusRequest};
 
     #[test]
     fn runtime_status_preserves_offline_readonly_fallback() {
@@ -2920,6 +2924,12 @@ mod cloud_agent_runtime_status_tests {
         assert!(cloud_agent_runtime_allows_readonly_fallback_claim("offline", "paused", true));
         assert!(!cloud_agent_runtime_allows_readonly_fallback_claim("online", "available", true));
         assert!(!cloud_agent_runtime_allows_readonly_fallback_claim("offline", "paused", false));
+    }
+
+    #[test]
+    fn explicit_offline_paused_owner_does_not_wait_for_fallback_grace() {
+        assert!(!cloud_agent_runtime_requires_fallback_grace("offline", "paused", true));
+        assert!(cloud_agent_runtime_requires_fallback_grace("online", "available", true));
     }
 }
 
@@ -3422,17 +3432,6 @@ async fn maybe_insert_offline_direct_agent_fallback_response(
     let Some((owner_display_name,)) = status else {
         return;
     };
-    let request_created_at = DateTime::parse_from_rfc3339(&request.created_at)
-        .map(|value| value.with_timezone(&Utc))
-        .ok();
-    let Some(request_created_at) = request_created_at else {
-        return;
-    };
-    if Utc::now().signed_duration_since(request_created_at)
-        < ChronoDuration::seconds(cloud_agent_fallback_grace_seconds())
-    {
-        return;
-    }
     let peer_rows: Vec<(String, String)> = match query_as(
         "SELECT from_account_id, body FROM cloud_messages \
          WHERE ((from_account_id = $1 AND to_account_id = $2) \
@@ -3764,17 +3763,6 @@ async fn maybe_insert_offline_group_agent_fallback_response(
     if envelope.kind != "group-message" || group_message.sender_kind.as_deref() == Some("agent") {
         return;
     }
-    let request_created_at = DateTime::parse_from_rfc3339(&request.created_at)
-        .map(|value| value.with_timezone(&Utc))
-        .ok();
-    let Some(request_created_at) = request_created_at else {
-        return;
-    };
-    if Utc::now().signed_duration_since(request_created_at)
-        < ChronoDuration::seconds(cloud_agent_fallback_grace_seconds())
-    {
-        return;
-    }
     let targets = cloud_group_fallback_targets(&envelope, request);
     if targets.is_empty() {
         return;
@@ -4016,11 +4004,8 @@ fn schedule_offline_direct_agent_fallback_response(
     if request.from_account_id == request.to_account_id {
         return;
     }
-    let delay_millis = (cloud_agent_fallback_grace_seconds().max(0) as u64)
-        .saturating_mul(1_000)
-        .saturating_add(250);
     tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(delay_millis)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         maybe_insert_offline_direct_agent_fallback_response(state.clone(), &request).await;
         maybe_insert_offline_group_agent_fallback_response(state, &request).await;
     });
@@ -4054,14 +4039,12 @@ async fn sweep_stale_offline_direct_agent_fallback_responses(state: Arc<ServerSt
          FROM cloud_messages m \
          JOIN cloud_agent_runtime_status s ON s.account_id = m.to_account_id \
          WHERE m.from_account_id <> m.to_account_id \
-           AND m.created_at::timestamptz < now() - ($1::TEXT || ' seconds')::interval \
            AND s.readonly_fallback_enabled = TRUE \
            AND s.reachability_state = 'offline' \
            AND s.local_execution_state = 'paused' \
          ORDER BY m.created_at ASC \
          LIMIT 100",
     )
-    .bind(cloud_agent_fallback_grace_seconds())
     .fetch_all(state.db_pool())
     .await
     {
