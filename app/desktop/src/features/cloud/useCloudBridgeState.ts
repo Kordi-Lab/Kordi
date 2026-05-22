@@ -1723,10 +1723,6 @@ export function useCloudBridgeState({
       window.removeEventListener('pagehide', handlePageHide);
       window.removeEventListener('beforeunload', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      void publishOfflineStatus().catch((error) => {
-        // eslint-disable-next-line no-console
-        console.warn('[cloud-agent-runtime] offline status failed', error);
-      });
     };
   }, [account, client]);
 

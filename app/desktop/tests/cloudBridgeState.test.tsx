@@ -163,16 +163,22 @@ test('cloud agent runtime routes fall back to current composer route for unconfi
   });
 });
 
-test('cloud bridge state publishes active online heartbeat and offline cleanup status', () => {
+test('cloud bridge state publishes active online heartbeat and offline pagehide status without cleanup races', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
   assert.match(source, /CLOUD_AGENT_RUNTIME_HEARTBEAT_MS = 5_000/);
   assert.match(source, /syncCloudAgentRuntimeStatus\(session\.token, \{[\s\S]*reachabilityState: 'online'/);
   assert.match(source, /localExecutionState: 'available'/);
   assert.match(source, /readonlyFallbackEnabled: true/);
-  assert.match(source, /publishOfflineStatus/);
+  assert.match(source, /const handlePageHide = \(\) => \{[\s\S]*publishOfflineStatus/);
   assert.match(source, /reachabilityState: 'offline'/);
   assert.match(source, /localExecutionState: 'paused'/);
+
+  const cleanupStart = source.indexOf('return () => {\n      cancelled = true;');
+  const cleanupEnd = source.indexOf('  }, [account, client]);', cleanupStart);
+  const cleanupBody = cleanupStart >= 0 && cleanupEnd > cleanupStart ? source.slice(cleanupStart, cleanupEnd) : '';
+  assert.ok(cleanupBody, 'expected runtime heartbeat effect cleanup');
+  assert.doesNotMatch(cleanupBody, /publishOfflineStatus/, 'effect cleanup must not mark the app offline while React remounts');
 });
 
 test('cloud bridge state does not replay stale localStorage messages before server sync settles', () => {
