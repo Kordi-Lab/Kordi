@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
@@ -299,11 +299,41 @@ export function ensureMultiInstanceDirs(config) {
   mkdirSync(config.runtimeRoot, { recursive: true });
 }
 
+function sanitizeTauriIdentifierPart(value) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/\.{2,}/g, '.')
+    .replace(/-{2,}/g, '-') || 'dev';
+}
+
+export function tauriProfileArtifactPaths({ profile, homeDir = homedir() }) {
+  const identifier = `io.kordi.desktop.${sanitizeTauriIdentifierPart(`${profile ?? 'dev'}`)}`;
+  return [
+    join(homeDir, 'Library', 'Application Support', identifier),
+    join(homeDir, 'Library', 'Caches', identifier),
+    join(homeDir, 'Library', 'WebKit', identifier),
+    join(homeDir, 'Library', 'HTTPStorages', identifier),
+    join(homeDir, 'Library', 'Saved Application State', `${identifier}.savedState`),
+    join(homeDir, 'Library', 'Preferences', `${identifier}.plist`),
+    join(homeDir, 'Library', 'Cookies', `${identifier}.binarycookies`),
+  ];
+}
+
+export function removeTauriProfileArtifacts(instance, { homeDir = homedir() } = {}) {
+  for (const artifactPath of tauriProfileArtifactPaths({ profile: instance.profile, homeDir })) {
+    rmSync(artifactPath, { recursive: true, force: true });
+  }
+}
+
 export function removeInstanceArtifacts(instance) {
   rmSync(instance.dataDir, { recursive: true, force: true });
   rmSync(instance.logDir, { recursive: true, force: true });
   rmSync(instance.pidFile, { force: true });
   rmSync(instance.metaFile, { force: true });
+  removeTauriProfileArtifacts(instance);
 }
 
 export function applyBootstrap(instance, { force = false } = {}) {
