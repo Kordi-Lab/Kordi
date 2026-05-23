@@ -454,6 +454,7 @@ export class CloudAuthClient {
       {
         method: 'POST',
         headers: { authorization: `Bearer ${token}` },
+        keepalive: true,
       },
       'Could not update presence.',
     );

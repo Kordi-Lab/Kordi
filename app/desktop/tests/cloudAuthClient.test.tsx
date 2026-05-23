@@ -129,6 +129,21 @@ test('logout sends Bearer token and treats 204 as success', async () => {
   assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
 });
 
+test('publishPresenceOffline uses keepalive so page close can finish the request', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    accountId: 'acct_1',
+    status: 'offline',
+    updatedAt: '2026-05-23T00:00:00Z',
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await client.publishPresenceOffline('kordi_cs_xyz');
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/presence/offline');
+  assert.equal(calls[0].init?.keepalive, true);
+});
+
 test('me returns the parsed account', async () => {
   const { fetchImpl } = recordingFetch(() =>
     jsonResponse(200, {

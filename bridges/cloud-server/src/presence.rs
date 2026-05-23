@@ -29,15 +29,25 @@ pub struct AccountPresenceSummary {
     pub updated_at: String,
 }
 
-pub const DEFAULT_PRESENCE_TIMEOUT_SECONDS: i64 = 90;
+pub const DEFAULT_PRESENCE_TIMEOUT_SECONDS: i64 = 35;
+pub const DEFAULT_PRESENCE_SWEEP_SECONDS: u64 = 5;
 
 pub fn presence_timeout() -> ChronoDuration {
     let seconds = std::env::var("KORDI_CLOUD_PRESENCE_TIMEOUT_SECONDS")
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
-        .filter(|value| *value >= 30)
+        .filter(|value| *value >= 15)
         .unwrap_or(DEFAULT_PRESENCE_TIMEOUT_SECONDS);
     ChronoDuration::seconds(seconds)
+}
+
+pub fn presence_sweep_interval() -> std::time::Duration {
+    let seconds = std::env::var("KORDI_CLOUD_PRESENCE_SWEEP_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value >= 1)
+        .unwrap_or(DEFAULT_PRESENCE_SWEEP_SECONDS);
+    std::time::Duration::from_secs(seconds)
 }
 
 pub fn device_presence_is_currently_online(
@@ -257,5 +267,11 @@ mod tests {
     fn stale_online_cutoff_uses_timeout() {
         let now = Utc.with_ymd_and_hms(2026, 5, 23, 12, 0, 0).unwrap();
         assert_eq!(stale_presence_cutoff(now, ChronoDuration::seconds(90)).to_rfc3339(), "2026-05-23T11:58:30+00:00");
+    }
+
+    #[test]
+    fn default_presence_latency_budget_is_responsive() {
+        assert_eq!(DEFAULT_PRESENCE_TIMEOUT_SECONDS, 35);
+        assert_eq!(DEFAULT_PRESENCE_SWEEP_SECONDS, 5);
     }
 }
