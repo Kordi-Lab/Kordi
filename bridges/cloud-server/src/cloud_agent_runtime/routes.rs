@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Extension, Json, Router};
@@ -13,12 +13,16 @@ use crate::cloud_agent_runtime::provider_auth::{
     current_snapshot, publish_snapshot, revoke_snapshot, CurrentProviderAuthSnapshotQuery,
     CurrentProviderAuthSnapshotResponse, EnvProviderAuthCipher, PublishProviderAuthSnapshotRequest,
 };
-use crate::cloud_agent_runtime::runs::{claim_run, requester_can_target_owner, ClaimRunRequest};
+use crate::cloud_agent_runtime::runs::{
+    claim_run, complete_run, fail_run, lease_next_run, mark_run_running,
+    requester_can_target_owner, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
+    RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
+};
 use crate::presence::{account_presence_status, presence_timeout, AccountPresenceStatus};
 use crate::server::ServerState;
 
 pub fn routes(state: Arc<ServerState>) -> Router {
-    Router::new()
+    let user_routes = Router::new()
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
         .route(
             "/v1/cloud/agent-provider-auth/snapshots",
@@ -36,7 +40,22 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             state.clone(),
             cloud_session_middleware,
         ))
-        .with_state(state)
+        .with_state(state.clone());
+
+    let runner_routes = Router::new()
+        .route("/v1/cloud/agent-runs/lease", post(lease_runner_run))
+        .route(
+            "/v1/cloud/agent-runs/:run_id/running",
+            post(mark_runner_run_running),
+        )
+        .route(
+            "/v1/cloud/agent-runs/:run_id/complete",
+            post(complete_runner_run),
+        )
+        .route("/v1/cloud/agent-runs/:run_id/fail", post(fail_runner_run))
+        .with_state(state);
+
+    user_routes.merge(runner_routes)
 }
 
 fn error_response(error_code: &'static str, message: &'static str, status: StatusCode) -> Response {
@@ -48,6 +67,168 @@ fn error_response(error_code: &'static str, message: &'static str, status: Statu
         })),
     )
         .into_response()
+}
+
+fn runner_authorized(headers: &HeaderMap) -> bool {
+    let Ok(expected) = std::env::var("KORDI_CLOUD_RUNNER_TOKEN") else {
+        return false;
+    };
+    if expected.trim().is_empty() {
+        return false;
+    }
+    let Some(raw) = headers.get(axum::http::header::AUTHORIZATION) else {
+        return false;
+    };
+    let Ok(value) = raw.to_str() else {
+        return false;
+    };
+    value == format!("Bearer {expected}")
+}
+
+fn runner_unauthorized() -> Response {
+    error_response(
+        "invalid_runner_token",
+        "Missing or invalid Cloud runner token.",
+        StatusCode::UNAUTHORIZED,
+    )
+}
+
+async fn lease_runner_run(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Json(input): Json<RunnerRunRequest>,
+) -> Response {
+    if !runner_authorized(&headers) {
+        return runner_unauthorized();
+    }
+    let Some(runner_id) = input.runner_id() else {
+        return error_response(
+            "invalid_runner_request",
+            "runnerId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    match lease_next_run(state.db_pool(), &runner_id).await {
+        Ok(run) => Json(RunnerLeaseResponse { run }).into_response(),
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] lease run: {err}");
+            error_response(
+                "server_error",
+                "Could not lease Cloud agent fallback run.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
+async fn mark_runner_run_running(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(input): Json<RunnerRunRequest>,
+) -> Response {
+    if !runner_authorized(&headers) {
+        return runner_unauthorized();
+    }
+    let Some(runner_id) = input.runner_id() else {
+        return error_response(
+            "invalid_runner_request",
+            "runnerId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    match mark_run_running(state.db_pool(), &run_id, &runner_id).await {
+        Ok(Some(run)) => Json(RunnerRunEnvelope { run }).into_response(),
+        Ok(None) => error_response(
+            "agent_run_not_found",
+            "Cloud agent run was not found for this runner.",
+            StatusCode::NOT_FOUND,
+        ),
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] mark running: {err}");
+            error_response(
+                "server_error",
+                "Could not mark run running.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
+async fn complete_runner_run(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(input): Json<CompleteRunRequest>,
+) -> Response {
+    if !runner_authorized(&headers) {
+        return runner_unauthorized();
+    }
+    let Some(runner_id) = input.runner_id() else {
+        return error_response(
+            "invalid_runner_request",
+            "runnerId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    match complete_run(state.db_pool(), &run_id, &runner_id, &input.response_text).await {
+        Ok(Some(run)) => Json(RunnerRunEnvelope { run }).into_response(),
+        Ok(None) => error_response(
+            "agent_run_not_found",
+            "Cloud agent run was not found for this runner.",
+            StatusCode::NOT_FOUND,
+        ),
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] complete run: {err}");
+            error_response(
+                "server_error",
+                "Could not complete run.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
+async fn fail_runner_run(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(input): Json<FailRunRequest>,
+) -> Response {
+    if !runner_authorized(&headers) {
+        return runner_unauthorized();
+    }
+    let Some(runner_id) = input.runner_id() else {
+        return error_response(
+            "invalid_runner_request",
+            "runnerId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    match fail_run(
+        state.db_pool(),
+        &run_id,
+        &runner_id,
+        &input.error_code(),
+        &input.message,
+    )
+    .await
+    {
+        Ok(Some(run)) => Json(RunnerRunEnvelope { run }).into_response(),
+        Ok(None) => error_response(
+            "agent_run_not_found",
+            "Cloud agent run was not found for this runner.",
+            StatusCode::NOT_FOUND,
+        ),
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] fail run: {err}");
+            error_response(
+                "server_error",
+                "Could not fail run.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
 }
 
 async fn publish_provider_auth_snapshot(

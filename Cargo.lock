@@ -2675,6 +2675,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "kordi-cloud-agent-runner"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "kordi-core",
+ "kordi-provider",
+ "kordi-session",
+ "kordi-tools",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "kordi-cloud-server"
 version = "0.0.1"
 dependencies = [

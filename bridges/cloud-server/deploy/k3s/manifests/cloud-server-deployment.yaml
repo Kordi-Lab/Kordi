@@ -145,6 +145,12 @@ spec:
                   name: kordi-cloud-provider-auth
                   key: encryption-key-id
                   optional: true
+            - name: KORDI_CLOUD_RUNNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-runner
+                  key: runner-token
+                  optional: true
           readinessProbe:
             httpGet:
               path: /health
