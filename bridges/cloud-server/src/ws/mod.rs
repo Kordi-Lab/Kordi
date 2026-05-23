@@ -25,16 +25,17 @@
 //! the broker. No Redis pubsub or cluster gossip required.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::session::lookup_session;
-use crate::events::EventBus;
 use crate::server::ServerState;
 
 #[derive(Debug, Deserialize)]
@@ -60,8 +61,8 @@ pub async fn ws_handler(
         }
     };
     let account_id = session.account_id;
-    let bus = state.events().clone();
-    ws.on_upgrade(move |socket| run_ws(socket, account_id, bus))
+    let device_id = session.device_id;
+    ws.on_upgrade(move |socket| run_ws(socket, account_id, device_id, state))
 }
 
 #[derive(Serialize)]
@@ -82,12 +83,22 @@ struct ConnectedFrame<'a> {
     account_id: &'a str,
 }
 
-async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
+async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state: Arc<ServerState>) {
+    let bus = state.events().clone();
     let Some(client) = bus.nats_client() else {
         // Bus is in noop mode (no NATS_URL). Send a one-shot hello so
         // clients can tell the difference between "connected" and
         // "actually receiving events," then idle until close.
+        mark_presence_online_on_websocket_connect(&state, &account_id, &device_id).await;
         idle_without_nats(socket, &account_id).await;
+        let disconnected_at = Utc::now();
+        mark_presence_offline_on_websocket_disconnect(
+            &state,
+            &account_id,
+            &device_id,
+            disconnected_at,
+        )
+        .await;
         return;
     };
 
@@ -131,6 +142,7 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
     if sender.send(Message::Text(hello)).await.is_err() {
         return;
     }
+    mark_presence_online_on_websocket_connect(&state, &account_id, &device_id).await;
 
     loop {
         tokio::select! {
@@ -183,6 +195,93 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
     let _ = general_sub.unsubscribe().await;
     let _ = contact_request_sub.unsubscribe().await;
     let _ = presence_sub.unsubscribe().await;
+    let disconnected_at = Utc::now();
+    mark_presence_offline_on_websocket_disconnect(&state, &account_id, &device_id, disconnected_at)
+        .await;
+}
+
+const WS_DISCONNECT_OFFLINE_GRACE: Duration = Duration::from_secs(2);
+
+fn should_mark_presence_offline_on_websocket_disconnect(account_id: &str, device_id: &str) -> bool {
+    !account_id.trim().is_empty() && !device_id.trim().is_empty()
+}
+
+async fn publish_presence_if_changed(
+    state: &Arc<ServerState>,
+    account_id: &str,
+    before: crate::presence::AccountPresenceStatus,
+    after: crate::presence::AccountPresenceStatus,
+) {
+    if before == after {
+        return;
+    }
+    if let Err(err) = crate::presence::publish_presence_to_observers(
+        state.db_pool(),
+        state.events(),
+        account_id,
+        after,
+    )
+    .await
+    {
+        eprintln!("[ws] publish presence change: {err}");
+    }
+}
+
+async fn account_presence_or_offline(
+    state: &Arc<ServerState>,
+    account_id: &str,
+) -> crate::presence::AccountPresenceStatus {
+    crate::presence::account_presence_status(
+        state.db_pool(),
+        account_id,
+        Utc::now(),
+        crate::presence::presence_timeout(),
+    )
+    .await
+    .map(|summary| summary.status)
+    .unwrap_or(crate::presence::AccountPresenceStatus::Offline)
+}
+
+async fn mark_presence_online_on_websocket_connect(
+    state: &Arc<ServerState>,
+    account_id: &str,
+    device_id: &str,
+) {
+    if !should_mark_presence_offline_on_websocket_disconnect(account_id, device_id) {
+        return;
+    }
+    let before = account_presence_or_offline(state, account_id).await;
+    match crate::presence::mark_device_online(state.db_pool(), account_id, device_id).await {
+        Ok(summary) => publish_presence_if_changed(state, account_id, before, summary.status).await,
+        Err(err) => eprintln!("[ws] mark presence online on connect: {err}"),
+    }
+}
+
+async fn mark_presence_offline_on_websocket_disconnect(
+    state: &Arc<ServerState>,
+    account_id: &str,
+    device_id: &str,
+    disconnected_at: chrono::DateTime<Utc>,
+) {
+    if !should_mark_presence_offline_on_websocket_disconnect(account_id, device_id) {
+        return;
+    }
+    tokio::time::sleep(WS_DISCONNECT_OFFLINE_GRACE).await;
+    let before = account_presence_or_offline(state, account_id).await;
+    match crate::presence::mark_device_offline_if_heartbeat_not_after(
+        state.db_pool(),
+        account_id,
+        device_id,
+        disconnected_at,
+    )
+    .await
+    {
+        Ok(Some(summary)) => {
+            publish_presence_if_changed(state, account_id, before, summary.status).await
+        }
+        Ok(None) => {}
+        Err(err) => eprintln!("[ws] mark presence offline on disconnect: {err}"),
+    }
 }
 
 fn account_event_subjects(account_id: &str) -> Vec<String> {
@@ -243,7 +342,7 @@ fn parse_json_or_string(bytes: &[u8]) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use super::account_event_subjects;
+    use super::{account_event_subjects, should_mark_presence_offline_on_websocket_disconnect};
 
     #[test]
     fn account_event_subjects_include_contact_request_events() {
@@ -257,5 +356,18 @@ mod tests {
     fn websocket_subscribes_to_presence_account_events() {
         let subjects = account_event_subjects("acct_1");
         assert!(subjects.contains(&"kordi.events.presence.account.acct_1".to_string()));
+    }
+
+    #[test]
+    fn websocket_disconnect_marks_authenticated_device_offline() {
+        assert!(should_mark_presence_offline_on_websocket_disconnect(
+            "acct_1", "dev_1"
+        ));
+        assert!(!should_mark_presence_offline_on_websocket_disconnect(
+            "", "dev_1"
+        ));
+        assert!(!should_mark_presence_offline_on_websocket_disconnect(
+            "acct_1", ""
+        ));
     }
 }

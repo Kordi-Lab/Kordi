@@ -67,9 +67,68 @@ fn should_show_main_window_on_reopen(has_visible_windows: bool) -> bool {
     cfg!(target_os = "macos") && !has_visible_windows
 }
 
+fn should_publish_presence_offline_on_exit() -> bool {
+    true
+}
+
+fn cloud_api_base_url_from_env() -> String {
+    std::env::var("VITE_KORDI_CLOUD_API_BASE")
+        .or_else(|_| std::env::var("KORDI_CLOUD_API_BASE"))
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "https://coordinar.io".to_string())
+}
+
+fn cloud_presence_offline_url(base_url: &str) -> String {
+    format!(
+        "{}/v1/cloud/presence/offline",
+        base_url.trim().trim_end_matches('/')
+    )
+}
+
+fn publish_cloud_presence_offline(token: &str, base_url: &str) -> Result<(), String> {
+    let url = cloud_presence_offline_url(base_url);
+    let response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_millis(1500))
+        .build()
+        .map_err(|err| err.to_string())?
+        .post(url)
+        .bearer_auth(token)
+        .send()
+        .map_err(|err| err.to_string())?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("presence_offline_failed: {}", response.status()))
+    }
+}
+
+fn publish_stored_cloud_presence_offline_on_exit() {
+    if !should_publish_presence_offline_on_exit() {
+        return;
+    }
+    let session = match cloud_session::cloud_session_load() {
+        Ok(Some(session)) => session,
+        Ok(None) => return,
+        Err(err) => {
+            eprintln!("[kordi] Unable to load Cloud session for presence offline: {err}");
+            return;
+        }
+    };
+    let base_url = cloud_api_base_url_from_env();
+    let token = session.token;
+    if let Err(err) = publish_cloud_presence_offline(&token, &base_url) {
+        eprintln!("[kordi] Unable to publish Cloud presence offline on quit: {err}");
+    }
+}
+
 #[cfg(test)]
 mod window_lifecycle_tests {
-    use super::{should_hide_window_instead_of_close, should_show_main_window_on_reopen};
+    use super::{
+        cloud_presence_offline_url, should_hide_window_instead_of_close,
+        should_publish_presence_offline_on_exit, should_show_main_window_on_reopen,
+    };
 
     #[test]
     fn macos_main_window_close_hides_instead_of_quitting() {
@@ -81,6 +140,23 @@ mod window_lifecycle_tests {
     fn dock_reopen_restores_main_window_when_none_are_visible() {
         assert!(should_show_main_window_on_reopen(false));
         assert!(!should_show_main_window_on_reopen(true));
+    }
+
+    #[test]
+    fn explicit_app_exit_publishes_presence_offline() {
+        assert!(should_publish_presence_offline_on_exit());
+    }
+
+    #[test]
+    fn native_presence_offline_url_uses_cloud_api_base() {
+        assert_eq!(
+            cloud_presence_offline_url("http://127.0.0.1:17081/"),
+            "http://127.0.0.1:17081/v1/cloud/presence/offline"
+        );
+        assert_eq!(
+            cloud_presence_offline_url("https://coordinar.io"),
+            "https://coordinar.io/v1/cloud/presence/offline"
+        );
     }
 }
 
@@ -277,6 +353,9 @@ pub fn run() {
         .expect("error while building Kordi desktop");
 
     app.run(|app_handle, event| match event {
+        tauri::RunEvent::ExitRequested { .. } => {
+            publish_stored_cloud_presence_offline_on_exit();
+        }
         tauri::RunEvent::WindowEvent {
             label,
             event: tauri::WindowEvent::CloseRequested { api, .. },
@@ -305,4 +384,9 @@ pub fn run() {
         }
         _ => {}
     });
+
+    // macOS application Quit can bypass browser page lifecycle events. Run one
+    // final native best-effort publish after Tauri's event loop returns so
+    // explicit Quit does not wait for heartbeat timeout.
+    publish_stored_cloud_presence_offline_on_exit();
 }

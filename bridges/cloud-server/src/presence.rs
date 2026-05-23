@@ -56,7 +56,10 @@ pub fn device_presence_is_currently_online(
     now: DateTime<Utc>,
     timeout: ChronoDuration,
 ) -> bool {
-    state == "online" && last_heartbeat_at.map(|ts| now - ts <= timeout).unwrap_or(false)
+    state == "online"
+        && last_heartbeat_at
+            .map(|ts| now - ts <= timeout)
+            .unwrap_or(false)
 }
 
 pub fn rollup_account_presence<I>(device_online_states: I) -> AccountPresenceStatus
@@ -145,6 +148,42 @@ pub async fn mark_device_offline(
     .execute(pool)
     .await?;
     account_presence_status(pool, account_id, now, presence_timeout()).await
+}
+
+pub fn ws_disconnect_should_mark_offline(
+    last_heartbeat_at: Option<DateTime<Utc>>,
+    disconnected_at: DateTime<Utc>,
+) -> bool {
+    last_heartbeat_at
+        .map(|heartbeat| heartbeat <= disconnected_at)
+        .unwrap_or(true)
+}
+
+pub async fn mark_device_offline_if_heartbeat_not_after(
+    pool: &PgPool,
+    account_id: &str,
+    device_id: &str,
+    disconnected_at: DateTime<Utc>,
+) -> Result<Option<AccountPresenceSummary>, sqlx_core::Error> {
+    let now = Utc::now();
+    let result = query(
+        "UPDATE cloud_device_presence \
+         SET state = 'offline', last_offline_at = $3, updated_at = $3 \
+         WHERE account_id = $1 AND device_id = $2 AND state = 'online' \
+           AND (last_heartbeat_at IS NULL OR last_heartbeat_at <= $4)",
+    )
+    .bind(account_id)
+    .bind(device_id)
+    .bind(now.to_rfc3339())
+    .bind(disconnected_at.to_rfc3339())
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Ok(None);
+    }
+    account_presence_status(pool, account_id, now, presence_timeout())
+        .await
+        .map(Some)
 }
 
 pub fn stale_presence_cutoff(now: DateTime<Utc>, timeout: ChronoDuration) -> DateTime<Utc> {
@@ -250,23 +289,72 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 5, 23, 12, 0, 0).unwrap();
         let fresh = now - ChronoDuration::seconds(74);
         let stale = now - ChronoDuration::seconds(76);
-        assert!(device_presence_is_currently_online("online", Some(fresh), now, ChronoDuration::seconds(75)));
-        assert!(!device_presence_is_currently_online("online", Some(stale), now, ChronoDuration::seconds(75)));
-        assert!(!device_presence_is_currently_online("offline", Some(fresh), now, ChronoDuration::seconds(75)));
-        assert!(!device_presence_is_currently_online("online", None, now, ChronoDuration::seconds(75)));
+        assert!(device_presence_is_currently_online(
+            "online",
+            Some(fresh),
+            now,
+            ChronoDuration::seconds(75)
+        ));
+        assert!(!device_presence_is_currently_online(
+            "online",
+            Some(stale),
+            now,
+            ChronoDuration::seconds(75)
+        ));
+        assert!(!device_presence_is_currently_online(
+            "offline",
+            Some(fresh),
+            now,
+            ChronoDuration::seconds(75)
+        ));
+        assert!(!device_presence_is_currently_online(
+            "online",
+            None,
+            now,
+            ChronoDuration::seconds(75)
+        ));
     }
 
     #[test]
     fn account_rollup_is_online_when_any_device_is_online() {
-        assert_eq!(rollup_account_presence([false, true, false]), AccountPresenceStatus::Online);
-        assert_eq!(rollup_account_presence([false, false]), AccountPresenceStatus::Offline);
-        assert_eq!(rollup_account_presence(std::iter::empty::<bool>()), AccountPresenceStatus::Offline);
+        assert_eq!(
+            rollup_account_presence([false, true, false]),
+            AccountPresenceStatus::Online
+        );
+        assert_eq!(
+            rollup_account_presence([false, false]),
+            AccountPresenceStatus::Offline
+        );
+        assert_eq!(
+            rollup_account_presence(std::iter::empty::<bool>()),
+            AccountPresenceStatus::Offline
+        );
     }
 
     #[test]
     fn stale_online_cutoff_uses_timeout() {
         let now = Utc.with_ymd_and_hms(2026, 5, 23, 12, 0, 0).unwrap();
-        assert_eq!(stale_presence_cutoff(now, ChronoDuration::seconds(90)).to_rfc3339(), "2026-05-23T11:58:30+00:00");
+        assert_eq!(
+            stale_presence_cutoff(now, ChronoDuration::seconds(90)).to_rfc3339(),
+            "2026-05-23T11:58:30+00:00"
+        );
+    }
+
+    #[test]
+    fn websocket_disconnect_offline_ignores_reconnected_heartbeats() {
+        let disconnected_at = Utc.with_ymd_and_hms(2026, 5, 23, 12, 0, 0).unwrap();
+        assert!(ws_disconnect_should_mark_offline(
+            Some(disconnected_at),
+            disconnected_at
+        ));
+        assert!(ws_disconnect_should_mark_offline(
+            Some(disconnected_at - ChronoDuration::seconds(1)),
+            disconnected_at
+        ));
+        assert!(!ws_disconnect_should_mark_offline(
+            Some(disconnected_at + ChronoDuration::seconds(1)),
+            disconnected_at
+        ));
     }
 
     #[test]
