@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   applyPresenceSnapshot,
@@ -8,6 +10,7 @@ import {
   presenceStatusForAccount,
   shouldRefreshPresenceForWsSubject,
 } from '../src/features/cloud/presence';
+import { IdentityAvatar } from '../src/kordi-app/components/IdentityAvatar';
 
 test('presence snapshot stores account statuses by account id', () => {
   const snapshot = applyPresenceSnapshot({}, {
@@ -34,4 +37,28 @@ test('presence subject and payload parser recognize account changes', () => {
     status: 'online',
     updatedAt: 'now',
   });
+});
+
+test('IdentityAvatar can render an online presence light without visible status text', () => {
+  const html = renderToStaticMarkup(createElement(IdentityAvatar, {
+    kind: 'human',
+    seed: 'acct_1',
+    name: '111',
+    presenceStatus: 'online',
+  }));
+  assert.match(html, /app-presence-light/);
+  assert.match(html, /data-presence-status="online"/);
+  assert.doesNotMatch(html, />Online</);
+});
+
+test('IdentityAvatar can render an offline presence light without visible status text', () => {
+  const html = renderToStaticMarkup(createElement(IdentityAvatar, {
+    kind: 'human',
+    seed: 'acct_2',
+    name: '222',
+    presenceStatus: 'offline',
+  }));
+  assert.match(html, /app-presence-light/);
+  assert.match(html, /data-presence-status="offline"/);
+  assert.doesNotMatch(html, />Offline</);
 });

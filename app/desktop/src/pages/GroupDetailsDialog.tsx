@@ -3,6 +3,7 @@ import type { CSSProperties, FormEvent } from 'react';
 import { ShieldCheck, UserMinus, UserPlus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import {
   adminIdentityIdsFromMetadata,
   buildChatCreateGroupPersonOptions,
@@ -176,6 +177,8 @@ export function GroupDetailsDialog({
   const selectedAddContactIds = addOptions
     .filter((option) => selectedContactIds.includes(option.id))
     .map((option) => option.id);
+  const presenceByContactId = new Map(contacts.map((contact) => [contactStableId(contact), contact.presenceStatus]));
+  const memberPresence = (member: ConversationParticipant) => presenceByContactId.get(memberStableId(member)) ?? member.presenceStatus ?? 'offline';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -272,6 +275,15 @@ export function GroupDetailsDialog({
                   const showIdentityLabel = hasDuplicateName(member.name, duplicateNames) && identityLabel && identityLabel !== member.name;
                   return (
                     <div key={member.id} className="app-group-management-member-row flex items-center gap-2 rounded-[13px] border px-2.5 py-2">
+                      <IdentityAvatar
+                        kind="human"
+                        seed={member.avatarKey ?? memberStableId(member)}
+                        name={member.name}
+                        imageUrl={member.profileImageUrl}
+                        className="h-8 w-8 border border-white/10"
+                        presenceStatus={memberPresence(member)}
+                        presenceLabel={`${member.name} is ${memberPresence(member) === 'online' ? 'online' : 'offline'}`}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[12.5px] font-medium text-[color:var(--utility-foreground)]">{member.name}</div>
                         {showIdentityLabel ? <div className="truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{identityLabel}</div> : null}

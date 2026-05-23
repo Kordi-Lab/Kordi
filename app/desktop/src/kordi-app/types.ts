@@ -226,6 +226,7 @@ export type Contact = {
   bridgeContactRequestDirection?: string | null;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
+  presenceStatus?: 'online' | 'offline' | string | null;
 };
 
 export type ContactRequest = {

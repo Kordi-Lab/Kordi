@@ -965,3 +965,19 @@
     inset 0 1px 0 var(--app-glass-highlight),
     var(--app-shadow-soft);
 }
+
+.app-presence-light {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 999px;
+  background: rgb(52 211 153);
+  box-shadow: 0 0 0 2px rgb(15 17 23), 0 0 0 5px rgba(52, 211, 153, 0.13);
+}
+
+.app-presence-light[data-presence-status='offline'] {
+  background: rgb(100 116 139);
+  box-shadow: 0 0 0 2px rgb(15 17 23), 0 0 0 5px rgba(100, 116, 139, 0.12);
+}
