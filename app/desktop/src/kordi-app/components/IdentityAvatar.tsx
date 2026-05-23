@@ -254,7 +254,7 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
     || (normalizedPresenceStatus ? `${name?.trim() || fallbackLabel} is ${normalizedPresenceStatus}` : null);
 
   return (
-    <span className={cn('relative inline-flex shrink-0', className)}>
+    <span className={cn('relative inline-flex shrink-0 rounded-full', className)}>
       <Avatar
         className="h-full w-full rounded-full bg-slate-900/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
         aria-label={label}
