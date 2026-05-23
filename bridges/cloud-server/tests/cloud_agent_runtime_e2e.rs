@@ -81,6 +81,24 @@ fn post_json_with_token(uri: &str, token: &str, body: Value) -> Request<Body> {
         .unwrap()
 }
 
+fn get_with_token(uri: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn delete_with_token(uri: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
 async fn read_json(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
     if bytes.is_empty() {
@@ -270,4 +288,146 @@ async fn cloud_agent_runtime_fallback_claim_requires_accepted_contact_or_self() 
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn provider_auth_snapshot_create_current_revoke_and_audit() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var(
+        "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
+        "test-provider-auth-key-that-is-long-enough",
+    );
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "provider-auth-owner", "Owner").await;
+
+    let create = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots",
+            &owner.token,
+            json!({
+                "provider": "openai",
+                "authChoice": "default",
+                "payload": {
+                    "accessToken": "secret-access-token",
+                    "refreshToken": "secret-refresh-token"
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+    let created = read_json(create).await;
+    let snapshot_id = created["snapshotId"].as_str().unwrap().to_string();
+    assert_eq!(created["provider"], "openai");
+    assert_eq!(created["authChoice"], "default");
+    assert_eq!(created["revokedAt"], Value::Null);
+    assert!(
+        created.get("payload").is_none(),
+        "snapshot response must not echo secrets"
+    );
+
+    let encrypted: (Vec<u8>,) = sqlx_core::query_as::query_as(
+        "SELECT encrypted_payload FROM cloud_agent_provider_auth_snapshots WHERE snapshot_id = $1",
+    )
+    .bind(&snapshot_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let encrypted_text = String::from_utf8_lossy(&encrypted.0);
+    assert!(!encrypted_text.contains("secret-access-token"));
+
+    let current = router
+        .clone()
+        .oneshot(get_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/current?provider=openai&authChoice=default",
+            &owner.token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(current.status(), StatusCode::OK);
+    let current_body = read_json(current).await;
+    assert_eq!(current_body["snapshot"]["snapshotId"], snapshot_id);
+    assert!(current_body["snapshot"].get("payload").is_none());
+
+    kordi_cloud_server::cloud_agent_runtime::provider_auth::record_snapshot_used(
+        &pool,
+        &snapshot_id,
+        &owner.account_id,
+        Some("car_test_run"),
+    )
+    .await
+    .unwrap();
+
+    let revoke = router
+        .clone()
+        .oneshot(delete_with_token(
+            &format!("/v1/cloud/agent-provider-auth/snapshots/{snapshot_id}"),
+            &owner.token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(revoke.status(), StatusCode::OK);
+
+    let current_after_revoke = router
+        .clone()
+        .oneshot(get_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/current?provider=openai&authChoice=default",
+            &owner.token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(current_after_revoke.status(), StatusCode::OK);
+    let current_after_revoke_body = read_json(current_after_revoke).await;
+    assert_eq!(current_after_revoke_body["snapshot"], Value::Null);
+
+    let audit_count: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*)::BIGINT FROM cloud_agent_provider_auth_snapshot_audit WHERE snapshot_id = $1 AND action IN ('created', 'used', 'revoked')",
+    )
+    .bind(&snapshot_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(audit_count.0, 3);
+}
+
+#[tokio::test]
+async fn provider_auth_snapshot_is_account_scoped() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var(
+        "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
+        "test-provider-auth-key-that-is-long-enough",
+    );
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "provider-auth-owner-scope", "Owner").await;
+    let other = signup(&router, "provider-auth-other-scope", "Other").await;
+
+    let create = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots",
+            &owner.token,
+            json!({
+                "provider": "openai",
+                "authChoice": "default",
+                "payload": { "accessToken": "owner-only" }
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+
+    let other_current = router
+        .clone()
+        .oneshot(get_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots/current?provider=openai&authChoice=default",
+            &other.token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(other_current.status(), StatusCode::OK);
+    let body = read_json(other_current).await;
+    assert_eq!(body["snapshot"], Value::Null);
 }

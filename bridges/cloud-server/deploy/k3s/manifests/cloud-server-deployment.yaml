@@ -133,6 +133,18 @@ spec:
               value: "https://coordinar.io"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
               value: "http://127.0.0.1:,http://localhost:,https://coordinar.io"
+            - name: KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-provider-auth
+                  key: encryption-key
+                  optional: true
+            - name: KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-provider-auth
+                  key: encryption-key-id
+                  optional: true
           readinessProbe:
             httpGet:
               path: /health

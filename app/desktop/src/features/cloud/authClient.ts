@@ -44,6 +44,9 @@ export type CloudAuthErrorCode =
   | 'missing_avatar'
   | 'invalid_avatar'
   | 'invalid_session'
+  | 'invalid_provider_auth_snapshot'
+  | 'provider_auth_not_configured'
+  | 'provider_auth_snapshot_not_found'
   | 'rate_limited'
   | 'account_missing'
   | 'invalid_account_id'
@@ -244,6 +247,20 @@ export type CloudPresenceContactsResponse = {
   accounts: CloudPresenceAccount[];
 };
 
+export type CloudProviderAuthSnapshotInput = {
+  provider: string;
+  authChoice: string;
+  payload: unknown;
+};
+
+export type CloudProviderAuthSnapshot = {
+  snapshotId: string;
+  provider: string;
+  authChoice: string;
+  createdAt: string;
+  revokedAt: string | null;
+};
+
 export class CloudAuthError extends Error {
   readonly code: CloudAuthErrorCode;
   readonly status: number;
@@ -295,6 +312,9 @@ function isErrorCode(value: unknown): value is CloudAuthErrorCode {
     value === 'missing_avatar' ||
     value === 'invalid_avatar' ||
     value === 'invalid_session' ||
+    value === 'invalid_provider_auth_snapshot' ||
+    value === 'provider_auth_not_configured' ||
+    value === 'provider_auth_snapshot_not_found' ||
     value === 'rate_limited' ||
     value === 'account_missing' ||
     value === 'invalid_account_id' ||
@@ -468,6 +488,51 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not load presence.',
+    );
+  }
+
+  async publishProviderAuthSnapshot(
+    token: string,
+    input: CloudProviderAuthSnapshotInput,
+  ): Promise<CloudProviderAuthSnapshot> {
+    return this.send<CloudProviderAuthSnapshot>(
+      '/v1/cloud/agent-provider-auth/snapshots',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not publish Cloud provider-auth snapshot.',
+    );
+  }
+
+  async currentProviderAuthSnapshot(
+    token: string,
+    input: { provider?: string; authChoice?: string } = {},
+  ): Promise<CloudProviderAuthSnapshot | null> {
+    const params = new URLSearchParams();
+    if (input.provider?.trim()) params.set('provider', input.provider.trim());
+    if (input.authChoice?.trim()) params.set('authChoice', input.authChoice.trim());
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const response = await this.send<{ snapshot: CloudProviderAuthSnapshot | null }>(
+      `/v1/cloud/agent-provider-auth/snapshots/current${suffix}`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load Cloud provider-auth snapshot.',
+    );
+    return response?.snapshot ?? null;
+  }
+
+  async revokeProviderAuthSnapshot(token: string, snapshotId: string): Promise<CloudProviderAuthSnapshot> {
+    return this.send<CloudProviderAuthSnapshot>(
+      `/v1/cloud/agent-provider-auth/snapshots/${encodeURIComponent(snapshotId)}`,
+      {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not revoke Cloud provider-auth snapshot.',
     );
   }
 
