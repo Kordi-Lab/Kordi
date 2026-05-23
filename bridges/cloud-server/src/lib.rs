@@ -10,6 +10,7 @@ pub mod auth;
 pub mod events;
 pub mod messages;
 pub mod pg;
+pub mod presence;
 pub mod server;
 pub mod ws;
 
