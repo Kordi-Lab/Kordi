@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { bridgeChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
+import { applyCloudPresenceToConversations, bridgeChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import type { Agent, Contact, Conversation, DesktopBridgeConversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
@@ -230,6 +230,46 @@ test('CloudProfileLogoutAction renders a destructive account logout menu item', 
   assert.match(markup, /Logout/);
   assert.match(markup, /aria-label="Logout of account"/);
   assert.doesNotMatch(markup, />Cloud<\/span>/);
+});
+
+test('cloud presence hydrates account participants before chat rows are grouped', () => {
+  const chatConversations = [conversation({
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me', humanId: 'acct_me' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'delegate', source: 'bridge', avatarKey: 'bob', humanId: 'acct_bob' },
+    ],
+  })];
+
+  const hydrated = applyCloudPresenceToConversations(chatConversations, {
+    acct_bob: { accountId: 'acct_bob', status: 'online', updatedAt: '2026-05-23T00:00:00Z' },
+  });
+
+  assert.equal(hydrated[0]?.canonicalParticipants?.[1]?.presenceStatus, 'online');
+  assert.equal(buildParticipantSpaces(hydrated)[0]?.avatarStack[0]?.presenceStatus, 'online');
+});
+
+test('WorkspaceSidebar shows participant presence lights in chat rows', () => {
+  const chatConversations = [conversation({
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me', presenceStatus: 'online' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'delegate', source: 'bridge', avatarKey: 'bob', presenceStatus: 'online' },
+    ],
+  })];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+
+  assert.equal(participantSpaces[0]?.avatarStack[0]?.presenceStatus, 'online');
+
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    filteredConversations: chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    activeConvId: chatConversations[0]?.id,
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
+
+  assert.match(markup, /class="app-presence-light"/);
+  assert.match(markup, /data-presence-status="online"/);
 });
 
 test('WorkspaceSidebar renders direct human participant spaces as one flat chat row without session actions', () => {

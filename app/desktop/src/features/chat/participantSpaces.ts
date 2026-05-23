@@ -289,6 +289,7 @@ function avatarForParticipant(participant: ConversationParticipant): Participant
     kind: participant.kind === 'agent' ? 'agent' : 'human',
     seed: participant.avatarKey || participant.agentId || participant.humanId || participant.id || participant.name,
     imageUrl: participant.profileImageUrl ?? null,
+    presenceStatus: participant.presenceStatus ?? null,
   };
 }
 
@@ -324,6 +325,7 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
       humanId: existing.humanId || participant.humanId,
       bridgeNodeId: existing.bridgeNodeId || participant.bridgeNodeId,
       bridgeHostId: existing.bridgeHostId || participant.bridgeHostId,
+      presenceStatus: existing.presenceStatus || participant.presenceStatus,
     };
   }
 }

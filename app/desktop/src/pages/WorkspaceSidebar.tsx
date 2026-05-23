@@ -452,6 +452,8 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
           name={space.title}
           imageUrl={avatar.imageUrl ?? undefined}
           className="h-9 w-9 border border-white/10"
+          presenceStatus={avatar.presenceStatus}
+          presenceLabel={avatar.presenceStatus ? `${space.title} is ${avatar.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
         />
       </div>
     );
@@ -467,6 +469,8 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
             name={space.title}
             imageUrl={avatar.imageUrl ?? undefined}
             className="h-7 w-7 border border-slate-950/80 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+            presenceStatus={avatar.presenceStatus}
+            presenceLabel={avatar.presenceStatus ? `${space.title} member is ${avatar.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
           />
         </span>
       ))}

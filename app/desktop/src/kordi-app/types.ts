@@ -173,6 +173,7 @@ export type ParticipantSpaceAvatar = {
   kind: 'human' | 'agent';
   seed: string;
   imageUrl?: string | null;
+  presenceStatus?: string | null;
 };
 
 export type ParticipantSpaceSessionViewModel = {

@@ -33,6 +33,7 @@ import { currentKordiEdition } from '@/features/cloud/edition';
 import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
 import { useCloudSession } from '@/features/cloud/useCloudSession';
 import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
+import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
 import { cloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
@@ -128,6 +129,7 @@ export function useKordiAppModel() {
   const isNativeShell = isNativeDesktopShell();
   const kordiEdition = currentKordiEdition();
   const cloudSession = useCloudSession({ enabled: kordiEdition === 'cloud' });
+  const cloudPresence = useCloudPresence(kordiEdition === 'cloud' ? cloudSession.account : null);
   const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
@@ -637,6 +639,7 @@ export function useKordiAppModel() {
     desktopLiveTurnsBySession,
     mapDesktopMessages,
     cloudSessionActivity,
+    cloudPresence: cloudPresence.snapshot,
   });
 
   const activeConvMentionScope = useMemo(
