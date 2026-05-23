@@ -135,6 +135,9 @@ function fallbackParticipants(conversation: Conversation): ConversationParticipa
       ?? (!self && name === firstNonSelfName ? conversation.avatarSeed ?? null : null);
     const profileImageUrl = conversation.participantProfileImageUrls?.[name]
       ?? (!self && name === firstNonSelfName ? conversation.profileImageUrl ?? null : null);
+    const presenceStatus = identity.humanId
+      ? conversation.participantPresenceStatuses?.[identity.humanId] ?? null
+      : null;
     return {
       ...identity,
       name,
@@ -143,6 +146,7 @@ function fallbackParticipants(conversation: Conversation): ConversationParticipa
       source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : identity.bridgeHostId ? 'bridge' : null,
       avatarKey,
       profileImageUrl,
+      presenceStatus,
     } satisfies ConversationParticipant;
   });
 }

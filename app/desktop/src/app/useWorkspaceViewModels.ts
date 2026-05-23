@@ -188,7 +188,22 @@ export function applyCloudPresenceToConversations(conversations: Conversation[],
   if (Object.keys(cloudPresence).length === 0) return conversations;
   return conversations.map((conversation) => {
     const participants = conversation.canonicalParticipants;
-    if (!participants?.length) return conversation;
+    if (!participants?.length) {
+      const accountId = cloudAccountIdFromParticipant({
+        humanId: conversation.bridgeTarget?.humanId,
+        bridgeNodeId: conversation.bridgeTarget?.nodeId,
+      });
+      if (!accountId || !cloudPresence[accountId]) return conversation;
+      const presenceStatus = presenceStatusForAccount(cloudPresence, accountId);
+      if (conversation.participantPresenceStatuses?.[accountId] === presenceStatus) return conversation;
+      return {
+        ...conversation,
+        participantPresenceStatuses: {
+          ...(conversation.participantPresenceStatuses ?? {}),
+          [accountId]: presenceStatus,
+        },
+      };
+    }
     let changed = false;
     const canonicalParticipants = participants.map((participant) => {
       if (participant.kind !== 'human') return participant;

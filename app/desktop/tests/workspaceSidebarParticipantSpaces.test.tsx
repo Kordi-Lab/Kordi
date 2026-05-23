@@ -248,6 +248,29 @@ test('cloud presence hydrates account participants before chat rows are grouped'
   assert.equal(buildParticipantSpaces(hydrated)[0]?.avatarStack[0]?.presenceStatus, 'online');
 });
 
+test('cloud presence hydrates fallback direct chat participants by account id', () => {
+  const chatConversations = [conversation({
+    canonicalParticipants: undefined,
+    participants: ['Me', '333'],
+    bridgeTarget: {
+      hostId: 'cloud',
+      nodeId: 'acct_333',
+      displayName: '333',
+      ownerName: '333',
+      runtime: 'person',
+      humanId: 'acct_333',
+      agentId: null,
+    },
+    avatarSeed: 'acct_333',
+  })];
+
+  const hydrated = applyCloudPresenceToConversations(chatConversations, {
+    acct_333: { accountId: 'acct_333', status: 'offline', updatedAt: '2026-05-23T00:00:00Z' },
+  });
+
+  assert.equal(buildParticipantSpaces(hydrated)[0]?.avatarStack[0]?.presenceStatus, 'offline');
+});
+
 test('WorkspaceSidebar shows participant presence lights in direct chat rows only', () => {
   const chatConversations = [conversation({
     canonicalParticipants: [
