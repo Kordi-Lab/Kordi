@@ -113,6 +113,7 @@ mod tests {
             owner_account_id: "acct_owner".to_string(),
             requester_account_id: "acct_requester".to_string(),
             session_id: "session:direct-person:a:b".to_string(),
+            sandbox_id: Some("cas_test".to_string()),
             provider_auth_available,
         }
     }

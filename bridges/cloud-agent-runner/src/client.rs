@@ -19,6 +19,8 @@ pub struct CloudAgentRun {
     pub requester_account_id: String,
     #[serde(rename = "sessionId")]
     pub session_id: String,
+    #[serde(rename = "sandboxId")]
+    pub sandbox_id: Option<String>,
     #[serde(rename = "providerAuthAvailable")]
     pub provider_auth_available: bool,
 }

@@ -127,6 +127,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud agent provider auth snapshots",
         sql: include_str!("../../migrations/0019_cloud_agent_provider_auth_snapshots.sql"),
     },
+    EmbeddedMigration {
+        version: 20,
+        description: "cloud agent sandboxes",
+        sql: include_str!("../../migrations/0020_cloud_agent_sandboxes.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
