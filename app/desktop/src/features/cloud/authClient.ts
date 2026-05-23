@@ -232,6 +232,18 @@ export type RegisterDeviceResult = {
   apiKey: string;
 };
 
+export type CloudPresenceStatus = 'online' | 'offline';
+
+export type CloudPresenceAccount = {
+  accountId: string;
+  status: CloudPresenceStatus;
+  updatedAt: string;
+};
+
+export type CloudPresenceContactsResponse = {
+  accounts: CloudPresenceAccount[];
+};
+
 export class CloudAuthError extends Error {
   readonly code: CloudAuthErrorCode;
   readonly status: number;
@@ -411,6 +423,51 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not sign out.',
+    );
+  }
+
+  async publishPresenceOnline(token: string): Promise<CloudPresenceAccount> {
+    return this.send<CloudPresenceAccount>(
+      '/v1/cloud/presence/online',
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not update presence.',
+    );
+  }
+
+  async publishPresenceHeartbeat(token: string): Promise<CloudPresenceAccount> {
+    return this.send<CloudPresenceAccount>(
+      '/v1/cloud/presence/heartbeat',
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not update presence.',
+    );
+  }
+
+  async publishPresenceOffline(token: string): Promise<CloudPresenceAccount> {
+    return this.send<CloudPresenceAccount>(
+      '/v1/cloud/presence/offline',
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+        keepalive: true,
+      },
+      'Could not update presence.',
+    );
+  }
+
+  async listContactPresence(token: string): Promise<CloudPresenceContactsResponse> {
+    return this.send<CloudPresenceContactsResponse>(
+      '/v1/cloud/presence/contacts',
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load presence.',
     );
   }
 

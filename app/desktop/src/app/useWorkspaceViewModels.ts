@@ -7,6 +7,7 @@ import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId,
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
+import { presenceStatusForAccount, type CloudPresenceStore } from '@/features/cloud/presence';
 import {
   buildProjectRoutingGroups,
   canonicalProjectGroupIdFromRoot,
@@ -175,6 +176,48 @@ export function pendingCloudBridgeConversationForActiveId(activeConvId: string):
   };
 }
 
+function cloudAccountIdFromParticipant(participant: { id?: string | null; humanId?: string | null; bridgeNodeId?: string | null }) {
+  const candidates = [participant.humanId, participant.bridgeNodeId, participant.id]
+    .map((value) => value?.trim() ?? '')
+    .filter(Boolean)
+    .flatMap((value) => [value, value.replace(/^human:/, '')]);
+  return candidates.find((value) => value.startsWith('acct_')) ?? null;
+}
+
+export function applyCloudPresenceToConversations(conversations: Conversation[], cloudPresence: CloudPresenceStore): Conversation[] {
+  if (Object.keys(cloudPresence).length === 0) return conversations;
+  return conversations.map((conversation) => {
+    const participants = conversation.canonicalParticipants;
+    if (!participants?.length) {
+      const accountId = cloudAccountIdFromParticipant({
+        humanId: conversation.bridgeTarget?.humanId,
+        bridgeNodeId: conversation.bridgeTarget?.nodeId,
+      });
+      if (!accountId || !cloudPresence[accountId]) return conversation;
+      const presenceStatus = presenceStatusForAccount(cloudPresence, accountId);
+      if (conversation.participantPresenceStatuses?.[accountId] === presenceStatus) return conversation;
+      return {
+        ...conversation,
+        participantPresenceStatuses: {
+          ...(conversation.participantPresenceStatuses ?? {}),
+          [accountId]: presenceStatus,
+        },
+      };
+    }
+    let changed = false;
+    const canonicalParticipants = participants.map((participant) => {
+      if (participant.kind !== 'human') return participant;
+      const accountId = cloudAccountIdFromParticipant(participant);
+      if (!accountId) return participant;
+      const presenceStatus = presenceStatusForAccount(cloudPresence, accountId);
+      if (participant.presenceStatus === presenceStatus) return participant;
+      changed = true;
+      return { ...participant, presenceStatus };
+    });
+    return changed ? { ...conversation, canonicalParticipants } : conversation;
+  });
+}
+
 function liveTurnsViewModelSignature(liveTurns: Record<string, DesktopChatTurnSnapshot>) {
   return Object.entries(liveTurns)
     .map(([sessionId, turn]) => [
@@ -221,6 +264,7 @@ type UseWorkspaceViewModelsArgs = {
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
   cloudSessionActivity?: CloudSessionActivityStore;
+  cloudPresence?: CloudPresenceStore;
 };
 
 export function useWorkspaceViewModels({
@@ -247,6 +291,7 @@ export function useWorkspaceViewModels({
   desktopLiveTurnsBySession,
   mapDesktopMessages,
   cloudSessionActivity = EMPTY_CLOUD_SESSION_ACTIVITY,
+  cloudPresence = {},
 }: UseWorkspaceViewModelsArgs) {
   const canonicalReadModel = useMemo(() => createCanonicalSessionReadModel(canonicalSessionState), [canonicalSessionState]);
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
@@ -451,7 +496,8 @@ export function useWorkspaceViewModels({
           if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
           return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
         });
-    const withCloudActivity = visibleConversations.map((conversation) => {
+    const withCloudPresence = applyCloudPresenceToConversations(visibleConversations, cloudPresence);
+    const withCloudActivity = withCloudPresence.map((conversation) => {
       const sessionId = conversation.canonicalSessionId ?? conversation.id;
       const cloudTaskActivities = cloudTaskActivitiesForSession(cloudSessionActivity, sessionId);
       if (cloudTaskActivities.length === 0) return conversation;
@@ -468,7 +514,7 @@ export function useWorkspaceViewModels({
       };
     });
     return hideRawConversationIds(withCloudActivity);
-  }, [activeConvId, bridgeChatConversations, canonicalReadModel, cloudSessionActivity, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
+  }, [activeConvId, bridgeChatConversations, canonicalReadModel, cloudPresence, cloudSessionActivity, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
 
   const nativeChatPlaceholder = useMemo(
     () => {

@@ -441,6 +441,7 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
   const avatars = space.avatarStack.length > 0
     ? space.avatarStack
     : [{ kind: space.kind === 'direct-agent' ? 'agent' as const : 'human' as const, seed: space.id, imageUrl: null }];
+  const showPresenceLight = space.kind !== 'group';
 
   if (avatars.length === 1) {
     const avatar = avatars[0];
@@ -451,7 +452,9 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
           seed={avatar.seed}
           name={space.title}
           imageUrl={avatar.imageUrl ?? undefined}
-          className="h-9 w-9 border border-white/10"
+          className="h-9 w-9"
+          presenceStatus={showPresenceLight ? avatar.presenceStatus : null}
+          presenceLabel={showPresenceLight && avatar.presenceStatus ? `${space.title} is ${avatar.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
         />
       </div>
     );
@@ -466,7 +469,9 @@ function ParticipantSpaceAvatarStack({ space }: { space: ParticipantSpaceItem })
             seed={avatar.seed}
             name={space.title}
             imageUrl={avatar.imageUrl ?? undefined}
-            className="h-7 w-7 border border-slate-950/80 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
+            className="h-7 w-7"
+            presenceStatus={showPresenceLight ? avatar.presenceStatus : null}
+            presenceLabel={showPresenceLight && avatar.presenceStatus ? `${space.title} member is ${avatar.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
           />
         </span>
       ))}

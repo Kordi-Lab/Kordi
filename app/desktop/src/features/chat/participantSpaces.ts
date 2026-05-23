@@ -135,6 +135,9 @@ function fallbackParticipants(conversation: Conversation): ConversationParticipa
       ?? (!self && name === firstNonSelfName ? conversation.avatarSeed ?? null : null);
     const profileImageUrl = conversation.participantProfileImageUrls?.[name]
       ?? (!self && name === firstNonSelfName ? conversation.profileImageUrl ?? null : null);
+    const presenceStatus = identity.humanId
+      ? conversation.participantPresenceStatuses?.[identity.humanId] ?? null
+      : null;
     return {
       ...identity,
       name,
@@ -143,6 +146,7 @@ function fallbackParticipants(conversation: Conversation): ConversationParticipa
       source: (self || (conversation.type === 'owned-agent' && kind === 'agent')) ? 'local' : identity.bridgeHostId ? 'bridge' : null,
       avatarKey,
       profileImageUrl,
+      presenceStatus,
     } satisfies ConversationParticipant;
   });
 }
@@ -289,6 +293,7 @@ function avatarForParticipant(participant: ConversationParticipant): Participant
     kind: participant.kind === 'agent' ? 'agent' : 'human',
     seed: participant.avatarKey || participant.agentId || participant.humanId || participant.id || participant.name,
     imageUrl: participant.profileImageUrl ?? null,
+    presenceStatus: participant.presenceStatus ?? null,
   };
 }
 
@@ -324,6 +329,7 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
       humanId: existing.humanId || participant.humanId,
       bridgeNodeId: existing.bridgeNodeId || participant.bridgeNodeId,
       bridgeHostId: existing.bridgeHostId || participant.bridgeHostId,
+      presenceStatus: existing.presenceStatus || participant.presenceStatus,
     };
   }
 }

@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { bridgeChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
+import { applyCloudPresenceToConversations, bridgeChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import type { Agent, Contact, Conversation, DesktopBridgeConversation } from '../src/kordi-app/types';
 import { ChatCreateDialog } from '../src/pages/ChatCreateDialog';
@@ -230,6 +230,97 @@ test('CloudProfileLogoutAction renders a destructive account logout menu item', 
   assert.match(markup, /Logout/);
   assert.match(markup, /aria-label="Logout of account"/);
   assert.doesNotMatch(markup, />Cloud<\/span>/);
+});
+
+test('cloud presence hydrates account participants before chat rows are grouped', () => {
+  const chatConversations = [conversation({
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me', humanId: 'acct_me' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'delegate', source: 'bridge', avatarKey: 'bob', humanId: 'acct_bob' },
+    ],
+  })];
+
+  const hydrated = applyCloudPresenceToConversations(chatConversations, {
+    acct_bob: { accountId: 'acct_bob', status: 'online', updatedAt: '2026-05-23T00:00:00Z' },
+  });
+
+  assert.equal(hydrated[0]?.canonicalParticipants?.[1]?.presenceStatus, 'online');
+  assert.equal(buildParticipantSpaces(hydrated)[0]?.avatarStack[0]?.presenceStatus, 'online');
+});
+
+test('cloud presence hydrates fallback direct chat participants by account id', () => {
+  const chatConversations = [conversation({
+    canonicalParticipants: undefined,
+    participants: ['Me', '333'],
+    bridgeTarget: {
+      hostId: 'cloud',
+      nodeId: 'acct_333',
+      displayName: '333',
+      ownerName: '333',
+      runtime: 'person',
+      humanId: 'acct_333',
+      agentId: null,
+    },
+    avatarSeed: 'acct_333',
+  })];
+
+  const hydrated = applyCloudPresenceToConversations(chatConversations, {
+    acct_333: { accountId: 'acct_333', status: 'offline', updatedAt: '2026-05-23T00:00:00Z' },
+  });
+
+  assert.equal(buildParticipantSpaces(hydrated)[0]?.avatarStack[0]?.presenceStatus, 'offline');
+});
+
+test('WorkspaceSidebar shows participant presence lights in direct chat rows only', () => {
+  const chatConversations = [conversation({
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me', presenceStatus: 'online' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'delegate', source: 'bridge', avatarKey: 'bob', presenceStatus: 'online' },
+    ],
+  })];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+
+  assert.equal(participantSpaces[0]?.avatarStack[0]?.presenceStatus, 'online');
+
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    filteredConversations: chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    activeConvId: chatConversations[0]?.id,
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
+
+  assert.match(markup, /class="app-presence-light"/);
+  assert.match(markup, /data-presence-status="online"/);
+});
+
+test('WorkspaceSidebar hides presence lights on group row avatar stacks', () => {
+  const chatConversations = [conversation({
+    id: 'session:group:presence-row',
+    canonicalSessionId: 'session:group:presence-row',
+    name: '111, 222',
+    type: 'group',
+    participants: ['Me', '111', '222'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me', presenceStatus: 'online' },
+      { id: 'human:111', name: '111', kind: 'human', role: 'person', source: 'bridge', avatarKey: '111', presenceStatus: 'online' },
+      { id: 'human:222', name: '222', kind: 'human', role: 'person', source: 'bridge', avatarKey: '222', presenceStatus: 'online' },
+    ],
+  })];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    filteredConversations: chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    activeConvId: chatConversations[0]?.id,
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
+
+  assert.match(markup, /111, 222/);
+  assert.doesNotMatch(markup, /class="app-presence-light"/);
+  assert.doesNotMatch(markup, /relative inline-flex shrink-0 h-7 w-7 border/);
 });
 
 test('WorkspaceSidebar renders direct human participant spaces as one flat chat row without session actions', () => {
@@ -814,8 +905,8 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
     participants: ['Me', 'Alice', 'Bob'],
     canonicalParticipants: [
       { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'admin', source: 'bridge', avatarKey: 'alice' },
-      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'admin', source: 'bridge', avatarKey: 'alice', presenceStatus: 'online' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob', presenceStatus: 'offline' },
     ],
   })];
   const [space] = buildParticipantSpaces(chatConversations);
@@ -838,6 +929,8 @@ test('GroupDetailsDialog renders group metadata and member controls', () => {
   assert.doesNotMatch(markup, /lucide-ellipsis/);
   assert.match(markup, /Participants/);
   assert.match(markup, /Alice/);
+  assert.match(markup, /class="app-presence-light"/);
+  assert.match(markup, /data-presence-status="online"/);
   assert.match(markup, /Make admin/);
   assert.match(markup, /Add people/);
   assert.doesNotMatch(markup, />✓</);

@@ -884,6 +884,8 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
         name={contact.name}
         imageUrl={contact.profileImageUrl}
         className="h-10 w-10 border border-white/10"
+        presenceStatus={contact.presenceStatus}
+        presenceLabel={contact.presenceStatus ? `${contact.name} is ${contact.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">

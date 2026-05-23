@@ -19,6 +19,8 @@ export type IdentityAvatarProps = {
   avatarKey?: string | null;
   className?: string;
   generatedClassName?: string;
+  presenceStatus?: 'online' | 'offline' | string | null;
+  presenceLabel?: string | null;
 };
 
 const AGENT_IDENTICON_PALETTES = [
@@ -237,7 +239,7 @@ export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, ava
   return avatarKey?.trim() || `${kind}:${seed.trim() || 'unknown'}`;
 }
 
-export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, className, generatedClassName }: IdentityAvatarProps) {
+export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, className, generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
   const normalizedSeed = seed.trim() || name?.trim() || `${kind}:unknown`;
   const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, avatarKey);
   const localOverride = useAvatarOverride(resolvedAvatarKey);
@@ -247,33 +249,44 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
   const fallbackLabel = name?.trim() || normalizedSeed;
   const label = name?.trim() ? `${name} avatar` : `${kind === 'agent' ? 'Agent' : 'Human'} avatar`;
 
+  const normalizedPresenceStatus = presenceStatus?.trim().toLowerCase() === 'online' ? 'online' : presenceStatus ? 'offline' : null;
+  const resolvedPresenceLabel = presenceLabel?.trim()
+    || (normalizedPresenceStatus ? `${name?.trim() || fallbackLabel} is ${normalizedPresenceStatus}` : null);
+
   return (
-    <Avatar
-      className={cn(
-        'rounded-full bg-slate-900/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]',
-        className,
-      )}
-      aria-label={label}
-      data-avatar-kind={kind}
-    >
-      {displayImageUrl ? (
-        <div className="absolute inset-0 bg-slate-800/60" aria-hidden="true" />
-      ) : kind === 'agent' ? (
-        <AgentIdenticonAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
-      ) : (
-        <HumanInitialsAvatar label={fallbackLabel} className={generatedClassName} />
-      )}
-      {displayImageUrl ? (
-        <img
-          src={displayImageUrl}
-          alt=""
-          className="absolute inset-0 block h-full w-full object-cover"
-          draggable={false}
-          onError={() => {
-            setFailedImageUrl(displayImageUrl);
-          }}
+    <span className={cn('relative inline-flex shrink-0 rounded-full', className)}>
+      <Avatar
+        className="h-full w-full rounded-full bg-slate-900/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+        aria-label={label}
+        data-avatar-kind={kind}
+      >
+        {displayImageUrl ? (
+          <div className="absolute inset-0 bg-slate-800/60" aria-hidden="true" />
+        ) : kind === 'agent' ? (
+          <AgentIdenticonAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
+        ) : (
+          <HumanInitialsAvatar label={fallbackLabel} className={generatedClassName} />
+        )}
+        {displayImageUrl ? (
+          <img
+            src={displayImageUrl}
+            alt=""
+            className="absolute inset-0 block h-full w-full object-cover"
+            draggable={false}
+            onError={() => {
+              setFailedImageUrl(displayImageUrl);
+            }}
+          />
+        ) : null}
+      </Avatar>
+      {normalizedPresenceStatus ? (
+        <span
+          className="app-presence-light"
+          data-presence-status={normalizedPresenceStatus}
+          aria-label={resolvedPresenceLabel ?? undefined}
+          title={resolvedPresenceLabel ?? undefined}
         />
       ) : null}
-    </Avatar>
+    </span>
   );
 }

@@ -154,6 +154,7 @@ export type Conversation = {
   avatarSeed?: string | null;
   participantAvatarSeeds?: Record<string, string>;
   participantProfileImageUrls?: Record<string, string | null>;
+  participantPresenceStatuses?: Record<string, string | null>;
   participantSpaceId?: string | null;
   metadata?: unknown;
   bridgeTarget?: ConversationBridgeTarget | null;
@@ -173,6 +174,7 @@ export type ParticipantSpaceAvatar = {
   kind: 'human' | 'agent';
   seed: string;
   imageUrl?: string | null;
+  presenceStatus?: string | null;
 };
 
 export type ParticipantSpaceSessionViewModel = {
@@ -226,6 +228,7 @@ export type Contact = {
   bridgeContactRequestDirection?: string | null;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
+  presenceStatus?: 'online' | 'offline' | string | null;
 };
 
 export type ContactRequest = {

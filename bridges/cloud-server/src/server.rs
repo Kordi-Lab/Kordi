@@ -200,6 +200,21 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
+    let sweeper_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(crate::presence::presence_sweep_interval());
+        loop {
+            interval.tick().await;
+            if let Err(err) = crate::presence::sweep_stale_presence(
+                sweeper_state.db_pool(),
+                sweeper_state.events(),
+            )
+            .await
+            {
+                eprintln!("[presence] sweep stale devices: {err}");
+            }
+        }
+    });
     let app = router_with_rate_limiter(state, rate_limiter);
     let addr = format!("0.0.0.0:{port}");
     println!("Kordi cloud server on {addr}");

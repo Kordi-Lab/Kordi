@@ -12,6 +12,7 @@ import { useMemo } from 'react';
 import type { ComponentProps } from 'react';
 
 import { CLOUD_HOST_SENTINEL, cloudContactToContact, isPendingIncomingCloudContactRequest, useCloudContacts } from './useCloudContacts';
+import { useCloudPresence } from './useCloudPresence';
 import type { CloudAccount } from './authClient';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import { ContactsPage } from '@/kordi-app/pages';
@@ -33,6 +34,7 @@ type CloudContactsAdapterProps = {
  */
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
+  const presence = useCloudPresence(account);
 
   // Inbox only shows incoming requests — outgoing ones are the
   // sender's own actions and surfacing them in the inbox with
@@ -50,8 +52,11 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
           (contact.name + ' ' + contact.subtitle + ' ' + (contact.bridgePeerNodeId ?? '')).toLowerCase().includes(search),
         )
       : cloud.contacts;
-    return dedupeContactsByCloudAccount(matches);
-  }, [contactsPageProps.contactSearch, cloud.contacts]);
+    return dedupeContactsByCloudAccount(matches).map((contact) => {
+      const accountId = cloudAccountIdForContact(contact);
+      return { ...contact, presenceStatus: presence.statusForAccount(accountId) };
+    });
+  }, [contactsPageProps.contactSearch, cloud.contacts, presence]);
 
   const filteredGroupedContacts = useMemo(() => {
     // Cloud contacts should be one row per human account. Do not merge the
