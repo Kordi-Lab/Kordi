@@ -40,7 +40,9 @@ fn activate_stored_cloud_account_data_dir() {
     }
     match cloud_session::cloud_session_load() {
         Ok(Some(session)) => {
-            if let Err(err) = cloud_account_paths::cloud_account_storage_activate(session.account_id) {
+            if let Err(err) =
+                cloud_account_paths::cloud_account_storage_activate(session.account_id)
+            {
                 eprintln!("[kordi] Unable to activate Cloud account storage: {err}");
             }
         }
@@ -54,6 +56,33 @@ use bridge::DesktopBridgeManager;
 use chat::DesktopChatManager;
 use tauri::Manager;
 use workspace::DesktopWorkspaceStatus;
+
+const MAIN_WINDOW_LABEL: &str = "main";
+
+fn should_hide_window_instead_of_close(label: &str) -> bool {
+    cfg!(target_os = "macos") && label == MAIN_WINDOW_LABEL
+}
+
+fn should_show_main_window_on_reopen(has_visible_windows: bool) -> bool {
+    cfg!(target_os = "macos") && !has_visible_windows
+}
+
+#[cfg(test)]
+mod window_lifecycle_tests {
+    use super::{should_hide_window_instead_of_close, should_show_main_window_on_reopen};
+
+    #[test]
+    fn macos_main_window_close_hides_instead_of_quitting() {
+        assert!(should_hide_window_instead_of_close("main"));
+        assert!(!should_hide_window_instead_of_close("secondary"));
+    }
+
+    #[test]
+    fn dock_reopen_restores_main_window_when_none_are_visible() {
+        assert!(should_show_main_window_on_reopen(false));
+        assert!(!should_show_main_window_on_reopen(true));
+    }
+}
 
 #[tauri::command]
 fn desktop_workspace_status() -> DesktopWorkspaceStatus {
@@ -247,5 +276,33 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");
 
-    app.run(|_app_handle, _event| {});
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } if should_hide_window_instead_of_close(&label) => {
+            api.prevent_close();
+            if let Some(window) = app_handle.get_webview_window(&label) {
+                if let Err(err) = window.hide() {
+                    eprintln!("[kordi] Unable to hide window on close: {err}");
+                }
+            }
+        }
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen {
+            has_visible_windows,
+            ..
+        } if should_show_main_window_on_reopen(has_visible_windows) => {
+            if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
+                if let Err(err) = window.show() {
+                    eprintln!("[kordi] Unable to show window on reopen: {err}");
+                }
+                if let Err(err) = window.set_focus() {
+                    eprintln!("[kordi] Unable to focus window on reopen: {err}");
+                }
+            }
+        }
+        _ => {}
+    });
 }
