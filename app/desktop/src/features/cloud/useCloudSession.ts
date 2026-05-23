@@ -20,6 +20,7 @@ import {
   type CloudProfileUpdateInput,
 } from './authClient';
 import { ensureCloudDeviceRegistered } from './deviceRegistration';
+import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
   CLOUD_SESSION_SIGNED_OUT_EVENT,
   clearSession,
@@ -461,6 +462,11 @@ export function useCloudSession({
       const stored = await loadSession();
       if (stored) {
         try {
+          await publishPresenceOffline(authClient);
+        } catch {
+          // Best-effort: still sign out below.
+        }
+        try {
           await authClient.logout(stored.token);
         } catch {
           // Best-effort: still clear local state below.
@@ -471,6 +477,8 @@ export function useCloudSession({
       setSignedOut();
     }
   }, [authClient, setSignedOut]);
+
+  useCloudPresencePublisher(account, authClient);
 
   const clearError = useCallback(() => setError(null), []);
 
