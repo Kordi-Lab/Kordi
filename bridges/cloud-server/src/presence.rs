@@ -137,6 +137,41 @@ pub async fn mark_device_offline(
     account_presence_status(pool, account_id, now, presence_timeout()).await
 }
 
+pub fn stale_presence_cutoff(now: DateTime<Utc>, timeout: ChronoDuration) -> DateTime<Utc> {
+    now - timeout
+}
+
+pub async fn presence_observer_account_ids(
+    pool: &PgPool,
+    account_id: &str,
+) -> Result<Vec<String>, sqlx_core::Error> {
+    let rows: Vec<(String,)> = query_as(
+        "SELECT $1::TEXT AS account_id \
+         UNION \
+         SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1 \
+         UNION \
+         SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+pub async fn publish_presence_to_observers(
+    pool: &PgPool,
+    events: &crate::events::EventBus,
+    account_id: &str,
+    status: AccountPresenceStatus,
+) -> Result<(), sqlx_core::Error> {
+    for observer in presence_observer_account_ids(pool, account_id).await? {
+        events
+            .publish_presence_account_changed(account_id, &observer, status.as_str())
+            .await;
+    }
+    Ok(())
+}
+
 pub async fn contact_presence_summaries(
     pool: &PgPool,
     account_id: &str,
@@ -156,6 +191,43 @@ pub async fn contact_presence_summaries(
         rows.push(account_presence_status(pool, &id, now, timeout).await?);
     }
     Ok(rows)
+}
+
+pub async fn sweep_stale_presence(
+    pool: &PgPool,
+    events: &crate::events::EventBus,
+) -> Result<Vec<AccountPresenceSummary>, sqlx_core::Error> {
+    let now = Utc::now();
+    let timeout = presence_timeout();
+    let cutoff = stale_presence_cutoff(now, timeout).to_rfc3339();
+    let account_rows: Vec<(String,)> = query_as(
+        "SELECT DISTINCT account_id \
+         FROM cloud_device_presence \
+         WHERE state = 'online' AND last_heartbeat_at < $1",
+    )
+    .bind(&cutoff)
+    .fetch_all(pool)
+    .await?;
+    let mut changed = Vec::new();
+    for (account_id,) in account_rows {
+        let before = account_presence_status(pool, &account_id, now, timeout).await?;
+        query(
+            "UPDATE cloud_device_presence \
+             SET state = 'offline', last_offline_at = $2, updated_at = $2 \
+             WHERE account_id = $1 AND state = 'online' AND last_heartbeat_at < $3",
+        )
+        .bind(&account_id)
+        .bind(now.to_rfc3339())
+        .bind(&cutoff)
+        .execute(pool)
+        .await?;
+        let after = account_presence_status(pool, &account_id, now, timeout).await?;
+        if before.status != after.status {
+            publish_presence_to_observers(pool, events, &account_id, after.status).await?;
+            changed.push(after);
+        }
+    }
+    Ok(changed)
 }
 
 #[cfg(test)]
@@ -179,5 +251,11 @@ mod tests {
         assert_eq!(rollup_account_presence([false, true, false]), AccountPresenceStatus::Online);
         assert_eq!(rollup_account_presence([false, false]), AccountPresenceStatus::Offline);
         assert_eq!(rollup_account_presence(std::iter::empty::<bool>()), AccountPresenceStatus::Offline);
+    }
+
+    #[test]
+    fn stale_online_cutoff_uses_timeout() {
+        let now = Utc.with_ymd_and_hms(2026, 5, 23, 12, 0, 0).unwrap();
+        assert_eq!(stale_presence_cutoff(now, ChronoDuration::seconds(90)).to_rfc3339(), "2026-05-23T11:58:30+00:00");
     }
 }

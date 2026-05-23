@@ -109,6 +109,16 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
             return;
         }
     };
+    let mut presence_sub = match client.subscribe(subjects[2].clone()).await {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("[ws] subscribe '{}': {err}", subjects[2]);
+            let _ = general_sub.unsubscribe().await;
+            let _ = contact_request_sub.unsubscribe().await;
+            let _ = close_with_message(socket, "subscribe failed").await;
+            return;
+        }
+    };
 
     let (mut sender, mut receiver) = socket.split();
 
@@ -157,6 +167,14 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
                 }
                 None => break,
             },
+
+            event = presence_sub.next() => match event {
+                Some(msg) => {
+                    let Some(body) = envelope_body(msg.subject.as_str(), &msg.payload) else { continue; };
+                    if sender.send(Message::Text(body)).await.is_err() { break; }
+                }
+                None => break,
+            },
         }
     }
 
@@ -164,6 +182,7 @@ async fn run_ws(socket: WebSocket, account_id: String, bus: EventBus) {
     // a dangling consumer for a closed socket.
     let _ = general_sub.unsubscribe().await;
     let _ = contact_request_sub.unsubscribe().await;
+    let _ = presence_sub.unsubscribe().await;
 }
 
 fn account_event_subjects(account_id: &str) -> Vec<String> {
@@ -176,6 +195,8 @@ fn account_event_subjects(account_id: &str) -> Vec<String> {
         // match the general subject above, causing recipient request badges to
         // wait for the 15s polling fallback.
         format!("kordi.events.contact.request.*.{account_id}"),
+        // Presence events are addressed directly to each observer account.
+        format!("kordi.events.presence.account.{account_id}"),
     ]
 }
 
@@ -230,5 +251,11 @@ mod tests {
 
         assert!(subjects.contains(&"kordi.events.*.*.acct_peer".to_string()));
         assert!(subjects.contains(&"kordi.events.contact.request.*.acct_peer".to_string()));
+    }
+
+    #[test]
+    fn websocket_subscribes_to_presence_account_events() {
+        let subjects = account_event_subjects("acct_1");
+        assert!(subjects.contains(&"kordi.events.presence.account.acct_1".to_string()));
     }
 }
