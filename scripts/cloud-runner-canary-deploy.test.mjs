@@ -48,5 +48,6 @@ test('runner canary script is explicit-confirmation gated and cleans up', () => 
   assert.match(script, /k8s-sandbox-smoke\.sh/);
   assert.match(script, /trap .*cleanup/);
   assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=1/);
+  assert.match(script, /canary idle mode enabled/);
   assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=0/);
 });

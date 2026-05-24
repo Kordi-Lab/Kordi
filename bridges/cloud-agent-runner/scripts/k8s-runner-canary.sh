@@ -37,8 +37,20 @@ kubectl -n "$namespace" rollout status "deployment/${deployment}" --timeout=180s
 echo "[runner-canary] recent runner pods"
 kubectl -n "$namespace" get pods -l app.kubernetes.io/name=kordi-cloud-agent-runner -o wide
 
-echo "[runner-canary] recent logs"
-kubectl -n "$namespace" logs "deployment/${deployment}" --tail=80 || true
+echo "[runner-canary] waiting for canary-idle startup log"
+for _ in $(seq 1 30); do
+  logs="$(kubectl -n "$namespace" logs "deployment/${deployment}" --tail=80 2>/dev/null || true)"
+  if grep -q "canary idle mode enabled" <<<"$logs"; then
+    echo "$logs"
+    break
+  fi
+  sleep 1
+done
+if ! grep -q "canary idle mode enabled" <<<"${logs:-}"; then
+  echo "[runner-canary] runner did not emit canary idle startup log" >&2
+  kubectl -n "$namespace" logs "deployment/${deployment}" --tail=80 || true
+  exit 1
+fi
 
 cleanup
 trap - EXIT

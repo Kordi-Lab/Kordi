@@ -7,7 +7,9 @@ use kordi_cloud_agent_runner::runtime::{process_one_run, RunnerStepOutcome};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
 
     let base_url =
         std::env::var("KORDI_CLOUD_API_BASE").context("KORDI_CLOUD_API_BASE is required")?;
