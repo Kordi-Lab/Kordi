@@ -47,6 +47,9 @@ export type CloudAuthErrorCode =
   | 'invalid_provider_auth_snapshot'
   | 'provider_auth_not_configured'
   | 'provider_auth_snapshot_not_found'
+  | 'requester_mismatch'
+  | 'agent_not_available'
+  | 'owner_online'
   | 'rate_limited'
   | 'account_missing'
   | 'invalid_account_id'
@@ -261,6 +264,25 @@ export type CloudProviderAuthSnapshot = {
   revokedAt: string | null;
 };
 
+export type CloudAgentRunClaimInput = {
+  requestMessageId: string;
+  sessionId: string;
+  ownerAccountId: string;
+  requesterAccountId: string;
+  prompt: string;
+  idempotencyKey: string;
+};
+
+export type CloudAgentRunStatus = 'queued' | 'leased' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+
+export type CloudAgentRun = {
+  runId: string;
+  status: CloudAgentRunStatus;
+  sandboxId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export class CloudAuthError extends Error {
   readonly code: CloudAuthErrorCode;
   readonly status: number;
@@ -315,6 +337,9 @@ function isErrorCode(value: unknown): value is CloudAuthErrorCode {
     value === 'invalid_provider_auth_snapshot' ||
     value === 'provider_auth_not_configured' ||
     value === 'provider_auth_snapshot_not_found' ||
+    value === 'requester_mismatch' ||
+    value === 'agent_not_available' ||
+    value === 'owner_online' ||
     value === 'rate_limited' ||
     value === 'account_missing' ||
     value === 'invalid_account_id' ||
@@ -637,6 +662,18 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not reject contact request.',
+    );
+  }
+
+  async claimCloudAgentRun(token: string, input: CloudAgentRunClaimInput): Promise<CloudAgentRun> {
+    return this.send<CloudAgentRun>(
+      '/v1/cloud/agent-runs/claim',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not request Kordi fallback.',
     );
   }
 

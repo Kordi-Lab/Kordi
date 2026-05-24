@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
+  cloudAgentFallbackErrorNotice,
+  cloudAgentFallbackStatusLabel,
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   cloudMessageIsSelfAgentRequest,
   cloudMessageMentionsFirstPersonAgent,
@@ -33,6 +35,37 @@ const account: CloudAccount = {
   nodeId: 'node_me',
   passwordSet: true,
 };
+
+test('cloud fallback status labels stay visually close to normal online turns', () => {
+  assert.equal(cloudAgentFallbackStatusLabel('queued'), 'Requesting…');
+  assert.equal(cloudAgentFallbackStatusLabel('leased'), 'Requesting…');
+  assert.equal(cloudAgentFallbackStatusLabel('running'), 'Replying…');
+  assert.equal(cloudAgentFallbackStatusLabel('completed'), null);
+});
+
+test('cloud fallback errors map backend codes to concise user-facing copy', () => {
+  assert.equal(
+    cloudAgentFallbackErrorNotice({ code: 'missing_provider_auth' }),
+    'Provider auth is not synced for Cloud fallback yet. Open this device once to sync provider access.',
+  );
+  assert.equal(
+    cloudAgentFallbackErrorNotice({ code: 'owner_online' }),
+    'The owner device is online, so Kordi will answer from the device.',
+  );
+  assert.equal(
+    cloudAgentFallbackErrorNotice({ code: 'model_provider_error' }),
+    'The provider failed while Kordi was replying. Try again in a moment.',
+  );
+  assert.equal(
+    cloudAgentFallbackErrorNotice({ message: 'Cloud fallback cannot access localhost or private-network resources from the owner environment.' }),
+    "Kordi Cloud can't access that local/private resource while the device is offline.",
+  );
+});
+
+test('cloud agent no-provider detector recognizes Cloud fallback provider-auth failures', () => {
+  assert.equal(isCloudAgentNoProviderConfiguredError('missing_provider_auth'), true);
+  assert.equal(isCloudAgentNoProviderConfiguredError('Cloud fallback cannot run because the owner has not enabled a provider-auth snapshot.'), true);
+});
 
 test('cloud agent runtime session ids are isolated from visible local chat sessions', () => {
   assert.equal(isCloudAgentRuntimeSessionId(`${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:acct_peer`), true);

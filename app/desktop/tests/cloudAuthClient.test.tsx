@@ -191,6 +191,47 @@ test('network failures surface as CloudAuthError with code network_error', async
   );
 });
 
+test('claimCloudAgentRun posts typed claim request and parses status response', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    runId: 'car_1',
+    status: 'queued',
+    sandboxId: 'cas_1',
+    createdAt: '2026-05-24T00:00:00Z',
+    updatedAt: '2026-05-24T00:00:00Z',
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const run = await client.claimCloudAgentRun('kordi_cs_xyz', {
+    requestMessageId: 'msg_1',
+    sessionId: 'session:direct-person:acct_owner:acct_requester',
+    ownerAccountId: 'acct_owner',
+    requesterAccountId: 'acct_requester',
+    prompt: 'hello',
+    idempotencyKey: 'cloud-fallback:msg_1',
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/agent-runs/claim');
+  assert.equal(calls[0].init?.method, 'POST');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+  assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
+    requestMessageId: 'msg_1',
+    sessionId: 'session:direct-person:acct_owner:acct_requester',
+    ownerAccountId: 'acct_owner',
+    requesterAccountId: 'acct_requester',
+    prompt: 'hello',
+    idempotencyKey: 'cloud-fallback:msg_1',
+  });
+  assert.deepEqual(run, {
+    runId: 'car_1',
+    status: 'queued',
+    sandboxId: 'cas_1',
+    createdAt: '2026-05-24T00:00:00Z',
+    updatedAt: '2026-05-24T00:00:00Z',
+  });
+});
+
 test('sendMessage posts attachment metadata and parses returned attachments', async () => {
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(201, {
     message: {
