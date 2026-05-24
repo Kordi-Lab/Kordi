@@ -52,7 +52,7 @@ run_job() {
   local job="$1"
   local command="$2"
   local indented_command
-  indented_command="$(printf '%s\n' "$command" | sed 's/^/            /')"
+  indented_command="$(printf '%s\n' "$command" | sed 's/^/              /')"
   kubectl -n "$namespace" delete job "$job" --ignore-not-found=true >/dev/null 2>&1 || true
   kubectl -n "$namespace" apply -f - <<YAML
 apiVersion: batch/v1
