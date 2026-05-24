@@ -21,6 +21,7 @@
 Create `scripts/cloud-runner-canary-deploy.test.mjs` using Node built-ins. Assert manifest text contains:
 
 - `replicas: 0`
+- `KORDI_CLOUD_RUNNER_CANARY_IDLE` with value `1`
 - `KORDI_CLOUD_SANDBOX_BACKEND` with value `k8s`
 - `serviceAccountName: kordi-cloud-agent-runner`
 - `kind: Role`
@@ -42,6 +43,7 @@ Update manifest:
 - Deployment `spec.replicas: 0`
 - add ServiceAccount, Role, RoleBinding documents
 - set active env:
+  - `KORDI_CLOUD_RUNNER_CANARY_IDLE=1`
   - `KORDI_CLOUD_SANDBOX_BACKEND=k8s`
   - `KORDI_CLOUD_SANDBOX_NAMESPACE=kordi-cloud`
   - `KORDI_CLOUD_SANDBOX_IMAGE=alpine:3.20`
@@ -63,9 +65,12 @@ git commit -m "feat: make cloud runner deployment canary-only"
 
 ---
 
-## Task 2: Runner image build/deploy script
+## Task 2: Runner canary idle mode and image build/deploy script
 
 **Files:**
+- Create: `bridges/cloud-agent-runner/src/config.rs`
+- Modify: `bridges/cloud-agent-runner/src/lib.rs`
+- Modify: `bridges/cloud-agent-runner/src/main.rs`
 - Create: `bridges/cloud-agent-runner/Dockerfile.runtime`
 - Create: `bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh`
 - Modify: `scripts/cloud-runner-canary-deploy.test.mjs`
@@ -81,6 +86,7 @@ Extend test file to assert:
 - deploy script applies manifest with image replacement
 - deploy script runs `kubectl scale deployment/kordi-cloud-agent-runner --replicas=0` or equivalent zero-replica enforcement
 - Dockerfile copies `target/release/kordi-cloud-agent-runner`
+- runner has a tested `KORDI_CLOUD_RUNNER_CANARY_IDLE=1` mode that sleeps without polling leases
 
 Run:
 

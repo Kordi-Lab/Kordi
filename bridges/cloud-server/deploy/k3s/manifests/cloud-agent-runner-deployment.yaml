@@ -86,6 +86,8 @@ spec:
                   key: runner-token
             - name: KORDI_CLOUD_RUNNER_POLL_MS
               value: "2000"
+            - name: KORDI_CLOUD_RUNNER_CANARY_IDLE
+              value: "1"
             - name: KORDI_CLOUD_SANDBOX_BACKEND
               value: "k8s"
             - name: KORDI_CLOUD_SANDBOX_NAMESPACE

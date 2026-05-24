@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use kordi_cloud_agent_runner::client::HttpCloudAgentRunClient;
+use kordi_cloud_agent_runner::config::canary_idle_enabled;
 use kordi_cloud_agent_runner::runtime::{process_one_run, RunnerStepOutcome};
 
 #[tokio::main]
@@ -19,6 +20,20 @@ async fn main() -> Result<()> {
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|value| *value >= 100)
         .unwrap_or(2_000);
+
+    if canary_idle_enabled(
+        std::env::var("KORDI_CLOUD_RUNNER_CANARY_IDLE")
+            .ok()
+            .as_deref(),
+    ) {
+        tracing::info!(
+            runner_id,
+            "cloud agent runner canary idle mode enabled; not polling for runs"
+        );
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
+    }
 
     let client = HttpCloudAgentRunClient::new(base_url, runner_token, runner_id.clone());
     tracing::info!(runner_id, poll_ms, "starting kordi cloud agent runner");

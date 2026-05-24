@@ -58,6 +58,10 @@ Update `cloud-agent-runner-deployment.yaml`:
 - add ServiceAccount/RBAC for runner to manage Jobs/PVCs only in `kordi-cloud`
 - do not grant cluster-wide permissions
 
+### Canary idle mode
+
+Add `KORDI_CLOUD_RUNNER_CANARY_IDLE=1` as the manifest default. In idle mode the runner process validates required env/secret wiring, logs that canary idle mode is enabled, and sleeps without polling `/lease`. This makes the canary unable to accidentally consume queued fallback runs.
+
 ### Canary script
 
 Add `bridges/cloud-agent-runner/scripts/k8s-runner-canary.sh`.
@@ -67,19 +71,20 @@ The script should:
 1. require explicit `CONFIRM_KORDI_RUNNER_CANARY=1`
 2. run `k8s-sandbox-smoke.sh`
 3. verify runner Deployment exists and has replicas 0 before starting
-4. scale runner to 1
+4. scale runner to 1 in `KORDI_CLOUD_RUNNER_CANARY_IDLE=1` mode
 5. wait for rollout
 6. show recent runner logs
 7. scale runner back to 0 on exit via trap
 8. verify final replicas are 0
 
-This first canary is an infrastructure canary, not a live queue canary. It validates that the image starts and has the intended environment/RBAC without intentionally creating real fallback runs. A later user-approved slice can add a controlled provider-auth-backed queue canary.
+This first canary is an infrastructure canary, not a live queue canary. It validates that the image starts and has the intended environment/RBAC without intentionally creating or consuming real fallback runs. A later user-approved slice can add a controlled provider-auth-backed queue canary that explicitly disables idle mode.
 
 ### Tests
 
 Add script/manifest tests under `scripts/` or `bridges/cloud-agent-runner/tests` as appropriate:
 
 - manifest defaults to `replicas: 0`
+- manifest includes `KORDI_CLOUD_RUNNER_CANARY_IDLE=1`
 - manifest includes `KORDI_CLOUD_SANDBOX_BACKEND=k8s`
 - manifest contains ServiceAccount/RBAC scoped to namespace
 - canary script refuses to run unless `CONFIRM_KORDI_RUNNER_CANARY=1`

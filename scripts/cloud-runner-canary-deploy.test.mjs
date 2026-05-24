@@ -19,6 +19,7 @@ test('runner manifest is canary-only and namespace-scoped', () => {
   assert.match(manifest, /kind:\s*Role/);
   assert.match(manifest, /kind:\s*RoleBinding/);
   assert.doesNotMatch(manifest, /kind:\s*ClusterRole/);
+  assert.match(manifest, /name:\s*KORDI_CLOUD_RUNNER_CANARY_IDLE\s+value:\s*"1"/s);
   assert.match(manifest, /name:\s*KORDI_CLOUD_SANDBOX_BACKEND\s+value:\s*"k8s"/s);
   assert.match(manifest, /name:\s*KORDI_CLOUD_SANDBOX_NAMESPACE\s+value:\s*"kordi-cloud"/s);
 });
