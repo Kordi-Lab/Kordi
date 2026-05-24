@@ -60,4 +60,17 @@ if [[ "$final_replicas" != "0" ]]; then
   exit 1
 fi
 
-echo "[runner-canary] ok; runner is scaled to 0"
+echo "[runner-canary] waiting for runner pods to terminate"
+for _ in $(seq 1 60); do
+  remaining_pods="$(kubectl -n "$namespace" get pods -l app.kubernetes.io/name=kordi-cloud-agent-runner --no-headers 2>/dev/null || true)"
+  if [[ -z "$remaining_pods" ]] || grep -q "No resources found" <<<"$remaining_pods"; then
+    echo "[runner-canary] No runner pods remain"
+    echo "[runner-canary] ok; runner is scaled to 0"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "[runner-canary] runner pods did not terminate after scale-down:" >&2
+echo "$remaining_pods" >&2
+exit 1

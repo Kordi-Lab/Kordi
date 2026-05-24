@@ -50,4 +50,6 @@ test('runner canary script is explicit-confirmation gated and cleans up', () => 
   assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=1/);
   assert.match(script, /canary idle mode enabled/);
   assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=0/);
+  assert.match(script, /waiting for runner pods to terminate/);
+  assert.match(script, /No runner pods remain/);
 });
