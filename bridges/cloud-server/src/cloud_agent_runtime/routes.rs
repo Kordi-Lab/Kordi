@@ -9,6 +9,9 @@ use chrono::Utc;
 use serde_json::json;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
+use crate::cloud_agent_runtime::artifacts::{
+    export_run_artifact, ExportArtifactEnvelope, ExportArtifactRequest,
+};
 use crate::cloud_agent_runtime::provider_auth::{
     current_snapshot, publish_snapshot, revoke_snapshot, CurrentProviderAuthSnapshotQuery,
     CurrentProviderAuthSnapshotResponse, EnvProviderAuthCipher, PublishProviderAuthSnapshotRequest,
@@ -53,6 +56,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(complete_runner_run),
         )
         .route("/v1/cloud/agent-runs/:run_id/fail", post(fail_runner_run))
+        .route(
+            "/v1/cloud/agent-runs/:run_id/artifacts",
+            post(export_runner_artifact),
+        )
         .with_state(state);
 
     user_routes.merge(runner_routes)
@@ -228,6 +235,39 @@ async fn fail_runner_run(
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
         }
+    }
+}
+
+async fn export_runner_artifact(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(input): Json<ExportArtifactRequest>,
+) -> Response {
+    if !runner_authorized(&headers) {
+        return runner_unauthorized();
+    }
+    let Some(runner_id) = input.runner_id() else {
+        return error_response(
+            "invalid_runner_request",
+            "runnerId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    let Some(s3) = state.s3() else {
+        return error_response(
+            "attachments_unavailable",
+            "Object storage is not configured on this server.",
+            StatusCode::SERVICE_UNAVAILABLE,
+        );
+    };
+    match export_run_artifact(state.db_pool(), s3, &run_id, &runner_id, input).await {
+        Ok(artifact) => (
+            StatusCode::CREATED,
+            Json(ExportArtifactEnvelope { artifact }),
+        )
+            .into_response(),
+        Err(err) => error_response(err.code, err.message, err.status),
     }
 }
 

@@ -302,18 +302,48 @@ pub async fn complete_run(
     runner_id: &str,
     response_text: &str,
 ) -> Result<Option<RunnerRunResponse>, sqlx_core::Error> {
+    let trimmed = response_text.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let existing: Option<(String, String, String, String, Option<String>)> = query_as(
+        "SELECT owner_account_id, requester_account_id, session_id, status, response_message_id \
+         FROM cloud_agent_fallback_runs \
+         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
+    )
+    .bind(run_id)
+    .bind(runner_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((owner_account_id, requester_account_id, session_id, _status, _message_id)) = existing
+    else {
+        return Ok(None);
+    };
+    let response_message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
+        pool,
+        run_id,
+        &owner_account_id,
+        &requester_account_id,
+        &session_id,
+        trimmed,
+    )
+    .await?;
+    crate::cloud_agent_runtime::artifacts::update_response_message_body(
+        pool,
+        &response_message_id,
+        trimmed,
+    )
+    .await?;
     let now = Utc::now().to_rfc3339();
-    let response_message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
-         SET status = 'completed', response_message_id = COALESCE(response_message_id, $4), \
-             error_code = NULL, error_message = NULL, updated_at = $5, completed_at = $5 \
-         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') AND $3 <> '' \
+         SET status = 'completed', response_message_id = $3, \
+             error_code = NULL, error_message = NULL, updated_at = $4, completed_at = $4 \
+         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
          RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
     )
     .bind(run_id)
     .bind(runner_id)
-    .bind(response_text.trim())
     .bind(response_message_id)
     .bind(now)
     .fetch_optional(pool)
