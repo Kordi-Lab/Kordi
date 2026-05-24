@@ -103,6 +103,29 @@ mod tests {
                 .push(format!("fail:{run_id}:{error_code}"));
             Ok(())
         }
+
+        async fn export_artifact(
+            &self,
+            run_id: &str,
+            input: crate::client::ArtifactExportInput,
+        ) -> Result<crate::client::ArtifactExportResponse, RunnerClientError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("export:{run_id}:{}", input.sandbox_path));
+            Ok(crate::client::ArtifactExportResponse {
+                artifact_id: "carartifact_fake".to_string(),
+                attachment_id: "att_fake".to_string(),
+                run_id: run_id.to_string(),
+                message_id: "cloudrunmsg_fake".to_string(),
+                name: input.name,
+                sandbox_path: input.sandbox_path,
+                content_type: input.content_type,
+                size_bytes: 0,
+                sha256_hex: Some(input.sha256_hex),
+                created_at: "2026-05-24T00:00:00Z".to_string(),
+            })
+        }
     }
 
     fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {

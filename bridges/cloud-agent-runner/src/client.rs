@@ -35,6 +35,49 @@ struct RunEnvelope {
     run: CloudAgentRun,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactExportInput {
+    #[serde(rename = "runnerId")]
+    pub runner_id: String,
+    pub name: String,
+    #[serde(rename = "sandboxPath")]
+    pub sandbox_path: String,
+    #[serde(rename = "contentType")]
+    pub content_type: String,
+    #[serde(rename = "sha256Hex")]
+    pub sha256_hex: String,
+    #[serde(rename = "bytesBase64")]
+    pub bytes_base64: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactExportResponse {
+    #[serde(rename = "artifactId")]
+    pub artifact_id: String,
+    #[serde(rename = "attachmentId")]
+    pub attachment_id: String,
+    #[serde(rename = "runId")]
+    pub run_id: String,
+    #[serde(rename = "messageId")]
+    pub message_id: String,
+    pub name: String,
+    #[serde(rename = "sandboxPath")]
+    pub sandbox_path: String,
+    #[serde(rename = "contentType")]
+    pub content_type: String,
+    #[serde(rename = "sizeBytes")]
+    pub size_bytes: i64,
+    #[serde(rename = "sha256Hex")]
+    pub sha256_hex: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ArtifactExportEnvelope {
+    artifact: ArtifactExportResponse,
+}
+
 #[async_trait]
 pub trait CloudAgentRunClient {
     async fn lease_next_run(&self) -> Result<Option<CloudAgentRun>, RunnerClientError>;
@@ -50,6 +93,12 @@ pub trait CloudAgentRunClient {
         error_code: &str,
         message: &str,
     ) -> Result<(), RunnerClientError>;
+
+    async fn export_artifact(
+        &self,
+        run_id: &str,
+        input: ArtifactExportInput,
+    ) -> Result<ArtifactExportResponse, RunnerClientError>;
 }
 
 #[derive(Clone)]
@@ -153,5 +202,19 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             .await?;
         let _ = envelope.run;
         Ok(())
+    }
+
+    async fn export_artifact(
+        &self,
+        run_id: &str,
+        mut input: ArtifactExportInput,
+    ) -> Result<ArtifactExportResponse, RunnerClientError> {
+        input.runner_id = self.runner_id.clone();
+        let body = serde_json::to_value(input)
+            .map_err(|err| RunnerClientError::Request(err.to_string()))?;
+        let envelope: ArtifactExportEnvelope = self
+            .post_json(&format!("/v1/cloud/agent-runs/{run_id}/artifacts"), body)
+            .await?;
+        Ok(envelope.artifact)
     }
 }

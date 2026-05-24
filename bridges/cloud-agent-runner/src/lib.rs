@@ -1,3 +1,4 @@
+pub mod artifacts;
 pub mod client;
 pub mod prompt;
 pub mod runtime;
