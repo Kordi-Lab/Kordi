@@ -60,6 +60,14 @@ struct TestObjectStore {
 
 impl TestObjectStore {
     async fn spawn() -> Self {
+        Self::spawn_with_put_status(StatusCode::OK).await
+    }
+
+    async fn spawn_rejecting_puts() -> Self {
+        Self::spawn_with_put_status(StatusCode::BAD_GATEWAY).await
+    }
+
+    async fn spawn_with_put_status(put_status: StatusCode) -> Self {
         let objects = Arc::new(Mutex::new(HashMap::<String, Vec<u8>>::new()));
         let app_objects = objects.clone();
         let app =
@@ -69,6 +77,9 @@ impl TestObjectStore {
                     let key = uri.0.path().trim_start_matches('/').to_string();
                     match method {
                         Method::PUT => {
+                            if !put_status.is_success() {
+                                return put_status.into_response();
+                            }
                             let bytes = to_bytes(body, 8 * 1024 * 1024).await.unwrap();
                             objects.lock().await.insert(key, bytes.to_vec());
                             StatusCode::OK.into_response()
@@ -1271,4 +1282,62 @@ async fn export_before_completion_uses_stable_response_message_that_completion_u
             .await
             .unwrap();
     assert_eq!(message.0, "Here is the exported report.");
+}
+
+#[tokio::test]
+async fn failed_object_upload_does_not_create_visible_placeholder_or_artifact_rows() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    let store = TestObjectStore::spawn_rejecting_puts().await;
+    let router = test_router_with_s3(pool.clone(), &store);
+    let owner = signup(&router, "artifact-upload-fail-owner", "Owner").await;
+    let requester = signup(&router, "artifact-upload-fail-requester", "Requester").await;
+    accept_contacts(&router, &requester, &owner).await;
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let run_id = lease_claimed_run_for_export(
+        &router,
+        &pool,
+        &owner,
+        &requester,
+        "msg_artifact_upload_fail",
+        "runner-upload-fail",
+    )
+    .await;
+
+    let export = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{run_id}/artifacts"),
+            "runner-test-token",
+            export_body("runner-upload-fail", "report.md", "report.md", b"report"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(export.status(), StatusCode::BAD_GATEWAY);
+
+    let run_response_message: (Option<String>,) = sqlx_core::query_as::query_as(
+        "SELECT response_message_id FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(run_response_message.0, None);
+
+    let artifact_rows: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*)::BIGINT FROM cloud_agent_run_artifacts WHERE run_id = $1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(artifact_rows.0, 0);
 }

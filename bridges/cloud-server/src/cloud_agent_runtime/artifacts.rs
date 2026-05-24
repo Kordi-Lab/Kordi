@@ -299,7 +299,7 @@ pub async fn export_run_artifact(
         session_id,
         _status,
         sandbox_id,
-        _message_id,
+        existing_message_id,
     )) = run_for_export(pool, run_id, runner_id)
         .await
         .map_err(|_| ExportArtifactError {
@@ -322,21 +322,8 @@ pub async fn export_run_artifact(
         });
     };
 
-    let message_id = ensure_response_message(
-        pool,
-        &run_id,
-        &owner_account_id,
-        &requester_account_id,
-        &session_id,
-        PLACEHOLDER_RESPONSE_BODY,
-    )
-    .await
-    .map_err(|_| ExportArtifactError {
-        code: "server_error",
-        message: "Could not create run response message.",
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-    })?;
-
+    let message_id =
+        existing_message_id.unwrap_or_else(|| format!("cloudrunmsg_{}", Uuid::new_v4().simple()));
     let attachment_id = format!("att_{}", Uuid::new_v4().simple());
     let artifact_id = format!("carartifact_{}", Uuid::new_v4().simple());
     let activity_id = format!("artifact_activity_{}", Uuid::new_v4().simple());
@@ -344,6 +331,35 @@ pub async fn export_run_artifact(
     let now = Utc::now().to_rfc3339();
 
     upload_object(s3, &object_key, &content_type, bytes).await?;
+
+    let mut tx = pool.begin().await.map_err(|_| ExportArtifactError {
+        code: "server_error",
+        message: "Could not start artifact export transaction.",
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+    })?;
+
+    query(
+        "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6) \
+         ON CONFLICT (message_id) DO NOTHING",
+    )
+    .bind(&message_id)
+    .bind(&owner_account_id)
+    .bind(&requester_account_id)
+    .bind(PLACEHOLDER_RESPONSE_BODY)
+    .bind(&now)
+    .bind(&session_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| ExportArtifactError { code: "server_error", message: "Could not create run response message.", status: StatusCode::INTERNAL_SERVER_ERROR })?;
+
+    query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1 AND response_message_id IS NULL")
+        .bind(&run_id)
+        .bind(&message_id)
+        .bind(&now)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| ExportArtifactError { code: "server_error", message: "Could not attach response message to run.", status: StatusCode::INTERNAL_SERVER_ERROR })?;
 
     query("INSERT INTO cloud_attachments (attachment_id, owner_account_id, object_key, size_bytes, content_type, sha256_hex, created_at, finalized_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)")
         .bind(&attachment_id)
@@ -353,7 +369,7 @@ pub async fn export_run_artifact(
         .bind(&content_type)
         .bind(sha256_hex.as_deref())
         .bind(&now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| ExportArtifactError { code: "server_error", message: "Could not record exported attachment.", status: StatusCode::INTERNAL_SERVER_ERROR })?;
 
@@ -363,7 +379,7 @@ pub async fn export_run_artifact(
         .bind(&name)
         .bind(&content_type)
         .bind(size_bytes)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| ExportArtifactError { code: "server_error", message: "Could not link exported attachment.", status: StatusCode::INTERNAL_SERVER_ERROR })?;
 
@@ -379,7 +395,7 @@ pub async fn export_run_artifact(
         .bind(size_bytes)
         .bind(sha256_hex.as_deref())
         .bind(&now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| ExportArtifactError { code: "server_error", message: "Could not record run artifact.", status: StatusCode::INTERNAL_SERVER_ERROR })?;
 
@@ -396,9 +412,15 @@ pub async fn export_run_artifact(
         .bind(&content_type)
         .bind(size_bytes)
         .bind(&now)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| ExportArtifactError { code: "server_error", message: "Could not record session artifact.", status: StatusCode::INTERNAL_SERVER_ERROR })?;
+
+    tx.commit().await.map_err(|_| ExportArtifactError {
+        code: "server_error",
+        message: "Could not commit artifact export.",
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+    })?;
 
     Ok(ExportedArtifact {
         artifact_id,
