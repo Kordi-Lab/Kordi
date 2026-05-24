@@ -7,6 +7,7 @@ const deployScriptPath = 'bridges/cloud-server/deploy/k3s/deploy-cloud-agent-run
 const dockerfilePath = 'bridges/cloud-agent-runner/Dockerfile.runtime';
 const canaryScriptPath = 'bridges/cloud-agent-runner/scripts/k8s-runner-canary.sh';
 const liveCanaryScriptPath = 'bridges/cloud-agent-runner/scripts/k8s-runner-live-fail-closed-canary.sh';
+const realProviderCanaryScriptPath = 'bridges/cloud-agent-runner/scripts/k8s-runner-real-provider-canary.sh';
 
 function read(path) {
   return fs.readFileSync(path, 'utf8');
@@ -69,5 +70,19 @@ test('live fail-closed canary script is gated and restores safe state', () => {
   assert.match(script, /status = 'cancelled'/);
   assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=1/);
   assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=0/);
+  assert.match(script, /No runner pods remain/);
+});
+
+test('real-provider canary script uses local auth and restores safe state', () => {
+  assert.ok(fs.existsSync(realProviderCanaryScriptPath));
+  const script = read(realProviderCanaryScriptPath);
+  assert.match(script, /CONFIRM_KORDI_RUNNER_REAL_PROVIDER_CANARY/);
+  assert.match(script, /cloud-provider-auth-snapshot-payload/);
+  assert.match(script, /agent-provider-auth\/snapshots/);
+  assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_RUN_ID/);
+  assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=0/);
+  assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=1/);
+  assert.match(script, /status=completed/);
+  assert.match(script, /response_message_id/);
   assert.match(script, /No runner pods remain/);
 });

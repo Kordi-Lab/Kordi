@@ -2682,6 +2682,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "kordi-cli",
  "kordi-core",
  "kordi-provider",
  "kordi-session",

@@ -33,7 +33,7 @@ It uses the existing `kordi_cli::login` resolver so refreshable local OAuth cred
     "apiMode": "openai-codex-oauth",
     "accessToken": "...",
     "accountId": "...",
-    "model": "gpt-5"
+    "model": "gpt-5.5"
   }
 }
 ```
