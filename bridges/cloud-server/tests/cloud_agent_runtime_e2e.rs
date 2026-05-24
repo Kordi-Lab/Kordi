@@ -916,6 +916,79 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
 }
 
 #[tokio::test]
+async fn runner_canary_lease_only_claims_requested_run_id() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "runner-canary-owner", "Owner").await;
+    let requester = signup(&router, "runner-canary-requester", "Requester").await;
+    accept_contacts(&router, &requester, &owner).await;
+
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let older_claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_runner_canary_older"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(older_claim.status(), StatusCode::OK);
+    let older_run_id = read_json(older_claim).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let target_claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_runner_canary_target"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(target_claim.status(), StatusCode::OK);
+    let target_run_id = read_json(target_claim).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let lease = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({ "runnerId": "runner-canary", "canaryRunId": target_run_id }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(lease.status(), StatusCode::OK);
+    let leased = read_json(lease).await;
+    assert_eq!(leased["run"]["runId"], target_run_id);
+
+    let older_status: (String,) = sqlx_core::query_as::query_as(
+        "SELECT status FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(&older_run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(older_status.0, "queued");
+}
+
+#[tokio::test]
 async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");

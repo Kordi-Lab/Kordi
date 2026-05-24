@@ -127,6 +127,21 @@ mod tests {
     use super::ClaimRunRequest;
 
     #[test]
+    fn runner_request_accepts_optional_canary_run_id() {
+        let request = super::RunnerRunRequest {
+            runner_id: "runner-a".to_string(),
+            canary_run_id: Some(" car_canary ".to_string()),
+        };
+        assert_eq!(request.canary_run_id().as_deref(), Some("car_canary"));
+
+        let empty = super::RunnerRunRequest {
+            runner_id: "runner-a".to_string(),
+            canary_run_id: Some(" ".to_string()),
+        };
+        assert_eq!(empty.canary_run_id(), None);
+    }
+
+    #[test]
     fn claim_request_rejects_empty_required_fields() {
         let valid = ClaimRunRequest {
             request_message_id: "msg_1".to_string(),
@@ -150,11 +165,22 @@ mod tests {
 pub struct RunnerRunRequest {
     #[serde(rename = "runnerId")]
     pub runner_id: String,
+    #[serde(rename = "canaryRunId")]
+    pub canary_run_id: Option<String>,
 }
 
 impl RunnerRunRequest {
     pub fn runner_id(&self) -> Option<String> {
         let trimmed = self.runner_id.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    pub fn canary_run_id(&self) -> Option<String> {
+        let trimmed = self.canary_run_id.as_deref()?.trim();
         if trimmed.is_empty() {
             None
         } else {
@@ -266,6 +292,31 @@ pub async fn lease_next_run(
     .bind(runner_id)
     .bind(&lease_expires_at)
     .bind(now.to_rfc3339())
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    runner_response_from_row(pool, row).await.map(Some)
+}
+
+pub async fn lease_canary_run(
+    pool: &PgPool,
+    runner_id: &str,
+    canary_run_id: &str,
+) -> Result<Option<RunnerRunResponse>, sqlx_core::Error> {
+    let now = Utc::now();
+    let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
+    let row: Option<RunnerRunRow> = query_as(
+        "UPDATE cloud_agent_fallback_runs \
+         SET status = 'leased', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
+         WHERE run_id = $4 AND status = 'queued' \
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
+    )
+    .bind(runner_id)
+    .bind(&lease_expires_at)
+    .bind(now.to_rfc3339())
+    .bind(canary_run_id)
     .fetch_optional(pool)
     .await?;
     let Some(row) = row else {

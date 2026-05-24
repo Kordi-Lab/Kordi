@@ -61,6 +61,7 @@ test('live fail-closed canary script is gated and restores safe state', () => {
   assert.match(script, /CONFIRM_KORDI_RUNNER_LIVE_CANARY/);
   assert.match(script, /active fallback runs/);
   assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=0/);
+  assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_RUN_ID/);
   assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=1/);
   assert.match(script, /missing_provider_auth/);
   assert.match(script, /response_message_id/);

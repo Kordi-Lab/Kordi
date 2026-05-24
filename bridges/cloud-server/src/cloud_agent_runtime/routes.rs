@@ -19,7 +19,7 @@ use crate::cloud_agent_runtime::provider_auth::{
     RunnerProviderAuthMaterialEnvelope,
 };
 use crate::cloud_agent_runtime::runs::{
-    claim_run, complete_run, fail_run, lease_next_run, mark_run_running,
+    claim_run, complete_run, fail_run, lease_canary_run, lease_next_run, mark_run_running,
     requester_can_target_owner, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
     RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
 };
@@ -121,7 +121,11 @@ async fn lease_runner_run(
             StatusCode::BAD_REQUEST,
         );
     };
-    match lease_next_run(state.db_pool(), &runner_id).await {
+    let lease_result = match input.canary_run_id() {
+        Some(canary_run_id) => lease_canary_run(state.db_pool(), &runner_id, &canary_run_id).await,
+        None => lease_next_run(state.db_pool(), &runner_id).await,
+    };
+    match lease_result {
         Ok(run) => Json(RunnerLeaseResponse { run }).into_response(),
         Err(err) => {
             eprintln!("[cloud_agent_runtime] lease run: {err}");

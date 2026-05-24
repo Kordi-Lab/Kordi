@@ -37,8 +37,19 @@ async fn main() -> Result<()> {
         }
     }
 
-    let client = HttpCloudAgentRunClient::new(base_url, runner_token, runner_id.clone());
-    tracing::info!(runner_id, poll_ms, "starting kordi cloud agent runner");
+    let canary_run_id = std::env::var("KORDI_CLOUD_RUNNER_CANARY_RUN_ID").ok();
+    let client = HttpCloudAgentRunClient::with_canary_run_id(
+        base_url,
+        runner_token,
+        runner_id.clone(),
+        canary_run_id.clone(),
+    );
+    tracing::info!(
+        runner_id,
+        poll_ms,
+        canary_run_id,
+        "starting kordi cloud agent runner"
+    );
 
     loop {
         match process_one_run(&client).await {

@@ -51,7 +51,7 @@ wait_for_no_runner_pods() {
 
 cleanup() {
   echo "[live-canary] restoring runner idle mode and scaling to 0"
-  kubectl -n "$namespace" set env "deployment/${deployment}" KORDI_CLOUD_RUNNER_CANARY_IDLE=1 >/dev/null 2>&1 || true
+  kubectl -n "$namespace" set env "deployment/${deployment}" KORDI_CLOUD_RUNNER_CANARY_IDLE=1 KORDI_CLOUD_RUNNER_CANARY_RUN_ID- >/dev/null 2>&1 || true
   kubectl -n "$namespace" scale "deployment/${deployment}" --replicas=0 >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -71,10 +71,7 @@ if [[ "$idle_value" != "1" ]]; then
 fi
 
 active_runs="$(psql_scalar -c "SELECT COUNT(*) FROM cloud_agent_fallback_runs WHERE status IN ('queued','leased','running')")"
-if [[ "$active_runs" != "0" ]]; then
-  echo "[live-canary] refusing to start: found ${active_runs} active fallback runs" >&2
-  exit 1
-fi
+echo "[live-canary] active fallback runs currently present: ${active_runs}; canary lease is scoped to ${run_id}"
 
 echo "[live-canary] seeding controlled run ${run_id}"
 psql_exec \
@@ -126,7 +123,7 @@ if [[ "$provider_snapshots" != "0" ]]; then
 fi
 
 echo "[live-canary] enabling runner polling for one controlled run with KORDI_CLOUD_RUNNER_CANARY_IDLE=0"
-kubectl -n "$namespace" set env "deployment/${deployment}" KORDI_CLOUD_RUNNER_CANARY_IDLE=0
+kubectl -n "$namespace" set env "deployment/${deployment}" KORDI_CLOUD_RUNNER_CANARY_IDLE=0 KORDI_CLOUD_RUNNER_CANARY_RUN_ID="$run_id"
 kubectl -n "$namespace" scale "deployment/${deployment}" --replicas=1
 kubectl -n "$namespace" rollout status "deployment/${deployment}" --timeout=180s
 

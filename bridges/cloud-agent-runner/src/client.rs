@@ -127,16 +127,44 @@ pub struct HttpCloudAgentRunClient {
     base_url: String,
     runner_token: String,
     runner_id: String,
+    canary_run_id: Option<String>,
     http: reqwest::Client,
 }
 
 impl HttpCloudAgentRunClient {
     pub fn new(base_url: String, runner_token: String, runner_id: String) -> Self {
+        Self::with_canary_run_id(base_url, runner_token, runner_id, None)
+    }
+
+    pub fn with_canary_run_id(
+        base_url: String,
+        runner_token: String,
+        runner_id: String,
+        canary_run_id: Option<String>,
+    ) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             runner_token,
             runner_id,
+            canary_run_id: canary_run_id.and_then(|value| {
+                let trimmed = value.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            }),
             http: reqwest::Client::new(),
+        }
+    }
+
+    fn lease_request_body(&self) -> serde_json::Value {
+        match &self.canary_run_id {
+            Some(canary_run_id) => serde_json::json!({
+                "runnerId": self.runner_id,
+                "canaryRunId": canary_run_id,
+            }),
+            None => serde_json::json!({ "runnerId": self.runner_id }),
         }
     }
 
@@ -171,10 +199,7 @@ impl HttpCloudAgentRunClient {
 impl CloudAgentRunClient for HttpCloudAgentRunClient {
     async fn lease_next_run(&self) -> Result<Option<CloudAgentRun>, RunnerClientError> {
         let response: LeaseResponse = self
-            .post_json(
-                "/v1/cloud/agent-runs/lease",
-                serde_json::json!({ "runnerId": self.runner_id }),
-            )
+            .post_json("/v1/cloud/agent-runs/lease", self.lease_request_body())
             .await?;
         Ok(response.run)
     }
