@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use tokio::process::Command;
 
 use crate::tool_policy::{is_owner_local_path, RunnerToolBlockReason};
@@ -21,6 +23,31 @@ pub struct BashOutput {
     pub stderr: String,
 }
 
+pub type SandboxBackendHandle = Arc<dyn SandboxBackend>;
+
+#[async_trait]
+pub trait SandboxBackend: Send + Sync {
+    fn root_for_tests(&self) -> Option<&Path> {
+        None
+    }
+
+    fn resolve_path(&self, relative_path: &str) -> Result<PathBuf, SandboxClientError>;
+
+    async fn read_text(&self, relative_path: &str) -> Result<String, SandboxClientError>;
+
+    async fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, SandboxClientError>;
+
+    async fn write_text(
+        &self,
+        relative_path: &str,
+        content: &str,
+    ) -> Result<(), SandboxClientError>;
+
+    async fn list(&self, relative_path: &str) -> Result<Vec<String>, SandboxClientError>;
+
+    async fn run_bash(&self, command: &str) -> Result<BashOutput, SandboxClientError>;
+}
+
 #[derive(Debug, Clone)]
 pub struct LocalSandboxBackend {
     root: PathBuf,
@@ -36,6 +63,41 @@ impl LocalSandboxBackend {
     }
 
     pub fn resolve_path(&self, relative_path: &str) -> Result<PathBuf, SandboxClientError> {
+        <Self as SandboxBackend>::resolve_path(self, relative_path)
+    }
+
+    pub async fn read_text(&self, relative_path: &str) -> Result<String, SandboxClientError> {
+        <Self as SandboxBackend>::read_text(self, relative_path).await
+    }
+
+    pub async fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, SandboxClientError> {
+        <Self as SandboxBackend>::read_bytes(self, relative_path).await
+    }
+
+    pub async fn write_text(
+        &self,
+        relative_path: &str,
+        content: &str,
+    ) -> Result<(), SandboxClientError> {
+        <Self as SandboxBackend>::write_text(self, relative_path, content).await
+    }
+
+    pub async fn list(&self, relative_path: &str) -> Result<Vec<String>, SandboxClientError> {
+        <Self as SandboxBackend>::list(self, relative_path).await
+    }
+
+    pub async fn run_bash(&self, command: &str) -> Result<BashOutput, SandboxClientError> {
+        <Self as SandboxBackend>::run_bash(self, command).await
+    }
+}
+
+#[async_trait]
+impl SandboxBackend for LocalSandboxBackend {
+    fn root_for_tests(&self) -> Option<&Path> {
+        Some(&self.root)
+    }
+
+    fn resolve_path(&self, relative_path: &str) -> Result<PathBuf, SandboxClientError> {
         let trimmed = relative_path.trim();
         if is_owner_local_path(trimmed) {
             return Err(SandboxClientError::BlockedPath(
@@ -55,12 +117,17 @@ impl LocalSandboxBackend {
         Ok(self.root.join(relative))
     }
 
-    pub async fn read_text(&self, relative_path: &str) -> Result<String, SandboxClientError> {
+    async fn read_text(&self, relative_path: &str) -> Result<String, SandboxClientError> {
         let path = self.resolve_path(relative_path)?;
         Ok(tokio::fs::read_to_string(path).await?)
     }
 
-    pub async fn write_text(
+    async fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, SandboxClientError> {
+        let path = self.resolve_path(relative_path)?;
+        Ok(tokio::fs::read(path).await?)
+    }
+
+    async fn write_text(
         &self,
         relative_path: &str,
         content: &str,
@@ -73,7 +140,7 @@ impl LocalSandboxBackend {
         Ok(())
     }
 
-    pub async fn list(&self, relative_path: &str) -> Result<Vec<String>, SandboxClientError> {
+    async fn list(&self, relative_path: &str) -> Result<Vec<String>, SandboxClientError> {
         let path = self.resolve_path(relative_path)?;
         let mut entries = tokio::fs::read_dir(path).await?;
         let mut names = Vec::new();
@@ -84,7 +151,7 @@ impl LocalSandboxBackend {
         Ok(names)
     }
 
-    pub async fn run_bash(&self, command: &str) -> Result<BashOutput, SandboxClientError> {
+    async fn run_bash(&self, command: &str) -> Result<BashOutput, SandboxClientError> {
         if command.contains("/Users/") || command.contains("/home/") {
             return Err(SandboxClientError::BlockedPath(
                 RunnerToolBlockReason::OwnerLocalResource,
@@ -120,6 +187,21 @@ impl LocalSandboxBackend {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[tokio::test]
+    async fn local_backend_read_bytes_matches_written_content() {
+        let root = std::env::temp_dir().join(format!(
+            "kordi-sandbox-bytes-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let backend = LocalSandboxBackend::new(root.clone());
+        backend.write_text("artifact.txt", "hello").await.unwrap();
+
+        let bytes = backend.read_bytes("artifact.txt").await.unwrap();
+
+        assert_eq!(bytes, b"hello");
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[tokio::test]
     async fn resolve_path_blocks_escape_attempts() {
