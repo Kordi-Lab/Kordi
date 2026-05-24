@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::client::CloudAgentRun;
 use crate::client::{CloudAgentRunClient, RunnerClientError};
 use crate::model_loop::{run_model_loop, CloudModelProvider, OpenAiCompatibleProvider};
-use crate::sandbox_client::LocalSandboxBackend;
+use crate::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunnerStepOutcome {
@@ -67,7 +67,7 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
-    let sandbox = LocalSandboxBackend::new(sandbox_root);
+    let sandbox: SandboxBackendHandle = std::sync::Arc::new(LocalSandboxBackend::new(sandbox_root));
     let response_text = match run_model_loop(client, provider, &run, &sandbox, auth_material).await
     {
         Ok(response_text) => response_text,

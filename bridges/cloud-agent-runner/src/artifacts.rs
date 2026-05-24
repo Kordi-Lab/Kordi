@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use crate::client::{
     ArtifactExportInput, ArtifactExportResponse, CloudAgentRunClient, RunnerClientError,
 };
-use crate::sandbox_client::{LocalSandboxBackend, SandboxClientError};
+use crate::sandbox_client::{SandboxBackendHandle, SandboxClientError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ArtifactExportError {
@@ -16,16 +16,13 @@ pub enum ArtifactExportError {
 
 pub async fn export_sandbox_file<C: CloudAgentRunClient + Sync>(
     client: &C,
-    sandbox: &LocalSandboxBackend,
+    sandbox: &SandboxBackendHandle,
     run_id: &str,
     sandbox_path: &str,
     name: &str,
     content_type: &str,
 ) -> Result<ArtifactExportResponse, ArtifactExportError> {
-    let path = sandbox.resolve_path(sandbox_path)?;
-    let bytes = tokio::fs::read(path)
-        .await
-        .map_err(SandboxClientError::Io)?;
+    let bytes = sandbox.read_bytes(sandbox_path).await?;
     let sha256_hex = format!("{:x}", Sha256::digest(&bytes));
     let bytes_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     let input = ArtifactExportInput {

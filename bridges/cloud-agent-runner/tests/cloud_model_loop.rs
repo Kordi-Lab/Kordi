@@ -8,7 +8,7 @@ use kordi_cloud_agent_runner::client::{
 use kordi_cloud_agent_runner::model_loop::{
     run_model_loop, CloudModelProvider, ModelProviderResponse, ModelToolCall, OpenAiProviderConfig,
 };
-use kordi_cloud_agent_runner::sandbox_client::LocalSandboxBackend;
+use kordi_cloud_agent_runner::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 use serde_json::{json, Value};
 
 #[derive(Default)]
@@ -128,13 +128,17 @@ fn run() -> CloudAgentRun {
     }
 }
 
-fn sandbox() -> LocalSandboxBackend {
+fn sandbox() -> Arc<LocalSandboxBackend> {
     let root = std::env::temp_dir().join(format!(
         "kordi-model-loop-test-{}",
         uuid::Uuid::new_v4().simple()
     ));
     std::fs::create_dir_all(&root).unwrap();
-    LocalSandboxBackend::new(root)
+    Arc::new(LocalSandboxBackend::new(root))
+}
+
+fn sandbox_handle() -> SandboxBackendHandle {
+    sandbox()
 }
 
 #[tokio::test]
@@ -144,9 +148,15 @@ async fn model_loop_completes_text_response() {
         "Cloud fallback answer".to_string(),
     )]);
 
-    let text = run_model_loop(&client, &provider, &run(), &sandbox(), provider_auth())
-        .await
-        .unwrap();
+    let text = run_model_loop(
+        &client,
+        &provider,
+        &run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(text, "Cloud fallback answer");
     let first_messages = provider.seen_messages.lock().unwrap().remove(0);
@@ -178,7 +188,8 @@ async fn model_loop_executes_sandbox_tool_call_then_finishes() {
         ModelProviderResponse::FinalText("Wrote and read status.txt".to_string()),
     ]);
 
-    let text = run_model_loop(&client, &provider, &run(), &sandbox, provider_auth())
+    let backend: SandboxBackendHandle = sandbox.clone();
+    let text = run_model_loop(&client, &provider, &run(), &backend, provider_auth())
         .await
         .unwrap();
 
@@ -210,9 +221,15 @@ async fn model_loop_returns_boundary_explanation_for_owner_local_tool() {
         ),
     ]);
 
-    let text = run_model_loop(&client, &provider, &run(), &sandbox(), provider_auth())
-        .await
-        .unwrap();
+    let text = run_model_loop(
+        &client,
+        &provider,
+        &run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .unwrap();
 
     assert!(text.contains("cannot read owner-local files"));
     let calls = provider.seen_messages.lock().unwrap();
@@ -247,7 +264,8 @@ async fn model_loop_exports_artifact_when_requested() {
         ModelProviderResponse::FinalText("Exported report.md".to_string()),
     ]);
 
-    let text = run_model_loop(&client, &provider, &run(), &sandbox, provider_auth())
+    let backend: SandboxBackendHandle = sandbox.clone();
+    let text = run_model_loop(&client, &provider, &run(), &backend, provider_auth())
         .await
         .unwrap();
 

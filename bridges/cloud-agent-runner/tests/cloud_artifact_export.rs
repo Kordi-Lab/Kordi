@@ -82,13 +82,14 @@ async fn export_sandbox_file_reads_bytes_and_posts_explicit_export() {
         "kordi-artifact-export-{}",
         uuid::Uuid::new_v4().simple()
     ));
-    let sandbox = LocalSandboxBackend::new(root.clone());
+    let sandbox = Arc::new(LocalSandboxBackend::new(root.clone()));
     sandbox.write_text("report.md", "report").await.unwrap();
     let client = RecordingClient::default();
 
+    let backend: kordi_cloud_agent_runner::sandbox_client::SandboxBackendHandle = sandbox.clone();
     let exported = export_sandbox_file(
         &client,
-        &sandbox,
+        &backend,
         "car_run",
         "report.md",
         "report.md",
@@ -113,12 +114,13 @@ async fn export_sandbox_file_blocks_paths_outside_sandbox_before_http() {
         "kordi-artifact-export-block-{}",
         uuid::Uuid::new_v4().simple()
     ));
-    let sandbox = LocalSandboxBackend::new(root.clone());
+    let sandbox = Arc::new(LocalSandboxBackend::new(root.clone()));
     let client = RecordingClient::default();
 
+    let backend: kordi_cloud_agent_runner::sandbox_client::SandboxBackendHandle = sandbox.clone();
     let result = export_sandbox_file(
         &client,
-        &sandbox,
+        &backend,
         "car_run",
         "../secret.md",
         "secret.md",

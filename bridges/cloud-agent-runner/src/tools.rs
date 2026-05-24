@@ -1,4 +1,4 @@
-use crate::sandbox_client::{BashOutput, LocalSandboxBackend, SandboxClientError};
+use crate::sandbox_client::{BashOutput, SandboxBackendHandle, SandboxClientError};
 use crate::tool_policy::{decide_runner_tool, RunnerToolDecision, RunnerToolRequest};
 
 #[derive(Debug, thiserror::Error)]
@@ -18,11 +18,11 @@ pub enum CloudToolOutput {
 }
 
 pub struct CloudToolExecutor {
-    sandbox: LocalSandboxBackend,
+    sandbox: SandboxBackendHandle,
 }
 
 impl CloudToolExecutor {
-    pub fn new(sandbox: LocalSandboxBackend) -> Self {
+    pub fn new(sandbox: SandboxBackendHandle) -> Self {
         Self { sandbox }
     }
 
@@ -89,7 +89,9 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         fs::create_dir_all(&root).unwrap();
-        let executor = CloudToolExecutor::new(LocalSandboxBackend::new(root.clone()));
+        let executor = CloudToolExecutor::new(std::sync::Arc::new(
+            crate::sandbox_client::LocalSandboxBackend::new(root.clone()),
+        ));
 
         let result = executor
             .execute(

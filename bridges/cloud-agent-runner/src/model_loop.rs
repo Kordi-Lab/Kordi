@@ -9,7 +9,7 @@ pub use provider::{OpenAiCompatibleProvider, OpenAiProviderConfig};
 
 use crate::artifacts::export_sandbox_file;
 use crate::client::{CloudAgentRun, CloudAgentRunClient, ProviderAuthMaterial, RunnerClientError};
-use crate::sandbox_client::LocalSandboxBackend;
+use crate::sandbox_client::SandboxBackendHandle;
 use crate::tool_policy::RunnerToolRequest;
 use crate::tools::{CloudToolExecutor, CloudToolOutput};
 
@@ -53,7 +53,7 @@ pub async fn run_model_loop<C, P>(
     client: &C,
     provider: &P,
     run: &CloudAgentRun,
-    sandbox: &LocalSandboxBackend,
+    sandbox: &SandboxBackendHandle,
     auth_material: ProviderAuthMaterial,
 ) -> Result<String, ModelLoopError>
 where
@@ -112,7 +112,7 @@ where
 async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     client: &C,
     executor: &CloudToolExecutor,
-    sandbox: &LocalSandboxBackend,
+    sandbox: &SandboxBackendHandle,
     run: &CloudAgentRun,
     call: &ModelToolCall,
 ) -> String {
@@ -154,7 +154,7 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
 
 async fn export_model_artifact<C: CloudAgentRunClient + Sync>(
     client: &C,
-    sandbox: &LocalSandboxBackend,
+    sandbox: &SandboxBackendHandle,
     run: &CloudAgentRun,
     arguments: &Value,
 ) -> String {
