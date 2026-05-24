@@ -66,6 +66,7 @@ test('live fail-closed canary script is gated and restores safe state', () => {
   assert.match(script, /missing_provider_auth/);
   assert.match(script, /response_message_id/);
   assert.match(script, /cloud_agent_run_artifacts/);
+  assert.match(script, /status = 'cancelled'/);
   assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=1/);
   assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=0/);
   assert.match(script, /No runner pods remain/);

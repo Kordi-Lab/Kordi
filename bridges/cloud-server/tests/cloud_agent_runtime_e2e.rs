@@ -986,6 +986,15 @@ async fn runner_canary_lease_only_claims_requested_run_id() {
     .await
     .unwrap();
     assert_eq!(older_status.0, "queued");
+
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_fallback_runs SET status = 'cancelled' WHERE run_id IN ($1, $2)",
+    )
+    .bind(&older_run_id)
+    .bind(&target_run_id)
+    .execute(&pool)
+    .await
+    .unwrap();
 }
 
 #[tokio::test]

@@ -19,6 +19,7 @@ sandbox_id="cas_live_fail_${suffix}"
 run_id="car_live_fail_${suffix}"
 session_id="session:direct-person:${owner}:${requester}"
 request_message_id="msg_live_fail_${suffix}"
+seeded_run="0"
 
 psql_exec() {
   kubectl -n "$namespace" exec -i "$postgres_pod" -- \
@@ -53,6 +54,9 @@ cleanup() {
   echo "[live-canary] restoring runner idle mode and scaling to 0"
   kubectl -n "$namespace" set env "deployment/${deployment}" KORDI_CLOUD_RUNNER_CANARY_IDLE=1 KORDI_CLOUD_RUNNER_CANARY_RUN_ID- >/dev/null 2>&1 || true
   kubectl -n "$namespace" scale "deployment/${deployment}" --replicas=0 >/dev/null 2>&1 || true
+  if [[ "${seeded_run:-0}" == "1" ]]; then
+    psql_scalar -c "UPDATE cloud_agent_fallback_runs SET status = 'cancelled', updated_at = to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') WHERE run_id = '${run_id}' AND status IN ('queued','leased','running')" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -116,7 +120,9 @@ SELECT :'run_id', 'live-canary:' || :'run_id', :'request_message_id', :'session_
 FROM now_text;
 SQL
 
-provider_snapshots="$(psql_scalar -v owner="$owner" -c "SELECT COUNT(*) FROM cloud_agent_provider_auth_snapshots WHERE account_id = :'owner' AND revoked_at IS NULL")"
+seeded_run="1"
+
+provider_snapshots="$(psql_scalar -c "SELECT COUNT(*) FROM cloud_agent_provider_auth_snapshots WHERE account_id = '${owner}' AND revoked_at IS NULL")"
 if [[ "$provider_snapshots" != "0" ]]; then
   echo "[live-canary] expected zero provider snapshots for ${owner}, got ${provider_snapshots}" >&2
   exit 1
@@ -134,10 +140,10 @@ error_code=""
 response_message_id=""
 artifact_count=""
 for _ in $(seq 1 60); do
-  result="$(psql_scalar -v run_id="$run_id" -c "
+  result="$(psql_scalar -c "
     SELECT status || '|' || COALESCE(error_code,'') || '|' || COALESCE(response_message_id,'') || '|' ||
-           (SELECT COUNT(*) FROM cloud_agent_run_artifacts WHERE run_id = :'run_id')::TEXT
-    FROM cloud_agent_fallback_runs WHERE run_id = :'run_id'")"
+           (SELECT COUNT(*) FROM cloud_agent_run_artifacts WHERE run_id = '${run_id}')::TEXT
+    FROM cloud_agent_fallback_runs WHERE run_id = '${run_id}'")"
   IFS='|' read -r status error_code response_message_id artifact_count <<<"$result"
   if [[ "$status" == "failed" ]]; then
     break
