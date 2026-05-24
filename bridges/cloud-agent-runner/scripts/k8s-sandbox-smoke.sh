@@ -51,6 +51,8 @@ YAML
 run_job() {
   local job="$1"
   local command="$2"
+  local indented_command
+  indented_command="$(printf '%s\n' "$command" | sed 's/^/            /')"
   kubectl -n "$namespace" delete job "$job" --ignore-not-found=true >/dev/null 2>&1 || true
   kubectl -n "$namespace" apply -f - <<YAML
 apiVersion: batch/v1
@@ -81,7 +83,10 @@ spec:
         - name: sandbox-op
           image: ${image}
           workingDir: /workspace
-          command: ["/bin/sh", "-lc", ${command@Q}]
+          command: ["/bin/sh", "-lc"]
+          args:
+            - |
+${indented_command}
           securityContext:
             allowPrivilegeEscalation: false
             privileged: false
@@ -108,11 +113,11 @@ assert_restricted_job() {
     echo "[smoke] job $job unexpectedly contains hostPath" >&2
     exit 1
   fi
-  if ! grep -q '"automountServiceAccountToken": false' <<<"$json"; then
+  if ! grep -Eq '"automountServiceAccountToken":[[:space:]]*false' <<<"$json"; then
     echo "[smoke] job $job is missing automountServiceAccountToken=false" >&2
     exit 1
   fi
-  if ! grep -q '"privileged": false' <<<"$json"; then
+  if ! grep -Eq '"privileged":[[:space:]]*false' <<<"$json"; then
     echo "[smoke] job $job is missing privileged=false" >&2
     exit 1
   fi
@@ -120,7 +125,7 @@ assert_restricted_job() {
 
 echo "[smoke] namespace=$namespace sandbox_id=$sandbox_id pvc=$pvc image=$image"
 apply_pvc >/dev/null
-kubectl -n "$namespace" wait --for=jsonpath='{.status.phase}'=Bound "pvc/${pvc}" --timeout=90s >/dev/null || true
+kubectl -n "$namespace" get "pvc/${pvc}" >/dev/null
 
 run_job "$write_job" "mkdir -p smoke && printf '$expected' > smoke/hello.txt"
 assert_restricted_job "$write_job"
@@ -133,7 +138,7 @@ if [[ "$read_output" != "$expected" ]]; then
   exit 1
 fi
 
-run_job "$bash_job" "test \$(cat smoke/hello.txt) = '$expected' && printf bash-ok"
+run_job "$bash_job" "[ \"\$(cat smoke/hello.txt)\" = '$expected' ] && printf bash-ok"
 assert_restricted_job "$bash_job"
 bash_output="$(kubectl -n "$namespace" logs "job/${bash_job}")"
 if [[ "$bash_output" != "bash-ok" ]]; then
