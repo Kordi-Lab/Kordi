@@ -6,6 +6,7 @@ pub struct K8sSandboxConfig {
     pub namespace: String,
     pub image: String,
     pub ttl_seconds_after_finished: i64,
+    pub storage_request: String,
 }
 
 impl Default for K8sSandboxConfig {
@@ -23,6 +24,10 @@ impl Default for K8sSandboxConfig {
                 .ok()
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(300),
+            storage_request: std::env::var("KORDI_CLOUD_SANDBOX_STORAGE_REQUEST")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "512Mi".to_string()),
         }
     }
 }
@@ -34,6 +39,28 @@ pub enum K8sSandboxOperation {
     WriteText { path: String, content: String },
     List { path: String },
     Bash { command: String },
+}
+
+pub fn build_sandbox_pvc_spec(config: &K8sSandboxConfig, sandbox_id: &str) -> Value {
+    let safe_id = safe_k8s_name(sandbox_id);
+    let pvc_name = format!("kordi-cloud-sandbox-{safe_id}");
+    json!({
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "metadata": {
+            "name": pvc_name,
+            "namespace": config.namespace,
+            "labels": workspace_labels(sandbox_id),
+        },
+        "spec": {
+            "accessModes": ["ReadWriteOnce"],
+            "resources": {
+                "requests": {
+                    "storage": config.storage_request,
+                }
+            }
+        }
+    })
 }
 
 pub fn build_sandbox_job_spec(
@@ -108,9 +135,20 @@ pub fn safe_k8s_name(value: &str) -> String {
     }
 }
 
+pub fn sandbox_pvc_name(sandbox_id: &str) -> String {
+    format!("kordi-cloud-sandbox-{}", safe_k8s_name(sandbox_id))
+}
+
 fn sandbox_labels(sandbox_id: &str) -> Value {
     json!({
         "app.kubernetes.io/name": "kordi-cloud-sandbox-executor",
+        "kordi.ai/sandbox-id": sandbox_id,
+    })
+}
+
+fn workspace_labels(sandbox_id: &str) -> Value {
+    json!({
+        "app.kubernetes.io/name": "kordi-cloud-sandbox-workspace",
         "kordi.ai/sandbox-id": sandbox_id,
     })
 }

@@ -7,12 +7,14 @@ use base64::Engine;
 mod job_spec;
 mod runner;
 
-pub use job_spec::{build_sandbox_job_spec, K8sSandboxConfig, K8sSandboxOperation};
+pub use job_spec::{
+    build_sandbox_job_spec, build_sandbox_pvc_spec, K8sSandboxConfig, K8sSandboxOperation,
+};
 pub use runner::{K8sCommandOutput, K8sCommandRunner, KubectlCommandRunner};
 
 use crate::sandbox_client::{BashOutput, SandboxBackend, SandboxClientError};
 use crate::tool_policy::{is_owner_local_path, RunnerToolBlockReason};
-use job_spec::safe_k8s_name;
+use job_spec::{safe_k8s_name, sandbox_pvc_name};
 
 pub struct K8sSandboxBackend {
     config: K8sSandboxConfig,
@@ -45,6 +47,12 @@ impl K8sSandboxBackend {
         &self,
         operation: K8sSandboxOperation,
     ) -> Result<K8sCommandOutput, SandboxClientError> {
+        let pvc_name = sandbox_pvc_name(&self.sandbox_id);
+        let pvc_spec = build_sandbox_pvc_spec(&self.config, &self.sandbox_id);
+        self.runner
+            .ensure_pvc(&self.config.namespace, &pvc_name, pvc_spec)
+            .await?;
+
         let job_name = format!("kordi-sandbox-{}", safe_k8s_name(&self.sandbox_id));
         let spec = build_sandbox_job_spec(&self.config, &self.sandbox_id, operation);
         self.runner

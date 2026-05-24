@@ -16,6 +16,13 @@ pub struct K8sCommandOutput {
 
 #[async_trait]
 pub trait K8sCommandRunner: Send + Sync {
+    async fn ensure_pvc(
+        &self,
+        namespace: &str,
+        pvc_name: &str,
+        pvc_spec: Value,
+    ) -> Result<(), SandboxClientError>;
+
     async fn run_json_job(
         &self,
         namespace: &str,
@@ -28,13 +35,22 @@ pub struct KubectlCommandRunner;
 
 #[async_trait]
 impl K8sCommandRunner for KubectlCommandRunner {
+    async fn ensure_pvc(
+        &self,
+        namespace: &str,
+        _pvc_name: &str,
+        pvc_spec: Value,
+    ) -> Result<(), SandboxClientError> {
+        kubectl_apply_manifest(namespace, &pvc_spec).await
+    }
+
     async fn run_json_job(
         &self,
         namespace: &str,
         job_name: &str,
         job_spec: Value,
     ) -> Result<K8sCommandOutput, SandboxClientError> {
-        kubectl_apply_job(namespace, &job_spec).await?;
+        kubectl_apply_manifest(namespace, &job_spec).await?;
         kubectl_wait_for_job(namespace, job_name).await?;
         let logs = kubectl_logs(namespace, job_name).await;
         let _ = kubectl_delete_job(namespace, job_name).await;
@@ -42,9 +58,12 @@ impl K8sCommandRunner for KubectlCommandRunner {
     }
 }
 
-async fn kubectl_apply_job(namespace: &str, job_spec: &Value) -> Result<(), SandboxClientError> {
+async fn kubectl_apply_manifest(
+    namespace: &str,
+    manifest: &Value,
+) -> Result<(), SandboxClientError> {
     let spec_bytes =
-        serde_json::to_vec(job_spec).map_err(|err| SandboxClientError::Process(err.to_string()))?;
+        serde_json::to_vec(manifest).map_err(|err| SandboxClientError::Process(err.to_string()))?;
     let mut apply = Command::new("kubectl")
         .args(["-n", namespace, "apply", "-f", "-"])
         .stdin(Stdio::piped())
