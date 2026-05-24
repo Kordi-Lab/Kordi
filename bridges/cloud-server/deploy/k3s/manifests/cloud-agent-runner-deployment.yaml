@@ -47,6 +47,14 @@ spec:
                   key: runner-token
             - name: KORDI_CLOUD_RUNNER_POLL_MS
               value: "2000"
+            # Enable after #507 manual K8s sandbox testing. Keep disabled until
+            # runner canary rollout is explicitly approved.
+            # - name: KORDI_CLOUD_SANDBOX_BACKEND
+            #   value: "k8s"
+            # - name: KORDI_CLOUD_SANDBOX_NAMESPACE
+            #   value: "kordi-cloud"
+            # - name: KORDI_CLOUD_SANDBOX_IMAGE
+            #   value: "alpine:3.20"
           resources:
             requests:
               cpu: "100m"
