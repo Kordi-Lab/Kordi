@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
-#[cfg(test)]
-use crate::client::CloudAgentRun;
-use crate::client::{CloudAgentRunClient, RunnerClientError};
+use crate::client::{CloudAgentRun, CloudAgentRunClient, RunnerClientError};
+use crate::k8s_sandbox::K8sSandboxBackend;
 use crate::model_loop::{run_model_loop, CloudModelProvider, OpenAiCompatibleProvider};
 use crate::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 
@@ -12,7 +11,36 @@ pub enum RunnerStepOutcome {
     Completed { run_id: String },
     FailedMissingProviderAuth { run_id: String },
     FailedProviderError { run_id: String },
+    FailedMissingSandbox { run_id: String },
     SkippedCancelled { run_id: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SandboxBackendMode {
+    Local,
+    K8s,
+}
+
+pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
+    match std::env::var("KORDI_CLOUD_SANDBOX_BACKEND") {
+        Ok(value) if value.trim().eq_ignore_ascii_case("k8s") => SandboxBackendMode::K8s,
+        _ => SandboxBackendMode::Local,
+    }
+}
+
+pub fn sandbox_backend_for_run(
+    run: &CloudAgentRun,
+    local_root: PathBuf,
+) -> Result<SandboxBackendHandle, &'static str> {
+    match sandbox_backend_mode_from_env() {
+        SandboxBackendMode::Local => Ok(std::sync::Arc::new(LocalSandboxBackend::new(local_root))),
+        SandboxBackendMode::K8s => {
+            let sandbox_id = run.sandbox_id.as_deref().ok_or("missing_sandbox")?;
+            Ok(std::sync::Arc::new(K8sSandboxBackend::from_env(
+                sandbox_id.to_string(),
+            )))
+        }
+    }
 }
 
 pub async fn process_one_run<C: CloudAgentRunClient + Sync>(
@@ -54,6 +82,29 @@ where
     }
 
     client.mark_running(&run.run_id).await?;
+    let sandbox = match sandbox_backend_for_run(&run, sandbox_root) {
+        Ok(sandbox) => sandbox,
+        Err("missing_sandbox") => {
+            client
+                .fail_run(
+                    &run.run_id,
+                    "missing_sandbox",
+                    "Cloud fallback cannot run because this leased run has no sandbox id.",
+                )
+                .await?;
+            return Ok(RunnerStepOutcome::FailedMissingSandbox { run_id: run.run_id });
+        }
+        Err(err) => {
+            client
+                .fail_run(
+                    &run.run_id,
+                    "sandbox_backend_error",
+                    &format!("Cloud fallback sandbox backend could not be selected: {err}"),
+                )
+                .await?;
+            return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
+        }
+    };
     let auth_material = match client.fetch_provider_auth(&run.run_id).await {
         Ok(auth_material) => auth_material,
         Err(err) => {
@@ -67,7 +118,6 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
-    let sandbox: SandboxBackendHandle = std::sync::Arc::new(LocalSandboxBackend::new(sandbox_root));
     let response_text = match run_model_loop(client, provider, &run, &sandbox, auth_material).await
     {
         Ok(response_text) => response_text,
@@ -230,6 +280,44 @@ mod tests {
             sandbox_id: Some("cas_test".to_string()),
             provider_auth_available,
         }
+    }
+
+    #[test]
+    fn sandbox_backend_selection_defaults_to_local() {
+        std::env::remove_var("KORDI_CLOUD_SANDBOX_BACKEND");
+        assert_eq!(sandbox_backend_mode_from_env(), SandboxBackendMode::Local);
+    }
+
+    #[tokio::test]
+    async fn k8s_backend_requires_sandbox_id() {
+        std::env::set_var("KORDI_CLOUD_SANDBOX_BACKEND", "k8s");
+        let client = FakeClient::with_run(CloudAgentRun {
+            sandbox_id: None,
+            ..leased_run("car_no_sandbox", true)
+        });
+        let provider = FakeModelProvider {
+            response: ModelProviderResponse::FinalText("unused".to_string()),
+        };
+
+        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome,
+            RunnerStepOutcome::FailedMissingSandbox {
+                run_id: "car_no_sandbox".to_string()
+            }
+        );
+        assert_eq!(
+            client.calls(),
+            vec![
+                "lease",
+                "running:car_no_sandbox",
+                "fail:car_no_sandbox:missing_sandbox"
+            ]
+        );
+        std::env::remove_var("KORDI_CLOUD_SANDBOX_BACKEND");
     }
 
     #[tokio::test]
