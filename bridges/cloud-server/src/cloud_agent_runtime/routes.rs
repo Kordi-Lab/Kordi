@@ -13,8 +13,9 @@ use crate::cloud_agent_runtime::artifacts::{
     export_run_artifact, ExportArtifactEnvelope, ExportArtifactRequest,
 };
 use crate::cloud_agent_runtime::provider_auth::{
-    current_snapshot, publish_snapshot, revoke_snapshot, CurrentProviderAuthSnapshotQuery,
-    CurrentProviderAuthSnapshotResponse, EnvProviderAuthCipher, PublishProviderAuthSnapshotRequest,
+    current_snapshot, provider_auth_for_run, publish_snapshot, revoke_snapshot,
+    CurrentProviderAuthSnapshotQuery, CurrentProviderAuthSnapshotResponse, EnvProviderAuthCipher,
+    PublishProviderAuthSnapshotRequest, RunnerProviderAuthMaterialEnvelope,
 };
 use crate::cloud_agent_runtime::runs::{
     claim_run, complete_run, fail_run, lease_next_run, mark_run_running,
@@ -56,6 +57,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(complete_runner_run),
         )
         .route("/v1/cloud/agent-runs/:run_id/fail", post(fail_runner_run))
+        .route(
+            "/v1/cloud/agent-runs/:run_id/provider-auth",
+            post(fetch_runner_provider_auth),
+        )
         .route(
             "/v1/cloud/agent-runs/:run_id/artifacts",
             post(export_runner_artifact),
@@ -232,6 +237,54 @@ async fn fail_runner_run(
             error_response(
                 "server_error",
                 "Could not fail run.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
+async fn fetch_runner_provider_auth(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(input): Json<RunnerRunRequest>,
+) -> Response {
+    if !runner_authorized(&headers) {
+        return runner_unauthorized();
+    }
+    let Some(runner_id) = input.runner_id() else {
+        return error_response(
+            "invalid_runner_request",
+            "runnerId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    let cipher = match EnvProviderAuthCipher::from_env() {
+        Ok(cipher) => cipher,
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] provider auth cipher unavailable: {err}");
+            return error_response(
+                "provider_auth_not_configured",
+                "Cloud provider-auth snapshots are not configured on this server.",
+                StatusCode::SERVICE_UNAVAILABLE,
+            );
+        }
+    };
+
+    match provider_auth_for_run(state.db_pool(), &cipher, &run_id, &runner_id).await {
+        Ok(Some(provider_auth)) => {
+            Json(RunnerProviderAuthMaterialEnvelope { provider_auth }).into_response()
+        }
+        Ok(None) => error_response(
+            "provider_auth_not_found",
+            "Cloud provider-auth snapshot was not found for this run.",
+            StatusCode::NOT_FOUND,
+        ),
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] fetch provider auth for run: {err}");
+            error_response(
+                "server_error",
+                "Could not load Cloud provider-auth material.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
         }

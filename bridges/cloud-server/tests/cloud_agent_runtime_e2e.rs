@@ -628,6 +628,197 @@ async fn provider_auth_snapshot_is_account_scoped() {
 }
 
 #[tokio::test]
+async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    std::env::set_var(
+        "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
+        "test-provider-auth-key-that-is-long-enough",
+    );
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "provider-material-owner", "Owner").await;
+    let requester = signup(&router, "provider-material-requester", "Requester").await;
+    accept_contacts(&router, &requester, &owner).await;
+
+    let snapshot = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots",
+            &owner.token,
+            json!({
+                "provider": "openai",
+                "authChoice": "default",
+                "payload": {
+                    "apiKey": "runner-secret",
+                    "baseUrl": "https://api.openai.com/v1",
+                    "model": "gpt-4.1-mini"
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(snapshot.status(), StatusCode::CREATED);
+    let snapshot_id = read_json(snapshot).await["snapshotId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_provider_material"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(claim.status(), StatusCode::OK);
+    let run_id = read_json(claim).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    cancel_other_queued_runs(&pool, &run_id).await;
+
+    let lease = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({ "runnerId": "runner-material" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(lease.status(), StatusCode::OK);
+
+    let user_token_response = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
+            &requester.token,
+            json!({ "runnerId": "runner-material" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(user_token_response.status(), StatusCode::UNAUTHORIZED);
+
+    let wrong_runner_response = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
+            "runner-test-token",
+            json!({ "runnerId": "runner-other" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(wrong_runner_response.status(), StatusCode::NOT_FOUND);
+
+    let provider_auth = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
+            "runner-test-token",
+            json!({ "runnerId": "runner-material" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(provider_auth.status(), StatusCode::OK);
+    let body = read_json(provider_auth).await;
+    assert_eq!(body["providerAuth"]["snapshotId"], snapshot_id);
+    assert_eq!(body["providerAuth"]["provider"], "openai");
+    assert_eq!(body["providerAuth"]["authChoice"], "default");
+    assert_eq!(body["providerAuth"]["payload"]["apiKey"], "runner-secret");
+    assert_eq!(
+        body["providerAuth"]["payload"]["baseUrl"],
+        "https://api.openai.com/v1"
+    );
+    assert_eq!(body["providerAuth"]["payload"]["model"], "gpt-4.1-mini");
+
+    let audit_count: (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*)::BIGINT FROM cloud_agent_provider_auth_snapshot_audit WHERE snapshot_id = $1 AND run_id = $2 AND action = 'used'",
+    )
+    .bind(&snapshot_id)
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(audit_count.0, 1);
+}
+
+#[tokio::test]
+async fn provider_auth_material_missing_snapshot_returns_not_found() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    std::env::set_var(
+        "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
+        "test-provider-auth-key-that-is-long-enough",
+    );
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "provider-material-missing-owner", "Owner").await;
+    let requester = signup(&router, "provider-material-missing-requester", "Requester").await;
+    accept_contacts(&router, &requester, &owner).await;
+
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_provider_material_missing"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(claim.status(), StatusCode::OK);
+    let run_id = read_json(claim).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    cancel_other_queued_runs(&pool, &run_id).await;
+
+    let lease = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({ "runnerId": "runner-material-missing" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(lease.status(), StatusCode::OK);
+
+    let missing_snapshot_response = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
+            "runner-test-token",
+            json!({ "runnerId": "runner-material-missing" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(missing_snapshot_response.status(), StatusCode::NOT_FOUND);
+    let body = read_json(missing_snapshot_response).await;
+    assert_eq!(body["errorCode"], "provider_auth_not_found");
+}
+
+#[tokio::test]
 async fn runner_leases_marks_running_and_completes_claimed_run() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
