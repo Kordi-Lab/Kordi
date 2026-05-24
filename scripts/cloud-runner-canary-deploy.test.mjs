@@ -46,6 +46,6 @@ test('runner canary script is explicit-confirmation gated and cleans up', () => 
   assert.match(script, /CONFIRM_KORDI_RUNNER_CANARY/);
   assert.match(script, /k8s-sandbox-smoke\.sh/);
   assert.match(script, /trap .*cleanup/);
-  assert.match(script, /scale deployment\/kordi-cloud-agent-runner --replicas=1/);
-  assert.match(script, /scale deployment\/kordi-cloud-agent-runner --replicas=0/);
+  assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=1/);
+  assert.match(script, /scale "deployment\/\$\{deployment\}" --replicas=0/);
 });
