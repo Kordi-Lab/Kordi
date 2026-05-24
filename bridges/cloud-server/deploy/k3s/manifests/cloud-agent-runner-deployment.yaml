@@ -1,10 +1,48 @@
-# Skeleton Cloud Agent Runner deployment for the kordi-cloud namespace.
-#
-# This service polls kordi-cloud-server for queued fallback runs. It uses the
-# same runner-token Secret as the server-side runner endpoints. In this slice it
-# executes the lifecycle skeleton only; sandbox/model/tool execution lands in
-# follow-up #494 slices.
-
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kordi-cloud-agent-runner
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-cloud-agent-runner
+    app.kubernetes.io/component: agent-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kordi-cloud-agent-runner
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-cloud-agent-runner
+    app.kubernetes.io/component: agent-runner
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kordi-cloud-agent-runner
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-cloud-agent-runner
+    app.kubernetes.io/component: agent-runner
+subjects:
+  - kind: ServiceAccount
+    name: kordi-cloud-agent-runner
+    namespace: kordi-cloud
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kordi-cloud-agent-runner
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,7 +52,7 @@ metadata:
     app.kubernetes.io/name: kordi-cloud-agent-runner
     app.kubernetes.io/component: agent-runner
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: kordi-cloud-agent-runner
@@ -29,6 +67,7 @@ spec:
         app.kubernetes.io/name: kordi-cloud-agent-runner
         app.kubernetes.io/component: agent-runner
     spec:
+      serviceAccountName: kordi-cloud-agent-runner
       containers:
         - name: runner
           image: kordi-cloud-agent-runner:dev
@@ -47,14 +86,12 @@ spec:
                   key: runner-token
             - name: KORDI_CLOUD_RUNNER_POLL_MS
               value: "2000"
-            # Enable after #507 manual K8s sandbox testing. Keep disabled until
-            # runner canary rollout is explicitly approved.
-            # - name: KORDI_CLOUD_SANDBOX_BACKEND
-            #   value: "k8s"
-            # - name: KORDI_CLOUD_SANDBOX_NAMESPACE
-            #   value: "kordi-cloud"
-            # - name: KORDI_CLOUD_SANDBOX_IMAGE
-            #   value: "alpine:3.20"
+            - name: KORDI_CLOUD_SANDBOX_BACKEND
+              value: "k8s"
+            - name: KORDI_CLOUD_SANDBOX_NAMESPACE
+              value: "kordi-cloud"
+            - name: KORDI_CLOUD_SANDBOX_IMAGE
+              value: "alpine:3.20"
           resources:
             requests:
               cpu: "100m"
