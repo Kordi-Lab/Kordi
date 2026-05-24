@@ -104,6 +104,26 @@ mod tests {
             Ok(())
         }
 
+        async fn fetch_provider_auth(
+            &self,
+            run_id: &str,
+        ) -> Result<crate::client::ProviderAuthMaterial, RunnerClientError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("provider-auth:{run_id}"));
+            Ok(crate::client::ProviderAuthMaterial {
+                snapshot_id: "snap_fake".to_string(),
+                provider: "openai".to_string(),
+                auth_choice: "default".to_string(),
+                payload: serde_json::json!({
+                    "apiKey": "fake-key",
+                    "baseUrl": "https://api.openai.com/v1",
+                    "model": "gpt-4.1-mini"
+                }),
+            })
+        }
+
         async fn export_artifact(
             &self,
             run_id: &str,

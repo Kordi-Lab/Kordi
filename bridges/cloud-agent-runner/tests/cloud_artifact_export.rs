@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use kordi_cloud_agent_runner::artifacts::export_sandbox_file;
 use kordi_cloud_agent_runner::client::{
     ArtifactExportInput, ArtifactExportResponse, CloudAgentRun, CloudAgentRunClient,
-    RunnerClientError,
+    ProviderAuthMaterial, RunnerClientError,
 };
 use kordi_cloud_agent_runner::sandbox_client::LocalSandboxBackend;
 use std::sync::{Arc, Mutex};
@@ -37,6 +37,22 @@ impl CloudAgentRunClient for RecordingClient {
         _message: &str,
     ) -> Result<(), RunnerClientError> {
         Ok(())
+    }
+
+    async fn fetch_provider_auth(
+        &self,
+        _run_id: &str,
+    ) -> Result<ProviderAuthMaterial, RunnerClientError> {
+        Ok(ProviderAuthMaterial {
+            snapshot_id: "snap_test".to_string(),
+            provider: "openai".to_string(),
+            auth_choice: "default".to_string(),
+            payload: serde_json::json!({
+                "apiKey": "test-key",
+                "baseUrl": "https://api.openai.com/v1",
+                "model": "gpt-4.1-mini"
+            }),
+        })
     }
 
     async fn export_artifact(

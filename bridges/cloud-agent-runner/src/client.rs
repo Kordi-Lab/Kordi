@@ -36,6 +36,22 @@ struct RunEnvelope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderAuthMaterial {
+    #[serde(rename = "snapshotId")]
+    pub snapshot_id: String,
+    pub provider: String,
+    #[serde(rename = "authChoice")]
+    pub auth_choice: String,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderAuthEnvelope {
+    #[serde(rename = "providerAuth")]
+    provider_auth: ProviderAuthMaterial,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactExportInput {
     #[serde(rename = "runnerId")]
     pub runner_id: String,
@@ -93,6 +109,11 @@ pub trait CloudAgentRunClient {
         error_code: &str,
         message: &str,
     ) -> Result<(), RunnerClientError>;
+
+    async fn fetch_provider_auth(
+        &self,
+        run_id: &str,
+    ) -> Result<ProviderAuthMaterial, RunnerClientError>;
 
     async fn export_artifact(
         &self,
@@ -202,6 +223,19 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             .await?;
         let _ = envelope.run;
         Ok(())
+    }
+
+    async fn fetch_provider_auth(
+        &self,
+        run_id: &str,
+    ) -> Result<ProviderAuthMaterial, RunnerClientError> {
+        let envelope: ProviderAuthEnvelope = self
+            .post_json(
+                &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
+                serde_json::json!({ "runnerId": self.runner_id }),
+            )
+            .await?;
+        Ok(envelope.provider_auth)
     }
 
     async fn export_artifact(
