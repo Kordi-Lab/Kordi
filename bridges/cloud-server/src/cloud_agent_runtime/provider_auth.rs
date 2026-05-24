@@ -150,6 +150,13 @@ pub struct RunnerProviderAuthMaterial {
     pub payload: Value,
 }
 
+#[derive(Debug)]
+pub enum ProviderAuthForRunResult {
+    Found(RunnerProviderAuthMaterial),
+    RunNotFound,
+    ProviderAuthNotFound,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CurrentProviderAuthSnapshotQuery {
     pub provider: Option<String>,
@@ -283,7 +290,7 @@ pub async fn provider_auth_for_run(
     cipher: &dyn ProviderAuthCipher,
     run_id: &str,
     runner_id: &str,
-) -> Result<Option<RunnerProviderAuthMaterial>, sqlx_core::Error> {
+) -> Result<ProviderAuthForRunResult, sqlx_core::Error> {
     let run: Option<(String,)> = query_as(
         "SELECT owner_account_id FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
@@ -293,7 +300,7 @@ pub async fn provider_auth_for_run(
     .fetch_optional(pool)
     .await?;
     let Some((owner_account_id,)) = run else {
-        return Ok(None);
+        return Ok(ProviderAuthForRunResult::RunNotFound);
     };
 
     let row: Option<(String, String, String, Vec<u8>)> = query_as(
@@ -306,7 +313,7 @@ pub async fn provider_auth_for_run(
     .fetch_optional(pool)
     .await?;
     let Some((snapshot_id, provider, auth_choice, encrypted_payload)) = row else {
-        return Ok(None);
+        return Ok(ProviderAuthForRunResult::ProviderAuthNotFound);
     };
 
     let plaintext = cipher
@@ -316,12 +323,14 @@ pub async fn provider_auth_for_run(
         .map_err(|err| sqlx_core::Error::Decode(Box::new(err)))?;
     record_snapshot_used(pool, &snapshot_id, &owner_account_id, Some(run_id)).await?;
 
-    Ok(Some(RunnerProviderAuthMaterial {
-        snapshot_id,
-        provider,
-        auth_choice,
-        payload,
-    }))
+    Ok(ProviderAuthForRunResult::Found(
+        RunnerProviderAuthMaterial {
+            snapshot_id,
+            provider,
+            auth_choice,
+            payload,
+        },
+    ))
 }
 
 pub async fn record_snapshot_used(

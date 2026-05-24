@@ -721,6 +721,8 @@ async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
         .await
         .unwrap();
     assert_eq!(wrong_runner_response.status(), StatusCode::NOT_FOUND);
+    let wrong_runner_body = read_json(wrong_runner_response).await;
+    assert_eq!(wrong_runner_body["errorCode"], "agent_run_not_found");
 
     let provider_auth = router
         .clone()

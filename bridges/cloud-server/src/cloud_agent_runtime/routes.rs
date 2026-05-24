@@ -15,7 +15,8 @@ use crate::cloud_agent_runtime::artifacts::{
 use crate::cloud_agent_runtime::provider_auth::{
     current_snapshot, provider_auth_for_run, publish_snapshot, revoke_snapshot,
     CurrentProviderAuthSnapshotQuery, CurrentProviderAuthSnapshotResponse, EnvProviderAuthCipher,
-    PublishProviderAuthSnapshotRequest, RunnerProviderAuthMaterialEnvelope,
+    ProviderAuthForRunResult, PublishProviderAuthSnapshotRequest,
+    RunnerProviderAuthMaterialEnvelope,
 };
 use crate::cloud_agent_runtime::runs::{
     claim_run, complete_run, fail_run, lease_next_run, mark_run_running,
@@ -272,10 +273,15 @@ async fn fetch_runner_provider_auth(
     };
 
     match provider_auth_for_run(state.db_pool(), &cipher, &run_id, &runner_id).await {
-        Ok(Some(provider_auth)) => {
+        Ok(ProviderAuthForRunResult::Found(provider_auth)) => {
             Json(RunnerProviderAuthMaterialEnvelope { provider_auth }).into_response()
         }
-        Ok(None) => error_response(
+        Ok(ProviderAuthForRunResult::RunNotFound) => error_response(
+            "agent_run_not_found",
+            "Cloud agent run was not found for this runner.",
+            StatusCode::NOT_FOUND,
+        ),
+        Ok(ProviderAuthForRunResult::ProviderAuthNotFound) => error_response(
             "provider_auth_not_found",
             "Cloud provider-auth snapshot was not found for this run.",
             StatusCode::NOT_FOUND,
