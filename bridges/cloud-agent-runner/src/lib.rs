@@ -1,5 +1,6 @@
 pub mod artifacts;
 pub mod client;
+pub mod k8s_sandbox;
 pub mod model_loop;
 pub mod prompt;
 pub mod runtime;
