@@ -1,18 +1,39 @@
+use std::path::PathBuf;
+
 #[cfg(test)]
 use crate::client::CloudAgentRun;
 use crate::client::{CloudAgentRunClient, RunnerClientError};
+use crate::model_loop::{run_model_loop, CloudModelProvider, OpenAiCompatibleProvider};
+use crate::sandbox_client::LocalSandboxBackend;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunnerStepOutcome {
     NoRun,
     Completed { run_id: String },
     FailedMissingProviderAuth { run_id: String },
+    FailedProviderError { run_id: String },
     SkippedCancelled { run_id: String },
 }
 
 pub async fn process_one_run<C: CloudAgentRunClient + Sync>(
     client: &C,
 ) -> Result<RunnerStepOutcome, RunnerClientError> {
+    let provider = OpenAiCompatibleProvider::default();
+    let sandbox_root = std::env::var("KORDI_CLOUD_SANDBOX_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("kordi-cloud-runner-sandbox"));
+    process_one_run_with_provider(client, &provider, sandbox_root).await
+}
+
+pub async fn process_one_run_with_provider<C, P>(
+    client: &C,
+    provider: &P,
+    sandbox_root: PathBuf,
+) -> Result<RunnerStepOutcome, RunnerClientError>
+where
+    C: CloudAgentRunClient + Sync,
+    P: CloudModelProvider + Sync,
+{
     let Some(run) = client.lease_next_run().await? else {
         return Ok(RunnerStepOutcome::NoRun);
     };
@@ -33,25 +54,69 @@ pub async fn process_one_run<C: CloudAgentRunClient + Sync>(
     }
 
     client.mark_running(&run.run_id).await?;
-    client
-        .complete_run(
-            &run.run_id,
-            "Cloud agent runner skeleton completed this fallback run.",
-        )
-        .await?;
+    let auth_material = match client.fetch_provider_auth(&run.run_id).await {
+        Ok(auth_material) => auth_material,
+        Err(err) => {
+            client
+                .fail_run(
+                    &run.run_id,
+                    "model_provider_error",
+                    &format!("Cloud fallback could not load provider auth for this run: {err}"),
+                )
+                .await?;
+            return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
+        }
+    };
+    let sandbox = LocalSandboxBackend::new(sandbox_root);
+    let response_text = match run_model_loop(client, provider, &run, &sandbox, auth_material).await
+    {
+        Ok(response_text) => response_text,
+        Err(err) => {
+            client
+                .fail_run(
+                    &run.run_id,
+                    "model_provider_error",
+                    &format!("Cloud fallback model loop failed: {err}"),
+                )
+                .await?;
+            return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
+        }
+    };
+    client.complete_run(&run.run_id, &response_text).await?;
     Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_loop::{
+        CloudModelProvider, ModelLoopError, ModelProviderResponse, OpenAiProviderConfig,
+    };
     use async_trait::async_trait;
+    use serde_json::Value;
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Default)]
     struct FakeClient {
         run: Arc<Mutex<Option<CloudAgentRun>>>,
         calls: Arc<Mutex<Vec<String>>>,
+        fail_provider_auth_fetch: bool,
+    }
+
+    struct FakeModelProvider {
+        response: ModelProviderResponse,
+    }
+
+    #[async_trait]
+    impl CloudModelProvider for FakeModelProvider {
+        async fn next_response(
+            &self,
+            _auth: &OpenAiProviderConfig,
+            _messages: &[Value],
+            _tools: &[Value],
+        ) -> Result<ModelProviderResponse, ModelLoopError> {
+            Ok(self.response.clone())
+        }
     }
 
     impl FakeClient {
@@ -59,6 +124,7 @@ mod tests {
             Self {
                 run: Arc::new(Mutex::new(Some(run))),
                 calls: Arc::new(Mutex::new(Vec::new())),
+                fail_provider_auth_fetch: false,
             }
         }
 
@@ -82,12 +148,12 @@ mod tests {
         async fn complete_run(
             &self,
             run_id: &str,
-            _response_text: &str,
+            response_text: &str,
         ) -> Result<(), RunnerClientError> {
             self.calls
                 .lock()
                 .unwrap()
-                .push(format!("complete:{run_id}"));
+                .push(format!("complete:{run_id}:{response_text}"));
             Ok(())
         }
 
@@ -112,6 +178,11 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(format!("provider-auth:{run_id}"));
+            if self.fail_provider_auth_fetch {
+                return Err(RunnerClientError::Request(
+                    "provider-auth unavailable".to_string(),
+                ));
+            }
             Ok(crate::client::ProviderAuthMaterial {
                 snapshot_id: "snap_fake".to_string(),
                 provider: "openai".to_string(),
@@ -162,10 +233,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn leases_marks_running_and_completes_one_run() {
+    async fn uses_model_loop_text_instead_of_placeholder() {
         let client = FakeClient::with_run(leased_run("car_1", true));
+        let provider = FakeModelProvider {
+            response: ModelProviderResponse::FinalText("real model answer".to_string()),
+        };
 
-        let outcome = process_one_run(&client).await.unwrap();
+        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
+            .await
+            .unwrap();
 
         assert_eq!(
             outcome,
@@ -175,7 +251,41 @@ mod tests {
         );
         assert_eq!(
             client.calls(),
-            vec!["lease", "running:car_1", "complete:car_1"]
+            vec![
+                "lease",
+                "running:car_1",
+                "provider-auth:car_1",
+                "complete:car_1:real model answer",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn marks_failed_when_provider_auth_fetch_fails() {
+        let mut client = FakeClient::with_run(leased_run("car_fetch_fail", true));
+        client.fail_provider_auth_fetch = true;
+        let provider = FakeModelProvider {
+            response: ModelProviderResponse::FinalText("unused".to_string()),
+        };
+
+        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome,
+            RunnerStepOutcome::FailedProviderError {
+                run_id: "car_fetch_fail".to_string()
+            }
+        );
+        assert_eq!(
+            client.calls(),
+            vec![
+                "lease",
+                "running:car_fetch_fail",
+                "provider-auth:car_fetch_fail",
+                "fail:car_fetch_fail:model_provider_error",
+            ]
         );
     }
 
@@ -195,6 +305,13 @@ mod tests {
             client.calls(),
             vec!["lease", "fail:car_missing:missing_provider_auth"]
         );
+    }
+
+    fn temp_sandbox() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "kordi-runtime-model-loop-test-{}",
+            uuid::Uuid::new_v4().simple()
+        ))
     }
 
     #[tokio::test]
