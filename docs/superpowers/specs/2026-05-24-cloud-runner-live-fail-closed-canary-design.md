@@ -30,13 +30,13 @@ The script is intentionally operator-only:
 1. Requires `CONFIRM_KORDI_RUNNER_LIVE_CANARY=1`.
 2. Requires the runner Deployment to start at `replicas=0`.
 3. Requires the Deployment template to start with `KORDI_CLOUD_RUNNER_CANARY_IDLE=1`.
-4. Refuses to run if any pre-existing fallback runs are in `queued`, `leased`, or `running` status.
+4. Reports the number of pre-existing active fallback runs, but does not consume them.
 5. Seeds exactly one controlled canary run directly into Postgres using unique canary account/session/sandbox/run ids.
 6. Verifies the canary owner has no provider-auth snapshots.
-7. Temporarily sets `KORDI_CLOUD_RUNNER_CANARY_IDLE=0` and scales the runner to 1.
+7. Temporarily sets `KORDI_CLOUD_RUNNER_CANARY_IDLE=0` and `KORDI_CLOUD_RUNNER_CANARY_RUN_ID=<seeded run id>`, then scales the runner to 1.
 8. Waits until the canary run reaches `failed` with `missing_provider_auth`.
 9. Verifies no response message id and zero artifact rows for that run.
-10. Restores `KORDI_CLOUD_RUNNER_CANARY_IDLE=1`, scales runner to 0, and waits until no runner pods remain.
+10. Restores `KORDI_CLOUD_RUNNER_CANARY_IDLE=1`, removes `KORDI_CLOUD_RUNNER_CANARY_RUN_ID`, scales runner to 0, and waits until no runner pods remain.
 
 ### Why direct Postgres seeding
 
@@ -48,10 +48,17 @@ The goal is canarying the runner queue-consumer path, not retesting user signup/
 
 No provider-auth snapshot is inserted for the canary owner.
 
+### Scoped canary lease
+
+Add an optional `canaryRunId` field to the runner lease request. Normal runners omit this field and keep the existing oldest-queued lease behavior. Canary runners include `canaryRunId`, and the server only leases that exact queued run id.
+
+Add `KORDI_CLOUD_RUNNER_CANARY_RUN_ID` to the runner client. When present, the runner includes `canaryRunId` in `/v1/cloud/agent-runs/lease` requests. The canary script sets this env var only while the live canary is running and removes it during cleanup.
+
 ### Safety controls
 
-- The script refuses to run when active non-canary queued/leased/running runs exist.
-- The runner can process only the single seeded run because the active-run precheck is zero before insertion.
+- The script keeps the runner deployment at `replicas=0` before and after the test.
+- The runner can process only the single seeded run because the lease request is scoped by `canaryRunId`.
+- Pre-existing queued/leased/running runs may exist in the cluster but cannot be leased by the canary runner.
 - Missing provider auth is detected before `mark_running` and before sandbox/model execution.
 - The canary does not use model credentials and does not call external model APIs.
 - Cleanup runs through `trap` and restores idle mode/zero replicas on exit.
@@ -60,14 +67,15 @@ No provider-auth snapshot is inserted for the canary owner.
 
 Local tests:
 
-- Static script test verifies confirmation gate, idle-mode patch down/up, scale down, active-run precheck, and `missing_provider_auth` assertion.
+- Static script test verifies confirmation gate, canary run-id scoping, idle-mode patch down/up, scale down, and `missing_provider_auth` assertion.
 - Existing runner tests continue to prove missing provider auth fails before running/model calls.
 
 Remote K3s canary verifies:
 
 - preflight sees `replicas=0` and idle mode `1`
 - one canary run is inserted
-- runner polls after idle mode is set to `0`
+- runner polls after idle mode is set to `0` and `KORDI_CLOUD_RUNNER_CANARY_RUN_ID` is set
+- server leases only that canary run id
 - run fails with `missing_provider_auth`
 - `response_message_id` is empty
 - artifact count is `0`

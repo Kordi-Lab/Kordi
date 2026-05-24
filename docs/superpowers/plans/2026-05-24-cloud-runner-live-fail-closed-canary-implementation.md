@@ -4,7 +4,7 @@
 
 **Goal:** Add a manual K3s canary that lets the runner poll exactly one controlled run and verifies it fails closed with `missing_provider_auth`.
 
-**Architecture:** A Bash canary script seeds one queue row directly into Postgres, temporarily disables runner idle mode, scales the runner to one replica, polls Postgres for the expected failed status, then restores idle mode and zero replicas. Static Node tests verify script guardrails.
+**Architecture:** A Bash canary script seeds one queue row directly into Postgres, temporarily disables runner idle mode, sets a canary run-id lease filter, scales the runner to one replica, polls Postgres for the expected failed status, then restores idle mode and zero replicas. Static Node tests verify script guardrails.
 
 **Tech Stack:** Bash, kubectl, psql inside `postgres-0`, Kubernetes Deployment patching, Node built-in test runner.
 
@@ -32,6 +32,7 @@ test('live fail-closed canary script is gated and restores safe state', () => {
   assert.match(script, /CONFIRM_KORDI_RUNNER_LIVE_CANARY/);
   assert.match(script, /active fallback runs/);
   assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=0/);
+  assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_RUN_ID/);
   assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=1/);
   assert.match(script, /missing_provider_auth/);
   assert.match(script, /response_message_id/);
@@ -148,10 +149,7 @@ if [[ "$idle_value" != "1" ]]; then
 fi
 
 active_runs="$(psql_scalar -c "SELECT COUNT(*) FROM cloud_agent_fallback_runs WHERE status IN ('queued','leased','running')")"
-if [[ "$active_runs" != "0" ]]; then
-  echo "[live-canary] refusing to start: found ${active_runs} active fallback runs" >&2
-  exit 1
-fi
+echo "[live-canary] active fallback runs currently present: ${active_runs}; canary lease is scoped to ${run_id}"
 ```
 
 - [ ] **Step 5: Seed exactly one controlled run**
@@ -218,7 +216,7 @@ Add:
 
 ```bash
 echo "[live-canary] enabling runner polling for one controlled run"
-kubectl -n "$namespace" set env "deployment/${deployment}" KORDI_CLOUD_RUNNER_CANARY_IDLE=0
+kubectl -n "$namespace" set env "deployment/${deployment}" KORDI_CLOUD_RUNNER_CANARY_IDLE=0 KORDI_CLOUD_RUNNER_CANARY_RUN_ID="$run_id"
 kubectl -n "$namespace" scale "deployment/${deployment}" --replicas=1
 kubectl -n "$namespace" rollout status "deployment/${deployment}" --timeout=180s
 ```
