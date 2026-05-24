@@ -60,6 +60,12 @@ impl OpenAiProviderConfig {
             .unwrap_or_default()
             .trim()
             .to_string();
+        if api_key.is_empty() {
+            return Err(ModelLoopError::Provider(
+                "Cloud fallback provider token is missing from the provider-auth snapshot."
+                    .to_string(),
+            ));
+        }
         let base_url = payload
             .get("baseUrl")
             .and_then(Value::as_str)
@@ -454,6 +460,19 @@ fn parse_openai_chat_response(text: &str) -> Result<ModelProviderResponse, Model
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn openai_config_rejects_missing_provider_tokens() {
+        let material = ProviderAuthMaterial {
+            snapshot_id: "snap".to_string(),
+            provider: "openai".to_string(),
+            auth_choice: "default".to_string(),
+            payload: json!({ "baseUrl": "https://api.openai.com/v1" }),
+        };
+
+        let error = OpenAiProviderConfig::from_material(&material).unwrap_err();
+        assert!(error.to_string().contains("provider token"));
+    }
 
     #[test]
     fn openai_config_rejects_owner_local_provider_endpoints() {
