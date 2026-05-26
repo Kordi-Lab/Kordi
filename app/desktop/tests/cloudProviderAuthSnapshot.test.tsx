@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { CloudAuthClient } from '../src/features/cloud/authClient';
 import {
   buildCloudProviderAuthSnapshotInput,
+  cloudProviderAuthSnapshotRouteSignature,
   shouldPublishCloudProviderAuthSnapshot,
 } from '../src/features/cloud/providerAuthSnapshot';
 
@@ -59,6 +60,20 @@ test('buildCloudProviderAuthSnapshotInput returns null without explicit opt-in',
 
   assert.equal(input, null);
   assert.equal(shouldPublishCloudProviderAuthSnapshot(false, input), false);
+});
+
+test('cloud provider auth snapshot route signature changes only on account and auth route', () => {
+  assert.equal(cloudProviderAuthSnapshotRouteSignature('acct_111', {
+    model: 'gpt-5.5',
+    authProvider: 'openai',
+    authChoice: 'profile:codex',
+  }), 'acct_111|openai|profile:codex|gpt-5.5');
+
+  assert.equal(cloudProviderAuthSnapshotRouteSignature('acct_111', {
+    model: 'gpt-5.5',
+    authProvider: null,
+    authChoice: 'profile:codex',
+  }), null);
 });
 
 test('CloudAuthClient publishes current and revokes provider auth snapshots', async () => {

@@ -5,6 +5,7 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
   adoptCloudProfileIdentity,
   appendCanonicalMessage,
+  buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   fetchCanonicalSessionState,
@@ -67,6 +68,7 @@ import {
   cloudAgentRuntimeRouteForSession,
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
+import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
 import {
   cloudGroupAgentConversationId,
   cloudGroupAgentMentionResponseState,
@@ -1583,6 +1585,7 @@ export function useCloudBridgeState({
   const readReceiptRequestRef = useRef<string | null>(null);
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const claimedCloudFallbackRunKeysRef = useRef<Set<string>>(new Set());
+  const syncedProviderAuthSnapshotKeysRef = useRef<Set<string>>(new Set());
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
@@ -2955,6 +2958,32 @@ export function useCloudBridgeState({
       });
     }
   }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
+
+  useEffect(() => {
+    if (!account || !initialMessagesSettled) return;
+    const syncKey = cloudProviderAuthSnapshotRouteSignature(account.accountId, defaultCloudAgentRuntimeRoute);
+    if (!syncKey || syncedProviderAuthSnapshotKeysRef.current.has(syncKey)) return;
+    syncedProviderAuthSnapshotKeysRef.current.add(syncKey);
+    let cancelled = false;
+    void (async () => {
+      const session = await loadSession();
+      if (!session?.token || cancelled) return;
+      const input = await buildDesktopCloudProviderAuthSnapshotPayload({
+        provider: defaultCloudAgentRuntimeRoute?.authProvider ?? null,
+        authChoice: defaultCloudAgentRuntimeRoute?.authChoice ?? null,
+        model: defaultCloudAgentRuntimeRoute?.model ?? null,
+      });
+      if (!input || cancelled) return;
+      await client.publishProviderAuthSnapshot(session.token, input);
+    })().catch((error) => {
+      syncedProviderAuthSnapshotKeysRef.current.delete(syncKey);
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-provider-auth-sync] publish failed', error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, client, defaultCloudAgentRuntimeRoute, initialMessagesSettled]);
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;

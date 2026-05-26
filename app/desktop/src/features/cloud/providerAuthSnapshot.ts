@@ -9,6 +9,12 @@ export type BuildCloudProviderAuthSnapshotInputOptions = {
   authProfiles?: ProviderAuthProfiles | null;
 };
 
+export type CloudProviderAuthSnapshotRoute = {
+  model?: string | null;
+  authProvider?: string | null;
+  authChoice?: string | null;
+};
+
 function cleanText(value?: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -31,4 +37,16 @@ export function shouldPublishCloudProviderAuthSnapshot(
   input: CloudProviderAuthSnapshotInput | null,
 ): boolean {
   return Boolean(enabled && input);
+}
+
+export function cloudProviderAuthSnapshotRouteSignature(
+  accountId: string | null | undefined,
+  route: CloudProviderAuthSnapshotRoute | null | undefined,
+): string | null {
+  const account = cleanText(accountId);
+  const provider = cleanText(route?.authProvider)?.toLowerCase() ?? null;
+  const authChoice = cleanText(route?.authChoice);
+  const model = cleanText(route?.model);
+  if (!account || !provider) return null;
+  return [account, provider, authChoice ?? '', model ?? ''].join('|');
 }
