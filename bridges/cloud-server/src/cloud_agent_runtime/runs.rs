@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
@@ -347,6 +348,19 @@ pub async fn mark_run_running(
     }
 }
 
+pub fn encode_cloud_agent_response_body(request_message_id: &str, response_text: &str) -> String {
+    let envelope = serde_json::json!({
+        "kind": "agent-response",
+        "requestId": request_message_id,
+        "text": response_text,
+        "deliveryState": "complete",
+    });
+    format!(
+        "kordi-cloud-agent-response:{}",
+        URL_SAFE_NO_PAD.encode(envelope.to_string())
+    )
+}
+
 pub async fn complete_run(
     pool: &PgPool,
     run_id: &str,
@@ -357,8 +371,8 @@ pub async fn complete_run(
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let existing: Option<(String, String, String, String, Option<String>)> = query_as(
-        "SELECT owner_account_id, requester_account_id, session_id, status, response_message_id \
+    let existing: Option<(String, String, String, String, String, Option<String>)> = query_as(
+        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status, response_message_id \
          FROM cloud_agent_fallback_runs \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
     )
@@ -366,23 +380,31 @@ pub async fn complete_run(
     .bind(runner_id)
     .fetch_optional(pool)
     .await?;
-    let Some((owner_account_id, requester_account_id, session_id, _status, _message_id)) = existing
+    let Some((
+        owner_account_id,
+        requester_account_id,
+        session_id,
+        request_message_id,
+        _status,
+        _message_id,
+    )) = existing
     else {
         return Ok(None);
     };
+    let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
     let response_message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
         pool,
         run_id,
         &owner_account_id,
         &requester_account_id,
         &session_id,
-        trimmed,
+        &response_body,
     )
     .await?;
     crate::cloud_agent_runtime::artifacts::update_response_message_body(
         pool,
         &response_message_id,
-        trimmed,
+        &response_body,
     )
     .await?;
     let now = Utc::now().to_rfc3339();

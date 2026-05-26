@@ -12,6 +12,7 @@ use axum::body::{to_bytes, Body};
 use axum::extract::OriginalUri;
 use axum::http::{Method, Request, StatusCode};
 use axum::response::IntoResponse;
+use base64::Engine as _;
 use kordi_cloud_server::attachments::S3Config;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
 use kordi_cloud_server::events::EventBus;
@@ -909,10 +910,27 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
     assert_eq!(complete.status(), StatusCode::OK);
     let completed = read_json(complete).await;
     assert_eq!(completed["run"]["status"], "completed");
-    assert!(completed["run"]["responseMessageId"]
+    let response_message_id = completed["run"]["responseMessageId"]
         .as_str()
         .unwrap()
-        .starts_with("cloudrunmsg_"));
+        .to_string();
+    assert!(response_message_id.starts_with("cloudrunmsg_"));
+    let (body,): (String,) =
+        sqlx_core::query_as::query_as("SELECT body FROM cloud_messages WHERE message_id = $1")
+            .bind(&response_message_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(body.starts_with("kordi-cloud-agent-response:"));
+    let encoded = body.trim_start_matches("kordi-cloud-agent-response:");
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(encoded)
+        .unwrap();
+    let envelope: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+    assert_eq!(envelope["kind"], "agent-response");
+    assert_eq!(envelope["requestId"], "msg_runner_lifecycle");
+    assert_eq!(envelope["text"], "runner skeleton complete");
+    assert_eq!(envelope["deliveryState"], "complete");
 }
 
 #[tokio::test]
