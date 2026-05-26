@@ -146,17 +146,38 @@ function ToolTranscriptBlock({
   );
 }
 
-function ProcessingStatusCircle({ className }: { className?: string }) {
+function ThinkingStatusIndicator({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        'inline-flex h-3.5 w-3.5 shrink-0 rounded-full border-[1.5px] border-current/25 border-t-current text-white/75',
-        'animate-spin motion-reduce:animate-none',
+        'app-thinking-status-indicator inline-flex h-3.5 shrink-0 items-center justify-center gap-[3px] text-white/75',
         className,
       )}
       aria-hidden="true"
-    />
+    >
+      <span className="app-thinking-status-dot" />
+      <span className="app-thinking-status-dot" />
+      <span className="app-thinking-status-dot" />
+    </span>
   );
+}
+
+function LiveStatusIndicator({
+  status,
+  className,
+}: {
+  status: DesktopChatTurnSnapshot['status'];
+  className?: string;
+}) {
+  if (status === 'cancelling') {
+    return <Square className={cn('shrink-0 text-white/75', className)} aria-hidden="true" />;
+  }
+
+  if (status === 'retrying') {
+    return <LoaderCircle className={cn('shrink-0 animate-spin text-white/75 motion-reduce:animate-none', className)} aria-hidden="true" />;
+  }
+
+  return <ThinkingStatusIndicator className={className} />;
 }
 
 function toolDisplayConfig(toolName: string) {
@@ -831,7 +852,7 @@ function LiveChatTurnCardView({
           ) : null}
           {showLiveStatusHeader ? (
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
-              <ProcessingStatusCircle className="h-3.5 w-3.5" />
+              <LiveStatusIndicator status={visibleTurn.status} className="h-3.5" />
               <span className="text-slate-300">{liveStatusText}</span>
               {pendingBridgeAgentRequest ? (
                 <BridgeAgentStopButton
