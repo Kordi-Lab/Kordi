@@ -23,6 +23,7 @@ import type {
   CanonicalSessionState,
   OpenCanonicalSessionRequest,
   UpsertCanonicalIdentityRequest,
+  Contact,
   DesktopBridgeSessionParticipant,
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
@@ -32,6 +33,7 @@ import {
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
+  type CloudAgentRunClaimInput,
   type CloudMessage,
   type CloudPublicProfile,
   type CloudSessionForkSummary,
@@ -41,7 +43,9 @@ import {
 import {
   buildCloudDesktopBridgeState,
   cloudContactsToCanonicalIdentityRequests,
+  cloudDirectPersonSessionId,
   cloudGroupParticipantContacts,
+  cloudMessageMentionsContactAgent,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdForBridgeSend,
   isCloudBridgeHostId,
@@ -674,6 +678,49 @@ export function shouldRunLocalCloudAgentForCloudMessage({
     candidate.fromAccountId === account.accountId
     && parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
   ));
+}
+
+function cloudContactPeerAccountId(contact: Contact): string {
+  return contact.bridgePeerNodeId?.trim() || contact.id.replace(/^cloud:/, '').trim();
+}
+
+export function cloudFallbackRunClaimsForMessages({
+  account,
+  contacts,
+  messagesByPeer,
+}: {
+  account: CloudAccount;
+  contacts: Contact[];
+  messagesByPeer: Record<string, CloudMessage[]>;
+}): CloudAgentRunClaimInput[] {
+  const contactByPeerId = new Map(contacts.map((contact) => [cloudContactPeerAccountId(contact), contact]));
+  const claims: CloudAgentRunClaimInput[] = [];
+
+  for (const [peerId, peerMessages] of Object.entries(messagesByPeer)) {
+    const ownerAccountId = peerId.trim();
+    if (!ownerAccountId || ownerAccountId === account.accountId) continue;
+    const contact = contactByPeerId.get(ownerAccountId);
+    for (const message of peerMessages) {
+      if (message.fromAccountId !== account.accountId || message.toAccountId !== ownerAccountId) continue;
+      if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
+      if (!cloudMessageMentionsContactAgent(message, contact)) continue;
+      const alreadyTerminal = peerMessages.some((candidate) => (
+        parseCloudAgentCancel(candidate.body)?.requestId === message.messageId
+        || parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
+      ));
+      if (alreadyTerminal) continue;
+      claims.push({
+        requestMessageId: message.messageId,
+        sessionId: message.sessionId?.trim() || cloudDirectPersonSessionId(account.accountId, ownerAccountId),
+        ownerAccountId,
+        requesterAccountId: account.accountId,
+        prompt: promptTextForCloudAgentMention(message.body),
+        idempotencyKey: `cloud-agent-fallback:${message.messageId}:${ownerAccountId}`,
+      });
+    }
+  }
+
+  return claims;
 }
 
 function isCloudAgentProcessingPlaceholderText(text: string): boolean {
@@ -1535,6 +1582,7 @@ export function useCloudBridgeState({
   const cloudBridgeStateRef = useRef<DesktopBridgeState | null>(null);
   const readReceiptRequestRef = useRef<string | null>(null);
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
+  const claimedCloudFallbackRunKeysRef = useRef<Set<string>>(new Set());
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
@@ -2907,6 +2955,34 @@ export function useCloudBridgeState({
       });
     }
   }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
+
+  useEffect(() => {
+    if (!account || !initialMessagesSettled) return;
+    const claims = cloudFallbackRunClaimsForMessages({ account, contacts: contacts.contacts, messagesByPeer })
+      .filter((claim) => !claimedCloudFallbackRunKeysRef.current.has(claim.idempotencyKey));
+    if (claims.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const session = await loadSession();
+      if (!session?.token) return;
+      for (const claim of claims) {
+        if (cancelled) return;
+        claimedCloudFallbackRunKeysRef.current.add(claim.idempotencyKey);
+        await client.claimCloudAgentRun(session.token, claim).catch((error) => {
+          // owner_online means the local owner device should handle the request;
+          // other authorization/configuration errors should not be retried in a tight UI loop.
+          if (error?.code === 'network_error') {
+            claimedCloudFallbackRunKeysRef.current.delete(claim.idempotencyKey);
+          }
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-agent-fallback] claim failed', error);
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [account, client, contacts.contacts, initialMessagesSettled, messagesByPeer]);
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;

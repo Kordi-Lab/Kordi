@@ -5,7 +5,6 @@ import { test } from 'node:test';
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import {
   buildCloudDesktopBridgeState,
-  CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS,
   cloudBridgeConversationId,
   cloudDirectPersonSessionId,
   cloudContactsToCanonicalIdentityRequests,
@@ -36,6 +35,7 @@ import {
   cloudInitialMessagesSettledForPeerKey,
   cloudSessionForksByIdEqual,
   shouldRunLocalCloudAgentForCloudMessage,
+  cloudFallbackRunClaimsForMessages,
   cachedCloudMessagesByPeerHasMessages,
   loadCachedCloudMessagesByPeer,
   saveCachedCloudMessagesByPeer,
@@ -1781,7 +1781,7 @@ test('cloud outgoing self-agent mentions expose localhost-style local processing
   assert.equal(answeredState.conversations[0].messages[1].direction, 'outbound-response');
 });
 
-test('cloud outgoing remote-agent mentions become offline replies after timeout', () => {
+test('cloud outgoing remote-agent mentions stay reachable through Cloud fallback after timeout', () => {
   const request: CloudMessage = {
     ...message,
     messageId: 'msg_agent_request_offline',
@@ -1798,19 +1798,42 @@ test('cloud outgoing remote-agent mentions become offline replies after timeout'
     activeConversationId: 'bridge:cloud:acct_peer:person',
   });
 
-  assert.equal(state.conversations[0].awaitingReply, false);
-  assert.equal(state.conversations[0].outreach, null);
+  assert.equal(state.conversations[0].awaitingReply, true);
+  assert.equal(state.conversations[0].outreach?.targetKind, 'bridge-agent');
+  assert.equal(state.conversations[0].outreach?.bridgeRequestId, 'msg_agent_request_offline');
   const offlineMessage = state.conversations[0].messages.find((candidate) => candidate.id === 'cloud-agent-offline:msg_agent_request_offline');
-  assert.equal(offlineMessage?.deliveryState, 'failed');
-  assert.equal(offlineMessage?.text, "Peer Person and Peer Person's Kordi are offline.");
-  assert.equal(offlineMessage?.timestampMs, Date.parse(request.createdAt) + CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS);
+  assert.equal(offlineMessage, undefined);
+  const processingMessage = state.conversations[0].messages.find((candidate) => candidate.id === 'cloud-agent-processing:msg_agent_request_offline');
+  assert.equal(processingMessage?.deliveryState, 'processing');
 
   const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
-  const offlineTurn = view.messages.find((candidate) => candidate.role === 'external-agent')?.turn;
-  assert.equal(offlineTurn?.status, 'failed');
-  assert.equal(offlineTurn?.assistantText, '');
-  assert.equal(offlineTurn?.error, "Peer Person and Peer Person's Kordi are offline.");
-  assert.equal(offlineTurn?.pendingBridgeAgentRequest, null);
+  const pendingTurn = view.messages.find((candidate) => candidate.role === 'external-agent')?.turn;
+  assert.equal(pendingTurn?.status, 'processing');
+});
+
+test('cloud outgoing remote-agent mentions produce Cloud fallback run claims', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_agent_request_claim',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi what is todays weather',
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request] },
+  }), [{
+    requestMessageId: 'msg_agent_request_claim',
+    sessionId: cloudDirectPersonSessionId('acct_me', 'acct_peer'),
+    ownerAccountId: 'acct_peer',
+    requesterAccountId: 'acct_me',
+    prompt: 'what is todays weather',
+    idempotencyKey: 'cloud-agent-fallback:msg_agent_request_claim:acct_peer',
+  }]);
 });
 
 test('cloud outgoing remote-agent mentions expose localhost-style pending outreach UI', () => {
