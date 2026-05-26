@@ -821,14 +821,6 @@
   color: rgb(71 85 105) !important;
 }
 
-.bridge-app.theme-light .app-transcript-live-status .app-thinking-status-indicator {
-  color: rgb(59 130 246) !important;
-}
-
-.bridge-app.theme-light .app-transcript-live-status .app-thinking-status-dot {
-  color: inherit !important;
-}
-
 .bridge-app.theme-light .app-transcript-block-label,
 .bridge-app.theme-light .app-transcript-section-meta {
   color: rgb(100 116 139) !important;

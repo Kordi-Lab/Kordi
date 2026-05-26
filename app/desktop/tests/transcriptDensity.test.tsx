@@ -233,9 +233,6 @@ test('renders initial generic working status as starting until a real tool phase
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
   assert.match(markup, /Starting…/);
-  assert.match(markup, /app-thinking-status-indicator/);
-  assert.match(markup, /app-thinking-status-dot/);
-  assert.doesNotMatch(markup, /animate-spin/);
   assert.doesNotMatch(markup, /Planning…/);
   assert.doesNotMatch(markup, /Working…/);
 });
@@ -265,18 +262,6 @@ test('image-only human messages use compact frosted attachment padding', () => {
   assert.doesNotMatch(markup, /app-message-bubble-shape/);
   assert.doesNotMatch(markup, /app-message-footer/);
   assert.doesNotMatch(markup, /px-4 py-2\.5/);
-});
-
-test('styles agent pending status as thinking dots instead of a generic spinner', () => {
-  const shellCss = readDesktopShellCss();
-  const indicatorBlock = shellCss.match(/\.app-thinking-status-indicator \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const dotBlock = shellCss.match(/\.app-thinking-status-dot \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const reducedMotionBlock = shellCss.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.app-thinking-status-dot \{[\s\S]*?\n  \}\n\}/)?.[0] ?? '';
-
-  assert.match(indicatorBlock, /width:\s*1\.25rem/);
-  assert.match(dotBlock, /animation:\s*app-thinking-status-pulse/);
-  assert.doesNotMatch(dotBlock, /spin/);
-  assert.match(reducedMotionBlock, /animation:\s*none/);
 });
 
 test('renders failed own message delivery as a compact red exclamation', () => {
