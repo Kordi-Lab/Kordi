@@ -321,6 +321,7 @@ export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): s
 export type CloudAuthClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  requestTimeoutMs?: number;
 };
 
 type ServerErrorBody = { errorCode?: string; message?: string };
@@ -368,13 +369,17 @@ function buildError(status: number, body: unknown, fallbackMessage: string): Clo
   return new CloudAuthError(code, message, status);
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+
 export class CloudAuthClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestTimeoutMs: number;
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   private async send<TResponse>(
@@ -383,11 +388,23 @@ export class CloudAuthClient {
     fallbackMessage: string,
   ): Promise<TResponse> {
     let response: Response;
+    const timeoutController = init.signal ? null : new AbortController();
+    const timeout = timeoutController
+      ? setTimeout(() => timeoutController.abort(), this.requestTimeoutMs)
+      : null;
     try {
-      response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
+      response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        ...init,
+        signal: init.signal ?? timeoutController?.signal,
+      });
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Network request failed.';
+      const abortedByTimeout = timeoutController?.signal.aborted;
+      const message = abortedByTimeout
+        ? 'Cloud request timed out. Check your connection and try again.'
+        : caught instanceof Error ? caught.message : 'Network request failed.';
       throw new CloudAuthError('network_error', message, 0);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
     if (response.status === 204) {
       return undefined as TResponse;

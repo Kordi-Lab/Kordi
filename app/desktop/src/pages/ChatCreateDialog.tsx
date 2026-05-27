@@ -212,6 +212,9 @@ export function ChatCreateDialog({
   const selectedGroupContactIds = selectedPeople.map((option) => option.id);
   const defaultGroupName = groupDefaultName(selectedPeople.map((option) => option.label));
   const canSubmitGroup = canCreateGroup(selectedGroupContactIds);
+  const addContactSubtitle = onLookupContact
+    ? 'Send an approval request by Kordi account ID.'
+    : 'Send an approval request by Bridge node ID.';
 
   if (!isOpen) return null;
 
@@ -305,7 +308,7 @@ export function ChatCreateDialog({
     <DialogCard onClose={close} anchorRect={anchorRect}>
       <CreateDialogHeader
         title={mode === 'menu' ? 'Start a chat' : mode === 'person' ? 'Chat with contact' : mode === 'agent' ? 'Chat with agent' : mode === 'add-contact' ? 'Add contact' : 'Start group'}
-        subtitle={mode === 'group' ? 'Select at least 2 people. Agents are added later.' : mode === 'add-contact' ? 'Send an approval request by Bridge node ID.' : 'Choose who this conversation is with.'}
+        subtitle={mode === 'group' ? 'Select at least 2 people. Agents are added later.' : mode === 'add-contact' ? addContactSubtitle : 'Choose who this conversation is with.'}
         onClose={close}
       />
 

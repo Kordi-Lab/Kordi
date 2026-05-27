@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -82,6 +83,16 @@ test('memory fallback (no backend override, no Tauri) survives within a process'
   } finally {
     console.warn = originalWarn;
   }
+});
+
+test('cloud shell shares the authenticated session instead of bootstrapping nested copies', () => {
+  const appRoot = readFileSync(new URL('../src/KordiApp.tsx', import.meta.url), 'utf8');
+  const sidebarSlot = readFileSync(new URL('../src/app/assembleSidebarSlot.tsx', import.meta.url), 'utf8');
+  const mainContentSwitch = readFileSync(new URL('../src/app/MainContentSwitch.tsx', import.meta.url), 'utf8');
+
+  assert.match(appRoot, /<KordiAppShell cloudSession=\{cloudSessionOverride === undefined \? liveSession : undefined\}/);
+  assert.doesNotMatch(sidebarSlot, /useCloudSession\s*\(/);
+  assert.doesNotMatch(mainContentSwitch, /useCloudSession\s*\(/);
 });
 
 test('profile update websocket subjects target the signed-in account session', () => {

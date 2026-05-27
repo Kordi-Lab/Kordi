@@ -31,7 +31,7 @@ import {
 } from '@/features/cloud/cloudGroupMessages';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
-import { useCloudSession } from '@/features/cloud/useCloudSession';
+import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
@@ -125,10 +125,15 @@ import {
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
 
-export function useKordiAppModel() {
+export function useKordiAppModel({
+  cloudSessionOverride,
+}: {
+  cloudSessionOverride?: UseCloudSessionResult;
+} = {}) {
   const isNativeShell = isNativeDesktopShell();
   const kordiEdition = currentKordiEdition();
-  const cloudSession = useCloudSession({ enabled: kordiEdition === 'cloud' });
+  const liveCloudSession = useCloudSession({ enabled: kordiEdition === 'cloud' && cloudSessionOverride === undefined });
+  const cloudSession = cloudSessionOverride ?? liveCloudSession;
   const cloudPresence = useCloudPresence(kordiEdition === 'cloud' ? cloudSession.account : null);
   const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
@@ -2053,6 +2058,7 @@ export function useKordiAppModel() {
     windowWidth: windowSize.width,
     activeNav,
     setActiveNav,
+    cloudSession,
     activeConvId,
     setActiveConvId,
     activeProjectId,

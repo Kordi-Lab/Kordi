@@ -2,6 +2,7 @@ import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStat
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
+import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import type {
@@ -60,6 +61,7 @@ export type AssembleKordiShellSlotsArgs = {
   cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
   windowWidth: number;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
+  cloudSession: UseCloudSessionResult;
   activeConvId: string;
   setActiveConvId: Dispatch<SetStateAction<string>>;
   activeProjectId: string;
@@ -338,6 +340,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'sessionRailWidth'
   | 'activeNav'
   | 'setActiveNav'
+  | 'cloudSession'
   | 'chatConversations'
   | 'participantSpaces'
   | 'contactParticipantSpaces'
@@ -411,6 +414,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
 export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'
   | 'setActiveNav'
+  | 'cloudSession'
   | 'chatConversations'
   | 'handleCreateChatSession'
   | 'handleSelectChatSession'

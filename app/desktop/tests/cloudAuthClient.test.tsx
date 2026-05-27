@@ -117,6 +117,25 @@ test('login surfaces invalid_credentials on 401', async () => {
   );
 });
 
+test('requests abort with a CloudAuthError instead of leaving lookup UI stuck forever', async () => {
+  const fetchImpl: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => {
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    });
+  });
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl, requestTimeoutMs: 5 });
+
+  await assert.rejects(
+    () => client.getProfile('kordi_cs_abc', 'acct_1'),
+    (caught: unknown) => {
+      assert.ok(caught instanceof CloudAuthError);
+      assert.equal((caught as CloudAuthError).code, 'network_error');
+      assert.match((caught as CloudAuthError).message, /timed out/i);
+      return true;
+    },
+  );
+});
+
 test('logout sends Bearer token and treats 204 as success', async () => {
   const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });

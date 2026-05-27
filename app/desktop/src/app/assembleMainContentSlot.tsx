@@ -16,6 +16,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
   return (
     <MainContentSwitch
       activeNav={args.activeNav}
+      cloudSession={args.cloudSession}
       contactsPageProps={{
         filteredGroupedContacts: args.filteredGroupedContacts,
         addableContacts: args.addableContacts,

@@ -7,11 +7,12 @@ import { ChatsPage } from '@/pages/ChatsPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { CloudContactsAdapter } from '@/features/cloud/CloudContactsAdapter';
-import { useCloudSession } from '@/features/cloud/useCloudSession';
 import { currentKordiEdition } from '@/features/cloud/edition';
+import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 
 type MainContentSwitchProps = {
   activeNav: NavId;
+  cloudSession: UseCloudSessionResult;
   contactsPageProps: ComponentProps<typeof ContactsPage>;
   agentsPageProps: ComponentProps<typeof AgentsPage>;
   bridgePageProps: ComponentProps<typeof BridgeConfigPage>;
@@ -22,6 +23,7 @@ type MainContentSwitchProps = {
 
 export function MainContentSwitch({
   activeNav,
+  cloudSession,
   contactsPageProps,
   agentsPageProps,
   bridgePageProps,
@@ -31,7 +33,7 @@ export function MainContentSwitch({
 }: MainContentSwitchProps) {
   switch (activeNav) {
     case 'contacts':
-      return <ContactsRoute contactsPageProps={contactsPageProps} />;
+      return <ContactsRoute cloudSession={cloudSession} contactsPageProps={contactsPageProps} />;
     case 'agents':
       return <AgentsPage {...agentsPageProps} />;
     case 'bridge':
@@ -50,10 +52,14 @@ export function MainContentSwitch({
 // a pass-through; in cloud edition it overlays the cloud contact graph
 // (contacts + request inbox + send/accept/reject) on top of the
 // existing ContactsPage shell.
-function ContactsRoute({ contactsPageProps }: { contactsPageProps: ComponentProps<typeof ContactsPage> }) {
+function ContactsRoute({
+  cloudSession,
+  contactsPageProps,
+}: {
+  cloudSession: UseCloudSessionResult;
+  contactsPageProps: ComponentProps<typeof ContactsPage>;
+}) {
   const edition = currentKordiEdition();
-  // Hooks must run on every render; gate the cloud branch on the result.
-  const cloudSession = useCloudSession({ enabled: edition === 'cloud' });
   if (edition === 'cloud') {
     if (!cloudSession.account) {
       // Bootstrapping the cloud session — render an empty placeholder
