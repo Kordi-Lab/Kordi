@@ -1080,6 +1080,27 @@ async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() 
     let failed_body = read_json(failed).await;
     assert_eq!(failed_body["run"]["status"], "failed");
     assert_eq!(failed_body["run"]["errorCode"], "missing_provider_auth");
+    let response_message_id = failed_body["run"]["responseMessageId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(response_message_id.starts_with("cloudrunmsg_"));
+    let (body,): (String,) =
+        sqlx_core::query_as::query_as("SELECT body FROM cloud_messages WHERE message_id = $1")
+            .bind(&response_message_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(body.starts_with("kordi-cloud-agent-response:"));
+    let encoded = body.trim_start_matches("kordi-cloud-agent-response:");
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(encoded)
+        .unwrap();
+    let envelope: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+    assert_eq!(envelope["kind"], "agent-response");
+    assert_eq!(envelope["requestId"], "msg_runner_missing_provider");
+    assert_eq!(envelope["deliveryState"], "failed");
+    assert_eq!(envelope["text"], "No provider configured yet.");
 }
 
 #[tokio::test]

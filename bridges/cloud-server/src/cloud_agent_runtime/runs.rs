@@ -348,16 +348,41 @@ pub async fn mark_run_running(
     }
 }
 
-pub fn encode_cloud_agent_response_body(request_message_id: &str, response_text: &str) -> String {
+fn encode_cloud_agent_response_body_with_state(
+    request_message_id: &str,
+    response_text: &str,
+    delivery_state: &str,
+) -> String {
     let envelope = serde_json::json!({
         "kind": "agent-response",
         "requestId": request_message_id,
         "text": response_text,
-        "deliveryState": "complete",
+        "deliveryState": delivery_state,
     });
     format!(
         "kordi-cloud-agent-response:{}",
         URL_SAFE_NO_PAD.encode(envelope.to_string())
+    )
+}
+
+pub fn encode_cloud_agent_response_body(request_message_id: &str, response_text: &str) -> String {
+    encode_cloud_agent_response_body_with_state(request_message_id, response_text, "complete")
+}
+
+fn cloud_agent_failure_response_text(error_code: &str) -> &'static str {
+    match error_code {
+        "missing_provider_auth" => "No provider configured yet.",
+        "model_provider_error" => "Cloud fallback could not complete this request because the configured provider/model failed.",
+        "sandbox_error" => "Cloud fallback could not complete this request because the sandbox failed.",
+        _ => "Cloud fallback could not complete this request.",
+    }
+}
+
+fn encode_failed_cloud_agent_response_body(request_message_id: &str, error_code: &str) -> String {
+    encode_cloud_agent_response_body_with_state(
+        request_message_id,
+        cloud_agent_failure_response_text(error_code),
+        "failed",
     )
 }
 
@@ -434,9 +459,39 @@ pub async fn fail_run(
     error_code: &str,
     message: &str,
 ) -> Result<Option<RunnerRunResponse>, sqlx_core::Error> {
+    let existing: Option<(String, String, String, String, Option<String>)> = query_as(
+        "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
+         FROM cloud_agent_fallback_runs \
+         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
+    )
+    .bind(run_id)
+    .bind(runner_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((owner_account_id, requester_account_id, session_id, request_message_id, _message_id)) =
+        existing
+    else {
+        return Ok(None);
+    };
+    let response_body = encode_failed_cloud_agent_response_body(&request_message_id, error_code);
+    let response_message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
+        pool,
+        run_id,
+        &owner_account_id,
+        &requester_account_id,
+        &session_id,
+        &response_body,
+    )
+    .await?;
+    crate::cloud_agent_runtime::artifacts::update_response_message_body(
+        pool,
+        &response_message_id,
+        &response_body,
+    )
+    .await?;
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
-         SET status = 'failed', error_code = $3, error_message = $4, updated_at = $5, completed_at = $5 \
+         SET status = 'failed', response_message_id = $5, error_code = $3, error_message = $4, updated_at = $6, completed_at = $6 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
          RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, response_message_id, error_code, error_message",
     )
@@ -444,6 +499,7 @@ pub async fn fail_run(
     .bind(runner_id)
     .bind(error_code)
     .bind(message)
+    .bind(response_message_id)
     .bind(Utc::now().to_rfc3339())
     .fetch_optional(pool)
     .await?;
