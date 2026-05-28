@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   CloudAuthClient,
+  cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
@@ -102,7 +103,7 @@ export function useCloudConversation(
   // WebSocket subscription for live push of kordi.events.message.arrived.<self>.
   // Filter to messages whose other party is the active peer.
   useEffect(() => {
-    if (!account || !peerAccountId) return;
+    if (!account || !peerAccountId || !cloudRealtimeWebSocketEnabled()) return;
     let ws: WebSocket | null = null;
     let cancelled = false;
 

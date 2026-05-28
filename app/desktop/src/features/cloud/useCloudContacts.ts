@@ -10,6 +10,7 @@ import type { Contact, ContactRequest } from '@/kordi-app/types';
 
 import {
   CloudAuthClient,
+  cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
@@ -265,7 +266,7 @@ async function refreshCloudContactsStore(store: CloudContactsStore, client: Clou
 }
 
 function ensureCloudContactsWebSocket(store: CloudContactsStore, client: CloudAuthClient) {
-  if (store.ws || store.wsOpening || typeof WebSocket === 'undefined') return;
+  if (store.ws || store.wsOpening || typeof WebSocket === 'undefined' || !cloudRealtimeWebSocketEnabled()) return;
   store.wsOpening = true;
   void loadSession()
     .then((session) => {

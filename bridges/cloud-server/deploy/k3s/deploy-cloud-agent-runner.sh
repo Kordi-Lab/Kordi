@@ -3,8 +3,7 @@
 # deploy-cloud-agent-runner.sh — RUN LOCALLY, build runs on the VM.
 #
 # Builds/imports the Cloud Agent Runner image and applies the runner Deployment
-# at zero replicas. It intentionally does not leave a live runner consuming
-# queued fallback runs. Use k8s-runner-canary.sh for an explicit temporary scale-up.
+# with one active sandbox-capable worker so queued fallback runs are processed.
 
 set -euo pipefail
 
@@ -48,14 +47,17 @@ echo "[runner-deploy] applying runner manifest with image=${IMAGE}"
 gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --command "cd ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests && \
     sed 's|image: kordi-cloud-agent-runner:dev|image: ${IMAGE}|' cloud-agent-runner-deployment.yaml | kubectl apply -f -"
 
-echo "[runner-deploy] enforcing zero replicas"
+echo "[runner-deploy] enabling live queue processing"
 gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" \
-    --command "kubectl -n kordi-cloud scale deployment/kordi-cloud-agent-runner --replicas=0"
+    --command "kubectl -n kordi-cloud set env deployment/kordi-cloud-agent-runner KORDI_CLOUD_RUNNER_CANARY_IDLE=0 KORDI_CLOUD_RUNNER_CANARY_RUN_ID- && kubectl -n kordi-cloud scale deployment/kordi-cloud-agent-runner --replicas=1"
 
-echo "[runner-deploy] verifying deployment remains at zero replicas"
+echo "[runner-deploy] verifying deployment has one active runner"
 gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --command "set -e
+kubectl -n kordi-cloud rollout status deployment/kordi-cloud-agent-runner --timeout=180s
 replicas=\$(kubectl -n kordi-cloud get deployment kordi-cloud-agent-runner -o jsonpath='{.spec.replicas}')
-test \"\$replicas\" = \"0\"
+idle=\$(kubectl -n kordi-cloud get deployment kordi-cloud-agent-runner -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"KORDI_CLOUD_RUNNER_CANARY_IDLE\")].value}')
+test \"\$replicas\" = \"1\"
+test \"\$idle\" = \"0\"
 kubectl -n kordi-cloud get deployment kordi-cloud-agent-runner -o wide"
 
-echo "[runner-deploy] done. image=${IMAGE}; replicas=0"
+echo "[runner-deploy] done. image=${IMAGE}; replicas=1; idle=0"

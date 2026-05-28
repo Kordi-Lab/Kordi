@@ -52,7 +52,7 @@ metadata:
     app.kubernetes.io/name: kordi-cloud-agent-runner
     app.kubernetes.io/component: agent-runner
 spec:
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: kordi-cloud-agent-runner
@@ -87,7 +87,7 @@ spec:
             - name: KORDI_CLOUD_RUNNER_POLL_MS
               value: "2000"
             - name: KORDI_CLOUD_RUNNER_CANARY_IDLE
-              value: "1"
+              value: "0"
             - name: KORDI_CLOUD_SANDBOX_BACKEND
               value: "k8s"
             - name: KORDI_CLOUD_SANDBOX_NAMESPACE

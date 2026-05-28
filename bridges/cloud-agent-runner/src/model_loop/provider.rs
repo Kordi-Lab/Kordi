@@ -66,8 +66,8 @@ impl OpenAiProviderConfig {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .unwrap_or("gpt-4.1-mini")
-            .to_string();
+            .unwrap_or("gpt-4.1-mini");
+        let model = normalize_model_for_mode(model, api_mode).to_string();
         let account_id = payload
             .get("accountId")
             .and_then(Value::as_str)
@@ -100,6 +100,13 @@ impl OpenAiProviderConfig {
             max_retry_delay_ms: 2_000,
         }
     }
+}
+
+fn normalize_model_for_mode(model: &str, api_mode: OpenAiApiMode) -> &str {
+    if api_mode == OpenAiApiMode::CodexOAuth {
+        return model.strip_prefix("openai/").unwrap_or(model);
+    }
+    model
 }
 
 fn default_base_url_for_mode(provider: &str, api_mode: OpenAiApiMode) -> &'static str {
@@ -356,6 +363,25 @@ mod tests {
         assert_eq!(options.auth_mode, ProviderAuthMode::OAuth);
         assert_eq!(options.auth_account_id.as_deref(), Some("account-123"));
         assert_eq!(options.base_url, "https://chatgpt.com/backend-api");
+    }
+
+    #[test]
+    fn codex_oauth_snapshot_strips_provider_prefix_from_route_model() {
+        let material = ProviderAuthMaterial {
+            snapshot_id: "snap".to_string(),
+            provider: "openai-codex".to_string(),
+            auth_choice: "local-active-oauth".to_string(),
+            payload: json!({
+                "apiMode": "openai-codex-oauth",
+                "accessToken": "oauth-token",
+                "accountId": "account-123",
+                "model": "openai/gpt-5.5"
+            }),
+        };
+
+        let config = OpenAiProviderConfig::from_material(&material).unwrap();
+
+        assert_eq!(config.model, "gpt-5.5");
     }
 
     #[test]

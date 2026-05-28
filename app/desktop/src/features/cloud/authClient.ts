@@ -311,6 +311,15 @@ export function cloudApiBaseUrl(env?: { VITE_KORDI_CLOUD_API_BASE?: string }): s
   return DEFAULT_CLOUD_API_BASE_URL;
 }
 
+export function cloudRealtimeWebSocketEnabled(baseUrl = cloudApiBaseUrl()): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';
+  } catch {
+    return true;
+  }
+}
+
 export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): string {
   const url = new URL('/v1/cloud/ws', baseUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';

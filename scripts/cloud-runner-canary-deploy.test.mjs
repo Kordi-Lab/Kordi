@@ -13,27 +13,29 @@ function read(path) {
   return fs.readFileSync(path, 'utf8');
 }
 
-test('runner manifest is canary-only and namespace-scoped', () => {
+test('runner manifest keeps one sandbox-capable worker online', () => {
   const manifest = read(manifestPath);
-  assert.match(manifest, /replicas:\s*0/);
+  assert.match(manifest, /replicas:\s*1/);
   assert.match(manifest, /serviceAccountName:\s*kordi-cloud-agent-runner/);
   assert.match(manifest, /kind:\s*ServiceAccount/);
   assert.match(manifest, /kind:\s*Role/);
   assert.match(manifest, /kind:\s*RoleBinding/);
   assert.doesNotMatch(manifest, /kind:\s*ClusterRole/);
-  assert.match(manifest, /name:\s*KORDI_CLOUD_RUNNER_CANARY_IDLE\s+value:\s*"1"/s);
+  assert.match(manifest, /name:\s*KORDI_CLOUD_RUNNER_CANARY_IDLE\s+value:\s*"0"/s);
   assert.match(manifest, /name:\s*KORDI_CLOUD_SANDBOX_BACKEND\s+value:\s*"k8s"/s);
   assert.match(manifest, /name:\s*KORDI_CLOUD_SANDBOX_NAMESPACE\s+value:\s*"kordi-cloud"/s);
 });
 
-test('runner image deploy script keeps deployment scaled to zero', () => {
+test('runner image deploy script leaves one active runner online', () => {
   assert.ok(fs.existsSync(deployScriptPath));
   const script = read(deployScriptPath);
   assert.match(script, /cargo build --release -p kordi-cloud-agent-runner/);
   assert.match(script, /buildah bud/);
   assert.match(script, /k3s ctr images import/);
   assert.match(script, /cloud-agent-runner-deployment\.yaml/);
-  assert.match(script, /kubectl[^\n]+scale[^\n]+kordi-cloud-agent-runner[^\n]+--replicas=0/);
+  assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=0/);
+  assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_RUN_ID-/);
+  assert.match(script, /kubectl[^\n]+scale[^\n]+kordi-cloud-agent-runner[^\n]+--replicas=1/);
 });
 
 test('runner runtime Dockerfile copies runner binary', () => {

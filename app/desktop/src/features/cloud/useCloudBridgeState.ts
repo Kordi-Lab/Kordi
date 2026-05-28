@@ -31,6 +31,7 @@ import type {
 } from '@/kordi-app/types';
 import {
   CloudAuthClient,
+  cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
@@ -2821,6 +2822,7 @@ export function useCloudBridgeState({
     // established" / "network connection was lost" in a tight loop. The
     // loop in turn re-ran every cloud-side effect, including the canonical
     // command replay that throws and emits "[cloud-group] sync failed".
+    if (!cloudRealtimeWebSocketEnabled()) return;
     // Hold the WS open for the lifetime of the account; route message
     // handling through refs so we always call the latest callbacks without
     // re-binding the socket.

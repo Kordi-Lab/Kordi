@@ -5,6 +5,7 @@ import {
   CloudAuthClient,
   CloudAuthError,
   cloudApiBaseUrl,
+  cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudRequestTimeoutMs,
   parseCloudOAuthHashResult,
@@ -190,6 +191,12 @@ test('cloud auth client gives local SSH tunnels a longer default timeout', () =>
   assert.equal(defaultCloudRequestTimeoutMs('https://coordinar.io'), 15_000);
   assert.equal(defaultCloudRequestTimeoutMs('http://127.0.0.1:17081'), 45_000);
   assert.equal(defaultCloudRequestTimeoutMs('http://localhost:17081'), 45_000);
+});
+
+test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
+  assert.equal(cloudRealtimeWebSocketEnabled('https://coordinar.io'), true);
+  assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081'), false);
+  assert.equal(cloudRealtimeWebSocketEnabled('http://localhost:17081'), false);
 });
 
 test('cloud WebSocket URL derives from the cloud API origin', () => {
