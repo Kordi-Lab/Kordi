@@ -12,16 +12,17 @@
 //   2. Spawns the existing multi-instance launcher with the rest of
 //      the user-supplied args forwarded as-is.
 //
-// Cloud Edition defaults to the public cloud API, not a localhost Bridge.
-// Override the API origin via:
-//   VITE_KORDI_CLOUD_API_BASE=https://your-cloud-api.example.com
-//
-// For tunnel-based development only, opt in explicitly:
+// Cloud Edition defaults to the public cloud API for normal development.
+// For the remote-k3s test pipeline, opt in explicitly; the app will use the
+// local tunnel endpoint, while the server/data/runner stay on takotako:
 //   KORDI_CLOUD_USE_LOCAL_TUNNEL=1
-//   KORDI_CLOUD_SSH_TARGET=user@host
-//   KORDI_CLOUD_SSH_ZONE=zone
-//   KORDI_CLOUD_VM_PORT=17082
+//   KORDI_CLOUD_SSH_TARGET=shu_yang@takotako
+//   KORDI_CLOUD_SSH_ZONE=us-central1-c
+//   KORDI_CLOUD_VM_PORT=17088
 //   KORDI_CLOUD_LOCAL_PORT=17081
+//
+// Override the API origin manually via:
+//   VITE_KORDI_CLOUD_API_BASE=https://your-cloud-api.example.com
 
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync } from 'node:fs';
@@ -33,8 +34,9 @@ const appDir = dirname(__dirname);
 
 const SSH_TARGET = process.env.KORDI_CLOUD_SSH_TARGET ?? 'shu_yang@takotako';
 const SSH_ZONE = process.env.KORDI_CLOUD_SSH_ZONE ?? 'us-central1-c';
-const VM_PORT = process.env.KORDI_CLOUD_VM_PORT ?? '17082';
+const VM_PORT = process.env.KORDI_CLOUD_VM_PORT ?? '17088';
 const LOCAL_PORT = process.env.KORDI_CLOUD_LOCAL_PORT ?? '17081';
+const localTunnelEnabled = process.env.KORDI_CLOUD_USE_LOCAL_TUNNEL === '1';
 
 function tunnelHealthy() {
     const result = spawnSync('curl', [
@@ -60,9 +62,13 @@ function ensureTunnel() {
     const args = [
         'compute', 'ssh', SSH_TARGET,
         '--zone', SSH_ZONE,
+        '--ssh-flag', '-T',
+        '--ssh-flag', '-o ExitOnForwardFailure=yes',
+        '--ssh-flag', '-o ServerAliveInterval=15',
+        '--ssh-flag', '-o ServerAliveCountMax=3',
         '--ssh-flag', `-L ${LOCAL_PORT}:127.0.0.1:${VM_PORT}`,
         '--command',
-        `kubectl -n kordi-cloud port-forward svc/kordi-cloud-server ${VM_PORT}:17081`,
+        `kubectl -n kordi-cloud port-forward --address 127.0.0.1 svc/kordi-cloud-server ${VM_PORT}:17081`,
     ];
     console.log(`[kordi] Opening cloud tunnel: gcloud compute ssh ${SSH_TARGET} (log -> ${logFile})`);
     const child = spawn(cmd, args, {
@@ -86,12 +92,14 @@ function ensureTunnel() {
     process.exit(1);
 }
 
-if (process.env.KORDI_CLOUD_USE_LOCAL_TUNNEL === '1') {
+if (localTunnelEnabled) {
     ensureTunnel();
 }
 
 const DEFAULT_CLOUD_API_BASE = 'https://coordinar.io';
-const cloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE ?? DEFAULT_CLOUD_API_BASE;
+const cloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE ?? (
+    localTunnelEnabled ? `http://127.0.0.1:${LOCAL_PORT}` : DEFAULT_CLOUD_API_BASE
+);
 const forwardedArgs = process.argv.slice(2);
 const env = {
     ...process.env,
