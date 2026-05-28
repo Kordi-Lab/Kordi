@@ -62,11 +62,11 @@ function ensureTunnel() {
     const args = [
         'compute', 'ssh', SSH_TARGET,
         '--zone', SSH_ZONE,
-        '--ssh-flag', '-T',
-        '--ssh-flag', '-o ExitOnForwardFailure=yes',
-        '--ssh-flag', '-o ServerAliveInterval=15',
-        '--ssh-flag', '-o ServerAliveCountMax=3',
-        '--ssh-flag', `-L ${LOCAL_PORT}:127.0.0.1:${VM_PORT}`,
+        '--ssh-flag=-T',
+        '--ssh-flag=-o ExitOnForwardFailure=yes',
+        '--ssh-flag=-o ServerAliveInterval=15',
+        '--ssh-flag=-o ServerAliveCountMax=3',
+        `--ssh-flag=-L ${LOCAL_PORT}:127.0.0.1:${VM_PORT}`,
         '--command',
         `kubectl -n kordi-cloud port-forward --address 127.0.0.1 svc/kordi-cloud-server ${VM_PORT}:17081`,
     ];
