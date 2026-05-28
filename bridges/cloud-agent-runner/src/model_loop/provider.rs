@@ -1,5 +1,8 @@
 use async_trait::async_trait;
+use kordi_provider::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use tokio_util::sync::CancellationToken;
 
 use crate::client::ProviderAuthMaterial;
 
@@ -79,6 +82,24 @@ impl OpenAiProviderConfig {
             account_id,
         })
     }
+
+    fn request_options(&self) -> RequestOptions {
+        RequestOptions {
+            api_key: self.api_key.clone(),
+            auth_mode: match self.api_mode {
+                OpenAiApiMode::ChatCompletions => ProviderAuthMode::ApiKey,
+                OpenAiApiMode::CodexOAuth => ProviderAuthMode::OAuth,
+            },
+            auth_account_id: self.account_id.clone(),
+            base_url: self.base_url.clone(),
+            headers: HashMap::new(),
+            cancel: CancellationToken::new(),
+            retry_callback: None,
+            max_retries: 2,
+            retry_base_delay_ms: 250,
+            max_retry_delay_ms: 2_000,
+        }
+    }
 }
 
 fn default_base_url_for_mode(provider: &str, api_mode: OpenAiApiMode) -> &'static str {
@@ -127,51 +148,7 @@ fn is_owner_local_provider_endpoint(base_url: &str) -> bool {
 
 #[derive(Default)]
 pub struct OpenAiCompatibleProvider {
-    http: reqwest::Client,
-}
-
-impl OpenAiCompatibleProvider {
-    async fn next_codex_oauth_response(
-        &self,
-        auth: &OpenAiProviderConfig,
-        messages: &[Value],
-    ) -> Result<ModelProviderResponse, ModelLoopError> {
-        let response = self
-            .http
-            .post(codex_responses_url(&auth.base_url))
-            .bearer_auth(&auth.api_key)
-            .header("OpenAI-Beta", "responses=experimental")
-            .header("accept", "text/event-stream")
-            .header("content-type", "application/json")
-            .header("originator", "kordi")
-            .header("User-Agent", "kordi-cloud-agent-runner")
-            .header(
-                "chatgpt-account-id",
-                auth.account_id.as_deref().unwrap_or(""),
-            )
-            .json(&json!({
-                "model": auth.model,
-                "store": false,
-                "stream": true,
-                "instructions": codex_instructions(messages),
-                "input": codex_input(messages),
-                "text": {"verbosity": "low"},
-            }))
-            .send()
-            .await
-            .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
-        let status = response.status();
-        let text = response
-            .text()
-            .await
-            .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
-        if !status.is_success() {
-            return Err(ModelLoopError::Provider(format!(
-                "codex/responses returned {status}: {text}"
-            )));
-        }
-        parse_codex_oauth_sse_response(&text)
-    }
+    provider: kordi_provider::openai::OpenAiProvider,
 }
 
 #[async_trait]
@@ -182,50 +159,48 @@ impl CloudModelProvider for OpenAiCompatibleProvider {
         messages: &[Value],
         tools: &[Value],
     ) -> Result<ModelProviderResponse, ModelLoopError> {
-        match auth.api_mode {
-            OpenAiApiMode::ChatCompletions => {
-                let response = self
-                    .http
-                    .post(format!("{}/chat/completions", auth.base_url))
-                    .bearer_auth(&auth.api_key)
-                    .json(&json!({
-                        "model": auth.model,
-                        "messages": messages,
-                        "tools": tools,
-                    }))
-                    .send()
-                    .await
-                    .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
-                let status = response.status();
-                let text = response
-                    .text()
-                    .await
-                    .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
-                if !status.is_success() {
-                    return Err(ModelLoopError::Provider(format!(
-                        "chat/completions returned {status}: {text}"
-                    )));
-                }
-                parse_openai_chat_response(&text)
-            }
-            OpenAiApiMode::CodexOAuth => self.next_codex_oauth_response(auth, messages).await,
-        }
+        let request = completion_request_from_cloud_messages(auth, messages, tools);
+        let events = self
+            .provider
+            .complete(request, auth.request_options())
+            .await
+            .map_err(|err| ModelLoopError::Provider(err.to_string()))?;
+        model_response_from_stream_events(events)
     }
 }
 
-fn codex_responses_url(base_url: &str) -> String {
-    let raw = if base_url.trim().is_empty() || base_url.contains("api.openai.com") {
-        "https://chatgpt.com/backend-api".to_string()
-    } else {
-        base_url.trim_end_matches('/').to_string()
-    };
-    if raw.ends_with("/codex/responses") {
-        raw
-    } else if raw.ends_with("/codex") {
-        format!("{raw}/responses")
-    } else {
-        format!("{raw}/codex/responses")
+fn completion_request_from_cloud_messages(
+    auth: &OpenAiProviderConfig,
+    messages: &[Value],
+    tools: &[Value],
+) -> CompletionRequest {
+    let (system_prompt, messages) = split_system_messages(messages);
+    CompletionRequest {
+        system_prompt,
+        messages,
+        tools: tools.to_vec(),
+        extra_tool_schemas: Vec::new(),
+        model: auth.model.clone(),
+        max_tokens: None,
+        stream: true,
+        thinking: Some("default".to_string()),
     }
+}
+
+fn split_system_messages(messages: &[Value]) -> (String, Vec<Value>) {
+    let mut system_parts = Vec::new();
+    let mut non_system = Vec::new();
+    for message in messages {
+        if message.get("role").and_then(Value::as_str) == Some("system") {
+            let text = message_content_text(message);
+            if !text.trim().is_empty() {
+                system_parts.push(text);
+            }
+        } else {
+            non_system.push(message.clone());
+        }
+    }
+    (system_parts.join("\n"), non_system)
 }
 
 fn message_content_text(message: &Value) -> String {
@@ -241,120 +216,74 @@ fn message_content_text(message: &Value) -> String {
     }
 }
 
-fn codex_instructions(messages: &[Value]) -> String {
-    messages
-        .iter()
-        .filter(|message| message.get("role").and_then(Value::as_str) == Some("system"))
-        .map(message_content_text)
-        .filter(|text| !text.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+#[derive(Debug, Default)]
+struct PendingToolCall {
+    name: String,
+    arguments: String,
 }
 
-fn codex_input(messages: &[Value]) -> Vec<Value> {
-    messages
-        .iter()
-        .filter(|message| message.get("role").and_then(Value::as_str) != Some("system"))
-        .map(|message| {
-            let role = message
-                .get("role")
-                .and_then(Value::as_str)
-                .unwrap_or("user");
-            json!({
-                "role": if role == "assistant" { "assistant" } else { "user" },
-                "content": [{"type": "input_text", "text": message_content_text(message)}],
-            })
-        })
-        .collect()
-}
+fn model_response_from_stream_events(
+    events: Vec<StreamEvent>,
+) -> Result<ModelProviderResponse, ModelLoopError> {
+    let mut text = String::new();
+    let mut tool_order = Vec::new();
+    let mut tool_calls: HashMap<String, PendingToolCall> = HashMap::new();
 
-fn parse_codex_oauth_sse_response(text: &str) -> Result<ModelProviderResponse, ModelLoopError> {
-    let mut output = String::new();
-    for line in text.lines() {
-        let Some(data) = line.trim().strip_prefix("data: ") else {
-            continue;
-        };
-        if data == "[DONE]" {
-            break;
-        }
-        let event: Value = serde_json::from_str(data)
-            .map_err(|err| ModelLoopError::Provider(format!("invalid codex SSE JSON: {err}")))?;
-        match event.get("type").and_then(Value::as_str).unwrap_or("") {
-            "response.output_text.delta" => {
-                if let Some(delta) = event.get("delta").and_then(Value::as_str) {
-                    output.push_str(delta);
+    for event in events {
+        match event {
+            StreamEvent::TextDelta { text: delta } => text.push_str(&delta),
+            StreamEvent::ToolCallStart { id, name } => {
+                if !tool_calls.contains_key(&id) {
+                    tool_order.push(id.clone());
                 }
+                tool_calls.entry(id).or_default().name = name;
             }
-            "response.failed" | "error" => {
-                let message = event
-                    .get("message")
-                    .and_then(Value::as_str)
-                    .or_else(|| {
-                        event
-                            .get("error")
-                            .and_then(|error| error.get("message"))
-                            .and_then(Value::as_str)
-                    })
-                    .unwrap_or("Codex response failed");
-                return Err(ModelLoopError::Provider(message.to_string()));
+            StreamEvent::ToolCallDelta {
+                id,
+                arguments_delta,
+            } => {
+                if !tool_calls.contains_key(&id) {
+                    tool_order.push(id.clone());
+                }
+                tool_calls
+                    .entry(id)
+                    .or_default()
+                    .arguments
+                    .push_str(&arguments_delta);
             }
-            "response.completed" | "response.done" => break,
-            _ => {}
-        }
-    }
-    Ok(ModelProviderResponse::FinalText(output))
-}
-
-fn parse_openai_chat_response(text: &str) -> Result<ModelProviderResponse, ModelLoopError> {
-    let body: Value = serde_json::from_str(text)
-        .map_err(|err| ModelLoopError::Provider(format!("invalid chat response JSON: {err}")))?;
-    let message = body
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .and_then(|choice| choice.get("message"))
-        .ok_or_else(|| ModelLoopError::Provider("chat response missing message".to_string()))?;
-
-    if let Some(tool_calls) = message.get("tool_calls").and_then(Value::as_array) {
-        if !tool_calls.is_empty() {
-            let mut parsed = Vec::new();
-            for call in tool_calls {
-                let id = call
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("tool_call")
-                    .to_string();
-                let function = call.get("function").unwrap_or(&Value::Null);
-                let name = function
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        ModelLoopError::Provider("tool call missing function name".to_string())
-                    })?
-                    .to_string();
-                let raw_arguments = function
-                    .get("arguments")
-                    .and_then(Value::as_str)
-                    .unwrap_or("{}");
-                let arguments = serde_json::from_str(raw_arguments).map_err(|err| {
-                    ModelLoopError::Provider(format!("tool call arguments are not JSON: {err}"))
-                })?;
-                parsed.push(ModelToolCall {
-                    id,
-                    name,
-                    arguments,
-                });
-            }
-            return Ok(ModelProviderResponse::ToolCalls(parsed));
+            StreamEvent::ToolCallEnd { .. }
+            | StreamEvent::ThinkingDelta { .. }
+            | StreamEvent::Usage(_)
+            | StreamEvent::Done => {}
+            StreamEvent::ServerToolUseStart { .. }
+            | StreamEvent::ServerToolUseDelta { .. }
+            | StreamEvent::ServerToolUseEnd { .. }
+            | StreamEvent::ServerToolResult { .. } => {}
+            StreamEvent::Error { message } => return Err(ModelLoopError::Provider(message)),
         }
     }
 
-    let content = message
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    Ok(ModelProviderResponse::FinalText(content))
+    if tool_order.is_empty() {
+        return Ok(ModelProviderResponse::FinalText(text));
+    }
+
+    let mut parsed = Vec::new();
+    for id in tool_order {
+        let call = tool_calls.remove(&id).unwrap_or_default();
+        let arguments = if call.arguments.trim().is_empty() {
+            json!({})
+        } else {
+            serde_json::from_str(&call.arguments).map_err(|err| {
+                ModelLoopError::Provider(format!("tool call arguments are not JSON: {err}"))
+            })?
+        };
+        parsed.push(ModelToolCall {
+            id,
+            name: call.name,
+            arguments,
+        });
+    }
+    Ok(ModelProviderResponse::ToolCalls(parsed))
 }
 
 #[cfg(test)]
@@ -404,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_config_accepts_codex_oauth_material() {
+    fn openai_config_accepts_codex_oauth_material_and_preserves_model() {
         let material = ProviderAuthMaterial {
             snapshot_id: "snap".to_string(),
             provider: "openai-codex".to_string(),
@@ -413,7 +342,7 @@ mod tests {
                 "apiMode": "openai-codex-oauth",
                 "accessToken": "oauth-token",
                 "accountId": "account-123",
-                "model": "gpt-5"
+                "model": "gpt-5.5"
             }),
         };
 
@@ -421,26 +350,58 @@ mod tests {
         assert_eq!(config.api_mode, OpenAiApiMode::CodexOAuth);
         assert_eq!(config.api_key, "oauth-token");
         assert_eq!(config.account_id.as_deref(), Some("account-123"));
-        assert_eq!(config.model, "gpt-5");
+        assert_eq!(config.model, "gpt-5.5");
+
+        let options = config.request_options();
+        assert_eq!(options.auth_mode, ProviderAuthMode::OAuth);
+        assert_eq!(options.auth_account_id.as_deref(), Some("account-123"));
+        assert_eq!(options.base_url, "https://chatgpt.com/backend-api");
     }
 
     #[test]
-    fn parse_codex_oauth_sse_final_text() {
-        let text = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n\
-                    data: {\"type\":\"response.output_text.delta\",\"delta\":\" world\"}\n\n\
-                    data: {\"type\":\"response.completed\"}\n\n";
-        let response = parse_codex_oauth_sse_response(text).unwrap();
-        assert_eq!(
-            response,
-            ModelProviderResponse::FinalText("hello world".to_string())
+    fn completion_request_uses_shared_provider_shape_without_rewriting_model() {
+        let auth = OpenAiProviderConfig {
+            api_key: "token".to_string(),
+            base_url: "https://chatgpt.com/backend-api".to_string(),
+            model: "gpt-5.5".to_string(),
+            api_mode: OpenAiApiMode::CodexOAuth,
+            account_id: Some("acct".to_string()),
+        };
+        let request = completion_request_from_cloud_messages(
+            &auth,
+            &[
+                json!({"role":"system","content":"System A"}),
+                json!({"role":"user","content":"Hello"}),
+            ],
+            &[json!({"type":"function","function":{"name":"read"}})],
         );
+
+        assert_eq!(request.model, "gpt-5.5");
+        assert_eq!(request.system_prompt, "System A");
+        assert_eq!(
+            request.messages,
+            vec![json!({"role":"user","content":"Hello"})]
+        );
+        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.thinking.as_deref(), Some("default"));
     }
 
     #[test]
-    fn parse_openai_tool_calls() {
-        let response = parse_openai_chat_response(
-            r#"{"choices":[{"message":{"tool_calls":[{"id":"call_1","function":{"name":"read","arguments":"{\"path\":\"file.txt\"}"}}]}}]}"#,
-        )
+    fn stream_events_convert_to_tool_call_response() {
+        let response = model_response_from_stream_events(vec![
+            StreamEvent::ToolCallStart {
+                id: "call_1".to_string(),
+                name: "read".to_string(),
+            },
+            StreamEvent::ToolCallDelta {
+                id: "call_1".to_string(),
+                arguments_delta: "{\"path\":\"file.txt\"}".to_string(),
+            },
+            StreamEvent::ToolCallEnd {
+                id: "call_1".to_string(),
+            },
+            StreamEvent::Done,
+        ])
         .unwrap();
 
         assert_eq!(
@@ -450,6 +411,25 @@ mod tests {
                 name: "read".to_string(),
                 arguments: json!({"path":"file.txt"}),
             }])
+        );
+    }
+
+    #[test]
+    fn stream_events_convert_to_final_text() {
+        let response = model_response_from_stream_events(vec![
+            StreamEvent::TextDelta {
+                text: "hello".to_string(),
+            },
+            StreamEvent::TextDelta {
+                text: " world".to_string(),
+            },
+            StreamEvent::Done,
+        ])
+        .unwrap();
+
+        assert_eq!(
+            response,
+            ModelProviderResponse::FinalText("hello world".to_string())
         );
     }
 }

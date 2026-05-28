@@ -370,6 +370,19 @@ function buildError(status: number, body: unknown, fallbackMessage: string): Clo
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const LOCAL_TUNNEL_REQUEST_TIMEOUT_MS = 45_000;
+
+export function defaultCloudRequestTimeoutMs(baseUrl: string): number {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    if (host === '127.0.0.1' || host === 'localhost' || host === '::1') {
+      return LOCAL_TUNNEL_REQUEST_TIMEOUT_MS;
+    }
+  } catch {
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+  return DEFAULT_REQUEST_TIMEOUT_MS;
+}
 
 export class CloudAuthClient {
   private readonly baseUrl: string;
@@ -379,7 +392,7 @@ export class CloudAuthClient {
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
-    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
   }
 
   private async send<TResponse>(

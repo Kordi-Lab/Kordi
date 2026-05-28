@@ -6,6 +6,7 @@ import {
   CloudAuthError,
   cloudApiBaseUrl,
   cloudWebSocketUrl,
+  defaultCloudRequestTimeoutMs,
   parseCloudOAuthHashResult,
 } from '../src/features/cloud/authClient';
 
@@ -183,6 +184,12 @@ test('me returns the parsed account', async () => {
 test('cloud API defaults to the coordinar production origin, not localhost', () => {
   assert.equal(cloudApiBaseUrl({}), 'https://coordinar.io');
   assert.equal(cloudApiBaseUrl({ VITE_KORDI_CLOUD_API_BASE: ' http://127.0.0.1:17081/ ' }), 'http://127.0.0.1:17081');
+});
+
+test('cloud auth client gives local SSH tunnels a longer default timeout', () => {
+  assert.equal(defaultCloudRequestTimeoutMs('https://coordinar.io'), 15_000);
+  assert.equal(defaultCloudRequestTimeoutMs('http://127.0.0.1:17081'), 45_000);
+  assert.equal(defaultCloudRequestTimeoutMs('http://localhost:17081'), 45_000);
 });
 
 test('cloud WebSocket URL derives from the cloud API origin', () => {
