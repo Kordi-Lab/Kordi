@@ -64,6 +64,123 @@ pub async fn requester_can_target_owner(
     Ok(row.is_some())
 }
 
+const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
+const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES: i64 = 12;
+
+#[derive(Debug, Clone)]
+struct CloudFallbackHistoryMessage {
+    from_account_id: String,
+    body: String,
+}
+
+fn strip_leading_agent_mention(text: &str) -> String {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('@') {
+        return trimmed.to_string();
+    }
+    let Some((_, rest)) = trimmed.split_once(char::is_whitespace) else {
+        return trimmed.to_string();
+    };
+    rest.trim().to_string()
+}
+
+fn cloud_agent_response_text(body: &str) -> Option<String> {
+    let encoded = body.trim().strip_prefix(CLOUD_AGENT_RESPONSE_PREFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    value
+        .get("text")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToString::to_string)
+}
+
+fn fallback_prompt_history_line(
+    requester_account_id: &str,
+    owner_account_id: &str,
+    message: &CloudFallbackHistoryMessage,
+) -> Option<String> {
+    let (label, text) = if let Some(text) = cloud_agent_response_text(&message.body) {
+        ("Owner's Kordi", text)
+    } else if message.from_account_id == requester_account_id {
+        ("Requester", strip_leading_agent_mention(&message.body))
+    } else if message.from_account_id == owner_account_id {
+        ("Owner", message.body.trim().to_string())
+    } else {
+        return None;
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(format!("{label}: {text}"))
+}
+
+fn fallback_prompt_with_history(
+    requester_account_id: &str,
+    owner_account_id: &str,
+    current_prompt: &str,
+    history: &[CloudFallbackHistoryMessage],
+) -> String {
+    let current_prompt = current_prompt.trim();
+    let lines = history
+        .iter()
+        .filter_map(|message| {
+            fallback_prompt_history_line(requester_account_id, owner_account_id, message)
+        })
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return current_prompt.to_string();
+    }
+    format!(
+        "Conversation history:\n{}\n\nCurrent request:\n{}",
+        lines.join("\n"),
+        current_prompt
+    )
+}
+
+async fn fallback_prompt_for_claim(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> Result<String, sqlx_core::Error> {
+    let Some((request_created_at,)) = query_as::<_, (String,)>(
+        "SELECT created_at FROM cloud_messages WHERE message_id = $1 AND session_id = $2",
+    )
+    .bind(&input.request_message_id)
+    .bind(&input.session_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(input.prompt.trim().to_string());
+    };
+
+    let mut history = query_as::<_, (String, String)>(
+        "SELECT from_account_id, body FROM cloud_messages \
+         WHERE session_id = $1 AND created_at < $2 \
+         ORDER BY created_at DESC LIMIT $3",
+    )
+    .bind(&input.session_id)
+    .bind(&request_created_at)
+    .bind(MAX_CLOUD_FALLBACK_HISTORY_MESSAGES)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|(from_account_id, body)| CloudFallbackHistoryMessage {
+        from_account_id,
+        body,
+    })
+    .collect::<Vec<_>>();
+    history.reverse();
+
+    Ok(fallback_prompt_with_history(
+        &input.requester_account_id,
+        &input.owner_account_id,
+        &input.prompt,
+        &history,
+    ))
+}
+
 pub async fn claim_run(
     pool: &PgPool,
     input: &ClaimRunRequest,
@@ -94,6 +211,7 @@ pub async fn claim_run(
     )
     .await?;
     let run_id = format!("car_{}", Uuid::new_v4().simple());
+    let prompt = fallback_prompt_for_claim(pool, input).await?;
     let row: (String, String, Option<String>, String, String) = query_as(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
@@ -108,7 +226,7 @@ pub async fn claim_run(
     .bind(&input.session_id)
     .bind(&input.owner_account_id)
     .bind(&input.requester_account_id)
-    .bind(&input.prompt)
+    .bind(&prompt)
     .bind(&sandbox.sandbox_id)
     .bind(&now)
     .fetch_one(pool)
@@ -140,6 +258,32 @@ mod tests {
             canary_run_id: Some(" ".to_string()),
         };
         assert_eq!(empty.canary_run_id(), None);
+    }
+
+    #[test]
+    fn fallback_prompt_includes_prior_direct_chat_history() {
+        let prompt = super::fallback_prompt_with_history(
+            "acct_requester",
+            "acct_owner",
+            "check ahain",
+            &[
+                super::CloudFallbackHistoryMessage {
+                    from_account_id: "acct_requester".to_string(),
+                    body: "@111sKordi what is xuzhu city weather".to_string(),
+                },
+                super::CloudFallbackHistoryMessage {
+                    from_account_id: "acct_owner".to_string(),
+                    body: super::encode_cloud_agent_response_body(
+                        "msg_weather",
+                        "I think you mean Xuzhou city, China.",
+                    ),
+                },
+            ],
+        );
+
+        assert!(prompt.contains("Conversation history:\nRequester: what is xuzhu city weather"));
+        assert!(prompt.contains("Owner's Kordi: I think you mean Xuzhou city, China."));
+        assert!(prompt.ends_with("Current request:\ncheck ahain"));
     }
 
     #[test]
@@ -360,7 +504,8 @@ fn encode_cloud_agent_response_body_with_state(
         "deliveryState": delivery_state,
     });
     format!(
-        "kordi-cloud-agent-response:{}",
+        "{}{}",
+        CLOUD_AGENT_RESPONSE_PREFIX,
         URL_SAFE_NO_PAD.encode(envelope.to_string())
     )
 }

@@ -687,6 +687,65 @@ function cloudContactPeerAccountId(contact: Contact): string {
   return contact.bridgePeerNodeId?.trim() || contact.id.replace(/^cloud:/, '').trim();
 }
 
+const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES = 12;
+
+function cloudFallbackHistoryParticipantName(contact: Contact | undefined, ownerAccountId: string): string {
+  return contact?.name?.trim() || ownerAccountId.trim() || 'Peer';
+}
+
+function cloudFallbackHistoryLine({
+  account,
+  contact,
+  message,
+  ownerAccountId,
+}: {
+  account: CloudAccount;
+  contact: Contact | undefined;
+  message: CloudMessage;
+  ownerAccountId: string;
+}): string | null {
+  if (parseCloudGroupControl(message.body) || parseCloudAgentCancel(message.body)) return null;
+  const agentResponse = parseCloudAgentResponse(message.body);
+  const text = agentResponse?.text
+    ?? (message.fromAccountId === account.accountId && cloudMessageMentionsContactAgent(message, contact)
+      ? promptTextForCloudAgentMention(message.body)
+      : message.body);
+  const cleanText = text.trim();
+  if (!cleanText) return null;
+  const peerName = cloudFallbackHistoryParticipantName(contact, ownerAccountId);
+  const label = agentResponse
+    ? `${peerName}'s Kordi`
+    : message.fromAccountId === account.accountId
+      ? 'Me'
+      : peerName;
+  return `${label}: ${cleanText}`;
+}
+
+function cloudFallbackRunPromptForMessage({
+  account,
+  contact,
+  message,
+  ownerAccountId,
+  peerMessages,
+}: {
+  account: CloudAccount;
+  contact: Contact | undefined;
+  message: CloudMessage;
+  ownerAccountId: string;
+  peerMessages: CloudMessage[];
+}): string {
+  const currentPrompt = promptTextForCloudAgentMention(message.body);
+  const requestIndex = peerMessages.findIndex((candidate) => candidate.messageId === message.messageId);
+  const previousMessages = (requestIndex >= 0 ? peerMessages.slice(0, requestIndex) : peerMessages)
+    .filter((candidate) => candidate.messageId !== message.messageId);
+  const history = previousMessages
+    .map((candidate) => cloudFallbackHistoryLine({ account, contact, message: candidate, ownerAccountId }))
+    .filter((line): line is string => Boolean(line))
+    .slice(-MAX_CLOUD_FALLBACK_HISTORY_MESSAGES);
+  if (history.length === 0) return currentPrompt;
+  return `Conversation history:\n${history.join('\n')}\n\nCurrent request:\n${currentPrompt}`;
+}
+
 export function cloudFallbackRunClaimsForMessages({
   account,
   contacts,
@@ -717,7 +776,7 @@ export function cloudFallbackRunClaimsForMessages({
         sessionId: message.sessionId?.trim() || cloudDirectPersonSessionId(account.accountId, ownerAccountId),
         ownerAccountId,
         requesterAccountId: account.accountId,
-        prompt: promptTextForCloudAgentMention(message.body),
+        prompt: cloudFallbackRunPromptForMessage({ account, contact, message, ownerAccountId, peerMessages }),
         idempotencyKey: `cloud-agent-fallback:${message.messageId}:${ownerAccountId}`,
       });
     }

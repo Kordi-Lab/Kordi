@@ -1836,6 +1836,49 @@ test('cloud outgoing remote-agent mentions produce Cloud fallback run claims', (
   }]);
 });
 
+test('cloud outgoing remote-agent mention claims include prior direct chat history', () => {
+  const firstRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_weather_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi what is xuzhu city weather',
+    direction: 'outgoing',
+    createdAt: '2026-05-28T16:04:50.000Z',
+  };
+  const firstResponse: CloudMessage = {
+    ...message,
+    messageId: 'cloudrunmsg_weather_response',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: 'msg_weather_request', text: 'I think you mean Xuzhou city, China.' }),
+    direction: 'incoming',
+    createdAt: '2026-05-28T17:17:00.000Z',
+  };
+  const secondRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_check_again',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi check ahain',
+    direction: 'outgoing',
+    createdAt: '2026-05-28T22:30:07.000Z',
+  };
+
+  const claims = cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [firstRequest, firstResponse, secondRequest] },
+  });
+
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0].requestMessageId, 'msg_check_again');
+  assert.match(claims[0].prompt, /Conversation history:/);
+  assert.match(claims[0].prompt, /Me: what is xuzhu city weather/);
+  assert.match(claims[0].prompt, /Peer Person's Kordi: I think you mean Xuzhou city, China\./);
+  assert.match(claims[0].prompt, /Current request:\ncheck ahain$/);
+});
+
 test('cloud outgoing remote-agent mentions expose localhost-style pending outreach UI', () => {
   const request: CloudMessage = {
     ...message,
