@@ -56,6 +56,35 @@ test('local cloud self-agent no-provider errors become failed agent replies in c
   assert.match(String((request?.content as Record<string, unknown>).error), /No provider configured yet/);
 });
 
+test('cloud fallback runtime failures render as normal failed agent turns with concise copy', () => {
+  const identityById = new Map([
+    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['agent:me', { id: 'agent:me', kind: 'agent' as const, displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+  ]);
+  const mapped = mapCanonicalMessage({
+    id: 'msg:cloud-fallback-failed',
+    sessionId: 'session-cloud-self',
+    senderIdentityId: 'agent:me',
+    senderRole: 'owned-agent',
+    messageKind: 'agent-turn',
+    contentText: '',
+    content: { deliveryState: 'failed', error: 'Cloud fallback cannot run because the owner has not enabled a provider-auth snapshot.' },
+    parentMessageId: 'msg:user',
+    delegatedExchangeId: null,
+    status: 'failed',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    contentHash: null,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: 'cloud-group-agent:failed',
+  }, identityById, 'human:me');
+
+  assert.equal(mapped?.turn?.status, 'failed');
+  assert.equal(mapped?.turn?.assistantText, '');
+  assert.equal(mapped?.turn?.error, 'Provider auth is not synced for Cloud fallback yet. Open this device once to sync provider access.');
+});
+
 test('imported desktop no-provider agent messages render as failed red replies', () => {
   const identityById = new Map([
     ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],

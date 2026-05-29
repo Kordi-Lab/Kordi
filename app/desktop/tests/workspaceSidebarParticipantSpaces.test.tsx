@@ -802,6 +802,27 @@ test('ChatCreateDialog renders compact theme-aware choices beside the plus butto
   assert.match(markup, /Add contacts/);
 });
 
+test('ChatCreateDialog cloud lookup copy asks for an account id, not a Bridge node id', () => {
+  const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
+    isOpen: true,
+    initialMode: 'add-contact',
+    contacts: [],
+    agents: [],
+    onClose: () => {},
+    onStartPerson: () => {},
+    onStartAgent: () => {},
+    onCreateGroup: () => {},
+    onAddContact: () => {},
+    onLookupContact: async () => null,
+    addContactPlaceholder: 'Account ID, e.g. acct_…',
+  }));
+
+  assert.match(markup, /Add contact/);
+  assert.match(markup, /Kordi account ID/);
+  assert.match(markup, /Account ID, e.g. acct_…/);
+  assert.doesNotMatch(markup, /Bridge node ID/);
+});
+
 test('ChatCreateDialog add contact mode requests a private Bridge node id', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,

@@ -115,9 +115,28 @@ export async function writeDesktopWorkspaceTextFile(path: string, contents: stri
   return invokeDesktop<string>('desktop_write_workspace_text_file', { path, contents });
 }
 
+export type DesktopCloudProviderAuthSnapshotPayload = {
+  provider: string;
+  authChoice: string;
+  payload: Record<string, unknown>;
+};
+
 export async function fetchDesktopAuthState() {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopAuthState>('desktop_auth_state');
+}
+
+export async function buildDesktopCloudProviderAuthSnapshotPayload(input: {
+  provider?: string | null;
+  authChoice?: string | null;
+  model?: string | null;
+}) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<DesktopCloudProviderAuthSnapshotPayload>('desktop_cloud_provider_auth_snapshot_payload', {
+    provider: input.provider ?? null,
+    authChoice: input.authChoice ?? null,
+    model: input.model ?? null,
+  });
 }
 
 export async function saveDesktopApiKey(provider: string, key: string) {

@@ -44,6 +44,12 @@ export type CloudAuthErrorCode =
   | 'missing_avatar'
   | 'invalid_avatar'
   | 'invalid_session'
+  | 'invalid_provider_auth_snapshot'
+  | 'provider_auth_not_configured'
+  | 'provider_auth_snapshot_not_found'
+  | 'requester_mismatch'
+  | 'agent_not_available'
+  | 'owner_online'
   | 'rate_limited'
   | 'account_missing'
   | 'invalid_account_id'
@@ -244,6 +250,43 @@ export type CloudPresenceContactsResponse = {
   accounts: CloudPresenceAccount[];
 };
 
+export type CloudProviderAuthSnapshotInput = {
+  provider: string;
+  authChoice: string;
+  payload: unknown;
+};
+
+export type CloudProviderAuthSnapshot = {
+  snapshotId: string;
+  provider: string;
+  authChoice: string;
+  createdAt: string;
+  revokedAt: string | null;
+};
+
+export type CloudAgentRunClaimInput = {
+  requestMessageId: string;
+  sessionId: string;
+  ownerAccountId: string;
+  requesterAccountId: string;
+  prompt: string;
+  idempotencyKey: string;
+};
+
+export type CloudAgentRunStatus = 'queued' | 'leased' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+
+export type CloudAgentRun = {
+  runId: string;
+  status: CloudAgentRunStatus;
+  sandboxId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CloudAgentRunLookup = {
+  run: CloudAgentRun | null;
+};
+
 export class CloudAuthError extends Error {
   readonly code: CloudAuthErrorCode;
   readonly status: number;
@@ -272,6 +315,15 @@ export function cloudApiBaseUrl(env?: { VITE_KORDI_CLOUD_API_BASE?: string }): s
   return DEFAULT_CLOUD_API_BASE_URL;
 }
 
+export function cloudRealtimeWebSocketEnabled(baseUrl = cloudApiBaseUrl()): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';
+  } catch {
+    return true;
+  }
+}
+
 export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): string {
   const url = new URL('/v1/cloud/ws', baseUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -282,6 +334,7 @@ export function cloudWebSocketUrl(token: string, baseUrl = cloudApiBaseUrl()): s
 export type CloudAuthClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  requestTimeoutMs?: number;
 };
 
 type ServerErrorBody = { errorCode?: string; message?: string };
@@ -295,6 +348,12 @@ function isErrorCode(value: unknown): value is CloudAuthErrorCode {
     value === 'missing_avatar' ||
     value === 'invalid_avatar' ||
     value === 'invalid_session' ||
+    value === 'invalid_provider_auth_snapshot' ||
+    value === 'provider_auth_not_configured' ||
+    value === 'provider_auth_snapshot_not_found' ||
+    value === 'requester_mismatch' ||
+    value === 'agent_not_available' ||
+    value === 'owner_online' ||
     value === 'rate_limited' ||
     value === 'account_missing' ||
     value === 'invalid_account_id' ||
@@ -323,13 +382,30 @@ function buildError(status: number, body: unknown, fallbackMessage: string): Clo
   return new CloudAuthError(code, message, status);
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const LOCAL_TUNNEL_REQUEST_TIMEOUT_MS = 45_000;
+
+export function defaultCloudRequestTimeoutMs(baseUrl: string): number {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    if (host === '127.0.0.1' || host === 'localhost' || host === '::1') {
+      return LOCAL_TUNNEL_REQUEST_TIMEOUT_MS;
+    }
+  } catch {
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+  return DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
 export class CloudAuthClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestTimeoutMs: number;
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
   }
 
   private async send<TResponse>(
@@ -338,11 +414,23 @@ export class CloudAuthClient {
     fallbackMessage: string,
   ): Promise<TResponse> {
     let response: Response;
+    const timeoutController = init.signal ? null : new AbortController();
+    const timeout = timeoutController
+      ? setTimeout(() => timeoutController.abort(), this.requestTimeoutMs)
+      : null;
     try {
-      response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
+      response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        ...init,
+        signal: init.signal ?? timeoutController?.signal,
+      });
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Network request failed.';
+      const abortedByTimeout = timeoutController?.signal.aborted;
+      const message = abortedByTimeout
+        ? 'Cloud request timed out. Check your connection and try again.'
+        : caught instanceof Error ? caught.message : 'Network request failed.';
       throw new CloudAuthError('network_error', message, 0);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
     if (response.status === 204) {
       return undefined as TResponse;
@@ -471,6 +559,51 @@ export class CloudAuthClient {
     );
   }
 
+  async publishProviderAuthSnapshot(
+    token: string,
+    input: CloudProviderAuthSnapshotInput,
+  ): Promise<CloudProviderAuthSnapshot> {
+    return this.send<CloudProviderAuthSnapshot>(
+      '/v1/cloud/agent-provider-auth/snapshots',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not publish Cloud provider-auth snapshot.',
+    );
+  }
+
+  async currentProviderAuthSnapshot(
+    token: string,
+    input: { provider?: string; authChoice?: string } = {},
+  ): Promise<CloudProviderAuthSnapshot | null> {
+    const params = new URLSearchParams();
+    if (input.provider?.trim()) params.set('provider', input.provider.trim());
+    if (input.authChoice?.trim()) params.set('authChoice', input.authChoice.trim());
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const response = await this.send<{ snapshot: CloudProviderAuthSnapshot | null }>(
+      `/v1/cloud/agent-provider-auth/snapshots/current${suffix}`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load Cloud provider-auth snapshot.',
+    );
+    return response?.snapshot ?? null;
+  }
+
+  async revokeProviderAuthSnapshot(token: string, snapshotId: string): Promise<CloudProviderAuthSnapshot> {
+    return this.send<CloudProviderAuthSnapshot>(
+      `/v1/cloud/agent-provider-auth/snapshots/${encodeURIComponent(snapshotId)}`,
+      {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not revoke Cloud provider-auth snapshot.',
+    );
+  }
+
   async registerDevice(
     token: string,
     input: { ed25519Pubkey: string; x25519Pubkey: string; displayName?: string },
@@ -573,6 +706,31 @@ export class CloudAuthClient {
       },
       'Could not reject contact request.',
     );
+  }
+
+  async claimCloudAgentRun(token: string, input: CloudAgentRunClaimInput): Promise<CloudAgentRun> {
+    return this.send<CloudAgentRun>(
+      '/v1/cloud/agent-runs/claim',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not request Kordi fallback.',
+    );
+  }
+
+  async lookupCloudAgentRunForRequest(token: string, requestMessageId: string): Promise<CloudAgentRun | null> {
+    const encoded = encodeURIComponent(requestMessageId.trim());
+    const response = await this.send<CloudAgentRunLookup>(
+      `/v1/cloud/agent-runs/request/${encoded}`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load Kordi fallback status.',
+    );
+    return response?.run ?? null;
   }
 
   async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[]; clientCreatedAt?: string | null } = {}): Promise<CloudMessage> {

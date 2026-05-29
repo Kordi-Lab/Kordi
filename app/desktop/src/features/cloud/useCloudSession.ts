@@ -11,6 +11,7 @@ import {
 import {
   CloudAuthClient,
   CloudAuthError,
+  cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   parseCloudOAuthHashResult,
@@ -205,7 +206,7 @@ export function useCloudSession({
   }, [account?.accountId, authClient, enabled, setAuthenticated, status]);
 
   useEffect(() => {
-    if (!enabled || status !== 'authenticated' || !account?.accountId || typeof WebSocket === 'undefined') return;
+    if (!enabled || status !== 'authenticated' || !account?.accountId || typeof WebSocket === 'undefined' || !cloudRealtimeWebSocketEnabled()) return;
     let cancelled = false;
     let ws: WebSocket | null = null;
 

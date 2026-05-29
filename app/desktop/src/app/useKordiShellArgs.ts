@@ -12,6 +12,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       sessionRailWidth: args.sessionRailWidth,
       activeNav: args.activeNav,
       setActiveNav: args.setActiveNav,
+      cloudSession: args.cloudSession,
       chatConversations: args.chatConversations,
       handleCreateChatSession: args.handleCreateChatSession,
       chatSearch: args.chatSearch,
@@ -84,6 +85,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
     mainContent: {
       activeNav: args.activeNav,
       setActiveNav: args.setActiveNav,
+      cloudSession: args.cloudSession,
       chatConversations: args.chatConversations,
       handleCreateChatSession: args.handleCreateChatSession,
       handleSelectChatSession: args.handleSelectChatSession,

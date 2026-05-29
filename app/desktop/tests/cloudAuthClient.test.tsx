@@ -5,7 +5,9 @@ import {
   CloudAuthClient,
   CloudAuthError,
   cloudApiBaseUrl,
+  cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
+  defaultCloudRequestTimeoutMs,
   parseCloudOAuthHashResult,
 } from '../src/features/cloud/authClient';
 
@@ -117,6 +119,25 @@ test('login surfaces invalid_credentials on 401', async () => {
   );
 });
 
+test('requests abort with a CloudAuthError instead of leaving lookup UI stuck forever', async () => {
+  const fetchImpl: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => {
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    });
+  });
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl, requestTimeoutMs: 5 });
+
+  await assert.rejects(
+    () => client.getProfile('kordi_cs_abc', 'acct_1'),
+    (caught: unknown) => {
+      assert.ok(caught instanceof CloudAuthError);
+      assert.equal((caught as CloudAuthError).code, 'network_error');
+      assert.match((caught as CloudAuthError).message, /timed out/i);
+      return true;
+    },
+  );
+});
+
 test('logout sends Bearer token and treats 204 as success', async () => {
   const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
@@ -166,6 +187,18 @@ test('cloud API defaults to the coordinar production origin, not localhost', () 
   assert.equal(cloudApiBaseUrl({ VITE_KORDI_CLOUD_API_BASE: ' http://127.0.0.1:17081/ ' }), 'http://127.0.0.1:17081');
 });
 
+test('cloud auth client gives local SSH tunnels a longer default timeout', () => {
+  assert.equal(defaultCloudRequestTimeoutMs('https://coordinar.io'), 15_000);
+  assert.equal(defaultCloudRequestTimeoutMs('http://127.0.0.1:17081'), 45_000);
+  assert.equal(defaultCloudRequestTimeoutMs('http://localhost:17081'), 45_000);
+});
+
+test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
+  assert.equal(cloudRealtimeWebSocketEnabled('https://coordinar.io'), true);
+  assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081'), false);
+  assert.equal(cloudRealtimeWebSocketEnabled('http://localhost:17081'), false);
+});
+
 test('cloud WebSocket URL derives from the cloud API origin', () => {
   assert.equal(
     cloudWebSocketUrl('kordi_cs_token', 'https://kordi.cloud'),
@@ -189,6 +222,47 @@ test('network failures surface as CloudAuthError with code network_error', async
       return true;
     },
   );
+});
+
+test('claimCloudAgentRun posts typed claim request and parses status response', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    runId: 'car_1',
+    status: 'queued',
+    sandboxId: 'cas_1',
+    createdAt: '2026-05-24T00:00:00Z',
+    updatedAt: '2026-05-24T00:00:00Z',
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const run = await client.claimCloudAgentRun('kordi_cs_xyz', {
+    requestMessageId: 'msg_1',
+    sessionId: 'session:direct-person:acct_owner:acct_requester',
+    ownerAccountId: 'acct_owner',
+    requesterAccountId: 'acct_requester',
+    prompt: 'hello',
+    idempotencyKey: 'cloud-fallback:msg_1',
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/agent-runs/claim');
+  assert.equal(calls[0].init?.method, 'POST');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+  assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
+    requestMessageId: 'msg_1',
+    sessionId: 'session:direct-person:acct_owner:acct_requester',
+    ownerAccountId: 'acct_owner',
+    requesterAccountId: 'acct_requester',
+    prompt: 'hello',
+    idempotencyKey: 'cloud-fallback:msg_1',
+  });
+  assert.deepEqual(run, {
+    runId: 'car_1',
+    status: 'queued',
+    sandboxId: 'cas_1',
+    createdAt: '2026-05-24T00:00:00Z',
+    updatedAt: '2026-05-24T00:00:00Z',
+  });
 });
 
 test('sendMessage posts attachment metadata and parses returned attachments', async () => {

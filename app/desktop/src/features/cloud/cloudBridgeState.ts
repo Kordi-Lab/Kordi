@@ -208,7 +208,7 @@ function cloudSelfAgentTitleFromMessages(messages: CloudMessage[]): string | nul
   return null;
 }
 
-function cloudMessageMentionsContactAgent(message: CloudMessage, contact: Contact | undefined): boolean {
+export function cloudMessageMentionsContactAgent(message: CloudMessage, contact: Contact | undefined): boolean {
   if (!contact) return false;
   return cloudMessageMentionsNamedAgent(message.body, cloudAgentDisplayName(contact))
     || cloudMessageMentionsNamedAgent(message.body, cloudPeerDisplayName(contact));
@@ -524,15 +524,11 @@ export function buildCloudBridgeConversation({
     .filter((value): value is string => Boolean(value)));
   const answeredRequestIds = new Set(responseRequestIds);
   for (const requestId of cancelledRequestIds) answeredRequestIds.add(requestId);
-  const timedOutAgentRequestIds = new Set(agentRequests
-    .filter((message) => {
-      if (answeredRequestIds.has(message.messageId)) return false;
-      const targetAccountId = requestTargetAccountIds.get(message.messageId);
-      if (!targetAccountId || targetAccountId === account.accountId) return false;
-      const createdAtMs = Date.parse(message.createdAt);
-      return Number.isFinite(createdAtMs) && Date.now() - createdAtMs >= CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS;
-    })
-    .map((message) => message.messageId));
+  // Remote Cloud agents remain reachable through server-side fallback while the
+  // owner device is offline. Keep the request in the normal processing slot
+  // until a Cloud/local agent response or cancel arrives instead of showing an
+  // "offline" terminal failure.
+  const timedOutAgentRequestIds = new Set<string>();
   const pendingAgentRequests = agentRequests.filter((message) => {
     if (answeredRequestIds.has(message.messageId) || timedOutAgentRequestIds.has(message.messageId)) return false;
     if (requestTargetAccountIds.get(message.messageId) !== account.accountId) return true;

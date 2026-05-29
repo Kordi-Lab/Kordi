@@ -9,7 +9,6 @@ import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { loadSession } from '@/features/cloud/session';
 import { isPendingIncomingCloudContactRequest, useCloudContacts } from '@/features/cloud/useCloudContacts';
-import { useCloudSession } from '@/features/cloud/useCloudSession';
 
 type SidebarSlotProps = { args: SidebarShellArgs } & Partial<ComponentProps<typeof WorkspaceSidebar>>;
 
@@ -38,7 +37,7 @@ function SidebarSlot({ args }: SidebarSlotProps) {
   // Hooks must run on every render; the cloud branch only takes effect
   // when the desktop is launched in cloud edition.
   const edition = currentKordiEdition();
-  const cloudSession = useCloudSession({ enabled: edition === 'cloud' });
+  const cloudSession = args.cloudSession;
   const cloud = useCloudContacts(edition === 'cloud' ? cloudSession.account : null);
 
   // Bridge path is unreachable in cloud edition — gate purely on

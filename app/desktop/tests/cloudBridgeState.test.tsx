@@ -5,7 +5,6 @@ import { test } from 'node:test';
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import {
   buildCloudDesktopBridgeState,
-  CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS,
   cloudBridgeConversationId,
   cloudDirectPersonSessionId,
   cloudContactsToCanonicalIdentityRequests,
@@ -36,6 +35,10 @@ import {
   cloudInitialMessagesSettledForPeerKey,
   cloudSessionForksByIdEqual,
   shouldRunLocalCloudAgentForCloudMessage,
+  cloudAgentResponseExistsForRequest,
+  cloudGroupAgentResponseExistsForRequest,
+  cloudAgentRunStatusAlreadyOwnsRequest,
+  cloudFallbackRunClaimsForMessages,
   cachedCloudMessagesByPeerHasMessages,
   loadCachedCloudMessagesByPeer,
   saveCachedCloudMessagesByPeer,
@@ -1781,7 +1784,7 @@ test('cloud outgoing self-agent mentions expose localhost-style local processing
   assert.equal(answeredState.conversations[0].messages[1].direction, 'outbound-response');
 });
 
-test('cloud outgoing remote-agent mentions become offline replies after timeout', () => {
+test('cloud outgoing remote-agent mentions stay reachable through Cloud fallback after timeout', () => {
   const request: CloudMessage = {
     ...message,
     messageId: 'msg_agent_request_offline',
@@ -1798,19 +1801,256 @@ test('cloud outgoing remote-agent mentions become offline replies after timeout'
     activeConversationId: 'bridge:cloud:acct_peer:person',
   });
 
-  assert.equal(state.conversations[0].awaitingReply, false);
-  assert.equal(state.conversations[0].outreach, null);
+  assert.equal(state.conversations[0].awaitingReply, true);
+  assert.equal(state.conversations[0].outreach?.targetKind, 'bridge-agent');
+  assert.equal(state.conversations[0].outreach?.bridgeRequestId, 'msg_agent_request_offline');
   const offlineMessage = state.conversations[0].messages.find((candidate) => candidate.id === 'cloud-agent-offline:msg_agent_request_offline');
-  assert.equal(offlineMessage?.deliveryState, 'failed');
-  assert.equal(offlineMessage?.text, "Peer Person and Peer Person's Kordi are offline.");
-  assert.equal(offlineMessage?.timestampMs, Date.parse(request.createdAt) + CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS);
+  assert.equal(offlineMessage, undefined);
+  const processingMessage = state.conversations[0].messages.find((candidate) => candidate.id === 'cloud-agent-processing:msg_agent_request_offline');
+  assert.equal(processingMessage?.deliveryState, 'processing');
 
   const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
-  const offlineTurn = view.messages.find((candidate) => candidate.role === 'external-agent')?.turn;
-  assert.equal(offlineTurn?.status, 'failed');
-  assert.equal(offlineTurn?.assistantText, '');
-  assert.equal(offlineTurn?.error, "Peer Person and Peer Person's Kordi are offline.");
-  assert.equal(offlineTurn?.pendingBridgeAgentRequest, null);
+  const pendingTurn = view.messages.find((candidate) => candidate.role === 'external-agent')?.turn;
+  assert.equal(pendingTurn?.status, 'processing');
+});
+
+test('cloud local owner agent treats active Cloud fallback run as already owned by Cloud', () => {
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('queued'), true);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('leased'), true);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('running'), true);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('completed'), true);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('failed'), false);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('cancelled'), false);
+});
+
+test('cloud local group owner agent detects existing Cloud fallback response for request', () => {
+  const groupId = 'session:group:one';
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'person' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'admin' as const },
+  ];
+  const response = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: groupId,
+    groupTitle: null,
+    createdByAccountId: 'acct_peer',
+    actor: participants[0],
+    participants,
+    message: {
+      id: 'cloudrunmsg_group_answered',
+      senderAccountId: 'acct_me',
+      text: 'Already answered by Cloud.',
+      createdAtMs: 2_000,
+      senderKind: 'agent',
+      senderDisplayName: "Me Cloud's Kordi",
+      deliveryState: 'complete',
+      requestId: 'msg:ui:group_request_answered_by_cloud',
+      replyToMessageId: 'msg:ui:group_request_answered_by_cloud',
+    },
+  });
+
+  assert.equal(cloudGroupAgentResponseExistsForRequest({
+    localAccountId: 'acct_me',
+    requestMessageId: 'msg:ui:group_request_answered_by_cloud',
+    messages: [{
+      ...message,
+      messageId: 'cloudrunmsg_group_answered_row',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_peer',
+      body: response,
+      direction: 'outgoing',
+      sessionId: groupId,
+    }],
+  }), true);
+});
+
+test('cloud local owner agent detects existing Cloud fallback response for request', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_request_answered_by_cloud',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: '@MeCloudKordi can you see the chathiotory?',
+    direction: 'incoming',
+    createdAt: new Date().toISOString(),
+  };
+  const cloudResponse: CloudMessage = {
+    ...message,
+    messageId: 'cloudrunmsg_answered',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'Already answered by Cloud.' }),
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(cloudAgentResponseExistsForRequest({
+    account,
+    requestMessageId: request.messageId,
+    peerMessages: [request, cloudResponse],
+  }), true);
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: request,
+    peerMessages: [request, cloudResponse],
+  }), false);
+});
+
+test('cloud outgoing remote-agent mentions produce Cloud fallback run claims', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_agent_request_claim',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi what is todays weather',
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request] },
+  }), [{
+    requestMessageId: 'msg_agent_request_claim',
+    sessionId: cloudDirectPersonSessionId('acct_me', 'acct_peer'),
+    ownerAccountId: 'acct_peer',
+    requesterAccountId: 'acct_me',
+    prompt: 'what is todays weather',
+    idempotencyKey: 'cloud-agent-fallback:msg_agent_request_claim:acct_peer',
+  }]);
+});
+
+test('cloud outgoing group remote-agent mentions produce Cloud fallback run claims', () => {
+  const groupId = 'session:group:one';
+  const peerThree = cloudContactToContact({
+    accountId: 'acct_three',
+    displayName: 'Three Person',
+    avatarUrl: null,
+    nodeId: 'node_three',
+    createdAt: '2026-05-11T00:00:00Z',
+  });
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'admin' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' as const },
+    { accountId: 'acct_three', displayName: 'Three Person', avatarUrl: null, role: 'person' as const },
+  ];
+  const previousBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: groupId,
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: participants[0],
+    participants,
+    message: {
+      id: 'msg:ui:group_previous',
+      senderAccountId: 'acct_three',
+      text: 'hii every one',
+      createdAtMs: 1_000,
+      senderKind: 'human',
+    },
+  });
+  const requestBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: groupId,
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: participants[0],
+    participants,
+    message: {
+      id: 'msg:ui:group_request',
+      senderAccountId: 'acct_me',
+      text: '@PeerPersonKordi say hello to everyone',
+      createdAtMs: 2_000,
+      senderKind: 'human',
+    },
+  });
+  const previous: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_previous_cloud_row',
+    fromAccountId: 'acct_three',
+    toAccountId: 'acct_me',
+    body: previousBody,
+    direction: 'incoming',
+    sessionId: groupId,
+  };
+  const requestToOwner: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_request_owner_row',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: requestBody,
+    direction: 'outgoing',
+    sessionId: groupId,
+  };
+  const requestToParticipant: CloudMessage = {
+    ...requestToOwner,
+    messageId: 'msg_group_request_three_row',
+    toAccountId: 'acct_three',
+  };
+
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer, peerThree],
+    messagesByPeer: {
+      acct_peer: [requestToOwner],
+      acct_three: [previous, requestToParticipant],
+    },
+  }), [{
+    requestMessageId: 'msg:ui:group_request',
+    sessionId: groupId,
+    ownerAccountId: 'acct_peer',
+    requesterAccountId: 'acct_me',
+    prompt: 'Group chat history:\nThree Person: hii every one\n\nCurrent request:\nsay hello to everyone',
+    idempotencyKey: 'cloud-agent-fallback-group:session:group:one:msg:ui:group_request:acct_peer',
+  }]);
+});
+
+test('cloud outgoing remote-agent mention claims include prior direct chat history', () => {
+  const firstRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_weather_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi what is xuzhu city weather',
+    direction: 'outgoing',
+    createdAt: '2026-05-28T16:04:50.000Z',
+  };
+  const firstResponse: CloudMessage = {
+    ...message,
+    messageId: 'cloudrunmsg_weather_response',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: 'msg_weather_request', text: 'I think you mean Xuzhou city, China.' }),
+    direction: 'incoming',
+    createdAt: '2026-05-28T17:17:00.000Z',
+  };
+  const secondRequest: CloudMessage = {
+    ...message,
+    messageId: 'msg_check_again',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: '@PeerPersonKordi check ahain',
+    direction: 'outgoing',
+    createdAt: '2026-05-28T22:30:07.000Z',
+  };
+
+  const claims = cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [firstRequest, firstResponse, secondRequest] },
+  });
+
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0].requestMessageId, 'msg_check_again');
+  assert.match(claims[0].prompt, /Conversation history:/);
+  assert.match(claims[0].prompt, /Me: what is xuzhu city weather/);
+  assert.match(claims[0].prompt, /Peer Person's Kordi: I think you mean Xuzhou city, China\./);
+  assert.match(claims[0].prompt, /Current request:\ncheck ahain$/);
 });
 
 test('cloud outgoing remote-agent mentions expose localhost-style pending outreach UI', () => {

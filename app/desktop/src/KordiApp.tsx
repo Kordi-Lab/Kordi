@@ -130,7 +130,7 @@ function CloudEditionRoot({
       </CloudGateShell>
     );
   }
-  return <KordiAppShell />;
+  return <KordiAppShell cloudSession={cloudSessionOverride === undefined ? liveSession : undefined} />;
 }
 
 export function CloudStartingScreen({
@@ -155,12 +155,12 @@ export function CloudStartingScreen({
   );
 }
 
-function KordiAppShell() {
+function KordiAppShell({ cloudSession }: { cloudSession?: UseCloudSessionResult }) {
   useEffect(() => {
     void applyKordiMainWindowSize();
   }, []);
 
-  const appShellFrameProps = useKordiAppModel();
+  const appShellFrameProps = useKordiAppModel({ cloudSessionOverride: cloudSession });
   const { cloudInitialSync } = appShellFrameProps;
   if (cloudInitialSync.status !== 'ready') {
     return (

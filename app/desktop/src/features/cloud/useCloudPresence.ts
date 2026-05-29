@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   CloudAuthClient,
+  cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
@@ -49,7 +50,7 @@ async function refresh(store: CloudPresenceStoreState, client: CloudAuthClient) 
 }
 
 function ensurePresenceWebSocket(store: CloudPresenceStoreState) {
-  if (store.ws || typeof WebSocket === 'undefined') return;
+  if (store.ws || typeof WebSocket === 'undefined' || !cloudRealtimeWebSocketEnabled()) return;
   void loadSession().then((session) => {
     if (!session?.token || store.ws) return;
     const ws = new WebSocket(cloudWebSocketUrl(session.token));

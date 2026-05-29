@@ -5,6 +5,7 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
   adoptCloudProfileIdentity,
   appendCanonicalMessage,
+  buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   fetchCanonicalSessionState,
@@ -23,15 +24,19 @@ import type {
   CanonicalSessionState,
   OpenCanonicalSessionRequest,
   UpsertCanonicalIdentityRequest,
+  Contact,
   DesktopBridgeSessionParticipant,
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
 import {
   CloudAuthClient,
+  cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
+  type CloudAgentRun,
+  type CloudAgentRunClaimInput,
   type CloudMessage,
   type CloudPublicProfile,
   type CloudSessionForkSummary,
@@ -41,7 +46,9 @@ import {
 import {
   buildCloudDesktopBridgeState,
   cloudContactsToCanonicalIdentityRequests,
+  cloudDirectPersonSessionId,
   cloudGroupParticipantContacts,
+  cloudMessageMentionsContactAgent,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdForBridgeSend,
   isCloudBridgeHostId,
@@ -63,6 +70,7 @@ import {
   cloudAgentRuntimeRouteForSession,
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
+import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
 import {
   cloudGroupAgentConversationId,
   cloudGroupAgentMentionResponseState,
@@ -652,6 +660,65 @@ function isRecentCloudAgentMention(createdAt: string): boolean {
   return Number.isFinite(createdAtMs) && Date.now() - createdAtMs <= CLOUD_AGENT_MENTION_WINDOW_MS;
 }
 
+export function cloudAgentResponseExistsForRequest({
+  account,
+  requestMessageId,
+  peerMessages,
+}: {
+  account: CloudAccount;
+  requestMessageId: string;
+  peerMessages: CloudMessage[];
+}): boolean {
+  return peerMessages.some((candidate) => (
+    candidate.fromAccountId === account.accountId
+    && parseCloudAgentResponse(candidate.body)?.requestId === requestMessageId
+  ));
+}
+
+export function cloudGroupAgentResponseExistsForRequest({
+  localAccountId,
+  requestMessageId,
+  messages,
+}: {
+  localAccountId: string;
+  requestMessageId: string;
+  messages: CloudMessage[];
+}): boolean {
+  const trimmedLocalAccountId = localAccountId.trim();
+  const trimmedRequestMessageId = requestMessageId.trim();
+  if (!trimmedLocalAccountId || !trimmedRequestMessageId) return false;
+  return messages.some((candidate) => {
+    const envelope = parseCloudGroupControl(candidate.body);
+    if (envelope?.kind !== 'group-message' || !envelope.message) return false;
+    if (envelope.message.senderKind !== 'agent') return false;
+    if (envelope.message.senderAccountId !== trimmedLocalAccountId) return false;
+    if (envelope.message.deliveryState === 'processing') return false;
+    const linkedRequestId = cleanText(envelope.message.requestId) || cleanText(envelope.message.replyToMessageId);
+    return linkedRequestId === trimmedRequestMessageId;
+  });
+}
+
+export function cloudAgentRunStatusAlreadyOwnsRequest(status: string | null | undefined): boolean {
+  return status === 'queued' || status === 'leased' || status === 'running' || status === 'completed';
+}
+
+function cloudAgentRunAlreadyOwnsRequest(run: CloudAgentRun | null | undefined): boolean {
+  return cloudAgentRunStatusAlreadyOwnsRequest(run?.status);
+}
+
+async function cloudFallbackRunAlreadyOwnsRequest({
+  client,
+  token,
+  requestMessageId,
+}: {
+  client: CloudAuthClient;
+  token: string;
+  requestMessageId: string;
+}): Promise<boolean> {
+  const run = await client.lookupCloudAgentRunForRequest(token, requestMessageId).catch(() => null);
+  return cloudAgentRunAlreadyOwnsRequest(run);
+}
+
 export function shouldRunLocalCloudAgentForCloudMessage({
   account,
   peerId,
@@ -670,10 +737,186 @@ export function shouldRunLocalCloudAgentForCloudMessage({
     allowFirstPerson: message.fromAccountId === account.accountId,
   })) return false;
   if (!isRecentCloudAgentMention(message.createdAt)) return false;
-  return !peerMessages.some((candidate) => (
-    candidate.fromAccountId === account.accountId
-    && parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
-  ));
+  return !cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages });
+}
+
+function cloudContactPeerAccountId(contact: Contact): string {
+  return contact.bridgePeerNodeId?.trim() || contact.id.replace(/^cloud:/, '').trim();
+}
+
+const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES = 12;
+
+function cloudFallbackHistoryParticipantName(contact: Contact | undefined, ownerAccountId: string): string {
+  return contact?.name?.trim() || ownerAccountId.trim() || 'Peer';
+}
+
+function cloudFallbackHistoryLine({
+  account,
+  contact,
+  message,
+  ownerAccountId,
+}: {
+  account: CloudAccount;
+  contact: Contact | undefined;
+  message: CloudMessage;
+  ownerAccountId: string;
+}): string | null {
+  if (parseCloudGroupControl(message.body) || parseCloudAgentCancel(message.body)) return null;
+  const agentResponse = parseCloudAgentResponse(message.body);
+  const text = agentResponse?.text
+    ?? (message.fromAccountId === account.accountId && cloudMessageMentionsContactAgent(message, contact)
+      ? promptTextForCloudAgentMention(message.body)
+      : message.body);
+  const cleanText = text.trim();
+  if (!cleanText) return null;
+  const peerName = cloudFallbackHistoryParticipantName(contact, ownerAccountId);
+  const label = agentResponse
+    ? `${peerName}'s Kordi`
+    : message.fromAccountId === account.accountId
+      ? 'Me'
+      : peerName;
+  return `${label}: ${cleanText}`;
+}
+
+function cloudFallbackRunPromptForMessage({
+  account,
+  contact,
+  message,
+  ownerAccountId,
+  peerMessages,
+}: {
+  account: CloudAccount;
+  contact: Contact | undefined;
+  message: CloudMessage;
+  ownerAccountId: string;
+  peerMessages: CloudMessage[];
+}): string {
+  const currentPrompt = promptTextForCloudAgentMention(message.body);
+  const requestIndex = peerMessages.findIndex((candidate) => candidate.messageId === message.messageId);
+  const previousMessages = (requestIndex >= 0 ? peerMessages.slice(0, requestIndex) : peerMessages)
+    .filter((candidate) => candidate.messageId !== message.messageId);
+  const history = previousMessages
+    .map((candidate) => cloudFallbackHistoryLine({ account, contact, message: candidate, ownerAccountId }))
+    .filter((line): line is string => Boolean(line))
+    .slice(-MAX_CLOUD_FALLBACK_HISTORY_MESSAGES);
+  if (history.length === 0) return currentPrompt;
+  return `Conversation history:\n${history.join('\n')}\n\nCurrent request:\n${currentPrompt}`;
+}
+
+function cloudGroupFallbackHistoryLine(envelope: CloudGroupControlEnvelope): string | null {
+  if (envelope.kind !== 'group-message' || !envelope.message) return null;
+  const message = envelope.message;
+  if (message.deliveryState === 'processing' || isCloudAgentProcessingPlaceholderText(message.text)) return null;
+  const text = message.senderKind === 'agent' ? message.text.trim() : promptTextForCloudAgentMention(message.text).trim();
+  if (!text) return null;
+  const participantName = envelope.participants.find((participant) => participant.accountId === message.senderAccountId)?.displayName?.trim();
+  const label = message.senderDisplayName?.trim()
+    || (message.senderKind === 'agent' && participantName ? `${participantName}'s Kordi` : participantName)
+    || 'Cloud participant';
+  return `${label}: ${text}`;
+}
+
+function cloudGroupFallbackRunPromptForMessage({
+  cloudMessages,
+  groupId,
+  requestMessageId,
+  requestCreatedAtMs,
+  requestText,
+}: {
+  cloudMessages: CloudMessage[];
+  groupId: string;
+  requestMessageId: string;
+  requestCreatedAtMs: number;
+  requestText: string;
+}): string {
+  const currentPrompt = promptTextForCloudAgentMention(requestText);
+  const seenMessageIds = new Set<string>();
+  const history = cloudMessages
+    .flatMap((cloudMessage) => {
+      const envelope = parseCloudGroupControl(cloudMessage.body);
+      if (envelope?.kind !== 'group-message' || envelope.groupId !== groupId || !envelope.message) return [];
+      if (envelope.message.id === requestMessageId) return [];
+      if (envelope.message.createdAtMs > requestCreatedAtMs) return [];
+      if (envelope.message.forkSnapshot === true) return [];
+      if (seenMessageIds.has(envelope.message.id)) return [];
+      seenMessageIds.add(envelope.message.id);
+      const line = cloudGroupFallbackHistoryLine(envelope);
+      return line ? [line] : [];
+    })
+    .slice(-MAX_CLOUD_FALLBACK_HISTORY_MESSAGES);
+  if (history.length === 0) return currentPrompt;
+  return `Group chat history:\n${history.join('\n')}\n\nCurrent request:\n${currentPrompt}`;
+}
+
+export function cloudFallbackRunClaimsForMessages({
+  account,
+  contacts,
+  messagesByPeer,
+}: {
+  account: CloudAccount;
+  contacts: Contact[];
+  messagesByPeer: Record<string, CloudMessage[]>;
+}): CloudAgentRunClaimInput[] {
+  const contactByPeerId = new Map(contacts.map((contact) => [cloudContactPeerAccountId(contact), contact]));
+  const claims: CloudAgentRunClaimInput[] = [];
+  const allCloudMessages = Object.values(messagesByPeer).flat().sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+
+  for (const [peerId, peerMessages] of Object.entries(messagesByPeer)) {
+    const ownerAccountId = peerId.trim();
+    if (!ownerAccountId || ownerAccountId === account.accountId) continue;
+    const contact = contactByPeerId.get(ownerAccountId);
+    for (const message of peerMessages) {
+      if (message.fromAccountId !== account.accountId || message.toAccountId !== ownerAccountId) continue;
+      const groupEnvelope = parseCloudGroupControl(message.body);
+      if (groupEnvelope?.kind === 'group-message' && groupEnvelope.message?.senderAccountId === account.accountId) {
+        const groupMessage = groupEnvelope.message;
+        const groupRequestMessage = { ...message, body: groupMessage.text };
+        if (!cloudMessageMentionsContactAgent(groupRequestMessage, contact)) continue;
+        const alreadyTerminal = allCloudMessages.some((candidate) => {
+          const envelope = parseCloudGroupControl(candidate.body);
+          return envelope?.kind === 'group-message'
+            && envelope.groupId === groupEnvelope.groupId
+            && envelope.message?.senderKind === 'agent'
+            && envelope.message.senderAccountId === ownerAccountId
+            && (envelope.message.requestId === groupMessage.id || envelope.message.replyToMessageId === groupMessage.id)
+            && envelope.message.deliveryState !== 'processing';
+        });
+        if (alreadyTerminal) continue;
+        claims.push({
+          requestMessageId: groupMessage.id,
+          sessionId: groupEnvelope.groupId,
+          ownerAccountId,
+          requesterAccountId: account.accountId,
+          prompt: cloudGroupFallbackRunPromptForMessage({
+            cloudMessages: allCloudMessages,
+            groupId: groupEnvelope.groupId,
+            requestMessageId: groupMessage.id,
+            requestCreatedAtMs: groupMessage.createdAtMs,
+            requestText: groupMessage.text,
+          }),
+          idempotencyKey: `cloud-agent-fallback-group:${groupEnvelope.groupId}:${groupMessage.id}:${ownerAccountId}`,
+        });
+        continue;
+      }
+      if (groupEnvelope || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
+      if (!cloudMessageMentionsContactAgent(message, contact)) continue;
+      const alreadyTerminal = peerMessages.some((candidate) => (
+        parseCloudAgentCancel(candidate.body)?.requestId === message.messageId
+        || parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
+      ));
+      if (alreadyTerminal) continue;
+      claims.push({
+        requestMessageId: message.messageId,
+        sessionId: message.sessionId?.trim() || cloudDirectPersonSessionId(account.accountId, ownerAccountId),
+        ownerAccountId,
+        requesterAccountId: account.accountId,
+        prompt: cloudFallbackRunPromptForMessage({ account, contact, message, ownerAccountId, peerMessages }),
+        idempotencyKey: `cloud-agent-fallback:${message.messageId}:${ownerAccountId}`,
+      });
+    }
+  }
+
+  return claims;
 }
 
 function isCloudAgentProcessingPlaceholderText(text: string): boolean {
@@ -1535,6 +1778,8 @@ export function useCloudBridgeState({
   const cloudBridgeStateRef = useRef<DesktopBridgeState | null>(null);
   const readReceiptRequestRef = useRef<string | null>(null);
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
+  const claimedCloudFallbackRunKeysRef = useRef<Set<string>>(new Set());
+  const syncedProviderAuthSnapshotKeysRef = useRef<Set<string>>(new Set());
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
@@ -1922,23 +2167,33 @@ export function useCloudBridgeState({
 
       const timeoutId = window.setTimeout(() => {
         cloudGroupOfflineTimersRef.current.delete(key);
-        const failedNoticeRequest = cloudGroupAgentNoProviderFallbackRequest({
-          sessionId: candidate.requestMessage.sessionId,
-          requestMessageId: candidate.requestMessage.id,
-          targetAccountId: candidate.targetAccountId,
-          targetAgentDisplayName: candidate.targetAgentDisplayName,
-          createdAtMs: Date.now(),
-        });
-        setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, failedNoticeRequest));
-        void upsertCanonicalMessage(failedNoticeRequest)
-          .then((nextState) => {
-            canonicalSessionStateRef.current = nextState;
-            setCanonicalSessionState(nextState);
-          })
-          .catch((error) => {
-            // eslint-disable-next-line no-console
-            console.warn('[cloud-group-agent-requesting] failed to persist no-provider fallback', error);
+        void (async () => {
+          const session = await loadSession();
+          if (session?.token && await cloudFallbackRunAlreadyOwnsRequest({
+            client,
+            token: session.token,
+            requestMessageId: candidate.requestMessage.id,
+          })) {
+            setCanonicalSessionState((current) => setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId));
+            return;
+          }
+          const failedNoticeRequest = cloudGroupAgentNoProviderFallbackRequest({
+            sessionId: candidate.requestMessage.sessionId,
+            requestMessageId: candidate.requestMessage.id,
+            targetAccountId: candidate.targetAccountId,
+            targetAgentDisplayName: candidate.targetAgentDisplayName,
+            createdAtMs: Date.now(),
           });
+          setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, failedNoticeRequest));
+          await upsertCanonicalMessage(failedNoticeRequest)
+            .then((nextState) => {
+              canonicalSessionStateRef.current = nextState;
+              setCanonicalSessionState(nextState);
+            });
+        })().catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-group-agent-requesting] failed to persist no-provider fallback', error);
+        });
       }, CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS);
       cloudGroupOfflineTimersRef.current.set(key, timeoutId);
 
@@ -1981,7 +2236,7 @@ export function useCloudBridgeState({
         ));
       }
     }
-  }, [account, canonicalSessionState, setCanonicalSessionState]);
+  }, [account, canonicalSessionState, client, setCanonicalSessionState]);
 
   const mergeMessage = useCallback((message: CloudMessage) => {
     const peerId = message.fromAccountId === account?.accountId ? message.toAccountId : message.fromAccountId;
@@ -2439,6 +2694,10 @@ export function useCloudBridgeState({
         localAccountId: account.accountId,
         requestMessageId: envelope.message.id,
         messages: allCloudMessages,
+      }) || cloudGroupAgentResponseExistsForRequest({
+        localAccountId: account.accountId,
+        requestMessageId: envelope.message.id,
+        messages: allCloudMessages,
       })) {
         processedCloudAgentMentionIdsRef.current.add(envelope.message.id);
         return;
@@ -2447,6 +2706,23 @@ export function useCloudBridgeState({
       void (async () => {
         const session = await loadSession();
         if (!session?.token) throw new Error('Not signed in.');
+        const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
+          localAccountId: account.accountId,
+          envelope,
+          requestCloudMessage: cloudMessage,
+        });
+        const latestTargetMessages = (await Promise.all(
+          targetAccountIds.map((targetAccountId) => client.listMessages(session.token, targetAccountId, 100).catch(() => [])),
+        )).flat();
+        if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: envelope.message!.id })
+          || cloudGroupAgentResponseExistsForRequest({
+            localAccountId: account.accountId,
+            requestMessageId: envelope.message!.id,
+            messages: [...allCloudMessages, ...latestTargetMessages],
+          })) {
+          void refreshCloudBridgeMessages();
+          return;
+        }
         const agentIdentityId = `agent:cloud:${account.accountId}`;
         const agentDisplayName = `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`;
         await upsertCanonicalIdentity({
@@ -2487,11 +2763,6 @@ export function useCloudBridgeState({
           sourceEventId: `cloud-group-agent:${processingMessageId}`,
         });
         setCanonicalSessionState(processingState);
-        const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
-          localAccountId: account.accountId,
-          envelope,
-          requestCloudMessage: cloudMessage,
-        });
         const processingBody = encodeCloudGroupControl({
           kind: 'group-message',
           groupId: envelope.groupId,
@@ -2583,6 +2854,18 @@ export function useCloudBridgeState({
         const responseDeliveryState: 'complete' | 'failed' = succeeded ? 'complete' : 'failed';
         const responseContentText = succeeded ? finalTurn.assistantText.trim() : '';
         const responseEnvelopeText = succeeded ? finalTurn.assistantText.trim() : (failureMessage ?? '');
+        const finalLatestTargetMessages = (await Promise.all(
+          targetAccountIds.map((targetAccountId) => client.listMessages(session.token, targetAccountId, 100).catch(() => [])),
+        )).flat();
+        if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: envelope.message!.id })
+          || cloudGroupAgentResponseExistsForRequest({
+            localAccountId: account.accountId,
+            requestMessageId: envelope.message!.id,
+            messages: [...allCloudMessages, ...finalLatestTargetMessages],
+          })) {
+          void refreshCloudBridgeMessages();
+          return;
+        }
         const responseMessageId = `msg:cloud-agent:${finalTurn.id}`;
         const responseCreatedAtMs = Date.now();
         // Overwrite the local "Processing…" row in place rather than appending
@@ -2770,6 +3053,7 @@ export function useCloudBridgeState({
     // established" / "network connection was lost" in a tight loop. The
     // loop in turn re-ran every cloud-side effect, including the canonical
     // command replay that throws and emits "[cloud-group] sync failed".
+    if (!cloudRealtimeWebSocketEnabled()) return;
     // Hold the WS open for the lifetime of the account; route message
     // handling through refs so we always call the latest callbacks without
     // re-binding the socket.
@@ -2910,6 +3194,60 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;
+    const syncKey = cloudProviderAuthSnapshotRouteSignature(account.accountId, defaultCloudAgentRuntimeRoute);
+    if (!syncKey || syncedProviderAuthSnapshotKeysRef.current.has(syncKey)) return;
+    syncedProviderAuthSnapshotKeysRef.current.add(syncKey);
+    let cancelled = false;
+    void (async () => {
+      const session = await loadSession();
+      if (!session?.token || cancelled) return;
+      const input = await buildDesktopCloudProviderAuthSnapshotPayload({
+        provider: defaultCloudAgentRuntimeRoute?.authProvider ?? null,
+        authChoice: defaultCloudAgentRuntimeRoute?.authChoice ?? null,
+        model: defaultCloudAgentRuntimeRoute?.model ?? null,
+      });
+      if (!input || cancelled) return;
+      await client.publishProviderAuthSnapshot(session.token, input);
+    })().catch((error) => {
+      syncedProviderAuthSnapshotKeysRef.current.delete(syncKey);
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-provider-auth-sync] publish failed', error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [account, client, defaultCloudAgentRuntimeRoute, initialMessagesSettled]);
+
+  useEffect(() => {
+    if (!account || !initialMessagesSettled) return;
+    const claims = cloudFallbackRunClaimsForMessages({ account, contacts: contacts.contacts, messagesByPeer })
+      .filter((claim) => !claimedCloudFallbackRunKeysRef.current.has(claim.idempotencyKey));
+    if (claims.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const session = await loadSession();
+      if (!session?.token) return;
+      for (const claim of claims) {
+        if (cancelled) return;
+        claimedCloudFallbackRunKeysRef.current.add(claim.idempotencyKey);
+        await client.claimCloudAgentRun(session.token, claim).catch((error) => {
+          // owner_online means the local owner device should handle the request;
+          // other authorization/configuration errors should not be retried in a tight UI loop.
+          if (error?.code === 'network_error') {
+            claimedCloudFallbackRunKeysRef.current.delete(claim.idempotencyKey);
+          }
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-agent-fallback] claim failed', error);
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [account, client, contacts.contacts, initialMessagesSettled, messagesByPeer]);
+
+  useEffect(() => {
+    if (!account || !initialMessagesSettled) return;
     for (const messages of Object.values(messagesByPeer)) {
       for (const message of messages) {
         if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) continue;
@@ -2979,6 +3317,12 @@ export function useCloudBridgeState({
         void (async () => {
           const session = await loadSession();
           if (!session?.token) throw new Error('Not signed in.');
+          const latestMessages = await client.listMessages(session.token, peerId, 100).catch(() => messages);
+          if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: message.messageId })
+            || cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: latestMessages })) {
+            void refreshCloudBridgeMessages();
+            return;
+          }
           const contact = cloudLookupContacts.find((candidate) => (
             candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
           ) === peerId);
@@ -3058,6 +3402,12 @@ export function useCloudBridgeState({
             : isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message)
               ? cloudAgentNoProviderNoticeText()
               : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
+          const finalLatestMessages = await client.listMessages(session.token, peerId, 100).catch(() => latestMessages);
+          if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: message.messageId })
+            || cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: finalLatestMessages })) {
+            void refreshCloudBridgeMessages();
+            return;
+          }
           const response = await client.sendMessage(
             session.token,
             peerId,

@@ -19,12 +19,63 @@ export type CloudAgentResponseEnvelope = {
 
 export const CLOUD_AGENT_NO_PROVIDER_NOTICE = 'No provider configured yet.';
 
+export type CloudAgentFallbackRunStatus = 'queued' | 'leased' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
+
+export function cloudAgentFallbackStatusLabel(status: CloudAgentFallbackRunStatus | null | undefined): string | null {
+  switch ((status ?? '').trim().toLowerCase()) {
+    case 'queued':
+    case 'leased':
+      return 'Requesting…';
+    case 'running':
+      return 'Replying…';
+    case 'failed':
+      return 'Couldn’t reply';
+    case 'cancelled':
+      return 'Canceled';
+    default:
+      return null;
+  }
+}
+
+export function cloudAgentFallbackErrorNotice(input: { code?: string | null; message?: string | null } | string | null | undefined): string {
+  const code = typeof input === 'string' ? input : input?.code;
+  const message = typeof input === 'string' ? input : input?.message;
+  const normalizedCode = (code ?? '').trim().toLowerCase();
+  const normalizedMessage = (message ?? '').trim().toLowerCase();
+
+  if (normalizedCode === 'missing_provider_auth' || normalizedMessage.includes('provider-auth snapshot')) {
+    return 'Provider auth is not synced for Cloud fallback yet. Open this device once to sync provider access.';
+  }
+  if (normalizedCode === 'owner_online') {
+    return 'The owner device is online, so Kordi will answer from the device.';
+  }
+  if (normalizedCode === 'model_provider_error') {
+    return 'The provider failed while Kordi was replying. Try again in a moment.';
+  }
+  if (
+    normalizedCode === 'policy_denied'
+    || normalizedMessage.includes('owner-local')
+    || normalizedMessage.includes('localhost')
+    || normalizedMessage.includes('private-network')
+    || normalizedMessage.includes('private network')
+  ) {
+    return "Kordi Cloud can't access that local/private resource while the device is offline.";
+  }
+  if (normalizedCode.includes('sandbox') || normalizedMessage.includes('sandbox')) {
+    return "Kordi Cloud couldn't finish this reply in the sandbox. Try again.";
+  }
+  return message?.trim() || 'Kordi could not finish this reply. Try again.';
+}
+
 export function isCloudAgentNoProviderConfiguredError(value: unknown): boolean {
   const message = value instanceof Error ? value.message : String(value ?? '');
   const normalized = message.trim().toLowerCase();
   if (!normalized) return false;
   return (
     /no\s+\w+\s+credentials\s+are\s+available/.test(normalized)
+    || normalized === 'missing_provider_auth'
+    || normalized.includes('missing_provider_auth')
+    || normalized.includes('provider-auth snapshot')
     || normalized.includes('no provider configured')
     || normalized.includes('no usable provider credential')
     || normalized.includes('no saved accounts or keys')

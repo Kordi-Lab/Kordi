@@ -8,7 +8,7 @@ import type {
   MessageMention,
 } from '@/kordi-app/types';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/bridge/agentPlaceholderText';
-import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
@@ -443,6 +443,12 @@ export function mapCanonicalMessage(
   const cancelledTurnText = cancelled
     ? (displayText.trim() || (cancelledByRole ? `Request canceled by ${cancelledByRole}.` : 'Request canceled.'))
     : '';
+  const rawErrorText = stringValue(content.error) ?? (noProviderFailure ? rawDisplayText : null) ?? 'Message failed';
+  const agentTurnErrorText = failed
+    ? message.sourceTransport?.startsWith('cloud-') || rawErrorText.toLowerCase().includes('cloud fallback')
+      ? cloudAgentFallbackErrorNotice({ message: rawErrorText })
+      : rawErrorText
+    : null;
 
   if (role === 'system' && !displayText.trim()) return null;
 
@@ -480,7 +486,7 @@ export function mapCanonicalMessage(
           tools: visibleTools,
           completed,
           succeeded: completed && !failed && visibleTools.every((tool) => !tool.isError),
-          error: cancelled ? null : failed ? (bridgeAgentFailure ? 'Message failed' : stringValue(content.error) ?? (noProviderFailure ? rawDisplayText : null) ?? 'Message failed') : null,
+          error: cancelled ? null : failed ? (bridgeAgentFailure ? 'Message failed' : agentTurnErrorText) : null,
           replyToMessageId,
           pendingBridgeAgentRequest,
         }
