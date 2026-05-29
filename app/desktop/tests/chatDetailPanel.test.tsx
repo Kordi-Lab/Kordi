@@ -651,6 +651,34 @@ test('chat detail task panel renders empty task state', () => {
   assert.match(markup, /No planning or execution task activity in this session yet/);
 });
 
+test('chat detail participant presence renders as compact status lights without visible status text', () => {
+  const markup = renderInfoPanel({
+    canonicalParticipants: [
+      {
+        id: 'human:111',
+        name: '111',
+        kind: 'human',
+        role: 'person',
+        avatarKey: '111',
+        presenceStatus: 'online',
+      },
+      {
+        id: 'human:222',
+        name: 'Me',
+        kind: 'human',
+        role: 'self',
+        avatarKey: '222',
+        presenceStatus: 'online',
+      },
+    ],
+  });
+
+  assert.match(markup, /data-presence-status="online"/);
+  assert.match(markup, /aria-label="Status: online"/);
+  assert.doesNotMatch(markup, />online<\//);
+  assert.doesNotMatch(markup, /app-badge-neutral[^>]*>online/);
+});
+
 test('chat detail panel hides outreach, trust, and mode metadata in Bridge chat info', () => {
   const markup = renderInfoPanel({
     outreach: baseOutreach,
