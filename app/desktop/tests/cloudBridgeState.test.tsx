@@ -1880,6 +1880,93 @@ test('cloud outgoing remote-agent mentions produce Cloud fallback run claims', (
   }]);
 });
 
+test('cloud outgoing group remote-agent mentions produce Cloud fallback run claims', () => {
+  const groupId = 'session:group:one';
+  const peerThree = cloudContactToContact({
+    accountId: 'acct_three',
+    displayName: 'Three Person',
+    avatarUrl: null,
+    nodeId: 'node_three',
+    createdAt: '2026-05-11T00:00:00Z',
+  });
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'admin' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' as const },
+    { accountId: 'acct_three', displayName: 'Three Person', avatarUrl: null, role: 'person' as const },
+  ];
+  const previousBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: groupId,
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: participants[0],
+    participants,
+    message: {
+      id: 'msg:ui:group_previous',
+      senderAccountId: 'acct_three',
+      text: 'hii every one',
+      createdAtMs: 1_000,
+      senderKind: 'human',
+    },
+  });
+  const requestBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: groupId,
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: participants[0],
+    participants,
+    message: {
+      id: 'msg:ui:group_request',
+      senderAccountId: 'acct_me',
+      text: '@PeerPersonKordi say hello to everyone',
+      createdAtMs: 2_000,
+      senderKind: 'human',
+    },
+  });
+  const previous: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_previous_cloud_row',
+    fromAccountId: 'acct_three',
+    toAccountId: 'acct_me',
+    body: previousBody,
+    direction: 'incoming',
+    sessionId: groupId,
+  };
+  const requestToOwner: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_request_owner_row',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: requestBody,
+    direction: 'outgoing',
+    sessionId: groupId,
+  };
+  const requestToParticipant: CloudMessage = {
+    ...requestToOwner,
+    messageId: 'msg_group_request_three_row',
+    toAccountId: 'acct_three',
+  };
+
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer, peerThree],
+    messagesByPeer: {
+      acct_peer: [requestToOwner],
+      acct_three: [previous, requestToParticipant],
+    },
+  }), [{
+    requestMessageId: 'msg:ui:group_request',
+    sessionId: groupId,
+    ownerAccountId: 'acct_peer',
+    requesterAccountId: 'acct_me',
+    prompt: 'Group chat history:\nThree Person: hii every one\n\nCurrent request:\nsay hello to everyone',
+    idempotencyKey: 'cloud-agent-fallback-group:session:group:one:msg:ui:group_request:acct_peer',
+  }]);
+});
+
 test('cloud outgoing remote-agent mention claims include prior direct chat history', () => {
   const firstRequest: CloudMessage = {
     ...message,

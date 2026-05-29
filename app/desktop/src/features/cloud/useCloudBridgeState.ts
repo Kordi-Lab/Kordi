@@ -780,6 +780,51 @@ function cloudFallbackRunPromptForMessage({
   return `Conversation history:\n${history.join('\n')}\n\nCurrent request:\n${currentPrompt}`;
 }
 
+function cloudGroupFallbackHistoryLine(envelope: CloudGroupControlEnvelope): string | null {
+  if (envelope.kind !== 'group-message' || !envelope.message) return null;
+  const message = envelope.message;
+  if (message.deliveryState === 'processing' || isCloudAgentProcessingPlaceholderText(message.text)) return null;
+  const text = message.senderKind === 'agent' ? message.text.trim() : promptTextForCloudAgentMention(message.text).trim();
+  if (!text) return null;
+  const participantName = envelope.participants.find((participant) => participant.accountId === message.senderAccountId)?.displayName?.trim();
+  const label = message.senderDisplayName?.trim()
+    || (message.senderKind === 'agent' && participantName ? `${participantName}'s Kordi` : participantName)
+    || 'Cloud participant';
+  return `${label}: ${text}`;
+}
+
+function cloudGroupFallbackRunPromptForMessage({
+  cloudMessages,
+  groupId,
+  requestMessageId,
+  requestCreatedAtMs,
+  requestText,
+}: {
+  cloudMessages: CloudMessage[];
+  groupId: string;
+  requestMessageId: string;
+  requestCreatedAtMs: number;
+  requestText: string;
+}): string {
+  const currentPrompt = promptTextForCloudAgentMention(requestText);
+  const seenMessageIds = new Set<string>();
+  const history = cloudMessages
+    .flatMap((cloudMessage) => {
+      const envelope = parseCloudGroupControl(cloudMessage.body);
+      if (envelope?.kind !== 'group-message' || envelope.groupId !== groupId || !envelope.message) return [];
+      if (envelope.message.id === requestMessageId) return [];
+      if (envelope.message.createdAtMs > requestCreatedAtMs) return [];
+      if (envelope.message.forkSnapshot === true) return [];
+      if (seenMessageIds.has(envelope.message.id)) return [];
+      seenMessageIds.add(envelope.message.id);
+      const line = cloudGroupFallbackHistoryLine(envelope);
+      return line ? [line] : [];
+    })
+    .slice(-MAX_CLOUD_FALLBACK_HISTORY_MESSAGES);
+  if (history.length === 0) return currentPrompt;
+  return `Group chat history:\n${history.join('\n')}\n\nCurrent request:\n${currentPrompt}`;
+}
+
 export function cloudFallbackRunClaimsForMessages({
   account,
   contacts,
@@ -791,6 +836,7 @@ export function cloudFallbackRunClaimsForMessages({
 }): CloudAgentRunClaimInput[] {
   const contactByPeerId = new Map(contacts.map((contact) => [cloudContactPeerAccountId(contact), contact]));
   const claims: CloudAgentRunClaimInput[] = [];
+  const allCloudMessages = Object.values(messagesByPeer).flat().sort((left, right) => left.createdAt.localeCompare(right.createdAt));
 
   for (const [peerId, peerMessages] of Object.entries(messagesByPeer)) {
     const ownerAccountId = peerId.trim();
@@ -798,7 +844,38 @@ export function cloudFallbackRunClaimsForMessages({
     const contact = contactByPeerId.get(ownerAccountId);
     for (const message of peerMessages) {
       if (message.fromAccountId !== account.accountId || message.toAccountId !== ownerAccountId) continue;
-      if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
+      const groupEnvelope = parseCloudGroupControl(message.body);
+      if (groupEnvelope?.kind === 'group-message' && groupEnvelope.message?.senderAccountId === account.accountId) {
+        const groupMessage = groupEnvelope.message;
+        const groupRequestMessage = { ...message, body: groupMessage.text };
+        if (!cloudMessageMentionsContactAgent(groupRequestMessage, contact)) continue;
+        const alreadyTerminal = allCloudMessages.some((candidate) => {
+          const envelope = parseCloudGroupControl(candidate.body);
+          return envelope?.kind === 'group-message'
+            && envelope.groupId === groupEnvelope.groupId
+            && envelope.message?.senderKind === 'agent'
+            && envelope.message.senderAccountId === ownerAccountId
+            && (envelope.message.requestId === groupMessage.id || envelope.message.replyToMessageId === groupMessage.id)
+            && envelope.message.deliveryState !== 'processing';
+        });
+        if (alreadyTerminal) continue;
+        claims.push({
+          requestMessageId: groupMessage.id,
+          sessionId: groupEnvelope.groupId,
+          ownerAccountId,
+          requesterAccountId: account.accountId,
+          prompt: cloudGroupFallbackRunPromptForMessage({
+            cloudMessages: allCloudMessages,
+            groupId: groupEnvelope.groupId,
+            requestMessageId: groupMessage.id,
+            requestCreatedAtMs: groupMessage.createdAtMs,
+            requestText: groupMessage.text,
+          }),
+          idempotencyKey: `cloud-agent-fallback-group:${groupEnvelope.groupId}:${groupMessage.id}:${ownerAccountId}`,
+        });
+        continue;
+      }
+      if (groupEnvelope || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
       if (!cloudMessageMentionsContactAgent(message, contact)) continue;
       const alreadyTerminal = peerMessages.some((candidate) => (
         parseCloudAgentCancel(candidate.body)?.requestId === message.messageId
@@ -2067,23 +2144,33 @@ export function useCloudBridgeState({
 
       const timeoutId = window.setTimeout(() => {
         cloudGroupOfflineTimersRef.current.delete(key);
-        const failedNoticeRequest = cloudGroupAgentNoProviderFallbackRequest({
-          sessionId: candidate.requestMessage.sessionId,
-          requestMessageId: candidate.requestMessage.id,
-          targetAccountId: candidate.targetAccountId,
-          targetAgentDisplayName: candidate.targetAgentDisplayName,
-          createdAtMs: Date.now(),
-        });
-        setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, failedNoticeRequest));
-        void upsertCanonicalMessage(failedNoticeRequest)
-          .then((nextState) => {
-            canonicalSessionStateRef.current = nextState;
-            setCanonicalSessionState(nextState);
-          })
-          .catch((error) => {
-            // eslint-disable-next-line no-console
-            console.warn('[cloud-group-agent-requesting] failed to persist no-provider fallback', error);
+        void (async () => {
+          const session = await loadSession();
+          if (session?.token && await cloudFallbackRunAlreadyOwnsRequest({
+            client,
+            token: session.token,
+            requestMessageId: candidate.requestMessage.id,
+          })) {
+            setCanonicalSessionState((current) => setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId));
+            return;
+          }
+          const failedNoticeRequest = cloudGroupAgentNoProviderFallbackRequest({
+            sessionId: candidate.requestMessage.sessionId,
+            requestMessageId: candidate.requestMessage.id,
+            targetAccountId: candidate.targetAccountId,
+            targetAgentDisplayName: candidate.targetAgentDisplayName,
+            createdAtMs: Date.now(),
           });
+          setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, failedNoticeRequest));
+          await upsertCanonicalMessage(failedNoticeRequest)
+            .then((nextState) => {
+              canonicalSessionStateRef.current = nextState;
+              setCanonicalSessionState(nextState);
+            });
+        })().catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-group-agent-requesting] failed to persist no-provider fallback', error);
+        });
       }, CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS);
       cloudGroupOfflineTimersRef.current.set(key, timeoutId);
 
@@ -2126,7 +2213,7 @@ export function useCloudBridgeState({
         ));
       }
     }
-  }, [account, canonicalSessionState, setCanonicalSessionState]);
+  }, [account, canonicalSessionState, client, setCanonicalSessionState]);
 
   const mergeMessage = useCallback((message: CloudMessage) => {
     const peerId = message.fromAccountId === account?.accountId ? message.toAccountId : message.fromAccountId;

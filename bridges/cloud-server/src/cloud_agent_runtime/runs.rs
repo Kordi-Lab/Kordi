@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
 use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
@@ -70,7 +71,56 @@ pub async fn requester_can_target_owner(
 }
 
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
+const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
 const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES: i64 = 12;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct CloudGroupParticipant {
+    #[serde(rename = "accountId")]
+    account_id: String,
+    #[serde(rename = "displayName")]
+    display_name: String,
+    #[serde(rename = "avatarUrl")]
+    avatar_url: Option<String>,
+    role: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct CloudGroupMessage {
+    id: String,
+    #[serde(rename = "senderAccountId")]
+    sender_account_id: String,
+    text: String,
+    #[serde(rename = "createdAtMs")]
+    created_at_ms: i64,
+    #[serde(rename = "senderKind", skip_serializing_if = "Option::is_none")]
+    sender_kind: Option<String>,
+    #[serde(rename = "senderDisplayName", skip_serializing_if = "Option::is_none")]
+    sender_display_name: Option<String>,
+    #[serde(rename = "deliveryState", skip_serializing_if = "Option::is_none")]
+    delivery_state: Option<String>,
+    #[serde(rename = "replyToMessageId", skip_serializing_if = "Option::is_none")]
+    reply_to_message_id: Option<String>,
+    #[serde(rename = "requestId", skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct CloudGroupEnvelope {
+    kind: String,
+    #[serde(rename = "groupId")]
+    group_id: String,
+    #[serde(rename = "groupSpaceId", skip_serializing_if = "Option::is_none")]
+    group_space_id: Option<String>,
+    #[serde(rename = "groupTitle")]
+    group_title: Option<String>,
+    #[serde(rename = "createdByAccountId")]
+    created_by_account_id: String,
+    actor: CloudGroupParticipant,
+    participants: Vec<CloudGroupParticipant>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<CloudGroupMessage>,
+}
 
 #[derive(Debug, Clone)]
 struct CloudFallbackHistoryMessage {
@@ -99,6 +149,67 @@ fn cloud_agent_response_text(body: &str) -> Option<String> {
         .map(str::trim)
         .filter(|text| !text.is_empty())
         .map(ToString::to_string)
+}
+
+fn parse_cloud_group_envelope(body: &str) -> Option<CloudGroupEnvelope> {
+    let encoded = body.trim().strip_prefix(CLOUD_GROUP_PREFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn encode_cloud_group_envelope(envelope: &CloudGroupEnvelope) -> String {
+    format!(
+        "{}{}",
+        CLOUD_GROUP_PREFIX,
+        URL_SAFE_NO_PAD.encode(serde_json::to_string(envelope).unwrap_or_default())
+    )
+}
+
+fn cloud_group_response_body(
+    request_envelope: &CloudGroupEnvelope,
+    owner_account_id: &str,
+    request_message_id: &str,
+    response_message_id: &str,
+    response_text: &str,
+    delivery_state: &str,
+    created_at_ms: i64,
+) -> String {
+    let owner = request_envelope
+        .participants
+        .iter()
+        .find(|participant| participant.account_id == owner_account_id)
+        .cloned()
+        .unwrap_or_else(|| CloudGroupParticipant {
+            account_id: owner_account_id.to_string(),
+            display_name: "Kordi".to_string(),
+            avatar_url: None,
+            role: Some("person".to_string()),
+        });
+    let sender_display_name = if owner.display_name.trim().is_empty() {
+        "Kordi".to_string()
+    } else {
+        format!("{}'s Kordi", owner.display_name.trim())
+    };
+    encode_cloud_group_envelope(&CloudGroupEnvelope {
+        kind: "group-message".to_string(),
+        group_id: request_envelope.group_id.clone(),
+        group_space_id: request_envelope.group_space_id.clone(),
+        group_title: None,
+        created_by_account_id: request_envelope.created_by_account_id.clone(),
+        actor: owner,
+        participants: request_envelope.participants.clone(),
+        message: Some(CloudGroupMessage {
+            id: response_message_id.to_string(),
+            sender_account_id: owner_account_id.to_string(),
+            text: response_text.to_string(),
+            created_at_ms,
+            sender_kind: Some("agent".to_string()),
+            sender_display_name: Some(sender_display_name),
+            delivery_state: Some(delivery_state.to_string()),
+            reply_to_message_id: Some(request_message_id.to_string()),
+            request_id: Some(request_message_id.to_string()),
+        }),
+    })
 }
 
 fn fallback_prompt_history_line(
@@ -290,6 +401,68 @@ mod tests {
             canary_run_id: Some(" ".to_string()),
         };
         assert_eq!(empty.canary_run_id(), None);
+    }
+
+    #[test]
+    fn cloud_group_response_body_links_to_group_request() {
+        let request = super::CloudGroupEnvelope {
+            kind: "group-message".to_string(),
+            group_id: "session:group:one".to_string(),
+            group_space_id: Some("session:group:one".to_string()),
+            group_title: None,
+            created_by_account_id: "acct_requester".to_string(),
+            actor: super::CloudGroupParticipant {
+                account_id: "acct_requester".to_string(),
+                display_name: "Requester".to_string(),
+                avatar_url: None,
+                role: Some("admin".to_string()),
+            },
+            participants: vec![
+                super::CloudGroupParticipant {
+                    account_id: "acct_requester".to_string(),
+                    display_name: "Requester".to_string(),
+                    avatar_url: None,
+                    role: Some("admin".to_string()),
+                },
+                super::CloudGroupParticipant {
+                    account_id: "acct_owner".to_string(),
+                    display_name: "Owner".to_string(),
+                    avatar_url: None,
+                    role: Some("person".to_string()),
+                },
+            ],
+            message: Some(super::CloudGroupMessage {
+                id: "msg:ui:request".to_string(),
+                sender_account_id: "acct_requester".to_string(),
+                text: "@OwnerKordi hello".to_string(),
+                created_at_ms: 1,
+                sender_kind: Some("human".to_string()),
+                sender_display_name: None,
+                delivery_state: None,
+                reply_to_message_id: None,
+                request_id: None,
+            }),
+        };
+
+        let body = super::cloud_group_response_body(
+            &request,
+            "acct_owner",
+            "msg:ui:request",
+            "cloudrunmsg_response",
+            "Hello everyone!",
+            "complete",
+            2,
+        );
+        let response = super::parse_cloud_group_envelope(&body).expect("group response envelope");
+        let message = response.message.expect("group response message");
+
+        assert_eq!(response.kind, "group-message");
+        assert_eq!(message.sender_account_id, "acct_owner");
+        assert_eq!(message.sender_kind.as_deref(), Some("agent"));
+        assert_eq!(message.sender_display_name.as_deref(), Some("Owner's Kordi"));
+        assert_eq!(message.request_id.as_deref(), Some("msg:ui:request"));
+        assert_eq!(message.delivery_state.as_deref(), Some("complete"));
+        assert_eq!(message.text, "Hello everyone!");
     }
 
     #[test]
@@ -563,6 +736,90 @@ fn encode_failed_cloud_agent_response_body(request_message_id: &str, error_code:
     )
 }
 
+async fn cloud_group_request_envelope_for_run(
+    pool: &PgPool,
+    session_id: &str,
+    request_message_id: &str,
+) -> Result<Option<CloudGroupEnvelope>, sqlx_core::Error> {
+    if !session_id.trim().starts_with("session:group:") {
+        return Ok(None);
+    }
+    let rows = query_as::<_, (String,)>(
+        "SELECT body FROM cloud_messages WHERE session_id = $1 ORDER BY created_at ASC",
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().find_map(|(body,)| {
+        let envelope = parse_cloud_group_envelope(&body)?;
+        let message = envelope.message.as_ref()?;
+        (envelope.kind == "group-message" && message.id == request_message_id).then_some(envelope)
+    }))
+}
+
+async fn ensure_group_response_messages(
+    pool: &PgPool,
+    run_id: &str,
+    owner_account_id: &str,
+    _requester_account_id: &str,
+    session_id: &str,
+    request_message_id: &str,
+    response_text: &str,
+    delivery_state: &str,
+) -> Result<Option<String>, sqlx_core::Error> {
+    let Some(request_envelope) = cloud_group_request_envelope_for_run(pool, session_id, request_message_id).await? else {
+        return Ok(None);
+    };
+    let response_group_message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
+    let now = Utc::now();
+    let now_string = now.to_rfc3339();
+    let now_ms = now.timestamp_millis();
+    let response_body = cloud_group_response_body(
+        &request_envelope,
+        owner_account_id,
+        request_message_id,
+        &response_group_message_id,
+        response_text,
+        delivery_state,
+        now_ms,
+    );
+    let recipients = request_envelope
+        .participants
+        .iter()
+        .map(|participant| participant.account_id.trim().to_string())
+        .filter(|account_id| !account_id.is_empty() && account_id != owner_account_id)
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut first_message_id = None;
+    for recipient_account_id in recipients {
+        let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
+        if first_message_id.is_none() {
+            first_message_id = Some(message_id.clone());
+        }
+        query(
+            "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
+             VALUES ($1, $2, $3, $4, $5, $5, $6) \
+             ON CONFLICT (message_id) DO NOTHING",
+        )
+        .bind(&message_id)
+        .bind(owner_account_id)
+        .bind(&recipient_account_id)
+        .bind(&response_body)
+        .bind(&now_string)
+        .bind(session_id)
+        .execute(pool)
+        .await?;
+    }
+    if let Some(message_id) = &first_message_id {
+        query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
+            .bind(run_id)
+            .bind(message_id)
+            .bind(&now_string)
+            .execute(pool)
+            .await?;
+    }
+    Ok(first_message_id)
+}
+
 pub async fn complete_run(
     pool: &PgPool,
     run_id: &str,
@@ -594,21 +851,37 @@ pub async fn complete_run(
         return Ok(None);
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
-    let response_message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
+    let response_message_id = if let Some(message_id) = ensure_group_response_messages(
         pool,
         run_id,
         &owner_account_id,
         &requester_account_id,
         &session_id,
-        &response_body,
+        &request_message_id,
+        trimmed,
+        "complete",
     )
-    .await?;
-    crate::cloud_agent_runtime::artifacts::update_response_message_body(
-        pool,
-        &response_message_id,
-        &response_body,
-    )
-    .await?;
+    .await?
+    {
+        message_id
+    } else {
+        let message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
+            pool,
+            run_id,
+            &owner_account_id,
+            &requester_account_id,
+            &session_id,
+            &response_body,
+        )
+        .await?;
+        crate::cloud_agent_runtime::artifacts::update_response_message_body(
+            pool,
+            &message_id,
+            &response_body,
+        )
+        .await?;
+        message_id
+    };
     let now = Utc::now().to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
@@ -650,22 +923,39 @@ pub async fn fail_run(
     else {
         return Ok(None);
     };
+    let failure_text = cloud_agent_failure_response_text(error_code);
     let response_body = encode_failed_cloud_agent_response_body(&request_message_id, error_code);
-    let response_message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
+    let response_message_id = if let Some(message_id) = ensure_group_response_messages(
         pool,
         run_id,
         &owner_account_id,
         &requester_account_id,
         &session_id,
-        &response_body,
+        &request_message_id,
+        failure_text,
+        "failed",
     )
-    .await?;
-    crate::cloud_agent_runtime::artifacts::update_response_message_body(
-        pool,
-        &response_message_id,
-        &response_body,
-    )
-    .await?;
+    .await?
+    {
+        message_id
+    } else {
+        let message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
+            pool,
+            run_id,
+            &owner_account_id,
+            &requester_account_id,
+            &session_id,
+            &response_body,
+        )
+        .await?;
+        crate::cloud_agent_runtime::artifacts::update_response_message_body(
+            pool,
+            &message_id,
+            &response_body,
+        )
+        .await?;
+        message_id
+    };
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'failed', response_message_id = $5, error_code = $3, error_message = $4, updated_at = $6, completed_at = $6 \
