@@ -675,6 +675,29 @@ export function cloudAgentResponseExistsForRequest({
   ));
 }
 
+export function cloudGroupAgentResponseExistsForRequest({
+  localAccountId,
+  requestMessageId,
+  messages,
+}: {
+  localAccountId: string;
+  requestMessageId: string;
+  messages: CloudMessage[];
+}): boolean {
+  const trimmedLocalAccountId = localAccountId.trim();
+  const trimmedRequestMessageId = requestMessageId.trim();
+  if (!trimmedLocalAccountId || !trimmedRequestMessageId) return false;
+  return messages.some((candidate) => {
+    const envelope = parseCloudGroupControl(candidate.body);
+    if (envelope?.kind !== 'group-message' || !envelope.message) return false;
+    if (envelope.message.senderKind !== 'agent') return false;
+    if (envelope.message.senderAccountId !== trimmedLocalAccountId) return false;
+    if (envelope.message.deliveryState === 'processing') return false;
+    const linkedRequestId = cleanText(envelope.message.requestId) || cleanText(envelope.message.replyToMessageId);
+    return linkedRequestId === trimmedRequestMessageId;
+  });
+}
+
 export function cloudAgentRunStatusAlreadyOwnsRequest(status: string | null | undefined): boolean {
   return status === 'queued' || status === 'leased' || status === 'running' || status === 'completed';
 }
@@ -2671,6 +2694,10 @@ export function useCloudBridgeState({
         localAccountId: account.accountId,
         requestMessageId: envelope.message.id,
         messages: allCloudMessages,
+      }) || cloudGroupAgentResponseExistsForRequest({
+        localAccountId: account.accountId,
+        requestMessageId: envelope.message.id,
+        messages: allCloudMessages,
       })) {
         processedCloudAgentMentionIdsRef.current.add(envelope.message.id);
         return;
@@ -2679,6 +2706,23 @@ export function useCloudBridgeState({
       void (async () => {
         const session = await loadSession();
         if (!session?.token) throw new Error('Not signed in.');
+        const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
+          localAccountId: account.accountId,
+          envelope,
+          requestCloudMessage: cloudMessage,
+        });
+        const latestTargetMessages = (await Promise.all(
+          targetAccountIds.map((targetAccountId) => client.listMessages(session.token, targetAccountId, 100).catch(() => [])),
+        )).flat();
+        if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: envelope.message!.id })
+          || cloudGroupAgentResponseExistsForRequest({
+            localAccountId: account.accountId,
+            requestMessageId: envelope.message!.id,
+            messages: [...allCloudMessages, ...latestTargetMessages],
+          })) {
+          void refreshCloudBridgeMessages();
+          return;
+        }
         const agentIdentityId = `agent:cloud:${account.accountId}`;
         const agentDisplayName = `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`;
         await upsertCanonicalIdentity({
@@ -2719,11 +2763,6 @@ export function useCloudBridgeState({
           sourceEventId: `cloud-group-agent:${processingMessageId}`,
         });
         setCanonicalSessionState(processingState);
-        const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
-          localAccountId: account.accountId,
-          envelope,
-          requestCloudMessage: cloudMessage,
-        });
         const processingBody = encodeCloudGroupControl({
           kind: 'group-message',
           groupId: envelope.groupId,
@@ -2815,6 +2854,18 @@ export function useCloudBridgeState({
         const responseDeliveryState: 'complete' | 'failed' = succeeded ? 'complete' : 'failed';
         const responseContentText = succeeded ? finalTurn.assistantText.trim() : '';
         const responseEnvelopeText = succeeded ? finalTurn.assistantText.trim() : (failureMessage ?? '');
+        const finalLatestTargetMessages = (await Promise.all(
+          targetAccountIds.map((targetAccountId) => client.listMessages(session.token, targetAccountId, 100).catch(() => [])),
+        )).flat();
+        if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: envelope.message!.id })
+          || cloudGroupAgentResponseExistsForRequest({
+            localAccountId: account.accountId,
+            requestMessageId: envelope.message!.id,
+            messages: [...allCloudMessages, ...finalLatestTargetMessages],
+          })) {
+          void refreshCloudBridgeMessages();
+          return;
+        }
         const responseMessageId = `msg:cloud-agent:${finalTurn.id}`;
         const responseCreatedAtMs = Date.now();
         // Overwrite the local "Processing…" row in place rather than appending

@@ -36,6 +36,7 @@ import {
   cloudSessionForksByIdEqual,
   shouldRunLocalCloudAgentForCloudMessage,
   cloudAgentResponseExistsForRequest,
+  cloudGroupAgentResponseExistsForRequest,
   cloudAgentRunStatusAlreadyOwnsRequest,
   cloudFallbackRunClaimsForMessages,
   cachedCloudMessagesByPeerHasMessages,
@@ -1820,6 +1821,48 @@ test('cloud local owner agent treats active Cloud fallback run as already owned 
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('completed'), true);
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('failed'), false);
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('cancelled'), false);
+});
+
+test('cloud local group owner agent detects existing Cloud fallback response for request', () => {
+  const groupId = 'session:group:one';
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'person' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'admin' as const },
+  ];
+  const response = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: groupId,
+    groupTitle: null,
+    createdByAccountId: 'acct_peer',
+    actor: participants[0],
+    participants,
+    message: {
+      id: 'cloudrunmsg_group_answered',
+      senderAccountId: 'acct_me',
+      text: 'Already answered by Cloud.',
+      createdAtMs: 2_000,
+      senderKind: 'agent',
+      senderDisplayName: "Me Cloud's Kordi",
+      deliveryState: 'complete',
+      requestId: 'msg:ui:group_request_answered_by_cloud',
+      replyToMessageId: 'msg:ui:group_request_answered_by_cloud',
+    },
+  });
+
+  assert.equal(cloudGroupAgentResponseExistsForRequest({
+    localAccountId: 'acct_me',
+    requestMessageId: 'msg:ui:group_request_answered_by_cloud',
+    messages: [{
+      ...message,
+      messageId: 'cloudrunmsg_group_answered_row',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_peer',
+      body: response,
+      direction: 'outgoing',
+      sessionId: groupId,
+    }],
+  }), true);
 });
 
 test('cloud local owner agent detects existing Cloud fallback response for request', () => {
