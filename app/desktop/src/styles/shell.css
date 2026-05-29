@@ -967,17 +967,30 @@
 }
 
 .app-presence-light {
+  --app-presence-online: oklch(0.68 0.16 155);
+  --app-presence-offline: oklch(0.58 0.025 250);
+  --app-presence-edge: color-mix(in oklab, var(--utility-background) 74%, white 26%);
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 0.72rem;
-  height: 0.72rem;
+  right: 0.08rem;
+  bottom: 0.08rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--app-presence-edge);
   border-radius: 999px;
-  background: rgb(52 211 153);
-  box-shadow: 0 0 0 2px rgb(15 17 23), 0 0 0 5px rgba(52, 211, 153, 0.13);
+  background-color: var(--app-presence-online);
+  opacity: 0.96;
+  transition: background-color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease),
+    opacity var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.bridge-app.theme-light .app-presence-light {
+  --app-presence-online: oklch(0.66 0.15 155);
+  --app-presence-offline: oklch(0.56 0.018 250);
+  --app-presence-edge: oklch(1 0 0 / 0.94);
 }
 
 .app-presence-light[data-presence-status='offline'] {
-  background: rgb(100 116 139);
-  box-shadow: 0 0 0 2px rgb(15 17 23), 0 0 0 5px rgba(100, 116, 139, 0.12);
+  background-color: var(--app-presence-offline);
+  opacity: 0.82;
 }

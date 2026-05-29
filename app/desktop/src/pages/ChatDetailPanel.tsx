@@ -1,6 +1,5 @@
 import { memo, type ReactNode } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
@@ -131,6 +130,14 @@ function canonicalParticipantAvatarSeed(
   return fallbackSeed;
 }
 
+function identityAvatarPresenceStatus(status?: string | null) {
+  return status?.trim().toLowerCase() === 'online' ? 'online' : 'offline';
+}
+
+function identityAvatarPresenceLabel(status?: string | null) {
+  return `Status: ${identityAvatarPresenceStatus(status)}`;
+}
+
 type ProjectSource = {
   label: string;
   path?: string | null;
@@ -255,9 +262,6 @@ function ChatDetailPanelView({
           <div className="app-inspector-list">
             {activeConv.canonicalParticipants?.length ? activeConv.canonicalParticipants.map((participant) => {
               const isAgent = participant.kind === 'agent';
-              const status = participant.presenceStatus && participant.presenceStatus !== 'offline'
-                ? participant.presenceStatus
-                : participant.role;
               const displayName = canonicalParticipantDisplayName(activeConv, participant);
               const ownerLabel = canonicalParticipantOwnerLabel(activeConv, participant);
 
@@ -270,15 +274,14 @@ function ChatDetailPanelView({
                       imageUrl={participant.profileImageUrl}
                       name={displayName}
                       className="h-7 w-7 border border-white/10"
+                      presenceStatus={identityAvatarPresenceStatus(participant.presenceStatus)}
+                      presenceLabel={identityAvatarPresenceLabel(participant.presenceStatus)}
                     />
                     <span className="min-w-0">
                       <span className="block truncate text-[13px] text-[color:var(--utility-foreground)]">{displayName}</span>
                       {ownerLabel ? <span className="block truncate text-[11px] text-slate-500">Owner: {ownerLabel}</span> : participant.presenceDetail ? <span className="block truncate text-[11px] text-slate-500">{participant.presenceDetail}</span> : null}
                     </span>
                   </span>
-                  <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
-                    {status}
-                  </Badge>
                 </div>
               );
             }) : activeConv.participants.map((participant) => {
@@ -294,12 +297,11 @@ function ChatDetailPanelView({
                       imageUrl={participantProfileImageUrl(activeConv, participant)}
                       name={displayName}
                       className="h-7 w-7 border border-white/10"
+                      presenceStatus="online"
+                      presenceLabel="Status: online"
                     />
                     <span className="truncate text-[13px] text-[color:var(--utility-foreground)]">{displayName}</span>
                   </span>
-                  <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
-                    Active
-                  </Badge>
                 </div>
               );
             })}
