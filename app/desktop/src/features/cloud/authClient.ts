@@ -283,6 +283,10 @@ export type CloudAgentRun = {
   updatedAt: string;
 };
 
+export type CloudAgentRunLookup = {
+  run: CloudAgentRun | null;
+};
+
 export class CloudAuthError extends Error {
   readonly code: CloudAuthErrorCode;
   readonly status: number;
@@ -714,6 +718,19 @@ export class CloudAuthClient {
       },
       'Could not request Kordi fallback.',
     );
+  }
+
+  async lookupCloudAgentRunForRequest(token: string, requestMessageId: string): Promise<CloudAgentRun | null> {
+    const encoded = encodeURIComponent(requestMessageId.trim());
+    const response = await this.send<CloudAgentRunLookup>(
+      `/v1/cloud/agent-runs/request/${encoded}`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load Kordi fallback status.',
+    );
+    return response?.run ?? null;
   }
 
   async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[]; clientCreatedAt?: string | null } = {}): Promise<CloudMessage> {

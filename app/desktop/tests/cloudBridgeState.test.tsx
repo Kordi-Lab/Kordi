@@ -36,6 +36,7 @@ import {
   cloudSessionForksByIdEqual,
   shouldRunLocalCloudAgentForCloudMessage,
   cloudAgentResponseExistsForRequest,
+  cloudAgentRunStatusAlreadyOwnsRequest,
   cloudFallbackRunClaimsForMessages,
   cachedCloudMessagesByPeerHasMessages,
   loadCachedCloudMessagesByPeer,
@@ -1810,6 +1811,15 @@ test('cloud outgoing remote-agent mentions stay reachable through Cloud fallback
   const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const pendingTurn = view.messages.find((candidate) => candidate.role === 'external-agent')?.turn;
   assert.equal(pendingTurn?.status, 'processing');
+});
+
+test('cloud local owner agent treats active Cloud fallback run as already owned by Cloud', () => {
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('queued'), true);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('leased'), true);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('running'), true);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('completed'), true);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('failed'), false);
+  assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('cancelled'), false);
 });
 
 test('cloud local owner agent detects existing Cloud fallback response for request', () => {

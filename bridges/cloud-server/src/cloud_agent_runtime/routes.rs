@@ -19,8 +19,8 @@ use crate::cloud_agent_runtime::provider_auth::{
     RunnerProviderAuthMaterialEnvelope,
 };
 use crate::cloud_agent_runtime::runs::{
-    claim_run, complete_run, fail_run, lease_canary_run, lease_next_run, mark_run_running,
-    requester_can_target_owner, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
+    claim_run, complete_run, fail_run, lease_canary_run, lease_next_run, lookup_run_for_request,
+    mark_run_running, requester_can_target_owner, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
     RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
 };
 use crate::presence::{account_presence_status, presence_timeout, AccountPresenceStatus};
@@ -29,6 +29,7 @@ use crate::server::ServerState;
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
+        .route("/v1/cloud/agent-runs/request/:request_message_id", get(lookup_cloud_agent_run_for_request))
         .route(
             "/v1/cloud/agent-provider-auth/snapshots",
             post(publish_provider_auth_snapshot),
@@ -331,6 +332,32 @@ async fn export_runner_artifact(
         )
             .into_response(),
         Err(err) => error_response(err.code, err.message, err.status),
+    }
+}
+
+async fn lookup_cloud_agent_run_for_request(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(request_message_id): Path<String>,
+) -> Response {
+    let trimmed = request_message_id.trim();
+    if trimmed.is_empty() {
+        return error_response(
+            "missing_request_message_id",
+            "Request message id is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    match lookup_run_for_request(state.db_pool(), trimmed, &session.account_id).await {
+        Ok(response) => Json(response).into_response(),
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] lookup run for request: {err}");
+            error_response(
+                "server_error",
+                "Could not load Cloud fallback status.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     }
 }
 

@@ -46,6 +46,11 @@ pub struct CloudAgentRunResponse {
     pub updated_at: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct CloudAgentRunLookupResponse {
+    pub run: Option<CloudAgentRunResponse>,
+}
+
 pub async fn requester_can_target_owner(
     pool: &PgPool,
     requester_account_id: &str,
@@ -179,6 +184,33 @@ async fn fallback_prompt_for_claim(
         &input.prompt,
         &history,
     ))
+}
+
+pub async fn lookup_run_for_request(
+    pool: &PgPool,
+    request_message_id: &str,
+    account_id: &str,
+) -> Result<CloudAgentRunLookupResponse, sqlx_core::Error> {
+    let row: Option<(String, String, Option<String>, String, String)> = query_as(
+        "SELECT run_id, status, sandbox_id, created_at, updated_at \
+         FROM cloud_agent_fallback_runs \
+         WHERE request_message_id = $1 AND (owner_account_id = $2 OR requester_account_id = $2) \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(request_message_id)
+    .bind(account_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(CloudAgentRunLookupResponse {
+        run: row.map(|row| CloudAgentRunResponse {
+            run_id: row.0,
+            status: row.1,
+            sandbox_id: row.2,
+            created_at: row.3,
+            updated_at: row.4,
+        }),
+    })
 }
 
 pub async fn claim_run(

@@ -35,6 +35,7 @@ import {
   cloudWebSocketUrl,
   defaultCloudAuthClient,
   type CloudAccount,
+  type CloudAgentRun,
   type CloudAgentRunClaimInput,
   type CloudMessage,
   type CloudPublicProfile,
@@ -672,6 +673,27 @@ export function cloudAgentResponseExistsForRequest({
     candidate.fromAccountId === account.accountId
     && parseCloudAgentResponse(candidate.body)?.requestId === requestMessageId
   ));
+}
+
+export function cloudAgentRunStatusAlreadyOwnsRequest(status: string | null | undefined): boolean {
+  return status === 'queued' || status === 'leased' || status === 'running' || status === 'completed';
+}
+
+function cloudAgentRunAlreadyOwnsRequest(run: CloudAgentRun | null | undefined): boolean {
+  return cloudAgentRunStatusAlreadyOwnsRequest(run?.status);
+}
+
+async function cloudFallbackRunAlreadyOwnsRequest({
+  client,
+  token,
+  requestMessageId,
+}: {
+  client: CloudAuthClient;
+  token: string;
+  requestMessageId: string;
+}): Promise<boolean> {
+  const run = await client.lookupCloudAgentRunForRequest(token, requestMessageId).catch(() => null);
+  return cloudAgentRunAlreadyOwnsRequest(run);
 }
 
 export function shouldRunLocalCloudAgentForCloudMessage({
@@ -3158,7 +3180,8 @@ export function useCloudBridgeState({
           const session = await loadSession();
           if (!session?.token) throw new Error('Not signed in.');
           const latestMessages = await client.listMessages(session.token, peerId, 100).catch(() => messages);
-          if (cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: latestMessages })) {
+          if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: message.messageId })
+            || cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: latestMessages })) {
             void refreshCloudBridgeMessages();
             return;
           }
@@ -3242,7 +3265,8 @@ export function useCloudBridgeState({
               ? cloudAgentNoProviderNoticeText()
               : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
           const finalLatestMessages = await client.listMessages(session.token, peerId, 100).catch(() => latestMessages);
-          if (cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: finalLatestMessages })) {
+          if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: message.messageId })
+            || cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: finalLatestMessages })) {
             void refreshCloudBridgeMessages();
             return;
           }
