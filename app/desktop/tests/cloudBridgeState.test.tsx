@@ -35,6 +35,7 @@ import {
   cloudInitialMessagesSettledForPeerKey,
   cloudSessionForksByIdEqual,
   shouldRunLocalCloudAgentForCloudMessage,
+  cloudAgentResponseExistsForRequest,
   cloudFallbackRunClaimsForMessages,
   cachedCloudMessagesByPeerHasMessages,
   loadCachedCloudMessagesByPeer,
@@ -1809,6 +1810,39 @@ test('cloud outgoing remote-agent mentions stay reachable through Cloud fallback
   const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const pendingTurn = view.messages.find((candidate) => candidate.role === 'external-agent')?.turn;
   assert.equal(pendingTurn?.status, 'processing');
+});
+
+test('cloud local owner agent detects existing Cloud fallback response for request', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_request_answered_by_cloud',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: '@MeCloudKordi can you see the chathiotory?',
+    direction: 'incoming',
+    createdAt: new Date().toISOString(),
+  };
+  const cloudResponse: CloudMessage = {
+    ...message,
+    messageId: 'cloudrunmsg_answered',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'Already answered by Cloud.' }),
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(cloudAgentResponseExistsForRequest({
+    account,
+    requestMessageId: request.messageId,
+    peerMessages: [request, cloudResponse],
+  }), true);
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: request,
+    peerMessages: [request, cloudResponse],
+  }), false);
 });
 
 test('cloud outgoing remote-agent mentions produce Cloud fallback run claims', () => {
