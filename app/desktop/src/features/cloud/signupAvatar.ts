@@ -1,9 +1,7 @@
 export const SIGNUP_AVATAR_PALETTES = [
-  { from: '#f97316', to: '#ec4899', foreground: '#fff7ed' },
-  { from: '#06b6d4', to: '#8b5cf6', foreground: '#f8fafc' },
-  { from: '#14b8a6', to: '#84cc16', foreground: '#ecfeff' },
-  { from: '#f59e0b', to: '#ef4444', foreground: '#fff7ed' },
-  { from: '#6366f1', to: '#a855f7', foreground: '#f5f3ff' },
+  { from: '#6FCF97', to: '#6FCF97', foreground: '#1F2937' },
+  { from: '#F2A65A', to: '#F2A65A', foreground: '#1F2937' },
+  { from: '#E8A0C8', to: '#E8A0C8', foreground: '#1F2937' },
 ];
 
 export function cloudSignupAvatarHashText(value: string) {

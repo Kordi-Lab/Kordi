@@ -334,14 +334,25 @@
 }
 
 .bridge-app.theme-light .app-session-row-active {
-  border-color: rgba(43, 35, 32, 0.08);
-  background: rgba(43, 35, 32, 0.07);
-  box-shadow:
-    0 0 0 1px rgba(131, 112, 93, 0.025),
-    0 8px 18px rgba(147, 128, 109, 0.04),
-    0 -2px 6px rgba(255, 255, 255, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.045);
+  border-color: transparent;
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
+}
+
+.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-row-title,
+.bridge-app.theme-light .app-workspace-sidebar .app-session-row-title,
+.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-session-title {
+  color: var(--app-sidebar-title-text) !important;
+}
+
+.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-row-preview,
+.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-session-preview {
+  color: var(--app-sidebar-preview-text) !important;
+}
+
+.bridge-app.theme-light .app-workspace-sidebar .app-session-meta-time,
+.bridge-app.theme-light .app-workspace-sidebar .app-participant-space-row-detail {
+  color: var(--app-sidebar-time-text) !important;
 }
 
 .bridge-app.theme-light .app-icon-button,

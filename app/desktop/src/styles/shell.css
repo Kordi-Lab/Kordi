@@ -376,21 +376,21 @@
 }
 
 .app-session-meta-time {
-  color: var(--utility-meta-text);
+  color: var(--app-sidebar-time-text);
+  font-weight: 400;
 }
 
 .app-session-meta-time-active {
-  color: color-mix(in oklab, var(--utility-muted-text) 72%, var(--utility-foreground));
+  color: var(--app-sidebar-time-text);
 }
 
 .app-session-row {
-  border: 1px solid transparent;
-  border-radius: 16px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
   transition:
     background-color var(--app-motion-fast) var(--app-motion-ease),
-    border-color var(--app-motion-fast) var(--app-motion-ease),
     box-shadow var(--app-motion-fast) var(--app-motion-ease);
 }
 
@@ -399,30 +399,27 @@
 }
 
 .app-session-row-active {
-  border: 1px solid color-mix(in oklab, var(--app-accent-ring) 92%, var(--app-divider));
-  background: color-mix(in oklab, var(--app-control-active) 86%, var(--app-control-bg));
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--app-accent-ring) 42%, transparent),
-    0 10px 22px color-mix(in oklab, var(--app-accent-ring) 12%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  border-color: transparent;
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
 }
 
 .app-session-row-active .app-session-row-title,
 .app-session-row-active .app-participant-space-session-title {
-  color: var(--utility-foreground);
+  color: var(--app-sidebar-title-text);
   font-weight: 650;
 }
 
 .app-participant-space-inline-group {
-  border-radius: 16px;
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--app-divider) 46%, transparent);
+  border-radius: 0;
+  box-shadow: none;
   transition:
     background-color var(--app-motion-fast) var(--app-motion-ease),
     box-shadow var(--app-motion-fast) var(--app-motion-ease);
 }
 
 .app-participant-space-inline-group-expanded {
-  background: var(--app-control-bg);
+  background: transparent;
   box-shadow: none;
 }
 
@@ -432,24 +429,20 @@
   align-items: start;
   gap: 0.125rem;
   min-width: 0;
-  border: 1px solid transparent;
-  border-radius: 14px;
+  border: 0;
+  border-radius: 0;
   transition:
     background-color var(--app-motion-fast) var(--app-motion-ease),
-    border-color var(--app-motion-fast) var(--app-motion-ease),
     box-shadow var(--app-motion-fast) var(--app-motion-ease);
 }
 
 .app-participant-space-row-shell:hover {
-  background: var(--app-control-hover);
+  background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);
 }
 
 .app-participant-space-row-shell-active {
-  border-color: color-mix(in oklab, var(--app-accent-ring) 92%, var(--app-divider));
-  background: color-mix(in oklab, var(--app-control-active) 82%, var(--app-control-bg));
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--app-accent-ring) 38%, transparent),
-    0 8px 18px color-mix(in oklab, var(--app-accent-ring) 10%, transparent);
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
 }
 
 .app-participant-space-row-button {
@@ -558,7 +551,8 @@
 }
 
 .app-participant-space-session-title {
-  color: color-mix(in oklab, var(--utility-foreground) 88%, var(--utility-muted-text));
+  color: var(--app-sidebar-title-text);
+  font-weight: 600;
 }
 
 .app-participant-space-session-preview {
