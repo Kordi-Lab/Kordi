@@ -366,7 +366,7 @@ function SidebarUnreadBadge({ count, scope }: { count?: number; scope?: string }
 
   return (
     <span
-      className="inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.18)]"
+      className="app-sidebar-unread-badge inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none"
       data-unread-scope={scope}
       data-unread-count={count > 99 ? '99+' : count}
     >
@@ -741,80 +741,77 @@ export function WorkspaceSidebar({
           }}
           style={indentPaddingLeft ? { paddingLeft: indentPaddingLeft } : undefined}
           className={cn(
-            'app-session-row app-participant-space-session-row w-full px-2.5 py-1.5 text-left text-white',
+            'app-session-row app-participant-space-session-row w-full px-2.5 py-1 text-left text-white',
             isActive && 'app-session-row-active',
             isFork && 'app-session-row-fork',
           )}
         >
-          <div className="flex min-w-0 items-start gap-1.5">
+          <div className="app-participant-space-session-main min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="app-session-row-title app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</span>
+            </div>
+            <div
+              className={cn(
+                'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
+                isActive ? 'text-slate-300' : 'text-slate-500',
+                session.statusIndicator?.live && 'app-participant-space-session-preview-live',
+              )}
+              title={sessionPreviewLine}
+            >
+              {sessionPreviewLine}
+            </div>
+          </div>
+          <div className="app-participant-space-session-side">
+            <SidebarSessionMetaColumn
+              timeLabel={sessionRowTimeLabel}
+              unreadCount={rowUnreadCount}
+              unreadScope="participant-session"
+              indicator={session.statusIndicator}
+              active={isActive}
+            />
             {hasForks ? (
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  toggleForkParent(session.id);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter' && event.key !== ' ') return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  toggleForkParent(session.id);
-                }}
-                className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
-                aria-label={expanded ? 'Hide forks' : 'Show forks'}
-                title={expanded ? 'Hide forks' : 'Show forks'}
-              >
-                <ChevronRightIcon
-                  className={cn('h-3 w-3 transition-transform', expanded && 'rotate-90')}
-                />
-              </span>
+              <>
+                <span
+                  className="app-participant-space-session-fork-count inline-flex h-4 shrink-0 items-center gap-0.5 rounded-full bg-white/[0.06] px-1.5 text-[9.5px] font-medium tabular-nums text-slate-300"
+                  title={`${childForks.length} fork${childForks.length === 1 ? '' : 's'} of this session`}
+                  aria-label={`${childForks.length} forks`}
+                >
+                  <Split className="h-2.5 w-2.5" />
+                  <span>{childForks.length}</span>
+                </span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleForkParent(session.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleForkParent(session.id);
+                  }}
+                  className="app-participant-space-session-fork-toggle inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
+                  aria-label={expanded ? 'Hide forks' : 'Show forks'}
+                  title={expanded ? 'Hide forks' : 'Show forks'}
+                >
+                  <ChevronRightIcon
+                    className={cn('h-3 w-3 transition-transform', expanded && 'rotate-90')}
+                  />
+                </span>
+              </>
             ) : isFork ? (
               <span
-                className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-slate-500"
+                className="app-participant-space-session-fork-marker inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500"
                 aria-hidden="true"
                 title="Forked session"
               >
                 <Split className="h-3 w-3" />
               </span>
             ) : null}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="app-session-row-title app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</span>
-                {hasForks ? (
-                  <span
-                    className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded-full bg-white/[0.06] px-1.5 text-[9.5px] font-medium tabular-nums text-slate-300"
-                    title={`${childForks.length} fork${childForks.length === 1 ? '' : 's'} of this session`}
-                    aria-label={`${childForks.length} forks`}
-                  >
-                    <Split className="h-2.5 w-2.5" />
-                    <span>{childForks.length}</span>
-                  </span>
-                ) : null}
-              </div>
-              {sessionIdLabel ? (
-                <div className="app-participant-space-session-id mt-px truncate text-[9.5px] leading-[0.9rem] text-slate-500" title={sessionIdLabel}>{sessionIdLabel}</div>
-              ) : null}
-              <div
-                className={cn(
-                  'app-participant-space-session-preview mt-px truncate text-[10.5px] leading-[1.05rem]',
-                  isActive ? 'text-slate-300' : 'text-slate-500',
-                  session.statusIndicator?.live && 'app-participant-space-session-preview-live',
-                )}
-                title={sessionPreviewLine}
-              >
-                {sessionPreviewLine}
-              </div>
-            </div>
           </div>
-          <SidebarSessionMetaColumn
-            timeLabel={sessionRowTimeLabel}
-            unreadCount={rowUnreadCount}
-            unreadScope="participant-session"
-            indicator={session.statusIndicator}
-            active={isActive}
-          />
         </button>
         {visibleChildren.length > 0 ? (
           <div className="app-session-fork-children mt-px ml-3 space-y-px border-l border-white/[0.08] pl-2">
@@ -1186,7 +1183,7 @@ export function WorkspaceSidebar({
           setSessionContextMenu(target);
         }}
         className={cn(
-          'app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1.5 text-left text-white',
+          'app-session-row flex w-full min-w-0 items-start gap-2 px-2.5 py-1 text-left text-white',
           isActive && 'app-session-row-active',
           options.isFork && 'app-session-row-fork',
         )}

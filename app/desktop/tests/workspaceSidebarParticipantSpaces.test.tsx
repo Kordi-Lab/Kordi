@@ -687,24 +687,39 @@ test('WorkspaceSidebar moves participant-space running light from expanded paren
 
 test('participant-space row CSS separates the timestamp and actions while adding dense dividers', () => {
   const shellCss = readDesktopShellCss();
+  const themeOverrideCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
-  assert.match(shellCss, /\.app-participant-space-row-shell\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content/s);
+  assert.match(shellCss, /\.app-participant-space-row-shell\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content[^}]*border:\s*0;[^}]*border-radius:\s*0;/s);
   assert.match(shellCss, /\.app-participant-space-row-actions\s*{[^}]*position:\s*static/s);
   assert.match(shellCss, /\.app-participant-space-row-actions\s*{[^}]*grid-template-columns:\s*repeat\(3, 1\.5rem\)/s);
   assert.match(shellCss, /\.app-participant-space-row-side\s*{[^}]*grid-template-rows:\s*max-content 1fr/s);
   assert.match(shellCss, /\.app-participant-space-row-meta\s*{[^}]*align-self:\s*end/s);
-  assert.match(shellCss, /\.app-participant-space-inline-group\s*{[^}]*box-shadow:\s*inset 0 -1px 0/s);
-  assert.match(shellCss, /\.app-participant-space-inline-group-expanded\s*{[^}]*background:\s*var\(--app-control-bg\);[^}]*box-shadow:\s*none/s);
-  assert.match(shellCss, /\.app-participant-space-row-shell-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-accent-ring\) 92%, var\(--app-divider\)\);[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 82%, var\(--app-control-bg\)\);[^}]*box-shadow:\s*0 0 0 1px color-mix\(in oklab, var\(--app-accent-ring\) 38%, transparent\)/s);
+  assert.match(shellCss, /\.app-participant-space-inline-group\s*{[^}]*border-radius:\s*0;[^}]*box-shadow:\s*none/s);
+  assert.match(shellCss, /\.app-participant-space-inline-group-expanded\s*{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none/s);
+  assert.match(shellCss, /\.app-participant-space-row-shell-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none/s);
+  assert.doesNotMatch(shellCss, /\.app-participant-space-row-shell-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-accent-ring\)/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\)/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*padding:/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-button\s*{[^}]*display:\s*grid/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-detail\s*{[^}]*color:\s*color-mix\(in oklab, var\(--app-markdown-link\) 48%, var\(--utility-muted-text\)\)/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*border:\s*1px solid transparent;[^}]*border-radius:\s*10px/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-preview\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 62%, var\(--utility-foreground\)\)/s);
-  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-accent-ring\) 86%, var\(--app-divider\)\);[^}]*background:\s*color-mix\(in oklab, var\(--app-control-active\) 82%, var\(--app-control-bg\)\);[^}]*box-shadow:\s*0 0 0 1px color-mix\(in oklab, var\(--app-accent-ring\) 34%, transparent\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-detail\s*{[^}]*color:\s*var\(--app-sidebar-time-text\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-title\s*{[^}]*color:\s*var\(--app-sidebar-title-text\);[^}]*font-weight:\s*600/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-session-row-title\s*{[^}]*color:\s*var\(--app-sidebar-title-text\);[^}]*font-weight:\s*600/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-session-meta-time\s*{[^}]*color:\s*var\(--app-sidebar-time-text\);[^}]*font-weight:\s*400/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-sidebar-unread-badge\s*{[^}]*background:\s*var\(--app-sidebar-accent\);[^}]*color:\s*var\(--app-sidebar-accent-text\);[^}]*box-shadow:\s*none/s);
+  assert.match(shellCss, /\.app-session-row\s*{[^}]*border:\s*0;[^}]*border-radius:\s*0;/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-session-row\s*{[^}]*border-radius:\s*0;/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-filter-tab-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-session-row:hover\s*{[^}]*background:\s*color-mix\(in oklab, var\(--app-sidebar-selected-bg\) 72%, transparent\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*min-height:\s*2\.875rem;[^}]*border:\s*0;[^}]*border-radius:\s*0;/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-preview\s*{[^}]*color:\s*var\(--app-sidebar-preview-text\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none;/s);
+  assert.doesNotMatch(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\.app-session-row-active\s*{[^}]*0 8px 18px/s);
   assert.match(shellCss, /\.app-participant-space-inline-group:not\(\.app-participant-space-inline-group-expanded\) \.app-participant-space-row-actions\s*{[^}]*opacity:\s*0\.46/s);
-  assert.doesNotMatch(shellCss, /\.bridge-app\.theme-light \.app-workspace-sidebar \.app-session-row-active,[\s\S]*?\{\s*box-shadow:\s*none;/s);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[^}]*--app-sidebar-title-text:\s*rgb\(248 250 252\);[^}]*--app-sidebar-preview-text:\s*rgb\(148 163 184\);[^}]*--app-sidebar-time-text:\s*rgb\(100 116 139\);[^}]*--app-sidebar-accent:\s*#60A5FA;[^}]*--app-sidebar-selected-bg:\s*rgba\(37, 99, 235, 0\.18\);/s);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[^}]*--app-sidebar-title-text:\s*#111827;[^}]*--app-sidebar-preview-text:\s*#6B7280;[^}]*--app-sidebar-time-text:\s*#9CA3AF;[^}]*--app-sidebar-accent:\s*#2563EB;[^}]*--app-sidebar-selected-bg:\s*#EEF4FF;/s);
+  assert.match(themeOverrideCss, /\.bridge-app\.theme-light \.app-session-row-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none;/s);
+  assert.doesNotMatch(themeOverrideCss, /\.bridge-app\.theme-light \.app-workspace-sidebar \.app-session-row-active,[\s\S]*?\{\s*box-shadow:\s*none;/s);
 });
 
 test('Bridge sync subtitle CSS uses color and reduced-motion-safe animation', () => {
@@ -1270,28 +1285,51 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
     activeConvId: 'session:group-selected',
     initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
   }) as never));
+  const sessionRowStart = markup.indexOf('data-testid="participant-space-session-row"');
+  const sessionRowMarkup = markup.slice(sessionRowStart, markup.indexOf('</button>', sessionRowStart));
 
   assert.match(markup, /aria-label="Open group management"/);
   assert.ok(markup.indexOf('aria-label="Open group management"') < markup.indexOf('aria-label="Create session in Alice, Bob"'));
   assert.match(markup, /data-participant-space-row-actions="true"/);
   assert.match(markup, /# Hi shu/);
+  assert.match(sessionRowMarkup, /data-session-id-label="Direct chat"/);
+  assert.doesNotMatch(sessionRowMarkup, /app-participant-space-session-id/);
+  assert.doesNotMatch(sessionRowMarkup, />Direct chat<\//);
 });
 
 test('WorkspaceSidebar aligns child session hashtags and keeps last-message metadata visible', () => {
-  const chatConversations = [conversation({
-    id: 'session:group-duplicate-preview',
-    canonicalSessionId: 'session:group-duplicate-preview',
-    name: '今天吃什么',
-    subtitle: '今天吃什么',
-    messages: [{ role: 'person', sender: 'Alice', text: '今天吃什么', time: '16:02' }],
-    participants: ['Me', 'Alice', 'Bob'],
-    canonicalMessageCount: 1,
-    canonicalParticipants: [
-      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
-      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
-    ],
-  })];
+  const chatConversations = [
+    conversation({
+      id: 'session:group-duplicate-preview',
+      canonicalSessionId: 'session:group-duplicate-preview',
+      name: 'Dinner plans',
+      subtitle: 'Dinner plans',
+      messages: [{ role: 'person', sender: 'Alice', text: 'Dinner plans', time: '16:02' }],
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalMessageCount: 1,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+    conversation({
+      id: 'session:group-duplicate-preview:fork',
+      canonicalSessionId: 'session:group-duplicate-preview:fork',
+      name: 'Tomorrow plans',
+      subtitle: 'Fork continuation',
+      messages: [{ role: 'person', sender: 'Bob', text: 'Fork continuation', time: '16:05' }],
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalMessageCount: 2,
+      forkedFromSessionId: 'session:group-duplicate-preview',
+      forkedFromMessageId: 'msg:source',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+  ];
   const participantSpaces = buildParticipantSpaces(chatConversations);
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
     chatConversations,
@@ -1303,15 +1341,22 @@ test('WorkspaceSidebar aligns child session hashtags and keeps last-message meta
   const shellCss = readDesktopShellCss();
 
   assert.doesNotMatch(markup, /pl-\[3\.25rem\]/);
-  assert.match(markup, /# 今天吃什么/);
+  assert.match(markup, /# Dinner plans/);
   assert.match(markup, /data-session-message-count="1"/);
-  assert.match(markup, /data-session-preview-line="今天吃什么 · 1 message"/);
+  assert.match(markup, /data-session-preview-line="Dinner plans · 1 message"/);
   assert.match(markup, /data-session-id-label="Direct chat"/);
   assert.doesNotMatch(markup, /Session ID: session:group-duplicate-preview/);
   assert.match(markup, /app-participant-space-session-preview/);
   assert.match(markup, /app-participant-space-session-title/);
+  assert.match(markup, /app-participant-space-session-side/);
+  assert.match(markup, /app-participant-space-session-fork-toggle/);
+  assert.match(markup, /app-participant-space-session-fork-marker/);
+  assert.match(markup, /app-participant-space-session-main[^>]*>[\s\S]*?app-participant-space-session-title[\s\S]*?app-participant-space-session-side[\s\S]*?app-participant-space-session-fork-toggle/);
+  assert.match(markup, /app-participant-space-session-main[^>]*>[\s\S]*?app-participant-space-session-title[\s\S]*?app-participant-space-session-side[\s\S]*?app-participant-space-session-fork-marker/);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-row\s*{[^}]*display:\s*grid/s);
-  assert.match(shellCss, /\.app-participant-space-session-title\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-foreground\) 88%, var\(--utility-muted-text\)\)/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-main\s*{[^}]*min-width:\s*0/s);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-session-side\s*{[^}]*display:\s*inline-flex/s);
+  assert.match(shellCss, /\.app-participant-space-session-title\s*{[^}]*color:\s*var\(--app-sidebar-title-text\);[^}]*font-weight:\s*600/s);
 });
 
 test('WorkspaceSidebar names group spaces from people and hides agents from the participant row', () => {

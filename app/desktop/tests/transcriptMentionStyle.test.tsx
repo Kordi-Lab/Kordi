@@ -41,14 +41,16 @@ test('chat mention and footer colors are tokenized by bubble context', () => {
   const shellCss = readDesktopShellCss();
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
-  assert.match(themeTokensCss, /--app-chat-mention-own:\s*oklch\(/);
-  assert.match(themeTokensCss, /--app-chat-mention-peer:\s*oklch\(/);
+  assert.match(themeTokensCss, /--app-chat-mention-own:\s*var\(--app-sidebar-accent\);/);
+  assert.match(themeTokensCss, /--app-chat-mention-peer:\s*var\(--app-sidebar-accent\);/);
+  assert.match(themeTokensCss, /--app-sidebar-accent:\s*#60A5FA;/);
   assert.match(themeTokensCss, /--app-chat-meta-own:\s*oklch\(/);
   assert.match(themeTokensCss, /--app-chat-meta-peer:\s*oklch\(/);
   const userBubbleRule = cssRule(shellCss, '.app-chat-bubble-user');
   const peerBubbleRule = cssRule(shellCss, '.app-chat-bubble-peer');
   const mentionRule = cssRule(shellCss, '.app-message-mention');
   const footerRule = cssRule(shellCss, '.app-message-footer');
+  const inlineSenderRule = cssRule(shellCss, '.app-message-inline-sender');
 
   assert.match(userBubbleRule, /--app-message-mention:\s*var\(--app-chat-mention-own\);/);
   assert.match(userBubbleRule, /--app-message-meta:\s*var\(--app-chat-meta-own\);/);
@@ -60,5 +62,6 @@ test('chat mention and footer colors are tokenized by bubble context', () => {
   assert.match(mentionRule, /border:\s*0;/);
   assert.match(mentionRule, /padding:\s*0;/);
   assert.match(footerRule, /color:\s*var\(--app-message-meta\);/);
+  assert.match(inlineSenderRule, /color:\s*var\(--app-sidebar-title-text\);/);
   assert.doesNotMatch(mentionRule, /border-radius:\s*9999px/);
 });

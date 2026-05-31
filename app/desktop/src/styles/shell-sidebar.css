@@ -112,7 +112,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
   width: 100%;
-  background: color-mix(in oklab, var(--app-control-bg) 22%, transparent);
+  background: transparent;
 }
 
 .app-workspace-sidebar .app-filter-tab {
@@ -125,10 +125,9 @@
 }
 
 .app-workspace-sidebar .app-filter-tab-active {
-  background: color-mix(in oklab, var(--app-control-active) 100%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 1px 2px rgba(0, 0, 0, 0.22);
+  background: var(--app-sidebar-selected-bg);
+  color: var(--app-sidebar-title-text);
+  box-shadow: none;
 }
 
 .app-workspace-sidebar .app-workspace-session-scroll {
@@ -137,13 +136,13 @@
 
 .app-workspace-sidebar .app-session-row {
   display: block;
-  border-radius: 14px;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
 .app-workspace-sidebar .app-session-row:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 36%, transparent);
+  background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);
 }
 
 .app-workspace-sidebar .app-participant-space-row-button {
@@ -156,65 +155,95 @@
 }
 
 .app-workspace-sidebar .app-participant-space-row-title {
-  color: color-mix(in oklab, var(--utility-foreground) 96%, var(--utility-muted-text));
+  color: var(--app-sidebar-title-text);
+  font-weight: 600;
+}
+
+.app-workspace-sidebar .app-session-row-title {
+  color: var(--app-sidebar-title-text);
+  font-weight: 600;
 }
 
 .app-workspace-sidebar .app-participant-space-row-preview {
-  color: color-mix(in oklab, var(--utility-muted-text) 68%, var(--utility-foreground));
+  color: var(--app-sidebar-preview-text);
+  font-weight: 400;
 }
 
 .app-workspace-sidebar .app-participant-space-row-preview-active {
-  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+  color: var(--app-sidebar-preview-text);
 }
 
 .app-workspace-sidebar .app-participant-space-row-detail {
-  color: color-mix(in oklab, var(--app-markdown-link) 48%, var(--utility-muted-text));
+  color: var(--app-sidebar-time-text);
+}
+
+.app-workspace-sidebar .app-session-meta-time {
+  color: var(--app-sidebar-time-text);
+  font-weight: 400;
+}
+
+.app-workspace-sidebar .app-sidebar-unread-badge {
+  background: var(--app-sidebar-accent);
+  color: var(--app-sidebar-accent-text);
+  box-shadow: none;
 }
 
 .app-workspace-sidebar .app-session-row-active {
-  border-color: color-mix(in oklab, var(--app-accent-ring) 92%, var(--app-divider));
-  background: color-mix(in oklab, var(--app-control-active) 86%, var(--app-control-bg));
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--app-accent-ring) 42%, transparent),
-    0 10px 22px color-mix(in oklab, var(--app-accent-ring) 12%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  border-color: transparent;
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
 }
 
 .app-workspace-sidebar .app-session-fork-children-active {
-  border-left-color: color-mix(in oklab, var(--app-accent-ring) 88%, transparent);
-  box-shadow: -1px 0 0 color-mix(in oklab, var(--app-accent-ring) 28%, transparent);
+  border-left-color: color-mix(in oklab, var(--utility-muted-text) 34%, transparent);
+  box-shadow: none;
 }
 
 .app-workspace-sidebar .app-participant-space-session-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: start;
-  gap: 0.625rem;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.875rem;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
+.app-workspace-sidebar .app-participant-space-session-main {
+  min-width: 0;
+}
+
+.app-workspace-sidebar .app-participant-space-session-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.app-workspace-sidebar .app-participant-space-session-fork-toggle,
+.app-workspace-sidebar .app-participant-space-session-fork-marker,
+.app-workspace-sidebar .app-participant-space-session-fork-count {
+  color: var(--app-sidebar-time-text);
+}
+
 .app-workspace-sidebar .app-participant-space-session-row:hover {
-  background: color-mix(in oklab, var(--app-control-hover) 72%, transparent);
+  background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);
 }
 
 .app-workspace-sidebar .app-participant-space-session-preview {
-  color: color-mix(in oklab, var(--utility-muted-text) 62%, var(--utility-foreground));
+  color: var(--app-sidebar-preview-text);
+  font-weight: 400;
 }
 
 .app-workspace-sidebar .app-participant-space-session-row.app-session-row-active {
-  border-color: color-mix(in oklab, var(--app-accent-ring) 86%, var(--app-divider));
-  background: color-mix(in oklab, var(--app-control-active) 82%, var(--app-control-bg));
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--app-accent-ring) 34%, transparent),
-    0 8px 18px color-mix(in oklab, var(--app-accent-ring) 10%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
 }
 
 .app-workspace-sidebar .app-participant-space-session-row.app-session-row-active .app-participant-space-session-preview {
-  color: color-mix(in oklab, var(--utility-foreground) 74%, var(--utility-muted-text));
+  color: var(--app-sidebar-preview-text);
 }
 
 .app-workspace-sidebar .app-project-group {
