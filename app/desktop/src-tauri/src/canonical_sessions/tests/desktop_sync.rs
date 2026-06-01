@@ -515,6 +515,179 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
 }
 
 #[test]
+fn cloud_self_agent_upsert_reuses_existing_desktop_chat_user_echo() {
+    let conn = test_conn();
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:desktop-user".to_string()),
+            session_id: "session:new".to_string(),
+            sender_identity_id: "human:local".to_string(),
+            sender_role: "user".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "check disk usage".to_string(),
+            content: Some(serde_json::json!({ "sender": "You" })),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("sent".to_string()),
+            created_at_ms: Some(1_000),
+            source_transport: Some("desktop-chat".to_string()),
+            source_event_id: Some("desktop-chat:session:new:0:user:abc".to_string()),
+        },
+    )
+    .expect("append desktop user");
+
+    let synced = upsert_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:cloud:self:cloud-message-1".to_string()),
+            session_id: "session:new".to_string(),
+            sender_identity_id: "human:local".to_string(),
+            sender_role: "user".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "check disk usage".to_string(),
+            content: Some(serde_json::json!({ "sender": "You" })),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("sent".to_string()),
+            created_at_ms: Some(1_000),
+            source_transport: Some("cloud-self-agent".to_string()),
+            source_event_id: Some("cloud-message-1".to_string()),
+        },
+    )
+    .expect("upsert cloud self-agent echo");
+
+    assert_eq!(synced.id, "msg:desktop-user");
+    let rows: Vec<(String, String)> = conn
+        .prepare("SELECT id, source_transport FROM session_messages WHERE session_id = ?1 ORDER BY sequence_num")
+        .expect("prepare messages")
+        .query_map(["session:new"], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .expect("query messages")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect messages");
+    assert_eq!(
+        rows,
+        vec![("msg:desktop-user".to_string(), "desktop-chat".to_string())]
+    );
+}
+
+#[test]
+fn desktop_sync_reuses_fork_snapshot_messages_for_inherited_history() {
+    let conn = test_conn();
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:snapshot-user".to_string()),
+            session_id: "session:fork".to_string(),
+            sender_identity_id: "human:local".to_string(),
+            sender_role: "user".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "inherited request".to_string(),
+            content: Some(serde_json::json!({ "sender": "You" })),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("sent".to_string()),
+            created_at_ms: Some(1_000),
+            source_transport: Some("canonical-fork-snapshot".to_string()),
+            source_event_id: Some("snapshot-user".to_string()),
+        },
+    )
+    .expect("append snapshot user");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:snapshot-answer".to_string()),
+            session_id: "session:fork".to_string(),
+            sender_identity_id: "agent:local".to_string(),
+            sender_role: "owned-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "inherited answer".to_string(),
+            content: Some(serde_json::json!({ "sender": "Kordi" })),
+            parent_message_id: Some("msg:snapshot-user".to_string()),
+            delegated_exchange_id: None,
+            status: Some("complete".to_string()),
+            created_at_ms: Some(2_000),
+            source_transport: Some("canonical-fork-snapshot".to_string()),
+            source_event_id: Some("snapshot-answer".to_string()),
+        },
+    )
+    .expect("append snapshot answer");
+
+    let user = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "user".to_string(),
+        sender: Some("You".to_string()),
+        text: "inherited request".to_string(),
+        detail: None,
+        time_label: "17:09".to_string(),
+        timestamp_ms: 1_000,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+        entry_id: None,
+    };
+    let assistant = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "assistant".to_string(),
+        sender: Some("Kordi".to_string()),
+        text: "inherited answer".to_string(),
+        detail: Some("completed".to_string()),
+        time_label: "17:09".to_string(),
+        timestamp_ms: 2_000,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+        entry_id: None,
+    };
+
+    let user_id = sync_desktop_chat_message(
+        &conn,
+        "session:fork",
+        "human:local",
+        "agent:local",
+        0,
+        &user,
+        None,
+    )
+    .expect("sync user")
+    .expect("user id");
+    let assistant_id = sync_desktop_chat_message(
+        &conn,
+        "session:fork",
+        "human:local",
+        "agent:local",
+        1,
+        &assistant,
+        Some(user_id.as_str()),
+    )
+    .expect("sync assistant")
+    .expect("assistant id");
+
+    assert_eq!(user_id, "msg:snapshot-user");
+    assert_eq!(assistant_id, "msg:snapshot-answer");
+    let rows: Vec<(String, String)> = conn
+        .prepare("SELECT id, source_transport FROM session_messages WHERE session_id = ?1 ORDER BY sequence_num")
+        .expect("prepare messages")
+        .query_map(["session:fork"], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .expect("query messages")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect messages");
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "msg:snapshot-user".to_string(),
+                "canonical-fork-snapshot".to_string()
+            ),
+            (
+                "msg:snapshot-answer".to_string(),
+                "canonical-fork-snapshot".to_string()
+            ),
+        ]
+    );
+}
+
+#[test]
 fn desktop_sync_enriches_similar_bridge_agent_message_with_local_runtime_details() {
     let conn = test_conn();
     append_message_in_db(

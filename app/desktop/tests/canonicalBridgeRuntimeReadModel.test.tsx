@@ -1359,6 +1359,61 @@ test('canonical read model renders cloud group cancellations as one request-canc
   assert.equal(cancelledTurn?.error, null);
 });
 
+test('canonical read model hides duplicated self-agent cloud echoes when local rows already exist', () => {
+  const sessionId = 'session:self-agent:echo';
+  const requestAt = 1_000;
+  const responseAt = 2_000;
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: 'agent:me',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent-me', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'self-agent',
+      title: 'New chat',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'agent:me',
+      relationshipIdentityId: null,
+      metadata: {},
+      createdAtMs: requestAt,
+      updatedAtMs: responseAt,
+      lastMessageAtMs: responseAt,
+    }],
+    participants: [
+      { sessionId, identityId: 'agent:me', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:desktop-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'lallalalal', content: { sender: 'Me' }, status: 'sent', sequenceNum: 1, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-request' },
+      { id: 'msg:desktop-answer', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Lalalalala 🎶\n\nWhat would you like to do?', content: { sender: 'My Kordi' }, parentMessageId: 'msg:desktop-request', status: 'complete', sequenceNum: 2, createdAtMs: responseAt, updatedAtMs: responseAt, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-answer' },
+      { id: 'msg:cloud-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'lallalalal', content: null, status: 'sent', sequenceNum: 3, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-request' },
+      { id: 'msg:cloud-answer', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Lalalalala 🎶\n\nWhat would you like to do?', content: { cloudRequestMessageId: 'cloud-request' }, parentMessageId: 'msg:cloud-request', status: 'complete', sequenceNum: 4, createdAtMs: responseAt, updatedAtMs: responseAt, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-answer' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const messages = readModel.messages(sessionId);
+
+  assert.deepEqual(messages.map((message) => message.text || message.turn?.assistantText), [
+    'lallalalal',
+    'Lalalalala 🎶\n\nWhat would you like to do?',
+  ]);
+});
+
 test('canonical read model exposes cloud group agent stop controls to requester and model owner', () => {
   const sessionId = 'session:group:cloud-stop';
   const requestId = 'msg:request';
