@@ -238,6 +238,41 @@ pub(super) fn reconcile_processing_bridge_agent_placeholder_with_desktop_runtime
     Ok(true)
 }
 
+fn matching_fork_snapshot_message_id(
+    conn: &Connection,
+    session_id: &str,
+    sender_identity_id: &str,
+    sender_role: &str,
+    message_kind: &str,
+    content_text: &str,
+    created_at_ms: i64,
+) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT id
+         FROM session_messages
+         WHERE session_id = ?1
+           AND sender_identity_id = ?2
+           AND sender_role = ?3
+           AND message_kind = ?4
+           AND content_text = ?5
+           AND source_transport = 'canonical-fork-snapshot'
+           AND ABS(created_at_ms - ?6) <= 5_000
+         ORDER BY ABS(created_at_ms - ?6) ASC, sequence_num DESC
+         LIMIT 1",
+        params![
+            session_id,
+            sender_identity_id,
+            sender_role,
+            message_kind,
+            content_text,
+            created_at_ms,
+        ],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
 pub(crate) fn sync_desktop_chat_message(
     conn: &Connection,
     session_id: &str,
@@ -281,6 +316,18 @@ pub(crate) fn sync_desktop_chat_message(
     } else {
         message.text.clone()
     };
+
+    if let Some(snapshot_message_id) = matching_fork_snapshot_message_id(
+        conn,
+        session_id,
+        sender_identity_id,
+        sender_role,
+        message_kind,
+        &content_text,
+        message.timestamp_ms,
+    )? {
+        return Ok(Some(snapshot_message_id));
+    }
 
     if is_agent {
         if reconcile_processing_bridge_agent_placeholder_with_desktop_runtime(
