@@ -230,6 +230,31 @@ function withSourceMessage(message: Message, sourceMessage: MessageSourceReferen
   };
 }
 
+function withoutAgentReplyAttribution(message: Message): Message {
+  if (!isAgentResponse(message)) return { ...message, replySummary: undefined };
+  return {
+    ...message,
+    replyToMessageId: undefined,
+    replySummary: undefined,
+    sourceMessage: undefined,
+    turn: message.turn
+      ? {
+          ...message.turn,
+          replyToMessageId: undefined,
+          sourceMessage: undefined,
+        }
+      : message.turn,
+  };
+}
+
+function withoutLiveTurnReplyAttribution(turn: DesktopChatTurnSnapshot): DesktopChatTurnSnapshot {
+  return {
+    ...turn,
+    replyToMessageId: undefined,
+    sourceMessage: undefined,
+  };
+}
+
 function noProviderReplyDedupeKey(message: Message, sourceMessage: MessageSourceReference) {
   const errorText = cleanText(message.turn?.error) || cleanText(message.text);
   if (!isCloudAgentNoProviderConfiguredError(errorText)) return null;
@@ -277,12 +302,37 @@ export function replyStatusText(summary: MessageReplySummary | null | undefined)
   return summary.pending ? 'Replying…' : '';
 }
 
+export function shouldSuppressAgentReplyAttribution(
+  conversation:
+    | Pick<
+        Conversation,
+        | 'id'
+        | 'canonicalSessionId'
+        | 'type'
+        | 'participantSpaceId'
+        | 'canonicalParticipantCount'
+        | 'canonicalParticipants'
+        | 'forkedFromSessionId'
+      >
+    | null
+    | undefined,
+) {
+  if (!conversation || conversation.type !== 'owned-agent') return false;
+  if (conversation.participantSpaceId?.trim()) return false;
+  const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
+  const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
+  if (sessionId.startsWith('session:group:') || forkParentId.startsWith('session:group:')) return false;
+  const participantCount = conversation.canonicalParticipantCount ?? conversation.canonicalParticipants?.length ?? 0;
+  return participantCount <= 2;
+}
+
 export function buildReplyAttribution(
   inputMessages: readonly Message[],
   liveTurn?: DesktopChatTurnSnapshot | null,
-  options: { inferLatestHumanRequest?: boolean } = {},
+  options: { inferLatestHumanRequest?: boolean; suppressAgentReplyAttribution?: boolean } = {},
 ): ReplyAttributionResult {
   const inferLatestHumanRequest = Boolean(options.inferLatestHumanRequest);
+  const suppressAgentReplyAttribution = Boolean(options.suppressAgentReplyAttribution);
   const sourceByMessageId = new Map<string, MessageSourceReference>();
   const summariesByRequestId = new Map<string, MessageReplySummary>();
   const messageIds = inputMessages.map(messageIdFor);
@@ -310,14 +360,18 @@ export function buildReplyAttribution(
     if (!isAgentResponse(message)) return message;
 
     const replyTargetId = replyTargetForMessage(message, requestCandidates, inferLatestHumanRequest, sourceByMessageId);
-    if (!replyTargetId) return message;
+    if (!replyTargetId) return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : message;
     const sourceMessage = sourceByMessageId.get(replyTargetId);
-    if (!sourceMessage) return message;
+    if (!sourceMessage) return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : message;
 
     const noProviderDedupeKey = noProviderReplyDedupeKey(message, sourceMessage);
     if (noProviderDedupeKey) {
       if (seenNoProviderReplyKeys.has(noProviderDedupeKey)) return null;
       seenNoProviderReplyKeys.add(noProviderDedupeKey);
+    }
+
+    if (suppressAgentReplyAttribution) {
+      return withoutAgentReplyAttribution(message);
     }
 
     addReplySummary(summariesByRequestId, sourceMessage.messageId, messageId, completedReplyCountable(message));
@@ -328,9 +382,10 @@ export function buildReplyAttribution(
     if (!liveTurn) return undefined;
     const explicitTargetId = explicitReplyTargetForTurn(liveTurn);
     const replyTargetId = explicitTargetId ?? inferredReplyTargetForLiveTurn(liveTurn, requestCandidates, inferLatestHumanRequest);
-    if (!replyTargetId) return liveTurn;
+    if (!replyTargetId) return suppressAgentReplyAttribution ? withoutLiveTurnReplyAttribution(liveTurn) : liveTurn;
     const sourceMessage = sourceByMessageId.get(replyTargetId);
-    if (!sourceMessage) return liveTurn;
+    if (!sourceMessage) return suppressAgentReplyAttribution ? withoutLiveTurnReplyAttribution(liveTurn) : liveTurn;
+    if (suppressAgentReplyAttribution) return withoutLiveTurnReplyAttribution(liveTurn);
     addReplySummary(summariesByRequestId, sourceMessage.messageId, liveTurn.id, liveTurn.completed);
     return {
       ...liveTurn,
@@ -339,11 +394,13 @@ export function buildReplyAttribution(
     };
   })();
 
-  const messages = linkedMessages.map((message) => {
-    const messageId = cleanText(message.id);
-    const summary = messageId ? summariesByRequestId.get(messageId) : undefined;
-    return summary ? { ...message, replySummary: summary } : message;
-  });
+  const messages = suppressAgentReplyAttribution
+    ? linkedMessages.map(withoutAgentReplyAttribution)
+    : linkedMessages.map((message) => {
+        const messageId = cleanText(message.id);
+        const summary = messageId ? summariesByRequestId.get(messageId) : undefined;
+        return summary ? { ...message, replySummary: summary } : message;
+      });
 
   return { messages, liveTurn: linkedLiveTurn };
 }

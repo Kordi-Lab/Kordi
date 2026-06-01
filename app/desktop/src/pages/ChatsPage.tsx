@@ -59,7 +59,7 @@ import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
-import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
+import { buildReplyAttribution, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
@@ -458,11 +458,13 @@ export function ChatsPage({
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
   const inferLatestHumanReplyTarget = shouldInferLatestHumanReplyTarget(activeConv);
+  const suppressAgentReplyAttribution = shouldSuppressAgentReplyAttribution(activeConv);
   const attributedTranscript = useMemo(
     () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
       inferLatestHumanRequest: inferLatestHumanReplyTarget,
+      suppressAgentReplyAttribution,
     }),
-    [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, transcriptMessages],
+    [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
   // Index of the last message that came from the fork's snapshot
@@ -740,6 +742,7 @@ export function ChatsPage({
                   onForkMessage={handleForkMessage}
                   messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
                   onOpenForkSession={onSelectSession}
+                  plainAgentResponse={suppressAgentReplyAttribution}
                   isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                   isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
                 />
@@ -767,6 +770,7 @@ export function ChatsPage({
                 sender={liveTurnSender}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onStopActiveTurn={onStopDesktopChatTurn}
+                plainAgentResponse={suppressAgentReplyAttribution}
                 onOpenArtifact={onOpenArtifact}
                 onOpenAuthSettings={openAuthentication}
               />

@@ -396,6 +396,7 @@ function MessageBubbleView({
   onForkMessage,
   messageForks,
   onOpenForkSession,
+  plainAgentResponse = false,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
 }: {
@@ -409,6 +410,7 @@ function MessageBubbleView({
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
   onOpenForkSession?: (sessionId: string) => void;
+  plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
 }) {
@@ -648,6 +650,7 @@ function MessageBubbleView({
         <LiveChatTurnCard
           turn={msg.turn}
           historical={msg.turn.completed}
+          plainAgentResponse={plainAgentResponse}
           onStopBridgeAgentRequest={onStopBridgeAgentRequest}
           onNavigateToMessage={onNavigateToMessage}
           onOpenArtifact={onOpenArtifact}

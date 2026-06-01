@@ -246,6 +246,30 @@
   color: var(--app-sidebar-preview-text);
 }
 
+.app-workspace-sidebar .app-agent-session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-workspace-sidebar .app-agent-session-main {
+  min-width: 0;
+}
+
+.app-workspace-sidebar .app-agent-session-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.app-workspace-sidebar .app-agent-session-fork-toggle,
+.app-workspace-sidebar .app-agent-session-fork-marker,
+.app-workspace-sidebar .app-agent-session-fork-count {
+  color: var(--app-sidebar-time-text);
+}
+
 .app-workspace-sidebar .app-project-group {
   padding-top: 2px;
   padding-bottom: 6px;
