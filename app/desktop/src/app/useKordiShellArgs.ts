@@ -243,6 +243,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       chatComposerText: args.chatComposerText,
       updateChatComposerDraft: args.updateChatComposerDraft,
       setChatComposerText: args.setChatComposerText,
+      setChatComposerTextForSession: args.setChatComposerTextForSession,
       composerSelectionChat: args.composerSelectionChat,
       composerAuthLabelChat: args.composerAuthLabelChat,
       composerAuthOptionsChat: args.composerAuthOptionsChat,

@@ -1039,6 +1039,7 @@ export function useKordiAppModel({
   } = useComposerController({
     isNativeShell,
     activeConversationIsBridge,
+    chatConversations,
     // Pass the SAME chatDraftSessionId the reader uses (see composerDraftsView
     // above). Passing `activeConv.id` here while reading under raw activeConvId
     // was the bug — read/write keys diverged when raw activeConvId was empty
@@ -2050,6 +2051,9 @@ export function useKordiAppModel({
     handleSendProjectMessage,
     handleSendChatMessage,
   });
+  const setChatComposerTextForSession = useCallback((sessionId: string, value: string) => {
+    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, value));
+  }, [composerUi.setComposerDrafts]);
 
   const shellArgs = useKordiShellArgs({
     isNativeShell,
@@ -2239,6 +2243,7 @@ export function useKordiAppModel({
     updateChatComposerDraft: (value, target) => updateComposerDraft('chat', value, target),
     setProjectComposerText,
     setChatComposerText,
+    setChatComposerTextForSession,
     composerControlsRef,
     activeRuntimeSessionId,
     activeRuntimeContextStatus,

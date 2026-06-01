@@ -701,6 +701,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'activeConvId'
   | 'activeConvMessages'
   | 'activeConvMentionScope'
+  | 'chatConversations'
   | 'canonicalHumanIdentityId'
   | 'chatComposerAttachments'
   | 'composerSelections'
@@ -746,6 +747,7 @@ export function useChatMessageActions({
   activeConvId,
   activeConvMessages,
   activeConvMentionScope,
+  chatConversations,
   attachmentSummaryText,
   canonicalHumanIdentityId,
   chatComposerAttachments,
@@ -919,8 +921,184 @@ export function useChatMessageActions({
     flushQueuedDesktopMessagesForSessionRef.current(activeConvId);
   }, [activeConvId, activeConversationIsBridge, desktopLiveTurn, isNativeShell, localChatSendInFlightRef, queuedDesktopMessagesBySession]);
 
-  return useCallback(async (draftOverride?: string) => {
+  const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string) => {
     if (!isNativeShell) return;
+    const text = rawText.trim();
+    if (!text) return;
+
+    const targetConversation = chatConversations.find((conversation) => (
+      conversation.id === targetSessionId || conversation.canonicalSessionId === targetSessionId
+    ));
+    if (!targetConversation) {
+      setDesktopChatError('Unable to find that side chat.');
+      return;
+    }
+
+    const sentAt = formatDesktopEventTime();
+    const clearTargetDraft = () => {
+      setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', targetConversation.id, ''));
+    };
+
+    if (isCloudBridgeConversationId(targetConversation.id)) {
+      if (!sendCloudBridgeMessage || !setCloudBridgeState) {
+        setDesktopChatError('Chat is still loading. Try again in a moment.');
+        return;
+      }
+      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      try {
+        shouldAutoFollowChatRef.current = true;
+        setDesktopChatError(null);
+        setCloudBridgeState((current) => appendOptimisticBridgeMessage(
+          current,
+          targetConversation.id,
+          text,
+          sentAt,
+          optimisticMessageId,
+          [],
+          attachmentSummaryText(text),
+        ));
+        clearTargetDraft();
+        await sendCloudBridgeMessage(targetConversation.id, text, []);
+        setCloudBridgeState(null);
+      } catch (error) {
+        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
+        setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversation.id, optimisticMessageId, failureDetail));
+        setDesktopChatError(failureDetail);
+      }
+      return;
+    }
+
+    const targetGroupScope = {
+      canonicalSessionId: targetConversation.canonicalSessionId ?? targetConversation.id,
+      participantSpaceId: targetConversation.participantSpaceId,
+      directness: targetConversation.directness,
+      canonicalParticipants: targetConversation.canonicalParticipants,
+    };
+    const localBridgeNodeIds = new Set(
+      (desktopBridgeState?.hosts ?? [])
+        .map((host) => host.nodeId?.trim())
+        .filter((value): value is string => Boolean(value)),
+    );
+    const groupTargets = isBridgeGroupSession(targetGroupScope)
+      ? bridgeGroupSessionSendTargets(targetConversation, targetConversation.bridgeTarget, localBridgeNodeIds)
+      : [];
+    const cloudGroupTargetIds = cloudGroupTargetAccountIds(groupTargets);
+    if (cloudGroupTargetIds.length > 0) {
+      if (!sendCloudGroupControl) {
+        setDesktopChatError('Group chat is still loading. Try again in a moment.');
+        return;
+      }
+      const canonicalSessionId = targetConversation.canonicalSessionId ?? targetConversation.id;
+      const activeBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
+        ?? desktopBridgeState?.hosts[0]
+        ?? null;
+      const selfPublicBridgeName = activeBridgeHost?.ownerName?.trim()
+        || activeBridgeHost?.displayName?.trim()
+        || null;
+      const activeGroupSessionSpaceId = bridgeGroupSessionSpaceId(targetGroupScope);
+      const preparedCanonicalMessage = prepareCanonicalUserMessage(
+        canonicalSessionId,
+        canonicalHumanIdentityId,
+        text,
+        [],
+        sentAt,
+        'cloud-group-ui',
+        'sent',
+      );
+      if (preparedCanonicalMessage) {
+        preparedCanonicalMessage.request.content = {
+          ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
+          deliveryState: 'delivered',
+        };
+      }
+      try {
+        shouldAutoFollowChatRef.current = true;
+        setDesktopChatError(null);
+        setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
+        clearTargetDraft();
+        await persistCanonicalUserMessage(preparedCanonicalMessage);
+        await sendCloudGroupControl({
+          targetAccountIds: cloudGroupTargetIds,
+          kind: 'group-message',
+          groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId: canonicalSessionId, activeGroupSessionSpaceId }),
+          groupSpaceId: activeGroupSessionSpaceId,
+          groupTitle: null,
+          bridgeParticipants: bridgeGroupSessionParticipants(targetConversation, { selfPublicName: selfPublicBridgeName }),
+          message: {
+            id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
+            senderAccountId: '',
+            text,
+            createdAtMs: Date.now(),
+          },
+          attachments: [],
+        });
+      } catch (error) {
+        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send group message');
+        setDesktopChatError(failureDetail);
+        setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+          current,
+          canonicalSessionId,
+          preparedCanonicalMessage?.messageId ?? null,
+          failureDetail,
+        ));
+        void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
+          .catch((saveError: unknown) => {
+            setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+          });
+      }
+      return;
+    }
+
+    try {
+      const delayReason = localChatSendDelayReason({
+        inFlight: localChatSendInFlightRef.current,
+        targetSessionId: targetConversation.id,
+        desktopLiveTurn: null,
+      });
+      if (delayReason) {
+        setDesktopChatError('Kordi is still preparing this session. Your draft is preserved.');
+        return;
+      }
+      localChatSendInFlightRef.current = { sessionId: targetConversation.id };
+      shouldAutoFollowChatRef.current = true;
+      setDesktopChatError(null);
+      const previewText = attachmentSummaryText(text);
+      const turn = await startDesktopChatMessage(targetConversation.id, text, []);
+      setDesktopChatState((current) => current
+        ? appendOptimisticOutboundMessage(current, targetConversation.id, previewText, text, [], sentAt)
+        : current);
+      clearTargetDraft();
+      watchLocalTurnAndFlushQueue(turn);
+    } catch (error) {
+      if (localChatSendInFlightRef.current?.sessionId === targetConversation.id) {
+        localChatSendInFlightRef.current = null;
+      }
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to send side chat message');
+    }
+  }, [
+    attachmentSummaryText,
+    canonicalHumanIdentityId,
+    chatConversations,
+    desktopBridgeState,
+    isNativeShell,
+    localChatSendInFlightRef,
+    sendCloudBridgeMessage,
+    sendCloudGroupControl,
+    setCanonicalSessionState,
+    setCloudBridgeState,
+    setComposerDrafts,
+    setDesktopChatError,
+    setDesktopChatState,
+    shouldAutoFollowChatRef,
+    watchLocalTurnAndFlushQueue,
+  ]);
+
+  return useCallback(async (draftOverride?: string, sideTargetSessionId?: string) => {
+    if (!isNativeShell) return;
+    if (sideTargetSessionId && sideTargetSessionId !== activeConvId) {
+      await sendTargetedChatMessage(sideTargetSessionId, draftOverride ?? '');
+      return;
+    }
     const rawText = draftOverride ?? composerDrafts.chat;
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
@@ -1476,6 +1654,7 @@ export function useChatMessageActions({
     setCloudBridgeState,
     sendCloudBridgeMessage,
     sendCloudGroupControl,
+    sendTargetedChatMessage,
     setDesktopChatError,
     setDesktopChatState,
     setIsDesktopChatSending,

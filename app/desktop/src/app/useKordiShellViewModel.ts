@@ -19,7 +19,7 @@ type UseKordiShellViewModelArgs = {
   selectComposerProviderChoice: (scope: ComposerScope, option: ComposerProviderOption) => Promise<void>;
   handleStopDesktopChatTurn: () => Promise<void> | void;
   handleSendProjectMessage: (draftOverride?: string) => Promise<void> | void;
-  handleSendChatMessage: (draftOverride?: string) => Promise<void> | void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string) => Promise<void> | void;
 };
 
 export function useKordiShellViewModel({
@@ -82,8 +82,8 @@ export function useKordiShellViewModel({
     void handleSendProjectMessage(draftOverride);
   }, [handleSendProjectMessage]);
 
-  const wrappedSendChatMessage = useCallback((draftOverride?: string) => {
-    void handleSendChatMessage(draftOverride);
+  const wrappedSendChatMessage = useCallback((draftOverride?: string, targetSessionId?: string) => {
+    void handleSendChatMessage(draftOverride, targetSessionId);
   }, [handleSendChatMessage]);
 
   return {

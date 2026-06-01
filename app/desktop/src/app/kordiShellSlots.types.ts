@@ -279,6 +279,7 @@ export type AssembleKordiShellSlotsArgs = {
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setProjectComposerText: (value: string) => void;
   setChatComposerText: (value: string) => void;
+  setChatComposerTextForSession: (sessionId: string, value: string) => void;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
   activeRuntimeSessionId?: string;
   activeRuntimeContextStatus?: DesktopChatState['activeSession']['contextWindowStatus'];
@@ -300,7 +301,7 @@ export type AssembleKordiShellSlotsArgs = {
   handleStopDesktopChatTurn: () => void;
   handleStopBridgeAgentRequest: (request: BridgeAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
-  handleSendChatMessage: (draftOverride?: string) => void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string) => void;
   handleForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   showChatDetailRail: boolean;
   activeDetailTab: DetailTab;
@@ -573,6 +574,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'
+  | 'setChatComposerTextForSession'
   | 'composerSelectionChat'
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'

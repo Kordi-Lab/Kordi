@@ -166,6 +166,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     isDetailPanelCollapsed: args.isDetailPanelCollapsed,
     setIsDetailPanelCollapsed: args.setIsDetailPanelCollapsed,
     activeConv: args.activeConv,
+    chatConversations: args.chatConversations,
     activeConversationIsBridge: args.activeConversationIsBridge,
     activeBridgeModelHost: args.activeBridgeConversationHost
       ?? args.desktopBridgeState?.hosts.find((host) => host.id === args.activeConv.bridgeTarget?.hostId)
@@ -206,6 +207,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     chatComposerText: args.chatComposerText,
     updateChatComposerDraft: args.updateChatComposerDraft,
     setChatComposerText: args.setChatComposerText,
+    setChatComposerTextForSession: args.setChatComposerTextForSession,
     composerControlsRef: args.composerControlsRef,
     activeRuntimeContextStatus: args.activeRuntimeContextStatus,
     activeRuntimeCacheText: args.activeRuntimeCacheText,
