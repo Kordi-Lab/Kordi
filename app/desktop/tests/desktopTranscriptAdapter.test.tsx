@@ -88,6 +88,53 @@ test('desktop transcript maps plain completed assistant replies to foldable sour
   assert.match(markup, /— 3 more lines\. Click to show all —/);
 });
 
+test('self-agent chat can render completed assistant replies without reply quote, request reply line, background, or folding', () => {
+  const longReply = [
+    'There is still no substantive progress.',
+    'First detail.',
+    'Second detail.',
+    'Third detail.',
+    'Fourth detail.',
+    'Fifth detail.',
+    'Sixth detail.',
+    'Seventh detail stays visible.',
+  ].join('\n');
+  const messages: DesktopChatMessage[] = [
+    {
+      role: 'user',
+      sender: 'Me',
+      text: 'check again',
+      timeLabel: '17:10',
+      timestampMs: 1,
+    },
+    {
+      role: 'assistant',
+      sender: 'My Kordi',
+      text: longReply,
+      timeLabel: '17:10',
+      timestampMs: 2,
+    },
+  ];
+
+  const mapped = mapDesktopMessagesForTranscript('session-self-agent', messages);
+  const attributed = buildReplyAttribution(mapped, null, {
+    inferLatestHumanRequest: false,
+    suppressAgentReplyAttribution: true,
+  }).messages;
+
+  const requestMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: attributed[0] }));
+  const assistantMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: attributed[1], plainAgentResponse: true }));
+
+  assert.doesNotMatch(requestMarkup, /app-message-reply-line/);
+  assert.doesNotMatch(assistantMarkup, /app-source-message-quote/);
+  assert.doesNotMatch(assistantMarkup, /app-live-assistant-answer-surface/);
+  assert.doesNotMatch(assistantMarkup, /app-live-assistant-answer-folded/);
+  assert.doesNotMatch(assistantMarkup, /Click to show/);
+  assert.match(assistantMarkup, /app-live-assistant-answer/);
+  assert.match(assistantMarkup, /There is still no substantive progress/);
+  assert.match(assistantMarkup, /Seventh detail stays visible/);
+});
+
 test('desktop transcript maps optimistic own messages with the local profile image url immediately', () => {
   const [mapped] = mapDesktopMessagesForTranscript('session-1', [{
     role: 'user',

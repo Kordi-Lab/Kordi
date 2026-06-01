@@ -436,6 +436,63 @@ test('WorkspaceSidebar marks the active agent fork path connector for accent sty
   assert.match(markup, /app-session-fork-children-active/);
 });
 
+test('WorkspaceSidebar keeps agent session hashtags aligned with fork controls on the right', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:agent:root-align',
+      canonicalSessionId: 'session:agent:root-align',
+      name: 'Root agent chat',
+      type: 'owned-agent',
+      subtitle: 'Root reply',
+      unread: 0,
+      participants: ['Me', 'My agent'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
+      ],
+      _updatedAtMs: 1,
+    }),
+    conversation({
+      id: 'session:agent:fork-align',
+      canonicalSessionId: 'session:agent:fork-align',
+      name: 'Forked agent chat',
+      type: 'owned-agent',
+      subtitle: 'Fork reply',
+      unread: 0,
+      forkedFromSessionId: 'session:agent:root-align',
+      forkedFromMessageId: 'msg:root-agent',
+      participants: ['Me', 'My agent'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
+      ],
+      _updatedAtMs: 2,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: [],
+    agentParticipantSpaces: participantSpaces,
+    activeConvId: 'session:agent:root-align',
+    initialChatChannel: 'agent',
+  }) as never));
+  const rootRowStart = markup.indexOf('data-agent-session-row="session:agent:root-align"');
+  const rootRowMarkup = markup.slice(rootRowStart, markup.indexOf('</button>', rootRowStart));
+  const titleIndex = rootRowMarkup.indexOf('app-session-row-title');
+  const toggleIndex = rootRowMarkup.indexOf('app-agent-session-fork-toggle');
+  const shellCss = readDesktopShellCss();
+
+  assert.match(rootRowMarkup, /app-agent-session-main/);
+  assert.match(rootRowMarkup, /app-agent-session-side/);
+  assert.match(rootRowMarkup, /app-agent-session-fork-toggle/);
+  assert.ok(titleIndex >= 0, 'agent session title should render');
+  assert.ok(toggleIndex > titleIndex, 'agent fork toggle should render to the right of the title');
+  assert.doesNotMatch(rootRowMarkup.slice(0, titleIndex), /app-agent-session-fork-toggle/);
+  assert.match(shellCss, /\.app-workspace-sidebar \.app-agent-session-row\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content/s);
+});
+
 test('WorkspaceSidebar does not show an Agent tab unread badge for hidden canonical parent forks', () => {
   const chatConversations = [
     conversation({

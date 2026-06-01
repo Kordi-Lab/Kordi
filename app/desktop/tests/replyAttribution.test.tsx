@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReplyAttribution, replyStatusText, shouldInferLatestHumanReplyTarget } from '../src/features/chat/replyAttribution';
+import { buildReplyAttribution, replyStatusText, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {
@@ -135,6 +135,100 @@ test('buildReplyAttribution deduplicates repeated no-provider replies for one re
   assert.equal(result.messages[1]?.id, 'msg:no-provider-1');
 });
 
+test('buildReplyAttribution still deduplicates no-provider replies when self-agent reply chrome is suppressed', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:no-provider-request',
+      text: '@MyKordi hello',
+    }),
+    {
+      id: 'msg:no-provider-a',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: 'No provider configured yet.',
+      time: '10:01',
+      replyToMessageId: 'msg:no-provider-request',
+      turn: turn({
+        id: 'turn-no-provider-a',
+        status: 'failed',
+        assistantText: '',
+        completed: true,
+        succeeded: false,
+        error: 'No provider configured yet.',
+      }),
+    },
+    {
+      id: 'msg:no-provider-b',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: 'No provider configured yet.',
+      time: '10:01',
+      replyToMessageId: 'msg:no-provider-request',
+      turn: turn({
+        id: 'turn-no-provider-b',
+        status: 'failed',
+        assistantText: '',
+        completed: true,
+        succeeded: false,
+        error: 'No provider configured yet.',
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, {
+    suppressAgentReplyAttribution: true,
+  });
+
+  assert.equal(result.messages.length, 2);
+  assert.equal(result.messages[0]?.replySummary, undefined);
+  assert.equal(result.messages[1]?.turn?.sourceMessage, undefined);
+});
+
+test('buildReplyAttribution suppresses reply chrome for self-agent chat replies when requested', () => {
+  const source = {
+    messageId: 'msg:self-request',
+    senderLabel: 'Me',
+    text: 'check again',
+    attachmentCount: 0,
+    time: '10:00',
+  };
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:self-request',
+      text: 'check again',
+    }),
+    {
+      id: 'msg:self-agent-answer',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '10:01',
+      replyToMessageId: 'msg:self-request',
+      sourceMessage: source,
+      turn: turn({
+        id: 'turn-self-agent-answer',
+        assistantText: 'Still no reply yet.',
+        replyToMessageId: 'msg:self-request',
+        sourceMessage: source,
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, {
+    inferLatestHumanRequest: false,
+    suppressAgentReplyAttribution: true,
+  });
+
+  assert.equal(result.messages[0]?.replySummary, undefined);
+  assert.equal(result.messages[1]?.replySummary, undefined);
+  assert.equal(result.messages[1]?.sourceMessage, undefined);
+  assert.equal(result.messages[1]?.turn?.sourceMessage, undefined);
+  assert.equal(result.messages[1]?.turn?.replyToMessageId, undefined);
+});
+
 test('shouldInferLatestHumanReplyTarget enables fallback linking for person, external-agent, and group chats', () => {
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'person', participantSpaceId: null, canonicalParticipantCount: 2 }), true);
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'external-agent', participantSpaceId: null, canonicalParticipantCount: 2 }), true);
@@ -148,6 +242,34 @@ test('shouldInferLatestHumanReplyTarget does not quote new private self-agent fo
     participantSpaceId: null,
     canonicalParticipantCount: 1,
     forkedFromSessionId: 'parent-self-session',
+  }), false);
+});
+
+test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent conversations', () => {
+  assert.equal(shouldSuppressAgentReplyAttribution({
+    id: 'session:self-agent:1',
+    type: 'owned-agent',
+    participantSpaceId: null,
+    canonicalParticipantCount: 1,
+  }), true);
+  assert.equal(shouldSuppressAgentReplyAttribution({
+    id: 'session:group:1',
+    type: 'owned-agent',
+    participantSpaceId: 'space-1',
+    canonicalParticipantCount: 4,
+  }), false);
+  assert.equal(shouldSuppressAgentReplyAttribution({
+    id: 'session:self-agent-group-fork',
+    type: 'owned-agent',
+    participantSpaceId: null,
+    canonicalParticipantCount: 1,
+    forkedFromSessionId: 'session:group:1',
+  }), false);
+  assert.equal(shouldSuppressAgentReplyAttribution({
+    id: 'session:external-agent:1',
+    type: 'external-agent',
+    participantSpaceId: null,
+    canonicalParticipantCount: 2,
   }), false);
 });
 
@@ -454,6 +576,32 @@ test('buildReplyAttribution links direct live turns to matching prompt without b
   assert.equal(result.messages[0]?.replySummary?.pending, true);
   assert.equal(result.liveTurn?.sourceMessage?.messageId, 'msg:direct-request');
   assert.equal(result.liveTurn?.sourceMessage?.text, 'check the gym in kaust');
+});
+
+test('buildReplyAttribution suppresses live turn reply chrome for self-agent chat when requested', () => {
+  const request = humanRequest({
+    id: 'msg:live-self-request',
+    text: 'check again',
+  });
+  const liveTurn = turn({
+    id: 'live-turn-self-agent',
+    sessionId: 'session:self-agent',
+    prompt: 'check again',
+    status: 'thinking',
+    message: 'Thinking…',
+    assistantText: '',
+    completed: false,
+    succeeded: false,
+  });
+
+  const result = buildReplyAttribution([request], liveTurn, {
+    inferLatestHumanRequest: false,
+    suppressAgentReplyAttribution: true,
+  });
+
+  assert.equal(result.messages[0]?.replySummary, undefined);
+  assert.equal(result.liveTurn?.sourceMessage, undefined);
+  assert.equal(result.liveTurn?.replyToMessageId, undefined);
 });
 
 test('buildReplyAttribution adds pending summary for live turns linked to a request', () => {
