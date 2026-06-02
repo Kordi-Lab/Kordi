@@ -57,7 +57,8 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.doesNotMatch(markup, /data-compact-model-trigger="bare"[\s\S]{0,240}rounded-full/);
   assert.doesNotMatch(markup, /data-compact-model-trigger="bare"[\s\S]{0,260}bg-emerald/);
   assert.doesNotMatch(markup, /text-sky|bg-sky|ring-sky|hover:text-sky|hover:bg-sky/);
-  assert.match(markup, /<details open=""/);
+  assert.equal((markup.match(/<details/g) ?? []).length, 3);
+  assert.doesNotMatch(markup, /<details open=""/);
   assert.match(markup, />provider</);
   assert.match(markup, />model</);
   assert.match(markup, />thinking level</);

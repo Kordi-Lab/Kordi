@@ -408,7 +408,7 @@ export function CompactComposerModelMenu({
             changes stay local in this popout until you save them.
           </div>
           <div className="px-2.5 py-2">
-            <details open className="border-b border-[color:var(--app-divider)] py-1">
+            <details className="border-b border-[color:var(--app-divider)] py-1">
               <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
                 <span className="font-medium">provider</span>
                 <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{providerSummary}</span>
@@ -436,7 +436,7 @@ export function CompactComposerModelMenu({
                 })}
               </div>
             </details>
-            <details open className="border-b border-[color:var(--app-divider)] py-1">
+            <details className="border-b border-[color:var(--app-divider)] py-1">
               <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
                 <span className="font-medium">model</span>
                 <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{modelSummary}</span>
