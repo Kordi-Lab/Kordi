@@ -707,9 +707,10 @@ export function WorkspaceSidebar({
     const childForks = globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
     const hasForks = childForks.length > 0;
     const expanded = hasForks && isForkListExpanded(session.id);
+    const ownSessionUnreadCount = sidebarSessionIsActive(session) ? 0 : session.unread;
     const rowUnreadCount = expanded
-      ? session.unread
-      : (unreadBySessionIdWithForkDescendants.get(session.id) ?? session.unread);
+      ? ownSessionUnreadCount
+      : (unreadBySessionIdWithForkDescendants.get(session.id) ?? ownSessionUnreadCount);
     // Mirror the agent-tab tree behavior: when a parent is collapsed,
     // keep only the active session's path visible (the user shouldn't
     // lose sight of where they currently are) and hide every other
@@ -1013,7 +1014,8 @@ export function WorkspaceSidebar({
       if (seen.has(sessionId)) return 0;
       const nextSeen = new Set(seen);
       nextSeen.add(sessionId);
-      const ownUnread = Math.max(0, allSidebarSessionRowsById.get(sessionId)?.session.unread ?? 0);
+      const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
+      const ownUnread = sidebarSessionIsActive(rowSession) ? 0 : Math.max(0, rowSession?.unread ?? 0);
       const forkUnread = (globalForkLineage.forksByParentSessionId.get(sessionId) ?? [])
         .reduce((sum, fork) => sum + visit(fork.id, nextSeen), 0);
       const total = ownUnread + forkUnread;
@@ -1022,7 +1024,7 @@ export function WorkspaceSidebar({
     };
     for (const sessionId of allSidebarSessionRowsById.keys()) visit(sessionId, new Set());
     return cache;
-  }, [allSidebarSessionRowsById, globalForkLineage]);
+  }, [allSidebarSessionRowsById, globalForkLineage, sidebarSessionIsActive]);
   const unreadByParticipantSpaceIdWithForkDescendants = useMemo(() => {
     const collect = (sessionId: string, target: Set<string>, seen: Set<string>) => {
       if (seen.has(sessionId)) return;
