@@ -472,16 +472,23 @@ export function cloudGroupMessageSessionId(input: {
 
 export function shouldCountCloudGroupMessageUnread(input: {
   activeConversationId?: string | null;
+  activeConversationIds?: Array<string | null | undefined>;
   groupId: string;
   groupSpaceId?: string | null;
   forkSnapshot?: boolean | null;
 }): boolean {
   if (input.forkSnapshot === true) return false;
-  const active = cleanText(input.activeConversationId);
+  const activeIds = new Set([
+    input.activeConversationId,
+    ...(input.activeConversationIds ?? []),
+  ].map((value) => cleanText(value)).filter(Boolean));
   const sessionId = cleanText(input.groupId);
   const spaceId = cleanText(input.groupSpaceId) || sessionId;
-  if (!active) return true;
-  return active !== sessionId && active !== spaceId && active !== `group:${spaceId}`;
+  if (activeIds.size === 0) return true;
+  for (const active of activeIds) {
+    if (active === sessionId || active === spaceId || active === `group:${spaceId}`) return false;
+  }
+  return true;
 }
 
 export function cloudGroupAgentResponseTargetAccountIds(input: {
@@ -731,33 +738,48 @@ export function cloudGroupPeerIdsFromContactsAndRequests(input: {
   return [...peerIds].sort();
 }
 
-export function cloudGroupMessageReadPeerIds(input: {
+export function cloudGroupMessageReadTargets(input: {
   accountId: string;
   activeConversationId?: string | null;
+  activeConversationIds?: Array<string | null | undefined>;
   messages: CloudMessage[];
-}): string[] {
+}): { peerIds: string[]; sessionIds: string[] } {
   const accountId = cleanText(input.accountId);
   const peerIds = new Set<string>();
-  if (!accountId) return [];
+  const sessionIds = new Set<string>();
+  if (!accountId) return { peerIds: [], sessionIds: [] };
   for (const message of input.messages) {
     if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
     const envelope = parseCloudGroupControl(message.body);
     if (!envelope || envelope.kind !== 'group-message') continue;
     if (shouldCountCloudGroupMessageUnread({
       activeConversationId: input.activeConversationId,
+      activeConversationIds: input.activeConversationIds,
       groupId: envelope.groupId,
       groupSpaceId: envelope.groupSpaceId,
       forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const peerId = cleanText(message.fromAccountId);
     if (peerId) peerIds.add(peerId);
+    const sessionId = cleanText(envelope.groupId);
+    if (sessionId) sessionIds.add(sessionId);
   }
-  return [...peerIds].sort();
+  return { peerIds: [...peerIds].sort(), sessionIds: [...sessionIds].sort() };
+}
+
+export function cloudGroupMessageReadPeerIds(input: {
+  accountId: string;
+  activeConversationId?: string | null;
+  activeConversationIds?: Array<string | null | undefined>;
+  messages: CloudMessage[];
+}): string[] {
+  return cloudGroupMessageReadTargets(input).peerIds;
 }
 
 export function cloudGroupUnreadCountsBySessionId(input: {
   accountId: string;
   activeConversationId?: string | null;
+  activeConversationIds?: Array<string | null | undefined>;
   messages: CloudMessage[];
 }): Record<string, number> {
   const accountId = cleanText(input.accountId);
@@ -770,6 +792,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
     if (!envelope || envelope.kind !== 'group-message') continue;
     if (!shouldCountCloudGroupMessageUnread({
       activeConversationId: input.activeConversationId,
+      activeConversationIds: input.activeConversationIds,
       groupId: envelope.groupId,
       groupSpaceId: envelope.groupSpaceId,
       forkSnapshot: envelope.message?.forkSnapshot,

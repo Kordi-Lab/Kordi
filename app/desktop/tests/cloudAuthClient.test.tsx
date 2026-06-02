@@ -461,6 +461,19 @@ test('markMessagesRead posts peer id to cloud read-receipt route', async () => {
   assert.deepEqual(JSON.parse(calls[0].init?.body as string), { peerAccountId: 'acct_peer' });
 });
 
+test('markSessionMessagesRead posts session id to cloud session read route', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await client.markSessionMessagesRead('kordi_cs_xyz', 'session:group:one');
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Agroup%3Aone/read');
+  assert.equal(calls[0].init?.method, 'POST');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
+});
+
 test('startOAuth requests a provider auth URL with redirectAfter', async () => {
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, { authUrl: 'https://accounts.example/auth' }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
