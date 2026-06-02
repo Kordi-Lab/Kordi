@@ -130,9 +130,9 @@ spec:
                   name: kordi-cloud-oauth
                   key: KORDI_OAUTH_GOOGLE_CLIENT_SECRET
             - name: KORDI_CLOUD_PUBLIC_BASE_URL
-              value: "https://coordinar.io"
+              value: "https://korde-product-cloud.35.188.85.31.sslip.io"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
-              value: "http://127.0.0.1:,http://localhost:,https://coordinar.io"
+              value: "http://127.0.0.1:,http://localhost:,https://korde-product-cloud.35.188.85.31.sslip.io"
             - name: KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
