@@ -4,7 +4,7 @@
 // Production Cloud Edition must not silently fall back to a localhost Bridge.
 // Local tunnels/dev servers remain available by explicitly setting
 // VITE_KORDI_CLOUD_API_BASE.
-export const DEFAULT_CLOUD_API_BASE_URL = 'https://coordinar.io';
+export const DEFAULT_CLOUD_API_BASE_URL = 'https://korde-product-cloud.35.188.85.31.sslip.io';
 
 export type CloudAccount = {
   accountId: string;
