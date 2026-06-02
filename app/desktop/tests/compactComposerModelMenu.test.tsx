@@ -57,7 +57,8 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.doesNotMatch(markup, /data-compact-model-trigger="bare"[\s\S]{0,240}rounded-full/);
   assert.doesNotMatch(markup, /data-compact-model-trigger="bare"[\s\S]{0,260}bg-emerald/);
   assert.doesNotMatch(markup, /text-sky|bg-sky|ring-sky|hover:text-sky|hover:bg-sky/);
-  assert.match(markup, /<details open=""/);
+  assert.equal((markup.match(/<details/g) ?? []).length, 3);
+  assert.doesNotMatch(markup, /<details open=""/);
   assert.match(markup, />provider</);
   assert.match(markup, />model</);
   assert.match(markup, />thinking level</);
@@ -72,6 +73,7 @@ test('compact composer model menu renders lowercase popout with foldable section
 test('compact model route menu is scoped to group and human contact chats', () => {
   assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'person', directness: 'direct person chat' })), true);
   assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'person', directness: 'group chat', id: 'session:group:one' })), true);
+  assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'group' as Conversation['type'], directness: 'group chat', id: 'session:group:one' })), true);
   assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'owned-agent', directness: 'direct chat' })), false);
   assert.equal(shouldUseCompactModelRouteMenu(conversation({ type: 'external-agent', directness: 'agent thread' })), false);
 });
@@ -90,4 +92,10 @@ test('ChatsPage places compact model route control before attachment and keeps e
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   assert.match(source, /<CompactComposerModelMenu[\s\S]*<Button[\s\S]*title="Add attachment"/);
   assert.match(source, /!shouldUseCompactModelRouteMenu\(activeConv\)[\s\S]*<ComposerModelControls/);
+});
+
+test('ChatsPage shows compact model route for group/contact chats even without a bridge routing agent', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /\{shouldUseCompactModelRouteMenu\(activeConv\) \? \(/);
+  assert.doesNotMatch(source, /shouldUseCompactModelRouteMenu\(activeConv\) && \(!activeConversationIsBridge \|\| selectedBridgeRoutingAgent\)/);
 });

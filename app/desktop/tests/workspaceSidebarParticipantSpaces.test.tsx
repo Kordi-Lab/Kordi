@@ -638,7 +638,7 @@ test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () =
   assert.doesNotMatch(markup, /syncing…/);
 });
 
-test('WorkspaceSidebar moves participant-space unread totals between folded parent and expanded child sessions', () => {
+test('WorkspaceSidebar moves participant-space unread totals between folded parent and unread child sessions', () => {
   const chatConversations = [
     conversation({
       id: 'session:group:one',
@@ -690,7 +690,7 @@ test('WorkspaceSidebar moves participant-space unread totals between folded pare
   }) as never));
   assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-space"/);
   assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="2"/);
-  assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
+  assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
 });
 
 test('WorkspaceSidebar moves participant-space running light from expanded parent to child session', () => {
