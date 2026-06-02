@@ -39,7 +39,7 @@ pnpm install
 
 ## Development entrypoints
 
-> **Cloud Desktop:** to run the account-based Cloud Edition desktop app, use `VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud VITE_KORDI_CLOUD_API_BASE=https://kordi.cloud pnpm dev:desktop`. See [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) for the full guide.
+> **Cloud Desktop:** to run the account-based Cloud Edition desktop app, set `VITE_KORDI_EDITION=cloud`, `KORDI_EDITION=cloud`, and `VITE_KORDI_CLOUD_API_BASE=<HOSTED_CLOUD_API_BASE>`, then run `pnpm dev:desktop`. See [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) for quick start instructions and [docs/hosted-cloud-developer-guide.md](docs/hosted-cloud-developer-guide.md) for hosted Cloud testing and deployment guidance.
 
 Run all of these from the monorepo root:
 
@@ -104,6 +104,7 @@ Use `shared/rust/protocol` and `shared/typescript/protocol` for types or contrac
 
 - [docs/development.md](docs/development.md) — root command map and day-to-day development entrypoints
 - [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) — quick start for running and building the Cloud Edition desktop app
+- [docs/hosted-cloud-developer-guide.md](docs/hosted-cloud-developer-guide.md) — hosted Cloud testing, deployment decision tree, migration guidance, and redaction rules
 - [docs/cloud-edition.md](docs/cloud-edition.md) — hosted Cloud Edition architecture, launch, sync, and deployment notes
 - [docs/architecture.md](docs/architecture.md) — structural view of the app, server, agent, and bridges layers
 - [docs/app-server.md](docs/app-server.md) — app-facing local server contract and integration plan

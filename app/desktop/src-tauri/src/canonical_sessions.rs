@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -62,8 +62,8 @@ pub(crate) use self::group_participants::{
     session_has_participant, set_session_metadata_in_db, set_session_participant_role_in_db,
 };
 pub(crate) use self::identity_context::{
-    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
-    IdentityContextRole, render_multi_participant_identity_context,
+    render_multi_participant_identity_context, IdentityContextParticipant,
+    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
 };
 use self::identity_helpers::{
     canonical_avatar_key, canonical_identity_id, default_session_title, stable_session_id,
@@ -560,6 +560,44 @@ pub(super) fn append_message_in_db(
     select_message(conn, &id)?.ok_or_else(|| "Unable to save canonical message".to_string())
 }
 
+fn select_cloud_self_agent_existing_echo(
+    conn: &Connection,
+    request: &AppendCanonicalMessageRequest,
+) -> Result<Option<CanonicalSessionMessage>, String> {
+    if request.source_transport.as_deref() != Some("cloud-self-agent") {
+        return Ok(None);
+    }
+    let created_at_ms = request.created_at_ms.unwrap_or_else(now_ms);
+    let message_id: Option<String> = conn
+        .query_row(
+            "SELECT id
+             FROM session_messages
+             WHERE session_id = ?1
+               AND sender_role = ?2
+               AND message_kind = ?3
+               AND content_text = ?4
+               AND source_transport IN ('desktop-chat', 'canonical-fork-snapshot')
+               AND ABS(created_at_ms - ?5) <= 5_000
+             ORDER BY ABS(created_at_ms - ?5) ASC, sequence_num DESC
+             LIMIT 1",
+            params![
+                request.session_id,
+                request.sender_role,
+                request.message_kind,
+                request.content_text,
+                created_at_ms,
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    message_id
+        .as_deref()
+        .map(|id| select_message(conn, id))
+        .transpose()
+        .map(|message| message.flatten())
+}
+
 fn upsert_message_in_db(
     conn: &Connection,
     request: AppendCanonicalMessageRequest,
@@ -575,6 +613,9 @@ fn upsert_message_in_db(
     };
 
     if select_message(conn, &id)?.is_none() {
+        if let Some(existing_echo) = select_cloud_self_agent_existing_echo(conn, &request)? {
+            return Ok(existing_echo);
+        }
         return append_message_in_db(conn, request);
     }
 

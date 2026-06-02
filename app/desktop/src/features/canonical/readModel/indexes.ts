@@ -255,6 +255,46 @@ function bridgeUiOptimisticEchoIds(messages: CanonicalSessionMessage[]) {
   return echoIds;
 }
 
+function selfAgentMirrorDuplicateKey(message: CanonicalSessionMessage) {
+  const text = normalizedDuplicateText(message.contentText);
+  if (!text) return null;
+  return [
+    message.sessionId,
+    message.senderIdentityId,
+    message.senderRole,
+    message.messageKind,
+    message.createdAtMs.toString(),
+    text,
+  ].join('\u001f');
+}
+
+function selfAgentMirrorDuplicateIds(messages: CanonicalSessionMessage[]) {
+  const duplicateIds = new Set<string>();
+  const preferredKeys = new Map<string, Set<string>>();
+  for (const message of messages) {
+    if (message.sourceTransport !== 'canonical-fork-snapshot' && message.sourceTransport !== 'desktop-chat') continue;
+    const key = selfAgentMirrorDuplicateKey(message);
+    if (!key) continue;
+    const transports = preferredKeys.get(key) ?? new Set<string>();
+    transports.add(message.sourceTransport);
+    preferredKeys.set(key, transports);
+  }
+
+  for (const message of messages) {
+    const key = selfAgentMirrorDuplicateKey(message);
+    if (!key) continue;
+    const preferredTransports = preferredKeys.get(key);
+    if (!preferredTransports) continue;
+    if (message.sourceTransport === 'cloud-self-agent') {
+      duplicateIds.add(message.id);
+    }
+    if (message.sourceTransport === 'desktop-chat' && preferredTransports.has('canonical-fork-snapshot')) {
+      duplicateIds.add(message.id);
+    }
+  }
+  return duplicateIds;
+}
+
 function isOwnedAgentTurn(message: CanonicalSessionMessage) {
   return message.senderRole === 'owned-agent' && message.messageKind === 'agent-turn';
 }
@@ -763,6 +803,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedNoProviderRuntimeDuplicateIds = noProviderRuntimeDuplicateIds(sortedMessages);
     const suppressedCloudGroupAgentResponseDuplicateIds = duplicateCloudGroupAgentResponseIds(sortedMessages);
+    const suppressedSelfAgentMirrorDuplicateIds = selfAgentMirrorDuplicateIds(sortedMessages);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
     const suppressedAgedBridgeProcessingPlaceholderIds = new Set(
       sortedMessages.filter(isAgedBridgeProcessingPlaceholder).map((message) => message.id),
@@ -793,6 +834,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedBridgeRelayAgentFanoutDuplicateIds.has(message.id)
         || suppressedNoProviderRuntimeDuplicateIds.has(message.id)
         || suppressedCloudGroupAgentResponseDuplicateIds.has(message.id)
+        || suppressedSelfAgentMirrorDuplicateIds.has(message.id)
         || suppressedStaleProcessingPlaceholderIds.has(message.id)
         || suppressedAgedBridgeProcessingPlaceholderIds.has(message.id)
         || suppressedPendingDelegationRawProcessingPlaceholderIds.has(message.id)

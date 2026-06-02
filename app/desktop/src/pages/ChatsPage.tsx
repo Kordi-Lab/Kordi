@@ -8,14 +8,12 @@ import {
   Cloud,
   Columns2,
   FileText,
-  Globe,
   GripVertical,
   Image as ImageIcon,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
   Send,
-  Shield,
   Split,
   X,
 } from 'lucide-react';
@@ -62,7 +60,7 @@ import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
-import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
+import { buildReplyAttribution, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
@@ -81,6 +79,34 @@ export function shouldShowConversationTypeBadge(conversation: Pick<Conversation,
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
   return !sessionId.startsWith('session:group:') && !forkParentId.startsWith('session:group:');
+}
+
+const GENERIC_CHAT_HEADER_SUBTITLES = new Set([
+  'agent chat',
+  'bridge',
+  'cloud',
+  'direct chat',
+  'direct person chat',
+  'draft session',
+  'external agent',
+  'group',
+  'group chat',
+  'human',
+  'local',
+  'my agent',
+  'owned',
+  'person',
+]);
+
+export function isGenericChatHeaderSubtitle(value: string): boolean {
+  const normalized = value.trim().replace(/\s+/g, ' ').toLowerCase();
+  return normalized.length === 0 || GENERIC_CHAT_HEADER_SUBTITLES.has(normalized);
+}
+
+export function chatHeaderSubtitle(conversation: Pick<Conversation, 'subtitle'>): string | null {
+  const formatted = formatSessionIdSubtitle(conversation.subtitle).trim();
+  if (!formatted || isGenericChatHeaderSubtitle(formatted)) return null;
+  return formatted;
 }
 
 export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
@@ -503,7 +529,7 @@ export function ChatsPage({
   );
   const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
   const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
-  const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
+  const activeSessionSubtitle = chatHeaderSubtitle(activeConv);
   const activeCloudSelfAgentSyncLabel = cloudSelfAgentSyncStatusLabel(cloudSelfAgentSyncStatus);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
@@ -553,6 +579,9 @@ export function ChatsPage({
   const companionSide = chatCompanionSideForPaneKinds(activePaneKind, humanPaneSide);
   const companionConversationHasBridgeTransport = companionConversation?.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local') ?? false;
   const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationHasBridgeTransport;
+  const companionSuppressAgentReplyAttribution = companionConversation
+    ? shouldSuppressAgentReplyAttribution(companionConversation)
+    : false;
 
   useEffect(() => {
     setIsCompanionFolded(false);
@@ -640,11 +669,13 @@ export function ChatsPage({
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
   const inferLatestHumanReplyTarget = shouldInferLatestHumanReplyTarget(activeConv);
+  const suppressAgentReplyAttribution = shouldSuppressAgentReplyAttribution(activeConv);
   const attributedTranscript = useMemo(
     () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
       inferLatestHumanRequest: inferLatestHumanReplyTarget,
+      suppressAgentReplyAttribution,
     }),
-    [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, transcriptMessages],
+    [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
   // Index of the last message that came from the fork's snapshot
@@ -671,8 +702,9 @@ export function ChatsPage({
     const messages = collapseAdjacentSessionConfigNotices(companionConversation.messages);
     return buildReplyAttribution(messages, undefined, {
       inferLatestHumanRequest: shouldInferLatestHumanReplyTarget(companionConversation),
+      suppressAgentReplyAttribution: companionSuppressAgentReplyAttribution,
     }).messages;
-  }, [companionConversation]);
+  }, [companionConversation, companionSuppressAgentReplyAttribution]);
   const updateCompanionDropPreview = (event: DragEvent<HTMLElement>) => {
     if (!companionConversation || isCompanionFolded) return null;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -767,13 +799,7 @@ export function ChatsPage({
                 {companionLabel(companionConversation)}
               </span>
             </div>
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
-              <span className="inline-flex items-center gap-1"><Shield className="h-3 w-3" /> {companionConversation.trust}</span>
-              {companionConversation.bridges.map((bridge) => (
-                <span key={bridge} className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {bridge}</span>
-              ))}
-              <span className="inline-flex items-center gap-1"><ArrowRightLeft className="h-3 w-3" /> {companionConversation.directness}</span>
-            </div>
+
           </div>
         </div>
         <div
@@ -814,6 +840,7 @@ export function ChatsPage({
                 void onForkChatMessage(companionConversation.id, entryId);
               } : undefined}
               onOpenForkSession={onSelectSession}
+              plainAgentResponse={companionSuppressAgentReplyAttribution}
               isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(companionTranscriptMessages, idx, -1)}
               isGroupedWithNext={isGroupedWithAdjacentHumanMessage(companionTranscriptMessages, idx, 1)}
             />
@@ -1149,12 +1176,6 @@ export function ChatsPage({
                   <Cloud className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
               ) : null}
-              {shouldShowConversationTypeBadge(activeConv) ? <TypeBadge type={activeConv.type} compact /> : null}
-              {activePaneKind ? (
-                <span className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.04] px-2 text-[10.5px] font-medium text-slate-300">
-                  {activePaneKind === 'human' ? 'Human chat' : 'Agent chat'}
-                </span>
-              ) : null}
               {activeForkSourceSessionId ? (
                 <button
                   type="button"
@@ -1169,18 +1190,11 @@ export function ChatsPage({
                 </button>
               ) : null}
             </div>
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
-              {activeSessionSubtitle ? (
-                <span className="inline-flex min-w-0 max-w-full items-center gap-1 font-mono" title={activeSessionSubtitle}>
-                  <span className="truncate">{activeSessionSubtitle}</span>
-                </span>
-              ) : null}
-              <span className="inline-flex items-center gap-1"><Shield className="h-3 w-3" /> {activeConv.trust}</span>
-              {activeConv.bridges.map((bridge) => (
-                <span key={bridge} className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {bridge}</span>
-              ))}
-              <span className="inline-flex items-center gap-1"><ArrowRightLeft className="h-3 w-3" /> {activeConv.directness}</span>
-            </div>
+            {activeSessionSubtitle ? (
+              <div className="mt-0.5 flex min-w-0 items-center text-[11px] leading-5 text-slate-400">
+                <span className="truncate" title={activeSessionSubtitle}>{activeSessionSubtitle}</span>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -1239,6 +1253,7 @@ export function ChatsPage({
                   onForkMessage={handleForkMessage}
                   messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
                   onOpenForkSession={onSelectSession}
+                  plainAgentResponse={suppressAgentReplyAttribution}
                   isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                   isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
                 />
@@ -1266,6 +1281,7 @@ export function ChatsPage({
                 sender={liveTurnSender}
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onStopActiveTurn={onStopDesktopChatTurn}
+                plainAgentResponse={suppressAgentReplyAttribution}
                 onOpenArtifact={onOpenArtifact}
                 onOpenAuthSettings={openAuthentication}
               />

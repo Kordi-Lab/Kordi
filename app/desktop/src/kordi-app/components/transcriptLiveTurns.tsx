@@ -744,6 +744,7 @@ function FoldableAssistantAnswer({
 function LiveChatTurnCardView({
   turn,
   historical = false,
+  plainAgentResponse = false,
   onStopBridgeAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
@@ -752,6 +753,7 @@ function LiveChatTurnCardView({
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
+  plainAgentResponse?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string) => void;
@@ -825,7 +827,7 @@ function LiveChatTurnCardView({
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
-        <div className={cn('app-live-turn-response-panel', hasResponseSurface && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,42rem)] space-y-2.5')}>
+        <div className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,42rem)] space-y-2.5')}>
           {shouldShowSourceQuote ? (
             <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
           ) : null}
@@ -887,6 +889,7 @@ function LiveChatTurnCardView({
           {hasAssistant ? (
             <FoldableAssistantAnswer
               text={visibleTurn.assistantText}
+              foldable={!plainAgentResponse}
               tone={visibleTurn.status === 'cancelled' ? 'cancelled' : 'default'}
             />
           ) : null}
@@ -951,6 +954,7 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
 export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
+    && previous.plainAgentResponse === next.plainAgentResponse
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
@@ -962,6 +966,7 @@ export const LiveChatTurnCard = memo(
 function LiveChatTurnMessageView({
   turn,
   sender = 'My Kordi',
+  plainAgentResponse = false,
   onStopBridgeAgentRequest,
   onStopActiveTurn,
   onNavigateToMessage,
@@ -970,6 +975,7 @@ function LiveChatTurnMessageView({
 }: {
   turn: DesktopChatTurnSnapshot;
   sender?: string;
+  plainAgentResponse?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
   onNavigateToMessage?: (messageId: string) => void;
@@ -985,6 +991,7 @@ function LiveChatTurnMessageView({
       <div className="app-message-meta">{sender}</div>
       <LiveChatTurnCard
         turn={turn}
+        plainAgentResponse={plainAgentResponse}
         onStopBridgeAgentRequest={onStopBridgeAgentRequest}
         onStopActiveTurn={onStopActiveTurn}
         onNavigateToMessage={onNavigateToMessage}
@@ -998,6 +1005,7 @@ function LiveChatTurnMessageView({
 export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,
   (previous, next) => previous.sender === next.sender
+    && previous.plainAgentResponse === next.plainAgentResponse
     && previous.onStopBridgeAgentRequest === next.onStopBridgeAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
