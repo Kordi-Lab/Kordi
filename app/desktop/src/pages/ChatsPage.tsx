@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import {
+  CompactComposerModelMenu,
   ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
@@ -39,6 +40,7 @@ import {
   type ComposerMentionOption,
   type ComposerModelOption,
   type ComposerProviderOption,
+  type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
 import type {
   Conversation,
@@ -102,6 +104,10 @@ export function chatHeaderSubtitle(conversation: Pick<Conversation, 'subtitle'>)
   const formatted = formatSessionIdSubtitle(conversation.subtitle).trim();
   if (!formatted || isGenericChatHeaderSubtitle(formatted)) return null;
   return formatted;
+}
+
+export function shouldUseCompactModelRouteMenu(conversation: Pick<Conversation, 'type' | 'directness'>): boolean {
+  return conversation.type === 'person';
 }
 
 export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
@@ -616,6 +622,33 @@ export function ChatsPage({
     });
   };
 
+  const saveCompactModelRoute = (input: CompactComposerModelMenuSaveInput) => {
+    if (activeConversationIsBridge && selectedBridgeRoutingAgent) {
+      updateBridgeAgentRouting({
+        defaultModel: input.model,
+        defaultAuthProvider: input.providerOption?.providerId ?? selectedBridgeRoutingAgent.defaultAuthProvider ?? null,
+        defaultAuthChoice: input.providerOption ? authChoiceFromProviderOption(input.providerOption) : selectedBridgeRoutingAgent.defaultAuthChoice ?? null,
+        fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
+        fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
+        fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
+        thinking: input.thinking,
+      });
+      return;
+    }
+
+    void (async () => {
+      if (input.providerOption) {
+        await selectComposerProviderChoice('chat', input.providerOption);
+      }
+      if (input.model !== composerSelection.model) {
+        await selectComposerValue('chat', 'model', input.model);
+      }
+      if (input.thinking !== composerSelection.thinking) {
+        await selectComposerValue('chat', 'thinking', input.thinking);
+      }
+    })();
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="app-page-header shrink-0 flex items-start justify-between gap-3 border-b border-white/10 px-4 py-2.5">
@@ -959,6 +992,15 @@ export function ChatsPage({
           </div>
           <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
             <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
+              {shouldUseCompactModelRouteMenu(activeConv) && (!activeConversationIsBridge || selectedBridgeRoutingAgent) ? (
+                <CompactComposerModelMenu
+                  scope="chat"
+                  selection={activeConversationIsBridge && selectedBridgeRoutingAgent ? bridgeRoutingSelection : composerSelection}
+                  providerOptions={composerProviderOptions}
+                  modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                  onSave={saveCompactModelRoute}
+                />
+              ) : null}
               <Button
                 size="icon"
                 variant="secondary"
@@ -977,7 +1019,7 @@ export function ChatsPage({
                   cacheText={activeRuntimeCacheText}
                 />
               ) : null}
-              {!activeConversationIsBridge ? (
+              {!activeConversationIsBridge && !shouldUseCompactModelRouteMenu(activeConv) ? (
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}
@@ -997,7 +1039,7 @@ export function ChatsPage({
                   providerOptions={composerProviderOptions}
                   modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
                 />
-              ) : selectedBridgeRoutingAgent ? (
+              ) : activeConversationIsBridge && !shouldUseCompactModelRouteMenu(activeConv) && selectedBridgeRoutingAgent ? (
                 <div className="relative flex min-w-0 items-center gap-2">
                   {bridgeRoutingControlVisibility.showAgentSelector ? (
                     <button

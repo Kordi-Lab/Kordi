@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   AtSign,
   Bot,
@@ -10,6 +10,7 @@ import {
   ImagePlus,
   LogIn,
   LogOut,
+  Menu,
   RefreshCw,
   Search,
   Settings2,
@@ -247,7 +248,8 @@ export function fallbackComposerThinkingValue(levels: string[], requested: strin
 }
 
 function normalizeComposerProviderId(providerId: string) {
-  return providerId === 'openai-codex' ? 'openai' : providerId;
+  const normalized = providerId.trim().toLowerCase();
+  return normalized === 'openai-codex' ? 'openai' : normalized;
 }
 
 function authChoiceFromComposerProviderOption(option: ComposerProviderOption) {
@@ -278,6 +280,227 @@ function providerDisplayLabel(providerId: string) {
     default:
       return providerId;
   }
+}
+
+function lowerComposerLabel(value?: string | null) {
+  return (value?.trim() || '').toLocaleLowerCase();
+}
+
+export type CompactComposerModelMenuSaveInput = {
+  providerOption: ComposerProviderOption | null;
+  model: string;
+  thinking: string;
+};
+
+export function CompactComposerModelMenu({
+  scope,
+  selection,
+  providerOptions = [],
+  modelOptions = composerModelOptions.map((option) => ({ value: option, label: option })),
+  defaultOpen = false,
+  onSave,
+}: {
+  scope: ComposerScope;
+  selection: { mode: string; model: string; thinking: string; authProvider?: string | null; authChoice?: string | null };
+  providerOptions?: ComposerProviderOption[];
+  modelOptions?: ComposerModelOption[];
+  defaultOpen?: boolean;
+  onSave: (input: CompactComposerModelMenuSaveInput) => void;
+}) {
+  const selectedModelOption = modelOptions.find((option) => option.value === selection.model);
+  const parsedSelection = selection.model.split('/');
+  const fallbackProviderValue = normalizeComposerProviderId(parsedSelection[0] ?? '');
+  const fallbackProviderKnown = Boolean(fallbackProviderValue) && (
+    providerOptions.some((option) => normalizeComposerProviderId(option.providerId) === fallbackProviderValue)
+    || modelOptions.some((option) => option.provider === fallbackProviderValue)
+  );
+  const selectedProviderValue = selectedModelOption?.provider ?? (fallbackProviderKnown ? fallbackProviderValue : '');
+  const selectedAuthProviderOption = selection.authProvider
+    ? providerOptions.find((option) => (
+        option.providerId === selection.authProvider
+        && authChoiceFromComposerProviderOption(option) === (selection.authChoice ?? null)
+      )) ?? null
+    : null;
+  const selectedProviderOption = selectedAuthProviderOption ?? providerOptions.find(
+    (option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue && option.active,
+  ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
+
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [stagedProviderValue, setStagedProviderValue] = useState(selectedProviderOption?.value ?? '');
+  const [stagedModel, setStagedModel] = useState(selection.model);
+  const [stagedThinking, setStagedThinking] = useState(selection.thinking);
+
+  useEffect(() => {
+    setStagedProviderValue(selectedProviderOption?.value ?? '');
+    setStagedModel(selection.model);
+    setStagedThinking(selection.thinking);
+  }, [selectedProviderOption?.value, selection.model, selection.thinking]);
+
+  const stagedProviderOption = providerOptions.find((option) => option.value === stagedProviderValue) ?? selectedProviderOption ?? null;
+  const stagedProviderId = stagedProviderOption?.providerId
+    ? normalizeComposerProviderId(stagedProviderOption.providerId)
+    : selectedProviderValue;
+  const visibleModelOptions = stagedProviderId
+    ? modelOptions.filter((option) => (option.provider ?? stagedProviderId) === stagedProviderId)
+    : modelOptions;
+  const stagedModelOption = modelOptions.find((option) => option.value === stagedModel) ?? selectedModelOption ?? visibleModelOptions[0] ?? null;
+  const stagedThinkingLevels = normalizeComposerThinkingLevels(stagedModelOption?.thinkingLevels?.length
+    ? stagedModelOption.thinkingLevels
+    : composerThinkingOptions.map((option) => option.value));
+  const stagedThinkingValue = fallbackComposerThinkingValue(stagedThinkingLevels, stagedThinking);
+  const providerSummary = lowerComposerLabel(
+    stagedProviderOption?.selectionLabel
+      ?? (stagedProviderOption ? [stagedProviderOption.label, stagedProviderOption.detail].filter(Boolean).join(' · ') : null)
+      ?? stagedModelOption?.providerLabel
+      ?? (stagedProviderId ? providerDisplayLabel(stagedProviderId) : 'provider'),
+  );
+  const modelSummary = lowerComposerLabel(stagedModelOption?.label ?? stagedModel);
+  const thinkingSummary = lowerComposerLabel(composerThinkingLabel(stagedThinkingValue));
+  const routeSummary = [providerSummary, modelSummary, thinkingSummary].filter(Boolean).join(' · ');
+
+  const chooseProvider = (option: ComposerProviderOption) => {
+    const providerId = normalizeComposerProviderId(option.providerId);
+    const firstProviderModel = modelOptions.find((model) => (model.provider ?? providerId) === providerId);
+    setStagedProviderValue(option.value);
+    if (firstProviderModel && (stagedModelOption?.provider ?? '') !== providerId) {
+      setStagedModel(firstProviderModel.value);
+      setStagedThinking(fallbackComposerThinkingValue(firstProviderModel.thinkingLevels ?? [], stagedThinking));
+    }
+  };
+
+  const chooseModel = (option: ComposerModelOption) => {
+    setStagedModel(option.value);
+    setStagedThinking(fallbackComposerThinkingValue(option.thinkingLevels ?? [], stagedThinking));
+  };
+
+  const cancel = () => {
+    setStagedProviderValue(selectedProviderOption?.value ?? '');
+    setStagedModel(selection.model);
+    setStagedThinking(selection.thinking);
+    setIsOpen(false);
+  };
+
+  const save = () => {
+    onSave({ providerOption: stagedProviderOption, model: stagedModel, thinking: stagedThinkingValue });
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative shrink-0" data-compact-model-menu="true" data-composer-scope={scope}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        className="relative grid h-9 w-9 shrink-0 place-items-center border-0 bg-transparent text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/60"
+        title="model route"
+        aria-label="model route"
+        aria-expanded={isOpen}
+        data-compact-model-trigger="bare"
+      >
+        <Menu className="h-[18px] w-[18px] text-slate-400" strokeWidth={2.25} aria-hidden="true" />
+      </button>
+      {isOpen ? (
+        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-[min(31rem,65vh)] w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-[18px] border border-white/15 bg-[rgba(43,43,46,0.82)] text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-2xl">
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-neutral-950/25 px-3.5 py-3">
+            <div className="font-medium">model route</div>
+            <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">only you see this</div>
+          </div>
+          <div className="mx-3.5 mt-3 rounded-[13px] border border-white/10 bg-white/8 px-3 py-2 text-[11px] text-neutral-300">
+            changes stay local in this popout until you save them.
+          </div>
+          <div className="px-2.5 py-2">
+            <details open className="border-b border-[color:var(--app-divider)] py-1">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+                <span className="font-medium">provider</span>
+                <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{providerSummary}</span>
+              </summary>
+              <div className="space-y-1 pb-2 pl-3 pt-1">
+                {providerOptions.map((option) => {
+                  const isSelected = stagedProviderOption?.value === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => chooseProvider(option)}
+                      className={cn(
+                        'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                        isSelected ? 'app-composer-popover-item-active' : '',
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate">{lowerComposerLabel(option.label)}</span>
+                        {option.detail ? <span className="block truncate text-[11px] text-[color:var(--utility-muted-text)]">{lowerComposerLabel(option.detail)}</span> : null}
+                      </span>
+                      <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
+            <details open className="border-b border-[color:var(--app-divider)] py-1">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+                <span className="font-medium">model</span>
+                <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{modelSummary}</span>
+              </summary>
+              <div className="space-y-1 pb-2 pl-3 pt-1">
+                {visibleModelOptions.map((option) => {
+                  const isSelected = stagedModel === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => chooseModel(option)}
+                      className={cn(
+                        'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                        isSelected ? 'app-composer-popover-item-active' : '',
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate">{lowerComposerLabel(option.label)}</span>
+                        {option.detail ? <span className="block truncate text-[11px] text-[color:var(--utility-muted-text)]">{lowerComposerLabel(option.detail)}</span> : null}
+                      </span>
+                      <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
+            <details className="py-1">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+                <span className="font-medium">thinking level</span>
+                <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{thinkingSummary}</span>
+              </summary>
+              <div className="space-y-1 pb-2 pl-3 pt-1">
+                {stagedThinkingLevels.map((value) => {
+                  const isSelected = stagedThinkingValue === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setStagedThinking(value)}
+                      className={cn(
+                        'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                        isSelected ? 'app-composer-popover-item-active' : '',
+                      )}
+                    >
+                      <span>{lowerComposerLabel(composerThinkingLabel(value))}</span>
+                      <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </details>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-[color:var(--app-divider)] px-3.5 py-3">
+            <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">pending route: {routeSummary}</span>
+            <span className="flex shrink-0 items-center gap-2">
+              <button type="button" onClick={cancel} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]">cancel</button>
+              <button type="button" onClick={save} className="rounded-full bg-slate-200 px-3 py-1.5 text-[12px] font-semibold text-slate-950 transition hover:bg-white">save</button>
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function ComposerModelControls({
