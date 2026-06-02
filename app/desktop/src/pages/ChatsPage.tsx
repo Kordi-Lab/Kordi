@@ -80,6 +80,34 @@ export function shouldShowConversationTypeBadge(conversation: Pick<Conversation,
   return !sessionId.startsWith('session:group:') && !forkParentId.startsWith('session:group:');
 }
 
+const GENERIC_CHAT_HEADER_SUBTITLES = new Set([
+  'agent chat',
+  'bridge',
+  'cloud',
+  'direct chat',
+  'direct person chat',
+  'draft session',
+  'external agent',
+  'group',
+  'group chat',
+  'human',
+  'local',
+  'my agent',
+  'owned',
+  'person',
+]);
+
+export function isGenericChatHeaderSubtitle(value: string): boolean {
+  const normalized = value.trim().replace(/\s+/g, ' ').toLowerCase();
+  return normalized.length === 0 || GENERIC_CHAT_HEADER_SUBTITLES.has(normalized);
+}
+
+export function chatHeaderSubtitle(conversation: Pick<Conversation, 'subtitle'>): string | null {
+  const formatted = formatSessionIdSubtitle(conversation.subtitle).trim();
+  if (!formatted || isGenericChatHeaderSubtitle(formatted)) return null;
+  return formatted;
+}
+
 export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
   if (!status) return null;
   if (status.state === 'syncing') {
