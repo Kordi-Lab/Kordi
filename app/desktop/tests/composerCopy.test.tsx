@@ -36,6 +36,8 @@ test('chat composer placeholder matches contact/group versus agent chat context'
 
   assert.equal(chatComposerPlaceholder(conversation({ type: 'person', directness: 'Direct chat' })), 'Send your message, use @ to mention…');
   assert.equal(chatComposerPlaceholder(conversation({ type: 'person', directness: 'Group chat' })), 'Send your message, use @ to mention…');
+  assert.equal(chatComposerPlaceholder(conversation({ type: 'group' as Conversation['type'], directness: 'Group chat' })), 'Send your message, use @ to mention…');
+  assert.equal(chatComposerPlaceholder(conversation({ type: 'owned-agent', directness: 'Group chat' })), 'Send your message, use @ to mention…');
   assert.equal(chatComposerPlaceholder(conversation({ type: 'owned-agent' })), 'Ask your agent…');
   assert.equal(chatComposerPlaceholder(conversation({ type: 'external-agent' })), 'Ask your agent…');
 });
