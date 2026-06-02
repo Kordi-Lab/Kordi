@@ -8,6 +8,7 @@ import {
   cloudGroupControlMessagesForAccount,
   cloudGroupLocalAgentRequestAlreadyHandled,
   cloudGroupMessageReadPeerIds,
+  cloudGroupMessageReadTargets,
   cloudGroupMessageSessionId,
   cloudGroupUnreadCountsBySessionId,
   cloudGroupPeerIdsFromContactsAndRequests,
@@ -542,9 +543,31 @@ test('cloud group read helper marks inbound controls read when their group sessi
   }), ['acct_peer']);
 });
 
+test('cloud group read helper returns active session ids for durable Cloud read receipts', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:child',
+    groupSpaceId: 'session:group:space',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' }],
+    message: { id: 'msg_group_1', senderAccountId: 'acct_peer', text: 'hello', createdAtMs: 1 },
+  });
+
+  assert.deepEqual(cloudGroupMessageReadTargets({
+    accountId: 'acct_me',
+    activeConversationIds: ['ui-row-id', 'group:session:group:space'],
+    messages: [
+      { messageId: 'cloud_1', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), { peerIds: ['acct_peer'], sessionIds: ['session:group:child'] });
+});
+
 test('cloud group unread helper counts only hidden sessions', () => {
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:child', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:space', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
+  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationIds: ['ui-row-id', 'group:session:group:space'], groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:other', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), true);
 });
 

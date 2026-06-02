@@ -51,6 +51,7 @@ import {
   cloudMessageMentionsContactAgent,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdForBridgeSend,
+  cloudSessionIdFromConversationId,
   isCloudBridgeHostId,
 } from './cloudBridgeState';
 import {
@@ -84,7 +85,7 @@ import {
   cloudGroupIdFromAgentConversationId,
   cloudGroupIdentityRequest,
   cloudGroupLocalAgentRequestAlreadyHandled,
-  cloudGroupMessageReadPeerIds,
+  cloudGroupMessageReadTargets,
   cloudGroupParticipantsForBridgeSessionParticipants,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
@@ -3137,8 +3138,13 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account || !setCanonicalSessionState) return;
+    const activeConversationIds = [
+      activeConversationId,
+      activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null,
+    ];
     const unreadBySessionId = cloudGroupUnreadCountsBySessionId({
       accountId: account.accountId,
+      activeConversationIds,
       messages: Object.values(messagesByPeer).flat(),
     });
     setCanonicalSessionState((current) => {
@@ -3170,7 +3176,7 @@ export function useCloudBridgeState({
       });
       return changed ? { ...current, sessions } : current;
     });
-  }, [account, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
+  }, [account, activeConversationId, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
@@ -3458,16 +3464,24 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
-    const cloudGroupReadPeerIds = cloudGroupMessageReadPeerIds({
+    const activeConversationIds = [
+      activeConversationId,
+      activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null,
+    ];
+    const cloudGroupReadTargets = cloudGroupMessageReadTargets({
       accountId: account.accountId,
       activeConversationId,
+      activeConversationIds,
       messages: Object.values(messagesByPeer).flat(),
     });
-    if (cloudGroupReadPeerIds.length > 0) {
+    if (cloudGroupReadTargets.peerIds.length > 0 || cloudGroupReadTargets.sessionIds.length > 0) {
       void loadSession()
         .then((session) => {
           if (!session?.token) return null;
-          return Promise.all(cloudGroupReadPeerIds.map((peerId) => client.markMessagesRead(session.token, peerId)));
+          const readRequests = cloudGroupReadTargets.sessionIds.length > 0
+            ? cloudGroupReadTargets.sessionIds.map((sessionId) => client.markSessionMessagesRead(session.token, sessionId))
+            : cloudGroupReadTargets.peerIds.map((peerId) => client.markMessagesRead(session.token, peerId));
+          return Promise.all(readRequests);
         })
         .then((result) => {
           if (result === null) return;
