@@ -164,13 +164,22 @@ function participantIsSelf(participant: ConversationParticipant) {
   return participant.role === 'self' || (participant.source === 'local' && participant.kind === 'human');
 }
 
+function conversationIsGroupChat(conversation: Conversation) {
+  return conversation.canonicalSessionId?.startsWith('session:group:') === true
+    || conversation.participantSpaceId?.startsWith('group:') === true
+    || /\bgroup\b/i.test(conversation.directness ?? '');
+}
+
 function conversationIsHumanChat(conversation: Conversation) {
-  return conversation.type === 'person'
-    || conversation.canonicalParticipants?.some((participant) => !participantIsSelf(participant) && participant.kind === 'human') === true;
+  return conversationIsGroupChat(conversation) || (!conversationIsAgentChat(conversation) && (
+    conversation.type === 'person'
+    || conversation.canonicalParticipants?.some((participant) => !participantIsSelf(participant) && participant.kind === 'human') === true
+  ));
 }
 
 function conversationIsAgentChat(conversation: Conversation) {
-  return conversation.type === 'owned-agent' || conversation.type === 'external-agent';
+  return !conversationIsGroupChat(conversation)
+    && (conversation.type === 'owned-agent' || conversation.type === 'external-agent');
 }
 
 function addScopedKey(keys: Set<string>, scope: string, value?: string | null) {
@@ -244,12 +253,13 @@ export function chatCompanionCandidates(activeConv: Conversation, conversations:
 }
 
 function companionLabel(conversation: Conversation) {
-  return conversationIsHumanChat(conversation) ? 'Human chat' : 'Agent chat';
+  return conversationPaneKind(conversation) === 'agent' ? 'Agent chat' : 'Human chat';
 }
 
 function conversationPaneKind(conversation: Conversation): 'human' | 'agent' | null {
-  if (conversationIsHumanChat(conversation)) return 'human';
+  if (conversationIsGroupChat(conversation)) return 'human';
   if (conversationIsAgentChat(conversation)) return 'agent';
+  if (conversationIsHumanChat(conversation)) return 'human';
   return null;
 }
 
@@ -541,6 +551,8 @@ export function ChatsPage({
   const activePaneKind = conversationPaneKind(activeConv);
   const companionPaneKind = companionConversation ? conversationPaneKind(companionConversation) : null;
   const companionSide = chatCompanionSideForPaneKinds(activePaneKind, humanPaneSide);
+  const companionConversationHasBridgeTransport = companionConversation?.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local') ?? false;
+  const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationHasBridgeTransport;
 
   useEffect(() => {
     setIsCompanionFolded(false);
@@ -827,7 +839,7 @@ export function ChatsPage({
                 }
               }}
               className="min-h-[24px] max-h-[220px] flex-1 resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              placeholder={`Draft for ${companionConversation.name}`}
+              placeholder={companionPaneKind === 'agent' ? chatComposerPlaceholder(companionConversation) : `Draft for ${companionConversation.name}`}
               data-composer-scope="companion"
             />
             <Button
@@ -843,6 +855,38 @@ export function ChatsPage({
               <Send className="h-4 w-4" />
             </Button>
           </div>
+          {companionShowsLocalAgentControls ? (
+            <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
+              <span className="h-9 w-9 shrink-0" aria-hidden="true" />
+              <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-visible">
+                {isNativeShell || activeRuntimeContextStatus ? (
+                  <ComposerRuntimeStatus
+                    contextStatus={activeRuntimeContextStatus}
+                    cacheText={activeRuntimeCacheText}
+                  />
+                ) : null}
+                <ComposerModelControls
+                  scope="chat"
+                  selection={composerSelection}
+                  openSelector={openComposerSelector}
+                  onToggleSelector={toggleComposerSelector}
+                  onSelectValue={(scope, type, value) => {
+                    void selectComposerValue(scope, type, value);
+                  }}
+                  authLabel={composerAuthLabel}
+                  authOptions={composerAuthOptions}
+                  onSelectAuthChoice={(scope, providerId, choice) => {
+                    void selectComposerAuthChoice(scope, providerId, choice);
+                  }}
+                  onSelectProviderChoice={(scope, option) => {
+                    void selectComposerProviderChoice(scope, option);
+                  }}
+                  providerOptions={composerProviderOptions}
+                  modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </aside>
@@ -1405,13 +1449,13 @@ export function ChatsPage({
               </Button>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-visible">
-              {!activeConversationIsBridge && (isNativeShell || activeRuntimeContextStatus) ? (
+              {activePaneKind === 'agent' && !activeConversationIsBridge && (isNativeShell || activeRuntimeContextStatus) ? (
                 <ComposerRuntimeStatus
                   contextStatus={activeRuntimeContextStatus}
                   cacheText={activeRuntimeCacheText}
                 />
               ) : null}
-              {!activeConversationIsBridge ? (
+              {activePaneKind === 'agent' && !activeConversationIsBridge ? (
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}
@@ -1431,7 +1475,7 @@ export function ChatsPage({
                   providerOptions={composerProviderOptions}
                   modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
                 />
-              ) : selectedBridgeRoutingAgent ? (
+              ) : activePaneKind === 'agent' && selectedBridgeRoutingAgent ? (
                 <div className="relative flex min-w-0 items-center gap-2">
                   {bridgeRoutingControlVisibility.showAgentSelector ? (
                     <button

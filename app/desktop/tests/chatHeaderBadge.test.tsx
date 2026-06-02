@@ -165,6 +165,51 @@ test('chat companion side keeps human and agent absolute positions stable', () =
   assert.equal(humanSideFromCompanionDrop('agent', 'left'), 'right');
 });
 
+test('chat companion candidates treat owned-agent chats with human participants as agents', () => {
+  const humanChat = conversation({ id: 'human-chat', type: 'person' });
+  const ownedAgentGroupChat = conversation({
+    id: 'agent-group-chat',
+    type: 'owned-agent',
+    canonicalParticipants: [{
+      id: 'human:acct_shu',
+      name: 'Shu Yang',
+      kind: 'human',
+      role: 'participant',
+      source: 'bridge',
+      bridgeHostId: 'cloud',
+      bridgeNodeId: 'acct_shu',
+      humanId: 'acct_shu',
+    }],
+  });
+
+  assert.deepEqual(
+    chatCompanionCandidates(humanChat, [humanChat, ownedAgentGroupChat]).map((candidate) => candidate.id),
+    ['agent-group-chat'],
+  );
+  assert.equal(chatCompanionSideForPaneKinds('agent', 'left'), 'left');
+});
+
+test('chat companion candidates keep canonical group chats in the human pane even with agent-ish type', () => {
+  const groupChat = conversation({
+    id: 'group-chat',
+    canonicalSessionId: 'session:group:abc',
+    participantSpaceId: 'group:abc',
+    directness: 'Group chat',
+    type: 'owned-agent',
+  });
+  const agentChat = conversation({ id: 'agent-chat', type: 'owned-agent' });
+  const humanChat = conversation({ id: 'human-chat', type: 'person' });
+
+  assert.deepEqual(
+    chatCompanionCandidates(groupChat, [groupChat, agentChat, humanChat]).map((candidate) => candidate.id),
+    ['agent-chat'],
+  );
+  assert.deepEqual(
+    chatCompanionCandidates(agentChat, [groupChat, agentChat, humanChat]).map((candidate) => candidate.id),
+    ['group-chat', 'human-chat'],
+  );
+});
+
 test('chat companion split controls live on the divider instead of floating over headers', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
@@ -186,4 +231,13 @@ test('chat companion composer sends with Enter and keeps modified Enter for line
   assert.match(source, /onSendChatMessage\(draft, conversation\.id\)/);
   assert.match(source, /event\.key === 'Enter' && !event\.metaKey && !event\.ctrlKey && !event\.shiftKey/);
   assert.match(source, /title=\{`Send to \$\{companionConversation\.name\}`\}/);
+});
+
+test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /activePaneKind === 'agent' && !activeConversationIsBridge/);
+  assert.match(source, /companionPaneKind === 'agent' \? chatComposerPlaceholder\(companionConversation\)/);
+  assert.match(source, /companionShowsLocalAgentControls/);
+  assert.match(source, /companionPaneKind === 'agent' && !companionConversationHasBridgeTransport/);
 });
