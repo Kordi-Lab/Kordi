@@ -37,7 +37,6 @@ import {
   ComposerSlashMenu,
   LiveChatTurnMessage,
   MessageBubble,
-  TypeBadge,
   fallbackComposerThinkingValue,
   type ComposerAuthOption,
   type ComposerMentionOption,
@@ -74,12 +73,6 @@ import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
-
-export function shouldShowConversationTypeBadge(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'type' | 'forkedFromSessionId'>): boolean {
-  const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
-  const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
-  return !sessionId.startsWith('session:group:') && !forkParentId.startsWith('session:group:');
-}
 
 const GENERIC_CHAT_HEADER_SUBTITLES = new Set([
   'agent chat',
@@ -793,11 +786,7 @@ export function ChatsPage({
           <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex min-w-0 flex-wrap items-start gap-1.5 text-white">
-              <span className="min-w-[10rem] flex-1 break-words text-[17px] font-semibold leading-6">{companionConversation.name}</span>
-              {shouldShowConversationTypeBadge(companionConversation) ? <TypeBadge type={companionConversation.type} compact /> : null}
-              <span className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.04] px-2 text-[10.5px] font-medium text-slate-300">
-                {companionLabel(companionConversation)}
-              </span>
+              <span className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6">{companionConversation.name}</span>
             </div>
 
           </div>
@@ -1145,7 +1134,7 @@ export function ChatsPage({
                       setDesktopSessionRenameDraft(activeConv.name);
                       setIsEditingDesktopSessionTitle(true);
                     }}
-                    className="min-w-[12rem] max-w-full flex-1 break-words rounded-lg px-1 py-0.5 text-left text-[17px] font-semibold leading-6 text-white transition hover:bg-white/5"
+                    className="min-w-0 max-w-full break-words rounded-lg px-1 py-0.5 text-left text-[17px] font-semibold leading-6 text-white transition hover:bg-white/5"
                     data-kordi-window-drag="false"
                     title={activeConv.name}
                   >
@@ -1153,7 +1142,7 @@ export function ChatsPage({
                   </h2>
                 )
               ) : (
-                <h2 className="min-w-[12rem] max-w-full flex-1 break-words text-[17px] font-semibold leading-6" data-kordi-window-drag="false">{activeConv.name}</h2>
+                <h2 className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6" data-kordi-window-drag="false">{activeConv.name}</h2>
               )}
               {activeCloudSelfAgentSyncLabel ? (
                 <span

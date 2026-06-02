@@ -9,7 +9,6 @@ import {
   cloudSelfAgentSyncStatusLabel,
   humanSideFromCompanionDrop,
   pairedCompanionConversation,
-  shouldShowConversationTypeBadge,
 } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
 
@@ -29,35 +28,25 @@ function conversation(overrides: Partial<Conversation>): Conversation {
   };
 }
 
-test('chat header hides the My agent badge for canonical group sessions', () => {
-  assert.equal(shouldShowConversationTypeBadge({
-    id: 'session:group:342f31b1-534d-4f3b-b4bd-855072767854',
-    canonicalSessionId: 'session:group:342f31b1-534d-4f3b-b4bd-855072767854',
-    type: 'owned-agent',
-  }), false);
+test('chat headers do not render My agent or chat-kind label pills', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /<TypeBadge/);
+  assert.doesNotMatch(source, /shouldShowConversationTypeBadge\(/);
+  assert.doesNotMatch(source, />\s*\{companionLabel\(companionConversation\)\}\s*<\/span>/);
 });
 
-test('chat header hides the My agent badge for forks of canonical group sessions', () => {
-  assert.equal(shouldShowConversationTypeBadge({
-    id: 'session:fork:606437914b634d4490e509a7916fbb72',
-    canonicalSessionId: 'session:fork:606437914b634d4490e509a7916fbb72',
-    type: 'owned-agent',
-    forkedFromSessionId: 'session:group:c0865259-a991-48bf-9752-56daf674e4f9',
-  }), false);
-});
+test('chat header title text does not flex-grow away from fork or action pills', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
-test('chat header keeps the My agent badge for true self-agent sessions', () => {
-  assert.equal(shouldShowConversationTypeBadge({
-    id: '4367e286-afb4-4941-b0cb-7d644b0f6ce6',
-    canonicalSessionId: '4367e286-afb4-4941-b0cb-7d644b0f6ce6',
-    type: 'owned-agent',
-  }), true);
+  assert.doesNotMatch(source, /min-w-\[12rem\] max-w-full flex-1 break-words/);
+  assert.doesNotMatch(source, /min-w-\[10rem\] flex-1 break-words/);
 });
 
 test('chat header cloud self-agent sync indicator is icon-only', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   const indicatorStart = source.indexOf('data-cloud-self-agent-sync-status');
-  const indicatorMarkup = source.slice(indicatorStart, source.indexOf('{shouldShowConversationTypeBadge', indicatorStart));
+  const indicatorMarkup = source.slice(indicatorStart, source.indexOf('{activeForkSourceSessionId', indicatorStart));
 
   assert.match(indicatorMarkup, /<Cloud/);
   assert.doesNotMatch(indicatorMarkup, /\{activeCloudSelfAgentSyncLabel\}/);
