@@ -107,7 +107,9 @@ export function chatHeaderSubtitle(conversation: Pick<Conversation, 'subtitle'>)
 }
 
 export function shouldUseCompactModelRouteMenu(conversation: Pick<Conversation, 'type' | 'directness'>): boolean {
-  return conversation.type === 'person';
+  const type = String(conversation.type ?? '').trim().toLowerCase();
+  const directness = String(conversation.directness ?? '').trim().toLowerCase();
+  return type === 'person' || type === 'group' || directness.includes('group');
 }
 
 export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
@@ -992,7 +994,7 @@ export function ChatsPage({
           </div>
           <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
             <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
-              {shouldUseCompactModelRouteMenu(activeConv) && (!activeConversationIsBridge || selectedBridgeRoutingAgent) ? (
+              {shouldUseCompactModelRouteMenu(activeConv) ? (
                 <CompactComposerModelMenu
                   scope="chat"
                   selection={activeConversationIsBridge && selectedBridgeRoutingAgent ? bridgeRoutingSelection : composerSelection}
