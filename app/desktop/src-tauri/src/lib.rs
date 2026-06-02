@@ -13,16 +13,33 @@ mod workspace;
 
 use std::process::Command;
 
-fn current_kordi_edition() -> String {
-    std::env::var("KORDI_EDITION")
-        .or_else(|_| std::env::var("VITE_KORDI_EDITION"))
+fn is_cloud_edition_context(
+    kordi_edition: Option<&str>,
+    vite_kordi_edition: Option<&str>,
+    bundle_identifier: &str,
+) -> bool {
+    let explicit = kordi_edition
+        .or(vite_kordi_edition)
         .unwrap_or_default()
         .trim()
-        .to_ascii_lowercase()
+        .to_ascii_lowercase();
+    match explicit.as_str() {
+        "cloud" => true,
+        "local" => false,
+        _ => bundle_identifier == "io.kordi.cloud",
+    }
 }
 
-fn configure_cloud_app_data_dir(app: &tauri::App) {
-    if current_kordi_edition() != "cloud" || std::env::var_os("APP_DATA_DIR").is_some() {
+fn is_cloud_edition_app(app: &tauri::App) -> bool {
+    is_cloud_edition_context(
+        std::env::var("KORDI_EDITION").ok().as_deref(),
+        std::env::var("VITE_KORDI_EDITION").ok().as_deref(),
+        &app.config().identifier,
+    )
+}
+
+fn configure_cloud_app_data_dir(app: &tauri::App, is_cloud_edition: bool) {
+    if !is_cloud_edition || std::env::var_os("APP_DATA_DIR").is_some() {
         return;
     }
     let Ok(app_data_dir) = app.path().app_data_dir() else {
@@ -34,8 +51,8 @@ fn configure_cloud_app_data_dir(app: &tauri::App) {
     unsafe { std::env::set_var("APP_DATA_DIR", app_data_dir) };
 }
 
-fn activate_stored_cloud_account_data_dir() {
-    if current_kordi_edition() != "cloud" {
+fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
+    if !is_cloud_edition {
         return;
     }
     match cloud_session::cloud_session_load() {
@@ -71,13 +88,15 @@ fn should_publish_presence_offline_on_exit() -> bool {
     true
 }
 
+const DEFAULT_CLOUD_API_BASE_URL: &str = "https://korde-product-cloud.35.188.85.31.sslip.io";
+
 fn cloud_api_base_url_from_env() -> String {
     std::env::var("VITE_KORDI_CLOUD_API_BASE")
         .or_else(|_| std::env::var("KORDI_CLOUD_API_BASE"))
         .ok()
         .map(|value| value.trim().trim_end_matches('/').to_string())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "https://coordinar.io".to_string())
+        .unwrap_or_else(|| DEFAULT_CLOUD_API_BASE_URL.to_string())
 }
 
 fn cloud_presence_offline_url(base_url: &str) -> String {
@@ -126,8 +145,9 @@ fn publish_stored_cloud_presence_offline_on_exit() {
 #[cfg(test)]
 mod window_lifecycle_tests {
     use super::{
-        cloud_presence_offline_url, should_hide_window_instead_of_close,
+        cloud_presence_offline_url, is_cloud_edition_context, should_hide_window_instead_of_close,
         should_publish_presence_offline_on_exit, should_show_main_window_on_reopen,
+        DEFAULT_CLOUD_API_BASE_URL,
     };
 
     #[test]
@@ -154,9 +174,33 @@ mod window_lifecycle_tests {
             "http://127.0.0.1:17081/v1/cloud/presence/offline"
         );
         assert_eq!(
-            cloud_presence_offline_url("https://coordinar.io"),
-            "https://coordinar.io/v1/cloud/presence/offline"
+            cloud_presence_offline_url(DEFAULT_CLOUD_API_BASE_URL),
+            "https://korde-product-cloud.35.188.85.31.sslip.io/v1/cloud/presence/offline"
         );
+    }
+
+    #[test]
+    fn cloud_bundle_identifier_enables_cloud_edition_without_runtime_env() {
+        assert!(is_cloud_edition_context(None, None, "io.kordi.cloud"));
+    }
+
+    #[test]
+    fn desktop_bundle_identifier_defaults_to_local_edition() {
+        assert!(!is_cloud_edition_context(None, None, "io.kordi.desktop"));
+    }
+
+    #[test]
+    fn explicit_runtime_edition_overrides_bundle_identifier() {
+        assert!(is_cloud_edition_context(
+            Some("cloud"),
+            None,
+            "io.kordi.desktop"
+        ));
+        assert!(!is_cloud_edition_context(
+            Some("local"),
+            None,
+            "io.kordi.cloud"
+        ));
     }
 }
 
@@ -209,16 +253,13 @@ pub fn run() {
         .manage(DesktopBridgeManager::default())
         .manage(DesktopChatManager::default())
         .setup(|app| {
-            configure_cloud_app_data_dir(app);
-            activate_stored_cloud_account_data_dir();
+            let is_cloud_edition = is_cloud_edition_app(app);
+            configure_cloud_app_data_dir(app, is_cloud_edition);
+            activate_stored_cloud_account_data_dir(is_cloud_edition);
             let window = app
                 .get_webview_window("main")
                 .expect("main window should exist");
-            window.set_title(if current_kordi_edition() == "cloud" {
-                "Kordi Cloud"
-            } else {
-                "Kordi"
-            })?;
+            window.set_title("Kordi")?;
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }

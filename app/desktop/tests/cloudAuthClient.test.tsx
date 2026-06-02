@@ -182,19 +182,19 @@ test('me returns the parsed account', async () => {
   assert.equal(account.passwordSet, true);
 });
 
-test('cloud API defaults to the coordinar production origin, not localhost', () => {
-  assert.equal(cloudApiBaseUrl({}), 'https://coordinar.io');
+test('cloud API defaults to the hosted product origin, not localhost', () => {
+  assert.equal(cloudApiBaseUrl({}), 'https://korde-product-cloud.35.188.85.31.sslip.io');
   assert.equal(cloudApiBaseUrl({ VITE_KORDI_CLOUD_API_BASE: ' http://127.0.0.1:17081/ ' }), 'http://127.0.0.1:17081');
 });
 
 test('cloud auth client gives local SSH tunnels a longer default timeout', () => {
-  assert.equal(defaultCloudRequestTimeoutMs('https://coordinar.io'), 15_000);
+  assert.equal(defaultCloudRequestTimeoutMs('https://korde-product-cloud.35.188.85.31.sslip.io'), 15_000);
   assert.equal(defaultCloudRequestTimeoutMs('http://127.0.0.1:17081'), 45_000);
   assert.equal(defaultCloudRequestTimeoutMs('http://localhost:17081'), 45_000);
 });
 
 test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
-  assert.equal(cloudRealtimeWebSocketEnabled('https://coordinar.io'), true);
+  assert.equal(cloudRealtimeWebSocketEnabled('https://korde-product-cloud.35.188.85.31.sslip.io'), true);
   assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081'), false);
   assert.equal(cloudRealtimeWebSocketEnabled('http://localhost:17081'), false);
 });
