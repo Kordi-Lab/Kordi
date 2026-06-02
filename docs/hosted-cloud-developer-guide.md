@@ -26,7 +26,7 @@ A local URL such as `http://127.0.0.1:1484` is only the local desktop test UI. I
 Use this Cloud API base for the shared developer test environment:
 
 ```bash
-export HOSTED_CLOUD_API_BASE="https://korde-product-cloud.35.188.85.31.sslip.io"
+export HOSTED_CLOUD_API_BASE="https://coordinar.io"
 ```
 
 If an operator rotates the test server, update only this value and keep the rest of the guide unchanged.
@@ -36,7 +36,7 @@ If an operator rotates the test server, update only this value and keep the rest
 Set these before launching desktop clients:
 
 ```bash
-export HOSTED_CLOUD_API_BASE="https://korde-product-cloud.35.188.85.31.sslip.io"
+export HOSTED_CLOUD_API_BASE="https://coordinar.io"
 export VITE_KORDI_EDITION=cloud
 export KORDI_EDITION=cloud
 export VITE_KORDI_CLOUD_API_BASE="$HOSTED_CLOUD_API_BASE"

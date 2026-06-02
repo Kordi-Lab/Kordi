@@ -23,7 +23,7 @@ test('cloud server sync preserves remote Cargo target while deleting stale sourc
 test('cloud server manifest targets the hosted product public base', async () => {
   const manifest = await readFile(cloudServerManifestPath, 'utf8');
 
-  assert.match(manifest, /KORDI_CLOUD_PUBLIC_BASE_URL[\s\S]*value: "https:\/\/korde-product-cloud\.35\.188\.85\.31\.sslip\.io"/);
-  assert.match(manifest, /KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST[\s\S]*https:\/\/korde-product-cloud\.35\.188\.85\.31\.sslip\.io/);
-  assert.doesNotMatch(manifest, /https:\/\/coordinar\.io/);
+  assert.match(manifest, /KORDI_CLOUD_PUBLIC_BASE_URL[\s\S]*value: "https:\/\/coordinar\.io"/);
+  assert.match(manifest, /KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST[\s\S]*https:\/\/coordinar\.io/);
+  assert.doesNotMatch(manifest, /https:\/\/korde-product-cloud\.35\.188\.85\.31\.sslip\.io/);
 });
