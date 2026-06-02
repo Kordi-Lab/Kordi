@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { chatHeaderSubtitle, isGenericChatHeaderSubtitle } from '../src/pages/ChatsPage';
@@ -23,4 +24,13 @@ test('chat header subtitle removes internal group/direct session labels but keep
   assert.equal(chatHeaderSubtitle({ subtitle: 'session:direct-person:acct_a:acct_b' }), null);
   assert.equal(chatHeaderSubtitle({ subtitle: 'session:direct-agent:next-id' }), null);
   assert.equal(chatHeaderSubtitle({ subtitle: 'Cloud direct chat is opening…' }), 'Cloud direct chat is opening…');
+});
+
+test('ChatsPage header does not render trust, bridge, or directness metadata chips', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /<Shield[\s\S]*activeConv\.trust/);
+  assert.doesNotMatch(source, /activeConv\.bridges\.map/);
+  assert.doesNotMatch(source, /<Globe[\s\S]*bridge/);
+  assert.doesNotMatch(source, /<ArrowRightLeft[\s\S]*activeConv\.directness/);
+  assert.doesNotMatch(source, /shouldShowConversationTypeBadge\(activeConv\)/);
 });
