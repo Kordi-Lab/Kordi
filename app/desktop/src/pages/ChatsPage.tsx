@@ -2,18 +2,15 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ComponentProps, Dispatch, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-  ArrowRightLeft,
   ChevronDown,
   Clock3,
   Cloud,
   FileText,
-  Globe,
   Image as ImageIcon,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
   Send,
-  Shield,
   Split,
   X,
 } from 'lucide-react';
@@ -37,7 +34,6 @@ import {
   ComposerSlashMenu,
   LiveChatTurnMessage,
   MessageBubble,
-  TypeBadge,
   fallbackComposerThinkingValue,
   type ComposerAuthOption,
   type ComposerMentionOption,
@@ -78,6 +74,34 @@ export function shouldShowConversationTypeBadge(conversation: Pick<Conversation,
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
   return !sessionId.startsWith('session:group:') && !forkParentId.startsWith('session:group:');
+}
+
+const GENERIC_CHAT_HEADER_SUBTITLES = new Set([
+  'agent chat',
+  'bridge',
+  'cloud',
+  'direct chat',
+  'direct person chat',
+  'draft session',
+  'external agent',
+  'group',
+  'group chat',
+  'human',
+  'local',
+  'my agent',
+  'owned',
+  'person',
+]);
+
+export function isGenericChatHeaderSubtitle(value: string): boolean {
+  const normalized = value.trim().replace(/\s+/g, ' ').toLowerCase();
+  return normalized.length === 0 || GENERIC_CHAT_HEADER_SUBTITLES.has(normalized);
+}
+
+export function chatHeaderSubtitle(conversation: Pick<Conversation, 'subtitle'>): string | null {
+  const formatted = formatSessionIdSubtitle(conversation.subtitle).trim();
+  if (!formatted || isGenericChatHeaderSubtitle(formatted)) return null;
+  return formatted;
 }
 
 export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
@@ -357,7 +381,7 @@ export function ChatsPage({
   );
   const composerHasDraft = chatComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
   const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
-  const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
+  const activeSessionSubtitle = chatHeaderSubtitle(activeConv);
   const activeCloudSelfAgentSyncLabel = cloudSelfAgentSyncStatusLabel(cloudSelfAgentSyncStatus);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
@@ -671,7 +695,6 @@ export function ChatsPage({
                   <Cloud className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
               ) : null}
-              {shouldShowConversationTypeBadge(activeConv) ? <TypeBadge type={activeConv.type} compact /> : null}
               {activeForkSourceSessionId ? (
                 <button
                   type="button"
@@ -686,18 +709,11 @@ export function ChatsPage({
                 </button>
               ) : null}
             </div>
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-5 text-slate-400">
-              {activeSessionSubtitle ? (
-                <span className="inline-flex min-w-0 max-w-full items-center gap-1 font-mono" title={activeSessionSubtitle}>
-                  <span className="truncate">{activeSessionSubtitle}</span>
-                </span>
-              ) : null}
-              <span className="inline-flex items-center gap-1"><Shield className="h-3 w-3" /> {activeConv.trust}</span>
-              {activeConv.bridges.map((bridge) => (
-                <span key={bridge} className="inline-flex items-center gap-1"><Globe className="h-3 w-3" /> {bridge}</span>
-              ))}
-              <span className="inline-flex items-center gap-1"><ArrowRightLeft className="h-3 w-3" /> {activeConv.directness}</span>
-            </div>
+            {activeSessionSubtitle ? (
+              <div className="mt-0.5 flex min-w-0 items-center text-[11px] leading-5 text-slate-400">
+                <span className="truncate" title={activeSessionSubtitle}>{activeSessionSubtitle}</span>
+              </div>
+            ) : null}
           </div>
         </div>
         {showRightDetailRail && (
