@@ -14,10 +14,18 @@ function makeVolume() {
   return mkdtempSync(join(tmpdir(), 'kordi-dmg-volume-'));
 }
 
-test('defaultDmgBundleDir respects CARGO_TARGET_DIR used by Tauri builds', () => {
-  assert.equal(
-    defaultDmgBundleDir({ cargoTargetDir: '/tmp/shared-cargo-target' }),
-    '/tmp/shared-cargo-target/release/bundle/dmg',
+test('defaultDmgBundleDir respects CARGO_TARGET_DIR used by Tauri builds when it has bundles', () => {
+  const targetRoot = mkdtempSync(join(tmpdir(), 'kordi-cargo-target-'));
+  const bundleDir = join(targetRoot, 'release', 'bundle', 'dmg');
+  mkdirSync(bundleDir, { recursive: true });
+
+  assert.equal(defaultDmgBundleDir({ cargoTargetDir: targetRoot }), bundleDir);
+});
+
+test('defaultDmgBundleDir falls back to the workspace target bundle directory', () => {
+  assert.match(
+    defaultDmgBundleDir({ cargoTargetDir: '' }),
+    /kordi(?:\/\.worktrees\/release-v0\.0\.1-beta3)?\/target\/release\/bundle\/dmg$/,
   );
 });
 

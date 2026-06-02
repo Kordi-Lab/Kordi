@@ -6,12 +6,14 @@ import { spawnSync } from 'node:child_process';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = dirname(scriptDir);
+const workspaceRoot = resolve(desktopRoot, '..', '..');
 
 export function defaultDmgBundleDir({ cargoTargetDir = process.env.CARGO_TARGET_DIR ?? '' } = {}) {
   if (cargoTargetDir) {
-    return join(cargoTargetDir, 'release', 'bundle', 'dmg');
+    const cargoTargetBundleDir = join(cargoTargetDir, 'release', 'bundle', 'dmg');
+    if (existsSync(cargoTargetBundleDir)) return cargoTargetBundleDir;
   }
-  return join(desktopRoot, 'src-tauri', 'target', 'release', 'bundle', 'dmg');
+  return join(workspaceRoot, 'target', 'release', 'bundle', 'dmg');
 }
 
 export function validateDmgVolumeLayout(volumePath, { appName }) {
