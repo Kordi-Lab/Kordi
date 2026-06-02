@@ -88,7 +88,7 @@ fn should_publish_presence_offline_on_exit() -> bool {
     true
 }
 
-const DEFAULT_CLOUD_API_BASE_URL: &str = "https://korde-product-cloud.35.188.85.31.sslip.io";
+const DEFAULT_CLOUD_API_BASE_URL: &str = "https://coordinar.io";
 
 fn cloud_api_base_url_from_env() -> String {
     std::env::var("VITE_KORDI_CLOUD_API_BASE")
@@ -175,7 +175,7 @@ mod window_lifecycle_tests {
         );
         assert_eq!(
             cloud_presence_offline_url(DEFAULT_CLOUD_API_BASE_URL),
-            "https://korde-product-cloud.35.188.85.31.sslip.io/v1/cloud/presence/offline"
+            "https://coordinar.io/v1/cloud/presence/offline"
         );
     }
 
