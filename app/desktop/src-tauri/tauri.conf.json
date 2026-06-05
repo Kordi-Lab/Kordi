@@ -39,6 +39,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/icon.png",
       "icons/icon.icns"
@@ -50,5 +51,13 @@
       "binaries/kordi",
       "binaries/bridges"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://coordinar.io/api/desktop-updates/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "pubkey": "31yh7ByPZ6fCnMpLZPQ+PzwNsojhr/2gauXDroqMUtE="
+    }
   }
 }

@@ -37,6 +37,8 @@ import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
 import { currentKordiEdition } from '@/features/cloud/edition';
 import { buildForkLineage } from '@/features/chat/forkLineage';
+import { DesktopUpdateButton } from '@/features/update/DesktopUpdateButton';
+import type { DesktopUpdateState } from '@/features/update/desktopUpdater';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
@@ -186,6 +188,10 @@ type WorkspaceSidebarProps = {
   setActiveNav: Dispatch<SetStateAction<NavId>>;
   chatConversations: ConversationItem[];
   onCreateChatSession: () => void;
+  desktopUpdateState?: DesktopUpdateState;
+  onInstallDesktopUpdate?: () => void;
+  onRestartDesktopUpdate?: () => void;
+  onCancelDesktopUpdateRestart?: () => void;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
   isDesktopChatLoading: boolean;
@@ -489,6 +495,10 @@ export function WorkspaceSidebar({
   setActiveNav,
   chatConversations,
   onCreateChatSession,
+  desktopUpdateState,
+  onInstallDesktopUpdate,
+  onRestartDesktopUpdate,
+  onCancelDesktopUpdateRestart,
   chatSearch,
   setChatSearch,
   desktopChatError,
@@ -1580,15 +1590,25 @@ export function WorkspaceSidebar({
                         </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={openChatCreateDialog}
-                      className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
-                      title="Start a chat"
-                      aria-label="Start a chat"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {desktopUpdateState ? (
+                        <DesktopUpdateButton
+                          state={desktopUpdateState}
+                          onUpdate={() => onInstallDesktopUpdate?.()}
+                          onRestart={() => onRestartDesktopUpdate?.()}
+                          onCancel={() => onCancelDesktopUpdateRestart?.()}
+                        />
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={openChatCreateDialog}
+                        className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
+                        title="Start a chat"
+                        aria-label="Start a chat"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
