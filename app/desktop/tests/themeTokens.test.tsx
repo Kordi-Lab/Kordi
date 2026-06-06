@@ -20,13 +20,13 @@ test('dark theme uses a translucent dark-glass palette with one accent selected 
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-active:\s*rgba\(132,\s*122,\s*196,\s*0\.11\);/);
 });
 
-test('chat sidebar timestamps use the tertiary text token', () => {
+test('chat sidebar timestamps use the sidebar time text token', () => {
   const shellCss = readDesktopShellCss();
 
-  assert.match(shellCss, /\.app-session-meta-time\s*{[^}]*color:\s*var\(--utility-meta-text\)/s);
-  assert.match(shellCss, /\.app-session-meta-time-active\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 72%, var\(--utility-foreground\)\)/s);
+  assert.match(shellCss, /\.app-session-meta-time\s*{[^}]*color:\s*var\(--app-sidebar-time-text\)/s);
+  assert.match(shellCss, /\.app-session-meta-time-active\s*{[^}]*color:\s*var\(--app-sidebar-time-text\)/s);
   assert.match(shellCss, /\.app-session-row\s*{[^}]*box-shadow:\s*none/s);
-  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid color-mix\(in oklab, var\(--app-accent-ring\) 92%, var\(--app-divider\)\);[^}]*box-shadow:\s*0 0 0 1px color-mix\(in oklab, var\(--app-accent-ring\) 42%, transparent\)/s);
+  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none/s);
 });
 
 test('glassmorphism tokens are declared in both themes and frame bgs are translucent', () => {
@@ -93,6 +93,9 @@ test('composer send area keeps the outer surface without an inner input pop or d
   const composerInputBlock = shellCss.match(/\.app-composer-input \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerMetaBlock = shellCss.match(/\.app-composer-meta \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerFocusBlock = shellCss.match(/\.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightComposerBlock = Array.from(themeOverridesCss.matchAll(/\.bridge-app\.theme-light \.app-composer-shell \{[\s\S]*?\n\}/g))
+    .map((match) => match[0])
+    .find((block) => /background:/.test(block)) ?? '';
   const lightComposerFocusBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(composerShellBlock, /var\(--app-divider\) 86%/);
@@ -104,5 +107,9 @@ test('composer send area keeps the outer surface without an inner input pop or d
   assert.match(composerFocusBlock, /var\(--app-accent-ring\)/);
   assert.doesNotMatch(shellCss, /\.app-composer-shell:focus-within \.app-composer-input/);
   assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-composer-input \{[^}]*background:/);
+  assert.match(lightComposerBlock, /background:\s*linear-gradient\(180deg, rgba\(248, 251, 255, 0\.96\) 0%, rgba\(241, 247, 255, 0\.92\) 100%\);/);
+  assert.match(lightComposerBlock, /border-color:\s*rgba\(37, 99, 235, 0\.12\);/);
+  assert.doesNotMatch(lightComposerBlock, /rgba\(252, 249, 243|rgba\(246, 241, 232/);
+  assert.match(lightComposerFocusBlock, /border-color:\s*rgba\(37, 99, 235, 0\.22\);/);
   assert.match(lightComposerFocusBlock, /box-shadow:/);
 });
