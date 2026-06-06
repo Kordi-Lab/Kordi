@@ -221,7 +221,13 @@ function MessageDeliveryGlyph({ status }: { status?: string | null }) {
     >
       <Check className={glyphClass('single-check')} aria-hidden="true" />
       <CheckCheck className={glyphClass('double-check')} aria-hidden="true" />
-      <Clock3 className={glyphClass('clock')} aria-hidden="true" />
+      <Clock3
+        className={cn(
+          glyphClass('clock'),
+          visual?.glyph === 'clock' && visual.motion === 'pulse' && 'app-message-delivery-clock-active animate-pulse',
+        )}
+        aria-hidden="true"
+      />
       <LoaderCircle className={cn(glyphClass('spinner'), activeGlyph === 'spinner' && 'animate-spin')} aria-hidden="true" />
       <span className={cn(glyphClass('exclamation'), 'inline-flex items-center justify-center text-[13px] font-semibold leading-none')} aria-hidden="true">
         !

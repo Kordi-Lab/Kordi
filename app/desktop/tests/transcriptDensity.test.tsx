@@ -305,7 +305,29 @@ test('sent-message delivery glyph keeps one stable slot so status changes do not
   assert.match(markup, /aria-label="Sent"/);
   assert.match(markup, /opacity-100[^\"]*text-slate-400/);
   assert.match(markup, /opacity-0[^\"]*text-slate-400/);
+  assert.doesNotMatch(markup, /app-message-delivery-clock-active/);
   assert.doesNotMatch(markup, /title="Sent"/);
+});
+
+test('sending own message renders an animated clock in the stable delivery slot', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello',
+    time: '00:45',
+    statusChips: ['sending'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-message-delivery-footer ml-3/);
+  assert.match(markup, /data-message-delivery-status="sending"/);
+  assert.match(markup, /data-message-delivery-glyph="clock"/);
+  assert.match(markup, /aria-label="Sending"/);
+  assert.match(markup, /app-message-delivery-clock-active/);
+  assert.doesNotMatch(markup, /lucide-loader-circle[^>]*animate-spin/);
 });
 
 test('blank outgoing delivery status still renders the stable hidden glyph stack', () => {
