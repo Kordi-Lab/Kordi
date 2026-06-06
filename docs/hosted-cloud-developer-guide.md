@@ -165,8 +165,6 @@ git checkout <branch-under-test>
 git pull
 pnpm install
 
-export VITE_KORDI_EDITION=cloud
-export KORDI_EDITION=cloud
 export VITE_KORDI_CLOUD_API_BASE="<HOSTED_CLOUD_API_BASE>"
 export KORDI_CLOUD_API_BASE="<HOSTED_CLOUD_API_BASE>"
 

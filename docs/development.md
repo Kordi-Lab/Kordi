@@ -81,8 +81,6 @@ pnpm dev:registry
 pnpm build:registry
 ```
 
-Legacy local desktop flows, where still present, use explicit `:local` command names.
-
 ## Shared validation
 
 ```bash

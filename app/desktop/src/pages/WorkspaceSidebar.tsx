@@ -35,7 +35,6 @@ import type {
 } from '@/kordi-app/types';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
-import { currentKordiEdition } from '@/features/cloud/edition';
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
@@ -560,7 +559,6 @@ export function WorkspaceSidebar({
     : totalUnread > 0
       ? `Messages idle, ${formatUnreadCount(totalUnread)} unread`
       : 'Messages idle, all caught up';
-  const showSidebarCreateButton = currentKordiEdition() !== 'cloud';
   const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [renameSessionTarget, setRenameSessionTarget] = useState<SessionActionTarget | null>(null);
@@ -1404,11 +1402,6 @@ export function WorkspaceSidebar({
           </div>
 
           <div className="flex w-full flex-col items-center gap-2">
-            {showSidebarCreateButton ? (
-              <Button size="icon" className="h-9 w-9 rounded-[14px]" onClick={openChatCreateDialog} aria-label="Start a chat">
-                <Plus className="h-4 w-4" />
-              </Button>
-            ) : null}
             <button
               ref={profileTriggerRef}
               type="button"

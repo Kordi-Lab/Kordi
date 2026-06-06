@@ -72,7 +72,7 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
-Both commands are Cloud defaults. Legacy/internal local variants use explicit `:local` names where they remain.
+Both commands use the Cloud product configuration.
 
 ## Directory guide
 

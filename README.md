@@ -62,8 +62,6 @@ pnpm install
 | Check Rust workspace | `pnpm check:rust` | Verifies Rust crates. |
 | Common validation | `pnpm check` | Runs the standard lint + typecheck + Rust validation pass. |
 
-Legacy/internal local runtime commands use explicit `:local` names where they remain. They are not the product quick start.
-
 ## Responsibilities by directory
 
 ### `app/desktop`

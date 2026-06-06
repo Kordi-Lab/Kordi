@@ -44,11 +44,8 @@
     "check:ci": "pnpm check:frontend && pnpm check:rust:fmt && pnpm check:rust:clippy && pnpm check:rust:test && pnpm test:scripts && pnpm check:hygiene",
     "hooks:install": "bash scripts/setup-git-hooks.sh",
     "check": "pnpm lint && pnpm typecheck:web && pnpm check:rust",
-    "dev:local": "bash -lc 'cargo run -p kordi-app-server -- & APP_SERVER_PID=$!; trap \"kill $APP_SERVER_PID\" EXIT; pnpm --dir app/desktop tauri:dev:local'",
-    "dev:cloud": "VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud pnpm --dir app/desktop tauri:dev:cloud",
-    "dev:desktop:local": "pnpm --dir app/desktop tauri:dev:local",
+    "dev:cloud": "pnpm --dir app/desktop tauri:dev:cloud",
     "dev:cloud:multi": "pnpm --dir app/desktop tauri:dev:multi:cloud",
-    "build:local": "pnpm --dir app/desktop tauri:build:local",
     "build:cloud": "pnpm --dir app/desktop tauri:build:cloud"
   }
 }

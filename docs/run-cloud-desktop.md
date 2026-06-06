@@ -56,7 +56,7 @@ What to expect:
 pnpm build:desktop
 ```
 
-The Cloud build path sets the Cloud edition environment for the desktop frontend/native shell.
+The desktop build path uses the Cloud product configuration.
 
 ## Optional: run multiple isolated Cloud users
 
@@ -77,7 +77,7 @@ Only use tunnel/local backend options if you have explicit operator access or ar
 | `KORDI_CLOUD_API_BASE` | Native/backend Cloud API override when a helper needs it. |
 | `KORDI_CLOUD_USE_LOCAL_TUNNEL=1` | Internal/operator tunnel mode for multi-instance development. |
 
-Cloud edition is the default product mode. Explicit `VITE_KORDI_EDITION=cloud` and `KORDI_EDITION=cloud` are still accepted for scripts and release builds.
+Cloud is the only product mode on `main`.
 
 ## Troubleshooting
 

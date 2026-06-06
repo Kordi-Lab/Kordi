@@ -442,12 +442,6 @@ export function isCloudContact(contact: Contact): boolean {
     || contact.discoverableOn.includes(CLOUD_HOST_SENTINEL);
 }
 
-export function shouldOpenCloudPeerChat(_edition: 'local' | 'cloud', _contact: Contact): boolean {
-  // Deprecated: cloud contacts now route through the existing Bridge-shaped
-  // chat/session UI instead of the old standalone CloudPeerChatPanel.
-  return false;
-}
-
 export function cloudContactToContact(row: CloudContactSummary): Contact {
   const name = row.displayName ?? row.accountId;
   return {
