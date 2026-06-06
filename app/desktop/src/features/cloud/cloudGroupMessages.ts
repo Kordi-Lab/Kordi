@@ -829,6 +829,44 @@ export function cloudGroupDeliveryStateFromMessages(input: {
   return 'delivered';
 }
 
+export type CloudGroupReadReceiptSummary = {
+  count: number;
+  participants: Array<{
+    accountId: string;
+    identityId: string;
+    readAt: string;
+  }>;
+};
+
+export function cloudGroupReadReceiptSummaryFromMessages(input: {
+  accountId: string;
+  messageId: string;
+  messages: CloudMessage[];
+}): CloudGroupReadReceiptSummary | null {
+  const accountId = cleanText(input.accountId);
+  const messageId = cleanText(input.messageId);
+  if (!accountId || !messageId) return null;
+
+  const participantsByAccountId = new Map<string, { accountId: string; identityId: string; readAt: string }>();
+  for (const message of input.messages) {
+    if (message.fromAccountId !== accountId || message.direction !== 'outgoing' || !message.readAt) continue;
+    const envelope = parseCloudGroupControl(message.body);
+    if (envelope?.kind !== 'group-message' || envelope.message?.id !== messageId) continue;
+    const recipientAccountId = cleanText(message.toAccountId);
+    const readAt = cleanText(message.readAt);
+    if (!recipientAccountId || !readAt) continue;
+    participantsByAccountId.set(recipientAccountId, {
+      accountId: recipientAccountId,
+      identityId: `human:${recipientAccountId}`,
+      readAt,
+    });
+  }
+
+  const participants = [...participantsByAccountId.values()]
+    .sort((left, right) => left.accountId.localeCompare(right.accountId));
+  return participants.length > 0 ? { count: participants.length, participants } : null;
+}
+
 export function shouldRouteMentionThroughCloudGroup(input: {
   mentionedHostId?: string | null;
   activeGroupSessionIsGroup: boolean;

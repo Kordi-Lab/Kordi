@@ -82,6 +82,7 @@ import {
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
   cloudGroupDeliveryStateFromMessages,
+  cloudGroupReadReceiptSummaryFromMessages,
   cloudGroupIdFromAgentConversationId,
   cloudGroupIdentityRequest,
   cloudGroupLocalAgentRequestAlreadyHandled,
@@ -3119,16 +3120,27 @@ export function useCloudBridgeState({
           messageId: message.id,
           messages: cloudMessages,
         });
-        if (!deliveryState) return message;
+        const readReceiptSummary = cloudGroupReadReceiptSummaryFromMessages({
+          accountId: account.accountId,
+          messageId: message.id,
+          messages: cloudMessages,
+        });
+        if (!deliveryState && !readReceiptSummary) return message;
         const content = objectContent(message.content);
-        if (message.status === 'sent' && content.deliveryState === deliveryState) return message;
+        const existingReadReceiptSummary = objectContent(content.readReceiptSummary);
+        const existingReadCount = typeof existingReadReceiptSummary.count === 'number' && Number.isFinite(existingReadReceiptSummary.count)
+          ? Math.max(0, Math.floor(existingReadReceiptSummary.count))
+          : 0;
+        const nextReadCount = readReceiptSummary?.count ?? 0;
+        if (message.status === 'sent' && content.deliveryState === deliveryState && existingReadCount === nextReadCount) return message;
         changed = true;
         return {
           ...message,
-          status: 'sent',
+          status: deliveryState ? 'sent' : message.status,
           content: {
             ...content,
-            deliveryState,
+            ...(deliveryState ? { deliveryState } : {}),
+            ...(readReceiptSummary ? { readReceiptSummary } : { readReceiptSummary: null }),
           },
         };
       });
