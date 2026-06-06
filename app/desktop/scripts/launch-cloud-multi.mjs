@@ -96,10 +96,12 @@ if (localTunnelEnabled) {
     ensureTunnel();
 }
 
-const DEFAULT_CLOUD_API_BASE = 'https://coordinar.io';
-const cloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE ?? (
-    localTunnelEnabled ? `http://127.0.0.1:${LOCAL_PORT}` : DEFAULT_CLOUD_API_BASE
-);
+const configuredCloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE;
+if (!configuredCloudApiBase && !localTunnelEnabled) {
+    console.error('[kordi] VITE_KORDI_CLOUD_API_BASE is required for hosted multi-user runs. Set it to <PUBLIC_TEST_CLOUD_API_BASE> or enable KORDI_CLOUD_USE_LOCAL_TUNNEL=1.');
+    process.exit(1);
+}
+const cloudApiBase = localTunnelEnabled ? `http://127.0.0.1:${LOCAL_PORT}` : configuredCloudApiBase;
 const forwardedArgs = process.argv.slice(2);
 const env = {
     ...process.env,

@@ -6,7 +6,12 @@ const source = readFileSync(new URL('../scripts/launch-cloud-multi.mjs', import.
 
 test('cloud multi launcher defaults tunnel test runs to the gcloud tunnel API', () => {
   assert.match(source, /const localTunnelEnabled = process\.env\.KORDI_CLOUD_USE_LOCAL_TUNNEL === '1';/);
-  assert.match(source, /localTunnelEnabled\s*\? `http:\/\/127\.0\.0\.1:\$\{LOCAL_PORT\}`\s*:\s*DEFAULT_CLOUD_API_BASE/s);
+  assert.match(source, /localTunnelEnabled\s*\? `http:\/\/127\.0\.0\.1:\$\{LOCAL_PORT\}`\s*:\s*configuredCloudApiBase/s);
+});
+
+test('cloud multi launcher requires an explicit hosted API base outside tunnel mode', () => {
+  assert.match(source, /const configuredCloudApiBase = process\.env\.VITE_KORDI_CLOUD_API_BASE;/);
+  assert.match(source, /VITE_KORDI_CLOUD_API_BASE is required for hosted multi-user runs/);
 });
 
 test('cloud multi launcher does not reintroduce product edition env switching', () => {
