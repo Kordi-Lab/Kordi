@@ -35,6 +35,8 @@ If an operator rotates the test server, update only this value and keep the rest
 
 ## Required local environment
 
+Hosted/dev runs must set `VITE_KORDI_CLOUD_API_BASE` explicitly before launching desktop clients. Do not rely on the production default for hosted testing.
+
 Set these before launching desktop clients:
 
 ```bash
@@ -53,7 +55,7 @@ Expected: HTTP 200 or a healthy response.
 
 ## Launch one local desktop
 
-Use this for single-account testing:
+Use this for single-account testing after exporting `VITE_KORDI_CLOUD_API_BASE`:
 
 ```bash
 pnpm install
@@ -96,7 +98,7 @@ users:
 YAML
 ```
 
-Launch two users from a clean local state:
+Launch two users from a clean local state after exporting `VITE_KORDI_CLOUD_API_BASE`:
 
 ```bash
 pnpm dev:desktop:multi -- --config /tmp/kordi-hosted-cloud-users.yaml --reset --users user1,user2

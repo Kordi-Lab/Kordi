@@ -30,7 +30,7 @@ Production API:
 https://coordinar.io
 ```
 
-For development/QA, prefer an operator-provided public test API base or a self-hosted compatible server:
+For development/QA, prefer an operator-provided public test API base or a self-hosted compatible server. Always set the hosted API base explicitly:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
@@ -97,5 +97,5 @@ For overlong-file thresholds and refactor boundaries, see [`development/maintain
 
 - Kordi Desktop is the primary product surface on `main`.
 - Production defaults point to `https://coordinar.io`.
-- Development tests should point to `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted API.
+- Development tests should set `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted API explicitly.
 - Do not commit tokens, local account sessions, provider credentials, database credentials, or private operator infrastructure details.

@@ -52,6 +52,7 @@ test('public docs use neutral product wording and safe host guidance', () => {
 
   assert.match(publicDocs, /https:\/\/coordinar\.io/);
   assert.match(publicDocs, /<PUBLIC_TEST_CLOUD_API_BASE>/);
+  assert.match(publicDocs, /Hosted\/dev runs must set `VITE_KORDI_CLOUD_API_BASE`/);
   assert.doesNotMatch(publicDocs, /https:\/\/kordi\.cloud/);
   assert.doesNotMatch(publicDocs, /korde-product-cloud\.[^\s`]+/);
   assert.doesNotMatch(publicDocs, /local app stack/i);

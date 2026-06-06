@@ -38,7 +38,7 @@ Use the product default:
 pnpm dev
 ```
 
-Target a public test or self-hosted API:
+Target a public test or self-hosted API by setting the hosted API base explicitly:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
@@ -60,7 +60,7 @@ The desktop build path uses the product configuration.
 
 ## Optional: run multiple isolated users
 
-Use this when testing contacts, groups, unread state, or multi-user sync. Each user gets isolated local desktop data, while product data comes from the configured hosted API.
+Use this when testing contacts, groups, unread state, or multi-user sync. Each user gets isolated local desktop data, while product data comes from `VITE_KORDI_CLOUD_API_BASE`.
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \

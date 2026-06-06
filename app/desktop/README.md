@@ -37,7 +37,7 @@ pnpm install
 pnpm dev
 ```
 
-This opens the desktop app. To target a test or self-hosted API:
+This opens the desktop app. To target a test or self-hosted API, set the hosted API base explicitly:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
@@ -45,7 +45,7 @@ VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 
 ### Launch multiple isolated users
 
-Use this for contacts, groups, unread state, and sync testing. Each local window gets isolated local app data, but all product data comes from the selected hosted API.
+Use this for contacts, groups, unread state, and sync testing. Each local window gets isolated local app data, but all product data comes from `VITE_KORDI_CLOUD_API_BASE`.
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \

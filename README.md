@@ -98,5 +98,5 @@ Owns Rust/TypeScript contracts that cross process or package boundaries.
 ## Notes
 
 - Production builds use `https://coordinar.io` as the product hosted API origin.
-- Test runs should set `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>` or point at a self-hosted server.
+- Hosted/dev runs must set `VITE_KORDI_CLOUD_API_BASE` explicitly, for example `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted server.
 - Do not commit auth tokens, provider tokens, account secrets, database credentials, or private operator infrastructure details.
