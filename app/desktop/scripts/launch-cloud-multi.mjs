@@ -1,19 +1,14 @@
 #!/usr/bin/env node
 //
-// One-shot launcher for cloud-edition side-by-side testing.
+// One-shot launcher for side-by-side account testing.
 //
 //   pnpm --dir app/desktop tauri:dev:multi:cloud
 //   pnpm --dir app/desktop tauri:dev:multi:cloud -- --users user1,user2
 //
-// Does two things you'd otherwise do by hand:
-//   1. Exports VITE_KORDI_EDITION=cloud / KORDI_EDITION=cloud so the
-//      launched Tauri instances boot in cloud mode (otherwise they
-//      default to the local edition and the login gate doesn't show).
-//   2. Spawns the existing multi-instance launcher with the rest of
-//      the user-supplied args forwarded as-is.
+// Spawns the existing multi-instance launcher and points each desktop window
+// at the configured hosted API.
 //
-// Cloud Edition defaults to the product cloud API for normal development.
-// For a public test or self-hosted Cloud API, set:
+// For a public test or self-hosted API, set:
 //   VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>
 //
 // For internal/operator local tunnel testing, opt in explicitly and provide
@@ -108,12 +103,10 @@ const cloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE ?? (
 const forwardedArgs = process.argv.slice(2);
 const env = {
     ...process.env,
-    VITE_KORDI_EDITION: 'cloud',
-    KORDI_EDITION: 'cloud',
     VITE_KORDI_CLOUD_API_BASE: cloudApiBase,
 };
 
-console.log(`[kordi] Launching tauri:dev:multi with Cloud Edition API ${cloudApiBase}`);
+console.log(`[kordi] Launching tauri:dev:multi with hosted API ${cloudApiBase}`);
 const child = spawn('pnpm', ['tauri:dev:multi', '--', ...forwardedArgs], {
     cwd: appDir,
     env,

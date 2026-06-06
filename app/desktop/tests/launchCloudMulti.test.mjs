@@ -9,6 +9,10 @@ test('cloud multi launcher defaults tunnel test runs to the gcloud tunnel API', 
   assert.match(source, /localTunnelEnabled\s*\? `http:\/\/127\.0\.0\.1:\$\{LOCAL_PORT\}`\s*:\s*DEFAULT_CLOUD_API_BASE/s);
 });
 
+test('cloud multi launcher does not reintroduce product edition env switching', () => {
+  assert.doesNotMatch(source, /KORDI_EDITION|VITE_KORDI_EDITION|Cloud Edition|cloud edition/i);
+});
+
 test('cloud multi launcher requires operator-provided tunnel details with keepalives', () => {
   assert.match(source, /const SSH_TARGET = process\.env\.KORDI_CLOUD_SSH_TARGET;/);
   assert.match(source, /const SSH_ZONE = process\.env\.KORDI_CLOUD_SSH_ZONE;/);
