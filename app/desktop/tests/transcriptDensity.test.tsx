@@ -330,6 +330,55 @@ test('sending own message renders an animated clock in the stable delivery slot'
   assert.doesNotMatch(markup, /lucide-loader-circle[^>]*animate-spin/);
 });
 
+test('own group message renders compact read footer when at least one participant has read', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello group',
+    time: '00:45',
+    statusChips: ['read'],
+    readReceiptSummary: {
+      count: 2,
+      participants: [
+        { id: 'human:acct_a', name: 'Alice', avatarSeed: 'cloud:acct_a', profileImageUrl: null, readAt: '2026-06-06T12:00:02Z' },
+        { id: 'human:acct_b', name: 'Bob', avatarSeed: 'cloud:acct_b', profileImageUrl: null, readAt: '2026-06-06T12:00:03Z' },
+      ],
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-message-read-receipts/);
+  assert.match(markup, /Read by 2/);
+  assert.match(markup, /Alice/);
+  assert.match(markup, /Bob/);
+  assert.match(markup, /data-message-delivery-glyph="double-check"/);
+});
+
+test('own group message suppresses read footer when read count is zero', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello group',
+    time: '00:45',
+    statusChips: ['delivered'],
+    readReceiptSummary: {
+      count: 0,
+      participants: [],
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.doesNotMatch(markup, /app-message-read-receipts/);
+  assert.doesNotMatch(markup, /Read by 0/);
+  assert.match(markup, /data-message-delivery-glyph="single-check"/);
+});
+
 test('blank outgoing delivery status still renders the stable hidden glyph stack', () => {
   const message: Message = {
     role: 'user',

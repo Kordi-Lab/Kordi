@@ -336,6 +336,34 @@ function MessageFooter({
   );
 }
 
+function MessageReadReceiptFooter({ summary, own }: { summary?: Message['readReceiptSummary'] | null; own: boolean }) {
+  const count = Math.max(0, Math.floor(summary?.count ?? 0));
+  if (!own || count <= 0) return null;
+  const participants = (summary?.participants ?? []).slice(0, 3);
+  const names = participants.map((participant) => participant.name).filter(Boolean);
+  const title = names.length > 0 ? `Read by ${names.join(', ')}` : `Read by ${count}`;
+
+  return (
+    <div className="app-message-read-receipts mt-1 flex items-center justify-end gap-1.5 text-[10px] leading-none text-slate-500/80" title={title}>
+      {participants.length > 0 ? (
+        <span className="inline-flex -space-x-1" aria-hidden="true">
+          {participants.map((participant) => (
+            <IdentityAvatar
+              key={participant.id}
+              kind="human"
+              seed={participant.avatarSeed ?? participant.id}
+              name={participant.name}
+              imageUrl={participant.profileImageUrl}
+              className="h-4 w-4 border border-[color:var(--app-panel-bg)]"
+            />
+          ))}
+        </span>
+      ) : null}
+      <span>Read by {count}</span>
+    </div>
+  );
+}
+
 function CompactionSummaryMessage({ msg }: { msg: Message }) {
   const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => cleanCompactionSummary(msg.text), [msg.text]);
@@ -821,6 +849,7 @@ function MessageBubbleView({
           onNavigateToMessage={onNavigateToMessage}
         />
       ) : null}
+      <MessageReadReceiptFooter summary={msg.readReceiptSummary} own={isOwnHumanMessage} />
     </div>
   );
 }
