@@ -3,10 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import {
   contactRequests as demoContactRequests,
-  normalizeNavIdForEdition,
-  normalizeSettingsSectionIdForEdition,
+  normalizeNavIdForCloud,
+  normalizeSettingsSectionIdForCloud,
   projects,
-  settingsSectionsForEdition,
+  settingsSections,
 } from '@/kordi-app/data';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
@@ -29,7 +29,6 @@ import {
   cloudGroupSelfParticipant,
   cloudGroupTargetAccountIds,
 } from '@/features/cloud/cloudGroupMessages';
-import { currentKordiEdition } from '@/features/cloud/edition';
 import { CLOUD_INITIAL_SYNC_TIMEOUT_MS, canonicalStateHasCloudLocalBackup, cloudInitialSyncStatus } from '@/features/cloud/initialSync';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
@@ -131,10 +130,9 @@ export function useKordiAppModel({
   cloudSessionOverride?: UseCloudSessionResult;
 } = {}) {
   const isNativeShell = isNativeDesktopShell();
-  const kordiEdition = currentKordiEdition();
-  const liveCloudSession = useCloudSession({ enabled: kordiEdition === 'cloud' && cloudSessionOverride === undefined });
+  const liveCloudSession = useCloudSession({ enabled: cloudSessionOverride === undefined });
   const cloudSession = cloudSessionOverride ?? liveCloudSession;
-  const cloudPresence = useCloudPresence(kordiEdition === 'cloud' ? cloudSession.account : null);
+  const cloudPresence = useCloudPresence(cloudSession.account);
   const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
@@ -241,19 +239,13 @@ export function useKordiAppModel({
     isNativeShell,
   });
 
-  const visibleSettingsSections = useMemo(
-    () => settingsSectionsForEdition(kordiEdition),
-    [kordiEdition],
-  );
-  const visibleActiveSettingsSectionId = normalizeSettingsSectionIdForEdition(
-    kordiEdition,
-    settingsUi.activeSettingsSectionId,
-  );
+  const visibleSettingsSections = settingsSections;
+  const visibleActiveSettingsSectionId = normalizeSettingsSectionIdForCloud(settingsUi.activeSettingsSectionId);
 
   useEffect(() => {
-    const nextActiveNav = normalizeNavIdForEdition(kordiEdition, activeNav);
+    const nextActiveNav = normalizeNavIdForCloud(activeNav);
     if (nextActiveNav !== activeNav) setActiveNav(nextActiveNav);
-  }, [activeNav, kordiEdition, setActiveNav]);
+  }, [activeNav, setActiveNav]);
 
   useEffect(() => {
     if (visibleActiveSettingsSectionId !== settingsUi.activeSettingsSectionId) {
@@ -289,7 +281,7 @@ export function useKordiAppModel({
     setActiveSettingsSectionId: settingsUi.setActiveSettingsSectionId,
     setActiveLoginProviderId,
     clearDesktopAuthError,
-    openAuthSurface: kordiEdition === 'cloud' ? openCloudAccountAuthentication : undefined,
+    openAuthSurface: openCloudAccountAuthentication,
   });
 
   // The chat draft key must match the value passed as `activeConvId` to
@@ -425,7 +417,7 @@ export function useKordiAppModel({
     cloudDeletedSessionIds,
     cloudSelfAgentSyncStatusBySessionId,
   } = useCloudBridgeState({
-    account: kordiEdition === 'cloud' ? cloudSession.account : null,
+    account: cloudSession.account,
     activeConversationId: activeConvId,
     canonicalSessionState,
     setCanonicalSessionState,
@@ -503,14 +495,12 @@ export function useKordiAppModel({
   const canonicalLocalProfileImageUrl = canonicalProfileImageUrl(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)
     || avatarBridgeHost?.profileImageUrl?.trim()
     || null;
-  const cloudLocalProfileAvatar = kordiEdition === 'cloud'
-    ? resolveCloudLocalProfileAvatar({
-      accountId: cloudSession.account?.accountId,
-      avatarUrl: cloudSession.account?.avatarUrl,
-      canonicalAvatarSeed: canonicalLocalProfileAvatarSeed,
-      canonicalProfileImageUrl: canonicalLocalProfileImageUrl,
-    })
-    : null;
+  const cloudLocalProfileAvatar = resolveCloudLocalProfileAvatar({
+    accountId: cloudSession.account?.accountId,
+    avatarUrl: cloudSession.account?.avatarUrl,
+    canonicalAvatarSeed: canonicalLocalProfileAvatarSeed,
+    canonicalProfileImageUrl: canonicalLocalProfileImageUrl,
+  });
   const localProfileAvatarSeed = cloudLocalProfileAvatar?.seed ?? canonicalLocalProfileAvatarSeed;
   const localProfileImageUrl = cloudLocalProfileAvatar?.imageUrl ?? canonicalLocalProfileImageUrl;
   const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
@@ -567,12 +557,11 @@ export function useKordiAppModel({
   }, [bridgeCanonicalRefreshKey, desktopCanonicalRefreshKey, refreshCanonicalState]);
 
   useEffect(() => {
-    if (kordiEdition !== 'cloud') return;
     const timeoutId = window.setTimeout(() => {
       setCloudInitialSyncNow(Date.now());
     }, CLOUD_INITIAL_SYNC_TIMEOUT_MS + 25);
     return () => window.clearTimeout(timeoutId);
-  }, [cloudInitialSyncStartedAt, kordiEdition]);
+  }, [cloudInitialSyncStartedAt]);
 
   const retryCloudInitialSync = useCallback(() => {
     setCanonicalInitialRefreshSettled(false);
@@ -676,9 +665,9 @@ export function useKordiAppModel({
   }, [participantSpaces]);
 
   useEffect(() => {
-    if (kordiEdition === 'cloud' && !cloudLocalProfileAvatar?.shouldPersistSeed) return;
+    if (!cloudLocalProfileAvatar?.shouldPersistSeed) return;
     setLocalProfileAvatarSeed(localProfileAvatarSeed);
-  }, [cloudLocalProfileAvatar?.shouldPersistSeed, kordiEdition, localProfileAvatarSeed]);
+  }, [cloudLocalProfileAvatar?.shouldPersistSeed, localProfileAvatarSeed]);
 
   useEffect(() => {
     setLocalAgentAvatarSeed(localAgentAvatarSeed);
@@ -1273,7 +1262,7 @@ export function useKordiAppModel({
 
     try {
       setDesktopChatError(null);
-      if (shouldUseCloudSessionAction(kordiEdition, trimmedSessionId)) {
+      if (shouldUseCloudSessionAction(trimmedSessionId)) {
         await hideCloudSession(trimmedSessionId);
         optimisticallyRemoveChatSession(trimmedSessionId);
         await refreshCanonicalState();
@@ -1291,9 +1280,9 @@ export function useKordiAppModel({
       await refreshCanonicalState();
       const message = error instanceof Error ? error.message : 'Unable to hide session';
       setDesktopChatError(message.startsWith('Session not found') ? null : message);
-      if (shouldUseCloudSessionAction(kordiEdition, trimmedSessionId)) throw error;
+      if (shouldUseCloudSessionAction(trimmedSessionId)) throw error;
     }
-  }, [activeConvId, desktopChatState?.activeSessionId, hideCloudSession, isNativeShell, kordiEdition, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
+  }, [activeConvId, desktopChatState?.activeSessionId, hideCloudSession, isNativeShell, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
 
   const handleDeleteChatSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -1301,7 +1290,7 @@ export function useKordiAppModel({
 
     try {
       setDesktopChatError(null);
-      if (shouldUseCloudSessionAction(kordiEdition, trimmedSessionId)) {
+      if (shouldUseCloudSessionAction(trimmedSessionId)) {
         await deleteCloudSession(trimmedSessionId);
         optimisticallyRemoveChatSession(trimmedSessionId);
         try {
@@ -1329,9 +1318,9 @@ export function useKordiAppModel({
       await refreshCanonicalState();
       const message = error instanceof Error ? error.message : 'Unable to remove chat';
       setDesktopChatError(message.startsWith('Session not found') ? null : message);
-      if (shouldUseCloudSessionAction(kordiEdition, trimmedSessionId)) throw error;
+      if (shouldUseCloudSessionAction(trimmedSessionId)) throw error;
     }
-  }, [activeConvId, deleteCloudSession, desktopChatState?.activeSessionId, isNativeShell, kordiEdition, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
+  }, [activeConvId, deleteCloudSession, desktopChatState?.activeSessionId, isNativeShell, optimisticallyRemoveChatSession, refreshCanonicalState, setActiveConvId, setDesktopChatError, setDesktopChatState]);
 
   const handleMoveChatSessionToProject = useCallback(async (sessionId: string, requestedProjectRoot: string) => {
     if (!isNativeShell || !sessionId.trim()) return;
@@ -2066,7 +2055,7 @@ export function useKordiAppModel({
     activeSettingsSectionId: visibleActiveSettingsSectionId,
     cloudAccountDialogTab,
     setCloudAccountDialogTab,
-    openCloudAccountAuthentication: kordiEdition === 'cloud' ? openCloudAccountAuthentication : undefined,
+    openCloudAccountAuthentication,
     isSingleWorkspacePage,
     collapseChatSessions,
     showSessionRail,
@@ -2289,9 +2278,9 @@ export function useKordiAppModel({
 
   const shellSlots = assembleKordiShellSlots(shellArgs);
   const cloudInitialSync = useMemo(() => {
-    const accountKey = kordiEdition === 'cloud' ? (cloudSession.account?.accountId ?? '__pending__') : '__local__';
+    const accountKey = cloudSession.account?.accountId ?? '__pending__';
     const rawStatus = cloudInitialSyncStatus({
-      isCloudEdition: kordiEdition === 'cloud',
+      isCloudEdition: true,
       accountReady: Boolean(cloudSession.account),
       canonicalSettled: canonicalInitialRefreshSettled,
       canonicalReady: !canonicalInitialRefreshError,
@@ -2316,7 +2305,6 @@ export function useKordiAppModel({
     initialContactsSettled,
     initialMessagesSettled,
     isDesktopChatLoading,
-    kordiEdition,
     retryCloudInitialSync,
   ]);
 

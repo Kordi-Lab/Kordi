@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-const DEFAULT_PUBLIC_BASE_URL: &str = "https://kordi.cloud";
+const DEFAULT_PUBLIC_BASE_URL: &str = "https://coordinar.io";
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -309,19 +309,26 @@ fn github_profile_from_values(user: &Value, emails: &Value) -> OAuthProfile {
 mod tests {
     use serde_json::json;
 
-    use super::{github_profile_from_values, is_allowed_oauth_redirect_with_config};
+    use super::{github_profile_from_values, is_allowed_oauth_redirect_with_config, public_base_url};
+
+    #[test]
+    fn public_base_url_defaults_to_product_cloud_host() {
+        std::env::remove_var("KORDI_CLOUD_PUBLIC_BASE_URL");
+
+        assert_eq!(public_base_url(), "https://coordinar.io");
+    }
 
     #[test]
     fn redirect_allowlist_rejects_prefix_host_spoofing() {
         assert!(!is_allowed_oauth_redirect_with_config(
-            "https://kordi.cloud.evil.example/callback",
+            "https://coordinar.io.evil.example/callback",
             None,
-            "https://kordi.cloud",
+            "https://coordinar.io",
         ));
         assert!(is_allowed_oauth_redirect_with_config(
-            "https://kordi.cloud/callback",
+            "https://coordinar.io/callback",
             None,
-            "https://kordi.cloud",
+            "https://coordinar.io",
         ));
     }
 
@@ -330,12 +337,12 @@ mod tests {
         assert!(is_allowed_oauth_redirect_with_config(
             "http://127.0.0.1:49152/oauth/request",
             None,
-            "https://kordi.cloud",
+            "https://coordinar.io",
         ));
         assert!(!is_allowed_oauth_redirect_with_config(
             "tauri://localhost/oauth/request",
             None,
-            "https://kordi.cloud",
+            "https://coordinar.io",
         ));
     }
 

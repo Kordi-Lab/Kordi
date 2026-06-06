@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
-import { currentKordiEdition, shouldShowCloudLoginGate, type CloudSessionStatus, type KordiEdition } from '@/features/cloud/edition';
+import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/edition';
 import { applyKordiMainWindowSize } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
@@ -48,7 +48,6 @@ function useGateThemeClass() {
 }
 
 export type KordiAppRootProps = {
-  edition?: KordiEdition;
   /**
    * Tests can pass an explicit cloudSessionStatus to render the gate or the
    * shell deterministically. When undefined, the runtime hook drives the
@@ -60,24 +59,9 @@ export type KordiAppRootProps = {
 };
 
 export function KordiAppRoot({
-  edition = currentKordiEdition(),
   cloudSessionStatus,
   cloudSession,
 }: KordiAppRootProps = {}) {
-  // When edition is local, we don't need any cloud session machinery and
-  // shouldShowCloudLoginGate short-circuits anyway. We default to 'signed-out'
-  // so existing call sites that relied on the old default keep working.
-  if (edition !== 'cloud') {
-    if (shouldShowCloudLoginGate({ edition, cloudSessionStatus: cloudSessionStatus ?? 'signed-out' })) {
-      return (
-        <CloudGateShell>
-          <CloudLoginPage />
-        </CloudGateShell>
-      );
-    }
-    return <KordiAppShell />;
-  }
-
   return (
     <CloudEditionRoot
       cloudSessionStatusOverride={cloudSessionStatus}
@@ -112,7 +96,7 @@ function CloudEditionRoot({
   });
   const session = cloudSessionOverride ?? liveSession;
   const status: CloudSessionStatus = cloudSessionStatusOverride ?? session.status;
-  if (shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: status })) {
+  if (shouldShowCloudLoginGate({ cloudSessionStatus: status })) {
     return (
       <CloudGateShell>
         <CloudLoginPage

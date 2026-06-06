@@ -1,8 +1,9 @@
 # Kordi cloud-server reverse-proxy stanza.
 #
-# Drop this into the existing Caddy config on takotako. Caddy auto-provisions
-# a TLS certificate via Let's Encrypt as long as the DNS A record for the
-# domain points at the VM's public IP and ports 80/443 are reachable.
+# Drop this into the existing Caddy config on the operator-provided host. Caddy
+# auto-provisions a TLS certificate via Let's Encrypt as long as the DNS A
+# record for the domain points at the host's public IP and ports 80/443 are
+# reachable.
 #
 # Replace `kordi-cloud.example.com` with your real domain before importing.
 

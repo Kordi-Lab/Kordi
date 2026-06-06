@@ -2,40 +2,49 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { navItemsForEdition, normalizeNavIdForEdition } from '../src/kordi-app/data/navigation';
-import { normalizeSettingsSectionIdForEdition, settingsSectionsForEdition } from '../src/kordi-app/data/settings';
+import { navItems, normalizeNavIdForCloud } from '../src/kordi-app/data/navigation';
+import { normalizeSettingsSectionIdForCloud, settingsSections } from '../src/kordi-app/data/settings';
 
-test('cloud navigation hides projects and redirects stale project nav to chats', () => {
-  assert.deepEqual(navItemsForEdition('cloud').map((item) => item.id), ['chats', 'contacts', 'agents']);
-  assert.equal(normalizeNavIdForEdition('cloud', 'projects'), 'chats');
-  assert.equal(normalizeNavIdForEdition('cloud', 'settings'), 'chats');
-  assert.equal(normalizeNavIdForEdition('local', 'projects'), 'projects');
+test('product navigation only exposes final Cloud pages', () => {
+  assert.deepEqual(navItems.map((item) => item.id), ['chats', 'contacts', 'agents']);
+  assert.equal(normalizeNavIdForCloud('projects'), 'chats');
+  assert.equal(normalizeNavIdForCloud('settings'), 'chats');
+  assert.equal(normalizeNavIdForCloud('bridge'), 'chats');
 });
 
-test('cloud settings only exposes authentication and theme', () => {
-  const cloudSections = settingsSectionsForEdition('cloud');
-
-  assert.deepEqual(cloudSections.map((section) => section.id), ['auth', 'appearance']);
-  assert.deepEqual(cloudSections.map((section) => section.label), ['Authentication', 'Theme']);
-  assert.deepEqual(cloudSections[1]?.items.map((item) => item.label), ['Theme']);
-  assert.equal(normalizeSettingsSectionIdForEdition('cloud', 'general'), 'auth');
-  assert.equal(normalizeSettingsSectionIdForEdition('cloud', 'appearance'), 'appearance');
+test('settings data keeps only final Cloud settings sections', () => {
+  assert.deepEqual(settingsSections.map((section) => section.id), ['auth', 'appearance']);
+  assert.deepEqual(settingsSections.map((section) => section.label), ['Authentication', 'Theme']);
+  assert.deepEqual(settingsSections[1]?.items.map((item) => item.label), ['Theme']);
+  assert.equal(normalizeSettingsSectionIdForCloud('general'), 'auth');
+  assert.equal(normalizeSettingsSectionIdForCloud('appearance'), 'appearance');
 });
 
-test('app model wires cloud surface cleanup into shell state', () => {
+test('app model uses Cloud-only surface selectors', () => {
   const source = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /settingsSectionsForEdition/);
-  assert.match(source, /normalizeNavIdForEdition/);
-  assert.match(source, /normalizeSettingsSectionIdForEdition/);
-  assert.match(source, /visibleSettingsSections/);
+  assert.doesNotMatch(source, /settingsSectionsForEdition/);
+  assert.doesNotMatch(source, /normalizeNavIdForEdition/);
+  assert.doesNotMatch(source, /normalizeSettingsSectionIdForEdition/);
+  assert.match(source, /settingsSections/);
+  assert.match(source, /normalizeNavIdForCloud/);
+  assert.match(source, /normalizeSettingsSectionIdForCloud/);
 });
 
-test('cloud sidebar removes the global plus launcher', () => {
+test('final Cloud app does not route to hidden legacy product pages', () => {
+  const mainContentSource = readFileSync(new URL('../src/app/MainContentSwitch.tsx', import.meta.url), 'utf8');
+  const navigationSource = readFileSync(new URL('../src/kordi-app/data/navigation.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(mainContentSource, /BridgeConfigPage|ProjectsPage|SettingsPage/);
+  assert.doesNotMatch(mainContentSource, /case 'bridge'|case 'projects'|case 'settings'/);
+  assert.doesNotMatch(navigationSource, /id: 'bridge'|id: 'projects'|id: 'settings'/);
+});
+
+test('cloud sidebar removes the global plus launcher entirely', () => {
   const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /showSidebarCreateButton\s*=\s*currentKordiEdition\(\) !== 'cloud'/);
-  assert.match(source, /showSidebarCreateButton \? \(/);
+  assert.doesNotMatch(source, /showSidebarCreateButton/);
+  assert.doesNotMatch(source, /currentKordiEdition/);
 });
 
 test('cloud profile menu avoids Cloud and Bridge jargon in visible copy', () => {

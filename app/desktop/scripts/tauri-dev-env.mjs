@@ -8,19 +8,9 @@ function trimmedEnvValue(env, key) {
 }
 
 export function buildBeforeDevCommand({ title, host, port, env = process.env }) {
-  const viteEdition = trimmedEnvValue(env, 'VITE_KORDI_EDITION');
-  const runtimeEdition = trimmedEnvValue(env, 'KORDI_EDITION');
-  const frontendEdition = viteEdition || runtimeEdition;
   const assignments = [
     `VITE_KORDI_WINDOW_TITLE=${shellQuote(title)}`,
   ];
-
-  if (frontendEdition) {
-    assignments.push(`VITE_KORDI_EDITION=${shellQuote(frontendEdition)}`);
-  }
-  if (runtimeEdition) {
-    assignments.push(`KORDI_EDITION=${shellQuote(runtimeEdition)}`);
-  }
 
   const cloudApiBase = trimmedEnvValue(env, 'VITE_KORDI_CLOUD_API_BASE');
   if (cloudApiBase) {

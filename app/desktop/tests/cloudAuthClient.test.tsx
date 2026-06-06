@@ -201,8 +201,8 @@ test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
 
 test('cloud WebSocket URL derives from the cloud API origin', () => {
   assert.equal(
-    cloudWebSocketUrl('kordi_cs_token', 'https://kordi.cloud'),
-    'wss://kordi.cloud/v1/cloud/ws?token=kordi_cs_token',
+    cloudWebSocketUrl('kordi_cs_token', 'https://coordinar.io'),
+    'wss://coordinar.io/v1/cloud/ws?token=kordi_cs_token',
   );
   assert.equal(
     cloudWebSocketUrl('token with space', 'http://127.0.0.1:17081'),

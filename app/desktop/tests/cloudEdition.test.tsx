@@ -7,12 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
 import { CloudLoginPage, cloudSignupAvatarInitials } from '../src/kordi-app/cloud/CloudLoginPage';
-import {
-  kordiEditionFromEnv,
-  kordiEditionFromRuntimeHints,
-  normalizeKordiEdition,
-  shouldShowCloudLoginGate,
-} from '../src/features/cloud/edition';
+import { shouldShowCloudLoginGate } from '../src/features/cloud/edition';
 const repoRoot = resolve(import.meta.dirname, '..');
 
 function makeStorageStub(initial: Record<string, string> = {}): Storage {
@@ -60,34 +55,15 @@ test('cloud shell source does not expose localhost bridge controls', () => {
   assert.doesNotMatch(rightDetail, /onOpenBridgeHosts|handleCreateProjectBridgeInvite/);
 });
 
-test('normalizeKordiEdition defaults to local and accepts cloud explicitly', () => {
-  assert.equal(normalizeKordiEdition(undefined), 'local');
-  assert.equal(normalizeKordiEdition(''), 'local');
-  assert.equal(normalizeKordiEdition('LOCAL'), 'local');
-  assert.equal(normalizeKordiEdition('cloud'), 'cloud');
-  assert.equal(normalizeKordiEdition('enterprise'), 'local');
+test('edition source has no runtime local-edition parser', () => {
+  const source = readSource('src/features/cloud/edition.ts');
+
+  assert.doesNotMatch(source, /KORDI_EDITION|VITE_KORDI_EDITION|currentKordiEdition|normalizeKordiEdition|kordiEditionFromEnv|kordiEditionFromRuntimeHints/);
 });
 
-test('kordiEditionFromEnv prefers Vite edition over runtime edition', () => {
-  assert.equal(kordiEditionFromEnv({ VITE_KORDI_EDITION: 'cloud', KORDI_EDITION: 'local' }), 'cloud');
-  assert.equal(kordiEditionFromEnv({ KORDI_EDITION: 'cloud' }), 'cloud');
-  assert.equal(kordiEditionFromEnv({ VITE_KORDI_EDITION: 'local', KORDI_EDITION: 'cloud' }), 'local');
-});
-
-test('kordiEditionFromEnv treats Cloud Edition window title as cloud preview fallback', () => {
-  assert.equal(kordiEditionFromEnv({ VITE_KORDI_WINDOW_TITLE: 'Kordi Cloud Edition Login Gate' }), 'cloud');
-  assert.equal(kordiEditionFromEnv({ VITE_KORDI_WINDOW_TITLE: 'Kordi Local Dev' }), 'local');
-});
-
-test('kordiEditionFromRuntimeHints detects the Cloud Edition preview title', () => {
-  assert.equal(kordiEditionFromRuntimeHints({ documentTitle: '(6) Kordi Cloud Edition Login Gate' }), 'cloud');
-  assert.equal(kordiEditionFromRuntimeHints({ documentTitle: 'Kordi' }), 'local');
-});
-
-test('cloud login gate blocks signed-out Cloud Edition in native and web preview', () => {
-  assert.equal(shouldShowCloudLoginGate({ edition: 'local', cloudSessionStatus: 'signed-out' }), false);
-  assert.equal(shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: 'authenticated' }), false);
-  assert.equal(shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: 'signed-out' }), true);
+test('cloud login gate always uses Cloud product semantics', () => {
+  assert.equal(shouldShowCloudLoginGate({ cloudSessionStatus: 'authenticated' }), false);
+  assert.equal(shouldShowCloudLoginGate({ cloudSessionStatus: 'signed-out' }), true);
 });
 
 test('cloud login CSS hides the oversized native WebKit caps-lock indicator', () => {
@@ -324,7 +300,6 @@ test('cloud starting timeout still has no visible retry copy', () => {
 
 test('cloud edition session restore uses the same dot loading screen', () => {
   const markup = renderToStaticMarkup(createElement(KordiAppRoot, {
-    edition: 'cloud',
     cloudSessionStatus: 'loading',
     cloudSession: {
       status: 'loading',
@@ -342,7 +317,6 @@ test('cloud edition session restore uses the same dot loading screen', () => {
 
 test('cloud edition app root renders account login before the chat shell', () => {
   const markup = renderToStaticMarkup(createElement(KordiAppRoot, {
-    edition: 'cloud',
     cloudSessionStatus: 'signed-out',
   }));
 
