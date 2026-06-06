@@ -1,8 +1,10 @@
 # Kordi Hosted Cloud Developer Guide
 
-This guide explains how developers should test and deploy against the hosted Cloud environment currently used for development.
+This guide explains how developers should test and deploy against a hosted Cloud environment.
 
-Use the shared hosted test server below for developer Cloud testing. Do not put tokens, provider credentials, database credentials, account secrets, or private operator host details in GitHub issues, PRs, screenshots, commits, or shared logs.
+Production Cloud API is `https://coordinar.io`. Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized. For development and QA, use an operator-provided public test Cloud API base or host your own compatible Cloud server.
+
+Do not put tokens, provider credentials, database credentials, account secrets, or private operator host details in GitHub issues, PRs, screenshots, commits, or shared logs.
 
 ## Mental model
 
@@ -21,12 +23,12 @@ The hosted Cloud setup has two separate parts:
 
 A local URL such as `http://127.0.0.1:1484` is only the local desktop test UI. It is not the hosted Cloud backend.
 
-## Current shared hosted test server
+## Select a hosted test server
 
-Use this Cloud API base for the shared developer test environment:
+Use a public test Cloud API base supplied by an operator, or the HTTPS origin of your own compatible Cloud server:
 
 ```bash
-export HOSTED_CLOUD_API_BASE="https://coordinar.io"
+export HOSTED_CLOUD_API_BASE="<PUBLIC_TEST_CLOUD_API_BASE>"
 ```
 
 If an operator rotates the test server, update only this value and keep the rest of the guide unchanged.
@@ -36,9 +38,7 @@ If an operator rotates the test server, update only this value and keep the rest
 Set these before launching desktop clients:
 
 ```bash
-export HOSTED_CLOUD_API_BASE="https://coordinar.io"
-export VITE_KORDI_EDITION=cloud
-export KORDI_EDITION=cloud
+export HOSTED_CLOUD_API_BASE="<PUBLIC_TEST_CLOUD_API_BASE>"
 export VITE_KORDI_CLOUD_API_BASE="$HOSTED_CLOUD_API_BASE"
 export KORDI_CLOUD_API_BASE="$HOSTED_CLOUD_API_BASE"
 ```
@@ -57,7 +57,7 @@ Use this for single-account testing:
 
 ```bash
 pnpm install
-pnpm dev:desktop
+pnpm dev
 ```
 
 If the Tauri launcher reports missing sidecar binaries, run:

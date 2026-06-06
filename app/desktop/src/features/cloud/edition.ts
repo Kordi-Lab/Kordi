@@ -10,13 +10,17 @@ type RuntimeEditionHints = {
 };
 
 export function normalizeKordiEdition(value: string | undefined | null): KordiEdition {
-  return value?.trim().toLowerCase() === 'cloud' ? 'cloud' : 'local';
+  return value?.trim().toLowerCase() === 'local' ? 'local' : 'cloud';
 }
 
 export function kordiEditionFromEnv(env: EditionEnv): KordiEdition {
-  const explicitEdition = normalizeKordiEdition(env.VITE_KORDI_EDITION ?? env.KORDI_EDITION);
-  if (explicitEdition === 'cloud') return 'cloud';
-  return env.VITE_KORDI_WINDOW_TITLE?.toLowerCase().includes('cloud') ? 'cloud' : 'local';
+  const explicitEdition = env.VITE_KORDI_EDITION ?? env.KORDI_EDITION;
+  if (explicitEdition !== undefined && explicitEdition.trim().length > 0) {
+    return normalizeKordiEdition(explicitEdition);
+  }
+  const title = env.VITE_KORDI_WINDOW_TITLE?.toLowerCase() ?? '';
+  if (title.includes('local')) return 'local';
+  return 'cloud';
 }
 
 function usableBootstrapValue(value: string | undefined) {
@@ -30,14 +34,16 @@ export function kordiEditionFromRuntimeHints({
   documentTitle,
   locationSearch,
 }: RuntimeEditionHints): KordiEdition {
-  const edition = normalizeKordiEdition(usableBootstrapValue(bootstrapEdition));
-  if (edition === 'cloud') return 'cloud';
+  const usableEdition = usableBootstrapValue(bootstrapEdition);
+  if (usableEdition) return normalizeKordiEdition(usableEdition);
 
   const title = `${usableBootstrapValue(bootstrapTitle) ?? ''} ${documentTitle ?? ''}`.toLowerCase();
+  if (title.includes('local')) return 'local';
   if (title.includes('cloud')) return 'cloud';
 
   const search = locationSearch ? new URLSearchParams(locationSearch) : null;
-  return normalizeKordiEdition(search?.get('kordiEdition') ?? search?.get('edition'));
+  const searchEdition = search?.get('kordiEdition') ?? search?.get('edition');
+  return searchEdition ? normalizeKordiEdition(searchEdition) : 'cloud';
 }
 
 export function currentKordiEdition(): KordiEdition {

@@ -11,8 +11,8 @@ if [[ "${CONFIRM_KORDI_RUNNER_REAL_PROVIDER_CANARY:-}" != "1" ]]; then
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-remote_host="${KORDI_CLOUD_REAL_CANARY_SSH_HOST:-shu_yang@takotako}"
-remote_zone="${KORDI_CLOUD_REAL_CANARY_SSH_ZONE:-us-central1-c}"
+remote_host="${KORDI_CLOUD_REAL_CANARY_SSH_HOST:?Set KORDI_CLOUD_REAL_CANARY_SSH_HOST to the operator-provided gcloud SSH target}"
+remote_zone="${KORDI_CLOUD_REAL_CANARY_SSH_ZONE:?Set KORDI_CLOUD_REAL_CANARY_SSH_ZONE to the operator-provided gcloud zone}"
 namespace="${KORDI_CLOUD_SANDBOX_NAMESPACE:-kordi-cloud}"
 remote_server_port="${KORDI_CLOUD_SERVER_REMOTE_PORT:-0}"
 suffix="${KORDI_CLOUD_REAL_PROVIDER_CANARY_ID:-$(date +%s)}"

@@ -8,9 +8,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:-shu_yang@takotako}"
-SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:-us-central1-c}"
-REMOTE_DEPLOY="${KORDI_CLOUD_REMOTE_DIR:-/home/shu_yang/kordi-cloud-server-deploy}"
+SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET to the operator-provided gcloud SSH target}"
+SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE to the operator-provided gcloud zone}"
+REMOTE_DEPLOY="${KORDI_CLOUD_REMOTE_DIR:-\$HOME/kordi-cloud-server-deploy}"
 IMAGE_TAG="${KORDI_CLOUD_RUNNER_IMAGE_TAG:-runner-dev-$(date +%Y%m%d-%H%M%S)}"
 IMAGE="docker.io/library/kordi-cloud-agent-runner:${IMAGE_TAG}"
 

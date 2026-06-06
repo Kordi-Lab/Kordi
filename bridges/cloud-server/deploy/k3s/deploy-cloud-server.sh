@@ -2,8 +2,8 @@
 #
 # deploy-cloud-server.sh — RUN LOCALLY, build runs on the VM.
 #
-# After the binary is built on takotako (via cargo build --release on the
-# synced source), this script:
+# After the binary is built on the operator-provided Cloud host (via cargo
+# build --release on the synced source), this script:
 #   1. Assembles the OCI runtime image with `buildah bud` on the VM.
 #   2. Tags it as docker.io/library/kordi-cloud-server:<tag> so kubelet's
 #      bare-name resolution finds it without trying Docker Hub.
@@ -17,9 +17,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:-shu_yang@takotako}"
-SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:-us-central1-c}"
-REMOTE_DEPLOY="${KORDI_CLOUD_REMOTE_DIR:-/home/shu_yang/kordi-cloud-server-deploy}"
+SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET to the operator-provided gcloud SSH target}"
+SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE to the operator-provided gcloud zone}"
+REMOTE_DEPLOY="${KORDI_CLOUD_REMOTE_DIR:-\$HOME/kordi-cloud-server-deploy}"
 IMAGE_TAG="${KORDI_CLOUD_IMAGE_TAG:-dev-$(date +%Y%m%d-%H%M%S)}"
 IMAGE="docker.io/library/kordi-cloud-server:${IMAGE_TAG}"
 

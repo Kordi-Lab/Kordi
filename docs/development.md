@@ -1,8 +1,8 @@
 # Development entrypoints
 
-This document keeps the top-level commands for the Kordi monorepo in one place.
+This document keeps the top-level Cloud-first commands for the Kordi monorepo in one place.
 
-All commands below are intended to be run from:
+Run commands from:
 
 ```bash
 cd /path/to/kordi
@@ -14,180 +14,90 @@ cd /path/to/kordi
 pnpm install
 ```
 
-## Desktop app
+## Cloud desktop
 
-### Start the whole local app stack
+### Start the Cloud product app
 
 ```bash
 pnpm dev
 ```
 
-This command:
+`pnpm dev` is the default product development command. It launches Cloud Desktop and uses the product Cloud origin unless you override the API base.
 
-1. starts the local app server
-2. launches the Tauri desktop app
-3. keeps both processes tied to the same terminal session
+Production Cloud API:
 
-Use this as the default development command when you want the product shell and the app-facing backend running together.
-
-### Start the Tauri desktop app only
-
-```bash
-pnpm dev:desktop
+```text
+https://coordinar.io
 ```
 
-This command:
-
-1. builds the local `agent` sidecar
-2. builds the local `bridges` sidecar
-3. copies both binaries into `app/desktop/src-tauri/binaries`
-4. launches the Tauri app
-
-Use this when you only want the desktop shell and sidecars, without separately starting the app server through the root `dev` command.
-
-### Start Cloud Edition
-
-Production Cloud Edition defaults to `https://kordi.cloud`:
+For development/QA, prefer an operator-provided public test Cloud API base or a self-hosted compatible Cloud server:
 
 ```bash
-VITE_KORDI_EDITION=cloud \
-KORDI_EDITION=cloud \
-pnpm --dir app/desktop tauri:dev
+VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 ```
 
-For hosted tunnel testing against `takotako`:
+Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized.
+
+### Start multiple isolated Cloud users
 
 ```bash
-KORDI_CLOUD_USE_LOCAL_TUNNEL=1 \
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
-pnpm --dir app/desktop tauri:dev:multi:cloud -- --users user1,user2,user3
+VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
+pnpm dev:cloud:multi -- --users user1,user2,user3
 ```
 
-See [`cloud-edition.md`](cloud-edition.md) for Cloud auth, contacts, groups, agent mentions, avatar, and deployment notes.
+The local URLs opened by this command are desktop test windows only. They are not Cloud backend URLs. Product data comes from `VITE_KORDI_CLOUD_API_BASE`.
 
-### Start the web-only preview
-
-```bash
-pnpm dev:web
-```
-
-### Build the desktop app
+### Build Cloud desktop
 
 ```bash
 pnpm build:desktop
 ```
 
-For Rust artifact size notes and inactive worktree cleanup, see [`development/desktop-rust-build-artifacts.md`](development/desktop-rust-build-artifacts.md).
-For overlong-file thresholds and refactor boundaries, see [`development/maintainability-boundaries.md`](development/maintainability-boundaries.md).
+This aliases the Cloud package build. Release builds should use the Cloud release path and the product Cloud origin.
 
-### Build the web UI
+## Web UI preview
 
 ```bash
+pnpm dev:web
 pnpm build:web
 ```
 
-## App server
+The web preview is for frontend iteration only. Native Tauri behavior, keychain/session storage, OAuth loopback, and packaged updater behavior require a Tauri run/build.
 
-The app server is the app-facing local orchestration backend used to compose runtime and bridge state behind one product contract.
+## Internal runtime/tooling commands
 
-### Run the app-facing server
-
-```bash
-pnpm run:app-server -- --help
-pnpm run:app-server --
-```
-
-### Check the app server crate
-
-```bash
-pnpm check:app-server
-```
-
-## Agent runtime
-
-### Run the CLI / TUI
+These commands remain for internal runtime, runner, and infrastructure development. They are not the default product quick start.
 
 ```bash
 pnpm run:agent -- --help
-pnpm run:agent --
-```
-
-### Check the agent crates
-
-```bash
 pnpm check:agent
-```
-
-### Build the agent binary
-
-```bash
 pnpm build:agent
-```
 
-## Bridges network stack
-
-### Run the Bridges CLI
-
-```bash
 pnpm run:bridges -- --help
-```
-
-### Check the Bridges CLI crate
-
-```bash
 pnpm check:bridges
-```
-
-### Build the Bridges CLI
-
-```bash
 pnpm build:bridges
-```
 
-### Start the registry service
-
-```bash
 pnpm dev:registry
-```
-
-### Build the registry service
-
-```bash
 pnpm build:registry
 ```
 
+Legacy local desktop flows, where still present, use explicit `:local` command names.
+
 ## Shared validation
-
-### Report overlong modules
-
-```bash
-pnpm maintainability:scan -- --min-lines 500 --limit 60
-```
-
-This is a planning signal for maintainability work, not a CI gate. See [`development/maintainability-boundaries.md`](development/maintainability-boundaries.md).
-
-### Lint the desktop app
 
 ```bash
 pnpm lint
-```
-
-### Check all Rust crates
-
-```bash
+pnpm typecheck:web
 pnpm check:rust
-```
-
-### Run the common validation pass
-
-```bash
 pnpm check
 ```
 
+For Rust artifact size notes and inactive worktree cleanup, see [`development/desktop-rust-build-artifacts.md`](development/desktop-rust-build-artifacts.md).
+For overlong-file thresholds and refactor boundaries, see [`development/maintainability-boundaries.md`](development/maintainability-boundaries.md).
+
 ## Notes
 
-- `pnpm dev` is the default "run the whole app" command from the monorepo root.
-- The desktop app is the primary product surface.
-- The app server is the app-facing orchestration backend for desktop and future shared clients.
-- The app should prefer stable app-facing contracts over directly wiring UI components to low-level runtime or network internals.
-- Keep shared contracts in `shared/` whenever both Rust and TypeScript need the same protocol concepts.
+- Cloud Desktop is the primary product surface on `main`.
+- Production defaults point to `https://coordinar.io`.
+- Development tests should point to `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted Cloud API.
+- Do not commit tokens, local account sessions, provider credentials, database credentials, or private operator infrastructure details.

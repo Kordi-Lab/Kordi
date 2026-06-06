@@ -60,12 +60,12 @@ test('cloud shell source does not expose localhost bridge controls', () => {
   assert.doesNotMatch(rightDetail, /onOpenBridgeHosts|handleCreateProjectBridgeInvite/);
 });
 
-test('normalizeKordiEdition defaults to local and accepts cloud explicitly', () => {
-  assert.equal(normalizeKordiEdition(undefined), 'local');
-  assert.equal(normalizeKordiEdition(''), 'local');
+test('normalizeKordiEdition defaults to cloud and keeps explicit local override', () => {
+  assert.equal(normalizeKordiEdition(undefined), 'cloud');
+  assert.equal(normalizeKordiEdition(''), 'cloud');
   assert.equal(normalizeKordiEdition('LOCAL'), 'local');
   assert.equal(normalizeKordiEdition('cloud'), 'cloud');
-  assert.equal(normalizeKordiEdition('enterprise'), 'local');
+  assert.equal(normalizeKordiEdition('enterprise'), 'cloud');
 });
 
 test('kordiEditionFromEnv prefers Vite edition over runtime edition', () => {
@@ -74,14 +74,16 @@ test('kordiEditionFromEnv prefers Vite edition over runtime edition', () => {
   assert.equal(kordiEditionFromEnv({ VITE_KORDI_EDITION: 'local', KORDI_EDITION: 'cloud' }), 'local');
 });
 
-test('kordiEditionFromEnv treats Cloud Edition window title as cloud preview fallback', () => {
+test('kordiEditionFromEnv defaults to cloud and keeps explicit local title override', () => {
+  assert.equal(kordiEditionFromEnv({}), 'cloud');
   assert.equal(kordiEditionFromEnv({ VITE_KORDI_WINDOW_TITLE: 'Kordi Cloud Edition Login Gate' }), 'cloud');
   assert.equal(kordiEditionFromEnv({ VITE_KORDI_WINDOW_TITLE: 'Kordi Local Dev' }), 'local');
 });
 
-test('kordiEditionFromRuntimeHints detects the Cloud Edition preview title', () => {
+test('kordiEditionFromRuntimeHints defaults to cloud and detects explicit local preview title', () => {
   assert.equal(kordiEditionFromRuntimeHints({ documentTitle: '(6) Kordi Cloud Edition Login Gate' }), 'cloud');
-  assert.equal(kordiEditionFromRuntimeHints({ documentTitle: 'Kordi' }), 'local');
+  assert.equal(kordiEditionFromRuntimeHints({ documentTitle: 'Kordi' }), 'cloud');
+  assert.equal(kordiEditionFromRuntimeHints({ documentTitle: 'Kordi Local Dev' }), 'local');
 });
 
 test('cloud login gate blocks signed-out Cloud Edition in native and web preview', () => {

@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "tauri:refresh-icon": "swift scripts/reshape-mac-icon.swift",
     "tauri:prepare-sidecars": "node scripts/prepare-sidecars.mjs",
-    "tauri:dev": "pnpm tauri:prepare-sidecars && tauri dev",
+    "tauri:dev": "pnpm tauri:dev:cloud",
     "tauri:dev:profile": "node scripts/tauri-dev-profile.mjs",
     "tauri:dev:instance": "node scripts/tauri-dev-instance.mjs",
     "tauri:dev:multi": "node scripts/multi-instance/launch.mjs",
@@ -23,10 +23,13 @@
     "tauri:dev:multi:reset": "node scripts/multi-instance/reset.mjs",
     "tauri:dev:multi:smoke": "node scripts/multi-instance/smoke.mjs",
     "release:secret-guard": "node scripts/assert-no-release-secrets.mjs",
-    "tauri:build": "pnpm release:secret-guard && pnpm tauri:prepare-sidecars && tauri build",
+    "tauri:build": "pnpm tauri:build:cloud",
     "tauri:build:cloud": "pnpm release:secret-guard && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud pnpm tauri:prepare-sidecars && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud tauri build --config src-tauri/tauri.cloud.conf.json",
     "release:verify-cloud-dmg": "node scripts/assert-macos-dmg-release.mjs --app-name Kordi",
-    "tauri:build:cloud:dmg": "pnpm release:secret-guard && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud pnpm tauri:prepare-sidecars && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud tauri build --config src-tauri/tauri.cloud.conf.json --bundles dmg && pnpm release:verify-cloud-dmg"
+    "tauri:build:cloud:dmg": "pnpm release:secret-guard && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud pnpm tauri:prepare-sidecars && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud tauri build --config src-tauri/tauri.cloud.conf.json --bundles dmg && pnpm release:verify-cloud-dmg",
+    "tauri:dev:local": "pnpm tauri:prepare-sidecars && tauri dev",
+    "tauri:dev:cloud": "VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud pnpm tauri:prepare-sidecars && VITE_KORDI_EDITION=cloud KORDI_EDITION=cloud tauri dev --config src-tauri/tauri.cloud.conf.json",
+    "tauri:build:local": "pnpm release:secret-guard && pnpm tauri:prepare-sidecars && tauri build"
   },
   "dependencies": {
     "@radix-ui/react-tabs": "^1.1.13",
