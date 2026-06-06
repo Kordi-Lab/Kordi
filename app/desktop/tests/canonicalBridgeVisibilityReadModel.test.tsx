@@ -58,6 +58,70 @@ test('active bridge conversations read live turns from their canonical contact s
   }), turn);
 });
 
+test('canonical read model maps positive read receipt summaries onto own messages', () => {
+  const sessionId = 'session:group:read-receipts';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:acct_me',
+      activeAgentIdentityId: 'agent:local',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:acct_me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:acct_a', kind: 'human', displayName: 'Alice', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_a', humanId: 'acct_a', avatarKey: 'cloud:acct_a', profileImageUrl: null, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:local', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:acct_me', avatarKey: 'agent-local', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'group', title: 'Launch group', status: 'active', createdByIdentityId: 'human:acct_me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { groupSpaceId: 'group:launch' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 },
+    ],
+    participants: [
+      { sessionId, identityId: 'human:acct_me', role: 'self', state: 'active', createdAtMs: 1, updatedAtMs: 1 },
+      { sessionId, identityId: 'human:acct_a', role: 'person', state: 'active', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    presence: [],
+    messages: [
+      {
+        id: 'msg:outbound',
+        sessionId,
+        senderIdentityId: 'human:acct_me',
+        senderRole: 'user',
+        messageKind: 'message',
+        contentText: 'hello group',
+        content: {
+          sender: 'Me',
+          timeLabel: '00:45',
+          deliveryState: 'read',
+          readReceiptSummary: {
+            count: 1,
+            participants: [{ accountId: 'acct_a', identityId: 'human:acct_a', readAt: '2026-06-06T12:00:02Z' }],
+          },
+        },
+        status: 'sent',
+        sequenceNum: 1,
+        createdAtMs: 2,
+        updatedAtMs: 2,
+        contentHash: null,
+        sourceTransport: 'cloud-group',
+        sourceEventId: 'event:outbound',
+      },
+    ],
+    delegatedExchanges: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const messages = readModel?.messages(sessionId) ?? [];
+
+  assert.equal(messages[0]?.readReceiptSummary?.count, 1);
+  assert.equal(messages[0]?.readReceiptSummary?.participants[0]?.id, 'human:acct_a');
+  assert.equal(messages[0]?.readReceiptSummary?.participants[0]?.name, 'Alice');
+});
+
 test('canonical read model keeps bridge unread when a local runtime source shares the same session', () => {
   const sessionId = 'session:bridge:humans:shared-unread';
   const canonicalState = {

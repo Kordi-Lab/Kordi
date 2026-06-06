@@ -78,6 +78,32 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
   return attachments.length > 0 ? attachments : undefined;
 }
 
+function canonicalReadReceiptSummary(
+  content: Record<string, unknown>,
+  identityById: Map<string, CanonicalIdentity>,
+): Message['readReceiptSummary'] {
+  const summary = contentRecord(content.readReceiptSummary);
+  const rawParticipants = Array.isArray(summary.participants) ? summary.participants : [];
+  const participants = rawParticipants.flatMap((value) => {
+    const record = contentRecord(value);
+    const accountId = stringValue(record.accountId)?.trim() ?? '';
+    const identityId = stringValue(record.identityId)?.trim() || (accountId ? `human:${accountId}` : '');
+    if (!identityId) return [];
+    const identity = identityById.get(identityId);
+    const name = identity?.displayName || stringValue(record.name)?.trim() || accountId || 'Someone';
+    return [{
+      id: identity?.id ?? identityId,
+      name,
+      avatarSeed: identity?.avatarKey ?? stringValue(record.avatarSeed) ?? null,
+      profileImageUrl: identity?.profileImageUrl ?? stringValue(record.profileImageUrl) ?? null,
+      readAt: stringValue(record.readAt) ?? null,
+    }];
+  });
+  const count = Math.max(0, Math.floor(numberValue(summary.count) ?? participants.length));
+  if (count <= 0) return null;
+  return { count, participants: participants.slice(0, Math.max(count, participants.length)) };
+}
+
 export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
   if (!Array.isArray(value)) return [];
 
@@ -473,6 +499,7 @@ export function mapCanonicalMessage(
     mentions: canonicalMentions(content.mentions),
     replyToMessageId: replyToMessageId ?? undefined,
     replyAliasIds: replyAliasIds.length ? replyAliasIds : undefined,
+    readReceiptSummary: isOwnMessage && role === 'user' ? canonicalReadReceiptSummary(content, identityById) : null,
     statusChips: role === 'user' && canonicalUserStatusChip(message, content) ? [canonicalUserStatusChip(message, content)!] : undefined,
     turn: isAgentTurn
       ? {
