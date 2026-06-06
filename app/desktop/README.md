@@ -1,24 +1,24 @@
 # Kordi Desktop
 
-Kordi Desktop is the macOS Cloud product shell for Kordi.
+Kordi Desktop is the macOS product shell for Kordi.
 
 ## Role in Kordi
 
 This directory owns:
 
-- the React Cloud product interface
+- the React product interface
 - the Tauri desktop shell
 - account login/session restoration
-- chats, contacts, groups, and Cloud sync UI
+- chats, contacts, groups, and sync UI
 - desktop packaging and release checks
 
-The product backend is the hosted Cloud API. Production builds use:
+The product backend is the hosted API. Production builds use:
 
 ```text
 https://coordinar.io
 ```
 
-For development or QA, use an operator-provided public test Cloud API base or host your own compatible Cloud server:
+For development or QA, use an operator-provided public test API base or host your own compatible server:
 
 ```text
 <PUBLIC_TEST_CLOUD_API_BASE>
@@ -31,21 +31,21 @@ cd /path/to/kordi
 pnpm install
 ```
 
-### Start Cloud desktop
+### Start desktop
 
 ```bash
 pnpm dev
 ```
 
-This opens the Cloud desktop app. To target a test or self-hosted Cloud API:
+This opens the desktop app. To target a test or self-hosted API:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 ```
 
-### Launch multiple isolated Cloud users
+### Launch multiple isolated users
 
-Use this for contacts, groups, unread state, and sync testing. Each local window gets isolated local app data, but all product data comes from the selected Cloud API.
+Use this for contacts, groups, unread state, and sync testing. Each local window gets isolated local app data, but all product data comes from the selected hosted API.
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
@@ -54,13 +54,13 @@ pnpm dev:cloud:multi -- --users user1,user2,user3
 
 Create local-only multi-user configs under `/tmp` or another untracked path. Do not commit real account sessions or auth fixtures.
 
-### Build Cloud desktop
+### Build desktop
 
 ```bash
 pnpm build:desktop
 ```
 
-This uses the Cloud packaging path. Release builds must pass the release secret guard and should not include local account/session secrets.
+This uses the desktop packaging path. Release builds must pass the release secret guard and should not include local account/session secrets.
 
 ## Package-local commands
 
@@ -72,15 +72,15 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
-Both commands use the Cloud product configuration.
+Both commands use the product configuration.
 
 ## Directory guide
 
 | Path | Purpose |
 |------|---------|
-| `src/` | React Cloud desktop application |
-| `src/features/cloud/` | Cloud auth, sync, contacts, sessions, and Cloud API clients |
-| `src-tauri/` | Native shell, Cloud session storage, OAuth loopback, packaging config |
+| `src/` | React desktop application |
+| `src/features/cloud/` | Account auth, sync, contacts, sessions, and hosted API clients |
+| `src-tauri/` | Native shell, account session storage, OAuth loopback, packaging config |
 | `scripts/` | Desktop build/dev/release helpers |
 | `tests/` | Desktop unit and source-guard tests |
 

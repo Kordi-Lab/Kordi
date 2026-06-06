@@ -1,14 +1,14 @@
-# Run Kordi Cloud Desktop
+# Run Kordi Desktop
 
-This guide is for running the account-based Kordi Cloud desktop app from a local checkout.
+This guide is for running the account-based Kordi desktop app from a local checkout.
 
-Production Cloud API:
+Production API:
 
 ```text
 https://coordinar.io
 ```
 
-For development or QA, use an operator-provided public test Cloud API base or host your own compatible Cloud server:
+For development or QA, use an operator-provided public test API base or host your own compatible server:
 
 ```text
 <PUBLIC_TEST_CLOUD_API_BASE>
@@ -21,7 +21,7 @@ Do not use the production server for destructive, load, or throwaway multi-accou
 - macOS development machine with Tauri prerequisites installed.
 - Node.js 20+ and `pnpm` 10+.
 - Rust toolchain from `rustup`.
-- A reachable Cloud API.
+- A reachable hosted API.
 
 Install dependencies once:
 
@@ -30,7 +30,7 @@ cd /path/to/kordi
 pnpm install
 ```
 
-## Run Cloud Desktop
+## Run Kordi Desktop
 
 Use the product default:
 
@@ -38,7 +38,7 @@ Use the product default:
 pnpm dev
 ```
 
-Target a public test or self-hosted Cloud API:
+Target a public test or self-hosted API:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
@@ -46,38 +46,38 @@ VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 
 What to expect:
 
-1. The desktop app opens in Cloud login mode.
+1. The desktop app opens in account login mode.
 2. Sign in with an account or configured OAuth provider.
-3. Contacts, chats, groups, read state, and Cloud agent fallback route through the selected Cloud API.
+3. Contacts, chats, groups, read state, and hosted agent fallback route through the selected hosted API.
 
-## Build a Cloud Desktop package
+## Build a Kordi Desktop package
 
 ```bash
 pnpm build:desktop
 ```
 
-The desktop build path uses the Cloud product configuration.
+The desktop build path uses the product configuration.
 
-## Optional: run multiple isolated Cloud users
+## Optional: run multiple isolated users
 
-Use this when testing contacts, groups, unread state, or multi-user sync. Each user gets isolated local desktop data, while Cloud product data comes from the configured Cloud API.
+Use this when testing contacts, groups, unread state, or multi-user sync. Each user gets isolated local desktop data, while product data comes from the configured hosted API.
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
 pnpm dev:cloud:multi -- --users user1,user2,user3
 ```
 
-Only use tunnel/local backend options if you have explicit operator access or are running your own compatible Cloud API.
+Only use tunnel/local backend options if you have explicit operator access or are running your own compatible hosted API.
 
 ## Environment variables
 
 | Variable | Purpose |
 | --- | --- |
-| `VITE_KORDI_CLOUD_API_BASE` | Cloud API base URL. Use `<PUBLIC_TEST_CLOUD_API_BASE>` for testing or `https://coordinar.io` for production. |
-| `KORDI_CLOUD_API_BASE` | Native/backend Cloud API override when a helper needs it. |
+| `VITE_KORDI_CLOUD_API_BASE` | Hosted API base URL. Use `<PUBLIC_TEST_CLOUD_API_BASE>` for testing or `https://coordinar.io` for production. |
+| `KORDI_CLOUD_API_BASE` | Native/backend hosted API override when a helper needs it. |
 | `KORDI_CLOUD_USE_LOCAL_TUNNEL=1` | Internal/operator tunnel mode for multi-instance development. |
 
-Cloud is the only product mode on `main`.
+`main` contains one product path.
 
 ## Troubleshooting
 
@@ -93,7 +93,7 @@ Cloud is the only product mode on `main`.
 
 ## Related docs
 
-- [Cloud Edition architecture and backend notes](cloud-edition.md)
-- [Hosted Cloud developer guide](hosted-cloud-developer-guide.md)
+- [Kordi architecture and backend notes](cloud-edition.md)
+- [Hosted developer guide](hosted-cloud-developer-guide.md)
 - [Desktop app README](../app/desktop/README.md)
 - [Development command map](development.md)

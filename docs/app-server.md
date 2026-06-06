@@ -2,7 +2,7 @@
 
 `app/server` is not the primary Kordi product backend on `main`.
 
-The Cloud product backend is `bridges/cloud-server`, and production Cloud builds use:
+The product backend is `bridges/cloud-server`, and production desktop builds use:
 
 ```text
 https://coordinar.io
@@ -14,7 +14,7 @@ For development/QA, use:
 <PUBLIC_TEST_CLOUD_API_BASE>
 ```
 
-or host your own compatible Cloud server.
+or host your own compatible hosted server.
 
 ## Status
 
@@ -26,9 +26,9 @@ Keep this document only as legacy/internal context until the code is removed or 
 
 ```text
 desktop app
-  -> hosted Cloud API (`bridges/cloud-server`)
-    -> Cloud database / sync events
-    -> Cloud agent runner (`bridges/cloud-agent-runner`)
+  -> hosted API (`bridges/cloud-server`)
+    -> hosted database / sync events
+    -> hosted agent runner (`bridges/cloud-agent-runner`)
 ```
 
 ## Cleanup direction
@@ -40,4 +40,4 @@ Issue #548 tracks removal or quarantine of old local product surfaces, including
 - local app-server docs and command surfaces
 - local-first architecture descriptions
 
-Do not add new product work to `app/server` unless the Cloud architecture is explicitly changed.
+Do not add new product work to `app/server` unless the hosted architecture is explicitly changed.

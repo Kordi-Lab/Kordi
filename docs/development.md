@@ -1,6 +1,6 @@
 # Development entrypoints
 
-This document keeps the top-level Cloud-first commands for the Kordi monorepo in one place.
+This document keeps the top-level development commands for the Kordi monorepo in one place.
 
 Run commands from:
 
@@ -14,23 +14,23 @@ cd /path/to/kordi
 pnpm install
 ```
 
-## Cloud desktop
+## Desktop
 
-### Start the Cloud product app
+### Start the product app
 
 ```bash
 pnpm dev
 ```
 
-`pnpm dev` is the default product development command. It launches Cloud Desktop and uses the product Cloud origin unless you override the API base.
+`pnpm dev` is the default product development command. It launches Kordi Desktop and uses the production origin unless you override the API base.
 
-Production Cloud API:
+Production API:
 
 ```text
 https://coordinar.io
 ```
 
-For development/QA, prefer an operator-provided public test Cloud API base or a self-hosted compatible Cloud server:
+For development/QA, prefer an operator-provided public test API base or a self-hosted compatible server:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
@@ -38,22 +38,22 @@ VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 
 Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized.
 
-### Start multiple isolated Cloud users
+### Start multiple isolated users
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
 pnpm dev:cloud:multi -- --users user1,user2,user3
 ```
 
-The local URLs opened by this command are desktop test windows only. They are not Cloud backend URLs. Product data comes from `VITE_KORDI_CLOUD_API_BASE`.
+The local URLs opened by this command are desktop test windows only. They are not hosted backend URLs. Product data comes from `VITE_KORDI_CLOUD_API_BASE`.
 
-### Build Cloud desktop
+### Build desktop
 
 ```bash
 pnpm build:desktop
 ```
 
-This aliases the Cloud package build. Release builds should use the Cloud release path and the product Cloud origin.
+This aliases the desktop package build. Release builds should use the release path and the production origin.
 
 ## Web UI preview
 
@@ -95,7 +95,7 @@ For overlong-file thresholds and refactor boundaries, see [`development/maintain
 
 ## Notes
 
-- Cloud Desktop is the primary product surface on `main`.
+- Kordi Desktop is the primary product surface on `main`.
 - Production defaults point to `https://coordinar.io`.
-- Development tests should point to `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted Cloud API.
+- Development tests should point to `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted API.
 - Do not commit tokens, local account sessions, provider credentials, database credentials, or private operator infrastructure details.

@@ -1,14 +1,14 @@
 # Architecture
 
-Kordi `main` is Cloud-first. The desktop app is the product surface, the hosted Cloud server is the product backend, and the Cloud agent runner provides hosted fallback/sandbox execution.
+Kordi `main` contains the desktop product, hosted backend, and hosted runner/sandbox stack.
 
 ## Top-level shape
 
 ```text
 kordi/
-  app/desktop              # Cloud desktop product shell
-  bridges/cloud-server     # Hosted Cloud API
-  bridges/cloud-agent-runner # Hosted Cloud runner/sandbox
+  app/desktop              # desktop product shell
+  bridges/cloud-server     # Hosted API
+  bridges/cloud-agent-runner # Hosted runner/sandbox
   agent                    # Agent/runtime source shared with runner/internal tooling
   shared                   # Shared protocol/type contracts
 ```
@@ -17,25 +17,25 @@ kordi/
 
 ```text
 desktop app
-  -> hosted Cloud API
-    -> Cloud database / sync events
-    -> Cloud agent runner
-      -> Cloud sandbox / model loop
+  -> hosted API
+    -> hosted database / sync events
+    -> hosted agent runner
+      -> hosted sandbox / model loop
 ```
 
-Production Cloud API:
+Production API:
 
 ```text
 https://coordinar.io
 ```
 
-Development/QA should use `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted compatible Cloud server.
+Development/QA should use `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted compatible server.
 
 ## Layer responsibilities
 
 ### `app/desktop`
 
-Owns the Cloud product UI, Tauri shell, login/session restoration, chats, contacts, groups, and Cloud sync integration.
+Owns the product UI, Tauri shell, login/session restoration, chats, contacts, groups, and sync integration.
 
 ### `bridges/cloud-server`
 
@@ -43,11 +43,11 @@ Owns product backend behavior: accounts, auth, contacts, direct/group messages, 
 
 ### `bridges/cloud-agent-runner`
 
-Owns hosted Cloud execution: runner polling, sandbox policy, model loop, tools, and artifact export.
+Owns hosted execution: runner polling, sandbox policy, model loop, tools, and artifact export.
 
 ### `agent`
 
-Owns runtime internals that can be reused by Cloud runner integration and internal developer workflows.
+Owns runtime internals that can be reused by hosted runner integration and internal developer workflows.
 
 ### `shared`
 
@@ -55,6 +55,6 @@ Owns contracts shared between Rust and TypeScript where cross-package consistenc
 
 ## Legacy/internal local paths
 
-Some local runtime and Bridge-shaped adapter code remains while Cloud migration cleanup continues. These paths are not the product architecture. User-facing docs and default commands should point to the Cloud product path.
+Some local runtime and Bridge-shaped adapter code remains while migration cleanup continues. These paths are not the product architecture. User-facing docs and default commands should point to the product path.
 
 See #548 for the cleanup plan to remove or quarantine old local/P2P product surfaces.

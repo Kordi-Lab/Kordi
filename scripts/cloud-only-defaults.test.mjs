@@ -40,7 +40,7 @@ test('desktop package commands expose only Cloud product entrypoints', () => {
   assert.doesNotMatch(scriptBody, /\bVITE_KORDI_EDITION\b|\bKORDI_EDITION\b/);
 });
 
-test('public docs use product host for production and placeholder for test Cloud servers', () => {
+test('public docs use neutral product wording and safe host guidance', () => {
   const publicDocs = [
     'README.md',
     'app/desktop/README.md',
@@ -57,4 +57,5 @@ test('public docs use product host for production and placeholder for test Cloud
   assert.doesNotMatch(publicDocs, /local app stack/i);
   assert.doesNotMatch(publicDocs, /app-facing local orchestration/i);
   assert.doesNotMatch(publicDocs, /KORDI_EDITION|VITE_KORDI_EDITION|dev:local|tauri:dev:local|build:local|tauri:build:local/);
+  assert.doesNotMatch(publicDocs, /Cloud-first|Cloud-only|Cloud Edition|Cloud Desktop|Cloud desktop|Cloud product|Cloud build|Cloud package|only product mode/i);
 });
