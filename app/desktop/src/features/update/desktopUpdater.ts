@@ -29,6 +29,8 @@ export type DesktopUpdateAdapter = {
   relaunch?: () => Promise<void>;
 };
 
+export type DesktopUpdatePreviewMode = 'available';
+
 export type DesktopUpdateController = {
   state: () => DesktopUpdateState;
   check: () => Promise<DesktopUpdateState>;
@@ -40,6 +42,52 @@ export type DesktopUpdateController = {
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';
+}
+
+export function desktopUpdatePreviewModeFromEnv(env?: { VITE_KORDI_PREVIEW_UPDATE?: string }): DesktopUpdatePreviewMode | null {
+  const raw = env?.VITE_KORDI_PREVIEW_UPDATE?.trim().toLowerCase();
+  if (!raw || raw === '0' || raw === 'false' || raw === 'off') return null;
+  return 'available';
+}
+
+function readDesktopUpdatePreviewModeFromImportMeta(): DesktopUpdatePreviewMode | null {
+  const meta = import.meta as ImportMeta & { env?: { VITE_KORDI_PREVIEW_UPDATE?: string } };
+  return desktopUpdatePreviewModeFromEnv({
+    VITE_KORDI_PREVIEW_UPDATE: meta.env?.VITE_KORDI_PREVIEW_UPDATE,
+  });
+}
+
+function delay(ms: number) {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+export function createPreviewDesktopUpdateAdapter(input: {
+  version?: string;
+  currentVersion?: string;
+  delayMs?: number;
+  onRelaunch?: () => void | Promise<void>;
+} = {}): DesktopUpdateAdapter {
+  const version = input.version ?? '0.0.1-beta.4-preview';
+  const currentVersion = input.currentVersion ?? '0.0.1-beta.3';
+  const delayMs = input.delayMs ?? 260;
+  return {
+    isAvailable: true,
+    async check() {
+      return { available: true, version, currentVersion, body: 'Preview update' };
+    },
+    async install(_update, onProgress) {
+      onProgress({ downloaded: 18, total: 100 });
+      await delay(delayMs);
+      onProgress({ downloaded: 67, total: 100 });
+      await delay(delayMs);
+      onProgress({ downloaded: 100, total: 100 });
+      await delay(Math.min(delayMs, 160));
+    },
+    async relaunch() {
+      await input.onRelaunch?.();
+    },
+  };
 }
 
 function errorMessage(error: unknown) {
@@ -123,6 +171,10 @@ export function createDesktopUpdateController(input: {
 }
 
 export function defaultDesktopUpdateAdapter(): DesktopUpdateAdapter {
+  if (readDesktopUpdatePreviewModeFromImportMeta()) {
+    return createPreviewDesktopUpdateAdapter();
+  }
+
   return {
     isAvailable: isNativeDesktopShell(),
     async check() {

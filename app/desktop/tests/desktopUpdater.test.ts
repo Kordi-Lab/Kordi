@@ -3,6 +3,8 @@ import { test } from 'node:test';
 
 import {
   createDesktopUpdateController,
+  createPreviewDesktopUpdateAdapter,
+  desktopUpdatePreviewModeFromEnv,
   type DesktopUpdateAdapter,
   type DesktopUpdateState,
 } from '../src/features/update/desktopUpdater';
@@ -42,6 +44,40 @@ test('desktop updater stays quiet when the startup update check fails', async ()
 
   assert.equal(state.kind, 'idle');
   assert.deepEqual(stateKinds(states), ['checking', 'idle']);
+});
+
+test('desktop updater recognizes the dev preview update flag', () => {
+  assert.equal(desktopUpdatePreviewModeFromEnv({ VITE_KORDI_PREVIEW_UPDATE: 'available' }), 'available');
+  assert.equal(desktopUpdatePreviewModeFromEnv({ VITE_KORDI_PREVIEW_UPDATE: '1' }), 'available');
+  assert.equal(desktopUpdatePreviewModeFromEnv({ VITE_KORDI_PREVIEW_UPDATE: 'false' }), null);
+  assert.equal(desktopUpdatePreviewModeFromEnv({ VITE_KORDI_PREVIEW_UPDATE: '' }), null);
+});
+
+test('desktop updater preview adapter simulates install and restart without native updater APIs', async () => {
+  const states: DesktopUpdateState[] = [];
+  let relaunched = false;
+  const controller = createDesktopUpdateController({
+    adapter: createPreviewDesktopUpdateAdapter({
+      version: '0.0.1-beta.4-preview',
+      currentVersion: '0.0.1-beta.3',
+      delayMs: 0,
+      onRelaunch: () => {
+        relaunched = true;
+      },
+    }),
+    onStateChange: (state) => states.push(state),
+  });
+
+  const available = await controller.check();
+  assert.equal(available.kind, 'available');
+  assert.equal(available.version, '0.0.1-beta.4-preview');
+
+  const ready = await controller.install();
+  assert.equal(ready.kind, 'ready');
+  assert.deepEqual(stateKinds(states), ['checking', 'available', 'downloading', 'downloading', 'downloading', 'installing', 'ready']);
+
+  await controller.restart();
+  assert.equal(relaunched, true);
 });
 
 test('desktop updater reports an available update with version metadata', async () => {

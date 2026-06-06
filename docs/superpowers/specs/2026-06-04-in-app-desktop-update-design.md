@@ -9,7 +9,7 @@ When a packaged desktop build detects an available update, the Chats header show
 No explanatory banner is shown in the normal state. Error state is compact and provides a GitHub releases fallback only if in-app update cannot complete.
 
 ## Architecture
-Use Tauri's updater plugin in packaged native builds. The frontend owns the button state machine and calls a small TypeScript update service. The backend initializes updater/process plugins and the Tauri config declares the update endpoint. Dev/web builds degrade safely: no update button unless the updater API reports an available update or a test injects an updater adapter.
+Use Tauri's updater plugin in packaged native builds. The frontend owns the button state machine and calls a small TypeScript update service. The backend initializes updater/process plugins and the Tauri config declares the update endpoint. Dev/web builds degrade safely: no update button unless the updater API reports an available update, a test injects an updater adapter, or a developer explicitly launches with `VITE_KORDI_PREVIEW_UPDATE=available` to preview the UI.
 
 ## Release requirements
 Future releases must publish a Tauri updater manifest and signed update artifacts. Without updater signatures/manifest, the UI can render and tests can pass, but packaged auto-install cannot complete. Release automation must include signed updater metadata before this is considered production-ready for public users.
