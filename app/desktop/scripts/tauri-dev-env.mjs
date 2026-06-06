@@ -27,5 +27,10 @@ export function buildBeforeDevCommand({ title, host, port, env = process.env }) 
     assignments.push(`VITE_KORDI_CLOUD_API_BASE=${shellQuote(cloudApiBase)}`);
   }
 
+  const updatePreview = trimmedEnvValue(env, 'VITE_KORDI_PREVIEW_UPDATE');
+  if (updatePreview) {
+    assignments.push(`VITE_KORDI_PREVIEW_UPDATE=${shellQuote(updatePreview)}`);
+  }
+
   return `${assignments.join(' ')} npm run dev:web -- --host ${host} --port ${port} --strictPort`;
 }
