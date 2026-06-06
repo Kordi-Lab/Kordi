@@ -427,7 +427,7 @@ function participantSpaceDetailText(space: ParticipantSpaceItem) {
     return `Personal • ${sessionText}`;
   }
   if (space.kind === 'direct-human') {
-    return 'Person • 1 chat';
+    return null;
   }
   if (space.kind === 'group') {
     const humanCount = participantSpaceHumanCount(space);
@@ -846,6 +846,7 @@ export function WorkspaceSidebar({
       : space.sessions;
     const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
     const spaceUnreadCount = unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread;
+    const participantSpaceDetail = participantSpaceDetailText(space);
     const toggleSpace = () => {
       if (isDirectHuman) {
         if (latestSession) onSelectChatSession(latestSession.id);
@@ -877,9 +878,11 @@ export function WorkspaceSidebar({
               <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isActiveSpace || isExpanded) && 'app-participant-space-row-preview-active')} title={space.preview}>
                 {space.preview || `${participantSpaceKindText(space)} space`}
               </div>
-              <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
-                {participantSpaceDetailText(space)}
-              </div>
+              {participantSpaceDetail ? (
+                <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
+                  {participantSpaceDetail}
+                </div>
+              ) : null}
             </div>
           </button>
           <div className="app-participant-space-row-side">
