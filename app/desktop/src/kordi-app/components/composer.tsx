@@ -356,7 +356,6 @@ export function CompactComposerModelMenu({
   );
   const modelSummary = lowerComposerLabel(stagedModelOption?.label ?? stagedModel);
   const thinkingSummary = lowerComposerLabel(composerThinkingLabel(stagedThinkingValue));
-  const routeSummary = [providerSummary, modelSummary, thinkingSummary].filter(Boolean).join(' · ');
 
   const chooseProvider = (option: ComposerProviderOption) => {
     const providerId = normalizeComposerProviderId(option.providerId);
@@ -399,19 +398,18 @@ export function CompactComposerModelMenu({
         <Menu className="h-[18px] w-[18px] text-slate-400" strokeWidth={2.25} aria-hidden="true" />
       </button>
       {isOpen ? (
-        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-[min(31rem,65vh)] w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-[18px] border border-white/15 bg-[rgba(43,43,46,0.82)] text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-2xl">
-          <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-neutral-950/25 px-3.5 py-3">
-            <div className="font-medium">model route</div>
-            <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">only you see this</div>
-          </div>
-          <div className="mx-3.5 mt-3 rounded-[13px] border border-white/10 bg-white/8 px-3 py-2 text-[11px] text-neutral-300">
-            changes stay local in this popout until you save them.
+        <div className="app-compact-model-menu absolute bottom-full left-0 z-30 mb-2 max-h-[min(31rem,65vh)] w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-[18px] text-[12px] leading-[1.38]">
+          <div className="app-compact-model-menu-header flex items-center justify-between gap-3 px-3.5 py-3">
+            <div className="font-medium">Agent Model</div>
           </div>
           <div className="px-2.5 py-2">
             <details className="border-b border-[color:var(--app-divider)] py-1">
               <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
                 <span className="font-medium">provider</span>
-                <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{providerSummary}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{providerSummary}</span>
+                  <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+                </span>
               </summary>
               <div className="space-y-1 pb-2 pl-3 pt-1">
                 {providerOptions.map((option) => {
@@ -439,7 +437,10 @@ export function CompactComposerModelMenu({
             <details className="border-b border-[color:var(--app-divider)] py-1">
               <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
                 <span className="font-medium">model</span>
-                <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{modelSummary}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{modelSummary}</span>
+                  <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+                </span>
               </summary>
               <div className="space-y-1 pb-2 pl-3 pt-1">
                 {visibleModelOptions.map((option) => {
@@ -467,7 +468,10 @@ export function CompactComposerModelMenu({
             <details className="py-1">
               <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
                 <span className="font-medium">thinking level</span>
-                <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{thinkingSummary}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{thinkingSummary}</span>
+                  <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+                </span>
               </summary>
               <div className="space-y-1 pb-2 pl-3 pt-1">
                 {stagedThinkingLevels.map((value) => {
@@ -490,11 +494,10 @@ export function CompactComposerModelMenu({
               </div>
             </details>
           </div>
-          <div className="flex items-center justify-between gap-3 border-t border-[color:var(--app-divider)] px-3.5 py-3">
-            <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">pending route: {routeSummary}</span>
+          <div className="flex items-center justify-end gap-3 border-t border-[color:var(--app-divider)] px-3.5 py-3">
             <span className="flex shrink-0 items-center gap-2">
               <button type="button" onClick={cancel} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]">cancel</button>
-              <button type="button" onClick={save} className="rounded-full bg-slate-200 px-3 py-1.5 text-[12px] font-semibold text-slate-950 transition hover:bg-white">save</button>
+              <button type="button" onClick={save} className="app-compact-model-menu-save rounded-full px-3 py-1.5 text-[12px] font-semibold transition">save</button>
             </span>
           </div>
         </div>

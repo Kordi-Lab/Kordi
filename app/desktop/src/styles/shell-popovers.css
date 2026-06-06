@@ -35,6 +35,57 @@
     inset 0 -1px 0 rgba(0, 0, 0, 0.08);
 }
 
+.app-compact-model-menu {
+  --app-compact-model-menu-bg: rgba(43, 43, 46, 0.68);
+  --app-compact-model-menu-header-bg: rgba(10, 10, 10, 0.16);
+  --app-compact-model-menu-save-bg: rgb(226 232 240);
+  --app-compact-model-menu-save-text: rgb(2 6 23);
+  --app-compact-model-menu-save-hover-bg: rgb(255 255 255);
+  border: 1px solid var(--app-divider);
+  background: var(--app-compact-model-menu-bg);
+  color: var(--utility-foreground);
+  box-shadow: var(--app-shadow-float);
+  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+}
+
+.bridge-app.theme-light .app-compact-model-menu {
+  --app-compact-model-menu-bg: rgba(255, 255, 255, 0.72);
+  --app-compact-model-menu-header-bg: rgba(248, 250, 252, 0.62);
+  --app-compact-model-menu-save-bg: rgb(15 23 42);
+  --app-compact-model-menu-save-text: rgb(255 255 255);
+  --app-compact-model-menu-save-hover-bg: rgb(30 41 59);
+}
+
+.app-compact-model-menu-header {
+  border-bottom: 1px solid var(--app-divider);
+  background: var(--app-compact-model-menu-header-bg);
+}
+
+.app-compact-model-menu-chevron {
+  color: var(--utility-muted-text);
+  transition:
+    color var(--app-motion-fast) var(--app-motion-ease),
+    transform var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-compact-model-menu summary:hover .app-compact-model-menu-chevron {
+  color: var(--utility-foreground);
+}
+
+.app-compact-model-menu details[open] .app-compact-model-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.app-compact-model-menu-save {
+  background: var(--app-compact-model-menu-save-bg);
+  color: var(--app-compact-model-menu-save-text);
+}
+
+.app-compact-model-menu-save:hover {
+  background: var(--app-compact-model-menu-save-hover-bg);
+}
+
 .app-composer-mention-menu {
   --app-composer-mention-menu-bg: rgb(14 16 21);
   --app-composer-mention-menu-text: rgb(226 232 240);
