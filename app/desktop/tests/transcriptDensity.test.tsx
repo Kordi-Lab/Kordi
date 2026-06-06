@@ -330,6 +330,28 @@ test('sending own message renders an animated clock in the stable delivery slot'
   assert.doesNotMatch(markup, /lucide-loader-circle[^>]*animate-spin/);
 });
 
+test('own agent-session request uses double check only after response is marked responded', () => {
+  const sentMessage: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '@My Kordi summarize this',
+    time: '00:45',
+    statusChips: ['sent'],
+  };
+  const respondedMessage: Message = {
+    ...sentMessage,
+    statusChips: ['responded'],
+  };
+
+  const sentMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: sentMessage }));
+  const respondedMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: respondedMessage }));
+
+  assert.match(sentMarkup, /data-message-delivery-glyph="single-check"/);
+  assert.match(respondedMarkup, /data-message-delivery-glyph="double-check"/);
+});
+
 test('own group message renders compact read footer when at least one participant has read', () => {
   const message: Message = {
     role: 'user',

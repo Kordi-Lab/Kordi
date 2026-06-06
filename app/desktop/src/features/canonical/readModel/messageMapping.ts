@@ -231,7 +231,7 @@ export function canonicalUserStatusChip(message: CanonicalSessionMessage, conten
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
   if (deliveryState) {
     if (deliveryState === 'processing' || deliveryState === 'handed_off_direct' || deliveryState === 'handed_off_mailbox') {
-      return 'read';
+      return 'sent';
     }
     if (deliveryState === 'processing_failed') return 'failed';
     return deliveryState;

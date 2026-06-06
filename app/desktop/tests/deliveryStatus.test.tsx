@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { canonicalUserStatusChip } from '../src/features/canonical/readModel/messageMapping';
 import { messageDeliveryVisual } from '../src/features/chat/deliveryStatus';
 import { shouldShowBridgeSendFailureNotice } from '../src/features/chat/messageActions/chatMessages';
 
@@ -42,6 +43,28 @@ test('messageDeliveryVisual marks sending clock as animated', () => {
     label: 'Sending',
     motion: 'pulse',
   });
+});
+
+test('agent-session status semantics use sent for queued work and responded for finished work', () => {
+  assert.deepEqual(messageDeliveryVisual('sent'), {
+    glyph: 'single-check',
+    tone: 'gray',
+    label: 'Sent',
+  });
+  assert.deepEqual(messageDeliveryVisual('responded'), {
+    glyph: 'double-check',
+    tone: 'gray',
+    label: 'Read',
+  });
+});
+
+test('canonical in-progress agent handoff user chips stay single-check sent', () => {
+  const message = { status: 'sent' } as Parameters<typeof canonicalUserStatusChip>[0];
+
+  assert.equal(canonicalUserStatusChip(message, { deliveryState: 'processing' }), 'sent');
+  assert.equal(canonicalUserStatusChip(message, { deliveryState: 'handed_off_direct' }), 'sent');
+  assert.equal(canonicalUserStatusChip(message, { deliveryState: 'handed_off_mailbox' }), 'sent');
+  assert.equal(canonicalUserStatusChip(message, { deliveryState: 'responded' }), 'responded');
 });
 
 test('messageDeliveryVisual keeps transient and failure states distinct', () => {
