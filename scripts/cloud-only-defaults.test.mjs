@@ -54,7 +54,8 @@ test('public docs use neutral product wording and safe host guidance', () => {
   assert.match(publicDocs, /<PUBLIC_TEST_CLOUD_API_BASE>/);
   assert.match(publicDocs, /Hosted\/dev runs must set `VITE_KORDI_CLOUD_API_BASE`/);
   assert.doesNotMatch(publicDocs, /https:\/\/kordi\.cloud/);
-  assert.doesNotMatch(publicDocs, /korde-product-cloud\.[^\s`]+/);
+  assert.doesNotMatch(publicDocs, /sslip\.io|gcloud compute ssh|[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+/i);
+  assert.doesNotMatch(publicDocs, /(?:^|[^\d.])(?!(?:127|0|10|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.)\d{1,3}(?:\.\d{1,3}){3}(?:$|[^\d.])/);
   assert.doesNotMatch(publicDocs, /local app stack/i);
   assert.doesNotMatch(publicDocs, /app-facing local orchestration/i);
   assert.doesNotMatch(publicDocs, /KORDI_EDITION|VITE_KORDI_EDITION|dev:local|tauri:dev:local|build:local|tauri:build:local/);
