@@ -424,9 +424,10 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /title="Seen by Alice, Bob"/);
   assert.doesNotMatch(markup, /Readers/);
   assert.doesNotMatch(markup, /data-message-read-receipts-context-content/);
-  assert.match(markup, /text-\[9\.5px\]/);
+  assert.match(markup, /text-\[14px\]/);
   assert.match(markup, /h-6 w-6/);
   assert.match(markup, /py-1\.5/);
+  assert.doesNotMatch(markup, /text-\[9\.5px\]/);
   assert.doesNotMatch(markup, /text-\[11px\]/);
   assert.doesNotMatch(markup, /text-\[12\.5px\]/);
   assert.doesNotMatch(markup, /text-\[16px\]/);
@@ -452,7 +453,7 @@ test('message context menu position avoids covering the clicked message rectangl
   });
 
   assert.equal(below.y, 150);
-  assert.equal(above.y, 198);
+  assert.equal(above.y, 276);
 });
 
 test('messages without read receipts still expose the Telegram-style message context menu', () => {
