@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ContactRequestRow, LiveChatTurnCard, MessageBubble, MessageReadReceiptContextMenuContent } from '../src/kordi-app/components/transcript';
+import { ContactRequestRow, LiveChatTurnCard, MessageBubble, MessageContextMenuContent } from '../src/kordi-app/components/transcript';
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -390,25 +390,52 @@ test('own group read receipts are not shown inline and are available from the me
   assert.doesNotMatch(markup, /Read by 2/);
   assert.doesNotMatch(markup, /Alice/);
   assert.doesNotMatch(markup, /Bob/);
-  assert.match(markup, /data-message-read-receipts-context-target="true"/);
+  assert.match(markup, /data-message-context-menu-target="true"/);
   assert.match(markup, /data-message-delivery-glyph="double-check"/);
 });
 
-test('message read receipt context menu content lists who read the message', () => {
-  const markup = renderToStaticMarkup(createElement(MessageReadReceiptContextMenuContent, {
-    summary: {
+test('message context menu content lists read receipts when available', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello group',
+    time: '00:45',
+    readReceiptSummary: {
       count: 2,
       participants: [
         { id: 'human:acct_a', name: 'Alice', avatarSeed: 'cloud:acct_a', profileImageUrl: null, readAt: '2026-06-06T12:00:02Z' },
         { id: 'human:acct_b', name: 'Bob', avatarSeed: 'cloud:acct_b', profileImageUrl: null, readAt: '2026-06-06T12:00:03Z' },
       ],
     },
-  }));
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
 
-  assert.match(markup, /data-message-read-receipts-context-content="true"/);
+  assert.match(markup, /data-message-context-menu-content="true"/);
+  assert.match(markup, /Copy text/);
   assert.match(markup, /Read by 2/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Bob/);
+});
+
+test('messages without read receipts still expose the Telegram-style message context menu', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    isOwnMessage: false,
+    text: 'hello',
+    time: '00:45',
+  };
+
+  const bubbleMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+  const menuMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
+
+  assert.match(bubbleMarkup, /data-message-context-menu-target="true"/);
+  assert.doesNotMatch(bubbleMarkup, /data-message-read-receipts-context-target/);
+  assert.match(menuMarkup, /Copy text/);
+  assert.doesNotMatch(menuMarkup, /Read by/);
 });
 
 test('own group message suppresses read footer when read count is zero', () => {

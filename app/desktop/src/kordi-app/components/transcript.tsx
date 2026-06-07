@@ -351,7 +351,7 @@ function messageReadReceiptCount(summary?: Message['readReceiptSummary'] | null)
   return Math.max(0, Math.floor(summary?.count ?? 0));
 }
 
-export function MessageReadReceiptContextMenuContent({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
+function MessageReadReceiptContextMenuSection({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
   const count = messageReadReceiptCount(summary);
   if (count <= 0) return null;
   const participants = summary?.participants ?? [];
@@ -359,7 +359,7 @@ export function MessageReadReceiptContextMenuContent({ summary }: { summary?: Me
   const hiddenCount = Math.max(0, count - visibleParticipants.length);
 
   return (
-    <div className="app-message-read-receipts-context-content min-w-[13rem] max-w-[18rem] p-1" data-message-read-receipts-context-content="true">
+    <div className="app-message-read-receipts-context-content border-t border-white/10 p-1" data-message-read-receipts-context-content="true">
       <div className="px-2.5 pb-1.5 pt-1 text-[11px] font-semibold text-slate-200">Read by {count}</div>
       {visibleParticipants.length > 0 ? (
         <div className="grid gap-0.5">
@@ -380,6 +380,34 @@ export function MessageReadReceiptContextMenuContent({ summary }: { summary?: Me
       {hiddenCount > 0 ? (
         <div className="px-2.5 py-1 text-[11px] text-slate-400">+{hiddenCount} more</div>
       ) : null}
+    </div>
+  );
+}
+
+export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onClose?: () => void }) {
+  const copyableText = msg.text.trim();
+  const copyText = async () => {
+    if (!copyableText) return;
+    try {
+      await navigator.clipboard?.writeText(copyableText);
+      onClose?.();
+    } catch {
+      onClose?.();
+    }
+  };
+
+  return (
+    <div className="app-message-context-menu-content min-w-[13rem] max-w-[18rem] p-1" data-message-context-menu-content="true">
+      <button
+        type="button"
+        role="menuitem"
+        className="flex w-full items-center rounded-[10px] px-2.5 py-1.5 text-left text-[12px] text-slate-200 transition hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-45"
+        onClick={copyText}
+        disabled={!copyableText}
+      >
+        Copy text
+      </button>
+      <MessageReadReceiptContextMenuSection summary={msg.readReceiptSummary} />
     </div>
   );
 }
@@ -495,7 +523,7 @@ function MessageBubbleView({
   ) : null;
 
   const [isForkListOpen, setIsForkListOpen] = useState(false);
-  const [readReceiptContextMenu, setReadReceiptContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number } | null>(null);
   const forks = messageForks ?? [];
   const forkCount = forks.length;
   const forkChip = forkCount > 0 ? (
@@ -749,20 +777,18 @@ function MessageBubbleView({
   const footerDetail = showContactRequestAction ? undefined : msg.detail;
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
-  const hasReadReceiptContext = isOwnHumanMessage && messageReadReceiptCount(msg.readReceiptSummary) > 0;
-  const openReadReceiptContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!hasReadReceiptContext) return;
+  const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    setReadReceiptContextMenu({ x: event.clientX, y: event.clientY });
+    setMessageContextMenu({ x: event.clientX, y: event.clientY });
   };
 
   return (
     <div
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
       data-transcript-message-root="true"
-      data-message-read-receipts-context-target={hasReadReceiptContext ? true : undefined}
-      onContextMenu={openReadReceiptContextMenu}
+      data-message-context-menu-target="true"
+      onContextMenu={openMessageContextMenu}
       className={cn(
         'flex flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
@@ -879,25 +905,25 @@ function MessageBubbleView({
           onNavigateToMessage={onNavigateToMessage}
         />
       ) : null}
-      {readReceiptContextMenu && hasReadReceiptContext ? (
+      {messageContextMenu ? (
         <>
           <div
             className="fixed inset-0 z-40"
-            onMouseDown={() => setReadReceiptContextMenu(null)}
+            onMouseDown={() => setMessageContextMenu(null)}
             onContextMenu={(event) => {
               event.preventDefault();
-              setReadReceiptContextMenu(null);
+              setMessageContextMenu(null);
             }}
             aria-hidden="true"
           />
           <div
-            className="app-message-read-receipts-context-menu fixed z-50 rounded-[14px] border border-white/10 bg-[color:var(--app-panel-bg)] shadow-[var(--app-shadow-float)]"
-            style={{ left: readReceiptContextMenu.x, top: readReceiptContextMenu.y }}
+            className="app-message-context-menu fixed z-50 rounded-[14px] border border-white/10 bg-[color:var(--app-panel-bg)] shadow-[var(--app-shadow-float)]"
+            style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
             role="menu"
             onMouseDown={(event) => event.stopPropagation()}
             onContextMenu={(event) => event.preventDefault()}
           >
-            <MessageReadReceiptContextMenuContent summary={msg.readReceiptSummary} />
+            <MessageContextMenuContent msg={msg} onClose={() => setMessageContextMenu(null)} />
           </div>
         </>
       ) : null}
