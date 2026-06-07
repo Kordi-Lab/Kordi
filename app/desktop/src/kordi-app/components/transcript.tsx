@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -347,30 +347,39 @@ function MessageFooter({
   );
 }
 
-function MessageReadReceiptFooter({ summary, own }: { summary?: Message['readReceiptSummary'] | null; own: boolean }) {
-  const count = Math.max(0, Math.floor(summary?.count ?? 0));
-  if (!own || count <= 0) return null;
-  const participants = (summary?.participants ?? []).slice(0, 3);
-  const names = participants.map((participant) => participant.name).filter(Boolean);
-  const title = names.length > 0 ? `Read by ${names.join(', ')}` : `Read by ${count}`;
+function messageReadReceiptCount(summary?: Message['readReceiptSummary'] | null) {
+  return Math.max(0, Math.floor(summary?.count ?? 0));
+}
+
+export function MessageReadReceiptContextMenuContent({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
+  const count = messageReadReceiptCount(summary);
+  if (count <= 0) return null;
+  const participants = summary?.participants ?? [];
+  const visibleParticipants = participants.slice(0, 8);
+  const hiddenCount = Math.max(0, count - visibleParticipants.length);
 
   return (
-    <div className="app-message-read-receipts mt-1 flex items-center justify-end gap-1.5 text-[10px] leading-none text-slate-500/80" title={title}>
-      {participants.length > 0 ? (
-        <span className="inline-flex -space-x-1" aria-hidden="true">
-          {participants.map((participant) => (
-            <IdentityAvatar
-              key={participant.id}
-              kind="human"
-              seed={participant.avatarSeed ?? participant.id}
-              name={participant.name}
-              imageUrl={participant.profileImageUrl}
-              className="h-4 w-4 border border-[color:var(--app-panel-bg)]"
-            />
+    <div className="app-message-read-receipts-context-content min-w-[13rem] max-w-[18rem] p-1" data-message-read-receipts-context-content="true">
+      <div className="px-2.5 pb-1.5 pt-1 text-[11px] font-semibold text-slate-200">Read by {count}</div>
+      {visibleParticipants.length > 0 ? (
+        <div className="grid gap-0.5">
+          {visibleParticipants.map((participant) => (
+            <div key={participant.id} className="flex min-w-0 items-center gap-2 rounded-[10px] px-2 py-1.5 text-[12px] text-slate-200">
+              <IdentityAvatar
+                kind="human"
+                seed={participant.avatarSeed ?? participant.id}
+                name={participant.name}
+                imageUrl={participant.profileImageUrl}
+                className="h-5 w-5 border border-white/10"
+              />
+              <span className="min-w-0 flex-1 truncate">{participant.name}</span>
+            </div>
           ))}
-        </span>
+        </div>
       ) : null}
-      <span>Read by {count}</span>
+      {hiddenCount > 0 ? (
+        <div className="px-2.5 py-1 text-[11px] text-slate-400">+{hiddenCount} more</div>
+      ) : null}
     </div>
   );
 }
@@ -486,6 +495,7 @@ function MessageBubbleView({
   ) : null;
 
   const [isForkListOpen, setIsForkListOpen] = useState(false);
+  const [readReceiptContextMenu, setReadReceiptContextMenu] = useState<{ x: number; y: number } | null>(null);
   const forks = messageForks ?? [];
   const forkCount = forks.length;
   const forkChip = forkCount > 0 ? (
@@ -739,11 +749,20 @@ function MessageBubbleView({
   const footerDetail = showContactRequestAction ? undefined : msg.detail;
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
+  const hasReadReceiptContext = isOwnHumanMessage && messageReadReceiptCount(msg.readReceiptSummary) > 0;
+  const openReadReceiptContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!hasReadReceiptContext) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setReadReceiptContextMenu({ x: event.clientX, y: event.clientY });
+  };
 
   return (
     <div
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
       data-transcript-message-root="true"
+      data-message-read-receipts-context-target={hasReadReceiptContext ? true : undefined}
+      onContextMenu={openReadReceiptContextMenu}
       className={cn(
         'flex flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
@@ -860,7 +879,28 @@ function MessageBubbleView({
           onNavigateToMessage={onNavigateToMessage}
         />
       ) : null}
-      <MessageReadReceiptFooter summary={msg.readReceiptSummary} own={isOwnHumanMessage} />
+      {readReceiptContextMenu && hasReadReceiptContext ? (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onMouseDown={() => setReadReceiptContextMenu(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setReadReceiptContextMenu(null);
+            }}
+            aria-hidden="true"
+          />
+          <div
+            className="app-message-read-receipts-context-menu fixed z-50 rounded-[14px] border border-white/10 bg-[color:var(--app-panel-bg)] shadow-[var(--app-shadow-float)]"
+            style={{ left: readReceiptContextMenu.x, top: readReceiptContextMenu.y }}
+            role="menu"
+            onMouseDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <MessageReadReceiptContextMenuContent summary={msg.readReceiptSummary} />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

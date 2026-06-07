@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ContactRequestRow, LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
+import { ContactRequestRow, LiveChatTurnCard, MessageBubble, MessageReadReceiptContextMenuContent } from '../src/kordi-app/components/transcript';
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -366,7 +366,7 @@ test('own agent-session request uses double check only after response is marked 
   assert.match(respondedMarkup, /data-message-delivery-glyph="double-check"/);
 });
 
-test('own group message renders compact read footer when at least one participant has read', () => {
+test('own group read receipts are not shown inline and are available from the message context menu', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -386,11 +386,29 @@ test('own group message renders compact read footer when at least one participan
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, /app-message-read-receipts/);
+  assert.doesNotMatch(markup, /app-message-read-receipts/);
+  assert.doesNotMatch(markup, /Read by 2/);
+  assert.doesNotMatch(markup, /Alice/);
+  assert.doesNotMatch(markup, /Bob/);
+  assert.match(markup, /data-message-read-receipts-context-target="true"/);
+  assert.match(markup, /data-message-delivery-glyph="double-check"/);
+});
+
+test('message read receipt context menu content lists who read the message', () => {
+  const markup = renderToStaticMarkup(createElement(MessageReadReceiptContextMenuContent, {
+    summary: {
+      count: 2,
+      participants: [
+        { id: 'human:acct_a', name: 'Alice', avatarSeed: 'cloud:acct_a', profileImageUrl: null, readAt: '2026-06-06T12:00:02Z' },
+        { id: 'human:acct_b', name: 'Bob', avatarSeed: 'cloud:acct_b', profileImageUrl: null, readAt: '2026-06-06T12:00:03Z' },
+      ],
+    },
+  }));
+
+  assert.match(markup, /data-message-read-receipts-context-content="true"/);
   assert.match(markup, /Read by 2/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Bob/);
-  assert.match(markup, /data-message-delivery-glyph="double-check"/);
 });
 
 test('own group message suppresses read footer when read count is zero', () => {
