@@ -1,18 +1,25 @@
-import { memo, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowRightLeft,
   Bot,
   Check,
   CheckCheck,
   CheckCircle2,
+  Copy,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Clock3,
+  Forward,
   Split,
   LoaderCircle,
+  Pencil,
+  Pin,
+  Reply,
   Sparkles,
   SquareArrowOutUpRight,
+  Trash2,
   Undo2,
   User,
 } from 'lucide-react';
@@ -195,6 +202,23 @@ function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
   });
 }
 
+function MessageDeliveryClockGlyph({ className, active }: { className?: string; active: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      className={cn(className, active && 'app-message-delivery-clock-active')}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle className="app-message-delivery-clock-face" cx="8" cy="8" r="5.7" />
+      <line className="app-message-delivery-clock-hour-hand" x1="8" y1="8" x2="8" y2="5.4" />
+      <line className="app-message-delivery-clock-minute-hand" x1="8" y1="8" x2="8" y2="3.7" />
+      <circle className="app-message-delivery-clock-pin" cx="8" cy="8" r="0.75" />
+    </svg>
+  );
+}
+
 function MessageDeliveryGlyph({ status }: { status?: string | null }) {
   const normalizedStatus = status?.trim().toLowerCase() || 'none';
   const visual = messageDeliveryVisual(status);
@@ -221,7 +245,7 @@ function MessageDeliveryGlyph({ status }: { status?: string | null }) {
     >
       <Check className={glyphClass('single-check')} aria-hidden="true" />
       <CheckCheck className={glyphClass('double-check')} aria-hidden="true" />
-      <Clock3 className={glyphClass('clock')} aria-hidden="true" />
+      <MessageDeliveryClockGlyph className={glyphClass('clock')} active={Boolean(visual?.glyph === 'clock' && visual.motion === 'pulse')} />
       <LoaderCircle className={cn(glyphClass('spinner'), activeGlyph === 'spinner' && 'animate-spin')} aria-hidden="true" />
       <span className={cn(glyphClass('exclamation'), 'inline-flex items-center justify-center text-[13px] font-semibold leading-none')} aria-hidden="true">
         !
@@ -326,6 +350,222 @@ function MessageFooter({
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
       <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
       <MessageDeliveryStatusSlot status={status} />
+    </div>
+  );
+}
+
+function messageReadReceiptCount(summary?: Message['readReceiptSummary'] | null) {
+  return Math.max(0, Math.floor(summary?.count ?? 0));
+}
+
+const messageContextMenuTextStyle = {
+  fontSize: '10px',
+  fontWeight: 400,
+  lineHeight: 1.45,
+} satisfies CSSProperties;
+
+function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
+  const count = messageReadReceiptCount(summary);
+  if (count <= 0) return null;
+  const participants = (summary?.participants ?? []).slice(0, 4);
+  const names = participants.map((participant) => participant.name).filter(Boolean);
+  const title = names.length > 0 ? `Seen by ${names.join(', ')}` : `${count} seen`;
+
+  return (
+    <div
+      className="flex items-center gap-2 border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-normal leading-[1.45] text-slate-950"
+      data-message-context-menu-seen-row="true"
+      title={title}
+      style={messageContextMenuTextStyle}
+    >
+      <CheckCheck className="h-3.5 w-3.5 shrink-0 text-slate-700" aria-hidden="true" />
+      <span>{count} Seen</span>
+      {participants.length > 0 ? (
+        <span className="ml-auto inline-flex -space-x-1" aria-hidden="true">
+          {participants.map((participant) => (
+            <IdentityAvatar
+              key={participant.id}
+              kind="human"
+              seed={participant.avatarSeed ?? participant.id}
+              name={participant.name}
+              imageUrl={participant.profileImageUrl}
+              className="h-4.5 w-4.5 border border-white"
+            />
+          ))}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] text-slate-950 transition hover:bg-slate-100"
+      style={messageContextMenuTextStyle}
+      onClick={onClick}
+    >
+      <span className="grid h-4 w-4 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onClose?: () => void }) {
+  const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
+  const replyCount = msg.replySummary?.replyCount ?? 0;
+  const reactionItems = ['❤️', '🔥', '👍', '👎', '🥰', '👏'];
+  const copyText = async () => {
+    if (!copyableText) return;
+    try {
+      await navigator.clipboard?.writeText(copyableText);
+      onClose?.();
+    } catch {
+      onClose?.();
+    }
+  };
+
+  return (
+    <div className="app-message-context-menu-content w-[13.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
+      <div className="app-message-context-menu-reactions mb-1.5 flex items-center gap-1 rounded-full bg-white px-2 py-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.16)] ring-1 ring-slate-950/10" data-message-context-menu-reactions="true">
+        {reactionItems.map((reaction) => (
+          <button key={reaction} type="button" className="grid h-6 w-6 place-items-center rounded-full text-[14px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
+            {reaction}
+          </button>
+        ))}
+        <button type="button" className="ml-auto grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-[14px] text-slate-500" aria-label="More reactions">⌄</button>
+      </div>
+      <div className="overflow-hidden rounded-[14px] bg-white py-1 shadow-[0_14px_34px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10">
+        <MessageContextMenuAction icon={<Reply className="h-4 w-4" />} label="Reply" onClick={onClose} />
+        {replyCount > 0 ? <MessageContextMenuAction icon={<Undo2 className="h-4 w-4" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
+        <MessageContextMenuAction icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={onClose} />
+        <MessageContextMenuAction icon={<Pin className="h-4 w-4" />} label="Pin" onClick={onClose} />
+        <MessageContextMenuAction icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
+        <MessageContextMenuAction icon={<Forward className="h-4 w-4" />} label="Forward" onClick={onClose} />
+        <MessageContextMenuAction icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
+        <MessageContextMenuAction icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={onClose} />
+        <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
+      </div>
+    </div>
+  );
+}
+
+export function messageContextMenuPosition({
+  clientX,
+  clientY,
+  targetRect,
+  viewportWidth,
+  viewportHeight,
+  menuWidth = 216,
+  menuHeight = 312,
+}: {
+  clientX: number;
+  clientY: number;
+  targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>;
+  viewportWidth: number;
+  viewportHeight: number;
+  menuWidth?: number;
+  menuHeight?: number;
+}) {
+  const gap = 2;
+  const aboveOverlap = 24;
+  const anchorX = clientX <= (targetRect.left + targetRect.right) / 2
+    ? targetRect.left
+    : targetRect.right - menuWidth;
+  const belowY = targetRect.bottom + gap;
+  const aboveY = targetRect.top - menuHeight + aboveOverlap;
+  const y = belowY + menuHeight <= viewportHeight - 8 ? belowY : aboveY;
+
+  return {
+    x: Math.max(8, Math.min(anchorX, viewportWidth - menuWidth - 8)),
+    y: Math.max(8, Math.min(y, viewportHeight - menuHeight - 8)),
+  };
+}
+
+function MessageContextMenuHost({
+  msg,
+  id,
+  className,
+  children,
+}: {
+  msg: Message;
+  id?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; clientX: number; clientY: number; targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    const anchorElement = eventTarget?.closest('[data-message-context-menu-anchor="true"]') ?? null;
+    const targetRect = (anchorElement ?? event.currentTarget).getBoundingClientRect();
+    setMessageContextMenu({
+      ...messageContextMenuPosition({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        targetRect,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }),
+      clientX: event.clientX,
+      clientY: event.clientY,
+      targetRect,
+    });
+  };
+  useLayoutEffect(() => {
+    if (!messageContextMenu || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const next = messageContextMenuPosition({
+      clientX: messageContextMenu.clientX,
+      clientY: messageContextMenu.clientY,
+      targetRect: messageContextMenu.targetRect,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      menuWidth: rect.width,
+      menuHeight: rect.height,
+    });
+    if (Math.abs(next.x - messageContextMenu.x) > 0.5 || Math.abs(next.y - messageContextMenu.y) > 0.5) {
+      setMessageContextMenu({ ...messageContextMenu, ...next });
+    }
+  }, [messageContextMenu]);
+  const menuLayer = messageContextMenu ? (
+    <>
+      <div
+        className="fixed inset-0 z-[250]"
+        onMouseDown={() => setMessageContextMenu(null)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMessageContextMenu(null);
+        }}
+        aria-hidden="true"
+      />
+      <div
+        ref={menuRef}
+        className="app-message-context-menu fixed z-[260]"
+        style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
+        role="menu"
+        onMouseDown={(event) => event.stopPropagation()}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <MessageContextMenuContent msg={msg} onClose={() => setMessageContextMenu(null)} />
+      </div>
+    </>
+  ) : null;
+
+  return (
+    <div
+      id={id}
+      data-transcript-message-root="true"
+      data-message-context-menu-target="true"
+      onContextMenu={openMessageContextMenu}
+      className={className}
+    >
+      {children}
+      {menuLayer && typeof document !== 'undefined' ? createPortal(menuLayer, document.body) : menuLayer}
     </div>
   );
 }
@@ -499,20 +739,24 @@ function MessageBubbleView({
   ) : null;
 
   if (isCompactionSummaryMessage(msg)) {
-    return <CompactionSummaryMessage msg={msg} />;
+    return (
+      <MessageContextMenuHost msg={msg}>
+        <CompactionSummaryMessage msg={msg} />
+      </MessageContextMenuHost>
+    );
   }
 
   if (msg.role === 'system') {
     return (
-      <div className="app-system-notice-row flex justify-center py-0.5">
+      <MessageContextMenuHost msg={msg} className="app-system-notice-row flex justify-center py-0.5">
         <div className="app-system-notice-pill max-w-[min(100%,34rem)] truncate rounded-full border bg-muted px-2.5 py-0.5 text-center text-[11px] leading-5 text-muted-foreground">{msg.text}</div>
-      </div>
+      </MessageContextMenuHost>
     );
   }
 
   if (msg.role === 'action') {
     return (
-      <div className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
+      <MessageContextMenuHost msg={msg} className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <ArrowRightLeft className="h-4 w-4" />
           {msg.sender}
@@ -529,7 +773,7 @@ function MessageBubbleView({
             Trace visible
           </span>
         </div>
-      </div>
+      </MessageContextMenuHost>
     );
   }
 
@@ -537,7 +781,7 @@ function MessageBubbleView({
     const primaryFile = msg.edit.files[0];
 
     return (
-      <div className="flex flex-col items-start gap-0.5 py-0.5">
+      <MessageContextMenuHost msg={msg} className="flex flex-col items-start gap-0.5 py-0.5">
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -626,15 +870,15 @@ function MessageBubbleView({
             </div>
           ) : null}
         </div>
-      </div>
+      </MessageContextMenuHost>
     );
   }
 
   if (msg.turn) {
     return (
-      <div
+      <MessageContextMenuHost
+        msg={msg}
         id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
-        data-transcript-message-root="true"
         className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
       >
         {msg.id && msg.turn.id && msg.id !== msg.turn.id ? (
@@ -656,7 +900,7 @@ function MessageBubbleView({
           onOpenArtifact={onOpenArtifact}
           onOpenAuthSettings={onOpenAuthSettings}
         />
-      </div>
+      </MessageContextMenuHost>
     );
   }
 
@@ -696,9 +940,9 @@ function MessageBubbleView({
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
 
   return (
-    <div
+    <MessageContextMenuHost
+      msg={msg}
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
-      data-transcript-message-root="true"
       className={cn(
         'flex flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
@@ -725,7 +969,9 @@ function MessageBubbleView({
         ) : showAvatarSlot ? (
           <span className="app-message-avatar-spacer h-7 w-7 shrink-0" aria-hidden="true" />
         ) : null}
-        <div className={cn(
+        <div
+          data-message-context-menu-anchor="true"
+          className={cn(
           'min-w-0',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : 'shadow-sm',
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
@@ -739,7 +985,8 @@ function MessageBubbleView({
                 : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
               : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
           !hasOnlyImageAttachments && bubble,
-        )}>
+        )}
+        >
         {isOwnHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="own" /> : null}
         {isPeerHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="peer" /> : null}
         {showInlineHumanSender ? (
@@ -815,7 +1062,7 @@ function MessageBubbleView({
           onNavigateToMessage={onNavigateToMessage}
         />
       ) : null}
-    </div>
+    </MessageContextMenuHost>
   );
 }
 
@@ -837,6 +1084,7 @@ function messageSnapshotKey(msg: Message) {
     msg.replyToMessageId ?? '',
     msg.replyAliasIds?.join('|') ?? '',
     msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
+    msg.readReceiptSummary ? [msg.readReceiptSummary.count, msg.readReceiptSummary.participants.map((participant) => [participant.id, participant.name, participant.readAt ?? ''].join(':')).join('|')].join(':') : '',
     msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? ''].join(':') : '',
     msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
     msg.mentions?.map((mention) => mention.label).join('|') ?? '',

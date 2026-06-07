@@ -93,6 +93,19 @@ export type MessageReplySummary = {
   targetMessageId?: string | null;
 };
 
+export type MessageReadReceiptParticipant = {
+  id: string;
+  name: string;
+  avatarSeed?: string | null;
+  profileImageUrl?: string | null;
+  readAt?: string | null;
+};
+
+export type MessageReadReceiptSummary = {
+  count: number;
+  participants: MessageReadReceiptParticipant[];
+};
+
 export type Message = {
   id?: string;
   /** Stable id of the underlying session entry, when the message maps
@@ -114,6 +127,7 @@ export type Message = {
   replyToMessageId?: string | null;
   replyAliasIds?: string[];
   replySummary?: MessageReplySummary;
+  readReceiptSummary?: MessageReadReceiptSummary | null;
   sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;
   edit?: {

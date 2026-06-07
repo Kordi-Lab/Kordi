@@ -680,6 +680,64 @@
   color: var(--app-sidebar-title-text);
 }
 
+.app-message-delivery-clock-face,
+.app-message-delivery-clock-hour-hand,
+.app-message-delivery-clock-minute-hand,
+.app-message-delivery-clock-pin {
+  stroke: currentColor;
+}
+
+.app-message-delivery-clock-face {
+  stroke-width: 1.45;
+  opacity: 0.9;
+}
+
+.app-message-delivery-clock-hour-hand,
+.app-message-delivery-clock-minute-hand {
+  transform-box: view-box;
+  transform-origin: 8px 8px;
+  stroke-linecap: round;
+}
+
+.app-message-delivery-clock-hour-hand {
+  stroke-width: 1.55;
+  opacity: 0.92;
+}
+
+.app-message-delivery-clock-minute-hand {
+  stroke-width: 1.35;
+}
+
+.app-message-delivery-clock-pin {
+  fill: currentColor;
+  stroke-width: 0;
+}
+
+.app-message-delivery-clock-active .app-message-delivery-clock-minute-hand {
+  animation: app-message-delivery-clock-minute 1400ms linear infinite;
+}
+
+.app-message-delivery-clock-active .app-message-delivery-clock-hour-hand {
+  animation: app-message-delivery-clock-hour 16800ms linear infinite;
+}
+
+@keyframes app-message-delivery-clock-minute {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes app-message-delivery-clock-hour {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-message-delivery-clock-active .app-message-delivery-clock-minute-hand,
+  .app-message-delivery-clock-active .app-message-delivery-clock-hour-hand {
+    animation: none;
+  }
+}
+
 .app-message-reply-line {
   display: inline-flex;
   align-items: center;

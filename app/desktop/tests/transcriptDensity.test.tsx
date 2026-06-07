@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ContactRequestRow, LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
+import { ContactRequestRow, LiveChatTurnCard, MessageBubble, MessageContextMenuContent, messageContextMenuPosition } from '../src/kordi-app/components/transcript';
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -305,7 +305,239 @@ test('sent-message delivery glyph keeps one stable slot so status changes do not
   assert.match(markup, /aria-label="Sent"/);
   assert.match(markup, /opacity-100[^\"]*text-slate-400/);
   assert.match(markup, /opacity-0[^\"]*text-slate-400/);
+  assert.doesNotMatch(markup, /app-message-delivery-clock-active/);
   assert.doesNotMatch(markup, /title="Sent"/);
+});
+
+test('sending own message renders a Telegram-style clock with moving hands in the stable delivery slot', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello',
+    time: '00:45',
+    statusChips: ['sending'],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-message-delivery-footer ml-3/);
+  assert.match(markup, /data-message-delivery-status="sending"/);
+  assert.match(markup, /data-message-delivery-glyph="clock"/);
+  assert.match(markup, /aria-label="Sending"/);
+  assert.match(markup, /app-message-delivery-clock-active/);
+  assert.match(markup, /app-message-delivery-clock-face/);
+  assert.match(markup, /app-message-delivery-clock-hour-hand/);
+  assert.match(markup, /app-message-delivery-clock-minute-hand/);
+  assert.doesNotMatch(markup, /animate-pulse/);
+  assert.doesNotMatch(markup, /lucide-loader-circle[^>]*animate-spin/);
+});
+
+test('sending clock hand motion is CSS-driven and reduced-motion safe', () => {
+  const shellCss = readDesktopShellCss();
+
+  assert.match(shellCss, /@keyframes\s+app-message-delivery-clock-minute/);
+  assert.match(shellCss, /@keyframes\s+app-message-delivery-clock-hour/);
+  assert.match(shellCss, /\.app-message-delivery-clock-active\s+\.app-message-delivery-clock-minute-hand\s*{[^}]*animation:\s*app-message-delivery-clock-minute/s);
+  assert.match(shellCss, /\.app-message-delivery-clock-active\s+\.app-message-delivery-clock-hour-hand\s*{[^}]*animation:\s*app-message-delivery-clock-hour/s);
+  assert.match(shellCss, /prefers-reduced-motion:\s*reduce[\s\S]*\.app-message-delivery-clock-active[\s\S]*animation:\s*none/);
+});
+
+test('own agent-session request uses double check only after response is marked responded', () => {
+  const sentMessage: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '@My Kordi summarize this',
+    time: '00:45',
+    statusChips: ['sent'],
+  };
+  const respondedMessage: Message = {
+    ...sentMessage,
+    statusChips: ['responded'],
+  };
+
+  const sentMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: sentMessage }));
+  const respondedMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: respondedMessage }));
+
+  assert.match(sentMarkup, /data-message-delivery-glyph="single-check"/);
+  assert.match(respondedMarkup, /data-message-delivery-glyph="double-check"/);
+});
+
+test('own group read receipts are not shown inline and are available from the message context menu', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello group',
+    time: '00:45',
+    statusChips: ['read'],
+    readReceiptSummary: {
+      count: 2,
+      participants: [
+        { id: 'human:acct_a', name: 'Alice', avatarSeed: 'cloud:acct_a', profileImageUrl: null, readAt: '2026-06-06T12:00:02Z' },
+        { id: 'human:acct_b', name: 'Bob', avatarSeed: 'cloud:acct_b', profileImageUrl: null, readAt: '2026-06-06T12:00:03Z' },
+      ],
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.doesNotMatch(markup, /app-message-read-receipts/);
+  assert.doesNotMatch(markup, /Read by 2/);
+  assert.doesNotMatch(markup, /Alice/);
+  assert.doesNotMatch(markup, /Bob/);
+  assert.match(markup, /data-message-context-menu-target="true"/);
+  assert.match(markup, /data-message-delivery-glyph="double-check"/);
+});
+
+test('message context menu content lists read receipts when available', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello group',
+    time: '00:45',
+    readReceiptSummary: {
+      count: 2,
+      participants: [
+        { id: 'human:acct_a', name: 'Alice', avatarSeed: 'cloud:acct_a', profileImageUrl: null, readAt: '2026-06-06T12:00:02Z' },
+        { id: 'human:acct_b', name: 'Bob', avatarSeed: 'cloud:acct_b', profileImageUrl: null, readAt: '2026-06-06T12:00:03Z' },
+      ],
+    },
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
+
+  assert.match(markup, /data-message-context-menu-content="true"/);
+  assert.match(markup, /w-\[13\.5rem\]/);
+  assert.match(markup, /data-message-context-menu-reactions="true"/);
+  assert.match(markup, /Reply/);
+  assert.match(markup, /Copy Text/);
+  assert.match(markup, /Delete/);
+  assert.match(markup, /Select/);
+  assert.match(markup, /data-message-context-menu-seen-row="true"/);
+  assert.match(markup, /2 Seen/);
+  assert.match(markup, /title="Seen by Alice, Bob"/);
+  assert.doesNotMatch(markup, /Readers/);
+  assert.doesNotMatch(markup, /data-message-read-receipts-context-content/);
+  assert.match(markup, /text-\[10px\]/);
+  assert.match(markup, /font-normal/);
+  assert.match(markup, /leading-\[1\.45\]/);
+  assert.match(markup, /style="font-size:10px;font-weight:400;line-height:1\.45"/);
+  assert.match(markup, /h-6 w-6/);
+  assert.match(markup, /py-1\.5/);
+  assert.doesNotMatch(markup, /text-\[9\.5px\]/);
+  assert.doesNotMatch(markup, /text-\[11px\]/);
+  assert.doesNotMatch(markup, /text-\[12\.5px\]/);
+  assert.doesNotMatch(markup, /app-message-context-menu-action[^\"]*text-\[13px\]/);
+  assert.doesNotMatch(markup, /data-message-context-menu-seen-row="true"[^>]*text-\[13px\]/);
+  assert.doesNotMatch(markup, /text-\[16px\]/);
+  assert.doesNotMatch(markup, /font-semibold/);
+  assert.doesNotMatch(markup, /font-medium/);
+  assert.doesNotMatch(markup, /py-3/);
+  assert.doesNotMatch(markup, /py-2/);
+});
+
+test('message context menu position stays close to the clicked message rectangle', () => {
+  const below = messageContextMenuPosition({
+    clientX: 340,
+    clientY: 130,
+    targetRect: { left: 260, right: 420, top: 90, bottom: 148 },
+    viewportWidth: 900,
+    viewportHeight: 700,
+  });
+  const above = messageContextMenuPosition({
+    clientX: 340,
+    clientY: 620,
+    targetRect: { left: 260, right: 420, top: 590, bottom: 650 },
+    viewportWidth: 900,
+    viewportHeight: 700,
+  });
+  const measuredAbove = messageContextMenuPosition({
+    clientX: 340,
+    clientY: 620,
+    targetRect: { left: 260, right: 420, top: 590, bottom: 650 },
+    viewportWidth: 900,
+    viewportHeight: 700,
+    menuHeight: 408,
+  });
+
+  assert.equal(below.y, 150);
+  assert.equal(above.y, 302);
+  assert.equal(measuredAbove.y, 206);
+});
+
+test('messages without read receipts still expose the Telegram-style message context menu', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    isOwnMessage: false,
+    text: 'hello',
+    time: '00:45',
+  };
+
+  const bubbleMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+  const menuMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
+
+  assert.match(bubbleMarkup, /data-message-context-menu-target="true"/);
+  assert.match(bubbleMarkup, /data-message-context-menu-anchor="true"/);
+  assert.doesNotMatch(bubbleMarkup, /data-message-read-receipts-context-target/);
+  assert.match(menuMarkup, /Copy Text/);
+  assert.match(menuMarkup, /Reply/);
+  assert.doesNotMatch(menuMarkup, /Seen/);
+});
+
+test('agent turn messages also expose the Telegram-style message context menu target', () => {
+  const message: Message = {
+    role: 'owned-agent',
+    sender: 'My Kordi',
+    senderType: 'agent',
+    text: '',
+    time: '00:45',
+    turn: {
+      id: 'turn-menu',
+      sessionId: 'session-1',
+      prompt: 'hello',
+      status: 'completed',
+      message: '',
+      assistantText: 'Done.',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: true,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /data-message-context-menu-target="true"/);
+});
+
+test('own group message suppresses read footer when read count is zero', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'hello group',
+    time: '00:45',
+    statusChips: ['delivered'],
+    readReceiptSummary: {
+      count: 0,
+      participants: [],
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.doesNotMatch(markup, /app-message-read-receipts/);
+  assert.doesNotMatch(markup, /Read by 0/);
+  assert.match(markup, /data-message-delivery-glyph="single-check"/);
 });
 
 test('blank outgoing delivery status still renders the stable hidden glyph stack', () => {

@@ -25,6 +25,8 @@ export type {
   Message,
   MessageAttachment,
   MessageMention,
+  MessageReadReceiptParticipant,
+  MessageReadReceiptSummary,
   MessageReplySummary,
   MessageSourceReference,
   QueuedDesktopChatMessage,
