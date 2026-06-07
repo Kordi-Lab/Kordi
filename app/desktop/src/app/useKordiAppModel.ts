@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import {
@@ -18,6 +18,7 @@ import { useKordiUiEffects } from '@/app/useKordiUiEffects';
 import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
@@ -70,8 +71,8 @@ import {
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
-import { messageActionSourceFromMessage } from '@/features/chat/messageActionMetadata';
-import { createForwardedMessageDraft } from '@/features/chat/messageForwarding';
+import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
+import { buildForwardDestinations, createForwardedMessageDraft, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
@@ -137,6 +138,10 @@ export function useKordiAppModel({
   const cloudSession = cloudSessionOverride ?? liveCloudSession;
   const cloudPresence = useCloudPresence(cloudSession.account);
   const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
+  const [forwardDialog, setForwardDialog] = useState<{
+    source: MessageActionSource;
+    destinations: ForwardDestination[];
+  } | null>(null);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
   // reached the user is past it, so we deliberately don't carry a duplicate
@@ -654,25 +659,19 @@ export function useKordiAppModel({
   }, [activeConv.canonicalSessionId, activeConv.id, chatDraftSessionId, composerUi.setChatQuoteBySessionId, isNativeShell]);
   const onForwardMessage = useCallback((message: Message) => {
     const source = messageActionSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId);
-    const senderIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-    if (!source || !senderIdentityId) return;
-    const destinations = chatConversations
-      .map((conversation) => ({
-        id: conversation.canonicalSessionId ?? conversation.id,
-        title: conversation.name?.trim() || 'Untitled chat',
-      }))
-      .filter((destination) => destination.id && destination.id !== LOCAL_DRAFT_CHAT_CONVERSATION_ID);
+    if (!source) return;
+    const destinations = buildForwardDestinations(chatConversations, LOCAL_DRAFT_CHAT_CONVERSATION_ID);
     if (!destinations.length) return;
-    const selection = window.prompt([
-      'Forward to:',
-      ...destinations.map((destination, index) => `${index + 1}. ${destination.title}`),
-    ].join('\n'));
-    if (!selection) return;
-    const index = Number.parseInt(selection.trim(), 10) - 1;
-    const destination = destinations[index];
-    if (!destination) return;
-    const draft = createForwardedMessageDraft({ source, destinationSessionId: destination.id });
+    setForwardDialog({ source, destinations });
+  }, [activeConv.canonicalSessionId, activeConv.id, chatConversations, chatDraftSessionId]);
+
+  const handleConfirmForwardMessage = useCallback((destination: ForwardDestination, caption: string) => {
+    const senderIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    const source = forwardDialog?.source;
+    if (!senderIdentityId || !source) return;
+    const draft = createForwardedMessageDraft({ source, caption, destinationSessionId: destination.id });
     const now = Date.now();
+    setForwardDialog(null);
     appendCanonicalMessage({
       id: `msg:forward:${destination.id}:${source.sourceMessageId}:${now}`,
       sessionId: destination.id,
@@ -697,7 +696,7 @@ export function useKordiAppModel({
       .catch((error: unknown) => {
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');
       });
-  }, [activeConv.canonicalSessionId, activeConv.id, canonicalSessionState?.profile.humanIdentityId, chatConversations, chatDraftSessionId, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
+  }, [canonicalSessionState?.profile.humanIdentityId, forwardDialog?.source, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
 
   const activeConvMentionScope = useMemo(
     () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
@@ -2385,6 +2384,13 @@ export function useKordiAppModel({
     retryCloudInitialSync,
   ]);
 
+  const messageForwardDialog = forwardDialog ? createElement(MessageForwardDialog, {
+    source: forwardDialog.source,
+    destinations: forwardDialog.destinations,
+    onClose: () => setForwardDialog(null),
+    onForward: handleConfirmForwardMessage,
+  }) : null;
+
   return {
     rootThemeClass,
     isNativeShell,
@@ -2404,6 +2410,7 @@ export function useKordiAppModel({
     rightDetailRail: shellSlots.rightDetailRail,
     authGate: shellSlots.authGate,
     inlineAuthDialog: shellSlots.inlineAuthDialog,
+    messageForwardDialog,
     windowResizeHandles: shellSlots.windowResizeHandles,
     cloudInitialSync,
   };

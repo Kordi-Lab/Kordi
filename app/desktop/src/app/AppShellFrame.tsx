@@ -24,6 +24,7 @@ type AppShellFrameProps = {
   rightDetailRail?: ReactNode;
   authGate?: ReactNode;
   inlineAuthDialog?: ReactNode;
+  messageForwardDialog?: ReactNode;
   windowResizeHandles?: ReactNode;
 };
 
@@ -46,6 +47,7 @@ export function AppShellFrame({
   rightDetailRail,
   authGate,
   inlineAuthDialog,
+  messageForwardDialog,
   windowResizeHandles,
 }: AppShellFrameProps) {
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
@@ -170,6 +172,7 @@ export function AppShellFrame({
         </div>
         {authGate}
         {inlineAuthDialog}
+        {messageForwardDialog}
         {!isNativeShell ? windowResizeHandles : null}
       </div>
     </div>

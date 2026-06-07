@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
-import { createForwardedMessageDraft } from '../src/features/chat/messageForwarding';
+import { buildForwardDestinations, createForwardedMessageDraft } from '../src/features/chat/messageForwarding';
+import { MessageForwardDialog } from '../src/pages/MessageForwardDialog';
 
 const source = {
   sourceSessionId: 'session:one',
@@ -24,4 +27,32 @@ test('createForwardedMessageDraft keeps user caption while preserving source met
   const draft = createForwardedMessageDraft({ source, caption: 'FYI', destinationSessionId: 'session:two' });
   assert.equal(draft.text, 'FYI');
   assert.equal(draft.messageAction.source.sourceMessageId, 'msg:source');
+});
+
+test('buildForwardDestinations exposes dense selectable chat labels', () => {
+  const destinations = buildForwardDestinations([
+    { id: 'local-draft-chat', name: 'Draft', type: 'person', subtitle: '', unread: 0, bridges: [], trust: '', directness: '', participants: [], messages: [] },
+    { id: 'conv:one', canonicalSessionId: 'session:one', name: 'Alice', type: 'person', subtitle: 'Direct', unread: 0, bridges: [], trust: '', directness: '', participants: [], messages: [] },
+    { id: 'conv:two', canonicalSessionId: 'session:two', name: 'Group', type: 'person', subtitle: '3 members', unread: 0, bridges: [], trust: '', directness: '', participants: [], messages: [] },
+  ], 'local-draft-chat');
+
+  assert.deepEqual(destinations.map((destination) => destination.id), ['session:one', 'session:two']);
+  assert.equal(destinations[0].label, 'Alice');
+  assert.equal(destinations[1].subtitle, '3 members');
+});
+
+test('MessageForwardDialog renders destination picker and source preview', () => {
+  const markup = renderToStaticMarkup(
+    <MessageForwardDialog
+      source={source}
+      destinations={[{ id: 'session:two', label: 'Group', subtitle: '3 members' }]}
+      onClose={() => {}}
+      onForward={() => {}}
+    />,
+  );
+
+  assert.match(markup, /role="dialog"/);
+  assert.match(markup, /Forward message/);
+  assert.match(markup, /data-message-forward-destination="session:two"/);
+  assert.match(markup, /Alice: Forward this/);
 });
