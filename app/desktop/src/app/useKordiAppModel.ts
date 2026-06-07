@@ -25,6 +25,7 @@ import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import {
   type CloudGroupParticipant,
   cloudGroupIdentityRequest,
+  cloudGroupMessageSessionId,
   cloudGroupParticipantsForBridgeSessionParticipants,
   cloudGroupParticipantsForContacts,
   cloudGroupSelfParticipant,
@@ -47,6 +48,12 @@ import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
 import { mentionScopeConversationForActiveConversation } from '@/features/chat/messageActions/mentions';
+import {
+  bridgeGroupSessionParticipants,
+  bridgeGroupSessionSendTargets,
+  bridgeGroupSessionSpaceId,
+  isBridgeGroupSession,
+} from '@/features/chat/messageActions/chatMessages';
 import {
   adminIdentityIdsFromMetadata,
   agentCanonicalIdentityRequest,
@@ -688,8 +695,14 @@ export function useKordiAppModel({
         });
       return;
     }
+    const forwardMessageId = `msg:forward:${destination.id}:${source.sourceMessageId}:${now}`;
+    const destinationConversation = chatConversations.find((conversation) => (
+      conversation.id === destination.conversationId
+      || conversation.id === destination.id
+      || conversation.canonicalSessionId === destination.id
+    )) ?? null;
     appendCanonicalMessage({
-      id: `msg:forward:${destination.id}:${source.sourceMessageId}:${now}`,
+      id: forwardMessageId,
       sessionId: destination.id,
       senderIdentityId,
       senderRole: 'user',
@@ -705,14 +718,55 @@ export function useKordiAppModel({
       sourceTransport: 'desktop-forward',
       sourceEventId: `desktop-forward:${destination.id}:${source.sourceMessageId}:${now}`,
     })
-      .then((nextState) => {
+      .then(async (nextState) => {
         setCanonicalSessionState(nextState);
+        if (destinationConversation && sendCloudGroupControl && cloudSession.account) {
+          const groupScope = {
+            canonicalSessionId: destination.id,
+            participantSpaceId: destinationConversation.participantSpaceId,
+            directness: destinationConversation.directness,
+            canonicalParticipants: destinationConversation.canonicalParticipants,
+          };
+          if (isBridgeGroupSession(groupScope)) {
+            const activeBridgeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
+              ?? desktopBridgeState?.hosts[0]
+              ?? null;
+            const selfPublicBridgeName = activeBridgeHost?.ownerName?.trim()
+              || activeBridgeHost?.displayName?.trim()
+              || null;
+            const selfBridgeNodeIds = new Set(
+              (desktopBridgeState?.hosts ?? [])
+                .map((host) => host.nodeId?.trim())
+                .filter((value): value is string => Boolean(value)),
+            );
+            const targets = bridgeGroupSessionSendTargets(groupScope, null, selfBridgeNodeIds);
+            const targetAccountIds = cloudGroupTargetAccountIds(targets);
+            if (targetAccountIds.length > 0) {
+              const groupSpaceId = bridgeGroupSessionSpaceId(groupScope);
+              await sendCloudGroupControl({
+                targetAccountIds,
+                kind: 'group-message',
+                groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId: destination.id, activeGroupSessionSpaceId: groupSpaceId }),
+                groupSpaceId,
+                groupTitle: null,
+                bridgeParticipants: bridgeGroupSessionParticipants(groupScope, { selfPublicName: selfPublicBridgeName }),
+                message: {
+                  id: forwardMessageId,
+                  senderAccountId: '',
+                  text: draft.text,
+                  createdAtMs: now,
+                  messageAction: draft.messageAction,
+                },
+              });
+            }
+          }
+        }
         setActiveConvId(destination.id);
       })
       .catch((error: unknown) => {
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');
       });
-  }, [canonicalSessionState?.profile.humanIdentityId, forwardDialog?.source, sendCloudBridgeMessage, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
+  }, [canonicalSessionState?.profile.humanIdentityId, chatConversations, cloudSession.account, desktopBridgeState?.activeHostId, desktopBridgeState?.hosts, forwardDialog?.source, sendCloudBridgeMessage, sendCloudGroupControl, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
 
   const activeConvMentionScope = useMemo(
     () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
