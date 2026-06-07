@@ -1371,4 +1371,3 @@ git commit -m "fix: polish message action integration"
 - **Direct Cloud envelope parsing must be tolerant.** Unknown/malformed envelopes should display raw body or safe fallback, never crash.
 - **Forward attachments may be staged.** If existing attachment forwarding is non-trivial, keep MVP to text + attachment count/source snapshot and file a follow-up for binary attachment duplication.
 - **Cloud-only host policy:** keep docs/PR language product-facing (`https://coordinar.io`) and do not expose private operator/dev host details.
-
