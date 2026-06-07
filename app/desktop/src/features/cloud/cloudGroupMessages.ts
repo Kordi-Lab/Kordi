@@ -825,7 +825,7 @@ export function cloudGroupDeliveryStateFromMessages(input: {
     return envelope?.kind === 'group-message' && envelope.message?.id === messageId;
   });
   if (matching.length === 0) return null;
-  if (matching.every((message) => Boolean(message.readAt))) return 'read';
+  if (matching.some((message) => Boolean(message.readAt))) return 'read';
   return 'delivered';
 }
 

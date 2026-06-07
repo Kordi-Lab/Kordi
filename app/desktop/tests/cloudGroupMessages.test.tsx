@@ -189,7 +189,7 @@ test('cloud group messages carry concrete session id separately from shared grou
   assert.equal(parsed?.groupSpaceId, 'session:group:original-space');
 });
 
-test('cloud group delivery status follows hidden pairwise cloud read receipts', () => {
+test('cloud group delivery status becomes read when any recipient has read the outbound message', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',
     groupId: 'session:group:one',
@@ -208,7 +208,7 @@ test('cloud group delivery status follows hidden pairwise cloud read receipts', 
       { messageId: 'cloud_1', fromAccountId: 'acct_me', toAccountId: 'acct_peer_a', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: null, direction: 'outgoing' },
       { messageId: 'cloud_2', fromAccountId: 'acct_me', toAccountId: 'acct_peer_b', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: '2026-05-11T00:00:02Z', direction: 'outgoing' },
     ],
-  }), 'delivered');
+  }), 'read');
 
   assert.equal(cloudGroupDeliveryStateFromMessages({
     accountId: 'acct_me',
