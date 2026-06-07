@@ -413,7 +413,7 @@ test('message context menu content lists read receipts when available', () => {
   const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
 
   assert.match(markup, /data-message-context-menu-content="true"/);
-  assert.match(markup, /w-\[10\.75rem\]/);
+  assert.match(markup, /w-\[13\.5rem\]/);
   assert.match(markup, /data-message-context-menu-reactions="true"/);
   assert.match(markup, /Reply/);
   assert.match(markup, /Copy Text/);
@@ -425,6 +425,8 @@ test('message context menu content lists read receipts when available', () => {
   assert.doesNotMatch(markup, /Readers/);
   assert.doesNotMatch(markup, /data-message-read-receipts-context-content/);
   assert.match(markup, /text-\[9\.5px\]/);
+  assert.match(markup, /h-6 w-6/);
+  assert.match(markup, /py-1\.5/);
   assert.doesNotMatch(markup, /text-\[11px\]/);
   assert.doesNotMatch(markup, /text-\[12\.5px\]/);
   assert.doesNotMatch(markup, /text-\[16px\]/);
@@ -449,8 +451,8 @@ test('message context menu position avoids covering the clicked message rectangl
     viewportHeight: 700,
   });
 
-  assert.ok(below.y >= 154, `expected menu below the message, got ${below.y}`);
-  assert.ok(above.y < 590, `expected menu above the message, got ${above.y}`);
+  assert.equal(below.y, 150);
+  assert.equal(above.y, 198);
 });
 
 test('messages without read receipts still expose the Telegram-style message context menu', () => {
@@ -467,6 +469,7 @@ test('messages without read receipts still expose the Telegram-style message con
   const menuMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
 
   assert.match(bubbleMarkup, /data-message-context-menu-target="true"/);
+  assert.match(bubbleMarkup, /data-message-context-menu-anchor="true"/);
   assert.doesNotMatch(bubbleMarkup, /data-message-read-receipts-context-target/);
   assert.match(menuMarkup, /Copy Text/);
   assert.match(menuMarkup, /Reply/);
