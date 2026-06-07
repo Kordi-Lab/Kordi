@@ -413,7 +413,7 @@ test('message context menu content lists read receipts when available', () => {
   const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
 
   assert.match(markup, /data-message-context-menu-content="true"/);
-  assert.match(markup, /w-\[13\.5rem\]/);
+  assert.match(markup, /w-\[10\.75rem\]/);
   assert.match(markup, /data-message-context-menu-reactions="true"/);
   assert.match(markup, /Reply/);
   assert.match(markup, /Copy Text/);
@@ -424,9 +424,13 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /title="Seen by Alice, Bob"/);
   assert.doesNotMatch(markup, /Readers/);
   assert.doesNotMatch(markup, /data-message-read-receipts-context-content/);
+  assert.match(markup, /text-\[9\.5px\]/);
+  assert.doesNotMatch(markup, /text-\[11px\]/);
   assert.doesNotMatch(markup, /text-\[12\.5px\]/);
   assert.doesNotMatch(markup, /text-\[16px\]/);
+  assert.doesNotMatch(markup, /font-semibold/);
   assert.doesNotMatch(markup, /py-3/);
+  assert.doesNotMatch(markup, /py-2/);
 });
 
 test('message context menu position avoids covering the clicked message rectangle', () => {

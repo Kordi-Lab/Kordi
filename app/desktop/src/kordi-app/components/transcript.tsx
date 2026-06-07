@@ -367,11 +367,11 @@ function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceipt
 
   return (
     <div
-      className="flex items-center gap-2 border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-950"
+      className="flex items-center gap-1.5 border-t border-slate-200 bg-slate-50 px-2.5 py-1 text-[9.5px] font-medium text-slate-950"
       data-message-context-menu-seen-row="true"
       title={title}
     >
-      <CheckCheck className="h-3.5 w-3.5 shrink-0 text-slate-700" aria-hidden="true" />
+      <CheckCheck className="h-3 w-3 shrink-0 text-slate-700" aria-hidden="true" />
       <span>{count} Seen</span>
       {participants.length > 0 ? (
         <span className="ml-auto inline-flex -space-x-1" aria-hidden="true">
@@ -382,7 +382,7 @@ function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceipt
               seed={participant.avatarSeed ?? participant.id}
               name={participant.name}
               imageUrl={participant.profileImageUrl}
-              className="h-4.5 w-4.5 border border-white"
+              className="h-3.5 w-3.5 border border-white"
             />
           ))}
         </span>
@@ -396,10 +396,10 @@ function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; l
     <button
       type="button"
       role="menuitem"
-      className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[11px] font-semibold text-slate-950 transition hover:bg-slate-100"
+      className="app-message-context-menu-action flex w-full items-center gap-2 px-2.5 py-1 text-left text-[9.5px] font-medium text-slate-950 transition hover:bg-slate-100"
       onClick={onClick}
     >
-      <span className="grid h-4 w-4 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
+      <span className="grid h-3.5 w-3.5 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
       <span>{label}</span>
     </button>
   );
@@ -420,24 +420,24 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
   };
 
   return (
-    <div className="app-message-context-menu-content w-[13.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
-      <div className="app-message-context-menu-reactions mb-1.5 flex items-center gap-1 rounded-full bg-white px-2 py-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.16)] ring-1 ring-slate-950/10" data-message-context-menu-reactions="true">
+    <div className="app-message-context-menu-content w-[10.75rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
+      <div className="app-message-context-menu-reactions mb-1 flex items-center gap-0.5 rounded-full bg-white px-1.5 py-1 shadow-[0_8px_24px_rgba(15,23,42,0.16)] ring-1 ring-slate-950/10" data-message-context-menu-reactions="true">
         {reactionItems.map((reaction) => (
-          <button key={reaction} type="button" className="grid h-6 w-6 place-items-center rounded-full text-[14px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
+          <button key={reaction} type="button" className="grid h-5 w-5 place-items-center rounded-full text-[12px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
             {reaction}
           </button>
         ))}
-        <button type="button" className="ml-auto grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-[14px] text-slate-500" aria-label="More reactions">⌄</button>
+        <button type="button" className="ml-auto grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-[12px] text-slate-500" aria-label="More reactions">⌄</button>
       </div>
-      <div className="overflow-hidden rounded-[14px] bg-white py-1 shadow-[0_14px_34px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10">
-        <MessageContextMenuAction icon={<Reply className="h-4 w-4" />} label="Reply" onClick={onClose} />
-        {replyCount > 0 ? <MessageContextMenuAction icon={<Undo2 className="h-4 w-4" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
-        <MessageContextMenuAction icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={onClose} />
-        <MessageContextMenuAction icon={<Pin className="h-4 w-4" />} label="Pin" onClick={onClose} />
-        <MessageContextMenuAction icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
-        <MessageContextMenuAction icon={<Forward className="h-4 w-4" />} label="Forward" onClick={onClose} />
-        <MessageContextMenuAction icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
-        <MessageContextMenuAction icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={onClose} />
+      <div className="overflow-hidden rounded-[12px] bg-white py-0.5 shadow-[0_14px_34px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10">
+        <MessageContextMenuAction icon={<Reply className="h-3.5 w-3.5" />} label="Reply" onClick={onClose} />
+        {replyCount > 0 ? <MessageContextMenuAction icon={<Undo2 className="h-3.5 w-3.5" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
+        <MessageContextMenuAction icon={<Pencil className="h-3.5 w-3.5" />} label="Edit" onClick={onClose} />
+        <MessageContextMenuAction icon={<Pin className="h-3.5 w-3.5" />} label="Pin" onClick={onClose} />
+        <MessageContextMenuAction icon={<Copy className="h-3.5 w-3.5" />} label="Copy Text" onClick={copyText} />
+        <MessageContextMenuAction icon={<Forward className="h-3.5 w-3.5" />} label="Forward" onClick={onClose} />
+        <MessageContextMenuAction icon={<Trash2 className="h-3.5 w-3.5" />} label="Delete" onClick={onClose} />
+        <MessageContextMenuAction icon={<CheckCircle2 className="h-3.5 w-3.5" />} label="Select" onClick={onClose} />
         <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
       </div>
     </div>
