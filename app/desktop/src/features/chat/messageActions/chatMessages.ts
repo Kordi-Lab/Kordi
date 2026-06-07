@@ -3,6 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
+import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
   cloudGroupMessageSessionId,
   cloudGroupTargetAccountIds,
@@ -62,6 +63,7 @@ import {
   prepareCanonicalUserMessage,
 } from './optimistic';
 import type { PendingBridgeOutreach } from './types';
+import { quoteMessageAction } from '../messageActionMetadata';
 
 export type LocalChatSendInFlight = {
   sessionId: string | null;
@@ -994,7 +996,15 @@ export function useChatMessageActions({
         if (appendedOptimisticBridgeMessage) {
           setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text)));
         }
-        await sendCloudBridgeMessage(activeConvId, text, chatComposerAttachments);
+        const cloudBody = activeChatQuote?.source
+          ? encodeCloudDirectMessageEnvelope({
+              schemaVersion: 1,
+              kind: 'message',
+              text,
+              messageAction: quoteMessageAction(activeChatQuote.source),
+            })
+          : text;
+        await sendCloudBridgeMessage(activeConvId, cloudBody, chatComposerAttachments);
         if (appendedOptimisticBridgeMessage && isCloudBridgeConversationId(activeConvId)) {
           setCloudBridgeState(null);
         }
