@@ -72,6 +72,7 @@ pub async fn requester_can_target_owner(
 
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
+const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
 const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES: i64 = 12;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -103,6 +104,8 @@ struct CloudGroupMessage {
     reply_to_message_id: Option<String>,
     #[serde(rename = "requestId", skip_serializing_if = "Option::is_none")]
     request_id: Option<String>,
+    #[serde(rename = "messageAction", skip_serializing_if = "Option::is_none")]
+    message_action: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -208,8 +211,45 @@ fn cloud_group_response_body(
             delivery_state: Some(delivery_state.to_string()),
             reply_to_message_id: Some(request_message_id.to_string()),
             request_id: Some(request_message_id.to_string()),
+            message_action: None,
         }),
     })
+}
+
+fn direct_message_envelope(body: &str) -> Option<serde_json::Value> {
+    let encoded = body.trim().strip_prefix(CLOUD_DIRECT_MESSAGE_PREFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
+    let Some(action) = action else { return String::new(); };
+    let kind = action.get("kind").and_then(serde_json::Value::as_str).unwrap_or_default().trim();
+    let source = action.get("source").and_then(serde_json::Value::as_object);
+    let sender = source
+        .and_then(|source| source.get("senderLabel"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown sender");
+    let source_message_id = source
+        .and_then(|source| source.get("sourceMessageId"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown");
+    let preview = source
+        .and_then(|source| source.get("textPreview"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!(": {}", value.chars().take(180).collect::<String>()))
+        .unwrap_or_default();
+    match kind {
+        "quote" => format!(" [quotes message {source_message_id} from {sender}{preview}]"),
+        "forward" => format!(" [forwarded from message {source_message_id} by {sender}{preview}]"),
+        _ => String::new(),
+    }
 }
 
 fn fallback_prompt_history_line(
@@ -217,12 +257,36 @@ fn fallback_prompt_history_line(
     owner_account_id: &str,
     message: &CloudFallbackHistoryMessage,
 ) -> Option<String> {
-    let (label, text) = if let Some(text) = cloud_agent_response_text(&message.body) {
-        ("Owner's Kordi", text)
+    let (label, text, suffix) = if let Some(text) = cloud_agent_response_text(&message.body) {
+        ("Owner's Kordi", text, String::new())
+    } else if let Some(envelope) = parse_cloud_group_envelope(&message.body) {
+        let group_message = envelope.message?;
+        let label = if group_message.sender_account_id == requester_account_id {
+            "Requester"
+        } else if group_message.sender_account_id == owner_account_id {
+            if group_message.sender_kind.as_deref() == Some("agent") { "Owner's Kordi" } else { "Owner" }
+        } else {
+            "Participant"
+        };
+        (label, strip_leading_agent_mention(&group_message.text), action_context_suffix(group_message.message_action.as_ref()))
+    } else if let Some(envelope) = direct_message_envelope(&message.body) {
+        let text = envelope
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let suffix = action_context_suffix(envelope.get("messageAction"));
+        if message.from_account_id == requester_account_id {
+            ("Requester", strip_leading_agent_mention(&text), suffix)
+        } else if message.from_account_id == owner_account_id {
+            ("Owner", text.trim().to_string(), suffix)
+        } else {
+            return None;
+        }
     } else if message.from_account_id == requester_account_id {
-        ("Requester", strip_leading_agent_mention(&message.body))
+        ("Requester", strip_leading_agent_mention(&message.body), String::new())
     } else if message.from_account_id == owner_account_id {
-        ("Owner", message.body.trim().to_string())
+        ("Owner", message.body.trim().to_string(), String::new())
     } else {
         return None;
     };
@@ -230,7 +294,7 @@ fn fallback_prompt_history_line(
     if text.is_empty() {
         return None;
     }
-    Some(format!("{label}: {text}"))
+    Some(format!("{label}: {text}{suffix}"))
 }
 
 fn fallback_prompt_with_history(
@@ -441,6 +505,7 @@ mod tests {
                 delivery_state: None,
                 reply_to_message_id: None,
                 request_id: None,
+                message_action: None,
             }),
         };
 
