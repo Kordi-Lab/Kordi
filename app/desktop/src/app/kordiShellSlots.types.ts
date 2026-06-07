@@ -12,6 +12,7 @@ import type {
   ContactClass,
   ContactRequest,
   Conversation,
+  ComposerQuoteState,
   DesktopAuthProvider,
   DesktopAuthState,
   DesktopBridgeConversation,
@@ -279,6 +280,10 @@ export type AssembleKordiShellSlotsArgs = {
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setProjectComposerText: (value: string) => void;
   setChatComposerText: (value: string) => void;
+  activeChatQuote: ComposerQuoteState | null;
+  onClearChatQuote: () => void;
+  onReplyMessage: (message: Message) => void;
+  onForwardMessage: (message: Message) => void;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
   activeRuntimeSessionId?: string;
   activeRuntimeContextStatus?: DesktopChatState['activeSession']['contextWindowStatus'];
@@ -573,6 +578,10 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'
+  | 'activeChatQuote'
+  | 'onClearChatQuote'
+  | 'onReplyMessage'
+  | 'onForwardMessage'
   | 'composerSelectionChat'
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'

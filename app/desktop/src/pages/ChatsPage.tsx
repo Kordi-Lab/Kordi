@@ -43,6 +43,7 @@ import {
   type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
 import type {
+  ComposerQuoteState,
   Conversation,
   DesktopBridgeHost,
   DesktopChatContextWindowStatus,
@@ -289,6 +290,10 @@ type ChatsPageProps = {
   chatComposerText: string;
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setChatComposerText: (value: string) => void;
+  activeChatQuote?: ComposerQuoteState | null;
+  onClearChatQuote?: () => void;
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
   composerControlsRef: RefObject<HTMLDivElement | null>;
   activeRuntimeContextStatus?: DesktopChatContextWindowStatus | null;
   activeRuntimeCacheText?: string | null;
@@ -353,6 +358,10 @@ export function ChatsPage({
   chatComposerText,
   updateChatComposerDraft,
   setChatComposerText,
+  activeChatQuote,
+  onClearChatQuote,
+  onReplyMessage,
+  onForwardMessage,
   composerControlsRef,
   activeRuntimeContextStatus,
   activeRuntimeCacheText,
@@ -793,6 +802,8 @@ export function ChatsPage({
                   onForkMessage={handleForkMessage}
                   messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
                   onOpenForkSession={onSelectSession}
+                  onReplyMessage={onReplyMessage}
+                  onForwardMessage={onForwardMessage}
                   plainAgentResponse={suppressAgentReplyAttribution}
                   isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                   isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
@@ -886,6 +897,28 @@ export function ChatsPage({
                   event.currentTarget.value = '';
                 }}
               />
+              {activeChatQuote ? (
+                <div
+                  data-composer-quote-preview="true"
+                  className="mb-1.5 flex items-start gap-2 rounded-[14px] border border-sky-300/20 bg-sky-400/10 px-2.5 py-2 text-left"
+                >
+                  <span className="mt-0.5 h-8 w-0.5 shrink-0 rounded-full bg-sky-300" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[11px] font-semibold text-sky-200">{activeChatQuote.source.senderLabel}</div>
+                    <div className="truncate text-[11px] text-slate-300">
+                      {activeChatQuote.source.textPreview || `${activeChatQuote.source.attachmentCount} attachment${activeChatQuote.source.attachmentCount === 1 ? '' : 's'}`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Remove quoted message"
+                    onClick={onClearChatQuote}
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
               {chatComposerAttachments.length > 0 ? (
                 <div className="mb-1 flex flex-wrap items-center gap-1.5">
                   {chatComposerAttachments.map((attachment) => (

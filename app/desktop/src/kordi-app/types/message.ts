@@ -106,6 +106,22 @@ export type MessageReadReceiptSummary = {
   participants: MessageReadReceiptParticipant[];
 };
 
+export type MessageActionSource = {
+  sourceSessionId: string;
+  sourceMessageId: string;
+  sourceMessageKind?: string | null;
+  senderLabel: string;
+  textPreview: string;
+  attachmentCount: number;
+  createdAtMs?: number | null;
+  timeLabel?: string | null;
+};
+
+export type ComposerQuoteState = {
+  action: 'quote';
+  source: MessageActionSource;
+};
+
 export type Message = {
   id?: string;
   /** Stable id of the underlying session entry, when the message maps

@@ -1,9 +1,11 @@
 import type { BridgeMessageDirection } from '@/features/bridge/messages';
 
 import type {
+  ComposerQuoteState,
   DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   Message,
+  MessageActionSource,
   MessageAttachment,
   MessageMention,
   MessageSourceReference,
@@ -14,6 +16,7 @@ import type {
 
 export type {
   BridgeAgentRequestControl,
+  ComposerQuoteState,
   DesktopArtifactDirectory,
   DesktopArtifactDirectoryEntry,
   DesktopArtifactPreview,
@@ -23,6 +26,7 @@ export type {
   EditDiffLine,
   EditFilePreview,
   Message,
+  MessageActionSource,
   MessageAttachment,
   MessageMention,
   MessageReadReceiptParticipant,

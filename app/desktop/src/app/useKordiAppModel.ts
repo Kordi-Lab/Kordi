@@ -69,12 +69,14 @@ import {
 } from '@/features/chat/chatCreateFlows';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
+import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
+import { messageActionSourceFromMessage } from '@/features/chat/messageActionMetadata';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, Message, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { BridgeSettingsDraft, BridgeWizardDraft } from '@/app/kordiShellSlots.types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
@@ -294,6 +296,10 @@ export function useKordiAppModel({
   // shell (useWorkspaceController.ts) and can also be transiently empty
   // after certain session-rename flows.
   const chatDraftSessionId = activeConvId || LOCAL_DRAFT_CHAT_CONVERSATION_ID;
+  const activeChatQuote = composerUi.chatQuoteBySessionId[chatDraftSessionId] ?? null;
+  const onClearChatQuote = useCallback(() => {
+    composerUi.setChatQuoteBySessionId((current) => ({ ...current, [chatDraftSessionId]: null }));
+  }, [chatDraftSessionId, composerUi.setChatQuoteBySessionId]);
   const composerDraftsView = useMemo<Record<ComposerScope, string>>(() => ({
     chat:    composerUi.composerDrafts.chat[chatDraftSessionId]?.text          ?? '',
     project: composerUi.composerDrafts.project[activeProjectSessionId]?.text   ?? '',
@@ -635,6 +641,20 @@ export function useKordiAppModel({
     cloudSessionActivity,
     cloudPresence: cloudPresence.snapshot,
   });
+
+  const onReplyMessage = useCallback((message: Message) => {
+    const source = messageActionSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId);
+    if (!source) return;
+    composerUi.setChatQuoteBySessionId((current) => ({
+      ...current,
+      [chatDraftSessionId]: { action: 'quote', source },
+    }));
+    focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell);
+  }, [activeConv.canonicalSessionId, activeConv.id, chatDraftSessionId, composerUi.setChatQuoteBySessionId, isNativeShell]);
+  const onForwardMessage = useCallback((_message: Message) => {
+    // Forward opens a destination picker in the follow-up implementation task.
+    // Keeping this callback wired lets the context menu close immediately today.
+  }, []);
 
   const activeConvMentionScope = useMemo(
     () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
@@ -1089,6 +1109,15 @@ export function useKordiAppModel({
     shouldAutoFollowChatRef,
     setActiveConvId,
   });
+
+  const handleSendChatMessageWithQuoteClear = useCallback(async (draftOverride?: string) => {
+    const hasSendableContent = (draftOverride ?? composerDraftsView.chat).trim().length > 0
+      || composerUi.chatComposerAttachments.length > 0;
+    await handleSendChatMessage(draftOverride);
+    if (hasSendableContent && activeChatQuote) {
+      onClearChatQuote();
+    }
+  }, [activeChatQuote, composerDraftsView.chat, composerUi.chatComposerAttachments.length, handleSendChatMessage, onClearChatQuote]);
 
   useEffect(() => {
     if (!isNativeShell || !desktopAuthState || !desktopChatState?.activeSessionId) return;
@@ -2037,7 +2066,7 @@ export function useKordiAppModel({
     selectComposerProviderChoice,
     handleStopDesktopChatTurn,
     handleSendProjectMessage,
-    handleSendChatMessage,
+    handleSendChatMessage: handleSendChatMessageWithQuoteClear,
   });
 
   const shellArgs = useKordiShellArgs({
@@ -2228,6 +2257,10 @@ export function useKordiAppModel({
     updateChatComposerDraft: (value, target) => updateComposerDraft('chat', value, target),
     setProjectComposerText,
     setChatComposerText,
+    activeChatQuote,
+    onClearChatQuote,
+    onReplyMessage,
+    onForwardMessage,
     composerControlsRef,
     activeRuntimeSessionId,
     activeRuntimeContextStatus,
