@@ -424,7 +424,7 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /title="Seen by Alice, Bob"/);
   assert.doesNotMatch(markup, /Readers/);
   assert.doesNotMatch(markup, /data-message-read-receipts-context-content/);
-  assert.match(markup, /text-\[13px\]/);
+  assert.match(markup, /text-\[10px\]/);
   assert.match(markup, /font-normal/);
   assert.match(markup, /leading-\[1\.45\]/);
   assert.match(markup, /h-6 w-6/);
@@ -432,6 +432,8 @@ test('message context menu content lists read receipts when available', () => {
   assert.doesNotMatch(markup, /text-\[9\.5px\]/);
   assert.doesNotMatch(markup, /text-\[11px\]/);
   assert.doesNotMatch(markup, /text-\[12\.5px\]/);
+  assert.doesNotMatch(markup, /app-message-context-menu-action[^\"]*text-\[13px\]/);
+  assert.doesNotMatch(markup, /data-message-context-menu-seen-row="true"[^>]*text-\[13px\]/);
   assert.doesNotMatch(markup, /text-\[16px\]/);
   assert.doesNotMatch(markup, /font-semibold/);
   assert.doesNotMatch(markup, /font-medium/);

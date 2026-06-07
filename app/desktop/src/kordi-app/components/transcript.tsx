@@ -367,7 +367,7 @@ function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceipt
 
   return (
     <div
-      className="flex items-center gap-2 border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] font-normal leading-[1.45] text-slate-950"
+      className="flex items-center gap-2 border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-normal leading-[1.45] text-slate-950"
       data-message-context-menu-seen-row="true"
       title={title}
     >
@@ -396,7 +396,7 @@ function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; l
     <button
       type="button"
       role="menuitem"
-      className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] font-normal leading-[1.45] text-slate-950 transition hover:bg-slate-100"
+      className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] text-slate-950 transition hover:bg-slate-100"
       onClick={onClick}
     >
       <span className="grid h-4 w-4 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
