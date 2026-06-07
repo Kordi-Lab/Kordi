@@ -148,10 +148,8 @@ test('Cloud group send paths label optimistic canonical rows with Cloud UI trans
   assert.match(cloudMentionBranch, /prepareCanonicalUserMessage\([\s\S]*?'cloud-group-ui'/);
   assert.doesNotMatch(cloudMentionBranch, /prepareCanonicalUserMessage\([\s\S]*?'desktop-bridge-ui'/);
 
-  const groupSendStart = source.indexOf('const isGroupSessionMessage = shouldStayInCanonicalSession && activeGroupSessionIsGroup;');
-  const groupSendEnd = source.indexOf('if (preparedCanonicalMessage && isGroupSessionMessage && cloudGroupTargetIds.length > 0)', groupSendStart);
-  const groupSendPrepare = source.slice(groupSendStart, groupSendEnd);
-  assert.match(groupSendPrepare, /isGroupSessionMessage && cloudGroupTargetIds\.length > 0 \? 'cloud-group-ui' : 'desktop-bridge-ui'/);
+  assert.match(cloudMentionBranch, /cloudGroupTargetIds\.length === 0/);
+  assert.match(cloudMentionBranch, /targetAccountIds: cloudGroupTargetIds/);
 });
 
 
@@ -169,6 +167,36 @@ test('prepared Cloud group UI messages use Cloud source transport metadata', () 
 
   assert.equal(prepared?.request.sourceTransport, 'cloud-group-ui');
   assert.equal(prepared?.request.sourceEventId?.startsWith('cloud-group-ui:session:group:cloud:'), true);
+});
+
+
+test('prepared canonical user messages persist quoted reply metadata', () => {
+  const prepared = prepareCanonicalUserMessage(
+    'session:one',
+    'human:me',
+    'Yes, ship it',
+    [],
+    '12:31',
+    'desktop-chat-ui',
+    'sending',
+    [],
+    {
+      action: 'quote',
+      source: {
+        sourceSessionId: 'session:one',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Alice',
+        textPreview: 'Can we ship?',
+        attachmentCount: 0,
+        createdAtMs: null,
+        timeLabel: '10:42',
+      },
+    },
+  );
+
+  assert.equal(prepared?.request.parentMessageId, 'msg:source');
+  assert.equal((prepared?.request.content as { replyToMessageId?: string }).replyToMessageId, 'msg:source');
+  assert.equal((prepared?.request.content as { messageAction?: { kind?: string } }).messageAction?.kind, 'quote');
 });
 
 

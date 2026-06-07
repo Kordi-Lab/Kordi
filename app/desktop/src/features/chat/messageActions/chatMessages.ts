@@ -705,6 +705,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'chatComposerAttachments'
   | 'composerSelections'
   | 'composerDrafts'
+  | 'activeChatQuote'
   | 'desktopBridgeState'
   | 'desktopChatState'
   | 'canonicalSessionState'
@@ -751,6 +752,7 @@ export function useChatMessageActions({
   chatComposerAttachments,
   composerSelections,
   composerDrafts,
+  activeChatQuote,
   desktopBridgeState,
   desktopChatState,
   canonicalSessionState,
@@ -1037,6 +1039,7 @@ export function useChatMessageActions({
         'cloud-group-ui',
         'sent',
         mentionForBridgeTarget(mentionedTarget),
+        activeChatQuote,
       );
       if (preparedCanonicalMessage) {
         preparedCanonicalMessage.request.content = {
@@ -1148,6 +1151,8 @@ export function useChatMessageActions({
         sentAt,
         'desktop-chat-ui',
         'sent',
+        [],
+        activeChatQuote,
       );
       const failedReplyRequest = preparedCanonicalMessage
         ? canonicalNoProviderFailedAgentMessageRequest({
@@ -1276,6 +1281,8 @@ export function useChatMessageActions({
         sentAt,
         'desktop-chat-ui',
         'sending',
+        [],
+        activeChatQuote,
       );
       const noProviderLocalShortcut = shouldUseNoProviderSelfAgentShortcut({
         activeConversationUsesBridgeRouting,
@@ -1453,6 +1460,7 @@ export function useChatMessageActions({
     activeConvId,
     activeConvMessages,
     activeConvMentionScope,
+    activeChatQuote,
     attachmentSummaryText,
     chatComposerAttachments,
     canonicalHumanIdentityId,

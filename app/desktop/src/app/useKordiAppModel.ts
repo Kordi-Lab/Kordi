@@ -1074,6 +1074,7 @@ export function useKordiAppModel({
     setComposerSelections: composerUi.setComposerSelections,
     composerDrafts: composerDraftsView,
     setComposerDrafts: composerUi.setComposerDrafts,
+    activeChatQuote,
     setProjectWorkspaces: projectsUi.setProjectWorkspaces,
     setOpenComposerSelector: composerUi.setOpenComposerSelector,
     chatComposerAttachments: composerUi.chatComposerAttachments,
