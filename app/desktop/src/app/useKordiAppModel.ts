@@ -71,6 +71,7 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/featu
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { messageActionSourceFromMessage } from '@/features/chat/messageActionMetadata';
+import { createForwardedMessageDraft } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
@@ -651,10 +652,52 @@ export function useKordiAppModel({
     }));
     focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell);
   }, [activeConv.canonicalSessionId, activeConv.id, chatDraftSessionId, composerUi.setChatQuoteBySessionId, isNativeShell]);
-  const onForwardMessage = useCallback((_message: Message) => {
-    // Forward opens a destination picker in the follow-up implementation task.
-    // Keeping this callback wired lets the context menu close immediately today.
-  }, []);
+  const onForwardMessage = useCallback((message: Message) => {
+    const source = messageActionSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId);
+    const senderIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    if (!source || !senderIdentityId) return;
+    const destinations = chatConversations
+      .map((conversation) => ({
+        id: conversation.canonicalSessionId ?? conversation.id,
+        title: conversation.name?.trim() || 'Untitled chat',
+      }))
+      .filter((destination) => destination.id && destination.id !== LOCAL_DRAFT_CHAT_CONVERSATION_ID);
+    if (!destinations.length) return;
+    const selection = window.prompt([
+      'Forward to:',
+      ...destinations.map((destination, index) => `${index + 1}. ${destination.title}`),
+    ].join('\n'));
+    if (!selection) return;
+    const index = Number.parseInt(selection.trim(), 10) - 1;
+    const destination = destinations[index];
+    if (!destination) return;
+    const draft = createForwardedMessageDraft({ source, destinationSessionId: destination.id });
+    const now = Date.now();
+    appendCanonicalMessage({
+      id: `msg:forward:${destination.id}:${source.sourceMessageId}:${now}`,
+      sessionId: destination.id,
+      senderIdentityId,
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: draft.text,
+      content: {
+        forwardedFrom: draft.forwardedFrom,
+        messageAction: draft.messageAction,
+      },
+      createdAtMs: now,
+      parentMessageId: null,
+      status: 'sent',
+      sourceTransport: 'desktop-forward',
+      sourceEventId: `desktop-forward:${destination.id}:${source.sourceMessageId}:${now}`,
+    })
+      .then((nextState) => {
+        setCanonicalSessionState(nextState);
+        setActiveConvId(destination.id);
+      })
+      .catch((error: unknown) => {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');
+      });
+  }, [activeConv.canonicalSessionId, activeConv.id, canonicalSessionState?.profile.humanIdentityId, chatConversations, chatDraftSessionId, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
 
   const activeConvMentionScope = useMemo(
     () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
