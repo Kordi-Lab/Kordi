@@ -309,7 +309,7 @@ test('sent-message delivery glyph keeps one stable slot so status changes do not
   assert.doesNotMatch(markup, /title="Sent"/);
 });
 
-test('sending own message renders an animated clock in the stable delivery slot', () => {
+test('sending own message renders a Telegram-style clock with moving hands in the stable delivery slot', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -327,7 +327,21 @@ test('sending own message renders an animated clock in the stable delivery slot'
   assert.match(markup, /data-message-delivery-glyph="clock"/);
   assert.match(markup, /aria-label="Sending"/);
   assert.match(markup, /app-message-delivery-clock-active/);
+  assert.match(markup, /app-message-delivery-clock-face/);
+  assert.match(markup, /app-message-delivery-clock-hour-hand/);
+  assert.match(markup, /app-message-delivery-clock-minute-hand/);
+  assert.doesNotMatch(markup, /animate-pulse/);
   assert.doesNotMatch(markup, /lucide-loader-circle[^>]*animate-spin/);
+});
+
+test('sending clock hand motion is CSS-driven and reduced-motion safe', () => {
+  const shellCss = readDesktopShellCss();
+
+  assert.match(shellCss, /@keyframes\s+app-message-delivery-clock-minute/);
+  assert.match(shellCss, /@keyframes\s+app-message-delivery-clock-hour/);
+  assert.match(shellCss, /\.app-message-delivery-clock-active\s+\.app-message-delivery-clock-minute-hand\s*{[^}]*animation:\s*app-message-delivery-clock-minute/s);
+  assert.match(shellCss, /\.app-message-delivery-clock-active\s+\.app-message-delivery-clock-hour-hand\s*{[^}]*animation:\s*app-message-delivery-clock-hour/s);
+  assert.match(shellCss, /prefers-reduced-motion:\s*reduce[\s\S]*\.app-message-delivery-clock-active[\s\S]*animation:\s*none/);
 });
 
 test('own agent-session request uses double check only after response is marked responded', () => {

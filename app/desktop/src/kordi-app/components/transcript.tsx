@@ -195,6 +195,23 @@ function renderTextWithMentionPills(text: string, mentions?: MessageMention[]) {
   });
 }
 
+function MessageDeliveryClockGlyph({ className, active }: { className?: string; active: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      className={cn(className, active && 'app-message-delivery-clock-active')}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle className="app-message-delivery-clock-face" cx="8" cy="8" r="5.7" />
+      <line className="app-message-delivery-clock-hour-hand" x1="8" y1="8" x2="8" y2="5.4" />
+      <line className="app-message-delivery-clock-minute-hand" x1="8" y1="8" x2="8" y2="3.7" />
+      <circle className="app-message-delivery-clock-pin" cx="8" cy="8" r="0.75" />
+    </svg>
+  );
+}
+
 function MessageDeliveryGlyph({ status }: { status?: string | null }) {
   const normalizedStatus = status?.trim().toLowerCase() || 'none';
   const visual = messageDeliveryVisual(status);
@@ -221,13 +238,7 @@ function MessageDeliveryGlyph({ status }: { status?: string | null }) {
     >
       <Check className={glyphClass('single-check')} aria-hidden="true" />
       <CheckCheck className={glyphClass('double-check')} aria-hidden="true" />
-      <Clock3
-        className={cn(
-          glyphClass('clock'),
-          visual?.glyph === 'clock' && visual.motion === 'pulse' && 'app-message-delivery-clock-active animate-pulse',
-        )}
-        aria-hidden="true"
-      />
+      <MessageDeliveryClockGlyph className={glyphClass('clock')} active={Boolean(visual?.glyph === 'clock' && visual.motion === 'pulse')} />
       <LoaderCircle className={cn(glyphClass('spinner'), activeGlyph === 'spinner' && 'animate-spin')} aria-hidden="true" />
       <span className={cn(glyphClass('exclamation'), 'inline-flex items-center justify-center text-[13px] font-semibold leading-none')} aria-hidden="true">
         !
