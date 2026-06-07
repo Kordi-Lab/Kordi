@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ContactRequestRow, LiveChatTurnCard, MessageBubble, MessageContextMenuContent } from '../src/kordi-app/components/transcript';
+import { ContactRequestRow, LiveChatTurnCard, MessageBubble, MessageContextMenuContent, messageContextMenuPosition } from '../src/kordi-app/components/transcript';
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -413,6 +413,7 @@ test('message context menu content lists read receipts when available', () => {
   const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
 
   assert.match(markup, /data-message-context-menu-content="true"/);
+  assert.match(markup, /w-\[13\.5rem\]/);
   assert.match(markup, /data-message-context-menu-reactions="true"/);
   assert.match(markup, /Reply/);
   assert.match(markup, /Copy Text/);
@@ -421,6 +422,27 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /2 Seen/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Bob/);
+  assert.doesNotMatch(markup, /py-3/);
+});
+
+test('message context menu position avoids covering the clicked message rectangle', () => {
+  const below = messageContextMenuPosition({
+    clientX: 340,
+    clientY: 130,
+    targetRect: { left: 260, right: 420, top: 90, bottom: 148 },
+    viewportWidth: 900,
+    viewportHeight: 700,
+  });
+  const above = messageContextMenuPosition({
+    clientX: 340,
+    clientY: 620,
+    targetRect: { left: 260, right: 420, top: 590, bottom: 650 },
+    viewportWidth: 900,
+    viewportHeight: 700,
+  });
+
+  assert.ok(below.y >= 154, `expected menu below the message, got ${below.y}`);
+  assert.ok(above.y < 590, `expected menu above the message, got ${above.y}`);
 });
 
 test('messages without read receipts still expose the Telegram-style message context menu', () => {

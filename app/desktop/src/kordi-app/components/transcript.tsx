@@ -396,10 +396,10 @@ function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; l
     <button
       type="button"
       role="menuitem"
-      className="app-message-context-menu-action flex w-full items-center gap-4 px-5 py-3 text-left text-[16px] font-semibold text-slate-950 transition hover:bg-slate-100"
+      className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-semibold text-slate-950 transition hover:bg-slate-100"
       onClick={onClick}
     >
-      <span className="grid h-5 w-5 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
+      <span className="grid h-4 w-4 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
       <span>{label}</span>
     </button>
   );
@@ -421,28 +421,28 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
   };
 
   return (
-    <div className="app-message-context-menu-content w-[17.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
-      <div className="app-message-context-menu-reactions mb-2 flex items-center gap-1.5 rounded-full bg-white px-3 py-2 shadow-[0_10px_30px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10" data-message-context-menu-reactions="true">
+    <div className="app-message-context-menu-content w-[13.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
+      <div className="app-message-context-menu-reactions mb-1.5 flex items-center gap-1 rounded-full bg-white px-2 py-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.16)] ring-1 ring-slate-950/10" data-message-context-menu-reactions="true">
         {reactionItems.map((reaction) => (
-          <button key={reaction} type="button" className="grid h-8 w-8 place-items-center rounded-full text-[22px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
+          <button key={reaction} type="button" className="grid h-6 w-6 place-items-center rounded-full text-[16px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
             {reaction}
           </button>
         ))}
-        <button type="button" className="ml-auto grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-[18px] text-slate-500" aria-label="More reactions">⌄</button>
+        <button type="button" className="ml-auto grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-[14px] text-slate-500" aria-label="More reactions">⌄</button>
       </div>
-      <div className="overflow-hidden rounded-[20px] bg-white py-2 shadow-[0_18px_48px_rgba(15,23,42,0.20)] ring-1 ring-slate-950/10">
-        <MessageContextMenuAction icon={<Reply className="h-5 w-5" />} label="Reply" onClick={onClose} />
-        {replyCount > 0 ? <MessageContextMenuAction icon={<Undo2 className="h-5 w-5" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
-        <MessageContextMenuAction icon={<Pencil className="h-5 w-5" />} label="Edit" onClick={onClose} />
-        <MessageContextMenuAction icon={<Pin className="h-5 w-5" />} label="Pin" onClick={onClose} />
-        <MessageContextMenuAction icon={<Copy className="h-5 w-5" />} label="Copy Text" onClick={copyText} />
-        <MessageContextMenuAction icon={<Forward className="h-5 w-5" />} label="Forward" onClick={onClose} />
-        <MessageContextMenuAction icon={<Trash2 className="h-5 w-5" />} label="Delete" onClick={onClose} />
-        <MessageContextMenuAction icon={<CheckCircle2 className="h-5 w-5" />} label="Select" onClick={onClose} />
+      <div className="overflow-hidden rounded-[14px] bg-white py-1 shadow-[0_14px_34px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10">
+        <MessageContextMenuAction icon={<Reply className="h-4 w-4" />} label="Reply" onClick={onClose} />
+        {replyCount > 0 ? <MessageContextMenuAction icon={<Undo2 className="h-4 w-4" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
+        <MessageContextMenuAction icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={onClose} />
+        <MessageContextMenuAction icon={<Pin className="h-4 w-4" />} label="Pin" onClick={onClose} />
+        <MessageContextMenuAction icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
+        <MessageContextMenuAction icon={<Forward className="h-4 w-4" />} label="Forward" onClick={onClose} />
+        <MessageContextMenuAction icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
+        <MessageContextMenuAction icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={onClose} />
         {readCount > 0 ? (
           <div className="border-t border-slate-200 bg-slate-50">
-            <div className="flex items-center gap-3 px-5 py-3 text-[16px] font-semibold text-slate-950">
-              <CheckCheck className="h-5 w-5 shrink-0 text-slate-700" aria-hidden="true" />
+            <div className="flex items-center gap-2.5 px-3 py-2 text-[12.5px] font-semibold text-slate-950">
+              <CheckCheck className="h-4 w-4 shrink-0 text-slate-700" aria-hidden="true" />
               <span>{readCount} Seen</span>
             </div>
             <MessageReadReceiptContextMenuSection summary={msg.readReceiptSummary} />
@@ -453,13 +453,32 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
   );
 }
 
-function messageContextMenuPosition(event: ReactMouseEvent) {
-  const menuWidth = 300;
-  const menuHeight = 560;
-  if (typeof window === 'undefined') return { x: event.clientX, y: event.clientY };
+export function messageContextMenuPosition({
+  clientX,
+  clientY,
+  targetRect,
+  viewportWidth,
+  viewportHeight,
+}: {
+  clientX: number;
+  clientY: number;
+  targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>;
+  viewportWidth: number;
+  viewportHeight: number;
+}) {
+  const menuWidth = 216;
+  const menuHeight = 390;
+  const gap = 6;
+  const anchorX = clientX <= (targetRect.left + targetRect.right) / 2
+    ? targetRect.left
+    : targetRect.right - menuWidth;
+  const belowY = targetRect.bottom + gap;
+  const aboveY = targetRect.top - menuHeight - gap;
+  const y = belowY + menuHeight <= viewportHeight - 8 ? belowY : aboveY;
+
   return {
-    x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
-    y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+    x: Math.max(8, Math.min(anchorX, viewportWidth - menuWidth - 8)),
+    y: Math.max(8, Math.min(y, viewportHeight - menuHeight - 8)),
   };
 }
 
@@ -478,7 +497,14 @@ function MessageContextMenuHost({
   const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    setMessageContextMenu(messageContextMenuPosition(event));
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    setMessageContextMenu(messageContextMenuPosition({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      targetRect,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
   };
   const menuLayer = messageContextMenu ? (
     <>
