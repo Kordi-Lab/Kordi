@@ -442,6 +442,28 @@ test('message context menu content lists read receipts when available', () => {
   assert.doesNotMatch(markup, /py-2/);
 });
 
+test('message context menu exposes Reply and Forward actions for eligible messages', () => {
+  const message: Message = {
+    id: 'msg:quote-target',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Quote me',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    onClose: () => undefined,
+    onReplyMessage: () => undefined,
+    onForwardMessage: () => undefined,
+  }));
+
+  assert.match(markup, />Reply</);
+  assert.match(markup, />Forward</);
+  assert.match(markup, /data-message-context-menu-action="reply"/);
+  assert.match(markup, /data-message-context-menu-action="forward"/);
+});
+
 test('message context menu position stays close to the clicked message rectangle', () => {
   const below = messageContextMenuPosition({
     clientX: 340,

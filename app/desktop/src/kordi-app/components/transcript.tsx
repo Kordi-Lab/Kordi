@@ -398,11 +398,12 @@ function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceipt
   );
 }
 
-function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
+function MessageContextMenuAction({ icon, label, action, onClick }: { icon: ReactNode; label: string; action: string; onClick?: () => void }) {
   return (
     <button
       type="button"
       role="menuitem"
+      data-message-context-menu-action={action}
       className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] text-slate-950 transition hover:bg-slate-100"
       style={messageContextMenuTextStyle}
       onClick={onClick}
@@ -413,7 +414,20 @@ function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; l
   );
 }
 
-export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onClose?: () => void }) {
+export type MessageContextMenuActionHandlers = {
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
+};
+
+export function MessageContextMenuContent({
+  msg,
+  onClose,
+  onReplyMessage,
+  onForwardMessage,
+}: {
+  msg: Message;
+  onClose?: () => void;
+} & MessageContextMenuActionHandlers) {
   const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
   const replyCount = msg.replySummary?.replyCount ?? 0;
   const reactionItems = ['❤️', '🔥', '👍', '👎', '🥰', '👏'];
@@ -425,6 +439,14 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
     } catch {
       onClose?.();
     }
+  };
+  const handleReply = () => {
+    onReplyMessage?.(msg);
+    onClose?.();
+  };
+  const handleForward = () => {
+    onForwardMessage?.(msg);
+    onClose?.();
   };
 
   return (
@@ -438,14 +460,14 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
         <button type="button" className="ml-auto grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-[14px] text-slate-500" aria-label="More reactions">⌄</button>
       </div>
       <div className="overflow-hidden rounded-[14px] bg-white py-1 shadow-[0_14px_34px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10">
-        <MessageContextMenuAction icon={<Reply className="h-4 w-4" />} label="Reply" onClick={onClose} />
-        {replyCount > 0 ? <MessageContextMenuAction icon={<Undo2 className="h-4 w-4" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
-        <MessageContextMenuAction icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={onClose} />
-        <MessageContextMenuAction icon={<Pin className="h-4 w-4" />} label="Pin" onClick={onClose} />
-        <MessageContextMenuAction icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
-        <MessageContextMenuAction icon={<Forward className="h-4 w-4" />} label="Forward" onClick={onClose} />
-        <MessageContextMenuAction icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
-        <MessageContextMenuAction icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={onClose} />
+        <MessageContextMenuAction action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={handleReply} />
+        {replyCount > 0 ? <MessageContextMenuAction action="view-replies" icon={<Undo2 className="h-4 w-4" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
+        <MessageContextMenuAction action="edit" icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={onClose} />
+        <MessageContextMenuAction action="pin" icon={<Pin className="h-4 w-4" />} label="Pin" onClick={onClose} />
+        <MessageContextMenuAction action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
+        <MessageContextMenuAction action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={handleForward} />
+        <MessageContextMenuAction action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
+        <MessageContextMenuAction action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={onClose} />
         <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
       </div>
     </div>
@@ -489,12 +511,14 @@ function MessageContextMenuHost({
   id,
   className,
   children,
+  onReplyMessage,
+  onForwardMessage,
 }: {
   msg: Message;
   id?: string;
   className?: string;
   children: ReactNode;
-}) {
+} & MessageContextMenuActionHandlers) {
   const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; clientX: number; clientY: number; targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -551,7 +575,12 @@ function MessageContextMenuHost({
         onMouseDown={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.preventDefault()}
       >
-        <MessageContextMenuContent msg={msg} onClose={() => setMessageContextMenu(null)} />
+        <MessageContextMenuContent
+          msg={msg}
+          onClose={() => setMessageContextMenu(null)}
+          onReplyMessage={onReplyMessage}
+          onForwardMessage={onForwardMessage}
+        />
       </div>
     </>
   ) : null;
@@ -636,6 +665,8 @@ function MessageBubbleView({
   onForkMessage,
   messageForks,
   onOpenForkSession,
+  onReplyMessage,
+  onForwardMessage,
   plainAgentResponse = false,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
@@ -650,6 +681,8 @@ function MessageBubbleView({
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
   onOpenForkSession?: (sessionId: string) => void;
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
   plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
@@ -657,6 +690,7 @@ function MessageBubbleView({
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
+  const menuActionHandlers = { onReplyMessage, onForwardMessage };
 
   // Fork is offered on assistant turns only: clicking branches the
   // conversation into a new session that includes everything through
@@ -740,7 +774,7 @@ function MessageBubbleView({
 
   if (isCompactionSummaryMessage(msg)) {
     return (
-      <MessageContextMenuHost msg={msg}>
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers}>
         <CompactionSummaryMessage msg={msg} />
       </MessageContextMenuHost>
     );
@@ -748,7 +782,7 @@ function MessageBubbleView({
 
   if (msg.role === 'system') {
     return (
-      <MessageContextMenuHost msg={msg} className="app-system-notice-row flex justify-center py-0.5">
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="app-system-notice-row flex justify-center py-0.5">
         <div className="app-system-notice-pill max-w-[min(100%,34rem)] truncate rounded-full border bg-muted px-2.5 py-0.5 text-center text-[11px] leading-5 text-muted-foreground">{msg.text}</div>
       </MessageContextMenuHost>
     );
@@ -756,7 +790,7 @@ function MessageBubbleView({
 
   if (msg.role === 'action') {
     return (
-      <MessageContextMenuHost msg={msg} className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <ArrowRightLeft className="h-4 w-4" />
           {msg.sender}
@@ -781,7 +815,7 @@ function MessageBubbleView({
     const primaryFile = msg.edit.files[0];
 
     return (
-      <MessageContextMenuHost msg={msg} className="flex flex-col items-start gap-0.5 py-0.5">
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="flex flex-col items-start gap-0.5 py-0.5">
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -878,6 +912,7 @@ function MessageBubbleView({
     return (
       <MessageContextMenuHost
         msg={msg}
+        {...menuActionHandlers}
         id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
         className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
       >
@@ -942,6 +977,7 @@ function MessageBubbleView({
   return (
     <MessageContextMenuHost
       msg={msg}
+      {...menuActionHandlers}
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
       className={cn(
         'flex flex-col gap-1',
@@ -1102,6 +1138,8 @@ export const MessageBubble = memo(
     && previous.onRequestBridgeContact === next.onRequestBridgeContact
     && previous.onForkMessage === next.onForkMessage
     && previous.onOpenForkSession === next.onOpenForkSession
+    && previous.onReplyMessage === next.onReplyMessage
+    && previous.onForwardMessage === next.onForwardMessage
     && previous.messageForks === next.messageForks
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
