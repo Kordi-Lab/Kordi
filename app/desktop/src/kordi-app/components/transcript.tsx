@@ -33,7 +33,7 @@ import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownContent } from './markdown';
 import { AttachmentPreview } from './transcriptAttachments';
-import { RequestReplyLine, transcriptMessageDomId } from './transcriptReplyAttribution';
+import { RequestReplyLine, SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopBridgeAgentRequestHandler } from './transcriptLiveTurns';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
@@ -1031,6 +1031,11 @@ function MessageBubbleView({
             style={senderAccentStyle(msg.sender)}
           >
             {msg.sender}
+          </div>
+        ) : null}
+        {msg.sourceMessage ? (
+          <div className={cn(hasText || hasAttachments ? 'mb-2' : '')}>
+            <SourceMessageQuote sourceMessage={msg.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
           </div>
         ) : null}
         {showCompactFooter ? (

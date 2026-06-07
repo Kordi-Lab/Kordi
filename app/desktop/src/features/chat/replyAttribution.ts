@@ -355,6 +355,12 @@ export function buildReplyAttribution(
     const messageId = messageIds[index];
     if (isHumanRequest(message)) {
       requestCandidates.push({ messageId, message });
+      const explicitTarget = explicitReplyTargetForMessage(message);
+      const sourceMessage = explicitTarget ? sourceByMessageId.get(explicitTarget) : undefined;
+      if (sourceMessage && sourceMessage.messageId !== messageId) {
+        addReplySummary(summariesByRequestId, sourceMessage.messageId, messageId, true);
+        return withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage);
+      }
       return message;
     }
     if (!isAgentResponse(message)) return message;

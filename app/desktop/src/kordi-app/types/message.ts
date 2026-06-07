@@ -117,6 +117,12 @@ export type MessageActionSource = {
   timeLabel?: string | null;
 };
 
+export type MessageActionMetadata = {
+  schemaVersion: 1;
+  kind: 'quote' | 'forward';
+  source: MessageActionSource;
+};
+
 export type ComposerQuoteState = {
   action: 'quote';
   source: MessageActionSource;
@@ -144,6 +150,7 @@ export type Message = {
   replyAliasIds?: string[];
   replySummary?: MessageReplySummary;
   readReceiptSummary?: MessageReadReceiptSummary | null;
+  messageAction?: MessageActionMetadata | null;
   sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;
   edit?: {

@@ -83,6 +83,35 @@ test('buildReplyAttribution adds generic reply count and source quote without re
   assert.equal(bobProcessing.turn?.sourceMessage?.messageId, 'msg:request');
 });
 
+test('buildReplyAttribution links explicit human quoted replies without agent inference', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:alice',
+      role: 'person',
+      sender: 'Alice',
+      isOwnMessage: false,
+      text: 'Original question',
+    }),
+    humanRequest({
+      id: 'msg:me-reply',
+      role: 'user',
+      sender: 'Me',
+      isOwnMessage: true,
+      text: 'Yes',
+      replyToMessageId: 'msg:alice',
+    }),
+  ];
+
+  const result = buildReplyAttribution(messages);
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[0]?.replySummary?.targetMessageId, 'msg:me-reply');
+  assert.equal(result.messages[1]?.sourceMessage?.messageId, 'msg:alice');
+  assert.equal(result.messages[1]?.sourceMessage?.senderLabel, 'Alice');
+  assert.equal(result.messages[1]?.sourceMessage?.text, 'Original question');
+});
+
+
 test('buildReplyAttribution deduplicates repeated no-provider replies for one request and agent', () => {
   const messages: Message[] = [
     humanRequest({
