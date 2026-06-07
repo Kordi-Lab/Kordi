@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowRightLeft,
@@ -458,21 +458,24 @@ export function messageContextMenuPosition({
   targetRect,
   viewportWidth,
   viewportHeight,
+  menuWidth = 216,
+  menuHeight = 312,
 }: {
   clientX: number;
   clientY: number;
   targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>;
   viewportWidth: number;
   viewportHeight: number;
+  menuWidth?: number;
+  menuHeight?: number;
 }) {
-  const menuWidth = 216;
-  const menuHeight = 312;
   const gap = 2;
+  const aboveOverlap = 24;
   const anchorX = clientX <= (targetRect.left + targetRect.right) / 2
     ? targetRect.left
     : targetRect.right - menuWidth;
   const belowY = targetRect.bottom + gap;
-  const aboveY = targetRect.top - menuHeight - gap;
+  const aboveY = targetRect.top - menuHeight + aboveOverlap;
   const y = belowY + menuHeight <= viewportHeight - 8 ? belowY : aboveY;
 
   return {
@@ -492,21 +495,43 @@ function MessageContextMenuHost({
   className?: string;
   children: ReactNode;
 }) {
-  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; clientX: number; clientY: number; targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     const eventTarget = event.target instanceof Element ? event.target : null;
     const anchorElement = eventTarget?.closest('[data-message-context-menu-anchor="true"]') ?? null;
     const targetRect = (anchorElement ?? event.currentTarget).getBoundingClientRect();
-    setMessageContextMenu(messageContextMenuPosition({
+    setMessageContextMenu({
+      ...messageContextMenuPosition({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        targetRect,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }),
       clientX: event.clientX,
       clientY: event.clientY,
       targetRect,
+    });
+  };
+  useLayoutEffect(() => {
+    if (!messageContextMenu || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const next = messageContextMenuPosition({
+      clientX: messageContextMenu.clientX,
+      clientY: messageContextMenu.clientY,
+      targetRect: messageContextMenu.targetRect,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
-    }));
-  };
+      menuWidth: rect.width,
+      menuHeight: rect.height,
+    });
+    if (Math.abs(next.x - messageContextMenu.x) > 0.5 || Math.abs(next.y - messageContextMenu.y) > 0.5) {
+      setMessageContextMenu({ ...messageContextMenu, ...next });
+    }
+  }, [messageContextMenu]);
   const menuLayer = messageContextMenu ? (
     <>
       <div
@@ -519,6 +544,7 @@ function MessageContextMenuHost({
         aria-hidden="true"
       />
       <div
+        ref={menuRef}
         className="app-message-context-menu fixed z-[260]"
         style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
         role="menu"

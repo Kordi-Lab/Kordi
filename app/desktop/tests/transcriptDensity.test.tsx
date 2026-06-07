@@ -442,7 +442,7 @@ test('message context menu content lists read receipts when available', () => {
   assert.doesNotMatch(markup, /py-2/);
 });
 
-test('message context menu position avoids covering the clicked message rectangle', () => {
+test('message context menu position stays close to the clicked message rectangle', () => {
   const below = messageContextMenuPosition({
     clientX: 340,
     clientY: 130,
@@ -457,9 +457,18 @@ test('message context menu position avoids covering the clicked message rectangl
     viewportWidth: 900,
     viewportHeight: 700,
   });
+  const measuredAbove = messageContextMenuPosition({
+    clientX: 340,
+    clientY: 620,
+    targetRect: { left: 260, right: 420, top: 590, bottom: 650 },
+    viewportWidth: 900,
+    viewportHeight: 700,
+    menuHeight: 408,
+  });
 
   assert.equal(below.y, 150);
-  assert.equal(above.y, 276);
+  assert.equal(above.y, 302);
+  assert.equal(measuredAbove.y, 206);
 });
 
 test('messages without read receipts still expose the Telegram-style message context menu', () => {
