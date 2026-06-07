@@ -2652,9 +2652,17 @@ export function useCloudBridgeState({
           requestId: messageReplyToId,
           replyToMessageId: messageReplyToId,
           ...(agentDeliveryState === 'failed' ? { error: envelope.message.text || 'Message failed' } : {}),
-        } : mappedAttachments.length > 0 ? { attachments: mappedAttachments } : undefined,
+        } : (mappedAttachments.length > 0 || envelope.message.messageAction) ? {
+          ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
+          ...(envelope.message.messageAction ? {
+            messageAction: envelope.message.messageAction,
+            replyToMessageId: envelope.message.messageAction.kind === 'quote'
+              ? envelope.message.messageAction.source.sourceMessageId
+              : undefined,
+          } : {}),
+        } : undefined,
         createdAtMs: envelope.message.createdAtMs,
-        parentMessageId: senderIsAgent ? messageReplyToId : null,
+        parentMessageId: senderIsAgent ? messageReplyToId : (envelope.message.messageAction?.kind === 'quote' ? envelope.message.messageAction.source.sourceMessageId : null),
         status: agentStatus,
         sourceTransport: envelope.message.forkSnapshot
           ? 'cloud-group-fork-snapshot'

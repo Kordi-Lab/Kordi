@@ -1080,6 +1080,7 @@ export function useChatMessageActions({
             senderAccountId: '',
             text,
             createdAtMs: Date.now(),
+            messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
           },
           attachments: chatComposerAttachments,
         });
