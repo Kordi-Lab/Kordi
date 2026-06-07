@@ -413,8 +413,12 @@ test('message context menu content lists read receipts when available', () => {
   const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
 
   assert.match(markup, /data-message-context-menu-content="true"/);
-  assert.match(markup, /Copy text/);
-  assert.match(markup, /Read by 2/);
+  assert.match(markup, /data-message-context-menu-reactions="true"/);
+  assert.match(markup, /Reply/);
+  assert.match(markup, /Copy Text/);
+  assert.match(markup, /Delete/);
+  assert.match(markup, /Select/);
+  assert.match(markup, /2 Seen/);
   assert.match(markup, /Alice/);
   assert.match(markup, /Bob/);
 });
@@ -434,8 +438,35 @@ test('messages without read receipts still expose the Telegram-style message con
 
   assert.match(bubbleMarkup, /data-message-context-menu-target="true"/);
   assert.doesNotMatch(bubbleMarkup, /data-message-read-receipts-context-target/);
-  assert.match(menuMarkup, /Copy text/);
-  assert.doesNotMatch(menuMarkup, /Read by/);
+  assert.match(menuMarkup, /Copy Text/);
+  assert.match(menuMarkup, /Reply/);
+  assert.doesNotMatch(menuMarkup, /Seen/);
+});
+
+test('agent turn messages also expose the Telegram-style message context menu target', () => {
+  const message: Message = {
+    role: 'owned-agent',
+    sender: 'My Kordi',
+    senderType: 'agent',
+    text: '',
+    time: '00:45',
+    turn: {
+      id: 'turn-menu',
+      sessionId: 'session-1',
+      prompt: 'hello',
+      status: 'completed',
+      message: '',
+      assistantText: 'Done.',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: true,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /data-message-context-menu-target="true"/);
 });
 
 test('own group message suppresses read footer when read count is zero', () => {

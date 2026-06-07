@@ -1,18 +1,25 @@
 import { memo, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowRightLeft,
   Bot,
   Check,
   CheckCheck,
   CheckCircle2,
+  Copy,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Clock3,
+  Forward,
   Split,
   LoaderCircle,
+  Pencil,
+  Pin,
+  Reply,
   Sparkles,
   SquareArrowOutUpRight,
+  Trash2,
   Undo2,
   User,
 } from 'lucide-react';
@@ -359,18 +366,18 @@ function MessageReadReceiptContextMenuSection({ summary }: { summary?: Message['
   const hiddenCount = Math.max(0, count - visibleParticipants.length);
 
   return (
-    <div className="app-message-read-receipts-context-content border-t border-white/10 p-1" data-message-read-receipts-context-content="true">
-      <div className="px-2.5 pb-1.5 pt-1 text-[11px] font-semibold text-slate-200">Read by {count}</div>
+    <div className="app-message-read-receipts-context-content border-t border-slate-200 p-1" data-message-read-receipts-context-content="true">
+      <div className="px-2.5 pb-1.5 pt-1 text-[11px] font-semibold text-slate-950">Readers</div>
       {visibleParticipants.length > 0 ? (
         <div className="grid gap-0.5">
           {visibleParticipants.map((participant) => (
-            <div key={participant.id} className="flex min-w-0 items-center gap-2 rounded-[10px] px-2 py-1.5 text-[12px] text-slate-200">
+            <div key={participant.id} className="flex min-w-0 items-center gap-2 rounded-[10px] px-2 py-1.5 text-[12px] font-medium text-slate-950">
               <IdentityAvatar
                 kind="human"
                 seed={participant.avatarSeed ?? participant.id}
                 name={participant.name}
                 imageUrl={participant.profileImageUrl}
-                className="h-5 w-5 border border-white/10"
+                className="h-5 w-5 border border-slate-200"
               />
               <span className="min-w-0 flex-1 truncate">{participant.name}</span>
             </div>
@@ -378,14 +385,31 @@ function MessageReadReceiptContextMenuSection({ summary }: { summary?: Message['
         </div>
       ) : null}
       {hiddenCount > 0 ? (
-        <div className="px-2.5 py-1 text-[11px] text-slate-400">+{hiddenCount} more</div>
+        <div className="px-2.5 py-1 text-[11px] text-slate-500">+{hiddenCount} more</div>
       ) : null}
     </div>
   );
 }
 
+function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="app-message-context-menu-action flex w-full items-center gap-4 px-5 py-3 text-left text-[16px] font-semibold text-slate-950 transition hover:bg-slate-100"
+      onClick={onClick}
+    >
+      <span className="grid h-5 w-5 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
 export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onClose?: () => void }) {
-  const copyableText = msg.text.trim();
+  const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
+  const replyCount = msg.replySummary?.replyCount ?? 0;
+  const readCount = messageReadReceiptCount(msg.readReceiptSummary);
+  const reactionItems = ['❤️', '🔥', '👍', '👎', '🥰', '👏'];
   const copyText = async () => {
     if (!copyableText) return;
     try {
@@ -397,17 +421,98 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
   };
 
   return (
-    <div className="app-message-context-menu-content min-w-[13rem] max-w-[18rem] p-1" data-message-context-menu-content="true">
-      <button
-        type="button"
-        role="menuitem"
-        className="flex w-full items-center rounded-[10px] px-2.5 py-1.5 text-left text-[12px] text-slate-200 transition hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-45"
-        onClick={copyText}
-        disabled={!copyableText}
+    <div className="app-message-context-menu-content w-[17.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
+      <div className="app-message-context-menu-reactions mb-2 flex items-center gap-1.5 rounded-full bg-white px-3 py-2 shadow-[0_10px_30px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10" data-message-context-menu-reactions="true">
+        {reactionItems.map((reaction) => (
+          <button key={reaction} type="button" className="grid h-8 w-8 place-items-center rounded-full text-[22px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
+            {reaction}
+          </button>
+        ))}
+        <button type="button" className="ml-auto grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-[18px] text-slate-500" aria-label="More reactions">⌄</button>
+      </div>
+      <div className="overflow-hidden rounded-[20px] bg-white py-2 shadow-[0_18px_48px_rgba(15,23,42,0.20)] ring-1 ring-slate-950/10">
+        <MessageContextMenuAction icon={<Reply className="h-5 w-5" />} label="Reply" onClick={onClose} />
+        {replyCount > 0 ? <MessageContextMenuAction icon={<Undo2 className="h-5 w-5" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
+        <MessageContextMenuAction icon={<Pencil className="h-5 w-5" />} label="Edit" onClick={onClose} />
+        <MessageContextMenuAction icon={<Pin className="h-5 w-5" />} label="Pin" onClick={onClose} />
+        <MessageContextMenuAction icon={<Copy className="h-5 w-5" />} label="Copy Text" onClick={copyText} />
+        <MessageContextMenuAction icon={<Forward className="h-5 w-5" />} label="Forward" onClick={onClose} />
+        <MessageContextMenuAction icon={<Trash2 className="h-5 w-5" />} label="Delete" onClick={onClose} />
+        <MessageContextMenuAction icon={<CheckCircle2 className="h-5 w-5" />} label="Select" onClick={onClose} />
+        {readCount > 0 ? (
+          <div className="border-t border-slate-200 bg-slate-50">
+            <div className="flex items-center gap-3 px-5 py-3 text-[16px] font-semibold text-slate-950">
+              <CheckCheck className="h-5 w-5 shrink-0 text-slate-700" aria-hidden="true" />
+              <span>{readCount} Seen</span>
+            </div>
+            <MessageReadReceiptContextMenuSection summary={msg.readReceiptSummary} />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function messageContextMenuPosition(event: ReactMouseEvent) {
+  const menuWidth = 300;
+  const menuHeight = 560;
+  if (typeof window === 'undefined') return { x: event.clientX, y: event.clientY };
+  return {
+    x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+    y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+  };
+}
+
+function MessageContextMenuHost({
+  msg,
+  id,
+  className,
+  children,
+}: {
+  msg: Message;
+  id?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMessageContextMenu(messageContextMenuPosition(event));
+  };
+  const menuLayer = messageContextMenu ? (
+    <>
+      <div
+        className="fixed inset-0 z-[250]"
+        onMouseDown={() => setMessageContextMenu(null)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMessageContextMenu(null);
+        }}
+        aria-hidden="true"
+      />
+      <div
+        className="app-message-context-menu fixed z-[260]"
+        style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
+        role="menu"
+        onMouseDown={(event) => event.stopPropagation()}
+        onContextMenu={(event) => event.preventDefault()}
       >
-        Copy text
-      </button>
-      <MessageReadReceiptContextMenuSection summary={msg.readReceiptSummary} />
+        <MessageContextMenuContent msg={msg} onClose={() => setMessageContextMenu(null)} />
+      </div>
+    </>
+  ) : null;
+
+  return (
+    <div
+      id={id}
+      data-transcript-message-root="true"
+      data-message-context-menu-target="true"
+      onContextMenu={openMessageContextMenu}
+      className={className}
+    >
+      {children}
+      {menuLayer && typeof document !== 'undefined' ? createPortal(menuLayer, document.body) : menuLayer}
     </div>
   );
 }
@@ -523,7 +628,6 @@ function MessageBubbleView({
   ) : null;
 
   const [isForkListOpen, setIsForkListOpen] = useState(false);
-  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number } | null>(null);
   const forks = messageForks ?? [];
   const forkCount = forks.length;
   const forkChip = forkCount > 0 ? (
@@ -582,20 +686,24 @@ function MessageBubbleView({
   ) : null;
 
   if (isCompactionSummaryMessage(msg)) {
-    return <CompactionSummaryMessage msg={msg} />;
+    return (
+      <MessageContextMenuHost msg={msg}>
+        <CompactionSummaryMessage msg={msg} />
+      </MessageContextMenuHost>
+    );
   }
 
   if (msg.role === 'system') {
     return (
-      <div className="app-system-notice-row flex justify-center py-0.5">
+      <MessageContextMenuHost msg={msg} className="app-system-notice-row flex justify-center py-0.5">
         <div className="app-system-notice-pill max-w-[min(100%,34rem)] truncate rounded-full border bg-muted px-2.5 py-0.5 text-center text-[11px] leading-5 text-muted-foreground">{msg.text}</div>
-      </div>
+      </MessageContextMenuHost>
     );
   }
 
   if (msg.role === 'action') {
     return (
-      <div className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
+      <MessageContextMenuHost msg={msg} className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <ArrowRightLeft className="h-4 w-4" />
           {msg.sender}
@@ -612,7 +720,7 @@ function MessageBubbleView({
             Trace visible
           </span>
         </div>
-      </div>
+      </MessageContextMenuHost>
     );
   }
 
@@ -620,7 +728,7 @@ function MessageBubbleView({
     const primaryFile = msg.edit.files[0];
 
     return (
-      <div className="flex flex-col items-start gap-0.5 py-0.5">
+      <MessageContextMenuHost msg={msg} className="flex flex-col items-start gap-0.5 py-0.5">
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -709,15 +817,15 @@ function MessageBubbleView({
             </div>
           ) : null}
         </div>
-      </div>
+      </MessageContextMenuHost>
     );
   }
 
   if (msg.turn) {
     return (
-      <div
+      <MessageContextMenuHost
+        msg={msg}
         id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
-        data-transcript-message-root="true"
         className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
       >
         {msg.id && msg.turn.id && msg.id !== msg.turn.id ? (
@@ -739,7 +847,7 @@ function MessageBubbleView({
           onOpenArtifact={onOpenArtifact}
           onOpenAuthSettings={onOpenAuthSettings}
         />
-      </div>
+      </MessageContextMenuHost>
     );
   }
 
@@ -777,18 +885,11 @@ function MessageBubbleView({
   const footerDetail = showContactRequestAction ? undefined : msg.detail;
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
-  const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setMessageContextMenu({ x: event.clientX, y: event.clientY });
-  };
 
   return (
-    <div
+    <MessageContextMenuHost
+      msg={msg}
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
-      data-transcript-message-root="true"
-      data-message-context-menu-target="true"
-      onContextMenu={openMessageContextMenu}
       className={cn(
         'flex flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
@@ -905,29 +1006,7 @@ function MessageBubbleView({
           onNavigateToMessage={onNavigateToMessage}
         />
       ) : null}
-      {messageContextMenu ? (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onMouseDown={() => setMessageContextMenu(null)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setMessageContextMenu(null);
-            }}
-            aria-hidden="true"
-          />
-          <div
-            className="app-message-context-menu fixed z-50 rounded-[14px] border border-white/10 bg-[color:var(--app-panel-bg)] shadow-[var(--app-shadow-float)]"
-            style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
-            role="menu"
-            onMouseDown={(event) => event.stopPropagation()}
-            onContextMenu={(event) => event.preventDefault()}
-          >
-            <MessageContextMenuContent msg={msg} onClose={() => setMessageContextMenu(null)} />
-          </div>
-        </>
-      ) : null}
-    </div>
+    </MessageContextMenuHost>
   );
 }
 
