@@ -419,9 +419,13 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /Copy Text/);
   assert.match(markup, /Delete/);
   assert.match(markup, /Select/);
+  assert.match(markup, /data-message-context-menu-seen-row="true"/);
   assert.match(markup, /2 Seen/);
-  assert.match(markup, /Alice/);
-  assert.match(markup, /Bob/);
+  assert.match(markup, /title="Seen by Alice, Bob"/);
+  assert.doesNotMatch(markup, /Readers/);
+  assert.doesNotMatch(markup, /data-message-read-receipts-context-content/);
+  assert.doesNotMatch(markup, /text-\[12\.5px\]/);
+  assert.doesNotMatch(markup, /text-\[16px\]/);
   assert.doesNotMatch(markup, /py-3/);
 });
 

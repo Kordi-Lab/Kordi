@@ -358,34 +358,34 @@ function messageReadReceiptCount(summary?: Message['readReceiptSummary'] | null)
   return Math.max(0, Math.floor(summary?.count ?? 0));
 }
 
-function MessageReadReceiptContextMenuSection({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
+function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
   const count = messageReadReceiptCount(summary);
   if (count <= 0) return null;
-  const participants = summary?.participants ?? [];
-  const visibleParticipants = participants.slice(0, 8);
-  const hiddenCount = Math.max(0, count - visibleParticipants.length);
+  const participants = (summary?.participants ?? []).slice(0, 4);
+  const names = participants.map((participant) => participant.name).filter(Boolean);
+  const title = names.length > 0 ? `Seen by ${names.join(', ')}` : `${count} seen`;
 
   return (
-    <div className="app-message-read-receipts-context-content border-t border-slate-200 p-1" data-message-read-receipts-context-content="true">
-      <div className="px-2.5 pb-1.5 pt-1 text-[11px] font-semibold text-slate-950">Readers</div>
-      {visibleParticipants.length > 0 ? (
-        <div className="grid gap-0.5">
-          {visibleParticipants.map((participant) => (
-            <div key={participant.id} className="flex min-w-0 items-center gap-2 rounded-[10px] px-2 py-1.5 text-[12px] font-medium text-slate-950">
-              <IdentityAvatar
-                kind="human"
-                seed={participant.avatarSeed ?? participant.id}
-                name={participant.name}
-                imageUrl={participant.profileImageUrl}
-                className="h-5 w-5 border border-slate-200"
-              />
-              <span className="min-w-0 flex-1 truncate">{participant.name}</span>
-            </div>
+    <div
+      className="flex items-center gap-2 border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-950"
+      data-message-context-menu-seen-row="true"
+      title={title}
+    >
+      <CheckCheck className="h-3.5 w-3.5 shrink-0 text-slate-700" aria-hidden="true" />
+      <span>{count} Seen</span>
+      {participants.length > 0 ? (
+        <span className="ml-auto inline-flex -space-x-1" aria-hidden="true">
+          {participants.map((participant) => (
+            <IdentityAvatar
+              key={participant.id}
+              kind="human"
+              seed={participant.avatarSeed ?? participant.id}
+              name={participant.name}
+              imageUrl={participant.profileImageUrl}
+              className="h-4.5 w-4.5 border border-white"
+            />
           ))}
-        </div>
-      ) : null}
-      {hiddenCount > 0 ? (
-        <div className="px-2.5 py-1 text-[11px] text-slate-500">+{hiddenCount} more</div>
+        </span>
       ) : null}
     </div>
   );
@@ -396,7 +396,7 @@ function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; l
     <button
       type="button"
       role="menuitem"
-      className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-semibold text-slate-950 transition hover:bg-slate-100"
+      className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[11px] font-semibold text-slate-950 transition hover:bg-slate-100"
       onClick={onClick}
     >
       <span className="grid h-4 w-4 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
@@ -408,7 +408,6 @@ function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; l
 export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onClose?: () => void }) {
   const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
   const replyCount = msg.replySummary?.replyCount ?? 0;
-  const readCount = messageReadReceiptCount(msg.readReceiptSummary);
   const reactionItems = ['❤️', '🔥', '👍', '👎', '🥰', '👏'];
   const copyText = async () => {
     if (!copyableText) return;
@@ -424,7 +423,7 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
     <div className="app-message-context-menu-content w-[13.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
       <div className="app-message-context-menu-reactions mb-1.5 flex items-center gap-1 rounded-full bg-white px-2 py-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.16)] ring-1 ring-slate-950/10" data-message-context-menu-reactions="true">
         {reactionItems.map((reaction) => (
-          <button key={reaction} type="button" className="grid h-6 w-6 place-items-center rounded-full text-[16px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
+          <button key={reaction} type="button" className="grid h-6 w-6 place-items-center rounded-full text-[14px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
             {reaction}
           </button>
         ))}
@@ -439,15 +438,7 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
         <MessageContextMenuAction icon={<Forward className="h-4 w-4" />} label="Forward" onClick={onClose} />
         <MessageContextMenuAction icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
         <MessageContextMenuAction icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={onClose} />
-        {readCount > 0 ? (
-          <div className="border-t border-slate-200 bg-slate-50">
-            <div className="flex items-center gap-2.5 px-3 py-2 text-[12.5px] font-semibold text-slate-950">
-              <CheckCheck className="h-4 w-4 shrink-0 text-slate-700" aria-hidden="true" />
-              <span>{readCount} Seen</span>
-            </div>
-            <MessageReadReceiptContextMenuSection summary={msg.readReceiptSummary} />
-          </div>
-        ) : null}
+        <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
       </div>
     </div>
   );
