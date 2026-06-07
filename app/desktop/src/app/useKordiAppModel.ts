@@ -35,7 +35,8 @@ import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/us
 import { useCloudBridgeState } from '@/features/cloud/useCloudBridgeState';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentRuntime';
-import { cloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import { cloudBridgeConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
 import {
   buildProjectRoutingGroups,
@@ -672,6 +673,21 @@ export function useKordiAppModel({
     const draft = createForwardedMessageDraft({ source, caption, destinationSessionId: destination.id });
     const now = Date.now();
     setForwardDialog(null);
+    const directCloudConversationId = isCloudBridgeConversationId(destination.conversationId) ? destination.conversationId : null;
+    if (directCloudConversationId && sendCloudBridgeMessage) {
+      const body = encodeCloudDirectMessageEnvelope({
+        schemaVersion: 1,
+        kind: 'message',
+        text: draft.text,
+        messageAction: draft.messageAction,
+      });
+      void sendCloudBridgeMessage(directCloudConversationId, body, [])
+        .then(() => setActiveConvId(directCloudConversationId))
+        .catch((error: unknown) => {
+          setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');
+        });
+      return;
+    }
     appendCanonicalMessage({
       id: `msg:forward:${destination.id}:${source.sourceMessageId}:${now}`,
       sessionId: destination.id,
@@ -696,7 +712,7 @@ export function useKordiAppModel({
       .catch((error: unknown) => {
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');
       });
-  }, [canonicalSessionState?.profile.humanIdentityId, forwardDialog?.source, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
+  }, [canonicalSessionState?.profile.humanIdentityId, forwardDialog?.source, sendCloudBridgeMessage, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
 
   const activeConvMentionScope = useMemo(
     () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),

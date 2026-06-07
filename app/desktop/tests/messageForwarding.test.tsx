@@ -38,6 +38,7 @@ test('buildForwardDestinations exposes dense selectable chat labels', () => {
 
   assert.deepEqual(destinations.map((destination) => destination.id), ['session:one', 'session:two']);
   assert.equal(destinations[0].label, 'Alice');
+  assert.equal(destinations[0].conversationId, 'conv:one');
   assert.equal(destinations[1].subtitle, '3 members');
 });
 
@@ -45,7 +46,7 @@ test('MessageForwardDialog renders destination picker and source preview', () =>
   const markup = renderToStaticMarkup(
     <MessageForwardDialog
       source={source}
-      destinations={[{ id: 'session:two', label: 'Group', subtitle: '3 members' }]}
+      destinations={[{ id: 'session:two', conversationId: 'conv:two', label: 'Group', subtitle: '3 members' }]}
       onClose={() => {}}
       onForward={() => {}}
     />,

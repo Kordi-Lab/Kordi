@@ -4,6 +4,7 @@ import { forwardMessageAction, type MessageActionSource } from './messageActionM
 
 export type ForwardDestination = {
   id: string;
+  conversationId: string;
   label: string;
   subtitle: string;
 };
@@ -17,10 +18,10 @@ export function buildForwardDestinations(
       id: conversation.canonicalSessionId ?? conversation.id,
       label: conversation.name?.trim() || 'Untitled chat',
       subtitle: conversation.subtitle?.trim() || '',
-      originalId: conversation.id,
+      conversationId: conversation.id,
     }))
-    .filter((destination) => destination.id && destination.id !== excludedConversationId && destination.originalId !== excludedConversationId)
-    .map(({ id, label, subtitle }) => ({ id, label, subtitle }));
+    .filter((destination) => destination.id && destination.id !== excludedConversationId && destination.conversationId !== excludedConversationId)
+    .map(({ id, conversationId, label, subtitle }) => ({ id, conversationId, label, subtitle }));
 }
 
 
