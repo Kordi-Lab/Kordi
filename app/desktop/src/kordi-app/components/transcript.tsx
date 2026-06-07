@@ -358,6 +358,12 @@ function messageReadReceiptCount(summary?: Message['readReceiptSummary'] | null)
   return Math.max(0, Math.floor(summary?.count ?? 0));
 }
 
+const messageContextMenuTextStyle = {
+  fontSize: '10px',
+  fontWeight: 400,
+  lineHeight: 1.45,
+} satisfies CSSProperties;
+
 function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
   const count = messageReadReceiptCount(summary);
   if (count <= 0) return null;
@@ -370,6 +376,7 @@ function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceipt
       className="flex items-center gap-2 border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-normal leading-[1.45] text-slate-950"
       data-message-context-menu-seen-row="true"
       title={title}
+      style={messageContextMenuTextStyle}
     >
       <CheckCheck className="h-3.5 w-3.5 shrink-0 text-slate-700" aria-hidden="true" />
       <span>{count} Seen</span>
@@ -397,6 +404,7 @@ function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; l
       type="button"
       role="menuitem"
       className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] text-slate-950 transition hover:bg-slate-100"
+      style={messageContextMenuTextStyle}
       onClick={onClick}
     >
       <span className="grid h-4 w-4 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>

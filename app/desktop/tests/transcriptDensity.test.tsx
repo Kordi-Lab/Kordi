@@ -427,6 +427,7 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /text-\[10px\]/);
   assert.match(markup, /font-normal/);
   assert.match(markup, /leading-\[1\.45\]/);
+  assert.match(markup, /style="font-size:10px;font-weight:400;line-height:1\.45"/);
   assert.match(markup, /h-6 w-6/);
   assert.match(markup, /py-1\.5/);
   assert.doesNotMatch(markup, /text-\[9\.5px\]/);
