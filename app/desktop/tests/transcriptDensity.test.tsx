@@ -565,6 +565,8 @@ test('message bubble renders selected check control in selection mode', () => {
   }));
 
   assert.match(markup, /data-message-selection-control="msg-selected"/);
+  assert.match(markup, /data-message-selection-draggable="true"/);
+  assert.match(markup, /data-message-selection-state="selected"/);
   assert.match(markup, /aria-pressed="true"/);
   assert.match(markup, /Deselect message from Alice at 10:42/);
 });

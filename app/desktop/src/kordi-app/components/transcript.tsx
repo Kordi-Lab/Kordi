@@ -440,6 +440,9 @@ export type MessageSelectionProps = {
   selectedMessageIds?: ReadonlySet<string>;
   isMessageSelectable?: (message: Message) => boolean;
   onToggleSelectedMessage?: (message: Message) => void;
+  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter?: (message: Message) => void;
+  onSelectionDragEnd?: () => void;
 };
 
 function messageSelectionId(msg: Message) {
@@ -706,6 +709,9 @@ function MessageBubbleView({
   selectedMessageIds,
   isMessageSelectable,
   onToggleSelectedMessage,
+  onSelectionDragStart,
+  onSelectionDragEnter,
+  onSelectionDragEnd,
   plainAgentResponse = false,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
@@ -734,11 +740,14 @@ function MessageBubbleView({
   const selectionId = messageSelectionId(msg);
   const selectableInSelectionMode = Boolean(selectionMode && selectionId && (isMessageSelectable?.(msg) ?? true));
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
+  const selectionClickSuppressedRef = useRef(false);
   const selectionLabel = `${isSelectedForAction ? 'Deselect' : 'Select'} message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}`;
   const selectionControl = selectableInSelectionMode ? (
     <button
       type="button"
       data-message-selection-control={selectionId}
+      data-message-selection-draggable="true"
+      data-message-selection-state={isSelectedForAction ? 'selected' : 'unselected'}
       aria-pressed={isSelectedForAction}
       aria-label={selectionLabel}
       className={cn(
@@ -747,9 +756,37 @@ function MessageBubbleView({
           ? 'border-[color:var(--app-sidebar-accent)] bg-[color:var(--app-sidebar-accent)] text-[color:var(--app-sidebar-accent-text)]'
           : 'border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] hover:bg-[color:var(--app-control-hover)]',
       )}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectionClickSuppressedRef.current = true;
+        const clearSuppression = () => {
+          window.setTimeout(() => {
+            selectionClickSuppressedRef.current = false;
+          }, 0);
+        };
+        window.addEventListener('pointerup', clearSuppression, { once: true });
+        window.addEventListener('pointercancel', clearSuppression, { once: true });
+        onSelectionDragStart?.(msg, !isSelectedForAction);
+      }}
+      onPointerEnter={(event) => {
+        if (event.buttons !== 1) return;
+        onSelectionDragEnter?.(msg);
+      }}
+      onPointerUp={() => {
+        onSelectionDragEnd?.();
+      }}
+      onPointerCancel={() => {
+        onSelectionDragEnd?.();
+      }}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (selectionClickSuppressedRef.current) {
+          selectionClickSuppressedRef.current = false;
+          return;
+        }
         onToggleSelectedMessage?.(msg);
       }}
     >
