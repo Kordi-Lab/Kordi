@@ -103,6 +103,35 @@ function canonicalMessageAction(value: unknown): MessageActionMetadata | null {
   };
 }
 
+function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
+  const trimmed = label.trim();
+  const normalized = trimmed.toLowerCase();
+  if ((normalized === 'me' || normalized === 'you') && humanSourceLabel.trim()) {
+    return humanSourceLabel.trim();
+  }
+  if (normalized === 'my kordi' && agentSourceLabel.trim()) {
+    return agentSourceLabel.trim();
+  }
+  return trimmed;
+}
+
+function canonicalMessageActionWithRealSourceLabel(
+  action: MessageActionMetadata | null,
+  humanSourceLabel: string,
+  agentSourceLabel: string,
+): MessageActionMetadata | null {
+  if (!action) return null;
+  const senderLabel = realSourceLabelForRelativeLabel(action.source.senderLabel, humanSourceLabel, agentSourceLabel);
+  if (senderLabel === action.source.senderLabel) return action;
+  return {
+    ...action,
+    source: {
+      ...action.source,
+      senderLabel,
+    },
+  };
+}
+
 function canonicalMessageActionSourceReference(action: MessageActionMetadata | null): Message['sourceMessage'] {
   if (!action || action.kind !== 'quote') return null;
   return {
@@ -423,7 +452,7 @@ export function mapCanonicalMessage(
     ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
     : undefined;
   const contentReplyToMessageId = stringValue(content.replyToMessageId)?.trim() || stringValue(content.requestMessageId)?.trim();
-  const messageAction = canonicalMessageAction(content.messageAction);
+  const rawMessageAction = canonicalMessageAction(content.messageAction);
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
     : contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null;
@@ -512,6 +541,17 @@ export function mapCanonicalMessage(
       ? cloudAgentFallbackErrorNotice({ message: rawErrorText })
       : rawErrorText
     : null;
+  const sourceHumanIdentity = identity?.kind === 'agent' && identity.ownerIdentityId
+    ? identityById.get(identity.ownerIdentityId)
+    : identity;
+  const sourceHumanLabel = sourceHumanIdentity?.displayName ?? sender ?? '';
+  const sourceAgentIdentity = identity?.kind === 'agent'
+    ? identity
+    : [...identityById.values()].find((candidate) => candidate.kind === 'agent' && candidate.ownerIdentityId === identity?.id);
+  const sourceAgentLabel = ownerScopedAgentName(sourceAgentIdentity, identityById, profileHumanIdentityId)
+    ?? sourceAgentIdentity?.displayName
+    ?? agentLabelForHumanIdentity(sourceHumanIdentity, identityById);
+  const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
 
   if (role === 'system' && !displayText.trim()) return null;

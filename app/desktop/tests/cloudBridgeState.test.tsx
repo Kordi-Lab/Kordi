@@ -112,6 +112,120 @@ test('direct Cloud forwarded envelopes survive bridge transcript mapping', () =>
   assert.equal(view.messages[0]?.messageAction?.source.senderLabel, 'Peer Person');
 });
 
+test('direct Cloud forwarded headers rewrite legacy Me labels to the remote human profile name', () => {
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'h every',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source: {
+        sourceSessionId: 'session:legacy',
+        sourceMessageId: 'msg:legacy',
+        senderLabel: 'Me',
+        textPreview: 'legacy source',
+        attachmentCount: 0,
+        timeLabel: '13:46',
+      },
+    },
+  });
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_legacy_me_forward',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body,
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    canonicalSessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: account.accountId,
+      localHumanName: account.displayName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      remoteHumanId: 'acct_peer',
+      remoteHumanName: 'Peer Person',
+      remoteAgentId: 'cloud-agent:acct_peer',
+      remoteAgentName: "Peer Person's Kordi",
+    },
+  }, undefined, 'Kordi');
+
+  assert.equal(view.messages[0]?.messageAction?.source.senderLabel, 'Peer Person');
+  assert.equal(view.messages[0]?.sourceMessage?.senderLabel, 'Peer Person');
+});
+
+test('direct Cloud forwarded headers rewrite legacy My Kordi labels to the remote agent profile name', () => {
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'agent source',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source: {
+        sourceSessionId: 'session:legacy-agent',
+        sourceMessageId: 'msg:legacy-agent',
+        senderLabel: 'My Kordi',
+        textPreview: 'legacy agent source',
+        attachmentCount: 0,
+        timeLabel: '13:46',
+      },
+    },
+  });
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_legacy_agent_forward',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body,
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    canonicalSessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: account.accountId,
+      localHumanName: account.displayName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      remoteHumanId: 'acct_peer',
+      remoteHumanName: 'Peer Person',
+      remoteAgentId: 'cloud-agent:acct_peer',
+      remoteAgentName: "Peer Person's Kordi",
+    },
+  }, undefined, 'Kordi');
+
+  assert.equal(view.messages[0]?.messageAction?.source.senderLabel, "Peer Person's Kordi");
+  assert.equal(view.messages[0]?.sourceMessage?.senderLabel, "Peer Person's Kordi");
+});
+
 test('direct Cloud forwards use real local display name as source sender label', () => {
   const bridgeMessage = cloudMessageToBridgeMessage(account, {
     messageId: 'msg_plain_source',

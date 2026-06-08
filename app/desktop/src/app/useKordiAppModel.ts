@@ -174,7 +174,7 @@ export function useKordiAppModel({
     setCloudInitialSyncNow(now);
   }, [cloudSession.account?.accountId]);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
-  const localAvatarSeedsRef = useRef<{ human?: string | null; humanProfileImageUrl?: string | null; agent?: string | null }>({});
+  const localAvatarSeedsRef = useRef<{ human?: string | null; humanDisplayName?: string | null; humanProfileImageUrl?: string | null; agent?: string | null; agentDisplayName?: string | null }>({});
   const canonicalRefreshFlightRef = useRef(createSingleFlightState());
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
 
@@ -524,6 +524,22 @@ export function useKordiAppModel({
   });
   const localProfileAvatarSeed = cloudLocalProfileAvatar?.seed ?? canonicalLocalProfileAvatarSeed;
   const localProfileImageUrl = cloudLocalProfileAvatar?.imageUrl ?? canonicalLocalProfileImageUrl;
+  const localProfileDisplayName = cloudSession.account?.displayName?.trim()
+    || canonicalIdentityDisplayName(canonicalSessionState, canonicalSessionState?.profile.humanIdentityId)?.trim()
+    || avatarBridgeHost?.ownerName?.trim()
+    || null;
+  const localAgentIdentity = canonicalSessionState?.identities.find((identity) => (
+    identity.kind === 'agent'
+    && identity.id === canonicalSessionState.profile.activeAgentIdentityId
+  )) ?? canonicalSessionState?.identities.find((identity) => (
+    identity.kind === 'agent'
+    && identity.source === 'local'
+    && identity.ownerIdentityId === canonicalSessionState.profile.humanIdentityId
+  ));
+  const localAgentDisplayName = localAgentIdentity?.displayName?.trim()
+    || avatarBridgeAgent?.label?.trim()
+    || avatarBridgeHost?.displayName?.trim()
+    || null;
   const localAgentAvatarSeed = canonicalLocalAgentAvatarSeed(canonicalSessionState)
     || avatarBridgeAgent?.id?.trim()
     || avatarBridgeHost?.activeAgentId?.trim()
@@ -531,8 +547,10 @@ export function useKordiAppModel({
     || avatarBridgeHost?.nodeId?.trim()
     || null;
   localAvatarSeedsRef.current.human = localProfileAvatarSeed;
+  localAvatarSeedsRef.current.humanDisplayName = localProfileDisplayName;
   localAvatarSeedsRef.current.humanProfileImageUrl = localProfileImageUrl;
   localAvatarSeedsRef.current.agent = localAgentAvatarSeed;
+  localAvatarSeedsRef.current.agentDisplayName = localAgentDisplayName;
 
   const desktopCanonicalRefreshKey = useMemo(
     () => [

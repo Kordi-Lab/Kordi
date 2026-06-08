@@ -104,8 +104,36 @@ function bridgeMessageAttachments(message: DesktopBridgeConversationMessage): Me
   });
 }
 
-function bridgeMessageActionSourceReference(message: DesktopBridgeConversationMessage): Message['sourceMessage'] {
-  const action = message.messageAction;
+function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
+  const trimmed = label.trim();
+  const normalized = trimmed.toLowerCase();
+  if ((normalized === 'me' || normalized === 'you') && humanSourceLabel.trim()) {
+    return humanSourceLabel.trim();
+  }
+  if (normalized === 'my kordi' && agentSourceLabel.trim()) {
+    return agentSourceLabel.trim();
+  }
+  return trimmed;
+}
+
+function bridgeMessageActionWithRealSourceLabel(
+  action: Message['messageAction'],
+  humanSourceLabel: string,
+  agentSourceLabel: string,
+): Message['messageAction'] {
+  if (!action) return null;
+  const senderLabel = realSourceLabelForRelativeLabel(action.source.senderLabel, humanSourceLabel, agentSourceLabel);
+  if (senderLabel === action.source.senderLabel) return action;
+  return {
+    ...action,
+    source: {
+      ...action.source,
+      senderLabel,
+    },
+  };
+}
+
+function bridgeMessageActionSourceReference(action: Message['messageAction']): Message['sourceMessage'] {
   if (!action) return null;
   return {
     messageId: action.source.sourceMessageId,
@@ -334,7 +362,6 @@ export function mapBridgeConversationToViewModel(
     const rawDisplayText = bridgeMessageDisplayText(conversation, message);
     const mentions = bridgeMessageMentions(conversation, message);
     const attachments = bridgeMessageAttachments(message);
-    const sourceMessage = bridgeMessageActionSourceReference(message);
     const normalizedDeliveryState = normalizedBridgeState(message.deliveryState);
     const isProcessingAgentPlaceholder = normalizedDeliveryState === 'processing'
       && isProcessingPlaceholderText(rawDisplayText)
@@ -348,6 +375,14 @@ export function mapBridgeConversationToViewModel(
     const isInboundHuman = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND;
     const isLocalAgentResponse = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
     const isRemoteAgentResponse = message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE;
+    const actionOwnerIsLocal = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+      || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
+    const messageAction = bridgeMessageActionWithRealSourceLabel(
+      message.messageAction ?? null,
+      actionOwnerIsLocal ? localHumanSourceLabel : remoteHumanSourceLabel,
+      actionOwnerIsLocal ? localAgentSourceLabel : remoteAgentSourceLabel,
+    );
+    const sourceMessage = bridgeMessageActionSourceReference(messageAction);
     const sender = isAgent
       ? isOutboundHuman
         ? localHumanLabel
@@ -451,7 +486,7 @@ export function mapBridgeConversationToViewModel(
           : [],
       mentions,
       attachments,
-      messageAction: message.messageAction ?? null,
+      messageAction,
       sourceMessage,
       replyToMessageId: message.messageAction?.kind === 'quote' ? sourceMessage?.messageId ?? null : undefined,
       detail: message.detail ?? undefined,

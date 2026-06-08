@@ -6,8 +6,10 @@ import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 
 type LocalAvatarSeedsRef = MutableRefObject<{
   human?: string | null;
+  humanDisplayName?: string | null;
   humanProfileImageUrl?: string | null;
   agent?: string | null;
+  agentDisplayName?: string | null;
 }>;
 
 type UseDesktopTranscriptAdapterArgs = {
@@ -16,8 +18,10 @@ type UseDesktopTranscriptAdapterArgs = {
 
 type DesktopTranscriptAvatarSeeds = {
   human?: string | null;
+  humanDisplayName?: string | null;
   humanProfileImageUrl?: string | null;
   agent?: string | null;
+  agentDisplayName?: string | null;
 };
 
 function desktopTranscriptMessageId(sessionId: string, message: DesktopChatMessage, index: number) {
@@ -76,6 +80,11 @@ export function mapDesktopMessagesForTranscript(
           : message.role === 'user'
             ? selfDisplayName(message.sender ?? 'Me', true)
             : message.sender ?? undefined,
+      sourceSenderLabel: message.role === 'assistant'
+        ? (avatarSeeds?.agentDisplayName?.trim() || firstPersonPossessiveLabel(message.sender ?? 'Kordi'))
+        : message.role === 'user'
+          ? (avatarSeeds?.humanDisplayName?.trim() || selfDisplayName(message.sender ?? 'Me', true))
+          : message.sender ?? null,
       text: message.text,
       time: message.timeLabel,
       detail: message.role === 'assistant' ? undefined : (message.detail ?? undefined),
