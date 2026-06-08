@@ -70,6 +70,11 @@ function readSource(path: string): string {
   return readFileSync(resolve(repoRoot, path), 'utf8');
 }
 
+function cssBlock(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return css.match(new RegExp(`${escaped}\\s*\\{[\\s\\S]*?\\n\\}`))?.[0] ?? '';
+}
+
 import {
   applyCloudLoginWindowSize,
   applyKordiMainWindowSize,
@@ -328,6 +333,19 @@ test('cloud starting timeout still has no visible retry copy', () => {
   assert.equal((markup.match(/<span class="app-cloud-starting-dot/g) ?? []).length, 3);
   assert.doesNotMatch(markup, /Retry/);
   assert.doesNotMatch(markup, /button/);
+});
+
+test('cloud starting dots are flat and non-glowy in CSS', () => {
+  const css = readSource('src/styles/theme-overrides.css');
+  const dotBlock = cssBlock(css, '.app-cloud-starting-dot');
+
+  assert.match(dotBlock, /width:\s*9px/);
+  assert.match(dotBlock, /height:\s*9px/);
+  assert.match(dotBlock, /border-radius:\s*999px/);
+  assert.match(dotBlock, /background:\s*currentColor/);
+  assert.doesNotMatch(dotBlock, /filter:|drop-shadow|box-shadow/);
+  assert.doesNotMatch(css, /\.app-cloud-starting-dot::before/);
+  assert.doesNotMatch(css, /\.app-cloud-starting-dot-[123]\s*\{[\s\S]*?radial-gradient/);
 });
 
 test('cloud edition session restore uses the same dot loading screen', () => {
