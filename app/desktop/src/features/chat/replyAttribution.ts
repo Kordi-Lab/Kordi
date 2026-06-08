@@ -46,9 +46,13 @@ function sourceReferenceForMessage(message: Message, messageId: string): Message
 }
 
 function explicitReplyTargetForMessage(message: Message) {
-  return cleanText(message.replyToMessageId)
-    || cleanText(message.turn?.replyToMessageId)
-    || cleanText(message.sourceMessage?.messageId)
+  const explicitReplyId = cleanText(message.replyToMessageId)
+    || cleanText(message.turn?.replyToMessageId);
+  if (explicitReplyId) return explicitReplyId;
+
+  if (message.messageAction?.kind === 'forward') return null;
+
+  return cleanText(message.sourceMessage?.messageId)
     || cleanText(message.turn?.sourceMessage?.messageId)
     || null;
 }
@@ -355,6 +359,12 @@ export function buildReplyAttribution(
     const messageId = messageIds[index];
     if (isHumanRequest(message)) {
       requestCandidates.push({ messageId, message });
+      const explicitTarget = explicitReplyTargetForMessage(message);
+      const sourceMessage = explicitTarget ? sourceByMessageId.get(explicitTarget) : undefined;
+      if (sourceMessage && sourceMessage.messageId !== messageId) {
+        addReplySummary(summariesByRequestId, sourceMessage.messageId, messageId, true);
+        return withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage);
+      }
       return message;
     }
     if (!isAgentResponse(message)) return message;

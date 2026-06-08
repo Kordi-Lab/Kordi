@@ -104,6 +104,46 @@ function bridgeMessageAttachments(message: DesktopBridgeConversationMessage): Me
   });
 }
 
+function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
+  const trimmed = label.trim();
+  const normalized = trimmed.toLowerCase();
+  if ((normalized === 'me' || normalized === 'you') && humanSourceLabel.trim()) {
+    return humanSourceLabel.trim();
+  }
+  if (normalized === 'my kordi' && agentSourceLabel.trim()) {
+    return agentSourceLabel.trim();
+  }
+  return trimmed;
+}
+
+function bridgeMessageActionWithRealSourceLabel(
+  action: Message['messageAction'],
+  humanSourceLabel: string,
+  agentSourceLabel: string,
+): Message['messageAction'] {
+  if (!action) return null;
+  const senderLabel = realSourceLabelForRelativeLabel(action.source.senderLabel, humanSourceLabel, agentSourceLabel);
+  if (senderLabel === action.source.senderLabel) return action;
+  return {
+    ...action,
+    source: {
+      ...action.source,
+      senderLabel,
+    },
+  };
+}
+
+function bridgeMessageActionSourceReference(action: Message['messageAction']): Message['sourceMessage'] {
+  if (!action) return null;
+  return {
+    messageId: action.source.sourceMessageId,
+    senderLabel: action.source.senderLabel,
+    text: action.source.textPreview,
+    attachmentCount: action.source.attachmentCount,
+    time: action.source.timeLabel ?? null,
+  };
+}
+
 function bridgeMessageMentions(
   conversation: DesktopBridgeConversation,
   message: DesktopBridgeConversationMessage,
@@ -203,6 +243,12 @@ function isVisibleBridgeUnreadMessage(message: DesktopBridgeConversationMessage)
   return contextPolicy !== 'session-invite' && contextPolicy !== 'session-update' && contextPolicy !== 'session-title-update';
 }
 
+function realAgentLabelForOwner(ownerLabel: string | null | undefined, fallbackAgentLabel: string) {
+  const owner = ownerLabel?.trim();
+  if (!owner || owner.toLowerCase() === 'me') return fallbackAgentLabel;
+  return `${owner}'s Kordi`;
+}
+
 function bridgeUnreadByParentSessionId(conversation: DesktopBridgeConversation) {
   const unreadCount = Math.max(0, conversation.unreadCount);
   if (unreadCount <= 0) return undefined;
@@ -252,10 +298,18 @@ export function mapBridgeConversationToViewModel(
       ))
     : undefined;
   const localHumanLabel = 'Me';
+  const localHumanSourceLabel = conversation.identity?.localHumanName?.trim() || host?.ownerName?.trim() || host?.displayName?.trim() || localHumanLabel;
   const localBridgeAgentLabel = conversation.identity?.localAgentName?.trim()
     || firstPersonPossessiveLabel(host?.displayName || localAgentLabel, host?.ownerName);
+  const localAgentSourceLabel = localBridgeAgentLabel.trim().toLowerCase() === 'my kordi'
+    ? realAgentLabelForOwner(localHumanSourceLabel, localBridgeAgentLabel)
+    : localBridgeAgentLabel;
   const remoteHumanLabel = conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
+  const remoteHumanSourceLabel = conversation.identity?.remoteHumanName?.trim() || remoteHumanLabel;
   const remoteAgentLabel = conversation.identity?.remoteAgentName?.trim() || conversation.peerDisplayName || conversation.title;
+  const remoteAgentSourceLabel = remoteAgentLabel.trim().toLowerCase() === 'my kordi'
+    ? realAgentLabelForOwner(remoteHumanSourceLabel, remoteAgentLabel)
+    : remoteAgentLabel;
   const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
   const localHumanAvatarSeed = host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local';
   const localAgentAvatarSeed = conversation.identity?.localAgentId || host?.activeAgentId || host?.nodeId || 'local-agent';
@@ -321,6 +375,14 @@ export function mapBridgeConversationToViewModel(
     const isInboundHuman = isAgent && message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND;
     const isLocalAgentResponse = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
     const isRemoteAgentResponse = message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND_RESPONSE;
+    const actionOwnerIsLocal = message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+      || message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
+    const messageAction = bridgeMessageActionWithRealSourceLabel(
+      message.messageAction ?? null,
+      actionOwnerIsLocal ? localHumanSourceLabel : remoteHumanSourceLabel,
+      actionOwnerIsLocal ? localAgentSourceLabel : remoteAgentSourceLabel,
+    );
+    const sourceMessage = bridgeMessageActionSourceReference(messageAction);
     const sender = isAgent
       ? isOutboundHuman
         ? localHumanLabel
@@ -362,6 +424,7 @@ export function mapBridgeConversationToViewModel(
         id: messageId,
         role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
         sender: responseSender,
+        sourceSenderLabel: isRemoteAgentResponse ? remoteAgentSourceLabel : localAgentSourceLabel,
         senderType: 'agent',
         isOwnMessage: false,
         showSenderMeta: true,
@@ -402,6 +465,13 @@ export function mapBridgeConversationToViewModel(
                 : 'external-agent')
         : ((message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND ? 'user' : 'person') as Message['role']),
       sender,
+      sourceSenderLabel: isOutboundHuman
+        ? localHumanSourceLabel
+        : senderType === 'human'
+          ? remoteHumanSourceLabel
+          : isLocalAgentResponse
+            ? localAgentSourceLabel
+            : remoteAgentSourceLabel,
       senderType,
       isOwnMessage: isOutboundHuman,
       showSenderMeta: isAgent,
@@ -416,6 +486,9 @@ export function mapBridgeConversationToViewModel(
           : [],
       mentions,
       attachments,
+      messageAction,
+      sourceMessage,
+      replyToMessageId: message.messageAction?.kind === 'quote' ? sourceMessage?.messageId ?? null : undefined,
       detail: message.detail ?? undefined,
     };
 

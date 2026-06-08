@@ -12,6 +12,7 @@ import type {
   ContactClass,
   ContactRequest,
   Conversation,
+  ComposerQuoteState,
   DesktopAuthProvider,
   DesktopAuthState,
   DesktopBridgeConversation,
@@ -279,6 +280,22 @@ export type AssembleKordiShellSlotsArgs = {
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setProjectComposerText: (value: string) => void;
   setChatComposerText: (value: string) => void;
+  activeChatQuote: ComposerQuoteState | null;
+  onClearChatQuote: () => void;
+  onReplyMessage: (message: Message) => void;
+  onForwardMessage: (message: Message) => void;
+  onSelectMessage: (message: Message) => void;
+  messageSelectionMode: boolean;
+  selectedMessageCount: number;
+  selectedMessageIds: ReadonlySet<string>;
+  isMessageSelectable: (message: Message) => boolean;
+  onToggleSelectedMessage: (message: Message) => void;
+  onSelectionDragStart: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter: (message: Message) => void;
+  onSelectionDragEnd: () => void;
+  onCancelMessageSelection: () => void;
+  onCopySelectedMessages: () => void;
+  onForwardSelectedMessages: () => void;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
   activeRuntimeSessionId?: string;
   activeRuntimeContextStatus?: DesktopChatState['activeSession']['contextWindowStatus'];
@@ -573,6 +590,22 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'
+  | 'activeChatQuote'
+  | 'onClearChatQuote'
+  | 'onReplyMessage'
+  | 'onForwardMessage'
+  | 'onSelectMessage'
+  | 'messageSelectionMode'
+  | 'selectedMessageCount'
+  | 'selectedMessageIds'
+  | 'isMessageSelectable'
+  | 'onToggleSelectedMessage'
+  | 'onSelectionDragStart'
+  | 'onSelectionDragEnter'
+  | 'onSelectionDragEnd'
+  | 'onCancelMessageSelection'
+  | 'onCopySelectedMessages'
+  | 'onForwardSelectedMessages'
   | 'composerSelectionChat'
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'

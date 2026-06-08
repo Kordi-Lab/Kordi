@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentProps, Dispatch, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
   Clock3,
   Cloud,
+  Copy,
   FileText,
   Image as ImageIcon,
   Paperclip,
@@ -43,6 +44,7 @@ import {
   type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
 import type {
+  ComposerQuoteState,
   Conversation,
   DesktopBridgeHost,
   DesktopChatContextWindowStatus,
@@ -51,6 +53,7 @@ import type {
   DesktopChatTurnSnapshot,
   EditFilePreview,
   Message,
+  MessageSourceReference,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
@@ -65,7 +68,9 @@ import {
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
+import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
+import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { cn } from '@/lib/utils';
 
@@ -289,6 +294,22 @@ type ChatsPageProps = {
   chatComposerText: string;
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setChatComposerText: (value: string) => void;
+  activeChatQuote?: ComposerQuoteState | null;
+  onClearChatQuote?: () => void;
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
+  messageSelectionMode?: boolean;
+  selectedMessageCount?: number;
+  selectedMessageIds?: ReadonlySet<string>;
+  isMessageSelectable?: (message: Message) => boolean;
+  onToggleSelectedMessage?: (message: Message) => void;
+  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter?: (message: Message) => void;
+  onSelectionDragEnd?: () => void;
+  onCancelMessageSelection?: () => void;
+  onCopySelectedMessages?: () => void;
+  onForwardSelectedMessages?: () => void;
   composerControlsRef: RefObject<HTMLDivElement | null>;
   activeRuntimeContextStatus?: DesktopChatContextWindowStatus | null;
   activeRuntimeCacheText?: string | null;
@@ -353,6 +374,22 @@ export function ChatsPage({
   chatComposerText,
   updateChatComposerDraft,
   setChatComposerText,
+  activeChatQuote,
+  onClearChatQuote,
+  onReplyMessage,
+  onForwardMessage,
+  onSelectMessage,
+  messageSelectionMode = false,
+  selectedMessageCount = 0,
+  selectedMessageIds,
+  isMessageSelectable,
+  onToggleSelectedMessage,
+  onSelectionDragStart,
+  onSelectionDragEnter,
+  onSelectionDragEnd,
+  onCancelMessageSelection,
+  onCopySelectedMessages,
+  onForwardSelectedMessages,
   composerControlsRef,
   activeRuntimeContextStatus,
   activeRuntimeCacheText,
@@ -499,6 +536,12 @@ export function ChatsPage({
     [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
+  const handleNavigateToTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
+    const targetMessageId = sourceMessage
+      ? resolveTranscriptMessageIdForSource(sourceMessage, attributedTranscriptMessages)
+      : messageId;
+    navigateToTranscriptMessage(targetMessageId || messageId, chatTranscriptScrollRef);
+  }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
   // Index of the last message that came from the fork's snapshot
   // (everything inherited from the source up through the anchor). The
   // divider goes after this message so any continuation the user
@@ -788,11 +831,22 @@ export function ChatsPage({
                   onOpenSource={onOpenSource}
                   onOpenArtifact={onOpenArtifact}
                   onOpenAuthSettings={openAuthentication}
+                  onNavigateToMessage={handleNavigateToTranscriptMessage}
                   onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                   onRequestBridgeContact={onRequestBridgeContact}
                   onForkMessage={handleForkMessage}
                   messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
                   onOpenForkSession={onSelectSession}
+                  onReplyMessage={onReplyMessage}
+                  onForwardMessage={onForwardMessage}
+                  onSelectMessage={onSelectMessage}
+                  selectionMode={messageSelectionMode}
+                  selectedMessageIds={selectedMessageIds}
+                  isMessageSelectable={isMessageSelectable}
+                  onToggleSelectedMessage={onToggleSelectedMessage}
+                  onSelectionDragStart={onSelectionDragStart}
+                  onSelectionDragEnter={onSelectionDragEnter}
+                  onSelectionDragEnd={onSelectionDragEnd}
                   plainAgentResponse={suppressAgentReplyAttribution}
                   isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                   isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
@@ -822,6 +876,7 @@ export function ChatsPage({
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onStopActiveTurn={onStopDesktopChatTurn}
                 plainAgentResponse={suppressAgentReplyAttribution}
+                onNavigateToMessage={handleNavigateToTranscriptMessage}
                 onOpenArtifact={onOpenArtifact}
                 onOpenAuthSettings={openAuthentication}
               />
@@ -834,6 +889,43 @@ export function ChatsPage({
       </div>
 
       <div className="shrink-0 px-5 pb-4 pt-3">
+        {messageSelectionMode && selectedMessageCount > 0 ? (
+          <div
+            data-message-selection-bar="true"
+            className="app-message-selection-bar mb-2 flex items-center justify-between gap-3 rounded-[22px] border border-[color:var(--app-control-border)] bg-[color:var(--app-modal-bg)] px-3.5 py-2.5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-[var(--app-glass-blur-float)]"
+          >
+            <div className="text-[12px] font-semibold tabular-nums">
+              {selectedMessageCount} selected
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
+                onClick={onCancelMessageSelection}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[color:var(--utility-foreground)] transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onCopySelectedMessages}
+                disabled={!onCopySelectedMessages || selectedMessageCount <= 0}
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                Copy
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--app-sidebar-accent)] px-3 py-1.5 text-[12px] font-semibold text-[color:var(--app-sidebar-accent-text)] transition disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onForwardSelectedMessages}
+                disabled={!onForwardSelectedMessages || selectedMessageCount <= 0}
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                Forward
+              </button>
+            </div>
+          </div>
+        ) : null}
         <AnimatePresence initial={false}>
           {activeConversationIsBridge && bridgeRoutingNotice ? (
             <motion.div
@@ -886,6 +978,28 @@ export function ChatsPage({
                   event.currentTarget.value = '';
                 }}
               />
+              {activeChatQuote ? (
+                <div
+                  data-composer-quote-preview="true"
+                  className="mb-1.5 flex items-start gap-2 rounded-[14px] border border-sky-300/20 bg-sky-400/10 px-2.5 py-2 text-left"
+                >
+                  <span className="mt-0.5 h-8 w-0.5 shrink-0 rounded-full bg-sky-300" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[11px] font-semibold text-sky-200">{activeChatQuote.source.senderLabel}</div>
+                    <div className="truncate text-[11px] text-slate-300">
+                      {activeChatQuote.source.textPreview || `${activeChatQuote.source.attachmentCount} attachment${activeChatQuote.source.attachmentCount === 1 ? '' : 's'}`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Remove quoted message"
+                    onClick={onClearChatQuote}
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
               {chatComposerAttachments.length > 0 ? (
                 <div className="mb-1 flex flex-wrap items-center gap-1.5">
                   {chatComposerAttachments.map((attachment) => (

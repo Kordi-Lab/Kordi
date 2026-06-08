@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowRightLeft,
@@ -27,13 +27,14 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
+import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { MarkdownContent } from './markdown';
 import { AttachmentPreview } from './transcriptAttachments';
-import { RequestReplyLine, transcriptMessageDomId } from './transcriptReplyAttribution';
+import { RequestReplyLine, SourceMessageQuote, transcriptMessageDomId } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, liveTurnSnapshotKey, type StopBridgeAgentRequestHandler } from './transcriptLiveTurns';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { openInlineChangedFile } from './transcriptChangedFiles';
@@ -44,6 +45,7 @@ import type {
   EditFilePreview,
   Message,
   MessageMention,
+  MessageSourceReference,
 } from '../types';
 
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -86,6 +88,21 @@ function ActiveSheenTitle({ text }: { text: string }) {
         </span>
       ))}
     </span>
+  );
+}
+
+function ForwardedFromHeader({ senderLabel }: { senderLabel?: string | null }) {
+  const sender = senderLabel?.trim() || 'Unknown sender';
+
+  return (
+    <div
+      data-message-forwarded-header="true"
+      className="app-message-forwarded-header mb-1.5 flex min-w-0 items-center gap-1.5 text-[11px] font-medium leading-4"
+    >
+      <Forward className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span className="shrink-0">Forwarded from</span>
+      <span className="app-message-forwarded-header-name min-w-0 truncate font-semibold">{sender}</span>
+    </div>
   );
 }
 
@@ -398,11 +415,12 @@ function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceipt
   );
 }
 
-function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
+function MessageContextMenuAction({ icon, label, action, onClick }: { icon: ReactNode; label: string; action: string; onClick?: () => void }) {
   return (
     <button
       type="button"
       role="menuitem"
+      data-message-context-menu-action={action}
       className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] text-slate-950 transition hover:bg-slate-100"
       style={messageContextMenuTextStyle}
       onClick={onClick}
@@ -413,7 +431,36 @@ function MessageContextMenuAction({ icon, label, onClick }: { icon: ReactNode; l
   );
 }
 
-export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onClose?: () => void }) {
+export type MessageContextMenuActionHandlers = {
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
+};
+
+export type MessageSelectionProps = {
+  selectionMode?: boolean;
+  selectedMessageIds?: ReadonlySet<string>;
+  isMessageSelectable?: (message: Message) => boolean;
+  onToggleSelectedMessage?: (message: Message) => void;
+  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter?: (message: Message) => void;
+  onSelectionDragEnd?: () => void;
+};
+
+function messageSelectionId(msg: Message) {
+  return msg.id ?? msg.entryId ?? msg.turn?.id ?? '';
+}
+
+export function MessageContextMenuContent({
+  msg,
+  onClose,
+  onReplyMessage,
+  onForwardMessage,
+  onSelectMessage,
+}: {
+  msg: Message;
+  onClose?: () => void;
+} & MessageContextMenuActionHandlers) {
   const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
   const replyCount = msg.replySummary?.replyCount ?? 0;
   const reactionItems = ['❤️', '🔥', '👍', '👎', '🥰', '👏'];
@@ -425,6 +472,18 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
     } catch {
       onClose?.();
     }
+  };
+  const handleReply = () => {
+    onReplyMessage?.(msg);
+    onClose?.();
+  };
+  const handleForward = () => {
+    onForwardMessage?.(msg);
+    onClose?.();
+  };
+  const handleSelect = () => {
+    onSelectMessage?.(msg);
+    onClose?.();
   };
 
   return (
@@ -438,14 +497,14 @@ export function MessageContextMenuContent({ msg, onClose }: { msg: Message; onCl
         <button type="button" className="ml-auto grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-[14px] text-slate-500" aria-label="More reactions">⌄</button>
       </div>
       <div className="overflow-hidden rounded-[14px] bg-white py-1 shadow-[0_14px_34px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10">
-        <MessageContextMenuAction icon={<Reply className="h-4 w-4" />} label="Reply" onClick={onClose} />
-        {replyCount > 0 ? <MessageContextMenuAction icon={<Undo2 className="h-4 w-4" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
-        <MessageContextMenuAction icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={onClose} />
-        <MessageContextMenuAction icon={<Pin className="h-4 w-4" />} label="Pin" onClick={onClose} />
-        <MessageContextMenuAction icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
-        <MessageContextMenuAction icon={<Forward className="h-4 w-4" />} label="Forward" onClick={onClose} />
-        <MessageContextMenuAction icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
-        <MessageContextMenuAction icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={onClose} />
+        <MessageContextMenuAction action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={handleReply} />
+        {replyCount > 0 ? <MessageContextMenuAction action="view-replies" icon={<Undo2 className="h-4 w-4" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
+        <MessageContextMenuAction action="edit" icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={onClose} />
+        <MessageContextMenuAction action="pin" icon={<Pin className="h-4 w-4" />} label="Pin" onClick={onClose} />
+        <MessageContextMenuAction action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
+        <MessageContextMenuAction action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={handleForward} />
+        <MessageContextMenuAction action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
+        <MessageContextMenuAction action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={handleSelect} />
         <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
       </div>
     </div>
@@ -489,12 +548,31 @@ function MessageContextMenuHost({
   id,
   className,
   children,
+  onPointerDown,
+  onPointerEnter,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  dragSelectHandleId,
+  dragSelectState,
+  dragSelectLabel,
+  onReplyMessage,
+  onForwardMessage,
+  onSelectMessage,
 }: {
   msg: Message;
   id?: string;
   className?: string;
   children: ReactNode;
-}) {
+  onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerEnter?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerCancel?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  dragSelectHandleId?: string;
+  dragSelectState?: 'idle' | 'selected' | 'unselected';
+  dragSelectLabel?: string;
+} & MessageContextMenuActionHandlers) {
   const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; clientX: number; clientY: number; targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -551,7 +629,13 @@ function MessageContextMenuHost({
         onMouseDown={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.preventDefault()}
       >
-        <MessageContextMenuContent msg={msg} onClose={() => setMessageContextMenu(null)} />
+        <MessageContextMenuContent
+          msg={msg}
+          onClose={() => setMessageContextMenu(null)}
+          onReplyMessage={onReplyMessage}
+          onForwardMessage={onForwardMessage}
+          onSelectMessage={onSelectMessage}
+        />
       </div>
     </>
   ) : null;
@@ -561,7 +645,15 @@ function MessageContextMenuHost({
       id={id}
       data-transcript-message-root="true"
       data-message-context-menu-target="true"
+      data-message-selection-drag-handle={dragSelectHandleId}
+      data-message-selection-drag-state={dragSelectState}
+      aria-label={dragSelectLabel}
       onContextMenu={openMessageContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerEnter={onPointerEnter}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       className={className}
     >
       {children}
@@ -636,6 +728,16 @@ function MessageBubbleView({
   onForkMessage,
   messageForks,
   onOpenForkSession,
+  onReplyMessage,
+  onForwardMessage,
+  onSelectMessage,
+  selectionMode = false,
+  selectedMessageIds,
+  isMessageSelectable,
+  onToggleSelectedMessage,
+  onSelectionDragStart,
+  onSelectionDragEnter,
+  onSelectionDragEnd,
   plainAgentResponse = false,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
@@ -643,20 +745,153 @@ function MessageBubbleView({
   msg: Message;
   onOpenSource?: (file: EditFilePreview) => void;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
-  onNavigateToMessage?: (messageId: string) => void;
+  onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
   onRequestBridgeContact?: () => Promise<void> | void;
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
   onOpenForkSession?: (sessionId: string) => void;
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
   plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
-}) {
+} & MessageSelectionProps) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
+  const menuActionHandlers = { onReplyMessage, onForwardMessage, onSelectMessage };
+  const selectionId = messageSelectionId(msg);
+  const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
+  const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
+  const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
+  const selectionClickSuppressedRef = useRef(false);
+  const rowSelectionDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    shouldSelect: boolean;
+    started: boolean;
+    cleanup: () => void;
+  } | null>(null);
+  const selectionLabel = `${isSelectedForAction ? 'Deselect' : 'Select'} message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}`;
+  const dragSelectLabel = canDragSelectMessage ? `Drag to select message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}` : undefined;
+  const dragSelectState = canDragSelectMessage ? (selectionMode ? (isSelectedForAction ? 'selected' : 'unselected') : 'idle') : undefined;
+  const shouldIgnoreDragSelectTarget = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('[data-message-context-menu-anchor="true"], [data-message-selection-control], button, a, input, textarea, select, [role="button"]'));
+  };
+  const handleRowSelectionDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !canDragSelectMessage) return;
+    if (shouldIgnoreDragSelectTarget(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    rowSelectionDragRef.current?.cleanup();
+    const pointerId = event.pointerId;
+    const shouldSelect = selectionMode ? !isSelectedForAction : true;
+    const startX = event.clientX;
+    const startY = event.clientY;
+
+    const cleanup = () => {
+      const active = rowSelectionDragRef.current;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerEnd);
+      window.removeEventListener('pointercancel', handlePointerEnd);
+      rowSelectionDragRef.current = null;
+      if (active?.started) onSelectionDragEnd?.();
+    };
+    const handlePointerEnd = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      cleanup();
+    };
+    const handlePointerMove = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      const active = rowSelectionDragRef.current;
+      if (!active || active.started) return;
+      if (!hasMessageSelectionDragExceededThreshold(
+        { x: active.startX, y: active.startY },
+        { x: pointerEvent.clientX, y: pointerEvent.clientY },
+      )) return;
+      pointerEvent.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      active.started = true;
+      onSelectionDragStart?.(msg, active.shouldSelect);
+    };
+
+    rowSelectionDragRef.current = { pointerId, startX, startY, shouldSelect, started: false, cleanup };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerEnd);
+    window.addEventListener('pointercancel', handlePointerEnd);
+  };
+  const handleRowSelectionDragEnter = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.buttons !== 1 || !canDragSelectMessage) return;
+    onSelectionDragEnter?.(msg);
+  };
+  const handleRowSelectionDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.buttons !== 1 || !canDragSelectMessage) return;
+    onSelectionDragEnter?.(msg);
+  };
+  const handleRowSelectionDragEnd = () => {
+    if (rowSelectionDragRef.current) {
+      rowSelectionDragRef.current.cleanup();
+      return;
+    }
+    onSelectionDragEnd?.();
+  };
+  const selectionControl = selectableInSelectionMode ? (
+    <button
+      type="button"
+      data-message-selection-control={selectionId}
+      data-message-selection-draggable="true"
+      data-message-selection-state={isSelectedForAction ? 'selected' : 'unselected'}
+      aria-pressed={isSelectedForAction}
+      aria-label={selectionLabel}
+      className={cn(
+        'app-message-selection-control grid h-6.5 w-6.5 shrink-0 place-items-center rounded-full border text-[color:var(--utility-foreground)] transition',
+        isSelectedForAction
+          ? 'border-[color:var(--app-sidebar-accent)] bg-[color:var(--app-sidebar-accent)] text-[color:var(--app-sidebar-accent-text)]'
+          : 'border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] hover:bg-[color:var(--app-control-hover)]',
+      )}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectionClickSuppressedRef.current = true;
+        const clearSuppression = () => {
+          window.setTimeout(() => {
+            selectionClickSuppressedRef.current = false;
+          }, 0);
+        };
+        window.addEventListener('pointerup', clearSuppression, { once: true });
+        window.addEventListener('pointercancel', clearSuppression, { once: true });
+        onSelectionDragStart?.(msg, !isSelectedForAction);
+      }}
+      onPointerEnter={(event) => {
+        if (event.buttons !== 1) return;
+        onSelectionDragEnter?.(msg);
+      }}
+      onPointerUp={() => {
+        onSelectionDragEnd?.();
+      }}
+      onPointerCancel={() => {
+        onSelectionDragEnd?.();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (selectionClickSuppressedRef.current) {
+          selectionClickSuppressedRef.current = false;
+          return;
+        }
+        onToggleSelectedMessage?.(msg);
+      }}
+    >
+      {isSelectedForAction ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+    </button>
+  ) : null;
 
   // Fork is offered on assistant turns only: clicking branches the
   // conversation into a new session that includes everything through
@@ -740,7 +975,7 @@ function MessageBubbleView({
 
   if (isCompactionSummaryMessage(msg)) {
     return (
-      <MessageContextMenuHost msg={msg}>
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers}>
         <CompactionSummaryMessage msg={msg} />
       </MessageContextMenuHost>
     );
@@ -748,7 +983,7 @@ function MessageBubbleView({
 
   if (msg.role === 'system') {
     return (
-      <MessageContextMenuHost msg={msg} className="app-system-notice-row flex justify-center py-0.5">
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="app-system-notice-row flex justify-center py-0.5">
         <div className="app-system-notice-pill max-w-[min(100%,34rem)] truncate rounded-full border bg-muted px-2.5 py-0.5 text-center text-[11px] leading-5 text-muted-foreground">{msg.text}</div>
       </MessageContextMenuHost>
     );
@@ -756,7 +991,7 @@ function MessageBubbleView({
 
   if (msg.role === 'action') {
     return (
-      <MessageContextMenuHost msg={msg} className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="my-2 max-w-[42rem] rounded-2xl border bg-card p-4 shadow-sm">
         <div className="mb-2 flex items-center gap-2 text-sm font-medium">
           <ArrowRightLeft className="h-4 w-4" />
           {msg.sender}
@@ -781,7 +1016,7 @@ function MessageBubbleView({
     const primaryFile = msg.edit.files[0];
 
     return (
-      <MessageContextMenuHost msg={msg} className="flex flex-col items-start gap-0.5 py-0.5">
+      <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="flex flex-col items-start gap-0.5 py-0.5">
         <div className="app-message-meta">
           {msg.sender} • {msg.time}
         </div>
@@ -878,6 +1113,7 @@ function MessageBubbleView({
     return (
       <MessageContextMenuHost
         msg={msg}
+        {...menuActionHandlers}
         id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
         className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
       >
@@ -938,18 +1174,30 @@ function MessageBubbleView({
   const footerDetail = showContactRequestAction ? undefined : msg.detail;
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
+  const isForwardedMessage = msg.messageAction?.kind === 'forward';
+  const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
 
   return (
     <MessageContextMenuHost
       msg={msg}
+      {...menuActionHandlers}
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+      dragSelectHandleId={canDragSelectMessage ? selectionId : undefined}
+      dragSelectState={dragSelectState}
+      dragSelectLabel={dragSelectLabel}
+      onPointerDown={handleRowSelectionDragStart}
+      onPointerEnter={handleRowSelectionDragEnter}
+      onPointerMove={handleRowSelectionDragMove}
+      onPointerUp={handleRowSelectionDragEnd}
+      onPointerCancel={handleRowSelectionDragEnd}
       className={cn(
-        'flex flex-col gap-1',
+        'flex w-full flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
         isGroupedWithNext ? 'pb-0' : 'pb-1',
         align,
         isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
         showContactRequestAction ? 'w-full' : '',
+        isSelectedForAction ? 'app-message-selection-selected' : '',
       )}
     >
       {showHeaderMeta ? (
@@ -957,7 +1205,8 @@ function MessageBubbleView({
           {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
         </div>
       ) : null}
-      <div className={cn('flex items-end', showAvatarSlot ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+      <div className={cn('flex items-end', showAvatarSlot || selectionControl ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+        {selectionControl}
         {showAvatar ? (
           <IdentityAvatar
             kind={avatarKind}
@@ -971,6 +1220,14 @@ function MessageBubbleView({
         ) : null}
         <div
           data-message-context-menu-anchor="true"
+          onClick={(event) => {
+            if (!selectableInSelectionMode) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest('button,a,input,textarea,[role="button"]')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onToggleSelectedMessage?.(msg);
+          }}
           className={cn(
           'min-w-0',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : 'shadow-sm',
@@ -995,6 +1252,12 @@ function MessageBubbleView({
             style={senderAccentStyle(msg.sender)}
           >
             {msg.sender}
+          </div>
+        ) : null}
+        {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
+        {msg.sourceMessage && !isForwardedMessage ? (
+          <div className={cn(hasText || hasAttachments ? 'mb-2' : '')}>
+            <SourceMessageQuote sourceMessage={msg.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
           </div>
         ) : null}
         {showCompactFooter ? (
@@ -1102,6 +1365,17 @@ export const MessageBubble = memo(
     && previous.onRequestBridgeContact === next.onRequestBridgeContact
     && previous.onForkMessage === next.onForkMessage
     && previous.onOpenForkSession === next.onOpenForkSession
+    && previous.onReplyMessage === next.onReplyMessage
+    && previous.onForwardMessage === next.onForwardMessage
+    && previous.onSelectMessage === next.onSelectMessage
+    && previous.selectionMode === next.selectionMode
+    && previous.selectedMessageIds === next.selectedMessageIds
+    && previous.isMessageSelectable === next.isMessageSelectable
+    && previous.onToggleSelectedMessage === next.onToggleSelectedMessage
+    && previous.onSelectionDragStart === next.onSelectionDragStart
+    && previous.onSelectionDragEnter === next.onSelectionDragEnter
+    && previous.onSelectionDragEnd === next.onSelectionDragEnd
+    && previous.plainAgentResponse === next.plainAgentResponse
     && previous.messageForks === next.messageForks
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext

@@ -282,6 +282,86 @@ test('renders failed own message delivery as a compact red exclamation', () => {
   assert.match(markup, /text-rose-400/);
 });
 
+test('forwarded human messages render Telegram-style forwarded header instead of quote block', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'Forward this',
+    time: '12:18',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source: {
+        sourceSessionId: 'session:one',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Shiney lala',
+        textPreview: 'Original text',
+        attachmentCount: 0,
+        timeLabel: '12:07',
+      },
+    },
+    sourceMessage: {
+      messageId: 'msg:source',
+      senderLabel: 'Shiney lala',
+      text: 'Original text',
+      attachmentCount: 0,
+      time: '12:07',
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /data-message-forwarded-header="true"/);
+  assert.match(markup, />Forwarded from</);
+  assert.match(markup, />Shiney lala</);
+  assert.doesNotMatch(markup, /app-source-message-quote/);
+});
+
+test('quoted human messages still render source quote instead of forwarded header', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'Replying',
+    time: '12:18',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'quote',
+      source: {
+        sourceSessionId: 'session:one',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Alice',
+        textPreview: 'Original text',
+        attachmentCount: 0,
+        timeLabel: '12:07',
+      },
+    },
+    sourceMessage: {
+      messageId: 'msg:source',
+      senderLabel: 'Alice',
+      text: 'Original text',
+      attachmentCount: 0,
+      time: '12:07',
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-source-message-quote/);
+  assert.doesNotMatch(markup, /data-message-forwarded-header="true"/);
+});
+
+test('forwarded message reveal uses reduced-motion-safe highlight styling', () => {
+  const shellCss = readDesktopShellCss();
+
+  assert.match(shellCss, /\.app-message-forward-reveal/);
+  assert.match(shellCss, /@keyframes\s+app-message-forward-reveal/);
+  assert.match(shellCss, /prefers-reduced-motion:\s*reduce[\s\S]*\.app-message-forward-reveal[\s\S]*animation:\s*none/);
+});
+
 test('sent-message delivery glyph keeps one stable slot so status changes do not refresh the whole popover', () => {
   const message: Message = {
     role: 'user',
@@ -440,6 +520,77 @@ test('message context menu content lists read receipts when available', () => {
   assert.doesNotMatch(markup, /font-medium/);
   assert.doesNotMatch(markup, /py-3/);
   assert.doesNotMatch(markup, /py-2/);
+});
+
+test('message context menu exposes Reply, Forward, and Select actions for eligible messages', () => {
+  const message: Message = {
+    id: 'msg:quote-target',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Quote me',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    onClose: () => undefined,
+    onReplyMessage: () => undefined,
+    onForwardMessage: () => undefined,
+    onSelectMessage: () => undefined,
+  }));
+
+  assert.match(markup, />Reply</);
+  assert.match(markup, />Forward</);
+  assert.match(markup, />Select</);
+  assert.match(markup, /data-message-context-menu-action="reply"/);
+  assert.match(markup, /data-message-context-menu-action="forward"/);
+  assert.match(markup, /data-message-context-menu-action="select"/);
+});
+
+test('message bubble exposes a non-text drag-select handle before selection mode starts', () => {
+  const message: Message = {
+    id: 'msg-drag-start',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Drag beside this message, not over text',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    isMessageSelectable: () => true,
+    onSelectionDragStart: () => undefined,
+    onSelectionDragEnter: () => undefined,
+    onSelectionDragEnd: () => undefined,
+  }));
+
+  assert.match(markup, /data-message-selection-drag-handle="msg-drag-start"/);
+  assert.match(markup, /data-message-selection-drag-state="idle"/);
+  assert.match(markup, /aria-label="Drag to select message from Alice at 10:42"/);
+});
+
+test('message bubble renders selected check control in selection mode', () => {
+  const message: Message = {
+    id: 'msg-selected',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Selected text',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    selectionMode: true,
+    selectedMessageIds: new Set(['msg-selected']),
+    isMessageSelectable: () => true,
+    onToggleSelectedMessage: () => undefined,
+  }));
+
+  assert.match(markup, /data-message-selection-control="msg-selected"/);
+  assert.match(markup, /data-message-selection-draggable="true"/);
+  assert.match(markup, /data-message-selection-state="selected"/);
+  assert.match(markup, /aria-pressed="true"/);
+  assert.match(markup, /Deselect message from Alice at 10:42/);
 });
 
 test('message context menu position stays close to the clicked message rectangle', () => {
@@ -685,6 +836,7 @@ test('renders peer human sender names inside the bubble with colorful bold styli
   assert.doesNotMatch(markup, /app-message-meta px-1[\s\S]*xin hai Mouse/);
 });
 
+
 test('groups consecutive same-sender human messages with one inline name and one avatar', () => {
   const first: Message = {
     id: 'msg:first',
@@ -839,7 +991,7 @@ test('styles folded source quote expand control as muted overlay on the fade', (
   const sourceOverlayBlock = shellCss.match(/\.app-source-message-quote-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
   const sourceFoldedAfterBlock = shellCss.match(/\.app-source-message-quote-folded::after \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 78%, var\(--utility-muted-text\)\)/);
+  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 84%, var\(--app-source-message-quote-muted\)\)/);
   assert.doesNotMatch(sourceToggleBlock, /rgb\(147 197 253\)/);
   assert.match(sourceOverlayBlock, /position:\s*absolute/);
   assert.match(sourceOverlayBlock, /bottom:\s*0\.1rem/);
@@ -863,9 +1015,22 @@ test('styles reply attribution surfaces with stronger dark-mode contrast', () =>
   assert.match(responseSurfaceBlock, /border:\s*0/);
   assert.match(responseSurfaceBlock, /box-shadow:\s*none/);
   assert.match(responseSurfaceBlock, /background:\s*color-mix\(in oklab, var\(--utility-foreground\) 3%, transparent\)/);
-  assert.match(quoteLinkBlock, /var\(--utility-foreground\) 7%/);
-  assert.match(quoteLabelBlock, /var\(--utility-foreground\) 92%/);
-  assert.match(quoteTextBlock, /var\(--utility-foreground\) 68%/);
+  assert.match(quoteLinkBlock, /var\(--app-source-message-quote-bg\)/);
+  assert.match(quoteLabelBlock, /var\(--app-source-message-quote-label\)/);
+  assert.match(quoteTextBlock, /var\(--app-source-message-quote-text\)/);
+});
+
+test('styles source quote colors contextually inside own message bubbles for dark and light modes', () => {
+  const shellCss = readDesktopShellCss();
+  const quoteRootBlock = shellCss.match(/\.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const ownBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const peerBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-peer \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(quoteRootBlock, /--app-source-message-quote-foreground:\s*var\(--utility-foreground\)/);
+  assert.match(quoteRootBlock, /--app-source-message-quote-text:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 82%, var\(--app-source-message-quote-muted\)\)/);
+  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*var\(--app-chat-bubble-user-text\)/);
+  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-muted:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 72%, transparent\)/);
+  assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 8%, transparent\)/);
 });
 
 test('keeps medium completed agent responses readable without folding too early', () => {

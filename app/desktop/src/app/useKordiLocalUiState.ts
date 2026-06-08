@@ -9,7 +9,7 @@ import {
   type ComposerDraftState,
 } from '@/features/chat/composerDrafts';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
-import type { ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
+import type { ComposerQuoteState, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 
 function getSystemThemeMode(): ResolvedThemeMode {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -88,6 +88,7 @@ export function useKordiLocalUiState() {
 
   const [openComposerSelector, setOpenComposerSelector] = useState<{ scope: ComposerScope; type: ComposerSelectorType } | null>(null);
   const [chatSlashMenuIndex, setChatSlashMenuIndex] = useState(0);
+  const [chatQuoteBySessionId, setChatQuoteBySessionId] = useState<Record<string, ComposerQuoteState | null>>({});
   const [chatComposerAttachments, setChatComposerAttachments] = useState<AttachmentItem[]>(() => readStoredComposerAttachments());
 
   useEffect(() => {
@@ -153,6 +154,8 @@ export function useKordiLocalUiState() {
       setOpenComposerSelector,
       chatSlashMenuIndex,
       setChatSlashMenuIndex,
+      chatQuoteBySessionId,
+      setChatQuoteBySessionId,
       chatComposerAttachments,
       setChatComposerAttachments,
     },

@@ -83,6 +83,82 @@ test('buildReplyAttribution adds generic reply count and source quote without re
   assert.equal(bobProcessing.turn?.sourceMessage?.messageId, 'msg:request');
 });
 
+test('buildReplyAttribution links explicit human quoted replies without agent inference', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:alice',
+      role: 'person',
+      sender: 'Alice',
+      isOwnMessage: false,
+      text: 'Original question',
+    }),
+    humanRequest({
+      id: 'msg:me-reply',
+      role: 'user',
+      sender: 'Me',
+      isOwnMessage: true,
+      text: 'Yes',
+      replyToMessageId: 'msg:alice',
+    }),
+  ];
+
+  const result = buildReplyAttribution(messages);
+
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[0]?.replySummary?.targetMessageId, 'msg:me-reply');
+  assert.equal(result.messages[1]?.sourceMessage?.messageId, 'msg:alice');
+  assert.equal(result.messages[1]?.sourceMessage?.senderLabel, 'Alice');
+  assert.equal(result.messages[1]?.sourceMessage?.text, 'Original question');
+});
+
+
+test('buildReplyAttribution does not count forwarded human messages as replies', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:source',
+      role: 'person',
+      sender: '222',
+      isOwnMessage: false,
+      text: 'a test message',
+      time: '13:57',
+    }),
+    humanRequest({
+      id: 'msg:forwarded',
+      role: 'user',
+      sender: '11',
+      isOwnMessage: true,
+      text: 'a test message',
+      time: '13:58',
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'forward',
+        source: {
+          sourceSessionId: 'session:one',
+          sourceMessageId: 'msg:source',
+          senderLabel: '222',
+          textPreview: 'a test message',
+          attachmentCount: 0,
+          timeLabel: '13:57',
+        },
+      },
+      sourceMessage: {
+        messageId: 'msg:source',
+        senderLabel: '222',
+        text: 'a test message',
+        attachmentCount: 0,
+        time: '13:57',
+      },
+    }),
+  ];
+
+  const result = buildReplyAttribution(messages);
+
+  assert.equal(result.messages[0]?.replySummary, undefined);
+  assert.equal(result.messages[1]?.messageAction?.kind, 'forward');
+  assert.equal(result.messages[1]?.sourceMessage?.messageId, 'msg:source');
+  assert.equal(result.messages[1]?.replyToMessageId, undefined);
+});
+
 test('buildReplyAttribution deduplicates repeated no-provider replies for one request and agent', () => {
   const messages: Message[] = [
     humanRequest({

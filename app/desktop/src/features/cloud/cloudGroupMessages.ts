@@ -8,6 +8,7 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
+import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } from './cloudTransportGuards';
@@ -53,6 +54,7 @@ export type CloudGroupControlEnvelope = {
     requestId?: string | null;
     forkSnapshot?: boolean | null;
     attachments?: CloudMessageAttachment[];
+    messageAction?: MessageActionMetadata | null;
   } | null;
 };
 

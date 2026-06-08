@@ -74,7 +74,7 @@ export function SourceMessageQuote({
   onNavigateToMessage,
 }: {
   sourceMessage?: MessageSourceReference | null;
-  onNavigateToMessage?: (messageId: string) => void;
+  onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (!sourceMessage) return null;
@@ -83,7 +83,7 @@ export function SourceMessageQuote({
   const attachmentText = sourceMessage.attachmentCount ? ` · ${sourceMessage.attachmentCount} attachment${sourceMessage.attachmentCount === 1 ? '' : 's'}` : '';
   const navigate = () => {
     if (onNavigateToMessage) {
-      onNavigateToMessage(sourceMessage.messageId);
+      onNavigateToMessage(sourceMessage.messageId, sourceMessage);
       return;
     }
     navigateToTranscriptMessage(sourceMessage.messageId);
