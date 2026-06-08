@@ -127,3 +127,20 @@ test('MessageForwardDialog renders batch preview without caption field', () => {
   assert.match(markup, /Bob: Second/);
   assert.doesNotMatch(markup, /Add a comment/);
 });
+
+test('MessageForwardDialog uses theme-safe shell classes and exposes forward mode', () => {
+  const markup = renderToStaticMarkup(
+    <MessageForwardDialog
+      sources={[source]}
+      destinations={[{ id: 'session:two', conversationId: 'conv:two', label: 'Group', subtitle: '3 members' }]}
+      onClose={() => {}}
+      onForward={() => {}}
+    />,
+  );
+
+  assert.match(markup, /app-message-forward-dialog/);
+  assert.match(markup, /data-message-forward-dialog="true"/);
+  assert.match(markup, /data-message-forward-mode="single"/);
+  assert.match(markup, /bg-\[color:var\(--app-modal-bg\)\]/);
+  assert.doesNotMatch(markup, /bg-\[#101820\]/);
+});

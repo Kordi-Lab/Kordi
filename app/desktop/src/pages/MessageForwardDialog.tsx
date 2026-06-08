@@ -57,6 +57,7 @@ export function MessageForwardDialog({
         aria-modal="true"
         aria-labelledby="message-forward-dialog-title"
         data-message-forward-dialog="true"
+        data-message-forward-mode={isBatch ? 'batch' : 'single'}
         className="app-message-forward-dialog w-full max-w-[380px] overflow-hidden rounded-[22px] border border-[color:var(--app-control-border)] bg-[color:var(--app-modal-bg)] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-[var(--app-glass-blur-float)]"
       >
         <header className="flex items-start justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-3">
