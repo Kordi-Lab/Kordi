@@ -994,7 +994,7 @@ export function useChatMessageActions({
         setChatComposerAttachments([]);
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         if (appendedOptimisticBridgeMessage) {
-          setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text)));
+          setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
         }
         const cloudBody = activeChatQuote?.source
           ? encodeCloudDirectMessageEnvelope({
@@ -1355,7 +1355,7 @@ export function useChatMessageActions({
             ? materializedState
             : current;
           return baseState
-            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt)
+            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt, [], activeChatQuote)
             : current;
         });
         setComposerDrafts((current: ComposerDraftState) => (
@@ -1392,7 +1392,7 @@ export function useChatMessageActions({
         if (!baseState) {
           return current;
         }
-        return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt);
+        return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt, [], activeChatQuote);
       });
       setComposerDrafts((current: ComposerDraftState) => (
         chatDraftSessionIdsToClearForSend(activeConvId, resolvedSessionId).reduce(

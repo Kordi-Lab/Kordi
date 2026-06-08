@@ -68,13 +68,17 @@ export function appendOptimisticOutboundMessage(
   attachments: AttachmentItem[],
   sentAt: string,
   mentions: MessageMention[] = [],
+  quote: ComposerQuoteState | null = null,
 ) {
+  const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
   const optimisticMessage = {
     role: 'user' as const,
     sender: 'Me',
     text: messageText,
     attachments: toOptimisticAttachments(attachments),
     mentions,
+    replyToMessageId: quoteAction?.source.sourceMessageId ?? null,
+    messageAction: quoteAction,
     timeLabel: sentAt,
     timestampMs: Date.now(),
   };
@@ -159,10 +163,12 @@ export function appendOptimisticBridgeMessage(
   optimisticMessageId: string,
   attachments: AttachmentItem[] = [],
   subtitleText = text,
+  quote: ComposerQuoteState | null = null,
 ): DesktopBridgeState | null {
   if (!current) return current;
 
   const timestampMs = Date.now();
+  const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
   const nextConversations = current.conversations.map((conversation) => {
     if (conversation.id !== conversationId) return conversation;
     return {
@@ -182,6 +188,7 @@ export function appendOptimisticBridgeMessage(
           timestampMs,
           deliveryState: 'sending',
           attachments: toOptimisticAttachments(attachments),
+          messageAction: quoteAction,
         },
       ],
     };

@@ -25,6 +25,18 @@ function desktopTranscriptMessageId(sessionId: string, message: DesktopChatMessa
   return `desktop-message:${sessionId}:${message.timestampMs}:${index}:${role}`;
 }
 
+function desktopMessageActionSource(message: DesktopChatMessage) {
+  const source = message.messageAction?.source;
+  if (!source) return null;
+  return {
+    messageId: source.sourceMessageId,
+    senderLabel: source.senderLabel,
+    text: source.textPreview,
+    attachmentCount: source.attachmentCount,
+    time: source.timeLabel ?? null,
+  };
+}
+
 export function mapDesktopMessagesForTranscript(
   sessionId: string,
   messages: DesktopChatMessage[],
@@ -90,6 +102,9 @@ export function mapDesktopMessagesForTranscript(
         return mapped;
       }),
       mentions: message.mentions,
+      replyToMessageId: message.replyToMessageId ?? (message.messageAction?.kind === 'quote' ? message.messageAction.source.sourceMessageId : undefined),
+      messageAction: message.messageAction ?? null,
+      sourceMessage: desktopMessageActionSource(message),
       turn:
         hasHistoricalTurn
           ? {

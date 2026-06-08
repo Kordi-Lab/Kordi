@@ -678,6 +678,8 @@ export type DesktopChatMessage = {
   failed?: boolean;
   attachments?: DesktopChatAttachment[];
   mentions?: MessageMention[];
+  replyToMessageId?: string | null;
+  messageAction?: MessageActionMetadata | null;
   thinkingText?: string | null;
   tools?: DesktopChatToolSnapshot[];
   turnStartedAtMs?: number | null;
