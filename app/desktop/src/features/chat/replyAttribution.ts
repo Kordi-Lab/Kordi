@@ -46,9 +46,13 @@ function sourceReferenceForMessage(message: Message, messageId: string): Message
 }
 
 function explicitReplyTargetForMessage(message: Message) {
-  return cleanText(message.replyToMessageId)
-    || cleanText(message.turn?.replyToMessageId)
-    || cleanText(message.sourceMessage?.messageId)
+  const explicitReplyId = cleanText(message.replyToMessageId)
+    || cleanText(message.turn?.replyToMessageId);
+  if (explicitReplyId) return explicitReplyId;
+
+  if (message.messageAction?.kind === 'forward') return null;
+
+  return cleanText(message.sourceMessage?.messageId)
     || cleanText(message.turn?.sourceMessage?.messageId)
     || null;
 }

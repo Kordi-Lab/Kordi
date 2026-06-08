@@ -112,6 +112,53 @@ test('buildReplyAttribution links explicit human quoted replies without agent in
 });
 
 
+test('buildReplyAttribution does not count forwarded human messages as replies', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:source',
+      role: 'person',
+      sender: '222',
+      isOwnMessage: false,
+      text: 'a test message',
+      time: '13:57',
+    }),
+    humanRequest({
+      id: 'msg:forwarded',
+      role: 'user',
+      sender: '11',
+      isOwnMessage: true,
+      text: 'a test message',
+      time: '13:58',
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'forward',
+        source: {
+          sourceSessionId: 'session:one',
+          sourceMessageId: 'msg:source',
+          senderLabel: '222',
+          textPreview: 'a test message',
+          attachmentCount: 0,
+          timeLabel: '13:57',
+        },
+      },
+      sourceMessage: {
+        messageId: 'msg:source',
+        senderLabel: '222',
+        text: 'a test message',
+        attachmentCount: 0,
+        time: '13:57',
+      },
+    }),
+  ];
+
+  const result = buildReplyAttribution(messages);
+
+  assert.equal(result.messages[0]?.replySummary, undefined);
+  assert.equal(result.messages[1]?.messageAction?.kind, 'forward');
+  assert.equal(result.messages[1]?.sourceMessage?.messageId, 'msg:source');
+  assert.equal(result.messages[1]?.replyToMessageId, undefined);
+});
+
 test('buildReplyAttribution deduplicates repeated no-provider replies for one request and agent', () => {
   const messages: Message[] = [
     humanRequest({
