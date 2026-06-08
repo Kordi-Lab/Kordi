@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
+import { KORDI_THEME_MODE_STORAGE_KEY } from '../src/app/themePreference';
 import { CloudLoginPage, cloudSignupAvatarInitials } from '../src/kordi-app/cloud/CloudLoginPage';
 import { shouldShowCloudLoginGate } from '../src/features/cloud/edition';
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -31,6 +32,37 @@ function withLocalStorage<T>(storage: Storage, run: () => T): T {
   } finally {
     if (previous) target.localStorage = previous;
     else delete target.localStorage;
+  }
+}
+
+function withWindowTheme<T>({
+  storedTheme,
+  systemPrefersLight = false,
+}: {
+  storedTheme: 'light' | 'dark' | 'auto';
+  systemPrefersLight?: boolean;
+}, run: () => T): T {
+  const storage = makeStorageStub({ [KORDI_THEME_MODE_STORAGE_KEY]: storedTheme });
+  const target = globalThis as typeof globalThis & { window?: Window & typeof globalThis };
+  const previousWindow = target.window;
+  target.window = {
+    localStorage: storage,
+    matchMedia: () => ({
+      matches: systemPrefersLight,
+      media: '(prefers-color-scheme: light)',
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  } as Window & typeof globalThis;
+  try {
+    return run();
+  } finally {
+    if (previousWindow) target.window = previousWindow;
+    else delete target.window;
   }
 }
 
@@ -323,6 +355,39 @@ test('cloud edition app root renders account login before the chat shell', () =>
   assert.match(markup, /Welcome to Kordi/);
   assert.doesNotMatch(markup, /No provider connected yet/);
   assert.doesNotMatch(markup, /Ask your agent/);
+});
+
+test('cloud login gate applies stored light theme on the bridge-app root', () => {
+  const markup = withWindowTheme({ storedTheme: 'light' }, () => renderToStaticMarkup(createElement(KordiAppRoot, {
+    cloudSessionStatus: 'signed-out',
+  })));
+
+  assert.match(markup, /class="bridge-app app-cloud-login-shell theme-light"/);
+  assert.doesNotMatch(markup, /class="bridge-app app-cloud-login-shell"/);
+});
+
+test('cloud session restore gate applies stored dark theme on the bridge-app root', () => {
+  const markup = withWindowTheme({ storedTheme: 'dark' }, () => renderToStaticMarkup(createElement(KordiAppRoot, {
+    cloudSessionStatus: 'loading',
+    cloudSession: {
+      status: 'loading',
+      account: null,
+      signIn: async () => {},
+      signUp: async () => {},
+      signInWithProvider: async () => {},
+    },
+  })));
+
+  assert.match(markup, /class="bridge-app app-cloud-login-shell theme-dark"/);
+  assert.match(markup, /app-cloud-starting-screen/);
+});
+
+test('cloud gate auto theme follows system light before shell mount', () => {
+  const markup = withWindowTheme({ storedTheme: 'auto', systemPrefersLight: true }, () => renderToStaticMarkup(createElement(KordiAppRoot, {
+    cloudSessionStatus: 'signed-out',
+  })));
+
+  assert.match(markup, /class="bridge-app app-cloud-login-shell theme-light"/);
 });
 
 test('cloud login gate reads persisted theme preference before shell mount', () => {

@@ -75,9 +75,9 @@ export function KordiAppRoot({
 // theme-tokens.css palette resolves. The wrapping hook installs the system
 // theme class on <body> until the shell takes over.
 function CloudGateShell({ children }: { children: React.ReactNode }) {
-  useGateThemeClass();
+  const theme = useGateThemeClass();
   return (
-    <div className="bridge-app app-cloud-login-shell">
+    <div className={`bridge-app app-cloud-login-shell theme-${theme}`}>
       {children}
     </div>
   );
