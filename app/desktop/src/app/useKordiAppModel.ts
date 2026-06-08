@@ -80,7 +80,7 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/featu
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
-import { buildForwardDestinations, createForwardedMessageDraft, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
+import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
@@ -148,8 +148,12 @@ export function useKordiAppModel({
   const cloudPresence = useCloudPresence(cloudSession.account);
   const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const [forwardDialog, setForwardDialog] = useState<{
-    source: MessageActionSource;
+    sources: MessageActionSource[];
     destinations: ForwardDestination[];
+  } | null>(null);
+  const [messageSelection, setMessageSelection] = useState<{
+    conversationId: string;
+    sourcesByMessageId: Map<string, MessageActionSource>;
   } | null>(null);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
@@ -689,72 +693,131 @@ export function useKordiAppModel({
     if (!source) return;
     const destinations = buildForwardDestinations(chatConversations, LOCAL_DRAFT_CHAT_CONVERSATION_ID);
     if (!destinations.length) return;
-    setForwardDialog({ source, destinations });
+    setForwardDialog({ sources: [source], destinations });
   }, [activeConv.canonicalSessionId, activeConv.id, chatConversations, chatDraftSessionId]);
+
+  const sourceForSelectableMessage = useCallback((message: Message) => (
+    messageActionSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId)
+  ), [activeConv.canonicalSessionId, activeConv.id, chatDraftSessionId]);
+
+  const isMessageSelectable = useCallback((message: Message) => Boolean(sourceForSelectableMessage(message)), [sourceForSelectableMessage]);
+
+  const onSelectMessage = useCallback((message: Message) => {
+    const source = sourceForSelectableMessage(message);
+    if (!source) return;
+    setMessageSelection({
+      conversationId: activeConv.id,
+      sourcesByMessageId: new Map([[source.sourceMessageId, source]]),
+    });
+  }, [activeConv.id, sourceForSelectableMessage]);
+
+  const onToggleSelectedMessage = useCallback((message: Message) => {
+    const source = sourceForSelectableMessage(message);
+    if (!source) return;
+    setMessageSelection((current) => {
+      const currentMap = current?.conversationId === activeConv.id
+        ? new Map(current.sourcesByMessageId)
+        : new Map<string, MessageActionSource>();
+      if (currentMap.has(source.sourceMessageId)) {
+        currentMap.delete(source.sourceMessageId);
+      } else {
+        currentMap.set(source.sourceMessageId, source);
+      }
+      if (currentMap.size === 0) return null;
+      return { conversationId: activeConv.id, sourcesByMessageId: currentMap };
+    });
+  }, [activeConv.id, sourceForSelectableMessage]);
+
+  const onCancelMessageSelection = useCallback(() => {
+    setMessageSelection(null);
+  }, []);
+
+  const activeMessageSelection = messageSelection?.conversationId === activeConv.id ? messageSelection : null;
+  const selectedMessageIds = useMemo(
+    () => new Set(activeMessageSelection?.sourcesByMessageId.keys() ?? []),
+    [activeMessageSelection?.sourcesByMessageId],
+  );
+  const selectedMessageCount = selectedMessageIds.size;
+
+  const onForwardSelectedMessages = useCallback(() => {
+    if (!activeMessageSelection || activeMessageSelection.sourcesByMessageId.size === 0) return;
+    const orderedMessageIds = activeConv.messages
+      .map((message) => message.id?.trim() || message.entryId?.trim() || '')
+      .filter(Boolean);
+    const sources = orderedForwardSourcesForMessageIds(orderedMessageIds, activeMessageSelection.sourcesByMessageId);
+    if (sources.length === 0) return;
+    const destinations = buildForwardDestinations(chatConversations, LOCAL_DRAFT_CHAT_CONVERSATION_ID);
+    if (!destinations.length) return;
+    setForwardDialog({ sources, destinations });
+  }, [activeConv.messages, activeMessageSelection, chatConversations]);
+
+  useEffect(() => {
+    setMessageSelection((current) => (current && current.conversationId !== activeConv.id ? null : current));
+  }, [activeConv.id]);
 
   const handleConfirmForwardMessage = useCallback((destination: ForwardDestination, caption: string) => {
     const senderIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-    const source = forwardDialog?.source;
-    if (!senderIdentityId || !source) return;
-    const draft = createForwardedMessageDraft({ source, caption, destinationSessionId: destination.id });
+    const sources = forwardDialog?.sources ?? [];
+    if (!senderIdentityId || sources.length === 0) return;
+    const drafts = createForwardedMessageDrafts({ sources, caption });
     const now = Date.now();
     setForwardDialog(null);
+    setMessageSelection(null);
     const directCloudConversationId = isCloudBridgeConversationId(destination.conversationId) ? destination.conversationId : null;
     if (directCloudConversationId && sendCloudBridgeMessage) {
-      const body = encodeCloudDirectMessageEnvelope({
-        schemaVersion: 1,
-        kind: 'message',
-        text: draft.text,
-        messageAction: draft.messageAction,
-      });
       setActiveConvId(directCloudConversationId);
-      void sendCloudBridgeMessage(directCloudConversationId, body, [])
-        .then(() => {
-          revealForwardedMessageInDestination({
-            destinationConversationId: directCloudConversationId,
-            forwardedMessageId: null,
-            setActiveConversationId: setActiveConvId,
-            revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),
-            revealLatest: () => scrollTranscriptToBottom(chatTranscriptScrollRef),
+      void (async () => {
+        for (const draft of drafts) {
+          const body = encodeCloudDirectMessageEnvelope({
+            schemaVersion: 1,
+            kind: 'message',
+            text: draft.text,
+            messageAction: draft.messageAction,
           });
-        })
-        .catch((error: unknown) => {
-          setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');
+          await sendCloudBridgeMessage(directCloudConversationId, body, []);
+        }
+        revealForwardedMessageInDestination({
+          destinationConversationId: directCloudConversationId,
+          forwardedMessageId: null,
+          setActiveConversationId: setActiveConvId,
+          revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),
+          revealLatest: () => scrollTranscriptToBottom(chatTranscriptScrollRef),
         });
+      })().catch((error: unknown) => {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward messages');
+      });
       return;
     }
-    const forwardMessageId = `msg:forward:${destination.id}:${source.sourceMessageId}:${now}`;
     const destinationConversation = chatConversations.find((conversation) => (
       conversation.id === destination.conversationId
       || conversation.id === destination.id
       || conversation.canonicalSessionId === destination.id
     )) ?? null;
-    appendCanonicalMessage({
-      id: forwardMessageId,
-      sessionId: destination.id,
-      senderIdentityId,
-      senderRole: 'user',
-      messageKind: 'text',
-      contentText: draft.text,
-      content: {
-        forwardedFrom: draft.forwardedFrom,
-        messageAction: draft.messageAction,
-      },
-      createdAtMs: now,
-      parentMessageId: null,
-      status: 'sent',
-      sourceTransport: 'desktop-forward',
-      sourceEventId: `desktop-forward:${destination.id}:${source.sourceMessageId}:${now}`,
-    })
-      .then(async (nextState) => {
-        setCanonicalSessionState(nextState);
-        revealForwardedMessageInDestination({
-          destinationConversationId: destination.id,
-          forwardedMessageId: forwardMessageId,
-          setActiveConversationId: setActiveConvId,
-          revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),
-          revealLatest: () => scrollTranscriptToBottom(chatTranscriptScrollRef),
+    void (async () => {
+      let lastForwardMessageId: string | null = null;
+      for (const [index, draft] of drafts.entries()) {
+        const source = sources[index];
+        if (!source) continue;
+        const forwardMessageId = `msg:forward:${destination.id}:${source.sourceMessageId}:${now}:${index}`;
+        lastForwardMessageId = forwardMessageId;
+        const nextState = await appendCanonicalMessage({
+          id: forwardMessageId,
+          sessionId: destination.id,
+          senderIdentityId,
+          senderRole: 'user',
+          messageKind: 'text',
+          contentText: draft.text,
+          content: {
+            forwardedFrom: draft.forwardedFrom,
+            messageAction: draft.messageAction,
+          },
+          createdAtMs: now + index,
+          parentMessageId: null,
+          status: 'sent',
+          sourceTransport: 'desktop-forward',
+          sourceEventId: `desktop-forward:${destination.id}:${source.sourceMessageId}:${now}:${index}`,
         });
+        setCanonicalSessionState(nextState);
         if (destinationConversation && sendCloudGroupControl && cloudSession.account) {
           const groupScope = {
             canonicalSessionId: destination.id,
@@ -789,18 +852,25 @@ export function useKordiAppModel({
                   id: forwardMessageId,
                   senderAccountId: '',
                   text: draft.text,
-                  createdAtMs: now,
+                  createdAtMs: now + index,
                   messageAction: draft.messageAction,
                 },
               });
             }
           }
         }
-      })
-      .catch((error: unknown) => {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');
+      }
+      revealForwardedMessageInDestination({
+        destinationConversationId: destination.id,
+        forwardedMessageId: lastForwardMessageId,
+        setActiveConversationId: setActiveConvId,
+        revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),
+        revealLatest: () => scrollTranscriptToBottom(chatTranscriptScrollRef),
       });
-  }, [canonicalSessionState?.profile.humanIdentityId, chatConversations, cloudSession.account, desktopBridgeState?.activeHostId, desktopBridgeState?.hosts, forwardDialog?.source, sendCloudBridgeMessage, sendCloudGroupControl, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
+    })().catch((error: unknown) => {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward messages');
+    });
+  }, [canonicalSessionState?.profile.humanIdentityId, chatConversations, cloudSession.account, desktopBridgeState?.activeHostId, desktopBridgeState?.hosts, forwardDialog?.sources, sendCloudBridgeMessage, sendCloudGroupControl, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
 
   const activeConvMentionScope = useMemo(
     () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
@@ -2408,6 +2478,14 @@ export function useKordiAppModel({
     onClearChatQuote,
     onReplyMessage,
     onForwardMessage,
+    onSelectMessage,
+    messageSelectionMode: Boolean(activeMessageSelection),
+    selectedMessageCount,
+    selectedMessageIds,
+    isMessageSelectable,
+    onToggleSelectedMessage,
+    onCancelMessageSelection,
+    onForwardSelectedMessages,
     composerControlsRef,
     activeRuntimeSessionId,
     activeRuntimeContextStatus,
@@ -2489,7 +2567,7 @@ export function useKordiAppModel({
   ]);
 
   const messageForwardDialog = forwardDialog ? createElement(MessageForwardDialog, {
-    source: forwardDialog.source,
+    sources: forwardDialog.sources,
     destinations: forwardDialog.destinations,
     onClose: () => setForwardDialog(null),
     onForward: handleConfirmForwardMessage,

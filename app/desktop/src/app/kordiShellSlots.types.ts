@@ -284,6 +284,14 @@ export type AssembleKordiShellSlotsArgs = {
   onClearChatQuote: () => void;
   onReplyMessage: (message: Message) => void;
   onForwardMessage: (message: Message) => void;
+  onSelectMessage: (message: Message) => void;
+  messageSelectionMode: boolean;
+  selectedMessageCount: number;
+  selectedMessageIds: ReadonlySet<string>;
+  isMessageSelectable: (message: Message) => boolean;
+  onToggleSelectedMessage: (message: Message) => void;
+  onCancelMessageSelection: () => void;
+  onForwardSelectedMessages: () => void;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
   activeRuntimeSessionId?: string;
   activeRuntimeContextStatus?: DesktopChatState['activeSession']['contextWindowStatus'];
@@ -582,6 +590,14 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'onClearChatQuote'
   | 'onReplyMessage'
   | 'onForwardMessage'
+  | 'onSelectMessage'
+  | 'messageSelectionMode'
+  | 'selectedMessageCount'
+  | 'selectedMessageIds'
+  | 'isMessageSelectable'
+  | 'onToggleSelectedMessage'
+  | 'onCancelMessageSelection'
+  | 'onForwardSelectedMessages'
   | 'composerSelectionChat'
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'

@@ -3,7 +3,7 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { buildForwardDestinations, createForwardedMessageDraft, createForwardedMessageDrafts, revealForwardedMessageInDestination } from '../src/features/chat/messageForwarding';
+import { buildForwardDestinations, createForwardedMessageDraft, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination } from '../src/features/chat/messageForwarding';
 import { MessageForwardDialog } from '../src/pages/MessageForwardDialog';
 
 const source = {
@@ -81,6 +81,17 @@ test('createForwardedMessageDrafts keeps multi-forward sources in input order an
   assert.deepEqual(drafts.map((draft) => draft.text), ['Forward this', 'Second']);
   assert.deepEqual(drafts.map((draft) => draft.messageAction.source.senderLabel), ['Alice', 'Bob']);
   assert.deepEqual(drafts.map((draft) => draft.messageAction.kind), ['forward', 'forward']);
+});
+
+test('orderedForwardSourcesForMessageIds returns selected sources in transcript order', () => {
+  const first = { ...source, sourceMessageId: 'msg:first', textPreview: 'First' };
+  const second = { ...source, sourceMessageId: 'msg:second', textPreview: 'Second' };
+  const ordered = orderedForwardSourcesForMessageIds(['msg:first', 'msg:second'], new Map([
+    ['msg:second', second],
+    ['msg:first', first],
+  ]));
+
+  assert.deepEqual(ordered.map((entry) => entry.sourceMessageId), ['msg:first', 'msg:second']);
 });
 
 test('MessageForwardDialog renders destination picker and source preview', () => {

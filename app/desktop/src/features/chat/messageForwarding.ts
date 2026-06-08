@@ -58,6 +58,18 @@ export function createForwardedMessageDrafts({
   }));
 }
 
+export function orderedForwardSourcesForMessageIds(
+  orderedMessageIds: string[],
+  sourcesByMessageId: ReadonlyMap<string, MessageActionSource>,
+): MessageActionSource[] {
+  const result: MessageActionSource[] = [];
+  orderedMessageIds.forEach((messageId) => {
+    const source = sourcesByMessageId.get(messageId);
+    if (source) result.push(source);
+  });
+  return result;
+}
+
 export function revealForwardedMessageInDestination({
   destinationConversationId,
   forwardedMessageId,
