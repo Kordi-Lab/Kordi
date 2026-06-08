@@ -6,9 +6,11 @@ import {
   chatCompanionCandidates,
   chatCompanionSideForPaneKinds,
   chatCompanionSideFromDropPosition,
+  chatCopilotConversationForOpenRequest,
   cloudSelfAgentSyncStatusLabel,
   humanSideFromCompanionDrop,
   pairedCompanionConversation,
+  parseChatCopilotTriggerCommand,
 } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
 
@@ -113,6 +115,22 @@ test('chat companion pairing links human chats to that human owner agent chat', 
   assert.equal(pairedCompanionConversation(ownerAgentChat, [humanChat, ownerAgentChat])?.id, 'human-chat');
 });
 
+test('chat co-pilot does not auto-open from candidates without an explicit request', () => {
+  const agentChat = conversation({ id: 'agent-chat', type: 'owned-agent' });
+
+  assert.equal(chatCopilotConversationForOpenRequest(null, [agentChat]), null);
+  assert.equal(chatCopilotConversationForOpenRequest('agent-chat', [agentChat])?.id, 'agent-chat');
+  assert.equal(chatCopilotConversationForOpenRequest('missing-chat', [agentChat]), null);
+});
+
+test('chat co-pilot slash commands parse private prompt text', () => {
+  assert.deepEqual(parseChatCopilotTriggerCommand('/copilot draft a reply'), { prompt: 'draft a reply' });
+  assert.deepEqual(parseChatCopilotTriggerCommand('/ask summarize this thread'), { prompt: 'summarize this thread' });
+  assert.deepEqual(parseChatCopilotTriggerCommand('  /copilot   '), { prompt: '' });
+  assert.equal(parseChatCopilotTriggerCommand('/reply draft a reply'), null);
+  assert.equal(parseChatCopilotTriggerCommand('please /ask later'), null);
+});
+
 test('chat companion candidates include any opposite-kind chat, not just related chats', () => {
   const humanChat = conversation({ id: 'human-chat', type: 'person' });
   const firstAgentChat = conversation({ id: 'first-agent', type: 'owned-agent' });
@@ -206,6 +224,24 @@ test('chat companion split controls live on the divider instead of floating over
   assert.doesNotMatch(source, /data-split-layout-toolbar/);
 });
 
+test('chat co-pilot opens from an explicit header action with private scope copy', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /Ask co-pilot/);
+  assert.match(source, /data-chat-copilot-scope="private"/);
+  assert.match(source, /Private helper for this chat/);
+  assert.doesNotMatch(source, /const companionConversation =[^;]+\?\? suggestedCompanionConversation/s);
+});
+
+test('chat co-pilot slash trigger opens the rail instead of sending slash text to main chat', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /const handleSendChatMessage = \(draftOverride\?: string\) =>/);
+  assert.match(source, /parseChatCopilotTriggerCommand\(draft\)/);
+  assert.match(source, /openCopilotRail\(trigger\.prompt\)/);
+  assert.match(source, /onSendChatMessage\(draftOverride\)/);
+});
+
 test('chat companion pane does not expose focus handoff controls', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
@@ -226,7 +262,7 @@ test('human panes do not show agent model controls while agent side panes use ag
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /activePaneKind === 'agent' && !activeConversationIsBridge/);
-  assert.match(source, /companionPaneKind === 'agent' \? chatComposerPlaceholder\(companionConversation\)/);
+  assert.match(source, /companionPaneKind === 'agent' \? 'Ask privately…'/);
   assert.match(source, /companionShowsLocalAgentControls/);
   assert.match(source, /companionPaneKind === 'agent' && !companionConversationHasBridgeTransport/);
 });

@@ -271,6 +271,21 @@ export function chatCompanionCandidates(activeConv: Conversation, conversations:
   ));
 }
 
+export function chatCopilotConversationForOpenRequest(
+  requestedConversationId: string | null,
+  candidates: Conversation[],
+) {
+  if (!requestedConversationId) return null;
+  return candidates.find((conversation) => conversation.id === requestedConversationId) ?? null;
+}
+
+export function parseChatCopilotTriggerCommand(text: string) {
+  const trimmed = text.trimStart();
+  const match = trimmed.match(/^\/(?:copilot|ask)(?:\s+([\s\S]*))?$/i);
+  if (!match) return null;
+  return { prompt: match[1]?.trim() ?? '' };
+}
+
 function companionLabel(conversation: Conversation) {
   return conversationPaneKind(conversation) === 'agent' ? 'Agent chat' : 'Human chat';
 }
@@ -531,6 +546,7 @@ export function ChatsPage({
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
   const [humanPaneSide, setHumanPaneSide] = useState<CompanionSide>('left');
   const [selectedCompanionConversationId, setSelectedCompanionConversationId] = useState<string | null>(null);
+  const [openCopilotConversationId, setOpenCopilotConversationId] = useState<string | null>(null);
   const [companionDrafts, setCompanionDrafts] = useState<Record<string, string>>({});
   const [companionDropPreviewSide, setCompanionDropPreviewSide] = useState<CompanionSide | null>(null);
   const [isDraggingCompanion, setIsDraggingCompanion] = useState(false);
@@ -563,8 +579,9 @@ export function ChatsPage({
     () => pairedCompanionConversation(activeConv, companionCandidates) ?? companionCandidates[0] ?? null,
     [activeConv, companionCandidates],
   );
-  const companionConversation = companionCandidates.find((conversation) => conversation.id === selectedCompanionConversationId)
-    ?? suggestedCompanionConversation;
+  const selectedCompanionConversation = companionCandidates.find((conversation) => conversation.id === selectedCompanionConversationId) ?? null;
+  const suggestedCopilotConversation = selectedCompanionConversation ?? suggestedCompanionConversation;
+  const companionConversation = chatCopilotConversationForOpenRequest(openCopilotConversationId, companionCandidates);
   const showCompanionPane = Boolean(companionConversation && !isCompanionFolded);
   const companionDraftText = companionConversation ? companionDrafts[companionConversation.id] ?? '' : '';
   const activePaneKind = conversationPaneKind(activeConv);
@@ -577,6 +594,7 @@ export function ChatsPage({
     : false;
 
   useEffect(() => {
+    setOpenCopilotConversationId(null);
     setIsCompanionFolded(false);
   }, [activeConv.id]);
 
@@ -586,6 +604,14 @@ export function ChatsPage({
       setSelectedCompanionConversationId(null);
     }
   }, [companionCandidates, selectedCompanionConversationId]);
+
+  useEffect(() => {
+    if (!openCopilotConversationId) return;
+    if (!companionCandidates.some((conversation) => conversation.id === openCopilotConversationId)) {
+      setOpenCopilotConversationId(null);
+      setIsCompanionFolded(false);
+    }
+  }, [companionCandidates, openCopilotConversationId]);
 
   // If the active session is itself a fork, show a backlink at the top
   // of the transcript so the user can navigate to the source session.
@@ -730,12 +756,13 @@ export function ChatsPage({
     setIsDraggingCompanion(false);
     setCompanionDropPreviewSide(null);
   };
-  const updateCompanionDraft = (conversationId: string, value: string, target: HTMLTextAreaElement) => {
+  const updateCompanionDraft = (conversationId: string, value: string, target?: HTMLTextAreaElement) => {
     setCompanionDrafts((current) => ({
       ...current,
       [conversationId]: value,
     }));
     setChatComposerTextForSession(conversationId, value);
+    if (!target) return;
     target.style.height = '0px';
     target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
   };
@@ -748,6 +775,26 @@ export function ChatsPage({
       delete next[conversation.id];
       return next;
     });
+  };
+  const openCopilotRail = (initialPrompt = '') => {
+    const targetConversation = selectedCompanionConversation ?? suggestedCopilotConversation;
+    if (!targetConversation) return;
+    setOpenCopilotConversationId(targetConversation.id);
+    setSelectedCompanionConversationId(targetConversation.id);
+    setIsCompanionFolded(false);
+    if (initialPrompt.trim()) {
+      updateCompanionDraft(targetConversation.id, initialPrompt.trim());
+    }
+  };
+  const handleSendChatMessage = (draftOverride?: string) => {
+    const draft = draftOverride ?? chatComposerText;
+    const trigger = parseChatCopilotTriggerCommand(draft);
+    if (trigger) {
+      openCopilotRail(trigger.prompt);
+      setChatComposerText('');
+      return;
+    }
+    onSendChatMessage(draftOverride);
   };
   const moveCompanionToSide = (side: CompanionSide) => {
     setHumanPaneSide(humanSideFromCompanionDrop(companionPaneKind, side));
@@ -774,7 +821,7 @@ export function ChatsPage({
     }
   };
   const companionPane = companionConversation ? (
-    <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-white/[0.06] bg-white/[0.025] data-[side=left]:border-r data-[side=right]:border-l" data-side={companionSide}>
+    <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-white/[0.06] bg-white/[0.025] data-[side=left]:border-r data-[side=right]:border-l" data-side={companionSide} data-chat-copilot-scope="private">
       <div
         className="app-page-header flex min-h-[112px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3 active:cursor-grabbing"
         draggable
@@ -786,8 +833,9 @@ export function ChatsPage({
           <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex min-w-0 flex-wrap items-start gap-1.5 text-white">
-              <span className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6">{companionConversation.name}</span>
+              <span className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6">Co-pilot · {companionConversation.name}</span>
             </div>
+            <div className="mt-0.5 text-[11px] leading-5 text-slate-400">Private helper for this chat</div>
 
           </div>
         </div>
@@ -855,7 +903,7 @@ export function ChatsPage({
                 }
               }}
               className="min-h-[24px] max-h-[220px] flex-1 resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              placeholder={companionPaneKind === 'agent' ? chatComposerPlaceholder(companionConversation) : `Draft for ${companionConversation.name}`}
+              placeholder={companionPaneKind === 'agent' ? 'Ask privately…' : `Private note for ${companionConversation.name}`}
               data-composer-scope="companion"
             />
             <Button
@@ -1187,17 +1235,17 @@ export function ChatsPage({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {companionConversation && isCompanionFolded ? (
+          {suggestedCopilotConversation && !showCompanionPane ? (
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setIsCompanionFolded(false)}
+              onClick={() => openCopilotRail()}
               className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] text-slate-100 transition"
-              aria-label={`Show ${companionLabel(companionConversation)}`}
-              title={`Show ${companionConversation.name}`}
+              aria-label="Ask co-pilot"
+              title={`Ask co-pilot with ${suggestedCopilotConversation.name}`}
             >
               <Columns2 className="mr-1.5 h-3.5 w-3.5" />
-              Show side
+              Ask co-pilot
             </Button>
           ) : null}
           {showRightDetailRail && (
@@ -1431,7 +1479,7 @@ export function ChatsPage({
                   }
                   if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
                     event.preventDefault();
-                    onSendChatMessage(event.currentTarget.value);
+                    handleSendChatMessage(event.currentTarget.value);
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
@@ -1571,7 +1619,7 @@ export function ChatsPage({
               ) : null}
               <Button
                 className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
-                onClick={() => onSendChatMessage()}
+                onClick={() => handleSendChatMessage()}
                 disabled={false}
                 title={activeLiveTurnIsRunning ? 'Queue message for this session' : 'Send message'}
                 aria-label="Send message"
