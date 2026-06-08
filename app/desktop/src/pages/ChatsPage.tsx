@@ -294,6 +294,14 @@ type ChatsPageProps = {
   onClearChatQuote?: () => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
+  messageSelectionMode?: boolean;
+  selectedMessageCount?: number;
+  selectedMessageIds?: ReadonlySet<string>;
+  isMessageSelectable?: (message: Message) => boolean;
+  onToggleSelectedMessage?: (message: Message) => void;
+  onCancelMessageSelection?: () => void;
+  onForwardSelectedMessages?: () => void;
   composerControlsRef: RefObject<HTMLDivElement | null>;
   activeRuntimeContextStatus?: DesktopChatContextWindowStatus | null;
   activeRuntimeCacheText?: string | null;
@@ -362,6 +370,14 @@ export function ChatsPage({
   onClearChatQuote,
   onReplyMessage,
   onForwardMessage,
+  onSelectMessage,
+  messageSelectionMode = false,
+  selectedMessageCount = 0,
+  selectedMessageIds,
+  isMessageSelectable,
+  onToggleSelectedMessage,
+  onCancelMessageSelection,
+  onForwardSelectedMessages,
   composerControlsRef,
   activeRuntimeContextStatus,
   activeRuntimeCacheText,
@@ -804,6 +820,11 @@ export function ChatsPage({
                   onOpenForkSession={onSelectSession}
                   onReplyMessage={onReplyMessage}
                   onForwardMessage={onForwardMessage}
+                  onSelectMessage={onSelectMessage}
+                  selectionMode={messageSelectionMode}
+                  selectedMessageIds={selectedMessageIds}
+                  isMessageSelectable={isMessageSelectable}
+                  onToggleSelectedMessage={onToggleSelectedMessage}
                   plainAgentResponse={suppressAgentReplyAttribution}
                   isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                   isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
@@ -845,6 +866,34 @@ export function ChatsPage({
       </div>
 
       <div className="shrink-0 px-5 pb-4 pt-3">
+        {messageSelectionMode && selectedMessageCount > 0 ? (
+          <div
+            data-message-selection-bar="true"
+            className="app-message-selection-bar mb-2 flex items-center justify-between gap-3 rounded-[22px] border border-[color:var(--app-control-border)] bg-[color:var(--app-modal-bg)] px-3.5 py-2.5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-[var(--app-glass-blur-float)]"
+          >
+            <div className="text-[12px] font-semibold tabular-nums">
+              {selectedMessageCount} selected
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
+                onClick={onCancelMessageSelection}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--app-sidebar-accent)] px-3 py-1.5 text-[12px] font-semibold text-[color:var(--app-sidebar-accent-text)] transition disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onForwardSelectedMessages}
+                disabled={!onForwardSelectedMessages || selectedMessageCount <= 0}
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                Forward
+              </button>
+            </div>
+          </div>
+        ) : null}
         <AnimatePresence initial={false}>
           {activeConversationIsBridge && bridgeRoutingNotice ? (
             <motion.div

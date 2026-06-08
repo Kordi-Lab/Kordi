@@ -87,6 +87,24 @@ function renderChatsPage(overrides: Record<string, unknown> = {}) {
   } as any));
 }
 
+test('chat page renders message selection action bar', () => {
+  const markup = renderChatsPage({
+    messageSelectionMode: true,
+    selectedMessageCount: 2,
+    selectedMessageIds: new Set(['msg:alice']),
+    isMessageSelectable: () => true,
+    onSelectMessage: () => undefined,
+    onToggleSelectedMessage: () => undefined,
+    onCancelMessageSelection: () => undefined,
+    onForwardSelectedMessages: () => undefined,
+  });
+
+  assert.match(markup, /data-message-selection-bar="true"/);
+  assert.match(markup, /2 selected/);
+  assert.match(markup, /Forward/);
+  assert.match(markup, /Cancel/);
+});
+
 test('chat composer renders active quote preview with remove control', () => {
   const markup = renderChatsPage({
     activeChatQuote: {
