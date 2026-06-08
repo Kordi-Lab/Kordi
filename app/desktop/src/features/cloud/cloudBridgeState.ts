@@ -40,7 +40,7 @@ import {
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
-import { cloudDirectMessageDisplayText } from './cloudDirectMessages';
+import { cloudDirectMessageAction, cloudDirectMessageDisplayText } from './cloudDirectMessages';
 
 const CLOUD_SERVER_LABEL = 'kordi.cloud';
 export const CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
@@ -223,6 +223,7 @@ export function cloudMessageToBridgeMessage(
 ): DesktopBridgeConversationMessage {
   const timestampMs = Date.parse(message.createdAt) || Date.now();
   const agentResponse = parseCloudAgentResponse(message.body);
+  const directMessageAction = agentResponse ? null : cloudDirectMessageAction(message.body);
   const displayText = agentResponse?.text ?? cloudDirectMessageDisplayText(message.body);
   const isOwn = message.fromAccountId === account.accountId;
   const agentRequestId = !agentResponse && (
@@ -254,6 +255,7 @@ export function cloudMessageToBridgeMessage(
             : null,
     detail: undefined,
     attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
+    messageAction: directMessageAction,
     localTurn: agentResponse?.requestId ? options.localAgentTurnsByRequestId?.[agentResponse.requestId] ?? null : null,
   };
 }

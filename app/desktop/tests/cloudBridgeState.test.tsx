@@ -15,6 +15,7 @@ import {
 } from '../src/features/cloud/cloudBridgeState';
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { cloudGroupForkPayloadFromSessionMetadata, cloudGroupParticipantsWithProfiles, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
@@ -61,6 +62,53 @@ const peer = cloudContactToContact({
   avatarUrl: null,
   nodeId: 'node_peer',
   createdAt: '2026-05-11T00:00:00Z',
+});
+
+test('direct Cloud forwarded envelopes survive bridge transcript mapping', () => {
+  const source = {
+    sourceSessionId: 'session:source',
+    sourceMessageId: 'msg:source',
+    senderLabel: 'Peer Person',
+    textPreview: 'Original message',
+    attachmentCount: 0,
+    timeLabel: '10:42',
+  };
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'Original message',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source,
+    },
+  });
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_cloud_forward',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body,
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+  }, undefined, 'Kordi');
+
+  assert.equal(bridgeMessage.messageAction?.kind, 'forward');
+  assert.equal(view.messages[0]?.messageAction?.kind, 'forward');
+  assert.equal(view.messages[0]?.messageAction?.source.senderLabel, 'Peer Person');
 });
 
 test('cloud agent runtime routes fall back to current composer route for unconfigured cloud sessions', () => {

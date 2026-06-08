@@ -104,6 +104,18 @@ function bridgeMessageAttachments(message: DesktopBridgeConversationMessage): Me
   });
 }
 
+function bridgeMessageActionSourceReference(message: DesktopBridgeConversationMessage): Message['sourceMessage'] {
+  const action = message.messageAction;
+  if (!action) return null;
+  return {
+    messageId: action.source.sourceMessageId,
+    senderLabel: action.source.senderLabel,
+    text: action.source.textPreview,
+    attachmentCount: action.source.attachmentCount,
+    time: action.source.timeLabel ?? null,
+  };
+}
+
 function bridgeMessageMentions(
   conversation: DesktopBridgeConversation,
   message: DesktopBridgeConversationMessage,
@@ -308,6 +320,7 @@ export function mapBridgeConversationToViewModel(
     const rawDisplayText = bridgeMessageDisplayText(conversation, message);
     const mentions = bridgeMessageMentions(conversation, message);
     const attachments = bridgeMessageAttachments(message);
+    const sourceMessage = bridgeMessageActionSourceReference(message);
     const normalizedDeliveryState = normalizedBridgeState(message.deliveryState);
     const isProcessingAgentPlaceholder = normalizedDeliveryState === 'processing'
       && isProcessingPlaceholderText(rawDisplayText)
@@ -416,6 +429,9 @@ export function mapBridgeConversationToViewModel(
           : [],
       mentions,
       attachments,
+      messageAction: message.messageAction ?? null,
+      sourceMessage,
+      replyToMessageId: message.messageAction?.kind === 'quote' ? sourceMessage?.messageId ?? null : undefined,
       detail: message.detail ?? undefined,
     };
 

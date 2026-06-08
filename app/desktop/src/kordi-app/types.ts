@@ -816,6 +816,7 @@ export type DesktopBridgeConversationMessage = {
   detail?: string | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
   attachments?: MessageAttachment[];
+  messageAction?: MessageActionMetadata | null;
   localTurn?: DesktopChatTurnSnapshot | null;
 };
 
