@@ -408,12 +408,15 @@ test('cloud gate auto theme follows system light before shell mount', () => {
   assert.match(markup, /class="bridge-app app-cloud-login-shell theme-light"/);
 });
 
-test('cloud login gate reads persisted theme preference before shell mount', () => {
+test('cloud login gate reads persisted theme preference and native system theme before shell mount', () => {
   const source = readSource('src/KordiApp.tsx');
 
   assert.match(source, /readStoredThemeMode/);
   assert.match(source, /resolveThemeMode\(themeMode, readSystemTheme\(\)\)/);
-  assert.match(source, /setTheme\(resolveThemeMode\(themeMode, mediaQuery\.matches \? 'light' : 'dark'\)\)/);
+  assert.match(source, /themeMode === 'auto' && isTauriRuntime\(\)/);
+  assert.match(source, /getCurrentWindow\(\)\.theme\(\)/);
+  assert.match(source, /getCurrentWindow\(\)\.onThemeChanged/);
+  assert.match(source, /nativeWindowThemeIsResolvedTheme/);
   assert.doesNotMatch(source, /const \[theme, setTheme\] = useState<ResolvedThemeMode>\(\(\) => readSystemTheme\(\)\)/);
 });
 

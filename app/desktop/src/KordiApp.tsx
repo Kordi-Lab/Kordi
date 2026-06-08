@@ -16,6 +16,10 @@ function readSystemTheme(): ResolvedThemeMode {
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
+function nativeWindowThemeIsResolvedTheme(theme: unknown): theme is ResolvedThemeMode {
+  return theme === 'light' || theme === 'dark';
+}
+
 // The shell's useKordiUiEffects also writes `theme-*` to <body>, but it only
 // runs after KordiAppShell mounts. Before that — on the cloud login gate and
 // the restoring-session splash — nothing else applies a theme class, so the
@@ -29,15 +33,46 @@ function useGateThemeClass() {
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const themeMode = readStoredThemeMode();
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
-    const handle = () => {
-      setTheme(resolveThemeMode(themeMode, mediaQuery.matches ? 'light' : 'dark'));
+    let disposed = false;
+    let unlistenNativeTheme: (() => void) | undefined;
+    const mediaQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: light)')
+      : null;
+    const applySystemTheme = (systemTheme: ResolvedThemeMode) => {
+      setTheme(resolveThemeMode(themeMode, systemTheme));
     };
-    handle();
-    mediaQuery.addEventListener('change', handle);
-    return () => mediaQuery.removeEventListener('change', handle);
+    const handleMediaTheme = () => {
+      if (!mediaQuery) return;
+      applySystemTheme(mediaQuery.matches ? 'light' : 'dark');
+    };
+
+    if (themeMode === 'auto' && isTauriRuntime()) {
+      void getCurrentWindow().theme()
+        .then((nativeTheme) => {
+          if (!disposed && nativeWindowThemeIsResolvedTheme(nativeTheme)) setTheme(nativeTheme);
+        })
+        .catch(() => {
+          handleMediaTheme();
+        });
+      void getCurrentWindow().onThemeChanged(({ payload }) => {
+        if (!disposed && nativeWindowThemeIsResolvedTheme(payload)) setTheme(payload);
+      })
+        .then((unlisten) => {
+          if (disposed) unlisten();
+          else unlistenNativeTheme = unlisten;
+        })
+        .catch(() => undefined);
+    } else {
+      handleMediaTheme();
+    }
+
+    mediaQuery?.addEventListener('change', handleMediaTheme);
+    return () => {
+      disposed = true;
+      mediaQuery?.removeEventListener('change', handleMediaTheme);
+      unlistenNativeTheme?.();
+    };
   }, []);
 
   useEffect(() => {
