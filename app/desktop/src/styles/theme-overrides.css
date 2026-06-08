@@ -954,7 +954,7 @@
 
 .bridge-app.theme-light .app-cloud-login-page,
 .bridge-app.theme-light .app-cloud-login-loading {
-  --app-cloud-login-page-bg: oklch(0.955 0.026 82);
+  --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
 }
 
 /* Decorative radial accent layer behind the form. */
@@ -967,11 +967,11 @@
 
 .bridge-app.theme-light .app-cloud-login-accents {
   background:
-    radial-gradient(circle at 14% 10%, oklch(0.72 0.16 211 / 0.10), transparent 28%),
-    radial-gradient(circle at 84% 14%, oklch(0.66 0.26 355 / 0.08), transparent 26%),
-    radial-gradient(circle at 74% 82%, oklch(0.82 0.16 83 / 0.12), transparent 30%),
-    linear-gradient(90deg, oklch(0.39 0.035 82 / 0.030) 1px, transparent 1px),
-    linear-gradient(0deg, oklch(0.39 0.035 82 / 0.022) 1px, transparent 1px);
+    radial-gradient(circle at 14% 10%, oklch(0.70 0.13 232 / 0.12), transparent 28%),
+    radial-gradient(circle at 84% 14%, oklch(0.74 0.11 190 / 0.10), transparent 26%),
+    radial-gradient(circle at 74% 82%, oklch(0.72 0.08 255 / 0.09), transparent 30%),
+    linear-gradient(90deg, rgba(100, 116, 139, 0.035) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(100, 116, 139, 0.026) 1px, transparent 1px);
   background-size: auto, auto, auto, 14px 14px, 16px 16px;
 }
 
@@ -989,11 +989,11 @@
 .bridge-app.theme-light .app-cloud-login-grain {
   background-image: repeating-linear-gradient(
     7deg,
-    oklch(0.35 0.03 82 / 0.05) 0 1px,
+    rgba(51, 65, 85, 0.035) 0 1px,
     transparent 1px 9px
   );
   mix-blend-mode: multiply;
-  opacity: 0.18;
+  opacity: 0.14;
 }
 
 /* Inputs — placeholder color follows the theme. */
@@ -1118,10 +1118,9 @@
 }
 
 .app-cloud-starting-screen {
-  --app-cloud-starting-dot-a: oklch(0.72 0.13 212 / 0.78);
-  --app-cloud-starting-dot-b: oklch(0.76 0.12 165 / 0.76);
-  --app-cloud-starting-dot-c: oklch(0.78 0.13 78 / 0.72);
-  --app-cloud-starting-shadow: oklch(0 0 0 / 0.22);
+  --app-cloud-starting-dot-a: oklch(0.72 0.11 212 / 0.72);
+  --app-cloud-starting-dot-b: oklch(0.74 0.10 165 / 0.70);
+  --app-cloud-starting-dot-c: oklch(0.76 0.11 78 / 0.68);
   --app-cloud-starting-retry-bg: oklch(1 0 0 / 0.06);
   --app-cloud-starting-retry-border: oklch(1 0 0 / 0.12);
   --app-cloud-starting-retry-text: var(--utility-secondary-text);
@@ -1142,60 +1141,45 @@
 }
 
 .bridge-app.theme-light .app-cloud-starting-screen {
-  --app-cloud-login-page-bg: oklch(0.955 0.026 82);
-  --app-cloud-starting-dot-a: oklch(0.66 0.13 212 / 0.76);
-  --app-cloud-starting-dot-b: oklch(0.62 0.12 165 / 0.72);
-  --app-cloud-starting-dot-c: oklch(0.70 0.13 78 / 0.74);
-  --app-cloud-starting-shadow: oklch(0.42 0.04 82 / 0.10);
-  --app-cloud-starting-retry-bg: oklch(1 0 0 / 0.52);
-  --app-cloud-starting-retry-border: oklch(0.62 0.05 82 / 0.22);
-  --app-cloud-starting-retry-text: oklch(0.34 0.035 125);
+  --app-cloud-login-page-bg: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
+  --app-cloud-starting-dot-a: oklch(0.56 0.13 232 / 0.68);
+  --app-cloud-starting-dot-b: oklch(0.58 0.10 190 / 0.64);
+  --app-cloud-starting-dot-c: oklch(0.50 0.07 255 / 0.62);
+  --app-cloud-starting-retry-bg: rgba(255, 255, 255, 0.58);
+  --app-cloud-starting-retry-border: rgba(100, 116, 139, 0.20);
+  --app-cloud-starting-retry-text: rgb(51 65 85);
 }
 
 .app-cloud-starting-dots {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 11px;
 }
 
 .app-cloud-starting-dot {
-  position: relative;
-  width: 13px;
-  height: 13px;
-  border-radius: 47% 53% 49% 51% / 53% 46% 54% 47%;
-  filter: drop-shadow(0 7px 12px var(--app-cloud-starting-shadow));
-  opacity: 0.78;
-  transform-origin: center;
-  animation: app-cloud-starting-drift 1.75s ease-in-out infinite;
-}
-
-.app-cloud-starting-dot::before {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 53% 47% 51% 49% / 47% 56% 44% 53%;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
   background: currentColor;
-  opacity: 0.22;
-  transform: rotate(-8deg);
+  opacity: 0.68;
+  transform-origin: center;
+  animation: app-cloud-starting-pulse 1.35s var(--app-motion-ease) infinite;
 }
 
 .app-cloud-starting-dot-1 {
   color: var(--app-cloud-starting-dot-a);
-  background: radial-gradient(circle at 36% 34%, oklch(1 0 0 / 0.28), transparent 34%), currentColor;
   animation-delay: 0ms;
 }
 
 .app-cloud-starting-dot-2 {
   color: var(--app-cloud-starting-dot-b);
-  background: radial-gradient(circle at 42% 30%, oklch(1 0 0 / 0.24), transparent 36%), currentColor;
-  animation-delay: 145ms;
+  animation-delay: 120ms;
 }
 
 .app-cloud-starting-dot-3 {
   color: var(--app-cloud-starting-dot-c);
-  background: radial-gradient(circle at 38% 32%, oklch(1 0 0 / 0.20), transparent 35%), currentColor;
-  animation-delay: 290ms;
+  animation-delay: 240ms;
 }
 
 .app-cloud-starting-retry {
@@ -1217,14 +1201,14 @@
   color: var(--utility-foreground);
 }
 
-@keyframes app-cloud-starting-drift {
+@keyframes app-cloud-starting-pulse {
   0%, 100% {
-    transform: translateY(0) scale(0.96);
-    opacity: 0.58;
+    transform: translateY(0) scale(0.94);
+    opacity: 0.46;
   }
   45% {
-    transform: translateY(-5px) scale(1.03);
-    opacity: 0.88;
+    transform: translateY(-2px) scale(1);
+    opacity: 0.82;
   }
 }
 
