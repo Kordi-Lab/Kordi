@@ -58,6 +58,28 @@ test('glassmorphism tokens are declared in both themes and frame bgs are translu
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
 });
 
+test('light cloud login and loading gates use the cool main-shell palette', () => {
+  const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const lightTokenBlock = themeTokensCss.match(/\.bridge-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightCloudTokenBlock = lightTokenBlock.slice(lightTokenBlock.indexOf('--app-cloud-login-raised-bg:'));
+  const lightCloudBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-login-page,[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightAccentsBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-login-accents \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightStartingBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-starting-screen \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-raised-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.72\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-sunk-bg:\s*rgba\(226,\s*232,\s*240,\s*0\.52\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-input-bg:\s*rgba\(248,\s*251,\s*255,\s*0\.82\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-border:\s*rgba\(37,\s*99,\s*235,\s*0\.12\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-divider:\s*rgba\(100,\s*116,\s*139,\s*0\.22\);/);
+  assert.match(lightCloudBlock, /--app-cloud-login-page-bg:\s*linear-gradient\(180deg,\s*rgb\(248 250 252\) 0%,\s*rgb\(241 245 249\) 54%,\s*rgb\(226 232 240\) 100%\);/);
+  assert.match(lightAccentsBlock, /oklch\(0\.70 0\.13 232 \/ 0\.12\)/);
+  assert.match(lightAccentsBlock, /oklch\(0\.74 0\.11 190 \/ 0\.10\)/);
+  assert.match(lightStartingBlock, /--app-cloud-starting-dot-a:\s*oklch\(0\.56 0\.13 232 \/ 0\.68\);/);
+  assert.match(lightStartingBlock, /--app-cloud-starting-dot-c:\s*oklch\(0\.50 0\.07 255 \/ 0\.62\);/);
+  assert.doesNotMatch(`${lightCloudTokenBlock}\n${lightCloudBlock}\n${lightAccentsBlock}\n${lightStartingBlock}`, /oklch\([^)]*\s82(?:\s|\/|\))|rgba\(255,\s*252|rgb\(245 241 232\)|0\.955 0\.026 82/);
+});
+
 test('light agent workspace uses cool slate surfaces instead of warm beige panels', () => {
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
   const agentBlockStart = themeOverridesCss.indexOf('.bridge-app.theme-light .app-agent-shell');
