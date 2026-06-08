@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useEffect, useState, type MouseEventHandler } from 'react';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
+import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/edition';
-import { applyKordiMainWindowSize } from '@/features/cloud/loginWindow';
+import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode } from '@/kordi-app/types';
@@ -76,8 +78,27 @@ export function KordiAppRoot({
 // theme class on <body> until the shell takes over.
 function CloudGateShell({ children }: { children: React.ReactNode }) {
   const theme = useGateThemeClass();
+  const handleGateWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
+    if (!shouldStartNativeWindowDrag({
+      isNativeShell: isTauriRuntime(),
+      button: event.button,
+      clientY: event.clientY,
+      shellTop: event.currentTarget.getBoundingClientRect().top,
+      target: event.target,
+    })) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    void getCurrentWindow().startDragging().catch(() => undefined);
+  };
+
   return (
-    <div className={`bridge-app app-cloud-login-shell theme-${theme}`}>
+    <div
+      className={`bridge-app app-cloud-login-shell theme-${theme}`}
+      onMouseDownCapture={handleGateWindowDragMouseDown}
+    >
       {children}
     </div>
   );

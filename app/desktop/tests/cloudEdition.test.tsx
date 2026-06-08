@@ -416,3 +416,14 @@ test('cloud login gate reads persisted theme preference before shell mount', () 
   assert.match(source, /setTheme\(resolveThemeMode\(themeMode, mediaQuery\.matches \? 'light' : 'dark'\)\)/);
   assert.doesNotMatch(source, /const \[theme, setTheme\] = useState<ResolvedThemeMode>\(\(\) => readSystemTheme\(\)\)/);
 });
+
+test('cloud login gate has a native drag fallback before the app shell mounts', () => {
+  const shellSource = readSource('src/KordiApp.tsx');
+  const loginMarkup = renderToStaticMarkup(createElement(CloudLoginPage));
+
+  assert.match(shellSource, /shouldStartNativeWindowDrag/);
+  assert.match(shellSource, /isTauriRuntime\(\)/);
+  assert.match(shellSource, /getCurrentWindow\(\)\.startDragging\(\)/);
+  assert.match(shellSource, /onMouseDownCapture=\{handleGateWindowDragMouseDown\}/);
+  assert.match(loginMarkup, /data-tauri-drag-region="true"/);
+});

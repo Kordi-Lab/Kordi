@@ -427,7 +427,12 @@ export function CloudLoginPage({
       <div className="app-cloud-login-accents pointer-events-none absolute inset-0" />
       <div className="app-cloud-login-grain pointer-events-none absolute inset-0" />
 
-      <div className="absolute left-0 right-0 top-0 h-12" style={{ WebkitAppRegion: 'drag' as const }} />
+      <div
+        className="absolute left-0 right-0 top-0 h-12"
+        style={{ WebkitAppRegion: 'drag' as const }}
+        data-tauri-drag-region="true"
+        aria-hidden="true"
+      />
       <div className={`pointer-events-none absolute left-0 right-0 top-3 text-center ${TYPE_TITLEBAR} ${INK_SUBTLE}`}>
         Kordi
       </div>
