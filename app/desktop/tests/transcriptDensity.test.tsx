@@ -547,6 +547,28 @@ test('message context menu exposes Reply, Forward, and Select actions for eligib
   assert.match(markup, /data-message-context-menu-action="select"/);
 });
 
+test('message bubble exposes a non-text drag-select handle before selection mode starts', () => {
+  const message: Message = {
+    id: 'msg-drag-start',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Drag beside this message, not over text',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    isMessageSelectable: () => true,
+    onSelectionDragStart: () => undefined,
+    onSelectionDragEnter: () => undefined,
+    onSelectionDragEnd: () => undefined,
+  }));
+
+  assert.match(markup, /data-message-selection-drag-handle="msg-drag-start"/);
+  assert.match(markup, /data-message-selection-drag-state="idle"/);
+  assert.match(markup, /aria-label="Drag to select message from Alice at 10:42"/);
+});
+
 test('message bubble renders selected check control in selection mode', () => {
   const message: Message = {
     id: 'msg-selected',

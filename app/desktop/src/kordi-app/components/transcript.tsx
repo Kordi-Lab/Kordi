@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowRightLeft,
@@ -546,6 +546,13 @@ function MessageContextMenuHost({
   id,
   className,
   children,
+  onPointerDown,
+  onPointerEnter,
+  onPointerUp,
+  onPointerCancel,
+  dragSelectHandleId,
+  dragSelectState,
+  dragSelectLabel,
   onReplyMessage,
   onForwardMessage,
   onSelectMessage,
@@ -554,6 +561,13 @@ function MessageContextMenuHost({
   id?: string;
   className?: string;
   children: ReactNode;
+  onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerEnter?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerCancel?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  dragSelectHandleId?: string;
+  dragSelectState?: 'idle' | 'selected' | 'unselected';
+  dragSelectLabel?: string;
 } & MessageContextMenuActionHandlers) {
   const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; clientX: number; clientY: number; targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -627,7 +641,14 @@ function MessageContextMenuHost({
       id={id}
       data-transcript-message-root="true"
       data-message-context-menu-target="true"
+      data-message-selection-drag-handle={dragSelectHandleId}
+      data-message-selection-drag-state={dragSelectState}
+      aria-label={dragSelectLabel}
       onContextMenu={openMessageContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerEnter={onPointerEnter}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       className={className}
     >
       {children}
@@ -738,10 +759,31 @@ function MessageBubbleView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
   const menuActionHandlers = { onReplyMessage, onForwardMessage, onSelectMessage };
   const selectionId = messageSelectionId(msg);
-  const selectableInSelectionMode = Boolean(selectionMode && selectionId && (isMessageSelectable?.(msg) ?? true));
+  const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
+  const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
   const selectionClickSuppressedRef = useRef(false);
   const selectionLabel = `${isSelectedForAction ? 'Deselect' : 'Select'} message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}`;
+  const dragSelectLabel = canDragSelectMessage ? `Drag to select message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}` : undefined;
+  const dragSelectState = canDragSelectMessage ? (selectionMode ? (isSelectedForAction ? 'selected' : 'unselected') : 'idle') : undefined;
+  const shouldIgnoreDragSelectTarget = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('[data-message-context-menu-anchor="true"], [data-message-selection-control], button, a, input, textarea, select, [role="button"]'));
+  };
+  const handleRowSelectionDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !canDragSelectMessage) return;
+    if (shouldIgnoreDragSelectTarget(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const clearDrag = () => onSelectionDragEnd?.();
+    window.addEventListener('pointerup', clearDrag, { once: true });
+    window.addEventListener('pointercancel', clearDrag, { once: true });
+    onSelectionDragStart?.(msg, selectionMode ? !isSelectedForAction : true);
+  };
+  const handleRowSelectionDragEnter = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.buttons !== 1 || !canDragSelectMessage) return;
+    onSelectionDragEnter?.(msg);
+  };
   const selectionControl = selectableInSelectionMode ? (
     <button
       type="button"
@@ -1083,8 +1125,15 @@ function MessageBubbleView({
       msg={msg}
       {...menuActionHandlers}
       id={msg.id ? transcriptMessageDomId(msg.id) : undefined}
+      dragSelectHandleId={canDragSelectMessage ? selectionId : undefined}
+      dragSelectState={dragSelectState}
+      dragSelectLabel={dragSelectLabel}
+      onPointerDown={handleRowSelectionDragStart}
+      onPointerEnter={handleRowSelectionDragEnter}
+      onPointerUp={onSelectionDragEnd}
+      onPointerCancel={onSelectionDragEnd}
       className={cn(
-        'flex flex-col gap-1',
+        'flex w-full flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
         isGroupedWithNext ? 'pb-0' : 'pb-1',
         align,
@@ -1260,6 +1309,15 @@ export const MessageBubble = memo(
     && previous.onOpenForkSession === next.onOpenForkSession
     && previous.onReplyMessage === next.onReplyMessage
     && previous.onForwardMessage === next.onForwardMessage
+    && previous.onSelectMessage === next.onSelectMessage
+    && previous.selectionMode === next.selectionMode
+    && previous.selectedMessageIds === next.selectedMessageIds
+    && previous.isMessageSelectable === next.isMessageSelectable
+    && previous.onToggleSelectedMessage === next.onToggleSelectedMessage
+    && previous.onSelectionDragStart === next.onSelectionDragStart
+    && previous.onSelectionDragEnter === next.onSelectionDragEnter
+    && previous.onSelectionDragEnd === next.onSelectionDragEnd
+    && previous.plainAgentResponse === next.plainAgentResponse
     && previous.messageForks === next.messageForks
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
