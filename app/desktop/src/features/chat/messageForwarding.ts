@@ -44,6 +44,20 @@ export function createForwardedMessageDraft({
   };
 }
 
+export function createForwardedMessageDrafts({
+  sources,
+  caption,
+}: {
+  sources: MessageActionSource[];
+  caption?: string;
+}) {
+  return sources.map((source, index) => createForwardedMessageDraft({
+    source,
+    caption: sources.length === 1 && index === 0 ? caption : '',
+    destinationSessionId: source.sourceSessionId,
+  }));
+}
+
 export function revealForwardedMessageInDestination({
   destinationConversationId,
   forwardedMessageId,

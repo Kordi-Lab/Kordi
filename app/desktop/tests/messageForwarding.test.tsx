@@ -3,7 +3,7 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { buildForwardDestinations, createForwardedMessageDraft, revealForwardedMessageInDestination } from '../src/features/chat/messageForwarding';
+import { buildForwardDestinations, createForwardedMessageDraft, createForwardedMessageDrafts, revealForwardedMessageInDestination } from '../src/features/chat/messageForwarding';
 import { MessageForwardDialog } from '../src/pages/MessageForwardDialog';
 
 const source = {
@@ -74,10 +74,19 @@ test('revealForwardedMessageInDestination can switch and fall back to bottom for
   assert.deepEqual(calls, ['select:bridge:cloud-person:peer', 'latest']);
 });
 
+test('createForwardedMessageDrafts keeps multi-forward sources in input order and ignores caption', () => {
+  const secondSource = { ...source, sourceMessageId: 'msg:second', senderLabel: 'Bob', textPreview: 'Second' };
+  const drafts = createForwardedMessageDrafts({ sources: [source, secondSource], caption: 'ignored' });
+
+  assert.deepEqual(drafts.map((draft) => draft.text), ['Forward this', 'Second']);
+  assert.deepEqual(drafts.map((draft) => draft.messageAction.source.senderLabel), ['Alice', 'Bob']);
+  assert.deepEqual(drafts.map((draft) => draft.messageAction.kind), ['forward', 'forward']);
+});
+
 test('MessageForwardDialog renders destination picker and source preview', () => {
   const markup = renderToStaticMarkup(
     <MessageForwardDialog
-      source={source}
+      sources={[source]}
       destinations={[{ id: 'session:two', conversationId: 'conv:two', label: 'Group', subtitle: '3 members' }]}
       onClose={() => {}}
       onForward={() => {}}
@@ -88,4 +97,22 @@ test('MessageForwardDialog renders destination picker and source preview', () =>
   assert.match(markup, /Forward message/);
   assert.match(markup, /data-message-forward-destination="session:two"/);
   assert.match(markup, /Alice: Forward this/);
+});
+
+test('MessageForwardDialog renders batch preview without caption field', () => {
+  const secondSource = { ...source, sourceMessageId: 'msg:second', senderLabel: 'Bob', textPreview: 'Second' };
+  const markup = renderToStaticMarkup(
+    <MessageForwardDialog
+      sources={[source, secondSource]}
+      destinations={[{ id: 'session:two', conversationId: 'conv:two', label: 'Group', subtitle: '3 members' }]}
+      onClose={() => {}}
+      onForward={() => {}}
+    />,
+  );
+
+  assert.match(markup, /Forward 2 messages/);
+  assert.match(markup, /data-message-forward-selected-preview="true"/);
+  assert.match(markup, /Alice: Forward this/);
+  assert.match(markup, /Bob: Second/);
+  assert.doesNotMatch(markup, /Add a comment/);
 });
