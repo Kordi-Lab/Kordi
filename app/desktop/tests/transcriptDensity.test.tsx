@@ -836,6 +836,7 @@ test('renders peer human sender names inside the bubble with colorful bold styli
   assert.doesNotMatch(markup, /app-message-meta px-1[\s\S]*xin hai Mouse/);
 });
 
+
 test('groups consecutive same-sender human messages with one inline name and one avatar', () => {
   const first: Message = {
     id: 'msg:first',

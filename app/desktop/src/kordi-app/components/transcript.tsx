@@ -45,6 +45,7 @@ import type {
   EditFilePreview,
   Message,
   MessageMention,
+  MessageSourceReference,
 } from '../types';
 
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -744,7 +745,7 @@ function MessageBubbleView({
   msg: Message;
   onOpenSource?: (file: EditFilePreview) => void;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
-  onNavigateToMessage?: (messageId: string) => void;
+  onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
   onRequestBridgeContact?: () => Promise<void> | void;

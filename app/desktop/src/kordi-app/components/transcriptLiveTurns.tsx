@@ -38,7 +38,7 @@ import {
   toolTimelineTypeLabel,
   type ToolTimelineLayerGroup,
 } from './toolTimeline';
-import type { BridgeAgentRequestControl, DesktopChatTurnSnapshot } from '../types';
+import type { BridgeAgentRequestControl, DesktopChatTurnSnapshot, MessageSourceReference } from '../types';
 
 function looksLikeTerminalTable(text: string) {
   const lines = text
@@ -756,7 +756,7 @@ function LiveChatTurnCardView({
   plainAgentResponse?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
-  onNavigateToMessage?: (messageId: string) => void;
+  onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
 }) {
@@ -978,7 +978,7 @@ function LiveChatTurnMessageView({
   plainAgentResponse?: boolean;
   onStopBridgeAgentRequest?: StopBridgeAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
-  onNavigateToMessage?: (messageId: string) => void;
+  onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
 }) {

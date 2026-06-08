@@ -79,6 +79,7 @@ import {
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/features/chat/draftSessions';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
+import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
 import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '@/features/chat/messageSelection';
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
@@ -1347,14 +1348,16 @@ export function useKordiAppModel({
     setActiveConvId,
   });
 
-  const handleSendChatMessageWithQuoteClear = useCallback(async (draftOverride?: string) => {
-    const hasSendableContent = (draftOverride ?? composerDraftsView.chat).trim().length > 0
-      || composerUi.chatComposerAttachments.length > 0;
-    await handleSendChatMessage(draftOverride);
-    if (hasSendableContent && activeChatQuote) {
-      onClearChatQuote();
-    }
-  }, [activeChatQuote, composerDraftsView.chat, composerUi.chatComposerAttachments.length, handleSendChatMessage, onClearChatQuote]);
+  const handleSendChatMessageWithQuoteClear = useCallback((draftOverride?: string) => (
+    sendChatMessageWithImmediateQuoteClear({
+      draftOverride,
+      currentDraft: composerDraftsView.chat,
+      attachmentCount: composerUi.chatComposerAttachments.length,
+      activeChatQuote,
+      send: handleSendChatMessage,
+      clearQuote: onClearChatQuote,
+    })
+  ), [activeChatQuote, composerDraftsView.chat, composerUi.chatComposerAttachments.length, handleSendChatMessage, onClearChatQuote]);
 
   useEffect(() => {
     if (!isNativeShell || !desktopAuthState || !desktopChatState?.activeSessionId) return;

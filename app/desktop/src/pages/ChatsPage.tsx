@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentProps, Dispatch, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -53,6 +53,7 @@ import type {
   DesktopChatTurnSnapshot,
   EditFilePreview,
   Message,
+  MessageSourceReference,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
@@ -67,7 +68,9 @@ import {
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
+import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
+import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { cn } from '@/lib/utils';
 
@@ -533,6 +536,12 @@ export function ChatsPage({
     [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
+  const handleNavigateToTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
+    const targetMessageId = sourceMessage
+      ? resolveTranscriptMessageIdForSource(sourceMessage, attributedTranscriptMessages)
+      : messageId;
+    navigateToTranscriptMessage(targetMessageId || messageId, chatTranscriptScrollRef);
+  }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
   // Index of the last message that came from the fork's snapshot
   // (everything inherited from the source up through the anchor). The
   // divider goes after this message so any continuation the user
@@ -822,6 +831,7 @@ export function ChatsPage({
                   onOpenSource={onOpenSource}
                   onOpenArtifact={onOpenArtifact}
                   onOpenAuthSettings={openAuthentication}
+                  onNavigateToMessage={handleNavigateToTranscriptMessage}
                   onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                   onRequestBridgeContact={onRequestBridgeContact}
                   onForkMessage={handleForkMessage}
@@ -866,6 +876,7 @@ export function ChatsPage({
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onStopActiveTurn={onStopDesktopChatTurn}
                 plainAgentResponse={suppressAgentReplyAttribution}
+                onNavigateToMessage={handleNavigateToTranscriptMessage}
                 onOpenArtifact={onOpenArtifact}
                 onOpenAuthSettings={openAuthentication}
               />
