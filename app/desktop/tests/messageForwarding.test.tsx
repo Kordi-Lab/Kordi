@@ -3,7 +3,7 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { buildForwardDestinations, createForwardedMessageDraft } from '../src/features/chat/messageForwarding';
+import { buildForwardDestinations, createForwardedMessageDraft, revealForwardedMessageInDestination } from '../src/features/chat/messageForwarding';
 import { MessageForwardDialog } from '../src/pages/MessageForwardDialog';
 
 const source = {
@@ -40,6 +40,38 @@ test('buildForwardDestinations exposes dense selectable chat labels', () => {
   assert.equal(destinations[0].label, 'Alice');
   assert.equal(destinations[0].conversationId, 'conv:one');
   assert.equal(destinations[1].subtitle, '3 members');
+});
+
+test('revealForwardedMessageInDestination selects destination before revealing forwarded message', () => {
+  const calls: string[] = [];
+
+  revealForwardedMessageInDestination({
+    destinationConversationId: 'session:two',
+    forwardedMessageId: 'msg:forwarded',
+    setActiveConversationId: (id) => calls.push(`select:${id}`),
+    revealMessage: (id) => calls.push(`reveal:${id}`),
+    defer: (callback) => {
+      calls.push('defer');
+      callback();
+    },
+  });
+
+  assert.deepEqual(calls, ['select:session:two', 'defer', 'reveal:msg:forwarded']);
+});
+
+test('revealForwardedMessageInDestination can switch and fall back to bottom for direct cloud forwards', () => {
+  const calls: string[] = [];
+
+  revealForwardedMessageInDestination({
+    destinationConversationId: 'bridge:cloud-person:peer',
+    forwardedMessageId: null,
+    setActiveConversationId: (id) => calls.push(`select:${id}`),
+    revealMessage: (id) => calls.push(`reveal:${id}`),
+    revealLatest: () => calls.push('latest'),
+    defer: (callback) => callback(),
+  });
+
+  assert.deepEqual(calls, ['select:bridge:cloud-person:peer', 'latest']);
 });
 
 test('MessageForwardDialog renders destination picker and source preview', () => {

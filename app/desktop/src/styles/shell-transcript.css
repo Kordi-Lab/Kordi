@@ -889,14 +889,21 @@
   backdrop-filter: none;
 }
 
-.app-transcript-message-highlight {
+.app-transcript-message-highlight,
+.app-message-forward-reveal {
   --app-transcript-highlight-accent: rgb(56 189 248);
   --app-transcript-highlight-accent-soft: rgba(56, 189, 248, 0.14);
   scroll-margin-block: 5rem;
 }
 
-.app-transcript-message-highlight :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface) {
+.app-transcript-message-highlight :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface),
+.app-message-forward-reveal :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface) {
   animation: app-transcript-message-glow 1500ms var(--app-motion-ease) both;
+}
+
+@keyframes app-message-forward-reveal {
+  from { filter: brightness(1.065) drop-shadow(0 0 18px var(--app-transcript-highlight-accent-soft)); }
+  to { filter: brightness(1) drop-shadow(0 0 0 rgba(56, 189, 248, 0)); }
 }
 
 .app-transcript-message-highlight .app-chat-bubble-user {
@@ -943,7 +950,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-transcript-message-highlight :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface) {
+  .app-transcript-message-highlight :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface),
+  .app-message-forward-reveal,
+  .app-message-forward-reveal :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface) {
     animation: none;
   }
 }

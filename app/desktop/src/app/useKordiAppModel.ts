@@ -80,11 +80,12 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/featu
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
-import { buildForwardDestinations, createForwardedMessageDraft, type ForwardDestination } from '@/features/chat/messageForwarding';
+import { buildForwardDestinations, createForwardedMessageDraft, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
 import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
+import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, Message, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
@@ -688,8 +689,17 @@ export function useKordiAppModel({
         text: draft.text,
         messageAction: draft.messageAction,
       });
+      setActiveConvId(directCloudConversationId);
       void sendCloudBridgeMessage(directCloudConversationId, body, [])
-        .then(() => setActiveConvId(directCloudConversationId))
+        .then(() => {
+          revealForwardedMessageInDestination({
+            destinationConversationId: directCloudConversationId,
+            forwardedMessageId: null,
+            setActiveConversationId: setActiveConvId,
+            revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),
+            revealLatest: () => scrollTranscriptToBottom(chatTranscriptScrollRef),
+          });
+        })
         .catch((error: unknown) => {
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');
         });
@@ -720,6 +730,13 @@ export function useKordiAppModel({
     })
       .then(async (nextState) => {
         setCanonicalSessionState(nextState);
+        revealForwardedMessageInDestination({
+          destinationConversationId: destination.id,
+          forwardedMessageId: forwardMessageId,
+          setActiveConversationId: setActiveConvId,
+          revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),
+          revealLatest: () => scrollTranscriptToBottom(chatTranscriptScrollRef),
+        });
         if (destinationConversation && sendCloudGroupControl && cloudSession.account) {
           const groupScope = {
             canonicalSessionId: destination.id,
@@ -761,7 +778,6 @@ export function useKordiAppModel({
             }
           }
         }
-        setActiveConvId(destination.id);
       })
       .catch((error: unknown) => {
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward message');

@@ -282,6 +282,86 @@ test('renders failed own message delivery as a compact red exclamation', () => {
   assert.match(markup, /text-rose-400/);
 });
 
+test('forwarded human messages render Telegram-style forwarded header instead of quote block', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'Forward this',
+    time: '12:18',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source: {
+        sourceSessionId: 'session:one',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Shiney lala',
+        textPreview: 'Original text',
+        attachmentCount: 0,
+        timeLabel: '12:07',
+      },
+    },
+    sourceMessage: {
+      messageId: 'msg:source',
+      senderLabel: 'Shiney lala',
+      text: 'Original text',
+      attachmentCount: 0,
+      time: '12:07',
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /data-message-forwarded-header="true"/);
+  assert.match(markup, />Forwarded from</);
+  assert.match(markup, />Shiney lala</);
+  assert.doesNotMatch(markup, /app-source-message-quote/);
+});
+
+test('quoted human messages still render source quote instead of forwarded header', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'Replying',
+    time: '12:18',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'quote',
+      source: {
+        sourceSessionId: 'session:one',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Alice',
+        textPreview: 'Original text',
+        attachmentCount: 0,
+        timeLabel: '12:07',
+      },
+    },
+    sourceMessage: {
+      messageId: 'msg:source',
+      senderLabel: 'Alice',
+      text: 'Original text',
+      attachmentCount: 0,
+      time: '12:07',
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-source-message-quote/);
+  assert.doesNotMatch(markup, /data-message-forwarded-header="true"/);
+});
+
+test('forwarded message reveal uses reduced-motion-safe highlight styling', () => {
+  const shellCss = readDesktopShellCss();
+
+  assert.match(shellCss, /\.app-message-forward-reveal/);
+  assert.match(shellCss, /@keyframes\s+app-message-forward-reveal/);
+  assert.match(shellCss, /prefers-reduced-motion:\s*reduce[\s\S]*\.app-message-forward-reveal[\s\S]*animation:\s*none/);
+});
+
 test('sent-message delivery glyph keeps one stable slot so status changes do not refresh the whole popover', () => {
   const message: Message = {
     role: 'user',

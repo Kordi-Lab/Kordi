@@ -43,3 +43,26 @@ export function createForwardedMessageDraft({
     messageAction,
   };
 }
+
+export function revealForwardedMessageInDestination({
+  destinationConversationId,
+  forwardedMessageId,
+  setActiveConversationId,
+  revealMessage,
+  revealLatest,
+  defer = (callback) => window.setTimeout(callback, 80),
+}: {
+  destinationConversationId: string;
+  forwardedMessageId?: string | null;
+  setActiveConversationId: (conversationId: string) => void;
+  revealMessage: (messageId: string) => boolean | void;
+  revealLatest?: () => boolean | void;
+  defer?: (callback: () => void) => void;
+}) {
+  setActiveConversationId(destinationConversationId);
+  if (forwardedMessageId?.trim()) {
+    defer(() => { revealMessage(forwardedMessageId); });
+    return;
+  }
+  revealLatest?.();
+}
