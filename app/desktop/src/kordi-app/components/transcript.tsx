@@ -432,13 +432,26 @@ function MessageContextMenuAction({ icon, label, action, onClick }: { icon: Reac
 export type MessageContextMenuActionHandlers = {
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
 };
+
+export type MessageSelectionProps = {
+  selectionMode?: boolean;
+  selectedMessageIds?: ReadonlySet<string>;
+  isMessageSelectable?: (message: Message) => boolean;
+  onToggleSelectedMessage?: (message: Message) => void;
+};
+
+function messageSelectionId(msg: Message) {
+  return msg.id ?? msg.entryId ?? msg.turn?.id ?? '';
+}
 
 export function MessageContextMenuContent({
   msg,
   onClose,
   onReplyMessage,
   onForwardMessage,
+  onSelectMessage,
 }: {
   msg: Message;
   onClose?: () => void;
@@ -463,6 +476,10 @@ export function MessageContextMenuContent({
     onForwardMessage?.(msg);
     onClose?.();
   };
+  const handleSelect = () => {
+    onSelectMessage?.(msg);
+    onClose?.();
+  };
 
   return (
     <div className="app-message-context-menu-content w-[13.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
@@ -482,7 +499,7 @@ export function MessageContextMenuContent({
         <MessageContextMenuAction action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
         <MessageContextMenuAction action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={handleForward} />
         <MessageContextMenuAction action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
-        <MessageContextMenuAction action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={onClose} />
+        <MessageContextMenuAction action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={handleSelect} />
         <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
       </div>
     </div>
@@ -528,6 +545,7 @@ function MessageContextMenuHost({
   children,
   onReplyMessage,
   onForwardMessage,
+  onSelectMessage,
 }: {
   msg: Message;
   id?: string;
@@ -595,6 +613,7 @@ function MessageContextMenuHost({
           onClose={() => setMessageContextMenu(null)}
           onReplyMessage={onReplyMessage}
           onForwardMessage={onForwardMessage}
+          onSelectMessage={onSelectMessage}
         />
       </div>
     </>
@@ -682,6 +701,11 @@ function MessageBubbleView({
   onOpenForkSession,
   onReplyMessage,
   onForwardMessage,
+  onSelectMessage,
+  selectionMode = false,
+  selectedMessageIds,
+  isMessageSelectable,
+  onToggleSelectedMessage,
   plainAgentResponse = false,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
@@ -698,14 +722,40 @@ function MessageBubbleView({
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
   plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
-}) {
+} & MessageSelectionProps) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
-  const menuActionHandlers = { onReplyMessage, onForwardMessage };
+  const menuActionHandlers = { onReplyMessage, onForwardMessage, onSelectMessage };
+  const selectionId = messageSelectionId(msg);
+  const selectableInSelectionMode = Boolean(selectionMode && selectionId && (isMessageSelectable?.(msg) ?? true));
+  const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
+  const selectionLabel = `${isSelectedForAction ? 'Deselect' : 'Select'} message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}`;
+  const selectionControl = selectableInSelectionMode ? (
+    <button
+      type="button"
+      data-message-selection-control={selectionId}
+      aria-pressed={isSelectedForAction}
+      aria-label={selectionLabel}
+      className={cn(
+        'app-message-selection-control grid h-6.5 w-6.5 shrink-0 place-items-center rounded-full border text-[color:var(--utility-foreground)] transition',
+        isSelectedForAction
+          ? 'border-[color:var(--app-sidebar-accent)] bg-[color:var(--app-sidebar-accent)] text-[color:var(--app-sidebar-accent-text)]'
+          : 'border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] hover:bg-[color:var(--app-control-hover)]',
+      )}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleSelectedMessage?.(msg);
+      }}
+    >
+      {isSelectedForAction ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+    </button>
+  ) : null;
 
   // Fork is offered on assistant turns only: clicking branches the
   // conversation into a new session that includes everything through
@@ -1003,6 +1053,7 @@ function MessageBubbleView({
         align,
         isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
         showContactRequestAction ? 'w-full' : '',
+        isSelectedForAction ? 'app-message-selection-selected' : '',
       )}
     >
       {showHeaderMeta ? (
@@ -1010,7 +1061,8 @@ function MessageBubbleView({
           {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
         </div>
       ) : null}
-      <div className={cn('flex items-end', showAvatarSlot ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+      <div className={cn('flex items-end', showAvatarSlot || selectionControl ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+        {selectionControl}
         {showAvatar ? (
           <IdentityAvatar
             kind={avatarKind}
@@ -1024,6 +1076,14 @@ function MessageBubbleView({
         ) : null}
         <div
           data-message-context-menu-anchor="true"
+          onClick={(event) => {
+            if (!selectableInSelectionMode) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest('button,a,input,textarea,[role="button"]')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onToggleSelectedMessage?.(msg);
+          }}
           className={cn(
           'min-w-0',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : 'shadow-sm',

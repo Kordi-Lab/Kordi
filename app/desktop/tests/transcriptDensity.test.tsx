@@ -522,7 +522,7 @@ test('message context menu content lists read receipts when available', () => {
   assert.doesNotMatch(markup, /py-2/);
 });
 
-test('message context menu exposes Reply and Forward actions for eligible messages', () => {
+test('message context menu exposes Reply, Forward, and Select actions for eligible messages', () => {
   const message: Message = {
     id: 'msg:quote-target',
     role: 'person',
@@ -536,12 +536,37 @@ test('message context menu exposes Reply and Forward actions for eligible messag
     onClose: () => undefined,
     onReplyMessage: () => undefined,
     onForwardMessage: () => undefined,
+    onSelectMessage: () => undefined,
   }));
 
   assert.match(markup, />Reply</);
   assert.match(markup, />Forward</);
+  assert.match(markup, />Select</);
   assert.match(markup, /data-message-context-menu-action="reply"/);
   assert.match(markup, /data-message-context-menu-action="forward"/);
+  assert.match(markup, /data-message-context-menu-action="select"/);
+});
+
+test('message bubble renders selected check control in selection mode', () => {
+  const message: Message = {
+    id: 'msg-selected',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Selected text',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    selectionMode: true,
+    selectedMessageIds: new Set(['msg-selected']),
+    isMessageSelectable: () => true,
+    onToggleSelectedMessage: () => undefined,
+  }));
+
+  assert.match(markup, /data-message-selection-control="msg-selected"/);
+  assert.match(markup, /aria-pressed="true"/);
+  assert.match(markup, /Deselect message from Alice at 10:42/);
 });
 
 test('message context menu position stays close to the clicked message rectangle', () => {
