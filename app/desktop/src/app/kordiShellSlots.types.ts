@@ -294,6 +294,7 @@ export type AssembleKordiShellSlotsArgs = {
   onSelectionDragEnter: (message: Message) => void;
   onSelectionDragEnd: () => void;
   onCancelMessageSelection: () => void;
+  onCopySelectedMessages: () => void;
   onForwardSelectedMessages: () => void;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
   activeRuntimeSessionId?: string;
@@ -603,6 +604,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'onSelectionDragEnter'
   | 'onSelectionDragEnd'
   | 'onCancelMessageSelection'
+  | 'onCopySelectedMessages'
   | 'onForwardSelectedMessages'
   | 'composerSelectionChat'
   | 'composerAuthLabelChat'

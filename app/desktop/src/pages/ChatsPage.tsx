@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Clock3,
   Cloud,
+  Copy,
   FileText,
   Image as ImageIcon,
   Paperclip,
@@ -304,6 +305,7 @@ type ChatsPageProps = {
   onSelectionDragEnter?: (message: Message) => void;
   onSelectionDragEnd?: () => void;
   onCancelMessageSelection?: () => void;
+  onCopySelectedMessages?: () => void;
   onForwardSelectedMessages?: () => void;
   composerControlsRef: RefObject<HTMLDivElement | null>;
   activeRuntimeContextStatus?: DesktopChatContextWindowStatus | null;
@@ -383,6 +385,7 @@ export function ChatsPage({
   onSelectionDragEnter,
   onSelectionDragEnd,
   onCancelMessageSelection,
+  onCopySelectedMessages,
   onForwardSelectedMessages,
   composerControlsRef,
   activeRuntimeContextStatus,
@@ -890,6 +893,15 @@ export function ChatsPage({
                 onClick={onCancelMessageSelection}
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[color:var(--utility-foreground)] transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onCopySelectedMessages}
+                disabled={!onCopySelectedMessages || selectedMessageCount <= 0}
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                Copy
               </button>
               <button
                 type="button"

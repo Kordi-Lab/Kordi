@@ -20,6 +20,19 @@ export type MessageSelectionState = {
   sourcesByMessageId: Map<string, MessageActionSource>;
 };
 
+export function formatSelectedMessagesForCopy(sources: readonly MessageActionSource[]) {
+  return sources
+    .map((source) => {
+      const sender = source.senderLabel.trim() || 'Unknown sender';
+      const text = source.textPreview.trim();
+      const fallback = source.attachmentCount > 0
+        ? `[${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}]`
+        : '[Message]';
+      return `${sender}: ${text || fallback}`;
+    })
+    .join('\n');
+}
+
 export function setMessageSelectionSource(
   current: MessageSelectionState | null,
   conversationId: string,

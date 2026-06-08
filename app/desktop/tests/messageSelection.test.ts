@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { hasMessageSelectionDragExceededThreshold, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '../src/features/chat/messageSelection';
+import { formatSelectedMessagesForCopy, hasMessageSelectionDragExceededThreshold, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '../src/features/chat/messageSelection';
 import type { MessageActionSource } from '../src/features/chat/messageActionMetadata';
 
 const source = (id: string): MessageActionSource => ({
@@ -29,6 +29,14 @@ test('setMessageSelectionSource deselects and clears empty state', () => {
   const cleared = setMessageSelectionSource(selected, 'conv:one', first, false);
 
   assert.equal(cleared, null);
+});
+
+test('formatSelectedMessagesForCopy copies sender-prefixed messages in order', () => {
+  assert.equal(formatSelectedMessagesForCopy([
+    { ...source('msg:first'), senderLabel: 'Alice', textPreview: 'hello' },
+    { ...source('msg:second'), senderLabel: 'Bob', textPreview: 'two\nlines' },
+    { ...source('msg:third'), senderLabel: 'Carol', textPreview: '', attachmentCount: 2 },
+  ]), 'Alice: hello\nBob: two\nlines\nCarol: [2 attachments]');
 });
 
 test('hasMessageSelectionDragExceededThreshold ignores clicks and tiny pointer drift', () => {

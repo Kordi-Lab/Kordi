@@ -80,7 +80,7 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/featu
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
-import { setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '@/features/chat/messageSelection';
+import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '@/features/chat/messageSelection';
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
@@ -747,17 +747,28 @@ export function useKordiAppModel({
   );
   const selectedMessageCount = selectedMessageIds.size;
 
-  const onForwardSelectedMessages = useCallback(() => {
-    if (!activeMessageSelection || activeMessageSelection.sourcesByMessageId.size === 0) return;
+  const orderedSelectedMessageSources = useCallback(() => {
+    if (!activeMessageSelection || activeMessageSelection.sourcesByMessageId.size === 0) return [];
     const orderedMessageIds = activeConv.messages
       .map((message) => message.id?.trim() || message.entryId?.trim() || '')
       .filter(Boolean);
-    const sources = orderedForwardSourcesForMessageIds(orderedMessageIds, activeMessageSelection.sourcesByMessageId);
+    return orderedForwardSourcesForMessageIds(orderedMessageIds, activeMessageSelection.sourcesByMessageId);
+  }, [activeConv.messages, activeMessageSelection]);
+
+  const onCopySelectedMessages = useCallback(() => {
+    const sources = orderedSelectedMessageSources();
+    if (sources.length === 0) return;
+    const copyText = formatSelectedMessagesForCopy(sources);
+    void handleCopyBridgeText(copyText, 'Selected messages copied');
+  }, [handleCopyBridgeText, orderedSelectedMessageSources]);
+
+  const onForwardSelectedMessages = useCallback(() => {
+    const sources = orderedSelectedMessageSources();
     if (sources.length === 0) return;
     const destinations = buildForwardDestinations(chatConversations, LOCAL_DRAFT_CHAT_CONVERSATION_ID);
     if (!destinations.length) return;
     setForwardDialog({ sources, destinations });
-  }, [activeConv.messages, activeMessageSelection, chatConversations]);
+  }, [chatConversations, orderedSelectedMessageSources]);
 
   useEffect(() => {
     messageSelectionDragRef.current = null;
@@ -2497,6 +2508,7 @@ export function useKordiAppModel({
     onSelectionDragEnter,
     onSelectionDragEnd,
     onCancelMessageSelection,
+    onCopySelectedMessages,
     onForwardSelectedMessages,
     composerControlsRef,
     activeRuntimeSessionId,

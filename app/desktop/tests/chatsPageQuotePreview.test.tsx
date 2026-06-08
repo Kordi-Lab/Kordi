@@ -96,11 +96,13 @@ test('chat page renders message selection action bar', () => {
     onSelectMessage: () => undefined,
     onToggleSelectedMessage: () => undefined,
     onCancelMessageSelection: () => undefined,
+    onCopySelectedMessages: () => undefined,
     onForwardSelectedMessages: () => undefined,
   });
 
   assert.match(markup, /data-message-selection-bar="true"/);
   assert.match(markup, /2 selected/);
+  assert.match(markup, /Copy/);
   assert.match(markup, /Forward/);
   assert.match(markup, /Cancel/);
 });

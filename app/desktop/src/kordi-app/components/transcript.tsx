@@ -785,6 +785,7 @@ function MessageBubbleView({
   const handleRowSelectionDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !canDragSelectMessage) return;
     if (shouldIgnoreDragSelectTarget(event.target)) return;
+    event.preventDefault();
     event.stopPropagation();
 
     rowSelectionDragRef.current?.cleanup();
@@ -814,6 +815,7 @@ function MessageBubbleView({
         { x: pointerEvent.clientX, y: pointerEvent.clientY },
       )) return;
       pointerEvent.preventDefault();
+      window.getSelection()?.removeAllRanges();
       active.started = true;
       onSelectionDragStart?.(msg, active.shouldSelect);
     };
