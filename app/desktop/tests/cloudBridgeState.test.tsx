@@ -153,6 +153,47 @@ test('direct Cloud forwards use real local display name as source sender label',
   assert.equal(source?.senderLabel, 'Me Cloud');
 });
 
+test('direct Cloud forwards use real remote human name as source sender label', () => {
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_remote_source',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body: 'remote text',
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    canonicalSessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: account.accountId,
+      localHumanName: account.displayName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      remoteHumanId: 'acct_peer',
+      remoteHumanName: 'Peer Person',
+      remoteAgentId: 'cloud-agent:acct_peer',
+      remoteAgentName: "Peer Person's Kordi",
+    },
+  }, undefined, 'Kordi');
+  const source = messageActionSourceFromMessage(view.messages[0]!, view.canonicalSessionId!);
+
+  assert.equal(view.messages[0]?.sender, 'Peer Person');
+  assert.equal(source?.senderLabel, 'Peer Person');
+});
+
 test('direct Cloud forwards use real local agent owner name as source sender label', () => {
   const view = mapBridgeConversationToViewModel({
     id: cloudBridgeConversationId(account.accountId, 'kordi-desktop', 'session:self'),

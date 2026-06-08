@@ -432,7 +432,7 @@ export function mapBridgeConversationToViewModel(
       sender,
       sourceSenderLabel: isOutboundHuman
         ? localHumanSourceLabel
-        : isInboundHuman
+        : senderType === 'human'
           ? remoteHumanSourceLabel
           : isLocalAgentResponse
             ? localAgentSourceLabel
