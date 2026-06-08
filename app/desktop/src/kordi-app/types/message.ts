@@ -135,6 +135,7 @@ export type Message = {
   entryId?: string | null;
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
+  sourceSenderLabel?: string | null;
   senderType?: 'human' | 'agent';
   senderProfileImageUrl?: string | null;
   senderAvatarSeed?: string | null;

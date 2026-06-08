@@ -47,7 +47,7 @@ export function messageActionSourceFromMessage(
   if (!sourceMessageId || !sessionId) {
     return null;
   }
-  const senderLabel = clean(message.sender)
+  const senderLabel = clean(message.sourceSenderLabel) || clean(message.sender)
     || (message.isOwnMessage ? 'You' : message.role === 'owned-agent' ? 'My Kordi' : message.role);
   return {
     sourceSessionId: sessionId,
