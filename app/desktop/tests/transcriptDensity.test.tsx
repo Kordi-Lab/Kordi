@@ -990,7 +990,7 @@ test('styles folded source quote expand control as muted overlay on the fade', (
   const sourceOverlayBlock = shellCss.match(/\.app-source-message-quote-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
   const sourceFoldedAfterBlock = shellCss.match(/\.app-source-message-quote-folded::after \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 78%, var\(--utility-muted-text\)\)/);
+  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 84%, var\(--app-source-message-quote-muted\)\)/);
   assert.doesNotMatch(sourceToggleBlock, /rgb\(147 197 253\)/);
   assert.match(sourceOverlayBlock, /position:\s*absolute/);
   assert.match(sourceOverlayBlock, /bottom:\s*0\.1rem/);
@@ -1014,9 +1014,22 @@ test('styles reply attribution surfaces with stronger dark-mode contrast', () =>
   assert.match(responseSurfaceBlock, /border:\s*0/);
   assert.match(responseSurfaceBlock, /box-shadow:\s*none/);
   assert.match(responseSurfaceBlock, /background:\s*color-mix\(in oklab, var\(--utility-foreground\) 3%, transparent\)/);
-  assert.match(quoteLinkBlock, /var\(--utility-foreground\) 7%/);
-  assert.match(quoteLabelBlock, /var\(--utility-foreground\) 92%/);
-  assert.match(quoteTextBlock, /var\(--utility-foreground\) 68%/);
+  assert.match(quoteLinkBlock, /var\(--app-source-message-quote-bg\)/);
+  assert.match(quoteLabelBlock, /var\(--app-source-message-quote-label\)/);
+  assert.match(quoteTextBlock, /var\(--app-source-message-quote-text\)/);
+});
+
+test('styles source quote colors contextually inside own message bubbles for dark and light modes', () => {
+  const shellCss = readDesktopShellCss();
+  const quoteRootBlock = shellCss.match(/\.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const ownBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const peerBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-peer \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(quoteRootBlock, /--app-source-message-quote-foreground:\s*var\(--utility-foreground\)/);
+  assert.match(quoteRootBlock, /--app-source-message-quote-text:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 82%, var\(--app-source-message-quote-muted\)\)/);
+  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*var\(--app-chat-bubble-user-text\)/);
+  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-muted:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 72%, transparent\)/);
+  assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 8%, transparent\)/);
 });
 
 test('keeps medium completed agent responses readable without folding too early', () => {
