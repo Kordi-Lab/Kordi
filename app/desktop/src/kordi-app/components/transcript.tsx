@@ -27,6 +27,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
+import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
@@ -548,6 +549,7 @@ function MessageContextMenuHost({
   children,
   onPointerDown,
   onPointerEnter,
+  onPointerMove,
   onPointerUp,
   onPointerCancel,
   dragSelectHandleId,
@@ -563,6 +565,7 @@ function MessageContextMenuHost({
   children: ReactNode;
   onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerEnter?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onPointerCancel?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   dragSelectHandleId?: string;
@@ -647,6 +650,7 @@ function MessageContextMenuHost({
       onContextMenu={openMessageContextMenu}
       onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
+      onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       className={className}
@@ -763,6 +767,14 @@ function MessageBubbleView({
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
   const selectionClickSuppressedRef = useRef(false);
+  const rowSelectionDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    shouldSelect: boolean;
+    started: boolean;
+    cleanup: () => void;
+  } | null>(null);
   const selectionLabel = `${isSelectedForAction ? 'Deselect' : 'Select'} message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}`;
   const dragSelectLabel = canDragSelectMessage ? `Drag to select message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}` : undefined;
   const dragSelectState = canDragSelectMessage ? (selectionMode ? (isSelectedForAction ? 'selected' : 'unselected') : 'idle') : undefined;
@@ -773,16 +785,58 @@ function MessageBubbleView({
   const handleRowSelectionDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !canDragSelectMessage) return;
     if (shouldIgnoreDragSelectTarget(event.target)) return;
-    event.preventDefault();
     event.stopPropagation();
-    const clearDrag = () => onSelectionDragEnd?.();
-    window.addEventListener('pointerup', clearDrag, { once: true });
-    window.addEventListener('pointercancel', clearDrag, { once: true });
-    onSelectionDragStart?.(msg, selectionMode ? !isSelectedForAction : true);
+
+    rowSelectionDragRef.current?.cleanup();
+    const pointerId = event.pointerId;
+    const shouldSelect = selectionMode ? !isSelectedForAction : true;
+    const startX = event.clientX;
+    const startY = event.clientY;
+
+    const cleanup = () => {
+      const active = rowSelectionDragRef.current;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerEnd);
+      window.removeEventListener('pointercancel', handlePointerEnd);
+      rowSelectionDragRef.current = null;
+      if (active?.started) onSelectionDragEnd?.();
+    };
+    const handlePointerEnd = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      cleanup();
+    };
+    const handlePointerMove = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      const active = rowSelectionDragRef.current;
+      if (!active || active.started) return;
+      if (!hasMessageSelectionDragExceededThreshold(
+        { x: active.startX, y: active.startY },
+        { x: pointerEvent.clientX, y: pointerEvent.clientY },
+      )) return;
+      pointerEvent.preventDefault();
+      active.started = true;
+      onSelectionDragStart?.(msg, active.shouldSelect);
+    };
+
+    rowSelectionDragRef.current = { pointerId, startX, startY, shouldSelect, started: false, cleanup };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerEnd);
+    window.addEventListener('pointercancel', handlePointerEnd);
   };
   const handleRowSelectionDragEnter = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.buttons !== 1 || !canDragSelectMessage) return;
     onSelectionDragEnter?.(msg);
+  };
+  const handleRowSelectionDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.buttons !== 1 || !canDragSelectMessage) return;
+    onSelectionDragEnter?.(msg);
+  };
+  const handleRowSelectionDragEnd = () => {
+    if (rowSelectionDragRef.current) {
+      rowSelectionDragRef.current.cleanup();
+      return;
+    }
+    onSelectionDragEnd?.();
   };
   const selectionControl = selectableInSelectionMode ? (
     <button
@@ -1130,8 +1184,9 @@ function MessageBubbleView({
       dragSelectLabel={dragSelectLabel}
       onPointerDown={handleRowSelectionDragStart}
       onPointerEnter={handleRowSelectionDragEnter}
-      onPointerUp={onSelectionDragEnd}
-      onPointerCancel={onSelectionDragEnd}
+      onPointerMove={handleRowSelectionDragMove}
+      onPointerUp={handleRowSelectionDragEnd}
+      onPointerCancel={handleRowSelectionDragEnd}
       className={cn(
         'flex w-full flex-col gap-1',
         isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',

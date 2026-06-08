@@ -1,5 +1,20 @@
 import type { MessageActionSource } from './messageActionMetadata';
 
+const MESSAGE_SELECTION_DRAG_THRESHOLD_PX = 6;
+
+export type MessageSelectionPoint = {
+  x: number;
+  y: number;
+};
+
+export function hasMessageSelectionDragExceededThreshold(
+  start: MessageSelectionPoint,
+  current: MessageSelectionPoint,
+  thresholdPx = MESSAGE_SELECTION_DRAG_THRESHOLD_PX,
+) {
+  return Math.hypot(current.x - start.x, current.y - start.y) >= thresholdPx;
+}
+
 export type MessageSelectionState = {
   conversationId: string;
   sourcesByMessageId: Map<string, MessageActionSource>;

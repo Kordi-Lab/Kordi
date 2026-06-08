@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '../src/features/chat/messageSelection';
+import { hasMessageSelectionDragExceededThreshold, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '../src/features/chat/messageSelection';
 import type { MessageActionSource } from '../src/features/chat/messageActionMetadata';
 
 const source = (id: string): MessageActionSource => ({
@@ -29,6 +29,12 @@ test('setMessageSelectionSource deselects and clears empty state', () => {
   const cleared = setMessageSelectionSource(selected, 'conv:one', first, false);
 
   assert.equal(cleared, null);
+});
+
+test('hasMessageSelectionDragExceededThreshold ignores clicks and tiny pointer drift', () => {
+  assert.equal(hasMessageSelectionDragExceededThreshold({ x: 10, y: 10 }, { x: 10, y: 10 }), false);
+  assert.equal(hasMessageSelectionDragExceededThreshold({ x: 10, y: 10 }, { x: 13, y: 13 }), false);
+  assert.equal(hasMessageSelectionDragExceededThreshold({ x: 10, y: 10 }, { x: 17, y: 10 }), true);
 });
 
 test('toggleMessageSelectionSource toggles without mutating previous state', () => {
