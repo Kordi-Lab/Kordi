@@ -290,6 +290,9 @@ export type AssembleKordiShellSlotsArgs = {
   selectedMessageIds: ReadonlySet<string>;
   isMessageSelectable: (message: Message) => boolean;
   onToggleSelectedMessage: (message: Message) => void;
+  onSelectionDragStart: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter: (message: Message) => void;
+  onSelectionDragEnd: () => void;
   onCancelMessageSelection: () => void;
   onForwardSelectedMessages: () => void;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
@@ -596,6 +599,9 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'selectedMessageIds'
   | 'isMessageSelectable'
   | 'onToggleSelectedMessage'
+  | 'onSelectionDragStart'
+  | 'onSelectionDragEnter'
+  | 'onSelectionDragEnd'
   | 'onCancelMessageSelection'
   | 'onForwardSelectedMessages'
   | 'composerSelectionChat'

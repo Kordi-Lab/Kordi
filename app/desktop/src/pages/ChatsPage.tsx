@@ -300,6 +300,9 @@ type ChatsPageProps = {
   selectedMessageIds?: ReadonlySet<string>;
   isMessageSelectable?: (message: Message) => boolean;
   onToggleSelectedMessage?: (message: Message) => void;
+  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter?: (message: Message) => void;
+  onSelectionDragEnd?: () => void;
   onCancelMessageSelection?: () => void;
   onForwardSelectedMessages?: () => void;
   composerControlsRef: RefObject<HTMLDivElement | null>;
@@ -376,6 +379,9 @@ export function ChatsPage({
   selectedMessageIds,
   isMessageSelectable,
   onToggleSelectedMessage,
+  onSelectionDragStart,
+  onSelectionDragEnter,
+  onSelectionDragEnd,
   onCancelMessageSelection,
   onForwardSelectedMessages,
   composerControlsRef,
@@ -825,6 +831,9 @@ export function ChatsPage({
                   selectedMessageIds={selectedMessageIds}
                   isMessageSelectable={isMessageSelectable}
                   onToggleSelectedMessage={onToggleSelectedMessage}
+                  onSelectionDragStart={onSelectionDragStart}
+                  onSelectionDragEnter={onSelectionDragEnter}
+                  onSelectionDragEnd={onSelectionDragEnd}
                   plainAgentResponse={suppressAgentReplyAttribution}
                   isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                   isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}

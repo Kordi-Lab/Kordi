@@ -80,6 +80,7 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/featu
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
+import { setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '@/features/chat/messageSelection';
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
@@ -151,10 +152,7 @@ export function useKordiAppModel({
     sources: MessageActionSource[];
     destinations: ForwardDestination[];
   } | null>(null);
-  const [messageSelection, setMessageSelection] = useState<{
-    conversationId: string;
-    sourcesByMessageId: Map<string, MessageActionSource>;
-  } | null>(null);
+  const [messageSelection, setMessageSelection] = useState<MessageSelectionState | null>(null);
   const [cloudAgentRuntimeRoutesBySessionId, setCloudAgentRuntimeRoutesBySessionId] = useState<Record<string, DesktopChatMessageRoute>>({});
   // The cloud login gate is owned by KordiAppRoot. By the time this hook is
   // reached the user is past it, so we deliberately don't carry a duplicate
@@ -179,6 +177,7 @@ export function useKordiAppModel({
   }, [cloudSession.account?.accountId]);
   const [locallyHiddenSessionIds, setLocallyHiddenSessionIds] = useState<Set<string>>(() => new Set());
   const localAvatarSeedsRef = useRef<{ human?: string | null; humanDisplayName?: string | null; humanProfileImageUrl?: string | null; agent?: string | null; agentDisplayName?: string | null }>({});
+  const messageSelectionDragRef = useRef<{ conversationId: string; shouldSelect: boolean } | null>(null);
   const canonicalRefreshFlightRef = useRef(createSingleFlightState());
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
 
@@ -714,22 +713,31 @@ export function useKordiAppModel({
   const onToggleSelectedMessage = useCallback((message: Message) => {
     const source = sourceForSelectableMessage(message);
     if (!source) return;
-    setMessageSelection((current) => {
-      const currentMap = current?.conversationId === activeConv.id
-        ? new Map(current.sourcesByMessageId)
-        : new Map<string, MessageActionSource>();
-      if (currentMap.has(source.sourceMessageId)) {
-        currentMap.delete(source.sourceMessageId);
-      } else {
-        currentMap.set(source.sourceMessageId, source);
-      }
-      if (currentMap.size === 0) return null;
-      return { conversationId: activeConv.id, sourcesByMessageId: currentMap };
-    });
+    setMessageSelection((current) => toggleMessageSelectionSource(current, activeConv.id, source));
   }, [activeConv.id, sourceForSelectableMessage]);
 
   const onCancelMessageSelection = useCallback(() => {
+    messageSelectionDragRef.current = null;
     setMessageSelection(null);
+  }, []);
+
+  const onSelectionDragStart = useCallback((message: Message, shouldSelect: boolean) => {
+    const source = sourceForSelectableMessage(message);
+    if (!source) return;
+    messageSelectionDragRef.current = { conversationId: activeConv.id, shouldSelect };
+    setMessageSelection((current) => setMessageSelectionSource(current, activeConv.id, source, shouldSelect));
+  }, [activeConv.id, sourceForSelectableMessage]);
+
+  const onSelectionDragEnter = useCallback((message: Message) => {
+    const drag = messageSelectionDragRef.current;
+    if (!drag || drag.conversationId !== activeConv.id) return;
+    const source = sourceForSelectableMessage(message);
+    if (!source) return;
+    setMessageSelection((current) => setMessageSelectionSource(current, activeConv.id, source, drag.shouldSelect));
+  }, [activeConv.id, sourceForSelectableMessage]);
+
+  const onSelectionDragEnd = useCallback(() => {
+    messageSelectionDragRef.current = null;
   }, []);
 
   const activeMessageSelection = messageSelection?.conversationId === activeConv.id ? messageSelection : null;
@@ -752,6 +760,7 @@ export function useKordiAppModel({
   }, [activeConv.messages, activeMessageSelection, chatConversations]);
 
   useEffect(() => {
+    messageSelectionDragRef.current = null;
     setMessageSelection((current) => (current && current.conversationId !== activeConv.id ? null : current));
   }, [activeConv.id]);
 
@@ -2484,6 +2493,9 @@ export function useKordiAppModel({
     selectedMessageIds,
     isMessageSelectable,
     onToggleSelectedMessage,
+    onSelectionDragStart,
+    onSelectionDragEnter,
+    onSelectionDragEnd,
     onCancelMessageSelection,
     onForwardSelectedMessages,
     composerControlsRef,
