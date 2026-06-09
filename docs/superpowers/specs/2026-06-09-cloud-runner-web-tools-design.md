@@ -1,12 +1,22 @@
-# Cloud Runner Web Tools Design
+# Cloud Runner Tool Parity Design
 
 ## Goal
 
-Make scheduled Cloud jobs able to perform ordinary public web research from the Cloud sandbox by exposing the same first-party `web_search` and `web_fetch` tools that local agents already use.
+Cloud agent tool capability should match the local agent as closely as possible, excluding only tools that must run on the user’s local computer or depend on local-only device state. Scheduled Cloud jobs should not feel like a degraded assistant for public/sandbox-safe work.
+
+The immediate dogfood blocker is public web research, so this implementation starts by adding real Cloud execution for the local `web_search` and `web_fetch` tools. The design also defines the parity rule for future Cloud tool additions.
 
 ## Scope
 
-In scope for this first pass:
+### Parity rule
+
+Cloud agent tools should follow this rule:
+
+- **Available in Cloud when safe:** tools that can operate on public internet data, Cloud sandbox files, Cloud-owned artifacts, or Cloud account data.
+- **Sandboxed equivalent in Cloud:** local filesystem/process tools may be available, but scoped to the Cloud sandbox only, never the owner’s laptop.
+- **Excluded from Cloud:** tools that require local computer state, local browser profile/cookies, local apps, screenshots, local filesystem paths, local network services, or other resources only available on the Desktop machine.
+
+### In scope for this first pass
 
 - Add `web_search` to the Cloud runner model tool catalog.
 - Add `web_fetch` to the Cloud runner model tool catalog.
@@ -17,10 +27,27 @@ In scope for this first pass:
 - Format tool outputs as model-readable text.
 - Add regression tests proving Cloud runner executes real web tools instead of returning only the policy placeholder.
 
-Out of scope:
+### Current Cloud tool classification
 
-- `browser_fetch` / headless browser support.
+Available / should be advertised in Cloud:
+
+- `read`, `write`, `edit`, `ls`, `find`, `grep` — Cloud sandbox filesystem only.
+- `bash` — Cloud sandbox process only.
+- `web_search` — public web search, first-party local implementation reused.
+- `web_fetch` — public HTTP(S) page fetch, first-party local implementation reused.
+- `export_artifact` — Cloud sandbox artifact export.
+
+Excluded for now because they require local-computer semantics or separate Cloud runtime design:
+
+- `browser_fetch` — current local tool depends on a local Chrome/Chromium browser; add later only after the Cloud sandbox image intentionally supports headless browser execution.
+- `schedule_task` — scheduled-task creation is a Desktop/user-session tool, not something scheduled Cloud jobs should recursively expose by default.
+- `reach_out`, `reflection`, `task_operator`, and other coordination/account tools — require separate Cloud runtime, identity, and abuse-boundary design before exposing to autonomous Cloud jobs.
+
+Out of scope for this pass:
+
+- Headless browser support.
 - Authenticated web, local browser cookies, owner laptop files, or private-network access.
+- Broad coordination/account tool parity beyond the classification above.
 - New hosted-search provider plumbing beyond the existing `kordi-tools` fallback behavior.
 
 ## Architecture
