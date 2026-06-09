@@ -107,6 +107,73 @@ test('chat page renders message selection action bar', () => {
   assert.match(markup, /Cancel/);
 });
 
+test('group chat transcript hides fork button, fork chips, and group fork source UI', () => {
+  const groupConv: Conversation = {
+    ...activeConv,
+    id: 'session:group:weather',
+    canonicalSessionId: 'session:group:weather',
+    name: 'Weather group',
+    type: 'person',
+    subtitle: 'Group chat',
+    participants: ['Me', 'Alice', 'Bob'],
+    messages: [{
+      id: 'msg:group-agent',
+      entryId: 'msg:group-agent-entry',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: 'Here is the group answer.',
+      time: '10:50',
+    }],
+  };
+  const markup = renderChatsPage({
+    activeConv: groupConv,
+    desktopChatState: {
+      sessions: [
+        { id: 'session:group:weather', title: 'Weather group' },
+        { id: 'session:fork:group-weather', title: 'Old group fork', forkedFromSessionId: 'session:group:weather', forkedFromMessageId: 'msg:group-agent-entry', updatedAtLabel: '10:55' },
+      ],
+    },
+  });
+
+  assert.doesNotMatch(markup, /app-message-fork-button/);
+  assert.doesNotMatch(markup, /app-message-fork-chip/);
+  assert.doesNotMatch(markup, /Old group fork/);
+});
+
+test('group-derived fork transcript hides fork source backlink and snapshot divider', () => {
+  const groupForkConv: Conversation = {
+    ...activeConv,
+    id: 'session:fork:group-weather',
+    canonicalSessionId: 'session:fork:group-weather',
+    name: 'Old group fork',
+    forkedFromSessionId: 'session:group:weather',
+    forkedFromMessageId: 'msg:group-agent-entry',
+    messages: [{
+      id: 'msg:group-agent',
+      entryId: 'msg:group-agent-entry',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: 'Inherited group answer.',
+      time: '10:50',
+      isForkSnapshot: true,
+    }],
+  };
+  const markup = renderChatsPage({
+    activeConv: groupForkConv,
+    desktopChatState: {
+      sessions: [
+        { id: 'session:group:weather', title: 'Weather group' },
+        { id: 'session:fork:group-weather', title: 'Old group fork', forkedFromSessionId: 'session:group:weather', forkedFromMessageId: 'msg:group-agent-entry' },
+      ],
+    },
+  });
+
+  assert.doesNotMatch(markup, /Forked from Weather group/);
+  assert.doesNotMatch(markup, /Forked from conversation/);
+});
+
 test('chat composer renders active quote preview with remove control', () => {
   const markup = renderChatsPage({
     activeChatQuote: {

@@ -35,7 +35,7 @@ import type {
 } from '@/kordi-app/types';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
-import { buildForkLineage } from '@/features/chat/forkLineage';
+import { buildForkLineage, isGroupForkSession } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
@@ -66,9 +66,20 @@ type ConversationItem = {
   type?: ConversationType;
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
+  forkedFromSessionId?: string | null;
+  forkedFromMessageId?: string | null;
 };
 
 type ParticipantSpaceItem = ParticipantSpaceViewModel;
+
+function filterGroupForkSessionsFromSpaces(spaces: ParticipantSpaceItem[]): ParticipantSpaceItem[] {
+  return spaces
+    .map((space) => ({
+      ...space,
+      sessions: space.sessions.filter((session) => !isGroupForkSession(session)),
+    }))
+    .filter((space) => space.sessions.length > 0);
+}
 
 const CANONICAL_BRIDGE_SESSION_PREFIX = 'session:bridge:';
 const LOCAL_RUNTIME_SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -545,7 +556,9 @@ export function WorkspaceSidebar({
   onCopyBridgeHostUrl,
   onCreateBridgeDraft,
 }: WorkspaceSidebarProps) {
-  const totalUnread = chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0);
+  const totalUnread = chatConversations.reduce((sum, conversation) => (
+    isGroupForkSession(conversation) ? sum : sum + Math.max(0, conversation.unread ?? 0)
+  ), 0);
   const pendingContactRequestCount = Math.max(0, contactRequestCount);
   const formatUnreadCount = (value: number) => (value > 99 ? '99+' : `${value}`);
   const bridgeSyncStatus = isBridgePolling ? 'syncing' : 'idle';
@@ -630,13 +643,16 @@ export function WorkspaceSidebar({
     ? cloudAvatarSeedForAccount(cloudAccount.accountId, cloudAccount.avatarUrl)
     : localProfileAvatarSeed || currentLocalProfileAvatarSeed;
   const profileImageUrl = cloudAccount ? cloudAvatarImageUrl(cloudAccount.avatarUrl) : null;
+  const visibleParticipantSpaces = useMemo(() => filterGroupForkSessionsFromSpaces(participantSpaces), [participantSpaces]);
+  const visibleContactParticipantSpaces = useMemo(() => filterGroupForkSessionsFromSpaces(contactParticipantSpaces), [contactParticipantSpaces]);
+  const visibleAgentParticipantSpaces = useMemo(() => filterGroupForkSessionsFromSpaces(agentParticipantSpaces), [agentParticipantSpaces]);
 
 
-  const activeParticipantSpaceId = participantSpaces.find((space) => (
+  const activeParticipantSpaceId = visibleParticipantSpaces.find((space) => (
     space.sessions.some((session) => session.id === activeConvId || session.canonicalSessionId === activeConvId)
   ))?.id ?? null;
   const selectedParticipantSpace = selectedParticipantSpaceId
-    ? participantSpaces.find((space) => space.id === selectedParticipantSpaceId) ?? null
+    ? visibleParticipantSpaces.find((space) => space.id === selectedParticipantSpaceId) ?? null
     : null;
   const openChatCreateDialog = (event: ReactMouseEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -666,10 +682,10 @@ export function WorkspaceSidebar({
   }, [sessionContextMenu]);
 
   useEffect(() => {
-    if (selectedParticipantSpaceId && !participantSpaces.some((space) => space.id === selectedParticipantSpaceId)) {
+    if (selectedParticipantSpaceId && !visibleParticipantSpaces.some((space) => space.id === selectedParticipantSpaceId)) {
       setSelectedParticipantSpaceId(null);
     }
-  }, [participantSpaces, selectedParticipantSpaceId]);
+  }, [visibleParticipantSpaces, selectedParticipantSpaceId]);
 
   const closeSessionDialogs = () => {
     setRemoveSessionTarget(null);
@@ -677,10 +693,10 @@ export function WorkspaceSidebar({
     setRenameSessionTarget(null);
   };
 
-  // Render a participant-space session row plus, recursively, every
-  // local fork that descends from it. Lets a fork of a group / contact
-  // canonical session show up nested under its parent in the same tab
-  // instead of being exiled to a different list.
+  // Render a participant-space session row plus, recursively, every visible
+  // local fork that descends from it. Group-derived forks are filtered before
+  // lineage is built, so old private group continuations do not appear as
+  // nested rows, fork counts, or unread rollups.
   const ParticipantSpaceSessionRow = ({
     session,
     depth,
@@ -976,16 +992,13 @@ export function WorkspaceSidebar({
     </ScrollArea>
   );
 
-  // Build a sidebar-wide fork lineage that spans every visible space:
-  // forks of agent chats live in agentParticipantSpaces, forks of
-  // canonical group / contact conversations also live there but their
-  // parent rows live in contactParticipantSpaces. Walking both lists
-  // lets us nest a fork under its parent regardless of which tab the
-  // parent shows in.
+  // Build a sidebar-wide fork lineage that spans every visible space.
+  // Group-derived forks have already been filtered out; remaining forks can
+  // still nest under their parent regardless of which tab owns the row.
   const allSidebarSessions = useMemo(() => {
     const seen = new Set<string>();
     const out: Array<{ session: ParticipantSpaceItem['sessions'][number]; space: ParticipantSpaceItem }> = [];
-    for (const space of [...agentParticipantSpaces, ...contactParticipantSpaces, ...participantSpaces]) {
+    for (const space of [...visibleAgentParticipantSpaces, ...visibleContactParticipantSpaces, ...visibleParticipantSpaces]) {
       for (const session of space.sessions) {
         if (seen.has(session.id)) continue;
         seen.add(session.id);
@@ -993,7 +1006,7 @@ export function WorkspaceSidebar({
       }
     }
     return out;
-  }, [agentParticipantSpaces, contactParticipantSpaces, participantSpaces]);
+  }, [visibleAgentParticipantSpaces, visibleContactParticipantSpaces, visibleParticipantSpaces]);
   const globalForkLineage = useMemo(
     () => buildForkLineage(allSidebarSessions.map(({ session }) => session)),
     [allSidebarSessions],
@@ -1036,7 +1049,7 @@ export function WorkspaceSidebar({
       }
     };
     const unreadBySpaceId = new Map<string, number>();
-    for (const space of participantSpaces) {
+    for (const space of visibleParticipantSpaces) {
       const sessionIds = new Set<string>();
       for (const session of space.sessions) collect(session.id, sessionIds, new Set());
       const unread = [...sessionIds].reduce((sum, sessionId) => {
@@ -1046,20 +1059,20 @@ export function WorkspaceSidebar({
       unreadBySpaceId.set(space.id, unread);
     }
     return unreadBySpaceId;
-  }, [allSidebarSessionRowsById, globalForkLineage, participantSpaces, sidebarSessionIsActive]);
-  const contactUnread = contactParticipantSpaces.reduce((sum, space) => (
+  }, [allSidebarSessionRowsById, globalForkLineage, visibleParticipantSpaces, sidebarSessionIsActive]);
+  const contactUnread = visibleContactParticipantSpaces.reduce((sum, space) => (
     sum + Math.max(0, unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread)
   ), 0);
 
-  const flatAgentSessions = agentParticipantSpaces
+  const flatAgentSessions = visibleAgentParticipantSpaces
     .flatMap((space) => space.sessions.map((session) => ({ session, space })))
     .sort((left, right) => right.session.updatedAtMs - left.session.updatedAtMs
       || left.session.title.localeCompare(right.session.title));
 
-  // Group forks under their source session in the agent tab. Forks
-  // whose parent is a canonical (group/contact) session are excluded
-  // here — they are rendered nested under the parent in the Contact
-  // tab so they live with the conversation they branched from.
+  // Group remaining visible forks under their source session in the agent tab.
+  // Forks whose parent is a canonical contact session are excluded here — they
+  // are rendered nested under the parent in the Contact tab so they live with
+  // the conversation they branched from.
   const agentForkLineage = useMemo(
     () => buildForkLineage(flatAgentSessions.map(({ session }) => session)),
     [flatAgentSessions],
@@ -1633,7 +1646,7 @@ export function WorkspaceSidebar({
                   ) : null}
 
                   {chatChannel === 'contact'
-                    ? renderParticipantSpaceList(contactParticipantSpaces, 'No conversations yet. Start a chat to see it here.')
+                    ? renderParticipantSpaceList(visibleContactParticipantSpaces, 'No conversations yet. Start a chat to see it here.')
                     : renderAgentSessionList(topLevelAgentSessions, 'No agent conversations yet. Start one to see it here.')}
                 </div>
               )}
