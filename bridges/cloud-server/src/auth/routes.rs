@@ -3540,7 +3540,7 @@ async fn list_messages(
              ORDER BY created_at DESC \
              LIMIT $3 \
          ) recent_messages \
-         ORDER BY created_at ASC", 
+         ORDER BY created_at ASC",
     )
     .bind(&session.account_id)
     .bind(&peer)
