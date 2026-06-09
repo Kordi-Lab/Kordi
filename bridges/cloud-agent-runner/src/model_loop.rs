@@ -13,8 +13,8 @@ use crate::sandbox_client::SandboxBackendHandle;
 use crate::tool_policy::RunnerToolRequest;
 use crate::tools::{CloudToolExecutor, CloudToolOutput};
 
-pub const MAX_MODEL_CALLS: usize = 3;
-pub const MAX_TOOL_CALLS: usize = 5;
+pub const MAX_MODEL_CALLS: usize = 8;
+pub const MAX_TOOL_CALLS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelToolCall {

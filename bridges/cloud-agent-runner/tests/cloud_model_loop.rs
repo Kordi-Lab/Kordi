@@ -245,6 +245,56 @@ async fn model_loop_returns_boundary_explanation_for_owner_local_tool() {
 }
 
 #[tokio::test]
+async fn model_loop_allows_short_research_tasks_to_make_several_tool_calls_then_finish() {
+    let client = RecordingClient::default();
+    let provider = FakeProvider::new(vec![
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_1".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf one"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_2".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf two"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_3".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf three"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_4".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf four"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_5".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf five"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_6".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf six"}),
+        }]),
+        ModelProviderResponse::FinalText("Research summary complete".to_string()),
+    ]);
+
+    let text = run_model_loop(
+        &client,
+        &provider,
+        &run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(text, "Research summary complete");
+}
+
+#[tokio::test]
 async fn model_loop_exports_artifact_when_requested() {
     let client = RecordingClient::default();
     let sandbox = sandbox();
