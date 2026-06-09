@@ -85,6 +85,8 @@ mod tests {
         let description = tool.description();
         assert!(description.contains("Cloud-backed scheduled task"));
         assert!(description.contains("localRequired"));
+        assert!(description.contains("Interpret unqualified times"));
+        assert!(description.contains("user's local Desktop timezone"));
         assert!(description.contains("local files, disk usage, Downloads, screenshots"));
         assert!(description.contains("cloud"));
         assert!(description.contains("web search, communication, reminders"));

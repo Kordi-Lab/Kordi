@@ -12,8 +12,13 @@ use crate::{Tool, ToolContext, ToolMetadata, ToolResult, ToolRiskLevel};
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ScheduleTaskSchedule {
-    Once { at: String },
-    Daily { time: String, timezone: Option<String> },
+    Once {
+        at: String,
+    },
+    Daily {
+        time: String,
+        timezone: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -53,7 +58,8 @@ pub struct ScheduleTaskResponse {
     pub next_run_at: Option<String>,
 }
 
-pub type ScheduleTaskFuture = Pin<Box<dyn Future<Output = KordiResult<ScheduleTaskResponse>> + Send>>;
+pub type ScheduleTaskFuture =
+    Pin<Box<dyn Future<Output = KordiResult<ScheduleTaskResponse>> + Send>>;
 pub type ScheduleTaskFn = Arc<dyn Fn(ScheduleTaskRequest) -> ScheduleTaskFuture + Send + Sync>;
 
 #[derive(Clone)]
@@ -70,7 +76,7 @@ impl Tool for ScheduleTaskTool {
     }
 
     fn description(&self) -> &str {
-        "Cloud-backed scheduled task tool for user-visible one-shot or daily agent work. Use this whenever the user asks to schedule, remind, check later, run every day, or do work at a future time. Choose targetRuntime='localRequired' when the task needs this Mac or local files, disk usage, Downloads, screenshots, local apps, local credentials, or local filesystem access. Choose targetRuntime='cloud' for work that can run without the Desktop app, including web search, communication, reminders, cloud-only reasoning, and remote API work. Do not use bash, at, cron, launchd, or local shell scheduling for user-visible scheduled work; create the Cloud-backed task here so it appears in the scheduled task panel."
+        "Cloud-backed scheduled task tool for user-visible one-shot or daily agent work. Use this whenever the user asks to schedule, remind, check later, run every day, or do work at a future time. Interpret unqualified times like '13:30' or 'today at 12:00' in the user's local Desktop timezone; only use UTC when the user explicitly says UTC/GMT. Choose targetRuntime='localRequired' when the task needs this Mac or local files, disk usage, Downloads, screenshots, local apps, local credentials, or local filesystem access. Choose targetRuntime='cloud' for work that can run without the Desktop app, including web search, communication, reminders, cloud-only reasoning, and remote API work. Do not use bash, at, cron, launchd, or local shell scheduling for user-visible scheduled work; create the Cloud-backed task here so it appears in the Tasks panel."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -101,7 +107,7 @@ impl Tool for ScheduleTaskTool {
                             "properties": {
                                 "kind": { "type": "string", "const": "daily" },
                                 "time": { "type": "string", "description": "HH:MM 24-hour time." },
-                                "timezone": { "type": "string", "description": "Timezone; use UTC for the current MVP unless the app provides another supported value." }
+                                "timezone": { "type": "string", "description": "Timezone for the daily wall-clock time. Omit or use local for normal user requests; use UTC only when the user explicitly says UTC/GMT." }
                             },
                             "required": ["kind", "time"],
                             "additionalProperties": false
@@ -149,7 +155,10 @@ impl Tool for ScheduleTaskTool {
             format!(
                 "Scheduled Cloud task: {} ({})",
                 response.title,
-                response.next_run_at.as_deref().unwrap_or("next run pending")
+                response
+                    .next_run_at
+                    .as_deref()
+                    .unwrap_or("next run pending")
             ),
             Some(json!({
                 "action": "schedule_task",
@@ -165,7 +174,10 @@ impl Tool for ScheduleTaskTool {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, sync::{Arc, Mutex}};
+    use std::{
+        path::PathBuf,
+        sync::{Arc, Mutex},
+    };
 
     use kordi_core::types::ContentBlock;
     use serde_json::json;
@@ -198,11 +210,18 @@ mod tests {
             "schedule": { "kind": "once", "at": "2026-06-09T12:00:00Z" },
             "targetRuntime": "localRequired",
             "toolPayload": { "requiresLocalMac": true }
-        })).expect("request should deserialize");
+        }))
+        .expect("request should deserialize");
 
         assert_eq!(request.title, "Check disk usage");
-        assert!(matches!(request.schedule, ScheduleTaskSchedule::Once { .. }));
-        assert_eq!(request.target_runtime, ScheduleTaskTargetRuntime::LocalRequired);
+        assert!(matches!(
+            request.schedule,
+            ScheduleTaskSchedule::Once { .. }
+        ));
+        assert_eq!(
+            request.target_runtime,
+            ScheduleTaskTargetRuntime::LocalRequired
+        );
         assert_eq!(request.tool_payload["requiresLocalMac"], true);
     }
 
@@ -225,15 +244,27 @@ mod tests {
             }),
         };
 
-        let result = ScheduleTaskTool.execute(json!({
-            "title": "Check disk usage",
-            "prompt": "Check local disk usage and report the result.",
-            "schedule": { "kind": "once", "at": "2026-06-09T12:00:00Z" },
-            "targetRuntime": "localRequired"
-        }), &make_ctx(Some(runtime)), CancellationToken::new()).await.expect("tool should run");
+        let result = ScheduleTaskTool
+            .execute(
+                json!({
+                    "title": "Check disk usage",
+                    "prompt": "Check local disk usage and report the result.",
+                    "schedule": { "kind": "once", "at": "2026-06-09T12:00:00Z" },
+                    "targetRuntime": "localRequired"
+                }),
+                &make_ctx(Some(runtime)),
+                CancellationToken::new(),
+            )
+            .await
+            .expect("tool should run");
 
         assert_eq!(captured.lock().unwrap()[0].title, "Check disk usage");
-        assert_eq!(result.details.as_ref().unwrap()["taskId"], "scheduled_task_123");
-        assert!(matches!(&result.content[0], ContentBlock::Text { text } if text.contains("Scheduled Cloud task")));
+        assert_eq!(
+            result.details.as_ref().unwrap()["taskId"],
+            "scheduled_task_123"
+        );
+        assert!(
+            matches!(&result.content[0], ContentBlock::Text { text } if text.contains("Scheduled Cloud task"))
+        );
     }
 }
