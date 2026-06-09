@@ -1519,8 +1519,9 @@ export function planCloudSelfAgentCanonicalSync({
       requestLocalMessageIdByCloudMessageId.set(message.messageId, canonicalMessageId);
     }
     const parentMessageId = responseRequestId ? requestLocalMessageIdByCloudMessageId.get(responseRequestId) ?? null : null;
-    if (responseRequestId && !parentMessageId) continue;
-    const title = cleanText(userTextByCloudMessageId.get(responseRequestId ?? message.messageId)) || 'My Kordi';
+    const title = cleanText(userTextByCloudMessageId.get(responseRequestId ?? message.messageId))
+      || cleanText(existingSessionById.get(sessionId)?.title)
+      || 'My Kordi';
     ensureSessionRequest(sessionId, title);
     plannedCanonicalMessageIdByDuplicateKey.set(duplicateKey, canonicalMessageId);
     messageRequests.push({
