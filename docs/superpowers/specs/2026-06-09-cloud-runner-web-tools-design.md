@@ -4,7 +4,7 @@
 
 Cloud agent tool capability should match the local agent as closely as possible, excluding only tools that must run on the user’s local computer or depend on local-only device state. Scheduled Cloud jobs should not feel like a degraded assistant for public/sandbox-safe work.
 
-The immediate dogfood blocker is public web research, so this implementation starts by adding real Cloud execution for the local `web_search` and `web_fetch` tools. The design also defines the parity rule for future Cloud tool additions.
+The immediate dogfood blocker is public web research, so this implementation starts by adding real Cloud execution for the local `web_search` and `web_fetch` tools. These two tools must match the local tools, not merely approximate them. The design also defines the parity rule for future Cloud tool additions.
 
 ## Scope
 
@@ -23,6 +23,14 @@ Cloud agent tools should follow this rule:
 - Execute both tools through the existing `kordi-tools` implementations:
   - `WebSearchTool` DuckDuckGo HTML fallback.
   - `WebFetchTool` public URL fetch and content extraction.
+- Match local tool behavior for `web_search` and `web_fetch`:
+  - same tool names;
+  - same parameter schemas;
+  - same argument validation;
+  - same timeout/max-character semantics;
+  - same output text formatting;
+  - same structured `details` metadata where the runner can preserve it;
+  - same failure/error messages except for Cloud policy boundary blocks.
 - Keep Cloud runner safety policy in front of the calls so localhost, private network, file URLs, and owner-local resources remain blocked.
 - Format tool outputs as model-readable text.
 - Add regression tests proving Cloud runner executes real web tools instead of returning only the policy placeholder.
@@ -60,7 +68,7 @@ The Cloud runner already has three relevant pieces:
 
 The current bug is that (1) omits web tools and (3) returns `RemoteWebAllowed` as a placeholder instead of executing them.
 
-The fix is to extend the executor with a minimal non-interactive `ToolContext` rooted in the sandbox workspace and call the first-party tools directly. This avoids duplicating DuckDuckGo/fetch code and keeps behavior consistent with local agent runs.
+The fix is to extend the executor with a minimal non-interactive `ToolContext` rooted in the sandbox workspace and call the first-party tools directly. The Cloud runner should derive advertised schemas from the same tool definitions instead of hand-maintaining divergent schemas. This avoids duplicating DuckDuckGo/fetch code and keeps behavior consistent with local agent runs.
 
 ## Data Flow
 
@@ -94,6 +102,8 @@ Add Cloud runner tests for:
 - `web_fetch` executes a local test HTTP server through `CloudToolExecutor` and returns fetched content.
 - `web_fetch` private URLs remain blocked.
 - `web_search` is routed to the real first-party tool path rather than `RemoteWebAllowed` placeholder; use a controlled test path where possible and avoid brittle live-web assertions.
+- Cloud runner `web_search` and `web_fetch` catalog schemas match `kordi_tools::WebSearchTool.definition()` and `kordi_tools::WebFetchTool.definition()`.
+- Cloud runner `web_fetch` output text matches the local `WebFetchTool` output for the same controlled HTTP response.
 
 ## Deployment / Dogfood
 
