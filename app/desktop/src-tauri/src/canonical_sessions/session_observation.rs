@@ -3,7 +3,7 @@ use kordi_tools::{
     SessionObservationMessage, SessionObservationParticipant, SessionObservationReadSession,
     SessionObservationSearchResult, SessionObservationSnippet, SessionObservationWindow,
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::open_db;
 
@@ -11,6 +11,8 @@ const DEFAULT_SEARCH_LIMIT: usize = 8;
 const MAX_SEARCH_LIMIT: usize = 20;
 const DEFAULT_READ_LIMIT: usize = 30;
 const MAX_READ_LIMIT: usize = 80;
+const MAX_SEARCH_SNIPPET_TEXT_CHARS: usize = 500;
+const MAX_READ_MESSAGE_TEXT_CHARS: usize = 1_200;
 
 pub(crate) fn search_sessions_for_observation(
     request: SearchSessionsRequest,
@@ -199,6 +201,32 @@ pub(crate) fn read_session_for_observation_in_db(
     })
 }
 
+fn escaped_like_contains(query: &str) -> String {
+    let mut escaped = String::with_capacity(query.len() + 2);
+    escaped.push('%');
+    for ch in query.chars() {
+        match ch {
+            '%' | '_' | '\\' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('%');
+    escaped
+}
+
+fn truncate_text(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let keep_chars = max_chars.saturating_sub(1);
+    let mut truncated = text.chars().take(keep_chars).collect::<String>();
+    truncated.push('…');
+    truncated
+}
+
 fn participant_names(conn: &Connection, session_id: &str) -> Result<Vec<String>, String> {
     let mut stmt = conn
         .prepare(
@@ -247,12 +275,12 @@ fn session_has_message_match(
     session_id: &str,
     query: &str,
 ) -> Result<bool, String> {
-    let like = format!("%{query}%");
+    let like = escaped_like_contains(query);
     let exists: i64 = conn
         .query_row(
             "SELECT EXISTS(
                  SELECT 1 FROM session_messages
-                 WHERE session_id = ?1 AND lower(content_text) LIKE ?2
+                 WHERE session_id = ?1 AND lower(content_text) LIKE ?2 ESCAPE '\\'
              )",
             params![session_id, like],
             |row| row.get(0),
@@ -266,13 +294,13 @@ fn message_snippets(
     session_id: &str,
     query: &str,
 ) -> Result<Vec<SessionObservationSnippet>, String> {
-    let like = format!("%{query}%");
+    let like = escaped_like_contains(query);
     let mut stmt = conn
         .prepare(
             "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.content_text, m.created_at_ms
              FROM session_messages m
              LEFT JOIN identities i ON i.id = m.sender_identity_id
-             WHERE m.session_id = ?1 AND lower(m.content_text) LIKE ?2
+             WHERE m.session_id = ?1 AND lower(m.content_text) LIKE ?2 ESCAPE '\\'
              ORDER BY m.sequence_num ASC
              LIMIT 3",
         )
@@ -282,7 +310,7 @@ fn message_snippets(
             Ok(SessionObservationSnippet {
                 message_id: row.get(0)?,
                 sender: row.get(1)?,
-                text: row.get(2)?,
+                text: truncate_text(&row.get::<_, String>(2)?, MAX_SEARCH_SNIPPET_TEXT_CHARS),
                 time_label: Some(row.get::<_, i64>(3)?.to_string()),
             })
         })
@@ -318,7 +346,7 @@ fn read_message_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ObservedMessage
         message_id: row.get(0)?,
         sender: row.get(1)?,
         role: row.get(2)?,
-        text: row.get(3)?,
+        text: truncate_text(&row.get::<_, String>(3)?, MAX_READ_MESSAGE_TEXT_CHARS),
         time_label: Some(row.get::<_, i64>(4)?.to_string()),
         sequence_num: row.get(5)?,
     })
