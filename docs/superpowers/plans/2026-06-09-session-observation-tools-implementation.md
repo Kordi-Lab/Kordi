@@ -141,6 +141,10 @@ pub struct ReadSessionRequest {
     pub session_id: String,
     pub around_message_id: Option<String>,
     pub limit: Option<usize>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub message_ids: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -201,7 +205,9 @@ pub struct SessionObservationMessage {
     pub message_id: String,
     pub sender: String,
     pub role: String,
-    pub text: String,
+    pub sequence_num: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
     pub time_label: Option<String>,
 }
 
@@ -444,7 +450,7 @@ impl Tool for SearchSessionsTool {
     fn name(&self) -> &str { "search_sessions" }
 
     fn description(&self) -> &str {
-        "Search accessible sessions and conversations for relevant messages."
+        "Search accessible sessions and conversations for relevant prior chats. Use first to find session ids."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -453,7 +459,7 @@ impl Tool for SearchSessionsTool {
             "properties": {
                 "query": { "type": "string", "description": "Search query for session titles, participants, and message text." },
                 "limit": { "type": "integer", "minimum": 1, "maximum": MAX_SEARCH_SESSIONS_LIMIT, "description": "Maximum number of sessions to return. Defaults to 8." },
-                "includeMessages": { "type": "boolean", "description": "Whether to include matching message snippets. Defaults to true." }
+                "includeMessages": { "type": "boolean", "description": "Whether to include matching message snippets. Defaults to false." }
             },
             "required": ["query"],
             "additionalProperties": false
@@ -496,7 +502,7 @@ impl Tool for ReadSessionTool {
     fn name(&self) -> &str { "read_session" }
 
     fn description(&self) -> &str {
-        "Read a bounded window of messages from an accessible session."
+        "Progressively read a session: first a message index, then selected message details by messageIds."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -504,8 +510,10 @@ impl Tool for ReadSessionTool {
             "type": "object",
             "properties": {
                 "sessionId": { "type": "string", "description": "Canonical session id to read." },
-                "aroundMessageId": { "type": "string", "description": "Optional message id to center the returned window around." },
-                "limit": { "type": "integer", "minimum": 1, "maximum": MAX_READ_SESSION_LIMIT, "description": "Maximum number of messages to return. Defaults to 30." }
+                "aroundMessageId": { "type": "string", "description": "Optional message id to center the index window around." },
+                "limit": { "type": "integer", "minimum": 1, "maximum": MAX_READ_SESSION_LIMIT, "description": "Maximum number of messages to return. Defaults to 30." },
+                "mode": { "type": "string", "enum": ["index", "messages"], "description": "Defaults to index; use messages only with messageIds." },
+                "messageIds": { "type": "array", "items": { "type": "string" }, "description": "Message ids to read when mode is messages." }
             },
             "required": ["sessionId"],
             "additionalProperties": false
@@ -526,10 +534,16 @@ impl Tool for ReadSessionTool {
         let Some(runtime) = ctx.session_observation.clone() else {
             return Err(KordiError::Tool("session observation is unavailable in this runtime".to_string()));
         };
-        let response = (runtime.read_session)(ReadSessionRequest { session_id, around_message_id, limit: Some(limit) }).await?;
+        let mode = params.get("mode").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).map(ToString::to_string);
+        let message_ids = params.get("messageIds").and_then(Value::as_array).map(|values| values.iter().filter_map(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).map(ToString::to_string).collect::<Vec<_>>());
+        let response = (runtime.read_session)(ReadSessionRequest { session_id, around_message_id, limit: Some(limit), mode, message_ids }).await?;
         let mut text = format!("Session `{}` — {} ({})", response.session.session_id, response.session.title, response.session.kind);
         for message in &response.messages {
-            text.push_str(&format!("\n- `{}` {}: {}", message.message_id, message.sender, message.text));
+            if let Some(message_text) = message.text.as_deref() {
+                text.push_str(&format!("\n- `{}` #{} {}: {}", message.message_id, message.sequence_num, message.sender, message_text));
+            } else {
+                text.push_str(&format!("\n- `{}` #{} {}", message.message_id, message.sequence_num, message.sender));
+            }
         }
         Ok(text_result(text, Some(serde_json::to_value(response).map_err(|err| KordiError::Tool(format!("Could not serialize read_session response: {err}")))?)))
     }
@@ -1019,7 +1033,7 @@ async fn read_session_calls_runtime_and_serializes_details() {
                     participants: vec![SessionObservationParticipant { name: "Alice".to_string(), kind: "human".to_string(), role: "participant".to_string() }],
                 },
                 window: SessionObservationWindow { around_message_id: None, has_more_before: false, has_more_after: false },
-                messages: vec![SessionObservationMessage { message_id: "msg:1".to_string(), sender: "Alice".to_string(), role: "user".to_string(), text: "Launch note".to_string(), time_label: Some("13:04".to_string()) }],
+                messages: vec![SessionObservationMessage { message_id: "msg:1".to_string(), sender: "Alice".to_string(), role: "user".to_string(), sequence_num: 1, text: Some("Launch note".to_string()), time_label: Some("13:04".to_string()) }],
             })
         })),
     };

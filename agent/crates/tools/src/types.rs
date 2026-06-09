@@ -201,6 +201,10 @@ pub struct ReadSessionRequest {
     pub session_id: String,
     pub around_message_id: Option<String>,
     pub limit: Option<usize>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub message_ids: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -261,7 +265,9 @@ pub struct SessionObservationMessage {
     pub message_id: String,
     pub sender: String,
     pub role: String,
-    pub text: String,
+    pub sequence_num: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
     pub time_label: Option<String>,
 }
 

@@ -40,7 +40,7 @@ pub(crate) fn search_sessions_for_observation_in_db(
         .limit
         .unwrap_or(DEFAULT_SEARCH_LIMIT)
         .clamp(1, MAX_SEARCH_LIMIT);
-    let include_messages = request.include_messages.unwrap_or(true);
+    let include_messages = request.include_messages.unwrap_or(false);
     let mut sessions = Vec::new();
     let mut stmt = conn
         .prepare(
@@ -130,62 +130,93 @@ pub(crate) fn read_session_for_observation_in_db(
         .map_err(|err| err.to_string())?
         .ok_or_else(|| format!("session not found: {session_id}"))?;
     let participants = participants_for_read(conn, session_id)?;
-    let bounds = message_sequence_bounds(conn, session_id)?;
+    let mode = request
+        .mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("index");
     let around_message_id = request
         .around_message_id
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
-    let (messages, has_more_before, has_more_after) =
-        if let Some(around) = around_message_id.as_deref() {
-            let sequence = conn
-                .query_row(
-                    "SELECT sequence_num FROM session_messages WHERE session_id = ?1 AND id = ?2",
-                    params![session_id, around],
-                    |row| row.get::<_, i64>(0),
+    let (messages, has_more_before, has_more_after) = match mode {
+        "index" => {
+            let bounds = message_sequence_bounds(conn, session_id)?;
+            if let Some(around) = around_message_id.as_deref() {
+                let sequence = conn
+                    .query_row(
+                        "SELECT sequence_num FROM session_messages WHERE session_id = ?1 AND id = ?2",
+                        params![session_id, around],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .optional()
+                    .map_err(|err| err.to_string())?
+                    .ok_or_else(|| format!("message not found in session: {around}"))?;
+                let half_before = (limit / 2) as i64;
+                let start_sequence = (sequence - half_before).max(0);
+                let rows = read_messages_from_sequence(conn, session_id, start_sequence, limit)?;
+                let first_sequence = rows.first().map(|row| row.sequence_num).unwrap_or(sequence);
+                let last_sequence = rows.last().map(|row| row.sequence_num).unwrap_or(sequence);
+                let has_before = bounds
+                    .map(|(min_seq, _)| first_sequence > min_seq)
+                    .unwrap_or(false);
+                let has_after = bounds
+                    .map(|(_, max_seq)| last_sequence < max_seq)
+                    .unwrap_or(false);
+                (
+                    rows.into_iter()
+                        .map(ObservedMessageRow::into_index_message)
+                        .collect(),
+                    has_before,
+                    has_after,
                 )
-                .optional()
-                .map_err(|err| err.to_string())?
-                .ok_or_else(|| format!("message not found in session: {around}"))?;
-            let half_before = (limit / 2) as i64;
-            let start_sequence = (sequence - half_before).max(0);
-            let rows = read_messages_from_sequence(conn, session_id, start_sequence, limit)?;
-            let first_sequence = rows.first().map(|row| row.sequence_num).unwrap_or(sequence);
-            let last_sequence = rows.last().map(|row| row.sequence_num).unwrap_or(sequence);
-            let has_before = bounds
-                .map(|(min_seq, _)| first_sequence > min_seq)
-                .unwrap_or(false);
-            let has_after = bounds
-                .map(|(_, max_seq)| last_sequence < max_seq)
-                .unwrap_or(false);
+            } else {
+                let rows = read_latest_messages(conn, session_id, limit)?;
+                let first_sequence = rows.first().map(|row| row.sequence_num);
+                let last_sequence = rows.last().map(|row| row.sequence_num);
+                let has_before = match (bounds, first_sequence) {
+                    (Some((min_seq, _)), Some(first)) => first > min_seq,
+                    _ => false,
+                };
+                let has_after = match (bounds, last_sequence) {
+                    (Some((_, max_seq)), Some(last)) => last < max_seq,
+                    _ => false,
+                };
+                (
+                    rows.into_iter()
+                        .map(ObservedMessageRow::into_index_message)
+                        .collect(),
+                    has_before,
+                    has_after,
+                )
+            }
+        }
+        "messages" => {
+            let message_ids = request
+                .message_ids
+                .unwrap_or_default()
+                .into_iter()
+                .map(|id| id.trim().to_string())
+                .filter(|id| !id.is_empty())
+                .take(limit)
+                .collect::<Vec<_>>();
+            if message_ids.is_empty() {
+                return Err("messageIds cannot be empty when mode is messages".to_string());
+            }
             (
-                rows.into_iter()
-                    .map(ObservedMessageRow::into_message)
+                read_messages_by_ids(conn, session_id, &message_ids)?
+                    .into_iter()
+                    .map(ObservedMessageRow::into_detail_message)
                     .collect(),
-                has_before,
-                has_after,
+                false,
+                false,
             )
-        } else {
-            let rows = read_latest_messages(conn, session_id, limit)?;
-            let first_sequence = rows.first().map(|row| row.sequence_num);
-            let last_sequence = rows.last().map(|row| row.sequence_num);
-            let has_before = match (bounds, first_sequence) {
-                (Some((min_seq, _)), Some(first)) => first > min_seq,
-                _ => false,
-            };
-            let has_after = match (bounds, last_sequence) {
-                (Some((_, max_seq)), Some(last)) => last < max_seq,
-                _ => false,
-            };
-            (
-                rows.into_iter()
-                    .map(ObservedMessageRow::into_message)
-                    .collect(),
-                has_before,
-                has_after,
-            )
-        };
+        }
+        other => return Err(format!("unsupported read_session mode: {other}")),
+    };
 
     Ok(ReadSessionResponse {
         session: SessionObservationReadSession {
@@ -330,12 +361,24 @@ struct ObservedMessageRow {
 }
 
 impl ObservedMessageRow {
-    fn into_message(self) -> SessionObservationMessage {
+    fn into_index_message(self) -> SessionObservationMessage {
         SessionObservationMessage {
             message_id: self.message_id,
             sender: self.sender,
             role: self.role,
-            text: self.text,
+            sequence_num: self.sequence_num,
+            text: None,
+            time_label: self.time_label,
+        }
+    }
+
+    fn into_detail_message(self) -> SessionObservationMessage {
+        SessionObservationMessage {
+            message_id: self.message_id,
+            sender: self.sender,
+            role: self.role,
+            sequence_num: self.sequence_num,
+            text: Some(self.text),
             time_label: self.time_label,
         }
     }
@@ -373,6 +416,34 @@ fn read_messages_from_sequence(
         .map_err(|err| err.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())
+}
+
+fn read_messages_by_ids(
+    conn: &Connection,
+    session_id: &str,
+    message_ids: &[String],
+) -> Result<Vec<ObservedMessageRow>, String> {
+    let mut rows = Vec::new();
+    let mut stmt = conn
+        .prepare(
+            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text, m.created_at_ms, m.sequence_num
+             FROM session_messages m
+             LEFT JOIN identities i ON i.id = m.sender_identity_id
+             WHERE m.session_id = ?1 AND m.id = ?2",
+        )
+        .map_err(|err| err.to_string())?;
+    for message_id in message_ids {
+        if let Some(row) = stmt
+            .query_row(params![session_id, message_id], read_message_row)
+            .optional()
+            .map_err(|err| err.to_string())?
+        {
+            rows.push(row);
+        }
+    }
+    rows.sort_by_key(|row| row.sequence_num);
+    rows.dedup_by(|left, right| left.message_id == right.message_id);
+    Ok(rows)
 }
 
 fn read_latest_messages(

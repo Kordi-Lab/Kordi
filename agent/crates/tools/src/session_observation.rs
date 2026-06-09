@@ -39,7 +39,7 @@ impl Tool for SearchSessionsTool {
     }
 
     fn description(&self) -> &str {
-        "Search accessible sessions and conversations for relevant messages, prior chats, participants, chat counts, and related conversation history."
+        "Search accessible sessions and conversations for relevant prior chats, participants, chat counts, and related history. Use this first to find session ids; message snippets are omitted unless includeMessages is true."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -58,7 +58,7 @@ impl Tool for SearchSessionsTool {
                 },
                 "includeMessages": {
                     "type": "boolean",
-                    "description": "Whether to include matching message snippets. Defaults to true."
+                    "description": "Whether to include matching message snippets. Defaults to false; keep false for session-list discovery."
                 }
             },
             "required": ["query"],
@@ -142,7 +142,7 @@ impl Tool for ReadSessionTool {
     }
 
     fn description(&self) -> &str {
-        "Read a bounded window of messages from an accessible session when answering questions about prior or related conversation context."
+        "Progressively read an accessible session: first get an index of message ids, then request specific message details by messageIds when needed for prior or related conversation context."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -155,13 +155,23 @@ impl Tool for ReadSessionTool {
                 },
                 "aroundMessageId": {
                     "type": "string",
-                    "description": "Optional message id to center the returned window around."
+                    "description": "Optional message id to center the index window around."
                 },
                 "limit": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": MAX_READ_SESSION_LIMIT,
                     "description": "Maximum number of messages to return. Defaults to 30."
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["index", "messages"],
+                    "description": "Use index first to list message ids without message text. Use messages with messageIds to disclose selected message bodies. Defaults to index."
+                },
+                "messageIds": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Message ids to read when mode is messages."
                 }
             },
             "required": ["sessionId"],
@@ -196,6 +206,24 @@ impl Tool for ReadSessionTool {
             DEFAULT_READ_SESSION_LIMIT,
             MAX_READ_SESSION_LIMIT,
         );
+        let mode = params
+            .get("mode")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let message_ids = params
+            .get("messageIds")
+            .and_then(Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+            });
         let Some(runtime) = ctx.session_observation.clone() else {
             return Err(KordiError::Tool(
                 "session observation is unavailable in this runtime".to_string(),
@@ -205,6 +233,8 @@ impl Tool for ReadSessionTool {
             session_id,
             around_message_id,
             limit: Some(limit),
+            mode,
+            message_ids,
         })
         .await?;
         let mut text = format!(
@@ -212,10 +242,17 @@ impl Tool for ReadSessionTool {
             response.session.session_id, response.session.title, response.session.kind
         );
         for message in &response.messages {
-            text.push_str(&format!(
-                "\n- `{}` {}: {}",
-                message.message_id, message.sender, message.text
-            ));
+            if let Some(message_text) = message.text.as_deref() {
+                text.push_str(&format!(
+                    "\n- `{}` #{} {}: {}",
+                    message.message_id, message.sequence_num, message.sender, message_text
+                ));
+            } else {
+                text.push_str(&format!(
+                    "\n- `{}` #{} {}",
+                    message.message_id, message.sequence_num, message.sender
+                ));
+            }
         }
         Ok(text_result(
             text,
@@ -259,11 +296,12 @@ mod tests {
         assert!(search_description.contains("prior chats"));
         assert!(search_description.contains("participants"));
         assert!(search_description.contains("chat counts"));
-        assert!(search_description.contains("related conversation history"));
+        assert!(search_description.contains("session ids"));
+        assert!(search_description.contains("includeMessages is true"));
 
         let read_description = ReadSessionTool.description();
-        assert!(read_description.contains("prior"));
-        assert!(read_description.contains("related conversation context"));
+        assert!(read_description.contains("message ids"));
+        assert!(read_description.contains("messageIds"));
     }
 
     #[tokio::test]
@@ -346,6 +384,61 @@ mod tests {
             captured.lock().expect("captured")[0].limit,
             Some(MAX_SEARCH_SESSIONS_LIMIT)
         );
+    }
+
+    #[tokio::test]
+    async fn read_session_forwards_progressive_disclosure_params() {
+        let captured = Arc::new(Mutex::new(Vec::<crate::ReadSessionRequest>::new()));
+        let captured_clone = captured.clone();
+        let runtime = SessionObservationRuntime {
+            search_sessions: Arc::new(|_| Box::pin(async { unreachable!("not used") })),
+            read_session: Arc::new(move |request| {
+                captured_clone.lock().expect("captured").push(request);
+                Box::pin(async {
+                    Ok(crate::ReadSessionResponse {
+                        session: crate::SessionObservationReadSession {
+                            session_id: "session:launch".to_string(),
+                            title: "Launch".to_string(),
+                            kind: "group".to_string(),
+                            participants: Vec::new(),
+                        },
+                        window: crate::SessionObservationWindow {
+                            around_message_id: None,
+                            has_more_before: false,
+                            has_more_after: false,
+                        },
+                        messages: vec![crate::SessionObservationMessage {
+                            message_id: "msg:2".to_string(),
+                            sender: "Bob".to_string(),
+                            role: "person".to_string(),
+                            sequence_num: 1,
+                            text: Some("The canary deploy is ready".to_string()),
+                            time_label: Some("13:04".to_string()),
+                        }],
+                    })
+                })
+            }),
+        };
+
+        ReadSessionTool
+            .execute(
+                json!({
+                    "sessionId":" session:launch ",
+                    "mode":"messages",
+                    "messageIds":["msg:2", " "],
+                    "limit": 99
+                }),
+                &ctx_with_runtime(Some(runtime)),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect("read session result");
+
+        let request = &captured.lock().expect("captured")[0];
+        assert_eq!(request.session_id, "session:launch");
+        assert_eq!(request.mode.as_deref(), Some("messages"));
+        assert_eq!(request.message_ids, Some(vec!["msg:2".to_string()]));
+        assert_eq!(request.limit, Some(MAX_READ_SESSION_LIMIT));
     }
 
     #[tokio::test]

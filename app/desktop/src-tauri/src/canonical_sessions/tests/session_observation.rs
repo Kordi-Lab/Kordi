@@ -79,6 +79,25 @@ fn search_sessions_matches_message_text_and_returns_snippets() {
 }
 
 #[test]
+fn search_sessions_defaults_to_session_list_without_snippets() {
+    let conn = test_conn();
+    seed_session_with_messages(&conn);
+
+    let response = super::super::session_observation::search_sessions_for_observation_in_db(
+        &conn,
+        SearchSessionsRequest {
+            query: "canary".to_string(),
+            limit: Some(10),
+            include_messages: None,
+        },
+    )
+    .expect("search sessions");
+
+    assert_eq!(response.sessions.len(), 1);
+    assert!(response.sessions[0].snippets.is_empty());
+}
+
+#[test]
 fn search_sessions_treats_like_wildcards_as_literal_text() {
     let conn = test_conn();
     seed_session_with_messages(&conn);
@@ -136,6 +155,84 @@ fn search_sessions_truncates_long_message_snippets() {
 }
 
 #[test]
+fn read_session_defaults_to_index_without_message_text() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+
+    let response = super::super::session_observation::read_session_for_observation_in_db(
+        &conn,
+        ReadSessionRequest {
+            session_id,
+            around_message_id: None,
+            limit: Some(2),
+            mode: None,
+            message_ids: None,
+        },
+    )
+    .expect("read session index");
+
+    assert_eq!(response.messages.len(), 2);
+    assert_eq!(response.messages[0].message_id, "msg:2");
+    assert_eq!(response.messages[0].sequence_num, 2);
+    assert!(response.messages[0].text.is_none());
+    assert_eq!(response.messages[1].message_id, "msg:3");
+    assert_eq!(response.messages[1].sequence_num, 3);
+    assert!(response.messages[1].text.is_none());
+}
+
+#[test]
+fn read_session_reads_only_requested_message_details_by_id() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+
+    let response = super::super::session_observation::read_session_for_observation_in_db(
+        &conn,
+        ReadSessionRequest {
+            session_id,
+            around_message_id: None,
+            limit: Some(10),
+            mode: Some("messages".to_string()),
+            message_ids: Some(vec!["msg:3".to_string(), "msg:1".to_string()]),
+        },
+    )
+    .expect("read selected messages");
+
+    assert_eq!(
+        response
+            .messages
+            .iter()
+            .map(|message| message.message_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["msg:1", "msg:3"]
+    );
+    assert_eq!(response.messages[0].text.as_deref(), Some("Kickoff notes"));
+    assert_eq!(
+        response.messages[1].text.as_deref(),
+        Some("Please review the rollout")
+    );
+}
+
+#[test]
+fn read_session_messages_mode_requires_message_ids() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+
+    let error = super::super::session_observation::read_session_for_observation_in_db(
+        &conn,
+        ReadSessionRequest {
+            session_id,
+            around_message_id: None,
+            limit: Some(10),
+            mode: Some("messages".to_string()),
+            message_ids: Some(Vec::new()),
+        },
+    )
+    .expect_err("messages mode without ids should fail");
+
+    assert!(error.contains("messageIds cannot be empty"));
+}
+
+#[test]
 fn read_session_truncates_long_message_text() {
     let conn = test_conn();
     let session_id = seed_session_with_messages(&conn);
@@ -163,15 +260,21 @@ fn read_session_truncates_long_message_text() {
         &conn,
         ReadSessionRequest {
             session_id,
-            around_message_id: Some("msg:long-read".to_string()),
+            around_message_id: None,
             limit: Some(1),
+            mode: Some("messages".to_string()),
+            message_ids: Some(vec!["msg:long-read".to_string()]),
         },
     )
     .expect("read session");
 
     assert_eq!(response.messages.len(), 1);
-    assert!(response.messages[0].text.chars().count() <= 1_200);
-    assert!(response.messages[0].text.ends_with('…'));
+    let text = response.messages[0]
+        .text
+        .as_ref()
+        .expect("message text should be disclosed in messages mode");
+    assert!(text.chars().count() <= 1_200);
+    assert!(text.ends_with('…'));
 }
 
 #[test]
@@ -185,6 +288,8 @@ fn read_session_returns_latest_window_in_transcript_order() {
             session_id,
             around_message_id: None,
             limit: Some(2),
+            mode: None,
+            message_ids: None,
         },
     )
     .expect("read session");

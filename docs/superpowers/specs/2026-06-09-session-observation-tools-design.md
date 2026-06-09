@@ -95,7 +95,7 @@ Find relevant accessible sessions/conversations and message snippets for a natur
     },
     "includeMessages": {
       "type": "boolean",
-      "description": "Whether to include matching message snippets. Defaults to true."
+      "description": "Whether to include matching message snippets. Defaults to false so search starts as a session-list discovery step."
     }
   },
   "required": ["query"],
@@ -118,7 +118,7 @@ Find relevant accessible sessions/conversations and message snippets for a natur
    - participant match
    - recent message text match
    - recency as a tie-breaker
-5. Return bounded snippets, not full transcripts.
+5. Return session list results by default; include bounded snippets only when `includeMessages` is explicitly true.
 
 ### Result shape
 
@@ -149,7 +149,8 @@ Find relevant accessible sessions/conversations and message snippets for a natur
 
 - default result limit: 8 sessions
 - max result limit: 20 sessions
-- max snippets per session: 3
+- default `includeMessages`: false
+- max snippets per session when explicitly requested: 3
 - max snippet text: 500 characters
 - no raw tool-output dumps in search results; summarize or omit oversized tool outputs
 
@@ -157,7 +158,7 @@ Find relevant accessible sessions/conversations and message snippets for a natur
 
 ### Purpose
 
-Read a bounded message window from one accessible session found by `search_sessions` or already known to the model.
+Progressively read one accessible session found by `search_sessions` or already known to the model. The default mode returns a message index without message bodies; detailed message text is disclosed only when specific message ids are requested.
 
 ### Parameters
 
@@ -178,6 +179,16 @@ Read a bounded message window from one accessible session found by `search_sessi
       "minimum": 1,
       "maximum": 80,
       "description": "Maximum number of messages to return. Defaults to 30."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["index", "messages"],
+      "description": "Use index first to list message ids without message text. Use messages with messageIds to disclose selected message bodies. Defaults to index."
+    },
+    "messageIds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Message ids to read when mode is messages."
     }
   },
   "required": ["sessionId"],
@@ -188,10 +199,11 @@ Read a bounded message window from one accessible session found by `search_sessi
 ### Behavior
 
 1. Validate that `sessionId` exists and is accessible to the current user.
-2. If `aroundMessageId` is provided, return messages before and after that message.
-3. If `aroundMessageId` is absent, return the most recent bounded window.
-4. Include session metadata and participants.
-5. Return message ids so the model can cite or ask for adjacent context with another call.
+2. Default to `mode: "index"`; return message ids, sender, role, sequence number, and time label without message text.
+3. In index mode, if `aroundMessageId` is provided, return message index rows before and after that message; otherwise return the latest bounded index window.
+4. In `mode: "messages"`, require non-empty `messageIds` and return bodies only for those selected messages in transcript order.
+5. Include session metadata and participants.
+6. Return message ids so the model can cite or ask for adjacent context with another call.
 
 ### Result shape
 
@@ -216,7 +228,7 @@ Read a bounded message window from one accessible session found by `search_sessi
       "messageId": "msg:...",
       "sender": "Alice",
       "role": "user",
-      "text": "We should confirm the beta launch note before Friday.",
+      "sequenceNum": 42,
       "timeLabel": "13:04"
     }
   ]
@@ -227,7 +239,9 @@ Read a bounded message window from one accessible session found by `search_sessi
 
 - default limit: 30 messages
 - max limit: 80 messages
-- max message text: 1,200 characters per message
+- default mode: `index`
+- `messages` mode requires explicit `messageIds`
+- max message text: 1,200 characters per selected message
 - oversized tool outputs should be represented as compact summaries, not full logs
 
 ## Security and Access Control
@@ -243,10 +257,10 @@ Read a bounded message window from one accessible session found by `search_sessi
 
 Do not add a special co-pilot prompt. Do not describe the side-panel agent as a special private assistant.
 
-The base agent tool list and tool descriptions are sufficient to tell the model that it can search/read sessions. Tool descriptions should be clear and neutral:
+The base agent tool list and tool descriptions are sufficient to tell the model that it can search/read sessions. Tool descriptions should also guide progressive disclosure: search session list first, read a message index next, then request detailed bodies only for selected `messageIds`. Tool descriptions should be clear and neutral:
 
-- `search_sessions`: “Search accessible sessions and conversations for relevant messages.”
-- `read_session`: “Read a bounded window of messages from an accessible session.”
+- `search_sessions`: “Search accessible sessions and conversations for relevant prior chats. Use first to find session ids.”
+- `read_session`: “Progressively read a session: first a message index, then selected message details by messageIds.”
 
 If later product work wants the model to cite session/message ids consistently, add that as a general tool-result formatting convention or general agent instruction, not as a side-panel-only prompt.
 
