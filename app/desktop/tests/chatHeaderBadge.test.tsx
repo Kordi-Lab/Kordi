@@ -220,6 +220,9 @@ test('chat companion split controls live on the divider instead of floating over
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /data-split-layout-divider="true"/);
+  assert.doesNotMatch(source, /app-chat-split-divider[^"`]*border-x/);
+  assert.doesNotMatch(source, /app-chat-companion-pane[^"`]*data-\[side=right\]:border-l/);
+  assert.doesNotMatch(source, /app-chat-companion-pane[^"`]*data-\[side=left\]:border-r/);
   assert.doesNotMatch(source, /data-split-layout-toolbar/);
   assert.doesNotMatch(source, /setIsCompanionFolded\(true\)/);
   assert.doesNotMatch(source, /<ArrowRightLeft/);
@@ -241,6 +244,9 @@ test('ask agent opens an explicit side session with neutral copy and reference c
   assert.match(source, /z-50/);
   assert.match(source, /data-chat-inline-detail-rail="true"/);
   assert.match(source, /ownInlineDetailRail\s*=\s*showRightDetailRail\s*&&\s*!isDetailPanelCollapsed/);
+  assert.match(source, /data-companion-composer-footer="true"/);
+  assert.match(source, /data-companion-send-row="true"/);
+  assert.doesNotMatch(source, /shrink-0 border-t border-white\/\[0\.06\] px-5 pb-4 pt-3/);
   assert.match(source, /bg-\[#1f1f1f\]/);
   assert.match(source, /text-\[13px\]/);
   assert.match(source, />\s*New chat\s*</);

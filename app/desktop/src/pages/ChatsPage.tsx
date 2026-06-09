@@ -978,7 +978,7 @@ export function ChatsPage({
     }
   };
   const companionPane = companionConversation ? (
-    <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-white/[0.06] bg-white/[0.025] data-[side=left]:border-r data-[side=right]:border-l" data-side={companionSide} data-chat-side-agent-panel="true">
+    <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-side={companionSide} data-chat-side-agent-panel="true">
       <div
         className="app-page-header relative z-40 flex min-h-[112px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3 active:cursor-grabbing"
         draggable
@@ -1148,76 +1148,80 @@ export function ChatsPage({
           ) : null}
         </div>
       </ScrollArea>
-      <div className="shrink-0 border-t border-white/[0.06] px-5 pb-4 pt-3">
+      <div className="shrink-0 px-5 pb-4 pt-3" data-companion-composer-footer="true">
         <div className="app-composer-shell rounded-[26px] p-3">
-          <div className="app-composer-input flex items-end gap-2 rounded-[18px] px-4 py-2.5">
-            <textarea
-              rows={1}
-              value={companionDraftText}
-              onPointerDown={(event) => event.stopPropagation()}
-              onChange={(event) => updateCompanionDraft(companionConversation.id, event.target.value, event.target)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
-                  event.preventDefault();
-                  sendCompanionDraft(companionConversation);
-                }
-              }}
-              className="min-h-[24px] max-h-[220px] flex-1 resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              placeholder={companionPaneKind === 'agent' ? 'Ask the agent…' : `Message ${companionConversation.name}`}
-              data-composer-scope="companion"
-            />
-            <Button
-              type="button"
-              size="icon"
-              variant="secondary"
-              onClick={() => sendCompanionDraft(companionConversation)}
-              className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
-              title={`Send to ${companionConversation.name}`}
-              aria-label={`Send to ${companionConversation.name}`}
-              disabled={!companionDraftText.trim()}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-          {companionShowsLocalAgentControls ? (
-            <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
-              <span className="h-9 w-9 shrink-0" aria-hidden="true" />
-              <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-visible">
-                {isNativeShell || companionRuntimeContextStatus ? (
-                  <ComposerRuntimeStatus
-                    contextStatus={companionRuntimeContextStatus}
-                    cacheText={companionRuntimeCacheText}
-                  />
-                ) : null}
-                <ComposerModelControls
-                  scope="chat"
-                  selection={composerSelection}
-                  openSelector={openComposerSelector}
-                  onToggleSelector={toggleComposerSelector}
-                  onSelectValue={(scope, type, value) => {
-                    void selectComposerValue(scope, type, value);
-                  }}
-                  authLabel={composerAuthLabel}
-                  authOptions={composerAuthOptions}
-                  onSelectAuthChoice={(scope, providerId, choice) => {
-                    void selectComposerAuthChoice(scope, providerId, choice);
-                  }}
-                  onSelectProviderChoice={(scope, option) => {
-                    void selectComposerProviderChoice(scope, option);
-                  }}
-                  providerOptions={composerProviderOptions}
-                  modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
-                />
-              </div>
+          <div className="relative">
+            <div className="app-composer-input rounded-[18px] px-4 py-2.5">
+              <textarea
+                rows={1}
+                value={companionDraftText}
+                onPointerDown={(event) => event.stopPropagation()}
+                onChange={(event) => updateCompanionDraft(companionConversation.id, event.target.value, event.target)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+                    event.preventDefault();
+                    sendCompanionDraft(companionConversation);
+                  }
+                }}
+                className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+                placeholder={companionPaneKind === 'agent' ? 'Ask the agent…' : `Message ${companionConversation.name}`}
+                data-composer-scope="companion"
+              />
             </div>
-          ) : null}
+          </div>
+          <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5" data-companion-send-row="true">
+            <span className="h-9 w-9 shrink-0" aria-hidden="true" />
+            <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-visible">
+              {companionShowsLocalAgentControls ? (
+                <>
+                  {isNativeShell || companionRuntimeContextStatus ? (
+                    <ComposerRuntimeStatus
+                      contextStatus={companionRuntimeContextStatus}
+                      cacheText={companionRuntimeCacheText}
+                    />
+                  ) : null}
+                  <ComposerModelControls
+                    scope="chat"
+                    selection={composerSelection}
+                    openSelector={openComposerSelector}
+                    onToggleSelector={toggleComposerSelector}
+                    onSelectValue={(scope, type, value) => {
+                      void selectComposerValue(scope, type, value);
+                    }}
+                    authLabel={composerAuthLabel}
+                    authOptions={composerAuthOptions}
+                    onSelectAuthChoice={(scope, providerId, choice) => {
+                      void selectComposerAuthChoice(scope, providerId, choice);
+                    }}
+                    onSelectProviderChoice={(scope, option) => {
+                      void selectComposerProviderChoice(scope, option);
+                    }}
+                    providerOptions={composerProviderOptions}
+                    modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                  />
+                </>
+              ) : null}
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                onClick={() => sendCompanionDraft(companionConversation)}
+                className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
+                title={`Send to ${companionConversation.name}`}
+                aria-label={`Send to ${companionConversation.name}`}
+                disabled={!companionDraftText.trim()}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </aside>
   ) : null;
   const splitDivider = showCompanionPane && companionConversation ? (
     <div
-      className="app-chat-split-divider group relative z-10 flex h-full w-2.5 cursor-col-resize touch-none items-center justify-center border-x border-white/[0.06] bg-white/[0.025] transition hover:bg-white/[0.05]"
+      className="app-chat-split-divider group relative z-10 flex h-full w-2.5 cursor-col-resize touch-none items-center justify-center bg-transparent transition hover:bg-white/[0.035]"
       data-split-layout-divider="true"
       onPointerDown={handleSplitDividerPointerDown}
       onPointerMove={handleSplitDividerPointerMove}
