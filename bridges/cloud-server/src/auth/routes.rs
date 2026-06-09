@@ -3531,11 +3531,16 @@ async fn list_messages(
     )> = match query_as(
         "SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, \
                 delivered_at, read_at \
-         FROM cloud_messages \
-         WHERE (from_account_id = $1 AND to_account_id = $2) \
-            OR (from_account_id = $2 AND to_account_id = $1) \
-         ORDER BY created_at ASC \
-         LIMIT $3",
+         FROM ( \
+             SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, \
+                    delivered_at, read_at \
+             FROM cloud_messages \
+             WHERE (from_account_id = $1 AND to_account_id = $2) \
+                OR (from_account_id = $2 AND to_account_id = $1) \
+             ORDER BY created_at DESC \
+             LIMIT $3 \
+         ) recent_messages \
+         ORDER BY created_at ASC", 
     )
     .bind(&session.account_id)
     .bind(&peer)

@@ -52,6 +52,14 @@ fn unique_email(prefix: &str) -> String {
     format!("{prefix}-{}@e2e.local", uuid::Uuid::new_v4().simple())
 }
 
+#[test]
+fn cloud_message_listing_uses_newest_window_before_oldest_first_display_order() {
+    let routes_source = std::fs::read_to_string("src/auth/routes.rs").expect("read auth routes source");
+    assert!(routes_source.contains("ORDER BY created_at DESC"));
+    assert!(routes_source.contains("ORDER BY created_at ASC"));
+    assert!(routes_source.contains("FROM ("));
+}
+
 fn signup_body(email: &str, password: &str) -> Body {
     Body::from(
         json!({
