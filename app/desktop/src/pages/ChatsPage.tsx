@@ -274,13 +274,9 @@ export function pairedCompanionConversation(activeConv: Conversation, conversati
 }
 
 export function chatCompanionCandidates(activeConv: Conversation, conversations: Conversation[]) {
-  const wantsAgent = conversationIsHumanChat(activeConv);
-  const wantsHuman = conversationIsAgentChat(activeConv);
-  if (!wantsAgent && !wantsHuman) return [];
-
   return conversations.filter((conversation) => (
     conversation.id !== activeConv.id
-    && (wantsAgent ? conversationIsAgentChat(conversation) : conversationIsHumanChat(conversation))
+    && conversationIsAgentChat(conversation)
   ));
 }
 
@@ -516,7 +512,7 @@ type ChatsPageProps = {
   onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   onSelectSession?: (sessionId: string) => void;
   onSendChatMessage: (draftOverride?: string, targetSessionId?: string) => void;
-  onCreateAgentSession?: () => void | Promise<void>;
+  onCreateAgentSession?: () => string | null | Promise<string | null>;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
   onOpenAccountAuthentication?: () => void;
@@ -879,6 +875,15 @@ export function ChatsPage({
     }
     return true;
   };
+  const createSideAgentSession = async () => {
+    if (!onCreateAgentSession) return;
+    const createdConversationId = await onCreateAgentSession();
+    if (!createdConversationId) return;
+    setOpenSideAgentConversationId(createdConversationId);
+    setSelectedCompanionConversationId(createdConversationId);
+    setSideAgentReferenceContext(buildAskAgentSessionReferenceContext(activeConv));
+    setIsCompanionFolded(false);
+  };
   const handleSendChatMessage = (draftOverride?: string) => {
     const draft = draftOverride ?? chatComposerText;
     const trigger = parseAskAgentTriggerCommand(draft);
@@ -964,7 +969,7 @@ export function ChatsPage({
             <Button
               type="button"
               variant="secondary"
-              onClick={() => { void onCreateAgentSession(); }}
+              onClick={() => { void createSideAgentSession(); }}
               className="app-icon-button app-utility-button h-7 rounded-full px-2.5 text-[11px] text-slate-100 transition"
               title="New agent session"
               aria-label="New agent session"

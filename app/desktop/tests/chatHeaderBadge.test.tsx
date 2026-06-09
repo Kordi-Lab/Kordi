@@ -132,7 +132,7 @@ test('ask agent slash commands parse prompt text without co-pilot aliases', () =
   assert.equal(parseAskAgentTriggerCommand('please /ask later'), null);
 });
 
-test('chat companion candidates include any opposite-kind chat, not just related chats', () => {
+test('ask agent candidates include only agent sessions from any current chat', () => {
   const humanChat = conversation({ id: 'human-chat', type: 'person' });
   const firstAgentChat = conversation({ id: 'first-agent', type: 'owned-agent' });
   const secondAgentChat = conversation({
@@ -155,7 +155,7 @@ test('chat companion candidates include any opposite-kind chat, not just related
   );
   assert.deepEqual(
     chatCompanionCandidates(firstAgentChat, [humanChat, firstAgentChat, secondAgentChat, otherHumanChat]).map((candidate) => candidate.id),
-    ['human-chat', 'other-human'],
+    ['second-agent'],
   );
 });
 
@@ -197,7 +197,7 @@ test('chat companion candidates treat owned-agent chats with human participants 
   assert.equal(chatCompanionSideForPaneKinds('agent', 'left'), 'left');
 });
 
-test('chat companion candidates keep canonical group chats in the human pane even with agent-ish type', () => {
+test('ask agent candidates exclude canonical group chats even with agent-ish type', () => {
   const groupChat = conversation({
     id: 'group-chat',
     canonicalSessionId: 'session:group:abc',
@@ -214,7 +214,7 @@ test('chat companion candidates keep canonical group chats in the human pane eve
   );
   assert.deepEqual(
     chatCompanionCandidates(agentChat, [groupChat, agentChat, humanChat]).map((candidate) => candidate.id),
-    ['group-chat', 'human-chat'],
+    [],
   );
 });
 
@@ -244,6 +244,14 @@ test('ask agent slash trigger opens the side session instead of sending slash te
   assert.match(source, /parseAskAgentTriggerCommand\(draft\)/);
   assert.match(source, /openSideAgentPanel\(trigger\.prompt\)/);
   assert.match(source, /onSendChatMessage\(draftOverride\)/);
+});
+
+test('ask agent new session action switches the side panel to the created agent session', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /const createdConversationId = await onCreateAgentSession\(\)/);
+  assert.match(source, /setOpenSideAgentConversationId\(createdConversationId\)/);
+  assert.match(source, /setSelectedCompanionConversationId\(createdConversationId\)/);
 });
 
 test('chat companion pane does not expose focus handoff controls', () => {

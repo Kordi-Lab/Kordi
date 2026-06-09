@@ -84,6 +84,7 @@ export type AssembleKordiShellSlotsArgs = {
   filteredConversations: Conversation[];
   setActiveNav: Dispatch<SetStateAction<'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings'>>;
   handleCreateChatSession: () => Promise<void>;
+  handleCreateSideAgentSession: () => Promise<string | null>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
   runtimeProjects: Project[];
@@ -435,6 +436,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'cloudSession'
   | 'chatConversations'
   | 'handleCreateChatSession'
+  | 'handleCreateSideAgentSession'
   | 'handleSelectChatSession'
   | 'handleStartChatWithAgent'
   | 'filteredGroupedContacts'

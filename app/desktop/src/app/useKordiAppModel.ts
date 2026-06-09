@@ -97,6 +97,7 @@ import {
   addCanonicalSessionParticipants,
   appendCanonicalMessage,
   archiveDesktopChatSession,
+  createDesktopChatSession,
   createDesktopProject,
   createDesktopProjectFromFolder,
   fetchCanonicalSessionState,
@@ -2313,6 +2314,23 @@ export function useKordiAppModel({
     composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, value));
   }, [composerUi.setComposerDrafts]);
 
+  const handleCreateSideAgentSession = useCallback(async () => {
+    if (!isNativeShell) return null;
+    try {
+      setDesktopChatError(null);
+      const nextState = await createDesktopChatSession();
+      setDesktopChatState(nextState);
+      const sessionId = nextState.activeSessionId?.trim() || null;
+      if (sessionId) {
+        composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
+      }
+      return sessionId;
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to create agent session');
+      return null;
+    }
+  }, [composerUi.setComposerDrafts, isNativeShell, setDesktopChatError, setDesktopChatState]);
+
   const shellArgs = useKordiShellArgs({
     isNativeShell,
     desktopChatState,
@@ -2341,6 +2359,7 @@ export function useKordiAppModel({
     contactParticipantSpaces,
     agentParticipantSpaces,
     handleCreateChatSession,
+    handleCreateSideAgentSession,
     handleSelectChatSession,
     handleStartChatWithPerson,
     handleStartChatWithAgent,
