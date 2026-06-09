@@ -12,8 +12,8 @@ use kordi_cloud_agent_runner::model_loop::{
     run_model_loop, tool_catalog, CloudModelProvider, ModelProviderResponse, ModelToolCall,
     OpenAiProviderConfig,
 };
-use kordi_tools::{web_fetch::WebFetchTool, web_search::WebSearchTool, Tool};
 use kordi_cloud_agent_runner::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
+use kordi_tools::{web_fetch::WebFetchTool, web_search::WebSearchTool, Tool};
 use serde_json::{json, Value};
 
 #[derive(Default)]
@@ -158,7 +158,9 @@ fn spawn_single_response_server(body: &'static str) -> String {
             body.len(),
             body
         );
-        stream.write_all(response.as_bytes()).expect("write response");
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
         stream.flush().expect("flush response");
     });
     format!("http://localtest.me:{}/news", addr.port())
@@ -180,12 +182,24 @@ fn cloud_tool_catalog_uses_local_web_tool_definitions() {
     let local_fetch = WebFetchTool.definition();
 
     assert_eq!(web_search["function"]["name"], local_search.name);
-    assert_eq!(web_search["function"]["description"], local_search.description);
-    assert_eq!(web_search["function"]["parameters"], local_search.parameters_schema);
+    assert_eq!(
+        web_search["function"]["description"],
+        local_search.description
+    );
+    assert_eq!(
+        web_search["function"]["parameters"],
+        local_search.parameters_schema
+    );
 
     assert_eq!(web_fetch["function"]["name"], local_fetch.name);
-    assert_eq!(web_fetch["function"]["description"], local_fetch.description);
-    assert_eq!(web_fetch["function"]["parameters"], local_fetch.parameters_schema);
+    assert_eq!(
+        web_fetch["function"]["description"],
+        local_fetch.description
+    );
+    assert_eq!(
+        web_fetch["function"]["parameters"],
+        local_fetch.parameters_schema
+    );
 }
 
 #[tokio::test]
@@ -377,8 +391,14 @@ async fn model_loop_executes_local_web_fetch_tool_in_cloud_sandbox() {
         .expect("web_fetch tool output should be fed back to model");
     let content = tool_message["content"].as_str().unwrap();
     assert!(content.contains("Web Fetch"), "content was: {content}");
-    assert!(content.contains("OpenAI ships a test update"), "content was: {content}");
-    assert!(content.contains("Source text from controlled server"), "content was: {content}");
+    assert!(
+        content.contains("OpenAI ships a test update"),
+        "content was: {content}"
+    );
+    assert!(
+        content.contains("Source text from controlled server"),
+        "content was: {content}"
+    );
 }
 
 #[test]

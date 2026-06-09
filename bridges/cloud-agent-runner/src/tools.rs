@@ -92,7 +92,9 @@ impl CloudToolExecutor {
 }
 
 fn cloud_tool_context(sandbox: &SandboxBackendHandle) -> ToolContext {
-    let root = sandbox.root_for_tests().map_or_else(cloud_runner_tmp_dir, PathBuf::from);
+    let root = sandbox
+        .root_for_tests()
+        .map_or_else(cloud_runner_tmp_dir, PathBuf::from);
     ToolContext {
         cwd: root.clone(),
         artifacts_dir: root,

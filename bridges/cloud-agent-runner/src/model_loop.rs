@@ -153,7 +153,12 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     };
 
     match executor
-        .execute(request, Some(primary.as_str()), Some(content), &call.arguments)
+        .execute(
+            request,
+            Some(primary.as_str()),
+            Some(content),
+            &call.arguments,
+        )
         .await
     {
         Ok(output) => format_tool_output(output),
@@ -211,6 +216,5 @@ fn format_tool_output(output: CloudToolOutput) -> String {
             "exit_code={}\nstdout:\n{}\nstderr:\n{}",
             output.exit_code, output.stdout, output.stderr
         ),
-
     }
 }
