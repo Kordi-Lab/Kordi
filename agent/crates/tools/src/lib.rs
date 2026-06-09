@@ -20,6 +20,7 @@ pub mod registry_plan;
 pub(crate) mod sandbox;
 pub mod schedule_task;
 pub mod scheduler;
+pub mod session_observation;
 pub(crate) mod support;
 pub mod task_operator;
 pub(crate) mod text;
@@ -38,11 +39,15 @@ pub use scheduler::{
 };
 pub use types::{
     ExecutionPolicy, ReachOutFn, ReachOutFuture, ReachOutRequest, ReachOutResponse,
-    ReachOutRuntime, ReflectionLessonFuture, ReflectionLessonRequest, ReflectionLessonResponse,
-    ReflectionRuntime, RequestToolApprovalFn, SaveReflectionLessonFn, TaskOperatorFn,
-    TaskOperatorFuture, TaskOperatorRuntime, Tool, ToolApprovalDecision, ToolApprovalOutcome,
-    ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult, ToolScheduling,
-    WebSearchRuntime,
+    ReachOutRuntime, ReadSessionFn, ReadSessionFuture, ReadSessionRequest, ReadSessionResponse,
+    ReflectionLessonFuture, ReflectionLessonRequest, ReflectionLessonResponse, ReflectionRuntime,
+    RequestToolApprovalFn, SaveReflectionLessonFn, SearchSessionsFn, SearchSessionsFuture,
+    SearchSessionsRequest, SearchSessionsResponse, SessionObservationMessage,
+    SessionObservationParticipant, SessionObservationReadSession, SessionObservationRuntime,
+    SessionObservationSearchResult, SessionObservationSnippet, SessionObservationWindow,
+    TaskOperatorFn, TaskOperatorFuture, TaskOperatorRuntime, Tool, ToolApprovalDecision,
+    ToolApprovalOutcome, ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult,
+    ToolScheduling, WebSearchRuntime,
 };
 pub use schedule_task::{
     ScheduleTaskFn, ScheduleTaskFuture, ScheduleTaskRequest, ScheduleTaskResponse,

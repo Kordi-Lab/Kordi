@@ -13,6 +13,7 @@ fn make_ctx(dir: &Path) -> ToolContext {
         web_search: None,
         reach_out: None,
         reflection: None,
+        session_observation: None,
         task_operator: None,
         schedule_task: None,
         execution_mode: crate::ToolExecutionMode::Interactive,

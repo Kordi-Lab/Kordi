@@ -185,6 +185,7 @@ impl TuiController {
                 web_search: self.session_setup.tool_ctx.web_search.clone(),
                 reach_out: self.session_setup.tool_ctx.reach_out.clone(),
                 reflection: None,
+                session_observation: self.session_setup.tool_ctx.session_observation.clone(),
                 task_operator: None,
                 schedule_task: self.session_setup.tool_ctx.schedule_task.clone(),
                 execution_mode: self.session_setup.tool_ctx.execution_mode,

@@ -62,6 +62,7 @@ mod direct_message_sync;
 mod group_agent_requests;
 mod group_agent_responses;
 mod group_message_sync;
+mod session_observation;
 
 #[test]
 fn upsert_identity_preserves_existing_profile_image_when_update_has_none() {

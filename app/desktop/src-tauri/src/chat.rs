@@ -20,6 +20,7 @@ pub(crate) mod canonical_sync;
 pub(crate) mod message_route;
 pub(crate) mod model_options;
 pub(crate) mod session_actions;
+pub(crate) mod session_observation;
 pub(crate) mod turns;
 
 pub(crate) use attachments::{
