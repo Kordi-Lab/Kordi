@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 mod prompt;
 mod provider;
 
-pub use prompt::cloud_sandbox_system_prompt;
+pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
 pub use provider::{OpenAiCompatibleProvider, OpenAiProviderConfig};
 
 use crate::artifacts::export_sandbox_file;

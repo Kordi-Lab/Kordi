@@ -6,8 +6,10 @@ use kordi_cloud_agent_runner::client::{
     ProviderAuthMaterial, RunnerClientError,
 };
 use kordi_cloud_agent_runner::model_loop::{
-    run_model_loop, CloudModelProvider, ModelProviderResponse, ModelToolCall, OpenAiProviderConfig,
+    run_model_loop, tool_catalog, CloudModelProvider, ModelProviderResponse, ModelToolCall,
+    OpenAiProviderConfig,
 };
+use kordi_tools::{web_fetch::WebFetchTool, web_search::WebSearchTool, Tool};
 use kordi_cloud_agent_runner::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 use serde_json::{json, Value};
 
@@ -139,6 +141,30 @@ fn sandbox() -> Arc<LocalSandboxBackend> {
 
 fn sandbox_handle() -> SandboxBackendHandle {
     sandbox()
+}
+
+#[test]
+fn cloud_tool_catalog_uses_local_web_tool_definitions() {
+    let catalog = tool_catalog();
+    let web_search = catalog
+        .iter()
+        .find(|tool| tool["function"]["name"] == "web_search")
+        .expect("cloud catalog should expose web_search");
+    let web_fetch = catalog
+        .iter()
+        .find(|tool| tool["function"]["name"] == "web_fetch")
+        .expect("cloud catalog should expose web_fetch");
+
+    let local_search = WebSearchTool.definition();
+    let local_fetch = WebFetchTool.definition();
+
+    assert_eq!(web_search["function"]["name"], local_search.name);
+    assert_eq!(web_search["function"]["description"], local_search.description);
+    assert_eq!(web_search["function"]["parameters"], local_search.parameters_schema);
+
+    assert_eq!(web_fetch["function"]["name"], local_fetch.name);
+    assert_eq!(web_fetch["function"]["description"], local_fetch.description);
+    assert_eq!(web_fetch["function"]["parameters"], local_fetch.parameters_schema);
 }
 
 #[tokio::test]
