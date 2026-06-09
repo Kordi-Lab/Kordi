@@ -1,4 +1,7 @@
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 use async_trait::async_trait;
 use kordi_cloud_agent_runner::client::{
@@ -141,6 +144,24 @@ fn sandbox() -> Arc<LocalSandboxBackend> {
 
 fn sandbox_handle() -> SandboxBackendHandle {
     sandbox()
+}
+
+fn spawn_single_response_server(body: &'static str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+    let addr = listener.local_addr().expect("local addr");
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept request");
+        let mut request_buf = [0_u8; 2048];
+        let _ = stream.read(&mut request_buf);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes()).expect("write response");
+        stream.flush().expect("flush response");
+    });
+    format!("http://localtest.me:{}/news", addr.port())
 }
 
 #[test]
@@ -318,6 +339,46 @@ async fn model_loop_allows_short_research_tasks_to_make_several_tool_calls_then_
     .unwrap();
 
     assert_eq!(text, "Research summary complete");
+}
+
+#[tokio::test]
+async fn model_loop_executes_local_web_fetch_tool_in_cloud_sandbox() {
+    std::env::set_var("NO_PROXY", "localtest.me,127.0.0.1,localhost");
+    std::env::set_var("no_proxy", "localtest.me,127.0.0.1,localhost");
+    let client = RecordingClient::default();
+    let url = spawn_single_response_server(
+        "<html><head><title>OpenAI Test News</title></head><body><main><h1>OpenAI ships a test update</h1><p>Source text from controlled server.</p></main></body></html>",
+    );
+    let provider = FakeProvider::new(vec![
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_fetch".to_string(),
+            name: "web_fetch".to_string(),
+            arguments: json!({"url": url, "max_chars": 4000}),
+        }]),
+        ModelProviderResponse::FinalText("Fetched controlled OpenAI test news".to_string()),
+    ]);
+
+    let text = run_model_loop(
+        &client,
+        &provider,
+        &run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(text, "Fetched controlled OpenAI test news");
+    let calls = provider.seen_messages.lock().unwrap();
+    let final_context = calls.last().unwrap();
+    let tool_message = final_context
+        .iter()
+        .find(|message| message["role"] == "tool" && message["name"] == "web_fetch")
+        .expect("web_fetch tool output should be fed back to model");
+    let content = tool_message["content"].as_str().unwrap();
+    assert!(content.contains("Web Fetch"), "content was: {content}");
+    assert!(content.contains("OpenAI ships a test update"), "content was: {content}");
+    assert!(content.contains("Source text from controlled server"), "content was: {content}");
 }
 
 #[tokio::test]
