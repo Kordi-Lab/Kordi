@@ -127,6 +127,63 @@ test('workspace active conversation does not fall back to a local UUID while a C
   assert.equal(viewModels?.activeConv.bridgeTarget?.hostId, 'cloud');
 });
 
+test('workspace view model exposes side-created agent sessions with their live turn for agent session panels', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+  const sideTurn = {
+    id: 'turn-side-1',
+    sessionId: 'side-agent-session',
+    prompt: 'inspect this',
+    status: 'running',
+    message: 'Working…',
+    assistantText: '',
+    thinkingText: 'Looking at the referenced chat',
+    tools: [{ id: 'tool-read', name: 'read_session', status: 'running', arguments: '{}', liveOutput: '', resultText: null, detail: null, isError: false }],
+    completed: false,
+    succeeded: false,
+  };
+
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: true,
+      isDesktopChatLoading: false,
+      desktopChatState: {
+        activeSessionId: 'side-agent-session',
+        sessions: [{ id: 'main-agent-session', title: 'Main agent session', subtitle: '', updatedAtLabel: '19:06', messageCount: 1, draft: false }],
+        activeSession: { id: 'side-agent-session', title: 'Side agent session', subtitle: '', updatedAtLabel: '19:07', messageCount: 0, draft: false, messages: [], project: null, reflectionLessonArtifacts: [] },
+        localAgent: { label: 'My Kordi' },
+      } as never,
+      desktopBridgeState: null,
+      canonicalSessionState: null,
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [],
+      projectSelectedSessionIds: {},
+      activeNav: 'chats',
+      activeConvId: 'main-agent-session',
+      activeProjectId: '',
+      activeProjectSessionId: 'draft:project-chat',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: { 'side-agent-session': sideTurn },
+      mapDesktopMessages: () => [],
+      cloudSessionActivity: { tasksBySessionId: {}, artifactsBySessionId: {} },
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  const sideConversation = viewModels?.chatConversations.find((conversation) => conversation.id === 'side-agent-session');
+  assert.equal(sideConversation?.name, 'Side agent session');
+  assert.equal(sideConversation?.previewLiveTurn?.id, 'turn-side-1');
+  assert.equal(viewModels?.agentParticipantSpaces.some((space) => space.sessions.some((session) => session.id === 'side-agent-session')), true);
+});
+
 test('canonical direct person conversations use contact name and latest-message subtitle', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',

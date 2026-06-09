@@ -432,6 +432,7 @@ export function useWorkspaceViewModels({
         },
         messages,
         reflectionLessonArtifacts,
+        previewLiveTurn: desktopLiveTurnsForViewModel[session.id] ?? null,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
         bridgeTarget: undefined,

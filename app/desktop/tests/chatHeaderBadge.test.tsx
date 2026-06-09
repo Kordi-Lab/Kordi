@@ -272,6 +272,17 @@ test('chat companion composer sends with Enter and keeps modified Enter for line
   assert.match(source, /title=\{`Send to \$\{companionConversation\.name\}`\}/);
 });
 
+test('ask agent side transcript renders the same live turn and tool UI as My agent chat', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /const rawCompanionTranscriptLiveTurn = companionConversation\?\.previewLiveTurn \?\? undefined/);
+  assert.match(source, /const companionTranscriptLiveTurn = rawCompanionTranscriptLiveTurn && companionConversation/);
+  assert.match(source, /suppressLiveTurnEchoMessages\(\s*companionConversation\.messages, companionTranscriptLiveTurn/s);
+  assert.match(source, /buildReplyAttribution\(messages, companionTranscriptLiveTurn/);
+  assert.match(source, /attributedCompanionTranscriptLiveTurn/);
+  assert.match(source, /<LiveChatTurnMessage[\s\S]*turn=\{attributedCompanionTranscriptLiveTurn\}/);
+});
+
 test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
@@ -279,6 +290,7 @@ test('human panes do not show agent model controls while agent side panes use ag
   assert.match(source, /companionPaneKind === 'agent' \? 'Ask the agent…'/);
   assert.match(source, /companionShowsLocalAgentControls/);
   assert.match(source, /companionPaneKind === 'agent' && !companionConversationHasBridgeTransport/);
+  assert.match(source, /contextStatus=\{companionRuntimeContextStatus\}/);
 });
 
 test('ask agent reference context includes session metadata and recent messages only', () => {

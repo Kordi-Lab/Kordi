@@ -682,6 +682,13 @@ export function ChatsPage({
   const companionSuppressAgentReplyAttribution = companionConversation
     ? shouldSuppressAgentReplyAttribution(companionConversation)
     : false;
+  const rawCompanionTranscriptLiveTurn = companionConversation?.previewLiveTurn ?? undefined;
+  const companionTranscriptLiveTurn = rawCompanionTranscriptLiveTurn && companionConversation && rawCompanionTranscriptLiveTurn.sessionId === companionConversation.id
+    ? rawCompanionTranscriptLiveTurn
+    : undefined;
+  const companionLiveTurnSender = companionConversation ? localOwnedAgentSenderLabel(companionConversation) : 'Kordi';
+  const companionRuntimeContextStatus = companionConversation?.contextWindowStatus ?? null;
+  const companionRuntimeCacheText = companionConversation?.cacheMonitorText ?? null;
 
   useEffect(() => {
     setOpenSideAgentConversationId(null);
@@ -814,14 +821,21 @@ export function ChatsPage({
   }, [activeForkSourceSessionId, activeForkSourceMessageId, attributedTranscriptMessages]);
   const attributedActiveTranscriptLiveTurn = attributedTranscript.liveTurn ?? activeTranscriptLiveTurn;
   const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
-  const companionTranscriptMessages = useMemo(() => {
-    if (!companionConversation) return [];
-    const messages = collapseAdjacentSessionConfigNotices(companionConversation.messages);
-    return buildReplyAttribution(messages, undefined, {
+  const companionTranscript = useMemo(() => {
+    if (!companionConversation) {
+      return { messages: [] as Message[], liveTurn: undefined as DesktopChatTurnSnapshot | undefined };
+    }
+    const messages = collapseAdjacentSessionConfigNotices(
+      suppressLiveTurnEchoMessages(companionConversation.messages, companionTranscriptLiveTurn),
+    );
+    return buildReplyAttribution(messages, companionTranscriptLiveTurn, {
       inferLatestHumanRequest: shouldInferLatestHumanReplyTarget(companionConversation),
       suppressAgentReplyAttribution: companionSuppressAgentReplyAttribution,
-    }).messages;
-  }, [companionConversation, companionSuppressAgentReplyAttribution]);
+    });
+  }, [companionConversation, companionSuppressAgentReplyAttribution, companionTranscriptLiveTurn]);
+  const companionTranscriptMessages = companionTranscript.messages;
+  const attributedCompanionTranscriptLiveTurn = companionTranscript.liveTurn ?? companionTranscriptLiveTurn;
+  const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const updateCompanionDropPreview = (event: DragEvent<HTMLElement>) => {
     if (!companionConversation || isCompanionFolded) return null;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1013,11 +1027,22 @@ export function ChatsPage({
               isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(companionTranscriptMessages, idx, -1)}
               isGroupedWithNext={isGroupedWithAdjacentHumanMessage(companionTranscriptMessages, idx, 1)}
             />
-          )) : (
+          )) : !shouldRenderCompanionLiveTurn ? (
             <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
               No messages in this side chat yet.
             </div>
-          )}
+          ) : null}
+          {shouldRenderCompanionLiveTurn && attributedCompanionTranscriptLiveTurn ? (
+            <LiveChatTurnMessage
+              turn={attributedCompanionTranscriptLiveTurn}
+              sender={companionLiveTurnSender}
+              onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+              onStopActiveTurn={onStopDesktopChatTurn}
+              plainAgentResponse={companionSuppressAgentReplyAttribution}
+              onOpenArtifact={onOpenArtifact}
+              onOpenAuthSettings={openAuthentication}
+            />
+          ) : null}
         </div>
       </ScrollArea>
       <div className="shrink-0 border-t border-white/[0.06] px-5 pb-4 pt-3">
@@ -1055,10 +1080,10 @@ export function ChatsPage({
             <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
               <span className="h-9 w-9 shrink-0" aria-hidden="true" />
               <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-visible">
-                {isNativeShell || activeRuntimeContextStatus ? (
+                {isNativeShell || companionRuntimeContextStatus ? (
                   <ComposerRuntimeStatus
-                    contextStatus={activeRuntimeContextStatus}
-                    cacheText={activeRuntimeCacheText}
+                    contextStatus={companionRuntimeContextStatus}
+                    cacheText={companionRuntimeCacheText}
                   />
                 ) : null}
                 <ComposerModelControls
