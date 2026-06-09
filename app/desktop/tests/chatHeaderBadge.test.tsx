@@ -266,7 +266,8 @@ test('chat companion pane does not expose focus handoff controls', () => {
 test('chat companion composer sends with Enter and keeps modified Enter for line breaks', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /onSendChatMessage\(prompt, conversation\.id\)/);
+  assert.match(source, /onSendChatMessage\(draft, conversation\.id, contextMessages\)/);
+  assert.doesNotMatch(source, /User request:\\n\$\{draft\}/);
   assert.match(source, /event\.key === 'Enter' && !event\.metaKey && !event\.ctrlKey && !event\.shiftKey/);
   assert.match(source, /title=\{`Send to \$\{companionConversation\.name\}`\}/);
 });

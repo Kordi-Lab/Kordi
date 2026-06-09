@@ -60,3 +60,33 @@ test('sendChatMessageWithImmediateQuoteClear leaves quote alone for empty sends'
 
   assert.deepEqual(events, ['send-start']);
 });
+
+test('sendChatMessageWithImmediateQuoteClear forwards side-target sends without clearing the main quote', async () => {
+  const events: string[] = [];
+  const contextMessages = [{
+    id: 'ask-agent-reference:session:main',
+    authorName: 'Current chat reference',
+    authorKind: 'human' as const,
+    text: 'Reference: Current chat',
+  }];
+  const sentArgs: unknown[][] = [];
+
+  await sendChatMessageWithImmediateQuoteClear({
+    draftOverride: 'please inspect this',
+    currentDraft: '',
+    attachmentCount: 0,
+    activeChatQuote: quote,
+    targetSessionId: 'agent-side-session',
+    contextMessages,
+    send: (...args: unknown[]) => {
+      events.push('send-start');
+      sentArgs.push(args);
+    },
+    clearQuote: () => {
+      events.push('quote-clear');
+    },
+  });
+
+  assert.deepEqual(events, ['send-start']);
+  assert.deepEqual(sentArgs, [['please inspect this', 'agent-side-session', contextMessages]]);
+});

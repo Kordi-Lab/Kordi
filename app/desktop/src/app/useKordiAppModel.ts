@@ -90,7 +90,7 @@ import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/
 import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, Message, ParticipantSpaceViewModel } from '@/kordi-app/types';
-import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import type { BridgeSettingsDraft, BridgeWizardDraft } from '@/app/kordiShellSlots.types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
@@ -1350,9 +1350,11 @@ export function useKordiAppModel({
     setActiveConvId,
   });
 
-  const handleSendChatMessageWithQuoteClear = useCallback((draftOverride?: string) => (
+  const handleSendChatMessageWithQuoteClear = useCallback((draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => (
     sendChatMessageWithImmediateQuoteClear({
       draftOverride,
+      targetSessionId,
+      contextMessages,
       currentDraft: composerDraftsView.chat,
       attachmentCount: composerUi.chatComposerAttachments.length,
       activeChatQuote,

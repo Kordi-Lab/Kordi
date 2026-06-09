@@ -76,6 +76,7 @@ import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavi
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage } from '@/features/chat/forkLineage';
+import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
@@ -327,6 +328,19 @@ export function buildAskAgentSessionReferenceContext(conversation: Conversation,
   ].filter(Boolean).join('\n');
 }
 
+export function buildAskAgentSessionReferenceContextMessage(conversation: Conversation, text: string): DesktopChatContextMessage | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const sessionId = conversation.canonicalSessionId?.trim() || conversation.id;
+  return {
+    id: `ask-agent-reference:${sessionId}`,
+    authorName: 'Current chat reference',
+    authorKind: 'human',
+    text: trimmed,
+    createdAtMs: Date.now(),
+  };
+}
+
 function companionLabel(conversation: Conversation) {
   return conversationPaneKind(conversation) === 'agent' ? 'Agent chat' : 'Human chat';
 }
@@ -511,7 +525,7 @@ type ChatsPageProps = {
   onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
   onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   onSelectSession?: (sessionId: string) => void;
-  onSendChatMessage: (draftOverride?: string, targetSessionId?: string) => void;
+  onSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => void;
   onCreateAgentSession?: () => string | null | Promise<string | null>;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
@@ -853,10 +867,11 @@ export function ChatsPage({
   const sendCompanionDraft = (conversation: Conversation) => {
     const draft = companionDrafts[conversation.id] ?? '';
     if (!draft.trim()) return;
-    const prompt = sideAgentReferenceContext
-      ? `${sideAgentReferenceContext}\n\nUser request:\n${draft}`
-      : draft;
-    onSendChatMessage(prompt, conversation.id);
+    const referenceContextMessage = sideAgentReferenceContext
+      ? buildAskAgentSessionReferenceContextMessage(activeConv, sideAgentReferenceContext)
+      : null;
+    const contextMessages = referenceContextMessage ? [referenceContextMessage] : [];
+    onSendChatMessage(draft, conversation.id, contextMessages);
     setCompanionDrafts((current) => {
       const next = { ...current };
       delete next[conversation.id];

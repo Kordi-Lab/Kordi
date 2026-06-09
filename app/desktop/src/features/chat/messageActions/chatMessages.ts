@@ -925,7 +925,7 @@ export function useChatMessageActions({
     flushQueuedDesktopMessagesForSessionRef.current(activeConvId);
   }, [activeConvId, activeConversationIsBridge, desktopLiveTurn, isNativeShell, localChatSendInFlightRef, queuedDesktopMessagesBySession]);
 
-  const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string) => {
+  const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string, contextMessages: DesktopChatContextMessage[] = []) => {
     if (!isNativeShell) return;
     const text = rawText.trim();
     if (!text) return;
@@ -1067,7 +1067,7 @@ export function useChatMessageActions({
       shouldAutoFollowChatRef.current = true;
       setDesktopChatError(null);
       const previewText = attachmentSummaryText(text);
-      const turn = await startDesktopChatMessage(targetConversation.id, text, []);
+      const turn = await startDesktopChatMessage(targetConversation.id, text, [], null, contextMessages);
       setDesktopChatState((current) => current
         ? appendOptimisticOutboundMessage(current, targetConversation.id, previewText, text, [], sentAt)
         : current);
@@ -1097,10 +1097,10 @@ export function useChatMessageActions({
     watchLocalTurnAndFlushQueue,
   ]);
 
-  return useCallback(async (draftOverride?: string, sideTargetSessionId?: string) => {
+  return useCallback(async (draftOverride?: string, sideTargetSessionId?: string, contextMessages: DesktopChatContextMessage[] = []) => {
     if (!isNativeShell) return;
     if (sideTargetSessionId && sideTargetSessionId !== activeConvId) {
-      await sendTargetedChatMessage(sideTargetSessionId, draftOverride ?? '');
+      await sendTargetedChatMessage(sideTargetSessionId, draftOverride ?? '', contextMessages);
       return;
     }
     const rawText = draftOverride ?? composerDrafts.chat;

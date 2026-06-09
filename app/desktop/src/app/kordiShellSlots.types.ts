@@ -5,6 +5,7 @@ import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeSt
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type {
   Agent,
   BridgeAgentRequestControl,
@@ -319,7 +320,7 @@ export type AssembleKordiShellSlotsArgs = {
   handleStopDesktopChatTurn: () => void;
   handleStopBridgeAgentRequest: (request: BridgeAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
-  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string) => void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => void;
   handleForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   showChatDetailRail: boolean;
   activeDetailTab: DetailTab;
