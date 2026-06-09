@@ -640,6 +640,7 @@ export function ChatsPage({
   const [openSideAgentConversationId, setOpenSideAgentConversationId] = useState<string | null>(null);
   const [sideAgentReferenceContext, setSideAgentReferenceContext] = useState<string | null>(null);
   const [isSideAgentActionsOpen, setIsSideAgentActionsOpen] = useState(false);
+  const [isSideAgentSessionListOpen, setIsSideAgentSessionListOpen] = useState(false);
   const [companionDrafts, setCompanionDrafts] = useState<Record<string, string>>({});
   const [companionDropPreviewSide, setCompanionDropPreviewSide] = useState<CompanionSide | null>(null);
   const [isDraggingCompanion, setIsDraggingCompanion] = useState(false);
@@ -697,11 +698,15 @@ export function ChatsPage({
     setOpenSideAgentConversationId(null);
     setSideAgentReferenceContext(null);
     setIsSideAgentActionsOpen(false);
+    setIsSideAgentSessionListOpen(false);
     setIsCompanionFolded(false);
   }, [activeConv.id]);
 
   useEffect(() => {
-    if (!showCompanionPane) setIsSideAgentActionsOpen(false);
+    if (!showCompanionPane) {
+      setIsSideAgentActionsOpen(false);
+      setIsSideAgentSessionListOpen(false);
+    }
   }, [showCompanionPane]);
 
   useEffect(() => {
@@ -991,63 +996,81 @@ export function ChatsPage({
             className="app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100 transition"
             title="Side chat options"
             aria-label="Side chat options"
-            onClick={() => setIsSideAgentActionsOpen((open) => !open)}
+            onClick={() => {
+              setIsSideAgentActionsOpen((open) => !open);
+              setIsSideAgentSessionListOpen(false);
+            }}
           >
             <Ellipsis className="h-3.5 w-3.5" />
           </Button>
           {isSideAgentActionsOpen ? (
             <div
-              className="absolute right-8 top-full z-30 mt-2 max-h-[min(32rem,72vh)] w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-[26px] border border-white/10 bg-[var(--app-modal-bg)] p-4 text-[16px] text-slate-100 shadow-[var(--app-shadow-float)] backdrop-blur-xl"
+              className="absolute right-8 top-full z-30 mt-2 w-52 rounded-[22px] border border-white/10 bg-[#343434] p-2 text-[15px] font-medium text-white shadow-[0_18px_44px_rgba(0,0,0,0.45)]"
               data-side-chat-options-menu="true"
-              data-side-chat-session-list="true"
+              data-side-chat-root-menu="true"
             >
-              <button
-                type="button"
-                className="mb-4 flex w-full items-center gap-3 rounded-[14px] px-1 py-1 text-left text-[20px] font-medium transition hover:bg-white/[0.06]"
-                onClick={() => setIsSideAgentActionsOpen(false)}
-              >
-                <ChevronLeft className="h-6 w-6" aria-hidden="true" />
-                <span>Back</span>
-              </button>
-              <div className="mb-4 h-px bg-white/10" aria-hidden="true" />
-              <div className="space-y-1">
-                {onCreateAgentSession ? (
+              {isSideAgentSessionListOpen ? (
+                <div data-side-chat-session-list="true">
                   <button
                     type="button"
-                    className="flex w-full items-center gap-3 rounded-[14px] px-1 py-2.5 text-left text-[16px] transition hover:bg-white/[0.08]"
-                    title="New agent session"
-                    aria-label="New agent session"
-                    onClick={() => {
-                      setIsSideAgentActionsOpen(false);
-                      void createSideAgentSession();
-                    }}
+                    className="mb-1 flex w-full items-center gap-2 rounded-[14px] px-2 py-2 text-left text-[15px] transition hover:bg-white/10"
+                    onClick={() => setIsSideAgentSessionListOpen(false)}
                   >
-                    <SquarePen className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    <span className="truncate">New agent session</span>
+                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    <span>Back</span>
                   </button>
-                ) : null}
-                {companionCandidates.map((conversation) => (
+                  <div className="mb-1 h-px bg-white/12" aria-hidden="true" />
+                  {companionCandidates.map((conversation) => (
+                    <button
+                      key={conversation.id}
+                      type="button"
+                      className={cn(
+                        'flex w-full items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left text-[14px] transition hover:bg-white/10',
+                        conversation.id === companionConversation.id ? 'text-pink-200' : 'text-white',
+                      )}
+                      title={`Switch to ${conversation.name}`}
+                      onClick={() => {
+                        setSelectedCompanionConversationId(conversation.id);
+                        setOpenSideAgentConversationId(conversation.id);
+                        setIsSideAgentActionsOpen(false);
+                        setIsSideAgentSessionListOpen(false);
+                      }}
+                    >
+                      <span className="truncate">{conversation.name}</span>
+                      {conversation.id === companionConversation.id ? (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-pink-300" aria-hidden="true" />
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {onCreateAgentSession ? (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition hover:bg-white/10"
+                      title="New chat"
+                      aria-label="New chat"
+                      onClick={() => {
+                        setIsSideAgentActionsOpen(false);
+                        setIsSideAgentSessionListOpen(false);
+                        void createSideAgentSession();
+                      }}
+                    >
+                      <SquarePen className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span className="truncate">New chat</span>
+                    </button>
+                  ) : null}
                   <button
-                    key={conversation.id}
                     type="button"
-                    className={cn(
-                      'flex w-full items-center justify-between gap-3 rounded-[14px] px-1 py-2.5 text-left text-[16px] transition hover:bg-white/[0.08]',
-                      conversation.id === companionConversation.id ? 'text-pink-200' : 'text-slate-100',
-                    )}
-                    title={`Switch to ${conversation.name}`}
-                    onClick={() => {
-                      setSelectedCompanionConversationId(conversation.id);
-                      setOpenSideAgentConversationId(conversation.id);
-                      setIsSideAgentActionsOpen(false);
-                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-[14px] px-3 py-2.5 text-left transition hover:bg-white/10"
+                    onClick={() => setIsSideAgentSessionListOpen(true)}
                   >
-                    <span className="truncate">{conversation.name}</span>
-                    {conversation.id === companionConversation.id ? (
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-pink-300" aria-hidden="true" />
-                    ) : null}
+                    <span>Switch Chat</span>
+                    <ChevronDown className="h-4 w-4 -rotate-90" aria-hidden="true" />
                   </button>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           ) : null}
           <Button
@@ -1059,6 +1082,7 @@ export function ChatsPage({
               setSelectedCompanionConversationId(null);
               setSideAgentReferenceContext(null);
               setIsSideAgentActionsOpen(false);
+              setIsSideAgentSessionListOpen(false);
             }}
             className="app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100 transition"
             title="Close side chat"
