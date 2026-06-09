@@ -27,6 +27,7 @@ type TaskDashboardSubtaskWithOutput = TaskDashboardSubtask & {
 type TaskDashboardItemWithParticipants = Omit<TaskDashboardItem, 'subtasks'> & {
   targetParticipants?: TaskTargetParticipant[];
   subtasks: TaskDashboardSubtaskWithOutput[];
+  subtaskCountLabel?: string | null;
 };
 
 type TaskActivityDashboardPanelProps = {
@@ -277,11 +278,12 @@ function TaskContent({
   const runningElapsed = useRunningElapsedLabel(task.status === 'active', task.id, task.startedAtMs);
   const subtaskCount = 'subtaskCount' in task ? task.subtaskCount : 0;
   const activeSubtaskCount = 'activeSubtaskCount' in task ? task.activeSubtaskCount : 0;
-  const rawSubtaskLabel = subtaskCount > 0
+  const customSubtaskLabel = 'subtaskCountLabel' in task && typeof task.subtaskCountLabel === 'string' ? task.subtaskCountLabel : null;
+  const rawSubtaskLabel = customSubtaskLabel ?? (subtaskCount > 0
     ? activeSubtaskCount > 0
       ? `${activeSubtaskCount} active subtask${activeSubtaskCount === 1 ? '' : 's'}`
       : `${subtaskCount} subtask${subtaskCount === 1 ? '' : 's'}`
-    : null;
+    : null);
   const subtaskLabel = rawSubtaskLabel && rawSubtaskLabel !== secondaryText ? rawSubtaskLabel : null;
   const durationText = task.status === 'completed' || task.status === 'closed' || task.status === 'waiting'
     ? null
@@ -541,7 +543,7 @@ function scheduledRunSubtask(run: ScheduledTaskRun, messages: Message[], now: Da
     target: null,
     writeScope: [],
     live: status === 'active',
-    timeLabel: scheduledRunStatusLabel(run),
+    timeLabel: null,
     startedAtMs: Date.parse(run.createdAt) || null,
     responseMessageId: message?.id ?? null,
     outputPreview: Boolean(message?.id),
@@ -569,26 +571,10 @@ function scheduledTaskToDashboardItem(task: ScheduledTask, now: Date, timeZone: 
     artifactIds: [],
     involvedParticipantNames: [],
     targetParticipants: [],
-    subtasks: latestRun ? [
-      {
-        id: `scheduled-run-status:${latestRun.runId}`,
-        title: 'Latest run status',
-        summary: latestRun.resultMessage
-          ? 'Message posted to this session.'
-          : latestRun.errorMessage ?? (latestRun.status === 'completed' ? 'Run completed.' : 'Run has not posted a message yet.'),
-        status,
-        statusLabel: scheduledRunStatusLabel(latestRun),
-        tone: dashboardToneFromStatus(status),
-        target: null,
-        writeScope: [],
-        live: status === 'active',
-        timeLabel: scheduledRunStatusLabel(latestRun),
-        startedAtMs: Date.parse(latestRun.createdAt) || null,
-      },
-      ...runSubtasks,
-    ] : [],
-    subtaskCount: latestRun ? runSubtasks.length + 1 : 0,
+    subtasks: runSubtasks,
+    subtaskCount: runSubtasks.length,
     activeSubtaskCount: runSubtasks.filter((run) => run.status === 'active').length,
+    subtaskCountLabel: runSubtasks.length > 0 ? `${runSubtasks.length} run${runSubtasks.length === 1 ? '' : 's'}` : null,
   };
 }
 

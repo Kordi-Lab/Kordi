@@ -1740,7 +1740,7 @@ test('task panel renders artifact navigation as soon as the task has a generated
   assert.match(markup, /data-task-action="open-artifact"/);
 });
 
-test('scheduled task rows expand to show run status and response previews', () => {
+test('scheduled task rows expand one row per run with status and response previews', () => {
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [{
       id: 'msg:cloud:self:cloudrunmsg_news',
@@ -1801,10 +1801,13 @@ test('scheduled task rows expand to show run status and response previews', () =
   }));
 
   assert.match(markup, /Search latest OpenAI news/);
-  assert.match(markup, /Latest run status/);
+  assert.match(markup, /1 run/);
+  assert.doesNotMatch(markup, /2 subtasks/);
+  assert.doesNotMatch(markup, /Latest run status/);
   assert.match(markup, /completed · 1m 06s/);
+  assert.doesNotMatch(markup, /completed · 1m 06s · completed/);
   assert.match(markup, /As of Tuesday, June 9, 2026, the latest notable OpenAI updates/);
-  assert.match(markup, /data-scheduled-run-output="true"/);
+  assert.equal((markup.match(/data-scheduled-run-output="true"/g) ?? []).length, 1);
 });
 
 test('task panel lets long task titles wrap instead of truncating them', () => {
