@@ -251,6 +251,8 @@ test('ask agent opens an explicit side session with neutral copy and reference c
   assert.match(source, /data-companion-detail-toggle="true"/);
   assert.match(source, /data-chat-side-detail-rail="true"/);
   assert.match(source, /setIsCompanionDetailOpen\(\(open\) => !open\)/);
+  assert.match(source, /artifacts=\{companionConversation\.reflectionLessonArtifacts \?\? \[\]\}/);
+  assert.match(source, /taskActivities:\s*companionConversation\.taskActivities/s);
   assert.match(source, /app-composer-meta mt-2 flex items-center justify-between gap-3 overflow-hidden pt-2\.5" data-companion-send-row="true"/);
   assert.doesNotMatch(source, /shrink-0 border-t border-white\/\[0\.06\] px-5 pb-4 pt-3/);
   assert.match(source, /bg-\[#1f1f1f\]/);

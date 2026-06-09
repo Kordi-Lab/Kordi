@@ -1314,7 +1314,11 @@ export function ChatsPage({
   ) : null;
   const sideDetailRailWidth = Math.min(detailRailWidth, 344);
   const companionLastMessage = companionConversation?.messages[companionConversation.messages.length - 1];
-  const sideDetailRail = isCompanionDetailOpen && companionConversation ? (
+  const companionDetailConversation = companionConversation ? {
+    ...companionConversation,
+    taskActivities: companionConversation.taskActivities ?? [],
+  } : null;
+  const sideDetailRail = isCompanionDetailOpen && companionConversation && companionDetailConversation ? (
     <div
       className="relative h-full min-h-0 min-w-0 overflow-hidden border-l border-white/[0.06] bg-white/[0.025]"
       style={{ width: sideDetailRailWidth }}
@@ -1333,8 +1337,8 @@ export function ChatsPage({
         <ChatDetailPanel
           isNativeShell={isNativeShell}
           activeDetailTab={companionDetailTab}
-          activeConv={companionConversation}
-          activeConvHasSubtitle={Boolean(companionConversation.subtitle?.trim())}
+          activeConv={companionDetailConversation}
+          activeConvHasSubtitle={Boolean(companionDetailConversation.subtitle?.trim())}
           activeLastMessage={companionLastMessage}
           activeLiveTurn={companionTranscriptLiveTurn ?? null}
           activeConversationIsBridge={companionConversationHasBridgeTransport}
@@ -1345,7 +1349,7 @@ export function ChatsPage({
           isBridgePolling={false}
           lastBridgePollAtLabel={null}
           activeSessionProject={null}
-          artifacts={[]}
+          artifacts={companionConversation.reflectionLessonArtifacts ?? []}
           activeArtifactId={companionDetailArtifactId}
           onSelectArtifact={setCompanionDetailArtifactId}
           onOpenArtifact={(artifactId) => setCompanionDetailArtifactId(artifactId)}
