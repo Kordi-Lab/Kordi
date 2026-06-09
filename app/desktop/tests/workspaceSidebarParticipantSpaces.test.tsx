@@ -525,7 +525,7 @@ test('WorkspaceSidebar does not show an Agent tab unread badge for hidden canoni
   assert.doesNotMatch(markup, /data-unread-scope="channel-tab" data-unread-count="1"/);
 });
 
-test('WorkspaceSidebar rolls hidden fork unread up to the contact tab and folded group row', () => {
+test('WorkspaceSidebar hides group-derived fork unread from the contact tab and folded group row', () => {
   const chatConversations = [
     conversation({
       id: 'session:group:cloud-parent',
@@ -570,8 +570,8 @@ test('WorkspaceSidebar rolls hidden fork unread up to the contact tab and folded
     activeConvId: 'session:outside-active',
   }) as never));
 
-  assert.match(markup, /data-unread-scope="channel-tab" data-unread-count="1"/);
-  assert.match(markup, /data-unread-scope="participant-space" data-unread-count="1"/);
+  assert.doesNotMatch(markup, /data-unread-scope="channel-tab" data-unread-count="1"/);
+  assert.doesNotMatch(markup, /data-unread-scope="participant-space" data-unread-count="1"/);
 });
 
 function countMatches(value: string, pattern: RegExp) {
@@ -1352,6 +1352,56 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   assert.match(sessionRowMarkup, /data-session-id-label="Direct chat"/);
   assert.doesNotMatch(sessionRowMarkup, /app-participant-space-session-id/);
   assert.doesNotMatch(sessionRowMarkup, />Direct chat<\//);
+});
+
+test('WorkspaceSidebar hides old fork rows for canonical group sessions', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:group:weather',
+      canonicalSessionId: 'session:group:weather',
+      name: 'Weather group',
+      subtitle: 'Weather group',
+      messages: [{ role: 'person', sender: 'Alice', text: 'Weather group', time: '16:02' }],
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalMessageCount: 1,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+    conversation({
+      id: 'session:fork:group-weather',
+      canonicalSessionId: 'session:fork:group-weather',
+      name: 'Old group fork',
+      subtitle: 'Fork continuation',
+      messages: [{ role: 'person', sender: 'Bob', text: 'Fork continuation', time: '16:05' }],
+      participants: ['Me', 'Alice', 'Bob'],
+      unread: 7,
+      canonicalMessageCount: 2,
+      forkedFromSessionId: 'session:group:weather',
+      forkedFromMessageId: 'msg:source',
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    activeConvId: 'session:group:weather',
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
+
+  assert.match(markup, /Weather group/);
+  assert.doesNotMatch(markup, /Old group fork/);
+  assert.doesNotMatch(markup, /app-participant-space-session-fork-toggle/);
+  assert.doesNotMatch(markup, /app-participant-space-session-fork-marker/);
+  assert.doesNotMatch(markup, /data-unread-count="7"/);
 });
 
 test('WorkspaceSidebar aligns child session hashtags and keeps last-message metadata visible', () => {

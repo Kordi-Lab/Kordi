@@ -77,7 +77,7 @@ import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
-import { buildForkLineage } from '@/features/chat/forkLineage';
+import { buildForkLineage, isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 
@@ -656,16 +656,20 @@ export function ChatsPage({
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
-  // Forking is supported for local sessions and canonical group /
-  // bridge sessions (the backend snapshots canonical messages into a
-  // fresh local fork so the user can continue separately). The local
-  // draft and ephemeral bridge transports are still excluded because
-  // they have no persistent backing to read from.
+  const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
+  const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
+  const activeConversationIsGroupFork = isGroupForkSession(activeConv);
+  // Forking is hidden for group chats and historical group-derived forks because
+  // the resulting private continuation/visibility semantics are confusing in a
+  // shared chat. The local draft and ephemeral bridge transports remain excluded
+  // because they have no persistent backing to read from.
   const activeConversationIsForkable = Boolean(
     onForkChatMessage
       && activeConv.id
       && activeConv.id !== LOCAL_DRAFT_CHAT_CONVERSATION_ID
-      && !activeConv.id.startsWith('bridge:'),
+      && !activeConv.id.startsWith('bridge:')
+      && !activeConversationIsGroupSession
+      && !activeConversationIsGroupFork,
   );
   const handleForkMessage = activeConversationIsForkable && onForkChatMessage
     ? (entryId: string) => {
@@ -735,8 +739,8 @@ export function ChatsPage({
 
   // If the active session is itself a fork, show a backlink at the top
   // of the transcript so the user can navigate to the source session.
-  const activeForkSourceSessionId = activeConv.forkedFromSessionId?.trim() || null;
-  const activeForkSourceMessageId = activeConv.forkedFromMessageId?.trim() || null;
+  const activeForkSourceSessionId = activeConversationIsGroupFork ? null : activeConv.forkedFromSessionId?.trim() || null;
+  const activeForkSourceMessageId = activeConversationIsGroupFork ? null : activeConv.forkedFromMessageId?.trim() || null;
   const activeForkSourceTitle = useMemo(() => {
     if (!activeForkSourceSessionId) return null;
     const summary = desktopChatState?.sessions.find((session) => session.id === activeForkSourceSessionId);
@@ -747,7 +751,8 @@ export function ChatsPage({
   // the active session, so the transcript can render a "N forks" chip
   // and a popover listing them next to the message they branched from.
   const messageForksByEntryId = useMemo(() => {
-    const summaries = desktopChatState?.sessions ?? [];
+    if (activeConversationIsGroupSession) return new Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>();
+    const summaries = (desktopChatState?.sessions ?? []).filter((summary) => !isGroupForkSession(summary));
     const lineage = buildForkLineage(
       summaries.map((summary) => ({
         id: summary.id,
@@ -771,7 +776,7 @@ export function ChatsPage({
       if (entries.length > 0) result.set(messageId, entries);
     }
     return result;
-  }, [activeConv.id, desktopChatState?.sessions]);
+  }, [activeConv.id, activeConversationIsGroupSession, desktopChatState?.sessions]);
   const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
     defaultModel?: string | null;
     defaultAuthProvider?: string | null;
