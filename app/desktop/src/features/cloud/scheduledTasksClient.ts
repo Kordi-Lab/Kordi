@@ -8,6 +8,7 @@ export type ScheduledTask = {
   taskId: string;
   title: string;
   prompt: string;
+  sessionId?: string | null;
   schedule: ScheduledTaskSchedule;
   targetRuntime: 'cloud' | 'local_required';
   enabled: boolean;

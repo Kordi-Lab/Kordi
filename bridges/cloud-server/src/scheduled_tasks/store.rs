@@ -15,6 +15,7 @@ type TaskRow = (
     String,
     String,
     String,
+    Option<String>,
     Value,
     String,
     bool,
@@ -59,16 +60,17 @@ fn row_to_task(row: TaskRow) -> Result<ScheduledTaskResponse, sqlx_core::Error> 
         task_id: row.0,
         title: row.1,
         prompt: row.2,
-        schedule: parse_schedule(row.3)?,
-        target_runtime: row.4,
-        enabled: row.5,
-        status: row.6,
-        next_run_at: row.7,
-        last_run_at: row.8,
-        last_run_status: row.9,
-        last_run_error: row.10,
-        created_at: row.11,
-        updated_at: row.12,
+        session_id: row.3,
+        schedule: parse_schedule(row.4)?,
+        target_runtime: row.5,
+        enabled: row.6,
+        status: row.7,
+        next_run_at: row.8,
+        last_run_at: row.9,
+        last_run_status: row.10,
+        last_run_error: row.11,
+        created_at: row.12,
+        updated_at: row.13,
     })
 }
 
@@ -106,7 +108,7 @@ pub async fn create_scheduled_task(
             task_id, owner_account_id, created_by_account_id, title, prompt, tool_payload_json,
             schedule_json, timezone, target_runtime, enabled, status, next_run_at, created_at, updated_at
          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,'active',$10,$11,$11)
-         RETURNING task_id, title, prompt, schedule_json, target_runtime, enabled, status, next_run_at,
+         RETURNING task_id, title, prompt, tool_payload_json->>'sessionId', schedule_json, target_runtime, enabled, status, next_run_at,
                    last_run_at, last_run_status, last_run_error, created_at, updated_at"
     )
     .bind(task_id)
@@ -130,7 +132,7 @@ pub async fn list_scheduled_tasks(
     owner_account_id: &str,
 ) -> Result<Vec<ScheduledTaskResponse>, sqlx_core::Error> {
     let rows = query_as::<_, TaskRow>(
-        "SELECT task_id, title, prompt, schedule_json, target_runtime, enabled, status, next_run_at,
+        "SELECT task_id, title, prompt, tool_payload_json->>'sessionId', schedule_json, target_runtime, enabled, status, next_run_at,
                 last_run_at, last_run_status, last_run_error, created_at, updated_at
            FROM scheduled_tool_tasks
           WHERE owner_account_id = $1 AND status <> 'deleted'
@@ -148,7 +150,7 @@ pub async fn read_task(
     task_id: &str,
 ) -> Result<Option<ScheduledTaskResponse>, sqlx_core::Error> {
     let row = query_as::<_, TaskRow>(
-        "SELECT task_id, title, prompt, schedule_json, target_runtime, enabled, status, next_run_at,
+        "SELECT task_id, title, prompt, tool_payload_json->>'sessionId', schedule_json, target_runtime, enabled, status, next_run_at,
                 last_run_at, last_run_status, last_run_error, created_at, updated_at
            FROM scheduled_tool_tasks
           WHERE owner_account_id = $1 AND task_id = $2 AND status <> 'deleted'"
@@ -184,7 +186,7 @@ pub async fn resume_scheduled_task(
         "UPDATE scheduled_tool_tasks
             SET enabled = TRUE, status = 'active', next_run_at = $1, updated_at = $2
           WHERE owner_account_id = $3 AND task_id = $4 AND status <> 'deleted'
-          RETURNING task_id, title, prompt, schedule_json, target_runtime, enabled, status, next_run_at,
+          RETURNING task_id, title, prompt, tool_payload_json->>'sessionId', schedule_json, target_runtime, enabled, status, next_run_at,
                     last_run_at, last_run_status, last_run_error, created_at, updated_at"
     )
     .bind(next_run_at)
@@ -208,7 +210,7 @@ async fn update_task_status(
         "UPDATE scheduled_tool_tasks
             SET enabled = $1, status = $2, updated_at = $3
           WHERE owner_account_id = $4 AND task_id = $5 AND status <> 'deleted'
-          RETURNING task_id, title, prompt, schedule_json, target_runtime, enabled, status, next_run_at,
+          RETURNING task_id, title, prompt, tool_payload_json->>'sessionId', schedule_json, target_runtime, enabled, status, next_run_at,
                     last_run_at, last_run_status, last_run_error, created_at, updated_at"
     )
     .bind(enabled)

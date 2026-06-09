@@ -53,6 +53,7 @@ pub struct ScheduledTaskResponse {
     pub task_id: String,
     pub title: String,
     pub prompt: String,
+    pub session_id: Option<String>,
     pub schedule: ScheduledTaskSchedule,
     pub target_runtime: String,
     pub enabled: bool,

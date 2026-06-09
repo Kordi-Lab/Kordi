@@ -109,7 +109,7 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
                 timezone: Some("UTC".to_string()),
             },
             target_runtime: ScheduledTaskTargetRuntime::Cloud,
-            tool_payload: serde_json::json!({ "tool": "agent.run" }),
+            tool_payload: serde_json::json!({ "tool": "agent.run", "sessionId": "session:standup" }),
         },
         Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap(),
     )
@@ -118,6 +118,7 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
 
     assert_eq!(task.title, "Daily standup prep");
     assert_eq!(task.status, "active");
+    assert_eq!(task.session_id.as_deref(), Some("session:standup"));
     assert_eq!(
         task.next_run_at.as_deref(),
         Some("2026-06-08T09:00:00+00:00")
@@ -128,6 +129,7 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
         .expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].task_id, task.task_id);
+    assert_eq!(listed[0].session_id.as_deref(), Some("session:standup"));
 
     let paused = pause_scheduled_task(&pool, &account_id, &task.task_id)
         .await

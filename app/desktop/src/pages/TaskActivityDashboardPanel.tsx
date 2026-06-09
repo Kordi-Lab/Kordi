@@ -38,6 +38,7 @@ type TaskActivityDashboardPanelProps = {
   taskActivities?: SessionTaskActivity[];
   scheduledTasks?: ScheduledTask[];
   scheduledRunsByTaskId?: Record<string, ScheduledTaskRun[]>;
+  currentSessionId?: string | null;
   targetParticipants?: TaskTargetParticipant[];
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
@@ -695,7 +696,7 @@ function mergeTaskTargetParticipants(participants: TaskTargetParticipant[]) {
   return [...byKey.values()];
 }
 
-export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], scheduledTasks = [], scheduledRunsByTaskId = {}, targetParticipants = [], onOpenArtifact, onNavigateToResponse, now = new Date(), timeZone }: TaskActivityDashboardPanelProps) {
+export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], scheduledTasks = [], scheduledRunsByTaskId = {}, currentSessionId = null, targetParticipants = [], onOpenArtifact, onNavigateToResponse, now = new Date(), timeZone }: TaskActivityDashboardPanelProps) {
   // Conversation message arrays can be updated in place while Bridge/canonical polling is active.
   // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
   // as the transcript rerenders, even if the array identity did not change.
@@ -709,7 +710,11 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, a
     profileImageUrl: participant.profileImageUrl,
   })));
   const mergedTargetParticipants = mergeTaskTargetParticipants([...activityTargetParticipants, ...targetParticipants]);
-  const scheduledRows = dedupeTaskRowsByKeys(scheduledTasks.map((task) => scheduledTaskToDashboardItem(task, now, timeZone, scheduledRunsByTaskId[task.taskId] ?? [], messages)));
+  const normalizedCurrentSessionId = currentSessionId?.trim() ?? '';
+  const sessionScheduledTasks = normalizedCurrentSessionId
+    ? scheduledTasks.filter((task) => task.sessionId?.trim() === normalizedCurrentSessionId)
+    : scheduledTasks;
+  const scheduledRows = dedupeTaskRowsByKeys(sessionScheduledTasks.map((task) => scheduledTaskToDashboardItem(task, now, timeZone, scheduledRunsByTaskId[task.taskId] ?? [], messages)));
   const taskActivityRows = dedupeTaskRowsByKeys(taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants)));
   const existingTaskKeys = new Set([...scheduledRows, ...taskActivityRows].flatMap(taskDedupeKeys));
   const localRows = dashboard.tasks.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)));

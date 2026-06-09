@@ -1740,6 +1740,50 @@ test('task panel renders artifact navigation as soon as the task has a generated
   assert.match(markup, /data-task-action="open-artifact"/);
 });
 
+test('scheduled task rows only include tasks for the active session', () => {
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+    currentSessionId: 'session-weather',
+    scheduledTasks: [{
+      taskId: 'scheduled_task_openai',
+      sessionId: 'session-openai',
+      title: 'Summarize latest OpenAI news',
+      prompt: 'Search the web for OpenAI news.',
+      schedule: { kind: 'daily', time: '20:16', timezone: 'UTC+8' },
+      targetRuntime: 'cloud',
+      enabled: true,
+      status: 'active',
+      nextRunAt: '2026-06-10T12:16:00Z',
+      lastRunAt: '2026-06-09T12:16:00Z',
+      lastRunStatus: 'completed',
+      lastRunError: null,
+      createdAt: '2026-06-09T12:15:00Z',
+      updatedAt: '2026-06-09T12:17:08Z',
+    }, {
+      taskId: 'scheduled_task_weather',
+      sessionId: 'session-weather',
+      title: 'Tell me Xuzhou weather every 5 min',
+      prompt: 'Tell me Xuzhou weather.',
+      schedule: { kind: 'daily', time: '20:20', timezone: 'UTC+8' },
+      targetRuntime: 'cloud',
+      enabled: true,
+      status: 'active',
+      nextRunAt: '2026-06-10T12:20:00Z',
+      lastRunAt: null,
+      lastRunStatus: null,
+      lastRunError: null,
+      createdAt: '2026-06-09T12:19:00Z',
+      updatedAt: '2026-06-09T12:19:00Z',
+    }],
+    now: new Date('2026-06-09T12:20:00Z'),
+  }));
+
+  assert.match(markup, /Tell me Xuzhou weather every 5 min/);
+  assert.doesNotMatch(markup, /Summarize latest OpenAI news/);
+});
+
 test('scheduled task rows expand one row per run with status and response previews', () => {
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [{
