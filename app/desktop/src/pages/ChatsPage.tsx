@@ -273,7 +273,7 @@ export function pairedCompanionConversation(activeConv: Conversation, conversati
   )) ?? null;
 }
 
-export function chatCompanionCandidates(activeConv: Conversation, conversations: Conversation[]) {
+export function chatCompanionCandidates(activeConv: Conversation, conversations: Conversation[] = []) {
   return conversations.filter((conversation) => (
     conversation.id !== activeConv.id
     && conversationIsAgentChat(conversation)
