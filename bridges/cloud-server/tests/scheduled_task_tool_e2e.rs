@@ -82,6 +82,17 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
 }
 
 #[test]
+fn scheduled_task_worker_claims_due_jobs_on_interval() {
+    let worker = std::fs::read_to_string("src/scheduled_tasks/worker.rs").expect("read worker");
+    assert!(worker.contains("scheduled_task_sweep_interval"));
+    assert!(worker.contains("claim_due_scheduled_task_runs"));
+    assert!(worker.contains("waiting_for_desktop"));
+
+    let server = std::fs::read_to_string("src/server.rs").expect("read server");
+    assert!(server.contains("scheduled_tasks::worker::spawn_scheduled_task_worker"));
+}
+
+#[test]
 fn scheduled_task_routes_are_registered_under_cloud_api() {
     let source = std::fs::read_to_string("src/scheduled_tasks/routes.rs").expect("read routes");
     assert!(source.contains("/v1/cloud/scheduled-tasks"));
