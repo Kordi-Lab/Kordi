@@ -73,6 +73,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
             rate_limiter,
         ))
         .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
+        .merge(crate::scheduled_tasks::routes::routes(state.clone()))
         .merge(ws_router)
         .route("/health", axum::routing::get(health))
         .layer(cors)

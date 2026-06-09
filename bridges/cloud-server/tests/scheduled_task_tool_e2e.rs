@@ -81,6 +81,16 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
     assert!(list_scheduled_tasks(&pool, &account_id).await.expect("list after delete").is_empty());
 }
 
+#[test]
+fn scheduled_task_routes_are_registered_under_cloud_api() {
+    let source = std::fs::read_to_string("src/scheduled_tasks/routes.rs").expect("read routes");
+    assert!(source.contains("/v1/cloud/scheduled-tasks"));
+    assert!(source.contains("/v1/cloud/scheduled-tasks/:task_id/pause"));
+    assert!(source.contains("/v1/cloud/scheduled-tasks/:task_id/resume"));
+    assert!(source.contains("/v1/cloud/scheduled-tasks/:task_id/run-now"));
+    assert!(source.contains("/v1/cloud/scheduled-task-runs/claim"));
+}
+
 #[tokio::test]
 async fn run_now_and_due_claim_separate_cloud_and_local_required_runs() {
     let Some(pool) = try_pool().await else { return };
