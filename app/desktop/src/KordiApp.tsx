@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useEffect, useState, type MouseEventHandler } from 'react';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
-import { currentKordiEdition, shouldShowCloudLoginGate, type CloudSessionStatus, type KordiEdition } from '@/features/cloud/edition';
-import { applyKordiMainWindowSize } from '@/features/cloud/loginWindow';
+import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
+import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/edition';
+import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/loginWindow';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode } from '@/kordi-app/types';
@@ -12,6 +14,10 @@ import type { ResolvedThemeMode } from '@/kordi-app/types';
 function readSystemTheme(): ResolvedThemeMode {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function nativeWindowThemeIsResolvedTheme(theme: unknown): theme is ResolvedThemeMode {
+  return theme === 'light' || theme === 'dark';
 }
 
 // The shell's useKordiUiEffects also writes `theme-*` to <body>, but it only
@@ -27,15 +33,46 @@ function useGateThemeClass() {
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const themeMode = readStoredThemeMode();
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
-    const handle = () => {
-      setTheme(resolveThemeMode(themeMode, mediaQuery.matches ? 'light' : 'dark'));
+    let disposed = false;
+    let unlistenNativeTheme: (() => void) | undefined;
+    const mediaQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: light)')
+      : null;
+    const applySystemTheme = (systemTheme: ResolvedThemeMode) => {
+      setTheme(resolveThemeMode(themeMode, systemTheme));
     };
-    handle();
-    mediaQuery.addEventListener('change', handle);
-    return () => mediaQuery.removeEventListener('change', handle);
+    const handleMediaTheme = () => {
+      if (!mediaQuery) return;
+      applySystemTheme(mediaQuery.matches ? 'light' : 'dark');
+    };
+
+    if (themeMode === 'auto' && isTauriRuntime()) {
+      void getCurrentWindow().theme()
+        .then((nativeTheme) => {
+          if (!disposed && nativeWindowThemeIsResolvedTheme(nativeTheme)) setTheme(nativeTheme);
+        })
+        .catch(() => {
+          handleMediaTheme();
+        });
+      void getCurrentWindow().onThemeChanged(({ payload }) => {
+        if (!disposed && nativeWindowThemeIsResolvedTheme(payload)) setTheme(payload);
+      })
+        .then((unlisten) => {
+          if (disposed) unlisten();
+          else unlistenNativeTheme = unlisten;
+        })
+        .catch(() => undefined);
+    } else {
+      handleMediaTheme();
+    }
+
+    mediaQuery?.addEventListener('change', handleMediaTheme);
+    return () => {
+      disposed = true;
+      mediaQuery?.removeEventListener('change', handleMediaTheme);
+      unlistenNativeTheme?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -48,7 +85,6 @@ function useGateThemeClass() {
 }
 
 export type KordiAppRootProps = {
-  edition?: KordiEdition;
   /**
    * Tests can pass an explicit cloudSessionStatus to render the gate or the
    * shell deterministically. When undefined, the runtime hook drives the
@@ -60,24 +96,9 @@ export type KordiAppRootProps = {
 };
 
 export function KordiAppRoot({
-  edition = currentKordiEdition(),
   cloudSessionStatus,
   cloudSession,
 }: KordiAppRootProps = {}) {
-  // When edition is local, we don't need any cloud session machinery and
-  // shouldShowCloudLoginGate short-circuits anyway. We default to 'signed-out'
-  // so existing call sites that relied on the old default keep working.
-  if (edition !== 'cloud') {
-    if (shouldShowCloudLoginGate({ edition, cloudSessionStatus: cloudSessionStatus ?? 'signed-out' })) {
-      return (
-        <CloudGateShell>
-          <CloudLoginPage />
-        </CloudGateShell>
-      );
-    }
-    return <KordiAppShell />;
-  }
-
   return (
     <CloudEditionRoot
       cloudSessionStatusOverride={cloudSessionStatus}
@@ -91,9 +112,28 @@ export function KordiAppRoot({
 // theme-tokens.css palette resolves. The wrapping hook installs the system
 // theme class on <body> until the shell takes over.
 function CloudGateShell({ children }: { children: React.ReactNode }) {
-  useGateThemeClass();
+  const theme = useGateThemeClass();
+  const handleGateWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
+    if (!shouldStartNativeWindowDrag({
+      isNativeShell: isTauriRuntime(),
+      button: event.button,
+      clientY: event.clientY,
+      shellTop: event.currentTarget.getBoundingClientRect().top,
+      target: event.target,
+    })) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    void getCurrentWindow().startDragging().catch(() => undefined);
+  };
+
   return (
-    <div className="bridge-app app-cloud-login-shell">
+    <div
+      className={`bridge-app app-cloud-login-shell theme-${theme}`}
+      onMouseDownCapture={handleGateWindowDragMouseDown}
+    >
       {children}
     </div>
   );
@@ -112,7 +152,7 @@ function CloudEditionRoot({
   });
   const session = cloudSessionOverride ?? liveSession;
   const status: CloudSessionStatus = cloudSessionStatusOverride ?? session.status;
-  if (shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: status })) {
+  if (shouldShowCloudLoginGate({ cloudSessionStatus: status })) {
     return (
       <CloudGateShell>
         <CloudLoginPage

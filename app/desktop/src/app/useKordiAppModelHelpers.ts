@@ -17,8 +17,7 @@ export function normalizeMentionSearch(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-export function shouldUseCloudSessionAction(edition: 'local' | 'cloud', sessionId: string) {
-  if (edition !== 'cloud') return false;
+export function shouldUseCloudSessionAction(sessionId: string) {
   const trimmed = sessionId.trim();
   return trimmed.startsWith('session:') || trimmed.startsWith('bridge:cloud:');
 }

@@ -20,13 +20,13 @@ test('dark theme uses a translucent dark-glass palette with one accent selected 
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-active:\s*rgba\(132,\s*122,\s*196,\s*0\.11\);/);
 });
 
-test('chat sidebar timestamps use the tertiary text token', () => {
+test('chat sidebar timestamps use the sidebar time text token', () => {
   const shellCss = readDesktopShellCss();
 
-  assert.match(shellCss, /\.app-session-meta-time\s*{[^}]*color:\s*var\(--utility-meta-text\)/s);
-  assert.match(shellCss, /\.app-session-meta-time-active\s*{[^}]*color:\s*color-mix\(in oklab, var\(--utility-muted-text\) 72%, var\(--utility-foreground\)\)/s);
+  assert.match(shellCss, /\.app-session-meta-time\s*{[^}]*color:\s*var\(--app-sidebar-time-text\)/s);
+  assert.match(shellCss, /\.app-session-meta-time-active\s*{[^}]*color:\s*var\(--app-sidebar-time-text\)/s);
   assert.match(shellCss, /\.app-session-row\s*{[^}]*box-shadow:\s*none/s);
-  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*border:\s*1px solid color-mix\(in oklab, var\(--app-accent-ring\) 92%, var\(--app-divider\)\);[^}]*box-shadow:\s*0 0 0 1px color-mix\(in oklab, var\(--app-accent-ring\) 42%, transparent\)/s);
+  assert.match(shellCss, /\.app-session-row-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none/s);
 });
 
 test('glassmorphism tokens are declared in both themes and frame bgs are translucent', () => {
@@ -56,6 +56,28 @@ test('glassmorphism tokens are declared in both themes and frame bgs are translu
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-shell-bg:\s*linear-gradient\(180deg,\s*rgba\(252,\s*252,\s*253,\s*0\.72\)/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*rgba\(250,\s*250,\s*251,\s*0\.66\);/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
+});
+
+test('light cloud login and loading gates use the cool main-shell palette', () => {
+  const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const lightTokenBlock = themeTokensCss.match(/\.bridge-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightCloudTokenBlock = lightTokenBlock.slice(lightTokenBlock.indexOf('--app-cloud-login-raised-bg:'));
+  const lightCloudBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-login-page,[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightAccentsBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-login-accents \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightStartingBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-starting-screen \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-raised-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.72\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-sunk-bg:\s*rgba\(226,\s*232,\s*240,\s*0\.52\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-input-bg:\s*rgba\(248,\s*251,\s*255,\s*0\.82\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-border:\s*rgba\(37,\s*99,\s*235,\s*0\.12\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-divider:\s*rgba\(100,\s*116,\s*139,\s*0\.22\);/);
+  assert.match(lightCloudBlock, /--app-cloud-login-page-bg:\s*linear-gradient\(180deg,\s*rgb\(248 250 252\) 0%,\s*rgb\(241 245 249\) 54%,\s*rgb\(226 232 240\) 100%\);/);
+  assert.match(lightAccentsBlock, /oklch\(0\.70 0\.13 232 \/ 0\.12\)/);
+  assert.match(lightAccentsBlock, /oklch\(0\.74 0\.11 190 \/ 0\.10\)/);
+  assert.match(lightStartingBlock, /--app-cloud-starting-dot-a:\s*oklch\(0\.56 0\.13 232 \/ 0\.68\);/);
+  assert.match(lightStartingBlock, /--app-cloud-starting-dot-c:\s*oklch\(0\.50 0\.07 255 \/ 0\.62\);/);
+  assert.doesNotMatch(`${lightCloudTokenBlock}\n${lightCloudBlock}\n${lightAccentsBlock}\n${lightStartingBlock}`, /oklch\([^)]*\s82(?:\s|\/|\))|rgba\(255,\s*252|rgb\(245 241 232\)|0\.955 0\.026 82/);
 });
 
 test('light agent workspace uses cool slate surfaces instead of warm beige panels', () => {
@@ -93,6 +115,9 @@ test('composer send area keeps the outer surface without an inner input pop or d
   const composerInputBlock = shellCss.match(/\.app-composer-input \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerMetaBlock = shellCss.match(/\.app-composer-meta \{[\s\S]*?\n\}/)?.[0] ?? '';
   const composerFocusBlock = shellCss.match(/\.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightComposerBlock = Array.from(themeOverridesCss.matchAll(/\.bridge-app\.theme-light \.app-composer-shell \{[\s\S]*?\n\}/g))
+    .map((match) => match[0])
+    .find((block) => /background:/.test(block)) ?? '';
   const lightComposerFocusBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(composerShellBlock, /var\(--app-divider\) 86%/);
@@ -104,5 +129,9 @@ test('composer send area keeps the outer surface without an inner input pop or d
   assert.match(composerFocusBlock, /var\(--app-accent-ring\)/);
   assert.doesNotMatch(shellCss, /\.app-composer-shell:focus-within \.app-composer-input/);
   assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-composer-input \{[^}]*background:/);
+  assert.match(lightComposerBlock, /background:\s*linear-gradient\(180deg, rgba\(248, 251, 255, 0\.96\) 0%, rgba\(241, 247, 255, 0\.92\) 100%\);/);
+  assert.match(lightComposerBlock, /border-color:\s*rgba\(37, 99, 235, 0\.12\);/);
+  assert.doesNotMatch(lightComposerBlock, /rgba\(252, 249, 243|rgba\(246, 241, 232/);
+  assert.match(lightComposerFocusBlock, /border-color:\s*rgba\(37, 99, 235, 0\.22\);/);
   assert.match(lightComposerFocusBlock, /box-shadow:/);
 });

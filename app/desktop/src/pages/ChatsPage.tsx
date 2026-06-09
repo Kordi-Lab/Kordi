@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, Dispatch, DragEvent, PointerEvent as ReactPointerEvent, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -7,6 +7,7 @@ import {
   Clock3,
   Cloud,
   Columns2,
+  Copy,
   FileText,
   GripVertical,
   Image as ImageIcon,
@@ -31,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import {
+  CompactComposerModelMenu,
   ComposerMentionMenu,
   ComposerModelControls,
   ComposerRuntimeStatus,
@@ -42,8 +44,10 @@ import {
   type ComposerMentionOption,
   type ComposerModelOption,
   type ComposerProviderOption,
+  type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
 import type {
+  ComposerQuoteState,
   Conversation,
   ConversationParticipant,
   DesktopBridgeHost,
@@ -53,6 +57,7 @@ import type {
   DesktopChatTurnSnapshot,
   EditFilePreview,
   Message,
+  MessageSourceReference,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
@@ -67,7 +72,9 @@ import {
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
+import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
+import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { cn } from '@/lib/utils';
 
@@ -100,6 +107,12 @@ export function chatHeaderSubtitle(conversation: Pick<Conversation, 'subtitle'>)
   const formatted = formatSessionIdSubtitle(conversation.subtitle).trim();
   if (!formatted || isGenericChatHeaderSubtitle(formatted)) return null;
   return formatted;
+}
+
+export function shouldUseCompactModelRouteMenu(conversation: Pick<Conversation, 'type' | 'directness'>): boolean {
+  const type = String(conversation.type ?? '').trim().toLowerCase();
+  const directness = String(conversation.directness ?? '').trim().toLowerCase();
+  return type === 'person' || type === 'group' || directness.includes('group');
 }
 
 export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
@@ -271,7 +284,7 @@ export function chatCompanionCandidates(activeConv: Conversation, conversations:
   ));
 }
 
-export function chatCopilotConversationForOpenRequest(
+export function chatSideAgentConversationForOpenRequest(
   requestedConversationId: string | null,
   candidates: Conversation[],
 ) {
@@ -279,11 +292,43 @@ export function chatCopilotConversationForOpenRequest(
   return candidates.find((conversation) => conversation.id === requestedConversationId) ?? null;
 }
 
-export function parseChatCopilotTriggerCommand(text: string) {
+export function parseAskAgentTriggerCommand(text: string) {
   const trimmed = text.trimStart();
-  const match = trimmed.match(/^\/(?:copilot|ask)(?:\s+([\s\S]*))?$/i);
+  const match = trimmed.match(/^\/ask(?:\s+([\s\S]*))?$/i);
   if (!match) return null;
   return { prompt: match[1]?.trim() ?? '' };
+}
+
+function messageTextForReference(message: Message) {
+  const text = message.text?.trim() || message.turn?.assistantText?.trim() || message.detail?.trim() || '';
+  return text.replace(/\s+/g, ' ').slice(0, 240);
+}
+
+export function buildAskAgentSessionReferenceContext(conversation: Conversation, recentLimit = 6) {
+  const sessionId = conversation.canonicalSessionId?.trim() || conversation.id;
+  const typeLabel = conversation.directness?.trim() || conversation.type || 'chat';
+  const participants = (conversation.canonicalParticipants ?? conversation.participants ?? [])
+    .map((participant) => (typeof participant === 'string' ? participant : participant.name)?.trim())
+    .filter((name): name is string => Boolean(name))
+    .slice(0, 8);
+  const recentMessages = conversation.messages
+    .filter((message) => message.role !== 'system' && message.role !== 'action')
+    .map((message) => ({
+      sender: message.sender?.trim() || (message.role === 'user' ? 'Me' : message.role),
+      text: messageTextForReference(message),
+    }))
+    .filter((message) => message.text.length > 0)
+    .slice(-Math.max(1, recentLimit));
+
+  return [
+    'Reference: Current chat',
+    `Session: ${conversation.name}`,
+    `Session id: ${sessionId}`,
+    `Type: ${typeLabel}`,
+    participants.length > 0 ? `Participants: ${participants.join(', ')}` : null,
+    recentMessages.length > 0 ? 'Recent messages:' : null,
+    ...recentMessages.map((message) => `- ${message.sender}: ${message.text}`),
+  ].filter(Boolean).join('\n');
 }
 
 function companionLabel(conversation: Conversation) {
@@ -435,6 +480,22 @@ type ChatsPageProps = {
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setChatComposerText: (value: string) => void;
   setChatComposerTextForSession: (sessionId: string, value: string) => void;
+  activeChatQuote?: ComposerQuoteState | null;
+  onClearChatQuote?: () => void;
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
+  messageSelectionMode?: boolean;
+  selectedMessageCount?: number;
+  selectedMessageIds?: ReadonlySet<string>;
+  isMessageSelectable?: (message: Message) => boolean;
+  onToggleSelectedMessage?: (message: Message) => void;
+  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter?: (message: Message) => void;
+  onSelectionDragEnd?: () => void;
+  onCancelMessageSelection?: () => void;
+  onCopySelectedMessages?: () => void;
+  onForwardSelectedMessages?: () => void;
   composerControlsRef: RefObject<HTMLDivElement | null>;
   activeRuntimeContextStatus?: DesktopChatContextWindowStatus | null;
   activeRuntimeCacheText?: string | null;
@@ -455,6 +516,7 @@ type ChatsPageProps = {
   onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   onSelectSession?: (sessionId: string) => void;
   onSendChatMessage: (draftOverride?: string, targetSessionId?: string) => void;
+  onCreateAgentSession?: () => void | Promise<void>;
   hasAnyAuth: boolean;
   onOpenAuthSettings: () => void;
   onOpenAccountAuthentication?: () => void;
@@ -501,6 +563,22 @@ export function ChatsPage({
   updateChatComposerDraft,
   setChatComposerText,
   setChatComposerTextForSession,
+  activeChatQuote,
+  onClearChatQuote,
+  onReplyMessage,
+  onForwardMessage,
+  onSelectMessage,
+  messageSelectionMode = false,
+  selectedMessageCount = 0,
+  selectedMessageIds,
+  isMessageSelectable,
+  onToggleSelectedMessage,
+  onSelectionDragStart,
+  onSelectionDragEnter,
+  onSelectionDragEnd,
+  onCancelMessageSelection,
+  onCopySelectedMessages,
+  onForwardSelectedMessages,
   composerControlsRef,
   activeRuntimeContextStatus,
   activeRuntimeCacheText,
@@ -521,6 +599,7 @@ export function ChatsPage({
   onForkChatMessage,
   onSelectSession,
   onSendChatMessage,
+  onCreateAgentSession,
   hasAnyAuth,
   onOpenAuthSettings,
   onOpenAccountAuthentication,
@@ -546,7 +625,8 @@ export function ChatsPage({
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
   const [humanPaneSide, setHumanPaneSide] = useState<CompanionSide>('left');
   const [selectedCompanionConversationId, setSelectedCompanionConversationId] = useState<string | null>(null);
-  const [openCopilotConversationId, setOpenCopilotConversationId] = useState<string | null>(null);
+  const [openSideAgentConversationId, setOpenSideAgentConversationId] = useState<string | null>(null);
+  const [sideAgentReferenceContext, setSideAgentReferenceContext] = useState<string | null>(null);
   const [companionDrafts, setCompanionDrafts] = useState<Record<string, string>>({});
   const [companionDropPreviewSide, setCompanionDropPreviewSide] = useState<CompanionSide | null>(null);
   const [isDraggingCompanion, setIsDraggingCompanion] = useState(false);
@@ -557,7 +637,7 @@ export function ChatsPage({
   const chatImeCompositionGuard = useImeCompositionGuard();
   // Forking is supported for local sessions and canonical group /
   // bridge sessions (the backend snapshots canonical messages into a
-  // fresh local fork so the user can continue privately). The local
+  // fresh local fork so the user can continue separately). The local
   // draft and ephemeral bridge transports are still excluded because
   // they have no persistent backing to read from.
   const activeConversationIsForkable = Boolean(
@@ -580,8 +660,8 @@ export function ChatsPage({
     [activeConv, companionCandidates],
   );
   const selectedCompanionConversation = companionCandidates.find((conversation) => conversation.id === selectedCompanionConversationId) ?? null;
-  const suggestedCopilotConversation = selectedCompanionConversation ?? suggestedCompanionConversation;
-  const companionConversation = chatCopilotConversationForOpenRequest(openCopilotConversationId, companionCandidates);
+  const suggestedSideAgentConversation = selectedCompanionConversation ?? suggestedCompanionConversation;
+  const companionConversation = chatSideAgentConversationForOpenRequest(openSideAgentConversationId, companionCandidates);
   const showCompanionPane = Boolean(companionConversation && !isCompanionFolded);
   const companionDraftText = companionConversation ? companionDrafts[companionConversation.id] ?? '' : '';
   const activePaneKind = conversationPaneKind(activeConv);
@@ -594,7 +674,8 @@ export function ChatsPage({
     : false;
 
   useEffect(() => {
-    setOpenCopilotConversationId(null);
+    setOpenSideAgentConversationId(null);
+    setSideAgentReferenceContext(null);
     setIsCompanionFolded(false);
   }, [activeConv.id]);
 
@@ -606,12 +687,13 @@ export function ChatsPage({
   }, [companionCandidates, selectedCompanionConversationId]);
 
   useEffect(() => {
-    if (!openCopilotConversationId) return;
-    if (!companionCandidates.some((conversation) => conversation.id === openCopilotConversationId)) {
-      setOpenCopilotConversationId(null);
+    if (!openSideAgentConversationId) return;
+    if (!companionCandidates.some((conversation) => conversation.id === openSideAgentConversationId)) {
+      setOpenSideAgentConversationId(null);
+      setSideAgentReferenceContext(null);
       setIsCompanionFolded(false);
     }
-  }, [companionCandidates, openCopilotConversationId]);
+  }, [companionCandidates, openSideAgentConversationId]);
 
   // If the active session is itself a fork, show a backlink at the top
   // of the transcript so the user can navigate to the source session.
@@ -697,6 +779,12 @@ export function ChatsPage({
     [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
+  const handleNavigateToTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
+    const targetMessageId = sourceMessage
+      ? resolveTranscriptMessageIdForSource(sourceMessage, attributedTranscriptMessages)
+      : messageId;
+    navigateToTranscriptMessage(targetMessageId || messageId, chatTranscriptScrollRef);
+  }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
   // Index of the last message that came from the fork's snapshot
   // (everything inherited from the source up through the anchor). The
   // divider goes after this message so any continuation the user
@@ -769,29 +857,35 @@ export function ChatsPage({
   const sendCompanionDraft = (conversation: Conversation) => {
     const draft = companionDrafts[conversation.id] ?? '';
     if (!draft.trim()) return;
-    onSendChatMessage(draft, conversation.id);
+    const prompt = sideAgentReferenceContext
+      ? `${sideAgentReferenceContext}\n\nUser request:\n${draft}`
+      : draft;
+    onSendChatMessage(prompt, conversation.id);
     setCompanionDrafts((current) => {
       const next = { ...current };
       delete next[conversation.id];
       return next;
     });
   };
-  const openCopilotRail = (initialPrompt = '') => {
-    const targetConversation = selectedCompanionConversation ?? suggestedCopilotConversation;
-    if (!targetConversation) return;
-    setOpenCopilotConversationId(targetConversation.id);
+  const openSideAgentPanel = (initialPrompt = '') => {
+    const targetConversation = selectedCompanionConversation ?? suggestedSideAgentConversation;
+    if (!targetConversation) return false;
+    setOpenSideAgentConversationId(targetConversation.id);
     setSelectedCompanionConversationId(targetConversation.id);
+    setSideAgentReferenceContext(buildAskAgentSessionReferenceContext(activeConv));
     setIsCompanionFolded(false);
     if (initialPrompt.trim()) {
       updateCompanionDraft(targetConversation.id, initialPrompt.trim());
     }
+    return true;
   };
   const handleSendChatMessage = (draftOverride?: string) => {
     const draft = draftOverride ?? chatComposerText;
-    const trigger = parseChatCopilotTriggerCommand(draft);
+    const trigger = parseAskAgentTriggerCommand(draft);
     if (trigger) {
-      openCopilotRail(trigger.prompt);
-      setChatComposerText('');
+      if (openSideAgentPanel(trigger.prompt)) {
+        setChatComposerText('');
+      }
       return;
     }
     onSendChatMessage(draftOverride);
@@ -821,7 +915,7 @@ export function ChatsPage({
     }
   };
   const companionPane = companionConversation ? (
-    <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-white/[0.06] bg-white/[0.025] data-[side=left]:border-r data-[side=right]:border-l" data-side={companionSide} data-chat-copilot-scope="private">
+    <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-white/[0.06] bg-white/[0.025] data-[side=left]:border-r data-[side=right]:border-l" data-side={companionSide} data-chat-side-agent-panel="true">
       <div
         className="app-page-header flex min-h-[112px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3 active:cursor-grabbing"
         draggable
@@ -833,10 +927,15 @@ export function ChatsPage({
           <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex min-w-0 flex-wrap items-start gap-1.5 text-white">
-              <span className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6">Co-pilot · {companionConversation.name}</span>
+              <span className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6">Ask Agent · {companionConversation.name}</span>
             </div>
-            <div className="mt-0.5 text-[11px] leading-5 text-slate-400">Private helper for this chat</div>
-
+            <div className="mt-0.5 text-[11px] leading-5 text-slate-400">Agent session</div>
+            {sideAgentReferenceContext ? (
+              <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[11px] text-slate-300" title={sideAgentReferenceContext}>
+                <span className="h-1.5 w-1.5 rounded-full bg-pink-400" aria-hidden="true" />
+                <span className="truncate">Reference: Current chat</span>
+              </div>
+            ) : null}
           </div>
         </div>
         <div
@@ -845,20 +944,33 @@ export function ChatsPage({
           onDragStart={(event) => event.preventDefault()}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          {companionCandidates.length > 1 ? (
-            <select
-              value={companionConversation.id}
-              onChange={(event) => setSelectedCompanionConversationId(event.target.value)}
-              className="h-7 max-w-[11rem] rounded-full border border-white/10 bg-white/[0.04] px-2.5 text-[11px] text-slate-100 outline-none transition hover:bg-white/[0.08] focus:border-white/20"
-              title={`Choose ${companionLabel(companionConversation)}`}
-              aria-label={`Choose ${companionLabel(companionConversation)}`}
+          <select
+            value={companionConversation.id}
+            onChange={(event) => {
+              setSelectedCompanionConversationId(event.target.value);
+              setOpenSideAgentConversationId(event.target.value);
+            }}
+            className="h-7 max-w-[11rem] rounded-full border border-white/10 bg-white/[0.04] px-2.5 text-[11px] text-slate-100 outline-none transition hover:bg-white/[0.08] focus:border-white/20"
+            title="Choose agent session"
+            aria-label="Choose agent session"
+          >
+            {companionCandidates.map((conversation) => (
+              <option key={conversation.id} value={conversation.id}>
+                {conversation.name}
+              </option>
+            ))}
+          </select>
+          {onCreateAgentSession ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => { void onCreateAgentSession(); }}
+              className="app-icon-button app-utility-button h-7 rounded-full px-2.5 text-[11px] text-slate-100 transition"
+              title="New agent session"
+              aria-label="New agent session"
             >
-              {companionCandidates.map((conversation) => (
-                <option key={conversation.id} value={conversation.id}>
-                  {conversation.name}
-                </option>
-              ))}
-            </select>
+              New session
+            </Button>
           ) : null}
         </div>
       </div>
@@ -903,7 +1015,7 @@ export function ChatsPage({
                 }
               }}
               className="min-h-[24px] max-h-[220px] flex-1 resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              placeholder={companionPaneKind === 'agent' ? 'Ask privately…' : `Private note for ${companionConversation.name}`}
+              placeholder={companionPaneKind === 'agent' ? 'Ask the agent…' : `Message ${companionConversation.name}`}
               data-composer-scope="companion"
             />
             <Button
@@ -1109,6 +1221,33 @@ export function ChatsPage({
     });
   };
 
+  const saveCompactModelRoute = (input: CompactComposerModelMenuSaveInput) => {
+    if (activeConversationIsBridge && selectedBridgeRoutingAgent) {
+      updateBridgeAgentRouting({
+        defaultModel: input.model,
+        defaultAuthProvider: input.providerOption?.providerId ?? selectedBridgeRoutingAgent.defaultAuthProvider ?? null,
+        defaultAuthChoice: input.providerOption ? authChoiceFromProviderOption(input.providerOption) : selectedBridgeRoutingAgent.defaultAuthChoice ?? null,
+        fallbackModel: selectedBridgeRoutingAgent.fallbackModel ?? null,
+        fallbackAuthProvider: selectedBridgeRoutingAgent.fallbackAuthProvider ?? null,
+        fallbackAuthChoice: selectedBridgeRoutingAgent.fallbackAuthChoice ?? null,
+        thinking: input.thinking,
+      });
+      return;
+    }
+
+    void (async () => {
+      if (input.providerOption) {
+        await selectComposerProviderChoice('chat', input.providerOption);
+      }
+      if (input.model !== composerSelection.model) {
+        await selectComposerValue('chat', 'model', input.model);
+      }
+      if (input.thinking !== composerSelection.thinking) {
+        await selectComposerValue('chat', 'thinking', input.thinking);
+      }
+    })();
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div
@@ -1235,17 +1374,17 @@ export function ChatsPage({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {suggestedCopilotConversation && !showCompanionPane ? (
+          {suggestedSideAgentConversation && !showCompanionPane ? (
             <Button
               type="button"
               variant="secondary"
-              onClick={() => openCopilotRail()}
-              className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] text-slate-100 transition"
-              aria-label="Ask co-pilot"
-              title={`Ask co-pilot with ${suggestedCopilotConversation.name}`}
+              onClick={() => openSideAgentPanel()}
+              className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full border border-pink-300/30 bg-white/[0.06] px-3 text-[12px] font-semibold text-pink-200 transition hover:bg-pink-400/10"
+              aria-label="Ask Agent"
+              title={`Ask Agent with ${suggestedSideAgentConversation.name}`}
             >
               <Columns2 className="mr-1.5 h-3.5 w-3.5" />
-              Ask co-pilot
+              Ask Agent
             </Button>
           ) : null}
           {showRightDetailRail && (
@@ -1285,11 +1424,22 @@ export function ChatsPage({
                   onOpenSource={onOpenSource}
                   onOpenArtifact={onOpenArtifact}
                   onOpenAuthSettings={openAuthentication}
+                  onNavigateToMessage={handleNavigateToTranscriptMessage}
                   onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                   onRequestBridgeContact={onRequestBridgeContact}
                   onForkMessage={handleForkMessage}
                   messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
                   onOpenForkSession={onSelectSession}
+                  onReplyMessage={onReplyMessage}
+                  onForwardMessage={onForwardMessage}
+                  onSelectMessage={onSelectMessage}
+                  selectionMode={messageSelectionMode}
+                  selectedMessageIds={selectedMessageIds}
+                  isMessageSelectable={isMessageSelectable}
+                  onToggleSelectedMessage={onToggleSelectedMessage}
+                  onSelectionDragStart={onSelectionDragStart}
+                  onSelectionDragEnter={onSelectionDragEnter}
+                  onSelectionDragEnd={onSelectionDragEnd}
                   plainAgentResponse={suppressAgentReplyAttribution}
                   isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
                   isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
@@ -1319,6 +1469,7 @@ export function ChatsPage({
                 onStopBridgeAgentRequest={onStopBridgeAgentRequest}
                 onStopActiveTurn={onStopDesktopChatTurn}
                 plainAgentResponse={suppressAgentReplyAttribution}
+                onNavigateToMessage={handleNavigateToTranscriptMessage}
                 onOpenArtifact={onOpenArtifact}
                 onOpenAuthSettings={openAuthentication}
               />
@@ -1330,6 +1481,43 @@ export function ChatsPage({
         </ScrollArea>
 
       <div className="shrink-0 px-5 pb-4 pt-3">
+        {messageSelectionMode && selectedMessageCount > 0 ? (
+          <div
+            data-message-selection-bar="true"
+            className="app-message-selection-bar mb-2 flex items-center justify-between gap-3 rounded-[22px] border border-[color:var(--app-control-border)] bg-[color:var(--app-modal-bg)] px-3.5 py-2.5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-[var(--app-glass-blur-float)]"
+          >
+            <div className="text-[12px] font-semibold tabular-nums">
+              {selectedMessageCount} selected
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
+                onClick={onCancelMessageSelection}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[color:var(--utility-foreground)] transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onCopySelectedMessages}
+                disabled={!onCopySelectedMessages || selectedMessageCount <= 0}
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                Copy
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--app-sidebar-accent)] px-3 py-1.5 text-[12px] font-semibold text-[color:var(--app-sidebar-accent-text)] transition disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onForwardSelectedMessages}
+                disabled={!onForwardSelectedMessages || selectedMessageCount <= 0}
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                Forward
+              </button>
+            </div>
+          </div>
+        ) : null}
         <AnimatePresence initial={false}>
           {activeConversationIsBridge && bridgeRoutingNotice ? (
             <motion.div
@@ -1382,6 +1570,28 @@ export function ChatsPage({
                   event.currentTarget.value = '';
                 }}
               />
+              {activeChatQuote ? (
+                <div
+                  data-composer-quote-preview="true"
+                  className="mb-1.5 flex items-start gap-2 rounded-[14px] border border-sky-300/20 bg-sky-400/10 px-2.5 py-2 text-left"
+                >
+                  <span className="mt-0.5 h-8 w-0.5 shrink-0 rounded-full bg-sky-300" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[11px] font-semibold text-sky-200">{activeChatQuote.source.senderLabel}</div>
+                    <div className="truncate text-[11px] text-slate-300">
+                      {activeChatQuote.source.textPreview || `${activeChatQuote.source.attachmentCount} attachment${activeChatQuote.source.attachmentCount === 1 ? '' : 's'}`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Remove quoted message"
+                    onClick={onClearChatQuote}
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
               {chatComposerAttachments.length > 0 ? (
                 <div className="mb-1 flex flex-wrap items-center gap-1.5">
                   {chatComposerAttachments.map((attachment) => (
@@ -1490,6 +1700,15 @@ export function ChatsPage({
           </div>
           <div ref={composerControlsRef} className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
             <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
+              {shouldUseCompactModelRouteMenu(activeConv) ? (
+                <CompactComposerModelMenu
+                  scope="chat"
+                  selection={activeConversationIsBridge && selectedBridgeRoutingAgent ? bridgeRoutingSelection : composerSelection}
+                  providerOptions={composerProviderOptions}
+                  modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                  onSave={saveCompactModelRoute}
+                />
+              ) : null}
               <Button
                 size="icon"
                 variant="secondary"
@@ -1508,7 +1727,7 @@ export function ChatsPage({
                   cacheText={activeRuntimeCacheText}
                 />
               ) : null}
-              {activePaneKind === 'agent' && !activeConversationIsBridge ? (
+              {activePaneKind === 'agent' && !activeConversationIsBridge && !shouldUseCompactModelRouteMenu(activeConv) ? (
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}
@@ -1528,14 +1747,14 @@ export function ChatsPage({
                   providerOptions={composerProviderOptions}
                   modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
                 />
-              ) : activePaneKind === 'agent' && selectedBridgeRoutingAgent ? (
+              ) : activePaneKind === 'agent' && activeConversationIsBridge && !shouldUseCompactModelRouteMenu(activeConv) && selectedBridgeRoutingAgent ? (
                 <div className="relative flex min-w-0 items-center gap-2">
                   {bridgeRoutingControlVisibility.showAgentSelector ? (
                     <button
                       type="button"
                       onClick={() => toggleComposerSelector('chat', 'mode')}
                       className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
-                      title="Choose which owned agent these private settings apply to"
+                      title="Choose which owned agent these session settings apply to"
                     >
                       <span className="truncate">{selectedBridgeRoutingAgent.label}</span>
                       <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', bridgeAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />

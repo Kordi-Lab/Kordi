@@ -125,6 +125,9 @@ pub(super) async fn prepare_desktop_session_for_send(
     };
     runtime.set_bridge_outreach_prompt_context(local_session_context);
     runtime.set_reach_out_runtime(None);
+    runtime.set_session_observation_runtime(Some(
+        super::session_observation::build_session_observation_runtime(),
+    ));
 }
 
 #[cfg(test)]

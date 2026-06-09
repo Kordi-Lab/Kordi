@@ -186,6 +186,112 @@ pub struct ReflectionRuntime {
     pub save_lesson: SaveReflectionLessonFn,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSessionsRequest {
+    pub query: String,
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub include_messages: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSessionRequest {
+    pub session_id: String,
+    pub around_message_id: Option<String>,
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub message_ids: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionObservationParticipant {
+    pub name: String,
+    pub kind: String,
+    pub role: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionObservationSnippet {
+    pub message_id: String,
+    pub sender: String,
+    pub text: String,
+    pub time_label: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionObservationSearchResult {
+    pub session_id: String,
+    pub title: String,
+    pub kind: String,
+    pub participants: Vec<String>,
+    pub updated_at_label: Option<String>,
+    pub reason: String,
+    pub snippets: Vec<SessionObservationSnippet>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSessionsResponse {
+    pub sessions: Vec<SessionObservationSearchResult>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionObservationReadSession {
+    pub session_id: String,
+    pub title: String,
+    pub kind: String,
+    pub participants: Vec<SessionObservationParticipant>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionObservationWindow {
+    pub around_message_id: Option<String>,
+    pub has_more_before: bool,
+    pub has_more_after: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionObservationMessage {
+    pub message_id: String,
+    pub sender: String,
+    pub role: String,
+    pub sequence_num: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    pub time_label: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSessionResponse {
+    pub session: SessionObservationReadSession,
+    pub window: SessionObservationWindow,
+    pub messages: Vec<SessionObservationMessage>,
+}
+
+pub type SearchSessionsFuture =
+    Pin<Box<dyn Future<Output = KordiResult<SearchSessionsResponse>> + Send>>;
+pub type ReadSessionFuture = Pin<Box<dyn Future<Output = KordiResult<ReadSessionResponse>> + Send>>;
+pub type SearchSessionsFn =
+    Arc<dyn Fn(SearchSessionsRequest) -> SearchSessionsFuture + Send + Sync>;
+pub type ReadSessionFn = Arc<dyn Fn(ReadSessionRequest) -> ReadSessionFuture + Send + Sync>;
+
+#[derive(Clone)]
+pub struct SessionObservationRuntime {
+    pub search_sessions: SearchSessionsFn,
+    pub read_session: ReadSessionFn,
+}
+
 pub type TaskOperatorFuture =
     Pin<Box<dyn Future<Output = KordiResult<TaskOperatorRuntimeResponse>> + Send>>;
 pub type TaskOperatorFn =
@@ -206,6 +312,7 @@ pub struct ToolContext {
     pub web_search: Option<WebSearchRuntime>,
     pub reach_out: Option<ReachOutRuntime>,
     pub reflection: Option<ReflectionRuntime>,
+    pub session_observation: Option<SessionObservationRuntime>,
     pub task_operator: Option<TaskOperatorRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,

@@ -1,107 +1,60 @@
 # Architecture
 
-Kordi is organized into three product layers plus one app-facing orchestration layer.
-The desktop frontend already uses real runtime and bridge integrations, and the
-app-facing server provides the longer-term contract for sharing one product backend
-across desktop and future clients.
+Kordi `main` contains the desktop product, hosted backend, and hosted runner/sandbox stack.
 
 ## Top-level shape
 
 ```text
 kordi/
-  app/desktop
-  app/server
-  agent
-  bridges
-  shared
+  app/desktop              # desktop product shell
+  bridges/cloud-server     # Hosted API
+  bridges/cloud-agent-runner # Hosted runner/sandbox
+  agent                    # Agent/runtime source shared with runner/internal tooling
+  shared                   # Shared protocol/type contracts
 ```
+
+## Product runtime
+
+```text
+desktop app
+  -> hosted API
+    -> hosted database / sync events
+    -> hosted agent runner
+      -> hosted sandbox / model loop
+```
+
+Production API:
+
+```text
+https://coordinar.io
+```
+
+Development/QA should use `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted compatible server.
 
 ## Layer responsibilities
 
 ### `app/desktop`
 
-The desktop app is the product surface.
+Owns the product UI, Tauri shell, login/session restoration, chats, contacts, groups, and sync integration.
 
-It owns:
+### `bridges/cloud-server`
 
-- the React user interface
-- the Tauri shell
-- desktop-specific orchestration
-- bundling local sidecars for macOS packaging
+Owns product backend behavior: accounts, auth, contacts, direct/group messages, read state, sync events, provider-auth snapshots, update manifests, and runner coordination.
 
-It should not directly encode low-level runtime or network internals. The app should stay focused on product flows and desktop UX.
+### `bridges/cloud-agent-runner`
 
-### `app/server`
-
-The app server is the app-facing orchestration layer.
-
-It owns:
-
-- product-facing HTTP endpoints
-- composition of runtime state and network state
-- client bootstrap and service snapshots
-- a stable integration contract for desktop and future shared clients
-
-It should not own provider internals, storage internals, or raw bridge transport semantics.
+Owns hosted execution: runner polling, sandbox policy, model loop, tools, and artifact export.
 
 ### `agent`
 
-The agent layer is the local runtime.
-
-It owns:
-
-- agent execution
-- provider/model integration
-- sessions and persistence
-- tools and extensions
-- terminal-oriented UX
-
-The desktop app can embed or launch this layer, but the runtime remains the source-of-truth here.
-
-### `bridges`
-
-The Bridges layer is the network stack.
-
-It owns:
-
-- local daemon behavior
-- node identity and secure transport
-- project membership and coordination
-- registry service
-- skill assets for external runtimes
-
-The desktop app should consume Bridges as a product dependency, not reimplement network semantics itself.
+Owns runtime internals that can be reused by hosted runner integration and internal developer workflows.
 
 ### `shared`
 
-The shared layer is where cross-cutting contracts should live.
+Owns contracts shared between Rust and TypeScript where cross-package consistency is required.
 
-Use it for:
+## Legacy/internal local paths
 
-- protocol types shared by Rust crates
-- protocol types shared by TypeScript clients
-- app-facing integration contracts that cross layer boundaries
+Some local runtime and Bridge-shaped adapter code remains while migration cleanup continues. These paths are not the product architecture. User-facing docs and default commands should point to the product path.
 
-## Integration model
-
-The intended direction is:
-
-```text
-desktop app
-  -> app/server
-    -> agent runtime
-    -> bridges daemon / registry client
-```
-
-That keeps the UI from depending directly on many unrelated backend details.
-See [app-server.md](app-server.md) for the concrete server/client/protocol plan.
-
-## Development boundaries
-
-- UI and desktop shell work belong in `app/desktop`
-- app-facing orchestration belongs in `app/server`
-- runtime logic belongs in `agent`
-- network logic belongs in `bridges`
-- shared contracts belong in `shared`
-
-When deciding where a change should live, prefer the narrowest layer that can own it cleanly.
+See #548 for the cleanup plan to remove or quarantine old local/P2P product surfaces.

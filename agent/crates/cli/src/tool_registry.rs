@@ -364,6 +364,30 @@ mod tests {
     }
 
     #[test]
+    fn session_observation_tools_are_active_by_default() {
+        let registry = ToolRegistry::from_builtin_and_extensions(vec![], ToolSelection::All);
+
+        assert!(
+            registry
+                .active_names()
+                .contains(&"search_sessions".to_string())
+        );
+        assert!(
+            registry
+                .active_names()
+                .contains(&"read_session".to_string())
+        );
+        assert_eq!(
+            registry.metadata_for("search_sessions").unwrap().layer,
+            ToolLayer::Observation,
+        );
+        assert_eq!(
+            registry.metadata_for("read_session").unwrap().risk,
+            ToolRiskLevel::ReadOnly,
+        );
+    }
+
+    #[test]
     fn extension_tool_overrides_builtin_with_same_name() {
         let registry = ToolRegistry::from_sources(
             vec![Box::new(NamedTool {

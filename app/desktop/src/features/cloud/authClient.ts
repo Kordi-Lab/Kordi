@@ -44,6 +44,7 @@ export type CloudAuthErrorCode =
   | 'missing_avatar'
   | 'invalid_avatar'
   | 'invalid_session'
+  | 'invalid_session_id'
   | 'invalid_provider_auth_snapshot'
   | 'provider_auth_not_configured'
   | 'provider_auth_snapshot_not_found'
@@ -348,6 +349,7 @@ function isErrorCode(value: unknown): value is CloudAuthErrorCode {
     value === 'missing_avatar' ||
     value === 'invalid_avatar' ||
     value === 'invalid_session' ||
+    value === 'invalid_session_id' ||
     value === 'invalid_provider_auth_snapshot' ||
     value === 'provider_auth_not_configured' ||
     value === 'provider_auth_snapshot_not_found' ||
@@ -840,6 +842,17 @@ export class CloudAuthClient {
         body: JSON.stringify({ peerAccountId }),
       },
       'Could not mark messages read.',
+    );
+  }
+
+  async markSessionMessagesRead(token: string, sessionId: string): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/read`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not mark session messages read.',
     );
   }
 

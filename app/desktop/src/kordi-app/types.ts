@@ -1,9 +1,12 @@
 import type { BridgeMessageDirection } from '@/features/bridge/messages';
 
 import type {
+  ComposerQuoteState,
   DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   Message,
+  MessageActionMetadata,
+  MessageActionSource,
   MessageAttachment,
   MessageMention,
   MessageSourceReference,
@@ -14,6 +17,7 @@ import type {
 
 export type {
   BridgeAgentRequestControl,
+  ComposerQuoteState,
   DesktopArtifactDirectory,
   DesktopArtifactDirectoryEntry,
   DesktopArtifactPreview,
@@ -23,8 +27,12 @@ export type {
   EditDiffLine,
   EditFilePreview,
   Message,
+  MessageActionMetadata,
+  MessageActionSource,
   MessageAttachment,
   MessageMention,
+  MessageReadReceiptParticipant,
+  MessageReadReceiptSummary,
   MessageReplySummary,
   MessageSourceReference,
   QueuedDesktopChatMessage,
@@ -670,6 +678,8 @@ export type DesktopChatMessage = {
   failed?: boolean;
   attachments?: DesktopChatAttachment[];
   mentions?: MessageMention[];
+  replyToMessageId?: string | null;
+  messageAction?: MessageActionMetadata | null;
   thinkingText?: string | null;
   tools?: DesktopChatToolSnapshot[];
   turnStartedAtMs?: number | null;
@@ -808,6 +818,7 @@ export type DesktopBridgeConversationMessage = {
   detail?: string | null;
   outreach?: DesktopBridgeOutreachMetadata | null;
   attachments?: MessageAttachment[];
+  messageAction?: MessageActionMetadata | null;
   localTurn?: DesktopChatTurnSnapshot | null;
 };
 

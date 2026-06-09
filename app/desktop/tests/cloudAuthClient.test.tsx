@@ -182,7 +182,7 @@ test('me returns the parsed account', async () => {
   assert.equal(account.passwordSet, true);
 });
 
-test('cloud API defaults to the coordinar production origin, not localhost', () => {
+test('cloud API defaults to the hosted product origin, not localhost', () => {
   assert.equal(cloudApiBaseUrl({}), 'https://coordinar.io');
   assert.equal(cloudApiBaseUrl({ VITE_KORDI_CLOUD_API_BASE: ' http://127.0.0.1:17081/ ' }), 'http://127.0.0.1:17081');
 });
@@ -201,8 +201,8 @@ test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
 
 test('cloud WebSocket URL derives from the cloud API origin', () => {
   assert.equal(
-    cloudWebSocketUrl('kordi_cs_token', 'https://kordi.cloud'),
-    'wss://kordi.cloud/v1/cloud/ws?token=kordi_cs_token',
+    cloudWebSocketUrl('kordi_cs_token', 'https://coordinar.io'),
+    'wss://coordinar.io/v1/cloud/ws?token=kordi_cs_token',
   );
   assert.equal(
     cloudWebSocketUrl('token with space', 'http://127.0.0.1:17081'),
@@ -459,6 +459,19 @@ test('markMessagesRead posts peer id to cloud read-receipt route', async () => {
   assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
   assert.equal(headers['content-type'], 'application/json');
   assert.deepEqual(JSON.parse(calls[0].init?.body as string), { peerAccountId: 'acct_peer' });
+});
+
+test('markSessionMessagesRead posts session id to cloud session read route', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await client.markSessionMessagesRead('kordi_cs_xyz', 'session:group:one');
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Agroup%3Aone/read');
+  assert.equal(calls[0].init?.method, 'POST');
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer kordi_cs_xyz');
 });
 
 test('startOAuth requests a provider auth URL with redirectAfter', async () => {

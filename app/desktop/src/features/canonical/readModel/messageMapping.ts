@@ -4,6 +4,7 @@ import type {
   CanonicalSessionState,
   DesktopChatToolSnapshot,
   Message,
+  MessageActionMetadata,
   MessageAttachment,
   MessageMention,
 } from '@/kordi-app/types';
@@ -76,6 +77,96 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
   });
 
   return attachments.length > 0 ? attachments : undefined;
+}
+
+function canonicalMessageAction(value: unknown): MessageActionMetadata | null {
+  const record = contentRecord(value);
+  if (record.schemaVersion !== 1 || (record.kind !== 'quote' && record.kind !== 'forward')) return null;
+  const source = contentRecord(record.source);
+  const sourceSessionId = stringValue(source.sourceSessionId)?.trim();
+  const sourceMessageId = stringValue(source.sourceMessageId)?.trim();
+  const senderLabel = stringValue(source.senderLabel)?.trim();
+  if (!sourceSessionId || !sourceMessageId || !senderLabel) return null;
+  return {
+    schemaVersion: 1,
+    kind: record.kind,
+    source: {
+      sourceSessionId,
+      sourceMessageId,
+      sourceMessageKind: stringValue(source.sourceMessageKind) ?? null,
+      senderLabel,
+      textPreview: stringValue(source.textPreview)?.trim() ?? '',
+      attachmentCount: Math.max(0, Math.floor(numberValue(source.attachmentCount) ?? 0)),
+      createdAtMs: numberValue(source.createdAtMs) ?? null,
+      timeLabel: stringValue(source.timeLabel) ?? null,
+    },
+  };
+}
+
+function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
+  const trimmed = label.trim();
+  const normalized = trimmed.toLowerCase();
+  if ((normalized === 'me' || normalized === 'you') && humanSourceLabel.trim()) {
+    return humanSourceLabel.trim();
+  }
+  if (normalized === 'my kordi' && agentSourceLabel.trim()) {
+    return agentSourceLabel.trim();
+  }
+  return trimmed;
+}
+
+function canonicalMessageActionWithRealSourceLabel(
+  action: MessageActionMetadata | null,
+  humanSourceLabel: string,
+  agentSourceLabel: string,
+): MessageActionMetadata | null {
+  if (!action) return null;
+  const senderLabel = realSourceLabelForRelativeLabel(action.source.senderLabel, humanSourceLabel, agentSourceLabel);
+  if (senderLabel === action.source.senderLabel) return action;
+  return {
+    ...action,
+    source: {
+      ...action.source,
+      senderLabel,
+    },
+  };
+}
+
+function canonicalMessageActionSourceReference(action: MessageActionMetadata | null): Message['sourceMessage'] {
+  if (!action || action.kind !== 'quote') return null;
+  return {
+    messageId: action.source.sourceMessageId,
+    senderLabel: action.source.senderLabel,
+    text: action.source.textPreview,
+    attachmentCount: action.source.attachmentCount,
+    time: action.source.timeLabel ?? null,
+  };
+}
+
+function canonicalReadReceiptSummary(
+  content: Record<string, unknown>,
+  identityById: Map<string, CanonicalIdentity>,
+): Message['readReceiptSummary'] {
+  const summary = contentRecord(content.readReceiptSummary);
+  const rawParticipants = Array.isArray(summary.participants) ? summary.participants : [];
+  const participants = rawParticipants.flatMap((value) => {
+    const record = contentRecord(value);
+    const accountId = stringValue(record.accountId)?.trim() ?? '';
+    const identityId = stringValue(record.identityId)?.trim() || (accountId ? `human:${accountId}` : '');
+    if (!identityId) return [];
+    const identity = identityById.get(identityId);
+    const name = identity?.displayName || stringValue(record.name)?.trim() || accountId || 'Someone';
+    return [{
+      id: identity?.id ?? identityId,
+      name,
+      avatarSeed: identity?.avatarKey ?? stringValue(record.avatarSeed) ?? null,
+      profileImageUrl: identity?.profileImageUrl ?? stringValue(record.profileImageUrl) ?? null,
+      readAt: stringValue(record.readAt) ?? null,
+    }];
+  });
+  const count = Math.max(0, Math.floor(numberValue(summary.count) ?? participants.length));
+  if (count <= 0) return null;
+  return { count, participants: participants.slice(0, Math.max(count, participants.length)) };
 }
 
 export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
@@ -205,7 +296,7 @@ export function canonicalUserStatusChip(message: CanonicalSessionMessage, conten
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
   if (deliveryState) {
     if (deliveryState === 'processing' || deliveryState === 'handed_off_direct' || deliveryState === 'handed_off_mailbox') {
-      return 'read';
+      return 'sent';
     }
     if (deliveryState === 'processing_failed') return 'failed';
     return deliveryState;
@@ -361,9 +452,10 @@ export function mapCanonicalMessage(
     ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
     : undefined;
   const contentReplyToMessageId = stringValue(content.replyToMessageId)?.trim() || stringValue(content.requestMessageId)?.trim();
+  const rawMessageAction = canonicalMessageAction(content.messageAction);
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
-    : null;
+    : contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null;
   const replyAliasIds = [parentMessageId, bridgeRequestId]
     .filter((value): value is string => Boolean(value && value !== message.id));
   const trimmedProfileIdentityId = profileHumanIdentityId?.trim() || null;
@@ -449,6 +541,18 @@ export function mapCanonicalMessage(
       ? cloudAgentFallbackErrorNotice({ message: rawErrorText })
       : rawErrorText
     : null;
+  const sourceHumanIdentity = identity?.kind === 'agent' && identity.ownerIdentityId
+    ? identityById.get(identity.ownerIdentityId)
+    : identity;
+  const sourceHumanLabel = sourceHumanIdentity?.displayName ?? sender ?? '';
+  const sourceAgentIdentity = identity?.kind === 'agent'
+    ? identity
+    : [...identityById.values()].find((candidate) => candidate.kind === 'agent' && candidate.ownerIdentityId === identity?.id);
+  const sourceAgentLabel = ownerScopedAgentName(sourceAgentIdentity, identityById, profileHumanIdentityId)
+    ?? sourceAgentIdentity?.displayName
+    ?? agentLabelForHumanIdentity(sourceHumanIdentity, identityById);
+  const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
+  const sourceMessage = canonicalMessageActionSourceReference(messageAction);
 
   if (role === 'system' && !displayText.trim()) return null;
 
@@ -473,6 +577,9 @@ export function mapCanonicalMessage(
     mentions: canonicalMentions(content.mentions),
     replyToMessageId: replyToMessageId ?? undefined,
     replyAliasIds: replyAliasIds.length ? replyAliasIds : undefined,
+    readReceiptSummary: isOwnMessage && role === 'user' ? canonicalReadReceiptSummary(content, identityById) : null,
+    messageAction,
+    sourceMessage,
     statusChips: role === 'user' && canonicalUserStatusChip(message, content) ? [canonicalUserStatusChip(message, content)!] : undefined,
     turn: isAgentTurn
       ? {

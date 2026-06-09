@@ -2,24 +2,25 @@
 #
 # sync-and-build.sh — RUN LOCALLY (not on the VM).
 #
-# Rsyncs the repo to takotako and builds kordi-cloud-server with the VM's
-# existing rust toolchain. Does NOT install the systemd unit, stop any
-# existing service, or start anything new — that's `install.sh`.
+# Rsyncs the repo to an operator-provided Cloud host and builds
+# kordi-cloud-server with that host's existing rust toolchain. Does NOT install
+# the systemd unit, stop any existing service, or start anything new — that's
+# `install.sh`.
 #
 # Usage:
 #   bridges/cloud-server/deploy/sync-and-build.sh
 #
 # Optional env:
-#   KORDI_CLOUD_SSH_TARGET   default: shu_yang@takotako
-#   KORDI_CLOUD_SSH_ZONE     default: us-central1-c
-#   KORDI_CLOUD_REMOTE_DIR   default: /home/shu_yang/kordi-cloud-server-deploy
+#   KORDI_CLOUD_SSH_TARGET   required operator-provided gcloud SSH target
+#   KORDI_CLOUD_SSH_ZONE     required operator-provided gcloud zone
+#   KORDI_CLOUD_REMOTE_DIR   default: ~/kordi-cloud-server-deploy
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:-shu_yang@takotako}"
-SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:-us-central1-c}"
-REMOTE_DIR="${KORDI_CLOUD_REMOTE_DIR:-/home/shu_yang/kordi-cloud-server-deploy}"
+SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET to the operator-provided gcloud SSH target}"
+SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE to the operator-provided gcloud zone}"
+REMOTE_DIR="${KORDI_CLOUD_REMOTE_DIR:-\$HOME/kordi-cloud-server-deploy}"
 
 echo "[deploy] repo root:    ${REPO_ROOT}"
 echo "[deploy] ssh target:   ${SSH_TARGET} (zone ${SSH_ZONE})"

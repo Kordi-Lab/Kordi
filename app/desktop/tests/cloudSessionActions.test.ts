@@ -8,18 +8,18 @@ import { mapCanonicalMessage } from '../src/features/canonical/readModel/message
 import { canonicalNoProviderFailedAgentMessageRequest, shouldUseNoProviderSelfAgentShortcut } from '../src/features/chat/messageActions/chatMessages';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
-test('shouldUseCloudSessionAction routes cloud session ids but leaves local runtime ids alone', () => {
-  assert.equal(shouldUseCloudSessionAction('cloud', 'session:direct-person:acct_a:acct_b'), true);
-  assert.equal(shouldUseCloudSessionAction('cloud', 'session:group:abc'), true);
-  assert.equal(shouldUseCloudSessionAction('cloud', 'bridge:cloud:acct_peer:person'), true);
-  assert.equal(shouldUseCloudSessionAction('local', 'session:group:abc'), false);
-  assert.equal(shouldUseCloudSessionAction('cloud', '550e8400-e29b-41d4-a716-446655440000'), false);
+test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
+  assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
+  assert.equal(shouldUseCloudSessionAction('session:group:abc'), true);
+  assert.equal(shouldUseCloudSessionAction('bridge:cloud:acct_peer:person'), true);
+  assert.equal(shouldUseCloudSessionAction('550e8400-e29b-41d4-a716-446655440000'), false);
 });
 
 test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
   const source = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
-  const cloudActionBranches = source.match(/if \(shouldUseCloudSessionAction\(kordiEdition, trimmedSessionId\)\) \{[\s\S]*?return;\n      \}/g) ?? [];
-  const cloudDeleteBranch = cloudActionBranches.find((branch) => branch.includes('deleteCloudSession')) ?? '';
+  const deleteBranchStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const handleDeleteChatSession'));
+  const deleteBranchEnd = source.indexOf('} catch (error) {', deleteBranchStart);
+  const cloudDeleteBranch = source.slice(deleteBranchStart, deleteBranchEnd);
   assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(trimmedSessionId, desktopChatState\?\.activeSessionId\)/);
 });
 
@@ -55,6 +55,53 @@ test('local cloud self-agent no-provider errors become failed agent replies in c
   assert.equal((request?.content as Record<string, unknown>).deliveryState, 'failed');
   assert.match(String((request?.content as Record<string, unknown>).error), /No provider configured yet/);
 });
+
+test('canonical quoted human messages map source metadata for transcript rendering', () => {
+  const identityById = new Map([
+    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+  ]);
+  const mapped = mapCanonicalMessage({
+    id: 'msg:reply',
+    sessionId: 'session:one',
+    senderIdentityId: 'human:me',
+    senderRole: 'user',
+    messageKind: 'text',
+    contentText: 'Yes',
+    content: {
+      sender: 'Me',
+      timeLabel: '10:43',
+      replyToMessageId: 'msg:source',
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'quote',
+        source: {
+          sourceSessionId: 'session:one',
+          sourceMessageId: 'msg:source',
+          senderLabel: 'Alice',
+          textPreview: 'Original question',
+          attachmentCount: 0,
+          timeLabel: '10:42',
+        },
+      },
+    },
+    parentMessageId: 'msg:source',
+    delegatedExchangeId: null,
+    status: 'sent',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    contentHash: null,
+    sourceTransport: 'desktop-chat-ui',
+    sourceEventId: 'desktop-chat-ui:session:one:2',
+  }, identityById, 'human:me');
+
+  assert.equal(mapped?.replyToMessageId, 'msg:source');
+  assert.equal(mapped?.messageAction?.kind, 'quote');
+  assert.equal(mapped?.sourceMessage?.messageId, 'msg:source');
+  assert.equal(mapped?.sourceMessage?.senderLabel, 'Alice');
+  assert.equal(mapped?.sourceMessage?.text, 'Original question');
+});
+
 
 test('cloud fallback runtime failures render as normal failed agent turns with concise copy', () => {
   const identityById = new Map([

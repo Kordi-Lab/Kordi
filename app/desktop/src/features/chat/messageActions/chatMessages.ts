@@ -3,6 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
+import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
   cloudGroupMessageSessionId,
   cloudGroupTargetAccountIds,
@@ -62,6 +63,7 @@ import {
   prepareCanonicalUserMessage,
 } from './optimistic';
 import type { PendingBridgeOutreach } from './types';
+import { quoteMessageAction } from '../messageActionMetadata';
 
 export type LocalChatSendInFlight = {
   sessionId: string | null;
@@ -706,6 +708,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'chatComposerAttachments'
   | 'composerSelections'
   | 'composerDrafts'
+  | 'activeChatQuote'
   | 'desktopBridgeState'
   | 'desktopChatState'
   | 'canonicalSessionState'
@@ -753,6 +756,7 @@ export function useChatMessageActions({
   chatComposerAttachments,
   composerSelections,
   composerDrafts,
+  activeChatQuote,
   desktopBridgeState,
   desktopChatState,
   canonicalSessionState,
@@ -1168,9 +1172,17 @@ export function useChatMessageActions({
         setChatComposerAttachments([]);
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         if (appendedOptimisticBridgeMessage) {
-          setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text)));
+          setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
         }
-        await sendCloudBridgeMessage(activeConvId, text, chatComposerAttachments);
+        const cloudBody = activeChatQuote?.source
+          ? encodeCloudDirectMessageEnvelope({
+              schemaVersion: 1,
+              kind: 'message',
+              text,
+              messageAction: quoteMessageAction(activeChatQuote.source),
+            })
+          : text;
+        await sendCloudBridgeMessage(activeConvId, cloudBody, chatComposerAttachments);
         if (appendedOptimisticBridgeMessage && isCloudBridgeConversationId(activeConvId)) {
           setCloudBridgeState(null);
         }
@@ -1215,6 +1227,7 @@ export function useChatMessageActions({
         'cloud-group-ui',
         'sent',
         mentionForBridgeTarget(mentionedTarget),
+        activeChatQuote,
       );
       if (preparedCanonicalMessage) {
         preparedCanonicalMessage.request.content = {
@@ -1245,6 +1258,7 @@ export function useChatMessageActions({
             senderAccountId: '',
             text,
             createdAtMs: Date.now(),
+            messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
           },
           attachments: chatComposerAttachments,
         });
@@ -1326,6 +1340,8 @@ export function useChatMessageActions({
         sentAt,
         'desktop-chat-ui',
         'sent',
+        [],
+        activeChatQuote,
       );
       const failedReplyRequest = preparedCanonicalMessage
         ? canonicalNoProviderFailedAgentMessageRequest({
@@ -1454,6 +1470,8 @@ export function useChatMessageActions({
         sentAt,
         'desktop-chat-ui',
         'sending',
+        [],
+        activeChatQuote,
       );
       const noProviderLocalShortcut = shouldUseNoProviderSelfAgentShortcut({
         activeConversationUsesBridgeRouting,
@@ -1515,7 +1533,7 @@ export function useChatMessageActions({
             ? materializedState
             : current;
           return baseState
-            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt)
+            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt, [], activeChatQuote)
             : current;
         });
         setComposerDrafts((current: ComposerDraftState) => (
@@ -1552,7 +1570,7 @@ export function useChatMessageActions({
         if (!baseState) {
           return current;
         }
-        return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt);
+        return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt, [], activeChatQuote);
       });
       setComposerDrafts((current: ComposerDraftState) => (
         chatDraftSessionIdsToClearForSend(activeConvId, resolvedSessionId).reduce(
@@ -1631,6 +1649,7 @@ export function useChatMessageActions({
     activeConvId,
     activeConvMessages,
     activeConvMentionScope,
+    activeChatQuote,
     attachmentSummaryText,
     chatComposerAttachments,
     canonicalHumanIdentityId,

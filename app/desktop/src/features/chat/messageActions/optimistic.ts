@@ -9,10 +9,12 @@ import type {
   DesktopBridgeState,
   DesktopChatState,
   MessageMention,
+  ComposerQuoteState,
 } from '@/kordi-app/types';
 import { appendCanonicalMessageFast } from '@/lib/desktop';
 
 import type { AttachmentItem } from '../composerController.types';
+import { quoteMessageAction } from '../messageActionMetadata';
 
 export function toOptimisticAttachments(attachments: AttachmentItem[]) {
   return attachments.map((attachment) => ({
@@ -66,13 +68,17 @@ export function appendOptimisticOutboundMessage(
   attachments: AttachmentItem[],
   sentAt: string,
   mentions: MessageMention[] = [],
+  quote: ComposerQuoteState | null = null,
 ) {
+  const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
   const optimisticMessage = {
     role: 'user' as const,
     sender: 'Me',
     text: messageText,
     attachments: toOptimisticAttachments(attachments),
     mentions,
+    replyToMessageId: quoteAction?.source.sourceMessageId ?? null,
+    messageAction: quoteAction,
     timeLabel: sentAt,
     timestampMs: Date.now(),
   };
@@ -157,10 +163,12 @@ export function appendOptimisticBridgeMessage(
   optimisticMessageId: string,
   attachments: AttachmentItem[] = [],
   subtitleText = text,
+  quote: ComposerQuoteState | null = null,
 ): DesktopBridgeState | null {
   if (!current) return current;
 
   const timestampMs = Date.now();
+  const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
   const nextConversations = current.conversations.map((conversation) => {
     if (conversation.id !== conversationId) return conversation;
     return {
@@ -180,6 +188,7 @@ export function appendOptimisticBridgeMessage(
           timestampMs,
           deliveryState: 'sending',
           attachments: toOptimisticAttachments(attachments),
+          messageAction: quoteAction,
         },
       ],
     };
@@ -302,6 +311,7 @@ export function prepareCanonicalUserMessage(
   sourceTransport: 'desktop-chat-ui' | 'desktop-bridge-ui' | 'cloud-group-ui',
   status = 'sending',
   mentions: MessageMention[] = [],
+  quote: ComposerQuoteState | null = null,
 ): PreparedCanonicalUserMessage | null {
   if (!senderIdentityId) return null;
 
@@ -310,6 +320,9 @@ export function prepareCanonicalUserMessage(
     ? crypto.randomUUID()
     : `${timestampMs}-${Math.random().toString(16).slice(2)}`;
   const messageId = `msg:ui:${randomId}`;
+  const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
+  const quoteSourceMessageId = quoteAction?.source.sourceMessageId ?? null;
+  const quoteMatchesSession = quoteAction?.source.sourceSessionId === sessionId;
   return {
     messageId,
     timestampMs,
@@ -326,9 +339,13 @@ export function prepareCanonicalUserMessage(
         timestampMs,
         attachments: toOptimisticAttachments(attachments),
         mentions,
+        ...(quoteAction ? {
+          replyToMessageId: quoteSourceMessageId,
+          messageAction: quoteAction,
+        } : null),
       },
       createdAtMs: timestampMs,
-      parentMessageId: null,
+      parentMessageId: quoteAction && quoteMatchesSession ? quoteSourceMessageId : null,
       delegatedExchangeId: null,
       status,
       sourceTransport,

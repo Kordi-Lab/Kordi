@@ -337,13 +337,13 @@ test('WorkspaceSidebar renders direct human participant spaces as one flat chat 
   assert.match(markup, />Agent</);
   assert.doesNotMatch(markup, />People</);
   assert.match(markup, /Bob/);
-  assert.match(markup, /Person • 1 chat/);
   assert.match(markup, /New preview/);
+  assert.doesNotMatch(markup, /Person • 1 chat/);
   assert.match(markup, /data-participant-space-row-shell="true"/);
   assert.match(markup, /app-participant-space-row-button/);
   assert.match(markup, /app-participant-space-row-title/);
   assert.match(markup, /app-participant-space-row-preview/);
-  assert.match(markup, /app-participant-space-row-detail/);
+  assert.doesNotMatch(markup, /app-participant-space-row-detail/);
   assert.doesNotMatch(markup, /data-participant-space-toggle="true"/);
   assert.doesNotMatch(markup, /aria-label="Collapse Bob"/);
   assert.doesNotMatch(markup, /aria-label="Expand Bob"/);
@@ -638,7 +638,7 @@ test('WorkspaceSidebar keeps the inline Bridge sync status calm when idle', () =
   assert.doesNotMatch(markup, /syncing…/);
 });
 
-test('WorkspaceSidebar moves participant-space unread totals between folded parent and expanded child sessions', () => {
+test('WorkspaceSidebar moves participant-space unread totals between folded parent and unread child sessions', () => {
   const chatConversations = [
     conversation({
       id: 'session:group:one',
@@ -690,7 +690,7 @@ test('WorkspaceSidebar moves participant-space unread totals between folded pare
   }) as never));
   assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-space"/);
   assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="2"/);
-  assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
+  assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
 });
 
 test('WorkspaceSidebar moves participant-space running light from expanded parent to child session', () => {
@@ -839,7 +839,7 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   }) as never));
 
   assert.match(markup, /shu/);
-  assert.match(markup, /Person • 1 chat/);
+  assert.doesNotMatch(markup, /Person • 1 chat/);
   assert.match(markup, /My chats/);
   assert.match(markup, /Personal • 2 sessions/);
   assert.doesNotMatch(markup, /Person \+ 1 agent/);

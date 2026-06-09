@@ -6,11 +6,12 @@ import {
   chatCompanionCandidates,
   chatCompanionSideForPaneKinds,
   chatCompanionSideFromDropPosition,
-  chatCopilotConversationForOpenRequest,
+  buildAskAgentSessionReferenceContext,
+  chatSideAgentConversationForOpenRequest,
   cloudSelfAgentSyncStatusLabel,
   humanSideFromCompanionDrop,
   pairedCompanionConversation,
-  parseChatCopilotTriggerCommand,
+  parseAskAgentTriggerCommand,
 } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
 
@@ -115,20 +116,20 @@ test('chat companion pairing links human chats to that human owner agent chat', 
   assert.equal(pairedCompanionConversation(ownerAgentChat, [humanChat, ownerAgentChat])?.id, 'human-chat');
 });
 
-test('chat co-pilot does not auto-open from candidates without an explicit request', () => {
+test('side agent panel does not auto-open from candidates without an explicit request', () => {
   const agentChat = conversation({ id: 'agent-chat', type: 'owned-agent' });
 
-  assert.equal(chatCopilotConversationForOpenRequest(null, [agentChat]), null);
-  assert.equal(chatCopilotConversationForOpenRequest('agent-chat', [agentChat])?.id, 'agent-chat');
-  assert.equal(chatCopilotConversationForOpenRequest('missing-chat', [agentChat]), null);
+  assert.equal(chatSideAgentConversationForOpenRequest(null, [agentChat]), null);
+  assert.equal(chatSideAgentConversationForOpenRequest('agent-chat', [agentChat])?.id, 'agent-chat');
+  assert.equal(chatSideAgentConversationForOpenRequest('missing-chat', [agentChat]), null);
 });
 
-test('chat co-pilot slash commands parse private prompt text', () => {
-  assert.deepEqual(parseChatCopilotTriggerCommand('/copilot draft a reply'), { prompt: 'draft a reply' });
-  assert.deepEqual(parseChatCopilotTriggerCommand('/ask summarize this thread'), { prompt: 'summarize this thread' });
-  assert.deepEqual(parseChatCopilotTriggerCommand('  /copilot   '), { prompt: '' });
-  assert.equal(parseChatCopilotTriggerCommand('/reply draft a reply'), null);
-  assert.equal(parseChatCopilotTriggerCommand('please /ask later'), null);
+test('ask agent slash commands parse prompt text without co-pilot aliases', () => {
+  assert.deepEqual(parseAskAgentTriggerCommand('/ask summarize this thread'), { prompt: 'summarize this thread' });
+  assert.deepEqual(parseAskAgentTriggerCommand('  /ask   '), { prompt: '' });
+  assert.equal(parseAskAgentTriggerCommand('/copilot draft a reply'), null);
+  assert.equal(parseAskAgentTriggerCommand('/reply draft a reply'), null);
+  assert.equal(parseAskAgentTriggerCommand('please /ask later'), null);
 });
 
 test('chat companion candidates include any opposite-kind chat, not just related chats', () => {
@@ -224,21 +225,24 @@ test('chat companion split controls live on the divider instead of floating over
   assert.doesNotMatch(source, /data-split-layout-toolbar/);
 });
 
-test('chat co-pilot opens from an explicit header action with private scope copy', () => {
+test('ask agent opens an explicit side session with neutral copy and reference chip', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /Ask co-pilot/);
-  assert.match(source, /data-chat-copilot-scope="private"/);
-  assert.match(source, /Private helper for this chat/);
+  assert.match(source, /Ask Agent/);
+  assert.match(source, /data-chat-side-agent-panel="true"/);
+  assert.match(source, /Reference: Current chat/);
+  assert.match(source, /Agent session/);
+  assert.match(source, /New session/);
+  assert.doesNotMatch(source, /Ask co-pilot|Co-pilot|Private helper|Ask privately|data-chat-copilot-scope/);
   assert.doesNotMatch(source, /const companionConversation =[^;]+\?\? suggestedCompanionConversation/s);
 });
 
-test('chat co-pilot slash trigger opens the rail instead of sending slash text to main chat', () => {
+test('ask agent slash trigger opens the side session instead of sending slash text to main chat', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /const handleSendChatMessage = \(draftOverride\?: string\) =>/);
-  assert.match(source, /parseChatCopilotTriggerCommand\(draft\)/);
-  assert.match(source, /openCopilotRail\(trigger\.prompt\)/);
+  assert.match(source, /parseAskAgentTriggerCommand\(draft\)/);
+  assert.match(source, /openSideAgentPanel\(trigger\.prompt\)/);
   assert.match(source, /onSendChatMessage\(draftOverride\)/);
 });
 
@@ -253,7 +257,7 @@ test('chat companion pane does not expose focus handoff controls', () => {
 test('chat companion composer sends with Enter and keeps modified Enter for line breaks', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /onSendChatMessage\(draft, conversation\.id\)/);
+  assert.match(source, /onSendChatMessage\(prompt, conversation\.id\)/);
   assert.match(source, /event\.key === 'Enter' && !event\.metaKey && !event\.ctrlKey && !event\.shiftKey/);
   assert.match(source, /title=\{`Send to \$\{companionConversation\.name\}`\}/);
 });
@@ -262,7 +266,32 @@ test('human panes do not show agent model controls while agent side panes use ag
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /activePaneKind === 'agent' && !activeConversationIsBridge/);
-  assert.match(source, /companionPaneKind === 'agent' \? 'Ask privately…'/);
+  assert.match(source, /companionPaneKind === 'agent' \? 'Ask the agent…'/);
   assert.match(source, /companionShowsLocalAgentControls/);
   assert.match(source, /companionPaneKind === 'agent' && !companionConversationHasBridgeTransport/);
+});
+
+test('ask agent reference context includes session metadata and recent messages only', () => {
+  const context = buildAskAgentSessionReferenceContext(conversation({
+    id: 'session:group:launch',
+    name: 'Launch chat',
+    canonicalSessionId: 'session:group:launch',
+    directness: 'Group chat',
+    messages: [
+      { id: 'old', role: 'person', sender: 'Alice', text: 'old hidden message' },
+      { id: 'm1', role: 'person', sender: 'Tom', text: 'canary is ready' },
+      { id: 'm2', role: 'user', sender: 'Me', text: 'please review rollout' },
+      { id: 'm3', role: 'person', sender: 'Tom', text: 'rollout looks fine' },
+      { id: 'm4', role: 'assistant', sender: 'Kordi', text: 'summary prepared' },
+    ] as Conversation['messages'],
+  }), 4);
+
+  assert.match(context, /Reference: Current chat/);
+  assert.match(context, /Session: Launch chat/);
+  assert.match(context, /Session id: session:group:launch/);
+  assert.match(context, /Type: Group chat/);
+  assert.match(context, /Recent messages:/);
+  assert.doesNotMatch(context, /old hidden message/);
+  assert.match(context, /Tom: canary is ready/);
+  assert.match(context, /Me: please review rollout/);
 });

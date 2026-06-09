@@ -5,9 +5,11 @@ import {
   cloudGroupIdentityRequest,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupDeliveryStateFromMessages,
+  cloudGroupReadReceiptSummaryFromMessages,
   cloudGroupControlMessagesForAccount,
   cloudGroupLocalAgentRequestAlreadyHandled,
   cloudGroupMessageReadPeerIds,
+  cloudGroupMessageReadTargets,
   cloudGroupMessageSessionId,
   cloudGroupUnreadCountsBySessionId,
   cloudGroupPeerIdsFromContactsAndRequests,
@@ -187,7 +189,7 @@ test('cloud group messages carry concrete session id separately from shared grou
   assert.equal(parsed?.groupSpaceId, 'session:group:original-space');
 });
 
-test('cloud group delivery status follows hidden pairwise cloud read receipts', () => {
+test('cloud group delivery status becomes read when any recipient has read the outbound message', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',
     groupId: 'session:group:one',
@@ -206,7 +208,7 @@ test('cloud group delivery status follows hidden pairwise cloud read receipts', 
       { messageId: 'cloud_1', fromAccountId: 'acct_me', toAccountId: 'acct_peer_a', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: null, direction: 'outgoing' },
       { messageId: 'cloud_2', fromAccountId: 'acct_me', toAccountId: 'acct_peer_b', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: '2026-05-11T00:00:02Z', direction: 'outgoing' },
     ],
-  }), 'delivered');
+  }), 'read');
 
   assert.equal(cloudGroupDeliveryStateFromMessages({
     accountId: 'acct_me',
@@ -216,6 +218,96 @@ test('cloud group delivery status follows hidden pairwise cloud read receipts', 
       { messageId: 'cloud_2', fromAccountId: 'acct_me', toAccountId: 'acct_peer_b', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: '2026-05-11T00:00:03Z', direction: 'outgoing' },
     ],
   }), 'read');
+});
+
+test('cloudGroupReadReceiptSummaryFromMessages returns only recipients who read the outbound group message', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:test',
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_1',
+      text: 'hello',
+      senderAccountId: 'acct_me',
+      senderDisplayName: 'Me',
+      createdAt: '2026-06-06T12:00:00Z',
+    },
+  });
+
+  const summary = cloudGroupReadReceiptSummaryFromMessages({
+    accountId: 'acct_me',
+    messageId: 'msg_1',
+    messages: [
+      {
+        messageId: 'copy_1',
+        fromAccountId: 'acct_me',
+        toAccountId: 'acct_a',
+        body,
+        createdAt: '2026-06-06T12:00:00Z',
+        deliveredAt: '2026-06-06T12:00:01Z',
+        readAt: '2026-06-06T12:00:02Z',
+        direction: 'outgoing',
+      },
+      {
+        messageId: 'copy_2',
+        fromAccountId: 'acct_me',
+        toAccountId: 'acct_b',
+        body,
+        createdAt: '2026-06-06T12:00:00Z',
+        deliveredAt: '2026-06-06T12:00:01Z',
+        readAt: null,
+        direction: 'outgoing',
+      },
+    ],
+  });
+
+  assert.deepEqual(summary, {
+    count: 1,
+    participants: [{ accountId: 'acct_a', identityId: 'human:acct_a', readAt: '2026-06-06T12:00:02Z' }],
+  });
+});
+
+test('cloudGroupReadReceiptSummaryFromMessages returns null when no recipients have read', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:test',
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_1',
+      text: 'hello',
+      senderAccountId: 'acct_me',
+      senderDisplayName: 'Me',
+      createdAt: '2026-06-06T12:00:00Z',
+    },
+  });
+
+  const summary = cloudGroupReadReceiptSummaryFromMessages({
+    accountId: 'acct_me',
+    messageId: 'msg_1',
+    messages: [{
+      messageId: 'copy_1',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_a',
+      body,
+      createdAt: '2026-06-06T12:00:00Z',
+      deliveredAt: '2026-06-06T12:00:01Z',
+      readAt: null,
+      direction: 'outgoing',
+    }],
+  });
+
+  assert.equal(summary, null);
 });
 
 test('cloud group peer discovery expands beyond direct contacts from existing controls', () => {
@@ -542,9 +634,31 @@ test('cloud group read helper marks inbound controls read when their group sessi
   }), ['acct_peer']);
 });
 
+test('cloud group read helper returns active session ids for durable Cloud read receipts', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:child',
+    groupSpaceId: 'session:group:space',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' }],
+    message: { id: 'msg_group_1', senderAccountId: 'acct_peer', text: 'hello', createdAtMs: 1 },
+  });
+
+  assert.deepEqual(cloudGroupMessageReadTargets({
+    accountId: 'acct_me',
+    activeConversationIds: ['ui-row-id', 'group:session:group:space'],
+    messages: [
+      { messageId: 'cloud_1', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), { peerIds: ['acct_peer'], sessionIds: ['session:group:child'] });
+});
+
 test('cloud group unread helper counts only hidden sessions', () => {
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:child', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:space', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
+  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationIds: ['ui-row-id', 'group:session:group:space'], groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:other', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), true);
 });
 

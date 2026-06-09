@@ -6,13 +6,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CloudStartingScreen, KordiAppRoot } from '../src/KordiApp';
+import { KORDI_THEME_MODE_STORAGE_KEY } from '../src/app/themePreference';
 import { CloudLoginPage, cloudSignupAvatarInitials } from '../src/kordi-app/cloud/CloudLoginPage';
-import {
-  kordiEditionFromEnv,
-  kordiEditionFromRuntimeHints,
-  normalizeKordiEdition,
-  shouldShowCloudLoginGate,
-} from '../src/features/cloud/edition';
+import { shouldShowCloudLoginGate } from '../src/features/cloud/edition';
 const repoRoot = resolve(import.meta.dirname, '..');
 
 function makeStorageStub(initial: Record<string, string> = {}): Storage {
@@ -39,8 +35,44 @@ function withLocalStorage<T>(storage: Storage, run: () => T): T {
   }
 }
 
+function withWindowTheme<T>({
+  storedTheme,
+  systemPrefersLight = false,
+}: {
+  storedTheme: 'light' | 'dark' | 'auto';
+  systemPrefersLight?: boolean;
+}, run: () => T): T {
+  const storage = makeStorageStub({ [KORDI_THEME_MODE_STORAGE_KEY]: storedTheme });
+  const target = globalThis as typeof globalThis & { window?: Window & typeof globalThis };
+  const previousWindow = target.window;
+  target.window = {
+    localStorage: storage,
+    matchMedia: () => ({
+      matches: systemPrefersLight,
+      media: '(prefers-color-scheme: light)',
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  } as Window & typeof globalThis;
+  try {
+    return run();
+  } finally {
+    if (previousWindow) target.window = previousWindow;
+    else delete target.window;
+  }
+}
+
 function readSource(path: string): string {
   return readFileSync(resolve(repoRoot, path), 'utf8');
+}
+
+function cssBlock(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return css.match(new RegExp(`${escaped}\\s*\\{[\\s\\S]*?\\n\\}`))?.[0] ?? '';
 }
 
 import {
@@ -60,34 +92,15 @@ test('cloud shell source does not expose localhost bridge controls', () => {
   assert.doesNotMatch(rightDetail, /onOpenBridgeHosts|handleCreateProjectBridgeInvite/);
 });
 
-test('normalizeKordiEdition defaults to local and accepts cloud explicitly', () => {
-  assert.equal(normalizeKordiEdition(undefined), 'local');
-  assert.equal(normalizeKordiEdition(''), 'local');
-  assert.equal(normalizeKordiEdition('LOCAL'), 'local');
-  assert.equal(normalizeKordiEdition('cloud'), 'cloud');
-  assert.equal(normalizeKordiEdition('enterprise'), 'local');
+test('edition source has no runtime local-edition parser', () => {
+  const source = readSource('src/features/cloud/edition.ts');
+
+  assert.doesNotMatch(source, /KORDI_EDITION|VITE_KORDI_EDITION|currentKordiEdition|normalizeKordiEdition|kordiEditionFromEnv|kordiEditionFromRuntimeHints/);
 });
 
-test('kordiEditionFromEnv prefers Vite edition over runtime edition', () => {
-  assert.equal(kordiEditionFromEnv({ VITE_KORDI_EDITION: 'cloud', KORDI_EDITION: 'local' }), 'cloud');
-  assert.equal(kordiEditionFromEnv({ KORDI_EDITION: 'cloud' }), 'cloud');
-  assert.equal(kordiEditionFromEnv({ VITE_KORDI_EDITION: 'local', KORDI_EDITION: 'cloud' }), 'local');
-});
-
-test('kordiEditionFromEnv treats Cloud Edition window title as cloud preview fallback', () => {
-  assert.equal(kordiEditionFromEnv({ VITE_KORDI_WINDOW_TITLE: 'Kordi Cloud Edition Login Gate' }), 'cloud');
-  assert.equal(kordiEditionFromEnv({ VITE_KORDI_WINDOW_TITLE: 'Kordi Local Dev' }), 'local');
-});
-
-test('kordiEditionFromRuntimeHints detects the Cloud Edition preview title', () => {
-  assert.equal(kordiEditionFromRuntimeHints({ documentTitle: '(6) Kordi Cloud Edition Login Gate' }), 'cloud');
-  assert.equal(kordiEditionFromRuntimeHints({ documentTitle: 'Kordi' }), 'local');
-});
-
-test('cloud login gate blocks signed-out Cloud Edition in native and web preview', () => {
-  assert.equal(shouldShowCloudLoginGate({ edition: 'local', cloudSessionStatus: 'signed-out' }), false);
-  assert.equal(shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: 'authenticated' }), false);
-  assert.equal(shouldShowCloudLoginGate({ edition: 'cloud', cloudSessionStatus: 'signed-out' }), true);
+test('cloud login gate always uses Cloud product semantics', () => {
+  assert.equal(shouldShowCloudLoginGate({ cloudSessionStatus: 'authenticated' }), false);
+  assert.equal(shouldShowCloudLoginGate({ cloudSessionStatus: 'signed-out' }), true);
 });
 
 test('cloud login CSS hides the oversized native WebKit caps-lock indicator', () => {
@@ -322,9 +335,21 @@ test('cloud starting timeout still has no visible retry copy', () => {
   assert.doesNotMatch(markup, /button/);
 });
 
+test('cloud starting dots are flat and non-glowy in CSS', () => {
+  const css = readSource('src/styles/theme-overrides.css');
+  const dotBlock = cssBlock(css, '.app-cloud-starting-dot');
+
+  assert.match(dotBlock, /width:\s*9px/);
+  assert.match(dotBlock, /height:\s*9px/);
+  assert.match(dotBlock, /border-radius:\s*999px/);
+  assert.match(dotBlock, /background:\s*currentColor/);
+  assert.doesNotMatch(dotBlock, /filter:|drop-shadow|box-shadow/);
+  assert.doesNotMatch(css, /\.app-cloud-starting-dot::before/);
+  assert.doesNotMatch(css, /\.app-cloud-starting-dot-[123]\s*\{[\s\S]*?radial-gradient/);
+});
+
 test('cloud edition session restore uses the same dot loading screen', () => {
   const markup = renderToStaticMarkup(createElement(KordiAppRoot, {
-    edition: 'cloud',
     cloudSessionStatus: 'loading',
     cloudSession: {
       status: 'loading',
@@ -342,7 +367,6 @@ test('cloud edition session restore uses the same dot loading screen', () => {
 
 test('cloud edition app root renders account login before the chat shell', () => {
   const markup = renderToStaticMarkup(createElement(KordiAppRoot, {
-    edition: 'cloud',
     cloudSessionStatus: 'signed-out',
   }));
 
@@ -351,11 +375,58 @@ test('cloud edition app root renders account login before the chat shell', () =>
   assert.doesNotMatch(markup, /Ask your agent/);
 });
 
-test('cloud login gate reads persisted theme preference before shell mount', () => {
+test('cloud login gate applies stored light theme on the bridge-app root', () => {
+  const markup = withWindowTheme({ storedTheme: 'light' }, () => renderToStaticMarkup(createElement(KordiAppRoot, {
+    cloudSessionStatus: 'signed-out',
+  })));
+
+  assert.match(markup, /class="bridge-app app-cloud-login-shell theme-light"/);
+  assert.doesNotMatch(markup, /class="bridge-app app-cloud-login-shell"/);
+});
+
+test('cloud session restore gate applies stored dark theme on the bridge-app root', () => {
+  const markup = withWindowTheme({ storedTheme: 'dark' }, () => renderToStaticMarkup(createElement(KordiAppRoot, {
+    cloudSessionStatus: 'loading',
+    cloudSession: {
+      status: 'loading',
+      account: null,
+      signIn: async () => {},
+      signUp: async () => {},
+      signInWithProvider: async () => {},
+    },
+  })));
+
+  assert.match(markup, /class="bridge-app app-cloud-login-shell theme-dark"/);
+  assert.match(markup, /app-cloud-starting-screen/);
+});
+
+test('cloud gate auto theme follows system light before shell mount', () => {
+  const markup = withWindowTheme({ storedTheme: 'auto', systemPrefersLight: true }, () => renderToStaticMarkup(createElement(KordiAppRoot, {
+    cloudSessionStatus: 'signed-out',
+  })));
+
+  assert.match(markup, /class="bridge-app app-cloud-login-shell theme-light"/);
+});
+
+test('cloud login gate reads persisted theme preference and native system theme before shell mount', () => {
   const source = readSource('src/KordiApp.tsx');
 
   assert.match(source, /readStoredThemeMode/);
   assert.match(source, /resolveThemeMode\(themeMode, readSystemTheme\(\)\)/);
-  assert.match(source, /setTheme\(resolveThemeMode\(themeMode, mediaQuery\.matches \? 'light' : 'dark'\)\)/);
+  assert.match(source, /themeMode === 'auto' && isTauriRuntime\(\)/);
+  assert.match(source, /getCurrentWindow\(\)\.theme\(\)/);
+  assert.match(source, /getCurrentWindow\(\)\.onThemeChanged/);
+  assert.match(source, /nativeWindowThemeIsResolvedTheme/);
   assert.doesNotMatch(source, /const \[theme, setTheme\] = useState<ResolvedThemeMode>\(\(\) => readSystemTheme\(\)\)/);
+});
+
+test('cloud login gate has a native drag fallback before the app shell mounts', () => {
+  const shellSource = readSource('src/KordiApp.tsx');
+  const loginMarkup = renderToStaticMarkup(createElement(CloudLoginPage));
+
+  assert.match(shellSource, /shouldStartNativeWindowDrag/);
+  assert.match(shellSource, /isTauriRuntime\(\)/);
+  assert.match(shellSource, /getCurrentWindow\(\)\.startDragging\(\)/);
+  assert.match(shellSource, /onMouseDownCapture=\{handleGateWindowDragMouseDown\}/);
+  assert.match(loginMarkup, /data-tauri-drag-region="true"/);
 });

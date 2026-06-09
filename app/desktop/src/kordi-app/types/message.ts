@@ -93,6 +93,41 @@ export type MessageReplySummary = {
   targetMessageId?: string | null;
 };
 
+export type MessageReadReceiptParticipant = {
+  id: string;
+  name: string;
+  avatarSeed?: string | null;
+  profileImageUrl?: string | null;
+  readAt?: string | null;
+};
+
+export type MessageReadReceiptSummary = {
+  count: number;
+  participants: MessageReadReceiptParticipant[];
+};
+
+export type MessageActionSource = {
+  sourceSessionId: string;
+  sourceMessageId: string;
+  sourceMessageKind?: string | null;
+  senderLabel: string;
+  textPreview: string;
+  attachmentCount: number;
+  createdAtMs?: number | null;
+  timeLabel?: string | null;
+};
+
+export type MessageActionMetadata = {
+  schemaVersion: 1;
+  kind: 'quote' | 'forward';
+  source: MessageActionSource;
+};
+
+export type ComposerQuoteState = {
+  action: 'quote';
+  source: MessageActionSource;
+};
+
 export type Message = {
   id?: string;
   /** Stable id of the underlying session entry, when the message maps
@@ -100,6 +135,7 @@ export type Message = {
   entryId?: string | null;
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
+  sourceSenderLabel?: string | null;
   senderType?: 'human' | 'agent';
   senderProfileImageUrl?: string | null;
   senderAvatarSeed?: string | null;
@@ -114,6 +150,8 @@ export type Message = {
   replyToMessageId?: string | null;
   replyAliasIds?: string[];
   replySummary?: MessageReplySummary;
+  readReceiptSummary?: MessageReadReceiptSummary | null;
+  messageAction?: MessageActionMetadata | null;
   sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;
   edit?: {

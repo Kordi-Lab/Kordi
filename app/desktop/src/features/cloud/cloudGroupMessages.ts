@@ -8,6 +8,7 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
+import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } from './cloudTransportGuards';
@@ -53,6 +54,7 @@ export type CloudGroupControlEnvelope = {
     requestId?: string | null;
     forkSnapshot?: boolean | null;
     attachments?: CloudMessageAttachment[];
+    messageAction?: MessageActionMetadata | null;
   } | null;
 };
 
@@ -472,16 +474,23 @@ export function cloudGroupMessageSessionId(input: {
 
 export function shouldCountCloudGroupMessageUnread(input: {
   activeConversationId?: string | null;
+  activeConversationIds?: Array<string | null | undefined>;
   groupId: string;
   groupSpaceId?: string | null;
   forkSnapshot?: boolean | null;
 }): boolean {
   if (input.forkSnapshot === true) return false;
-  const active = cleanText(input.activeConversationId);
+  const activeIds = new Set([
+    input.activeConversationId,
+    ...(input.activeConversationIds ?? []),
+  ].map((value) => cleanText(value)).filter(Boolean));
   const sessionId = cleanText(input.groupId);
   const spaceId = cleanText(input.groupSpaceId) || sessionId;
-  if (!active) return true;
-  return active !== sessionId && active !== spaceId && active !== `group:${spaceId}`;
+  if (activeIds.size === 0) return true;
+  for (const active of activeIds) {
+    if (active === sessionId || active === spaceId || active === `group:${spaceId}`) return false;
+  }
+  return true;
 }
 
 export function cloudGroupAgentResponseTargetAccountIds(input: {
@@ -731,33 +740,48 @@ export function cloudGroupPeerIdsFromContactsAndRequests(input: {
   return [...peerIds].sort();
 }
 
-export function cloudGroupMessageReadPeerIds(input: {
+export function cloudGroupMessageReadTargets(input: {
   accountId: string;
   activeConversationId?: string | null;
+  activeConversationIds?: Array<string | null | undefined>;
   messages: CloudMessage[];
-}): string[] {
+}): { peerIds: string[]; sessionIds: string[] } {
   const accountId = cleanText(input.accountId);
   const peerIds = new Set<string>();
-  if (!accountId) return [];
+  const sessionIds = new Set<string>();
+  if (!accountId) return { peerIds: [], sessionIds: [] };
   for (const message of input.messages) {
     if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
     const envelope = parseCloudGroupControl(message.body);
     if (!envelope || envelope.kind !== 'group-message') continue;
     if (shouldCountCloudGroupMessageUnread({
       activeConversationId: input.activeConversationId,
+      activeConversationIds: input.activeConversationIds,
       groupId: envelope.groupId,
       groupSpaceId: envelope.groupSpaceId,
       forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const peerId = cleanText(message.fromAccountId);
     if (peerId) peerIds.add(peerId);
+    const sessionId = cleanText(envelope.groupId);
+    if (sessionId) sessionIds.add(sessionId);
   }
-  return [...peerIds].sort();
+  return { peerIds: [...peerIds].sort(), sessionIds: [...sessionIds].sort() };
+}
+
+export function cloudGroupMessageReadPeerIds(input: {
+  accountId: string;
+  activeConversationId?: string | null;
+  activeConversationIds?: Array<string | null | undefined>;
+  messages: CloudMessage[];
+}): string[] {
+  return cloudGroupMessageReadTargets(input).peerIds;
 }
 
 export function cloudGroupUnreadCountsBySessionId(input: {
   accountId: string;
   activeConversationId?: string | null;
+  activeConversationIds?: Array<string | null | undefined>;
   messages: CloudMessage[];
 }): Record<string, number> {
   const accountId = cleanText(input.accountId);
@@ -770,6 +794,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
     if (!envelope || envelope.kind !== 'group-message') continue;
     if (!shouldCountCloudGroupMessageUnread({
       activeConversationId: input.activeConversationId,
+      activeConversationIds: input.activeConversationIds,
       groupId: envelope.groupId,
       groupSpaceId: envelope.groupSpaceId,
       forkSnapshot: envelope.message?.forkSnapshot,
@@ -802,8 +827,46 @@ export function cloudGroupDeliveryStateFromMessages(input: {
     return envelope?.kind === 'group-message' && envelope.message?.id === messageId;
   });
   if (matching.length === 0) return null;
-  if (matching.every((message) => Boolean(message.readAt))) return 'read';
+  if (matching.some((message) => Boolean(message.readAt))) return 'read';
   return 'delivered';
+}
+
+export type CloudGroupReadReceiptSummary = {
+  count: number;
+  participants: Array<{
+    accountId: string;
+    identityId: string;
+    readAt: string;
+  }>;
+};
+
+export function cloudGroupReadReceiptSummaryFromMessages(input: {
+  accountId: string;
+  messageId: string;
+  messages: CloudMessage[];
+}): CloudGroupReadReceiptSummary | null {
+  const accountId = cleanText(input.accountId);
+  const messageId = cleanText(input.messageId);
+  if (!accountId || !messageId) return null;
+
+  const participantsByAccountId = new Map<string, { accountId: string; identityId: string; readAt: string }>();
+  for (const message of input.messages) {
+    if (message.fromAccountId !== accountId || message.direction !== 'outgoing' || !message.readAt) continue;
+    const envelope = parseCloudGroupControl(message.body);
+    if (envelope?.kind !== 'group-message' || envelope.message?.id !== messageId) continue;
+    const recipientAccountId = cleanText(message.toAccountId);
+    const readAt = cleanText(message.readAt);
+    if (!recipientAccountId || !readAt) continue;
+    participantsByAccountId.set(recipientAccountId, {
+      accountId: recipientAccountId,
+      identityId: `human:${recipientAccountId}`,
+      readAt,
+    });
+  }
+
+  const participants = [...participantsByAccountId.values()]
+    .sort((left, right) => left.accountId.localeCompare(right.accountId));
+  return participants.length > 0 ? { count: participants.length, participants } : null;
 }
 
 export function shouldRouteMentionThroughCloudGroup(input: {

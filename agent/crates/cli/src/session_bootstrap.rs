@@ -636,6 +636,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
             sibling_conn.clone(),
             artifacts_dir.clone(),
         )),
+        session_observation: None,
         task_operator: Some(crate::task_operator::build_task_operator_runtime(
             effective_cwd.clone(),
             session_id.clone(),

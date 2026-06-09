@@ -608,6 +608,7 @@ pub fn routes_with_config(
         )
         .route("/v1/cloud/messages", get(list_messages).post(send_message))
         .route("/v1/cloud/messages/read", post(mark_messages_read))
+        .route("/v1/cloud/sessions/:source_session_id/read", post(mark_session_messages_read))
         .route("/v1/cloud/presence/online", post(publish_current_device_online))
         .route("/v1/cloud/presence/heartbeat", post(publish_current_device_heartbeat))
         .route("/v1/cloud/presence/offline", post(publish_current_device_offline))
@@ -3382,6 +3383,93 @@ async fn mark_messages_read(
                 "readerAccountId": &session.account_id,
                 "messageIds": &message_ids,
                 "readAt": &now,
+            }),
+            &now,
+        )
+        .await
+        .is_err()
+        {
+            return err(
+                "server_error",
+                "Could not record sync event.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+
+        let events = state.events().clone();
+        let reader = session.account_id.clone();
+        let sender = peer.clone();
+        let occurred_at = now.clone();
+        tokio::spawn(async move {
+            events
+                .publish_message_read(&reader, &sender, &occurred_at)
+                .await;
+        });
+    }
+
+    StatusCode::NO_CONTENT.into_response()
+}
+
+/// `POST /v1/cloud/sessions/:source_session_id/read` — mark all messages
+/// delivered to the caller inside a Cloud/canonical session as read. Group
+/// sessions are fanout into pairwise rows, so a session-level read cursor is
+/// the durable source of truth for clearing grouped unread badges.
+async fn mark_session_messages_read(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Path(source_session_id): axum::extract::Path<String>,
+) -> Response {
+    let source_session_id = source_session_id.trim().to_string();
+    if source_session_id.is_empty() {
+        return err(
+            "invalid_session_id",
+            "Session id is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let pool = state.db_pool();
+    let read_rows: Result<Vec<(String, String)>, _> = query_as(
+        "UPDATE cloud_messages \
+         SET read_at = COALESCE(read_at, $1), \
+             delivered_at = COALESCE(delivered_at, $1) \
+         WHERE session_id = $2 AND to_account_id = $3 AND read_at IS NULL \
+         RETURNING message_id, from_account_id",
+    )
+    .bind(&now)
+    .bind(&source_session_id)
+    .bind(&session.account_id)
+    .fetch_all(pool)
+    .await;
+    let Ok(read_rows) = read_rows else {
+        return err(
+            "server_error",
+            "Could not mark session messages read.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    };
+
+    let mut message_ids_by_peer = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for (message_id, peer_account_id) in read_rows {
+        message_ids_by_peer
+            .entry(peer_account_id)
+            .or_default()
+            .push(message_id);
+    }
+
+    for (peer, message_ids) in &message_ids_by_peer {
+        if append_cloud_sync_event(
+            pool,
+            peer,
+            "message.read",
+            Some(&session.account_id),
+            Some(&source_session_id),
+            serde_json::json!({
+                "readerAccountId": &session.account_id,
+                "messageIds": message_ids,
+                "readAt": &now,
+                "sessionId": &source_session_id,
             }),
             &now,
         )

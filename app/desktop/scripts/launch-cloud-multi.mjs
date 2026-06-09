@@ -1,28 +1,23 @@
 #!/usr/bin/env node
 //
-// One-shot launcher for cloud-edition side-by-side testing.
+// One-shot launcher for side-by-side account testing.
 //
 //   pnpm --dir app/desktop tauri:dev:multi:cloud
 //   pnpm --dir app/desktop tauri:dev:multi:cloud -- --users user1,user2
 //
-// Does two things you'd otherwise do by hand:
-//   1. Exports VITE_KORDI_EDITION=cloud / KORDI_EDITION=cloud so the
-//      launched Tauri instances boot in cloud mode (otherwise they
-//      default to the local edition and the login gate doesn't show).
-//   2. Spawns the existing multi-instance launcher with the rest of
-//      the user-supplied args forwarded as-is.
+// Spawns the existing multi-instance launcher and points each desktop window
+// at the configured hosted API.
 //
-// Cloud Edition defaults to the public cloud API for normal development.
-// For the remote-k3s test pipeline, opt in explicitly; the app will use the
-// local tunnel endpoint, while the server/data/runner stay on takotako:
+// For a public test or self-hosted API, set:
+//   VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>
+//
+// For internal/operator local tunnel testing, opt in explicitly and provide
+// the SSH target details via environment variables:
 //   KORDI_CLOUD_USE_LOCAL_TUNNEL=1
-//   KORDI_CLOUD_SSH_TARGET=shu_yang@takotako
-//   KORDI_CLOUD_SSH_ZONE=us-central1-c
+//   KORDI_CLOUD_SSH_TARGET=<operator-host>
+//   KORDI_CLOUD_SSH_ZONE=<operator-zone>
 //   KORDI_CLOUD_VM_PORT=17088
 //   KORDI_CLOUD_LOCAL_PORT=17081
-//
-// Override the API origin manually via:
-//   VITE_KORDI_CLOUD_API_BASE=https://your-cloud-api.example.com
 
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync } from 'node:fs';
@@ -32,8 +27,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appDir = dirname(__dirname);
 
-const SSH_TARGET = process.env.KORDI_CLOUD_SSH_TARGET ?? 'shu_yang@takotako';
-const SSH_ZONE = process.env.KORDI_CLOUD_SSH_ZONE ?? 'us-central1-c';
+const SSH_TARGET = process.env.KORDI_CLOUD_SSH_TARGET;
+const SSH_ZONE = process.env.KORDI_CLOUD_SSH_ZONE;
 const VM_PORT = process.env.KORDI_CLOUD_VM_PORT ?? '17088';
 const LOCAL_PORT = process.env.KORDI_CLOUD_LOCAL_PORT ?? '17081';
 const localTunnelEnabled = process.env.KORDI_CLOUD_USE_LOCAL_TUNNEL === '1';
@@ -50,6 +45,11 @@ function tunnelHealthy() {
 }
 
 function ensureTunnel() {
+    if (!SSH_TARGET || !SSH_ZONE) {
+        console.error('[kordi] KORDI_CLOUD_SSH_TARGET and KORDI_CLOUD_SSH_ZONE are required when KORDI_CLOUD_USE_LOCAL_TUNNEL=1.');
+        process.exit(1);
+    }
+
     if (tunnelHealthy()) {
         console.log(`[kordi] Cloud tunnel already up on 127.0.0.1:${LOCAL_PORT}`);
         return null;
@@ -96,19 +96,19 @@ if (localTunnelEnabled) {
     ensureTunnel();
 }
 
-const DEFAULT_CLOUD_API_BASE = 'https://coordinar.io';
-const cloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE ?? (
-    localTunnelEnabled ? `http://127.0.0.1:${LOCAL_PORT}` : DEFAULT_CLOUD_API_BASE
-);
+const configuredCloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE;
+if (!configuredCloudApiBase && !localTunnelEnabled) {
+    console.error('[kordi] VITE_KORDI_CLOUD_API_BASE is required for hosted multi-user runs. Set it to <PUBLIC_TEST_CLOUD_API_BASE> or enable KORDI_CLOUD_USE_LOCAL_TUNNEL=1.');
+    process.exit(1);
+}
+const cloudApiBase = localTunnelEnabled ? `http://127.0.0.1:${LOCAL_PORT}` : configuredCloudApiBase;
 const forwardedArgs = process.argv.slice(2);
 const env = {
     ...process.env,
-    VITE_KORDI_EDITION: 'cloud',
-    KORDI_EDITION: 'cloud',
     VITE_KORDI_CLOUD_API_BASE: cloudApiBase,
 };
 
-console.log(`[kordi] Launching tauri:dev:multi with Cloud Edition API ${cloudApiBase}`);
+console.log(`[kordi] Launching tauri:dev:multi with hosted API ${cloudApiBase}`);
 const child = spawn('pnpm', ['tauri:dev:multi', '--', ...forwardedArgs], {
     cwd: appDir,
     env,

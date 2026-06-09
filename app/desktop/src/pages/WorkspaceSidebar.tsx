@@ -35,7 +35,6 @@ import type {
 } from '@/kordi-app/types';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud/avatar';
-import { currentKordiEdition } from '@/features/cloud/edition';
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
@@ -427,7 +426,7 @@ function participantSpaceDetailText(space: ParticipantSpaceItem) {
     return `Personal • ${sessionText}`;
   }
   if (space.kind === 'direct-human') {
-    return 'Person • 1 chat';
+    return null;
   }
   if (space.kind === 'group') {
     const humanCount = participantSpaceHumanCount(space);
@@ -560,7 +559,6 @@ export function WorkspaceSidebar({
     : totalUnread > 0
       ? `Messages idle, ${formatUnreadCount(totalUnread)} unread`
       : 'Messages idle, all caught up';
-  const showSidebarCreateButton = currentKordiEdition() !== 'cloud';
   const [sessionContextMenu, setSessionContextMenu] = useState<SessionContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [renameSessionTarget, setRenameSessionTarget] = useState<SessionActionTarget | null>(null);
@@ -707,9 +705,10 @@ export function WorkspaceSidebar({
     const childForks = globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
     const hasForks = childForks.length > 0;
     const expanded = hasForks && isForkListExpanded(session.id);
+    const ownSessionUnreadCount = sidebarSessionIsActive(session) ? 0 : session.unread;
     const rowUnreadCount = expanded
-      ? session.unread
-      : (unreadBySessionIdWithForkDescendants.get(session.id) ?? session.unread);
+      ? ownSessionUnreadCount
+      : (unreadBySessionIdWithForkDescendants.get(session.id) ?? ownSessionUnreadCount);
     // Mirror the agent-tab tree behavior: when a parent is collapsed,
     // keep only the active session's path visible (the user shouldn't
     // lose sight of where they currently are) and hide every other
@@ -845,6 +844,7 @@ export function WorkspaceSidebar({
       : space.sessions;
     const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
     const spaceUnreadCount = unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread;
+    const participantSpaceDetail = participantSpaceDetailText(space);
     const toggleSpace = () => {
       if (isDirectHuman) {
         if (latestSession) onSelectChatSession(latestSession.id);
@@ -876,9 +876,11 @@ export function WorkspaceSidebar({
               <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isActiveSpace || isExpanded) && 'app-participant-space-row-preview-active')} title={space.preview}>
                 {space.preview || `${participantSpaceKindText(space)} space`}
               </div>
-              <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
-                {participantSpaceDetailText(space)}
-              </div>
+              {participantSpaceDetail ? (
+                <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
+                  {participantSpaceDetail}
+                </div>
+              ) : null}
             </div>
           </button>
           <div className="app-participant-space-row-side">
@@ -1013,7 +1015,8 @@ export function WorkspaceSidebar({
       if (seen.has(sessionId)) return 0;
       const nextSeen = new Set(seen);
       nextSeen.add(sessionId);
-      const ownUnread = Math.max(0, allSidebarSessionRowsById.get(sessionId)?.session.unread ?? 0);
+      const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
+      const ownUnread = sidebarSessionIsActive(rowSession) ? 0 : Math.max(0, rowSession?.unread ?? 0);
       const forkUnread = (globalForkLineage.forksByParentSessionId.get(sessionId) ?? [])
         .reduce((sum, fork) => sum + visit(fork.id, nextSeen), 0);
       const total = ownUnread + forkUnread;
@@ -1022,7 +1025,7 @@ export function WorkspaceSidebar({
     };
     for (const sessionId of allSidebarSessionRowsById.keys()) visit(sessionId, new Set());
     return cache;
-  }, [allSidebarSessionRowsById, globalForkLineage]);
+  }, [allSidebarSessionRowsById, globalForkLineage, sidebarSessionIsActive]);
   const unreadByParticipantSpaceIdWithForkDescendants = useMemo(() => {
     const collect = (sessionId: string, target: Set<string>, seen: Set<string>) => {
       if (seen.has(sessionId)) return;
@@ -1399,11 +1402,6 @@ export function WorkspaceSidebar({
           </div>
 
           <div className="flex w-full flex-col items-center gap-2">
-            {showSidebarCreateButton ? (
-              <Button size="icon" className="h-9 w-9 rounded-[14px]" onClick={openChatCreateDialog} aria-label="Start a chat">
-                <Plus className="h-4 w-4" />
-              </Button>
-            ) : null}
             <button
               ref={profileTriggerRef}
               type="button"

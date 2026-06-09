@@ -11,8 +11,6 @@ import {
   User,
 } from 'lucide-react';
 
-import type { KordiEdition } from '@/features/cloud/edition';
-import { currentKordiEdition } from '@/features/cloud/edition';
 import { DEFAULT_BRIDGE_OWNER_NAME } from '@/features/bridge/constants';
 
 export type SettingsSectionId =
@@ -229,29 +227,24 @@ export const allSettingsSections: SettingsSection[] = [
   },
 ];
 
-export function settingsSectionsForEdition(edition: KordiEdition): SettingsSection[] {
-  if (edition !== 'cloud') return allSettingsSections;
+const authSettingsSection = allSettingsSections.find((section) => section.id === 'auth');
+const appearanceSettingsSection = allSettingsSections.find((section) => section.id === 'appearance');
 
-  const auth = allSettingsSections.find((section) => section.id === 'auth');
-  const appearance = allSettingsSections.find((section) => section.id === 'appearance');
-  if (!auth || !appearance) return allSettingsSections;
+export const settingsSections: SettingsSection[] = authSettingsSection && appearanceSettingsSection
+  ? [
+      authSettingsSection,
+      {
+        ...appearanceSettingsSection,
+        label: 'Theme',
+        title: 'Theme',
+        description: 'Primary interface palette for all bridge surfaces.',
+        items: appearanceSettingsSection.items.filter((item) => item.control?.type === 'theme'),
+      },
+    ]
+  : allSettingsSections;
 
-  return [
-    auth,
-    {
-      ...appearance,
-      label: 'Theme',
-      title: 'Theme',
-      description: 'Primary interface palette for all bridge surfaces.',
-      items: appearance.items.filter((item) => item.control?.type === 'theme'),
-    },
-  ];
-}
-
-export function normalizeSettingsSectionIdForEdition(edition: KordiEdition, sectionId: SettingsSectionId): SettingsSectionId {
-  return settingsSectionsForEdition(edition).some((section) => section.id === sectionId)
+export function normalizeSettingsSectionIdForCloud(sectionId: SettingsSectionId): SettingsSectionId {
+  return settingsSections.some((section) => section.id === sectionId)
     ? sectionId
     : 'auth';
 }
-
-export const settingsSections: SettingsSection[] = settingsSectionsForEdition(currentKordiEdition());

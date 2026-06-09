@@ -51,6 +51,7 @@ import {
   cloudMessageMentionsContactAgent,
   cloudPeerAccountIdFromConversationId,
   cloudSessionIdForBridgeSend,
+  cloudSessionIdFromConversationId,
   isCloudBridgeHostId,
 } from './cloudBridgeState';
 import {
@@ -81,10 +82,11 @@ import {
   cloudGroupControlMessagesForAccount,
   cloudGroupControlReplayKey,
   cloudGroupDeliveryStateFromMessages,
+  cloudGroupReadReceiptSummaryFromMessages,
   cloudGroupIdFromAgentConversationId,
   cloudGroupIdentityRequest,
   cloudGroupLocalAgentRequestAlreadyHandled,
-  cloudGroupMessageReadPeerIds,
+  cloudGroupMessageReadTargets,
   cloudGroupParticipantsForBridgeSessionParticipants,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
@@ -2650,9 +2652,17 @@ export function useCloudBridgeState({
           requestId: messageReplyToId,
           replyToMessageId: messageReplyToId,
           ...(agentDeliveryState === 'failed' ? { error: envelope.message.text || 'Message failed' } : {}),
-        } : mappedAttachments.length > 0 ? { attachments: mappedAttachments } : undefined,
+        } : (mappedAttachments.length > 0 || envelope.message.messageAction) ? {
+          ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
+          ...(envelope.message.messageAction ? {
+            messageAction: envelope.message.messageAction,
+            replyToMessageId: envelope.message.messageAction.kind === 'quote'
+              ? envelope.message.messageAction.source.sourceMessageId
+              : undefined,
+          } : {}),
+        } : undefined,
         createdAtMs: envelope.message.createdAtMs,
-        parentMessageId: senderIsAgent ? messageReplyToId : null,
+        parentMessageId: senderIsAgent ? messageReplyToId : (envelope.message.messageAction?.kind === 'quote' ? envelope.message.messageAction.source.sourceMessageId : null),
         status: agentStatus,
         sourceTransport: envelope.message.forkSnapshot
           ? 'cloud-group-fork-snapshot'
@@ -3118,16 +3128,27 @@ export function useCloudBridgeState({
           messageId: message.id,
           messages: cloudMessages,
         });
-        if (!deliveryState) return message;
+        const readReceiptSummary = cloudGroupReadReceiptSummaryFromMessages({
+          accountId: account.accountId,
+          messageId: message.id,
+          messages: cloudMessages,
+        });
+        if (!deliveryState && !readReceiptSummary) return message;
         const content = objectContent(message.content);
-        if (message.status === 'sent' && content.deliveryState === deliveryState) return message;
+        const existingReadReceiptSummary = objectContent(content.readReceiptSummary);
+        const existingReadCount = typeof existingReadReceiptSummary.count === 'number' && Number.isFinite(existingReadReceiptSummary.count)
+          ? Math.max(0, Math.floor(existingReadReceiptSummary.count))
+          : 0;
+        const nextReadCount = readReceiptSummary?.count ?? 0;
+        if (message.status === 'sent' && content.deliveryState === deliveryState && existingReadCount === nextReadCount) return message;
         changed = true;
         return {
           ...message,
-          status: 'sent',
+          status: deliveryState ? 'sent' : message.status,
           content: {
             ...content,
-            deliveryState,
+            ...(deliveryState ? { deliveryState } : {}),
+            ...(readReceiptSummary ? { readReceiptSummary } : { readReceiptSummary: null }),
           },
         };
       });
@@ -3137,8 +3158,13 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account || !setCanonicalSessionState) return;
+    const activeConversationIds = [
+      activeConversationId,
+      activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null,
+    ];
     const unreadBySessionId = cloudGroupUnreadCountsBySessionId({
       accountId: account.accountId,
+      activeConversationIds,
       messages: Object.values(messagesByPeer).flat(),
     });
     setCanonicalSessionState((current) => {
@@ -3170,7 +3196,7 @@ export function useCloudBridgeState({
       });
       return changed ? { ...current, sessions } : current;
     });
-  }, [account, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
+  }, [account, activeConversationId, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
@@ -3458,16 +3484,24 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account || !activeConversationId) return;
-    const cloudGroupReadPeerIds = cloudGroupMessageReadPeerIds({
+    const activeConversationIds = [
+      activeConversationId,
+      activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null,
+    ];
+    const cloudGroupReadTargets = cloudGroupMessageReadTargets({
       accountId: account.accountId,
       activeConversationId,
+      activeConversationIds,
       messages: Object.values(messagesByPeer).flat(),
     });
-    if (cloudGroupReadPeerIds.length > 0) {
+    if (cloudGroupReadTargets.peerIds.length > 0 || cloudGroupReadTargets.sessionIds.length > 0) {
       void loadSession()
         .then((session) => {
           if (!session?.token) return null;
-          return Promise.all(cloudGroupReadPeerIds.map((peerId) => client.markMessagesRead(session.token, peerId)));
+          const readRequests = cloudGroupReadTargets.sessionIds.length > 0
+            ? cloudGroupReadTargets.sessionIds.map((sessionId) => client.markSessionMessagesRead(session.token, sessionId))
+            : cloudGroupReadTargets.peerIds.map((peerId) => client.markMessagesRead(session.token, peerId));
+          return Promise.all(readRequests);
         })
         .then((result) => {
           if (result === null) return;

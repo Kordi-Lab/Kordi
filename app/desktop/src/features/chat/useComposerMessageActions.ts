@@ -43,6 +43,7 @@ type UseComposerMessageActionsArgs = Pick<
   | 'composerSelections'
   | 'composerDrafts'
   | 'setComposerDrafts'
+  | 'activeChatQuote'
   | 'setProjectWorkspaces'
   | 'setOpenComposerSelector'
   | 'chatComposerAttachments'
@@ -103,6 +104,7 @@ export function useComposerMessageActions({
   composerSelections,
   composerDrafts,
   setComposerDrafts,
+  activeChatQuote,
   setProjectWorkspaces,
   setOpenComposerSelector,
   chatComposerAttachments,
@@ -217,6 +219,7 @@ export function useComposerMessageActions({
     chatComposerAttachments,
     composerSelections,
     composerDrafts,
+    activeChatQuote,
     desktopBridgeState,
     desktopChatState,
     desktopLiveTurn,

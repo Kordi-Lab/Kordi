@@ -135,6 +135,35 @@ test('self-agent chat can render completed assistant replies without reply quote
   assert.match(assistantMarkup, /Seventh detail stays visible/);
 });
 
+test('desktop transcript maps optimistic quoted replies so the quote renders before persistence finishes', () => {
+  const [mapped] = mapDesktopMessagesForTranscript('session-1', [{
+    role: 'user',
+    sender: 'Me',
+    text: 'Yes, ship it',
+    timeLabel: '12:31',
+    timestampMs: 1,
+    replyToMessageId: 'msg:source',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'quote',
+      source: {
+        sourceSessionId: 'session-1',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Alice',
+        textPreview: 'Can we ship?',
+        attachmentCount: 0,
+        createdAtMs: null,
+        timeLabel: '10:42',
+      },
+    },
+  } as DesktopChatMessage]);
+
+  assert.equal(mapped.replyToMessageId, 'msg:source');
+  assert.equal(mapped.messageAction?.kind, 'quote');
+  assert.equal(mapped.sourceMessage?.senderLabel, 'Alice');
+  assert.equal(mapped.sourceMessage?.text, 'Can we ship?');
+});
+
 test('desktop transcript maps optimistic own messages with the local profile image url immediately', () => {
   const [mapped] = mapDesktopMessagesForTranscript('session-1', [{
     role: 'user',
