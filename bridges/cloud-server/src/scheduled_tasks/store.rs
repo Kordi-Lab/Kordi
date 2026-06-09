@@ -270,6 +270,66 @@ pub async fn create_scheduled_task_run_now(
     Ok(Some(run))
 }
 
+pub async fn mark_scheduled_task_run_completed(
+    pool: &PgPool,
+    run_id: &str,
+    result_message: &str,
+    now: DateTime<Utc>,
+) -> Result<(), sqlx_core::Error> {
+    if !run_id.starts_with("scheduled_run_") {
+        return Ok(());
+    }
+    query(
+        "WITH updated_run AS (
+            UPDATE scheduled_tool_task_runs
+               SET status = 'completed', result_message = $2, error_code = NULL, error_message = NULL, updated_at = $3, completed_at = $3
+             WHERE run_id = $1
+             RETURNING task_id, due_at
+         )
+         UPDATE scheduled_tool_tasks task
+            SET last_run_at = updated_run.due_at, last_run_status = 'completed', last_run_error = NULL, updated_at = $3
+           FROM updated_run
+          WHERE task.task_id = updated_run.task_id",
+    )
+    .bind(run_id)
+    .bind(result_message)
+    .bind(ts(now))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn mark_scheduled_task_run_failed(
+    pool: &PgPool,
+    run_id: &str,
+    error_code: &str,
+    error_message: &str,
+    now: DateTime<Utc>,
+) -> Result<(), sqlx_core::Error> {
+    if !run_id.starts_with("scheduled_run_") {
+        return Ok(());
+    }
+    query(
+        "WITH updated_run AS (
+            UPDATE scheduled_tool_task_runs
+               SET status = 'failed', error_code = $2, error_message = $3, updated_at = $4, completed_at = $4
+             WHERE run_id = $1
+             RETURNING task_id, due_at
+         )
+         UPDATE scheduled_tool_tasks task
+            SET last_run_at = updated_run.due_at, last_run_status = 'failed', last_run_error = $3, updated_at = $4
+           FROM updated_run
+          WHERE task.task_id = updated_run.task_id",
+    )
+    .bind(run_id)
+    .bind(error_code)
+    .bind(error_message)
+    .bind(ts(now))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn create_run_for_task(
     pool: &PgPool,
     owner_account_id: &str,

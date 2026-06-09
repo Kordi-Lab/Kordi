@@ -5,6 +5,9 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
 use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
+use crate::scheduled_tasks::store::{
+    mark_scheduled_task_run_completed, mark_scheduled_task_run_failed,
+};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
@@ -947,7 +950,8 @@ pub async fn complete_run(
         .await?;
         message_id
     };
-    let now = Utc::now().to_rfc3339();
+    let now = Utc::now();
+    let now_text = now.to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'completed', response_message_id = $3, \
@@ -957,12 +961,15 @@ pub async fn complete_run(
     )
     .bind(run_id)
     .bind(runner_id)
-    .bind(response_message_id)
-    .bind(now)
+    .bind(&response_message_id)
+    .bind(&now_text)
     .fetch_optional(pool)
     .await?;
     match row {
-        Some(row) => runner_response_from_row(pool, row).await.map(Some),
+        Some(row) => {
+            mark_scheduled_task_run_completed(pool, &request_message_id, &response_message_id, now).await?;
+            runner_response_from_row(pool, row).await.map(Some)
+        }
         None => Ok(None),
     }
 }
@@ -1021,6 +1028,8 @@ pub async fn fail_run(
         .await?;
         message_id
     };
+    let now = Utc::now();
+    let now_text = now.to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'failed', response_message_id = $5, error_code = $3, error_message = $4, updated_at = $6, completed_at = $6 \
@@ -1031,12 +1040,15 @@ pub async fn fail_run(
     .bind(runner_id)
     .bind(error_code)
     .bind(message)
-    .bind(response_message_id)
-    .bind(Utc::now().to_rfc3339())
+    .bind(&response_message_id)
+    .bind(&now_text)
     .fetch_optional(pool)
     .await?;
     match row {
-        Some(row) => runner_response_from_row(pool, row).await.map(Some),
+        Some(row) => {
+            mark_scheduled_task_run_failed(pool, &request_message_id, error_code, message, now).await?;
+            runner_response_from_row(pool, row).await.map(Some)
+        }
         None => Ok(None),
     }
 }
