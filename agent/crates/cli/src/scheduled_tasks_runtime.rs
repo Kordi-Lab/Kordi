@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::{DateTime, Duration, Local, Utc};
 use kordi_core::error::KordiError;
 use kordi_tools::{
     ScheduleTaskRequest, ScheduleTaskResponse, ScheduleTaskRuntime, ScheduleTaskSchedule,
@@ -106,20 +106,43 @@ fn attach_session_id(
 }
 
 fn normalize_request_for_cloud(
-    mut request: ScheduleTaskRequest,
+    request: ScheduleTaskRequest,
     local_offset_minutes: i32,
 ) -> ScheduleTaskRequest {
-    if let ScheduleTaskSchedule::Daily { time, timezone } = &request.schedule {
-        let timezone_value = timezone.as_deref().unwrap_or("local").trim();
-        let looks_like_implicit_local = timezone_value.eq_ignore_ascii_case("local")
-            || timezone_value.eq_ignore_ascii_case("system")
-            || (timezone_value.eq_ignore_ascii_case("UTC")
-                && !request_mentions_explicit_utc(&request));
-        if looks_like_implicit_local {
-            request.schedule = ScheduleTaskSchedule::Daily {
-                time: local_wall_time_to_utc_time(time, local_offset_minutes),
-                timezone: Some("UTC".to_string()),
-            };
+    normalize_request_for_cloud_at(request, local_offset_minutes, Utc::now())
+}
+
+fn normalize_request_for_cloud_at(
+    mut request: ScheduleTaskRequest,
+    local_offset_minutes: i32,
+    now_utc: DateTime<Utc>,
+) -> ScheduleTaskRequest {
+    match &request.schedule {
+        ScheduleTaskSchedule::Daily { time, timezone } => {
+            let timezone_value = timezone.as_deref().unwrap_or("local").trim();
+            let looks_like_implicit_local = timezone_value.eq_ignore_ascii_case("local")
+                || timezone_value.eq_ignore_ascii_case("system")
+                || (timezone_value.eq_ignore_ascii_case("UTC")
+                    && !request_mentions_explicit_utc(&request));
+            if looks_like_implicit_local {
+                request.schedule = ScheduleTaskSchedule::Daily {
+                    time: local_wall_time_to_utc_time(time, local_offset_minutes),
+                    timezone: Some("UTC".to_string()),
+                };
+            }
+        }
+        ScheduleTaskSchedule::Once { at } => {
+            if DateTime::parse_from_rfc3339(at).is_err()
+                && !request_mentions_explicit_utc(&request)
+            {
+                if let Some(utc_at) = local_once_wall_time_to_utc_rfc3339(
+                    at,
+                    local_offset_minutes,
+                    now_utc,
+                ) {
+                    request.schedule = ScheduleTaskSchedule::Once { at: utc_at };
+                }
+            }
         }
     }
     request
@@ -128,6 +151,21 @@ fn normalize_request_for_cloud(
 fn request_mentions_explicit_utc(request: &ScheduleTaskRequest) -> bool {
     let text = format!("{}\n{}", request.title, request.prompt).to_ascii_lowercase();
     text.contains(" utc") || text.contains("utc ") || text.contains("gmt")
+}
+
+fn local_once_wall_time_to_utc_rfc3339(
+    time: &str,
+    local_offset_minutes: i32,
+    now_utc: DateTime<Utc>,
+) -> Option<String> {
+    let (hour, minute) = parse_hh_mm(time)?;
+    let local_now = now_utc.naive_utc() + Duration::minutes(i64::from(local_offset_minutes));
+    let mut local_at = local_now.date().and_hms_opt(hour as u32, minute as u32, 0)?;
+    if local_at <= local_now {
+        local_at += Duration::days(1);
+    }
+    let utc_at = local_at - Duration::minutes(i64::from(local_offset_minutes));
+    Some(DateTime::<Utc>::from_naive_utc_and_offset(utc_at, Utc).to_rfc3339())
 }
 
 fn local_wall_time_to_utc_time(time: &str, local_offset_minutes: i32) -> String {
@@ -203,6 +241,31 @@ mod tests {
             "request body should convert local 13:30 at UTC+8 to 05:30 UTC: {request}"
         );
         Ok(())
+    }
+
+    #[test]
+    fn scheduled_tasks_runtime_converts_unqualified_once_local_wall_time_to_utc_rfc3339() {
+        let request = ScheduleTaskRequest {
+            title: "Summarize latest OpenAI news".to_string(),
+            prompt: "Search the web for the latest OpenAI news at 17:16 and summarize it for me.".to_string(),
+            schedule: ScheduleTaskSchedule::Once { at: "17:16".to_string() },
+            target_runtime: ScheduleTaskTargetRuntime::Cloud,
+            tool_payload: json!({}),
+        };
+
+        let normalized = super::normalize_request_for_cloud_at(
+            request,
+            8 * 60,
+            chrono::DateTime::parse_from_rfc3339("2026-06-09T09:14:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+        );
+        assert_eq!(
+            normalized.schedule,
+            ScheduleTaskSchedule::Once {
+                at: "2026-06-09T09:16:00+00:00".to_string(),
+            }
+        );
     }
 
     #[test]
