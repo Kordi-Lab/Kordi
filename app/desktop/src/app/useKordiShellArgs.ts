@@ -186,6 +186,8 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       showRightDetailRail: args.showRightDetailRail,
       isDetailPanelCollapsed: args.isDetailPanelCollapsed,
       setIsDetailPanelCollapsed: args.setIsDetailPanelCollapsed,
+      detailRailWidth: args.detailRailWidth,
+      onDetailResizeMouseDown: args.onDetailResizeMouseDown,
       activeProject: args.activeProject,
       activeProjectSession: args.activeProjectSession,
       desktopSessionRenameDraft: args.desktopSessionRenameDraft,

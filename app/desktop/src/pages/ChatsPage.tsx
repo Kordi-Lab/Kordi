@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, Dispatch, DragEvent, PointerEvent as ReactPointerEvent, RefObject, SetStateAction } from 'react';
+import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
@@ -450,6 +450,9 @@ type ChatsPageProps = {
   showRightDetailRail: boolean;
   isDetailPanelCollapsed: boolean;
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
+  rightDetailRail?: ReactNode;
+  detailRailWidth?: number;
+  onDetailResizeMouseDown?: MouseEventHandler<HTMLDivElement>;
   activeConv: Conversation;
   chatConversations: Conversation[];
   activeConversationIsBridge: boolean;
@@ -543,6 +546,9 @@ export function ChatsPage({
   showRightDetailRail,
   isDetailPanelCollapsed,
   setIsDetailPanelCollapsed,
+  rightDetailRail,
+  detailRailWidth = 344,
+  onDetailResizeMouseDown,
   activeConv,
   chatConversations,
   activeConversationIsBridge,
@@ -1227,6 +1233,27 @@ export function ChatsPage({
       </div>
     </div>
   ) : null;
+  const ownInlineDetailRail = showRightDetailRail && !isDetailPanelCollapsed && Boolean(rightDetailRail);
+  const inlineDetailRail = ownInlineDetailRail ? (
+    <div
+      className="relative h-full min-h-0 min-w-0 overflow-hidden border-l border-white/[0.06] bg-white/[0.025]"
+      style={{ width: detailRailWidth }}
+      data-chat-inline-detail-rail="true"
+    >
+      {onDetailResizeMouseDown ? (
+        <div
+          onMouseDown={onDetailResizeMouseDown}
+          className="absolute bottom-0 left-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
+          data-chat-inline-detail-resize="true"
+          data-kordi-window-drag="false"
+          aria-hidden="true"
+        >
+          <div className="mx-auto h-full w-px bg-white/8 transition hover:bg-white/20" />
+        </div>
+      ) : null}
+      {rightDetailRail}
+    </div>
+  ) : null;
 
   useEffect(() => {
     if (!bridgeRoutingNotice) return;
@@ -1360,20 +1387,27 @@ export function ChatsPage({
     })();
   };
 
+  const chatSplitGridColumns = (() => {
+    const detailColumn = ownInlineDetailRail ? ` ${detailRailWidth}px` : '';
+    if (!showCompanionPane) return ownInlineDetailRail ? `minmax(0, 1fr)${detailColumn}` : undefined;
+    if (companionSide === 'left') {
+      return `minmax(280px, ${splitLeftFraction}fr) 10px minmax(280px, ${1 - splitLeftFraction}fr)${detailColumn}`;
+    }
+    return `minmax(280px, ${splitLeftFraction}fr)${detailColumn} 10px minmax(280px, ${1 - splitLeftFraction}fr)`;
+  })();
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div
         ref={splitContainerRef}
         className={cn(
           'relative min-h-0 flex-1 overflow-hidden',
-          showCompanionPane && 'grid',
+          chatSplitGridColumns && 'grid',
           isDraggingCompanion && 'ring-1 ring-sky-300/25',
           companionDropPreviewSide === 'left' && 'bg-gradient-to-r from-sky-400/10 via-transparent to-transparent',
           companionDropPreviewSide === 'right' && 'bg-gradient-to-l from-sky-400/10 via-transparent to-transparent',
         )}
-        style={showCompanionPane ? {
-          gridTemplateColumns: `minmax(280px, ${splitLeftFraction}fr) 10px minmax(280px, ${1 - splitLeftFraction}fr)`,
-        } : undefined}
+        style={chatSplitGridColumns ? { gridTemplateColumns: chatSplitGridColumns } : undefined}
         data-chat-companion-side={showCompanionPane ? companionSide : 'folded'}
         data-chat-companion-drop-preview={companionDropPreviewSide ?? undefined}
         onDragOver={handleCompanionDragOver}
@@ -1962,6 +1996,7 @@ export function ChatsPage({
         </div>
       </div>
         </section>
+        {inlineDetailRail}
         {showCompanionPane && companionSide === 'right' ? splitDivider : null}
         {showCompanionPane && companionSide === 'right' ? companionPane : null}
       </div>

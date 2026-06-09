@@ -1,4 +1,4 @@
-import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
+import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react';
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
@@ -242,6 +242,8 @@ export type AssembleKordiShellSlotsArgs = {
   isDetailPanelCollapsed: boolean;
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
   setIsSessionPanelCollapsed: Dispatch<SetStateAction<boolean>>;
+  detailRailWidth: number;
+  onDetailResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   activeProject: Project;
   activeProjectSession: Project['sessions'][number];
   desktopSessionRenameDraft: string;
@@ -535,6 +537,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showRightDetailRail'
   | 'isDetailPanelCollapsed'
   | 'setIsDetailPanelCollapsed'
+  | 'detailRailWidth'
+  | 'onDetailResizeMouseDown'
   | 'activeProject'
   | 'activeProjectSession'
   | 'desktopSessionRenameDraft'
@@ -622,7 +626,9 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeBridgeAwaitingReply'
   | 'lastBridgePollAtLabel'
   | 'isBridgePolling'
->;
+> & {
+  rightDetailRail?: ReactNode;
+};
 
 export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isNativeShell'
