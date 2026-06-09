@@ -594,10 +594,13 @@ impl DesktopRuntimeSession {
     }
 
     pub fn set_scheduled_tasks_cloud_runtime(&mut self, api_base: String, token: String) {
-        self.setup.tool_ctx.schedule_task = Some(crate::scheduled_tasks_runtime::build_scheduled_tasks_runtime(
-            api_base,
-            token,
-        ));
+        self.setup.tool_ctx.schedule_task = Some(
+            crate::scheduled_tasks_runtime::build_scheduled_tasks_runtime_for_session(
+                api_base,
+                token,
+                self.setup.session_id.clone(),
+            ),
+        );
     }
 
     pub fn sync_context_messages(

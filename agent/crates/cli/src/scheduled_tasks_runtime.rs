@@ -14,13 +14,37 @@ struct ScheduledTaskEnvelope {
 
 pub fn build_scheduled_tasks_runtime(api_base: String, token: String) -> ScheduleTaskRuntime {
     let local_offset_minutes = Local::now().offset().local_minus_utc() / 60;
-    build_scheduled_tasks_runtime_with_local_offset(api_base, token, local_offset_minutes)
+    build_scheduled_tasks_runtime_with_session(api_base, token, local_offset_minutes, None)
 }
 
+pub fn build_scheduled_tasks_runtime_for_session(
+    api_base: String,
+    token: String,
+    session_id: String,
+) -> ScheduleTaskRuntime {
+    let local_offset_minutes = Local::now().offset().local_minus_utc() / 60;
+    build_scheduled_tasks_runtime_with_session(
+        api_base,
+        token,
+        local_offset_minutes,
+        Some(session_id),
+    )
+}
+
+#[cfg(test)]
 pub(crate) fn build_scheduled_tasks_runtime_with_local_offset(
     api_base: String,
     token: String,
     local_offset_minutes: i32,
+) -> ScheduleTaskRuntime {
+    build_scheduled_tasks_runtime_with_session(api_base, token, local_offset_minutes, None)
+}
+
+fn build_scheduled_tasks_runtime_with_session(
+    api_base: String,
+    token: String,
+    local_offset_minutes: i32,
+    session_id: Option<String>,
 ) -> ScheduleTaskRuntime {
     let api_base = api_base.trim_end_matches('/').to_string();
     let client = reqwest::Client::new();
@@ -29,8 +53,12 @@ pub(crate) fn build_scheduled_tasks_runtime_with_local_offset(
             let api_base = api_base.clone();
             let token = token.clone();
             let client = client.clone();
+            let session_id = session_id.clone();
             Box::pin(async move {
-                let request = normalize_request_for_cloud(request, local_offset_minutes);
+                let request = normalize_request_for_cloud(
+                    attach_session_id(request, session_id.as_deref()),
+                    local_offset_minutes,
+                );
                 let response = client
                     .post(format!("{api_base}/v1/cloud/scheduled-tasks"))
                     .bearer_auth(token)
@@ -57,6 +85,24 @@ pub(crate) fn build_scheduled_tasks_runtime_with_local_offset(
             })
         }),
     }
+}
+
+fn attach_session_id(
+    mut request: ScheduleTaskRequest,
+    session_id: Option<&str>,
+) -> ScheduleTaskRequest {
+    let Some(session_id) = session_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return request;
+    };
+    if !request.tool_payload.is_object() {
+        request.tool_payload = serde_json::json!({});
+    }
+    if let Some(object) = request.tool_payload.as_object_mut() {
+        object
+            .entry("sessionId".to_string())
+            .or_insert_with(|| serde_json::Value::String(session_id.to_string()));
+    }
+    request
 }
 
 fn normalize_request_for_cloud(
@@ -180,6 +226,51 @@ mod tests {
                 timezone: Some("UTC".to_string())
             }
         );
+    }
+
+    #[tokio::test]
+    async fn scheduled_tasks_runtime_attaches_originating_session_id() -> Result<()> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let addr = listener.local_addr()?;
+        let handle = thread::spawn(move || -> Result<String> {
+            let (mut stream, _) = listener.accept()?;
+            let mut buffer = [0_u8; 8192];
+            let read = stream.read(&mut buffer)?;
+            let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+            let body = r#"{"task":{"taskId":"scheduled_task_session","title":"Cloud check","status":"active","targetRuntime":"cloud","nextRunAt":"2026-06-09T05:30:00Z"}}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            )?;
+            Ok(request)
+        });
+
+        let runtime = super::build_scheduled_tasks_runtime_with_session(
+            format!("http://{addr}"),
+            "cloud-token".to_string(),
+            0,
+            Some("session:origin-chat".to_string()),
+        );
+        let _response = (runtime.schedule)(ScheduleTaskRequest {
+            title: "Cloud check".to_string(),
+            prompt: "Run in cloud.".to_string(),
+            schedule: ScheduleTaskSchedule::Daily {
+                time: "05:30".to_string(),
+                timezone: Some("UTC".to_string()),
+            },
+            target_runtime: ScheduleTaskTargetRuntime::Cloud,
+            tool_payload: json!({}),
+        })
+        .await?;
+
+        let request = handle.join().expect("server thread should finish")?;
+        assert!(
+            request.contains("\"sessionId\":\"session:origin-chat\""),
+            "request body should include originating chat session id: {request}"
+        );
+        Ok(())
     }
 
     #[tokio::test]

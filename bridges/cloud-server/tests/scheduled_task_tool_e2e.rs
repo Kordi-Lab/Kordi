@@ -9,7 +9,6 @@ use axum::http::{Request, StatusCode};
 use chrono::{TimeZone, Utc};
 use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
-use kordi_cloud_server::server::{router, ServerState};
 use kordi_cloud_server::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskTargetRuntime,
 };
@@ -18,7 +17,9 @@ use kordi_cloud_server::scheduled_tasks::store::{
     claim_due_scheduled_task_runs, create_scheduled_task, create_scheduled_task_run_now,
     list_scheduled_tasks, pause_scheduled_task, resume_scheduled_task, soft_delete_scheduled_task,
 };
+use kordi_cloud_server::server::{router, ServerState};
 use sqlx_core::query::query;
+use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use tower::util::ServiceExt;
 
@@ -102,33 +103,62 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
         CreateScheduledTaskRequest {
             title: "Daily standup prep".to_string(),
             prompt: "Summarize yesterday and prepare today priorities.".to_string(),
-            schedule: ScheduledTaskSchedule::Daily { time: "09:00".to_string(), timezone: Some("UTC".to_string()) },
+            schedule: ScheduledTaskSchedule::Daily {
+                time: "09:00".to_string(),
+                timezone: Some("UTC".to_string()),
+            },
             target_runtime: ScheduledTaskTargetRuntime::Cloud,
             tool_payload: serde_json::json!({ "tool": "agent.run" }),
         },
         Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap(),
-    ).await.expect("create task");
+    )
+    .await
+    .expect("create task");
 
     assert_eq!(task.title, "Daily standup prep");
     assert_eq!(task.status, "active");
-    assert_eq!(task.next_run_at.as_deref(), Some("2026-06-08T09:00:00+00:00"));
+    assert_eq!(
+        task.next_run_at.as_deref(),
+        Some("2026-06-08T09:00:00+00:00")
+    );
 
-    let listed = list_scheduled_tasks(&pool, &account_id).await.expect("list tasks");
+    let listed = list_scheduled_tasks(&pool, &account_id)
+        .await
+        .expect("list tasks");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].task_id, task.task_id);
 
-    let paused = pause_scheduled_task(&pool, &account_id, &task.task_id).await.expect("pause").expect("paused task");
+    let paused = pause_scheduled_task(&pool, &account_id, &task.task_id)
+        .await
+        .expect("pause")
+        .expect("paused task");
     assert_eq!(paused.status, "paused");
     assert!(!paused.enabled);
 
-    let resumed = resume_scheduled_task(&pool, &account_id, &task.task_id, Utc.with_ymd_and_hms(2026, 6, 8, 8, 30, 0).unwrap()).await.expect("resume").expect("resumed task");
+    let resumed = resume_scheduled_task(
+        &pool,
+        &account_id,
+        &task.task_id,
+        Utc.with_ymd_and_hms(2026, 6, 8, 8, 30, 0).unwrap(),
+    )
+    .await
+    .expect("resume")
+    .expect("resumed task");
     assert_eq!(resumed.status, "active");
     assert!(resumed.enabled);
-    assert_eq!(resumed.next_run_at.as_deref(), Some("2026-06-08T09:00:00+00:00"));
+    assert_eq!(
+        resumed.next_run_at.as_deref(),
+        Some("2026-06-08T09:00:00+00:00")
+    );
 
-    let deleted = soft_delete_scheduled_task(&pool, &account_id, &task.task_id).await.expect("delete");
+    let deleted = soft_delete_scheduled_task(&pool, &account_id, &task.task_id)
+        .await
+        .expect("delete");
     assert!(deleted);
-    assert!(list_scheduled_tasks(&pool, &account_id).await.expect("list after delete").is_empty());
+    assert!(list_scheduled_tasks(&pool, &account_id)
+        .await
+        .expect("list after delete")
+        .is_empty());
 }
 
 #[tokio::test]
@@ -148,7 +178,9 @@ async fn scheduled_task_tool_api_creates_local_required_task_and_run_now_waits_f
         .unwrap();
     assert_eq!(signup_response.status(), StatusCode::OK);
     let signup_json = read_json(signup_response).await;
-    let token = signup_json["session"]["token"].as_str().expect("session token");
+    let token = signup_json["session"]["token"]
+        .as_str()
+        .expect("session token");
 
     let create_response = app
         .clone()
@@ -194,6 +226,16 @@ fn scheduled_task_schema_migration_is_embedded_in_pool_runner() {
 }
 
 #[test]
+fn scheduled_task_store_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
+    let store_source = std::fs::read_to_string("src/scheduled_tasks/store.rs")
+        .expect("read scheduled store source");
+    assert!(store_source.contains("claim_run("));
+    assert!(store_source.contains("ClaimRunRequest"));
+    assert!(store_source.contains("scheduled:"));
+    assert!(store_source.contains("sessionId"));
+}
+
+#[test]
 fn scheduled_task_worker_claims_due_jobs_on_interval() {
     let worker = std::fs::read_to_string("src/scheduled_tasks/worker.rs").expect("read worker");
     assert!(worker.contains("scheduled_task_sweep_interval"));
@@ -219,25 +261,77 @@ async fn run_now_and_due_claim_separate_cloud_and_local_required_runs() {
     let Some(pool) = try_pool().await else { return };
     let account_id = format!("acct_owner_{}", uuid::Uuid::new_v4().simple());
     seed_account(&pool, &account_id).await;
-    let cloud = create_scheduled_task(&pool, &account_id, &account_id, CreateScheduledTaskRequest {
-        title: "Cloud check".to_string(),
-        prompt: "Check cloud status.".to_string(),
-        schedule: ScheduledTaskSchedule::Once { at: "2026-06-08T09:00:00Z".to_string() },
-        target_runtime: ScheduledTaskTargetRuntime::Cloud,
-        tool_payload: serde_json::json!({}),
-    }, Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap()).await.expect("cloud task");
-    let local = create_scheduled_task(&pool, &account_id, &account_id, CreateScheduledTaskRequest {
-        title: "Mac check".to_string(),
-        prompt: "Read a local file when my Mac is online.".to_string(),
-        schedule: ScheduledTaskSchedule::Once { at: "2026-06-08T09:00:00Z".to_string() },
-        target_runtime: ScheduledTaskTargetRuntime::LocalRequired,
-        tool_payload: serde_json::json!({ "requiresLocalMac": true }),
-    }, Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap()).await.expect("local task");
+    let cloud = create_scheduled_task(
+        &pool,
+        &account_id,
+        &account_id,
+        CreateScheduledTaskRequest {
+            title: "Cloud check".to_string(),
+            prompt: "Check cloud status.".to_string(),
+            schedule: ScheduledTaskSchedule::Once {
+                at: "2026-06-08T09:00:00Z".to_string(),
+            },
+            target_runtime: ScheduledTaskTargetRuntime::Cloud,
+            tool_payload: serde_json::json!({ "sessionId": "session:scheduled:cloud-check" }),
+        },
+        Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap(),
+    )
+    .await
+    .expect("cloud task");
+    let local = create_scheduled_task(
+        &pool,
+        &account_id,
+        &account_id,
+        CreateScheduledTaskRequest {
+            title: "Mac check".to_string(),
+            prompt: "Read a local file when my Mac is online.".to_string(),
+            schedule: ScheduledTaskSchedule::Once {
+                at: "2026-06-08T09:00:00Z".to_string(),
+            },
+            target_runtime: ScheduledTaskTargetRuntime::LocalRequired,
+            tool_payload: serde_json::json!({ "requiresLocalMac": true }),
+        },
+        Utc.with_ymd_and_hms(2026, 6, 8, 8, 0, 0).unwrap(),
+    )
+    .await
+    .expect("local task");
 
-    let manual_local = create_scheduled_task_run_now(&pool, &account_id, &local.task_id, Utc.with_ymd_and_hms(2026, 6, 8, 8, 5, 0).unwrap()).await.expect("run now").expect("local run");
+    let manual_local = create_scheduled_task_run_now(
+        &pool,
+        &account_id,
+        &local.task_id,
+        Utc.with_ymd_and_hms(2026, 6, 8, 8, 5, 0).unwrap(),
+    )
+    .await
+    .expect("run now")
+    .expect("local run");
     assert_eq!(manual_local.status, "waiting_for_desktop");
 
-    let claimed = claim_due_scheduled_task_runs(&pool, Utc.with_ymd_and_hms(2026, 6, 8, 9, 1, 0).unwrap(), 10).await.expect("claim due");
-    assert!(claimed.iter().any(|run| run.task_id == cloud.task_id && run.status == "queued"));
-    assert!(claimed.iter().any(|run| run.task_id == local.task_id && run.status == "waiting_for_desktop"));
+    let claimed = claim_due_scheduled_task_runs(
+        &pool,
+        Utc.with_ymd_and_hms(2026, 6, 8, 9, 1, 0).unwrap(),
+        10,
+    )
+    .await
+    .expect("claim due");
+    let cloud_run = claimed
+        .iter()
+        .find(|run| run.task_id == cloud.task_id)
+        .expect("cloud run");
+    assert_eq!(cloud_run.status, "queued");
+    assert!(claimed
+        .iter()
+        .any(|run| run.task_id == local.task_id && run.status == "waiting_for_desktop"));
+
+    let fallback: (String, String, String, String, String) = query_as(
+        "SELECT idempotency_key, request_message_id, session_id, status, prompt FROM cloud_agent_fallback_runs WHERE idempotency_key = $1",
+    )
+    .bind(format!("scheduled:{}", cloud_run.run_id))
+    .fetch_one(&pool)
+    .await
+    .expect("scheduled cloud run should enqueue fallback agent run");
+    assert_eq!(fallback.1, cloud_run.run_id);
+    assert_eq!(fallback.2, "session:scheduled:cloud-check");
+    assert_eq!(fallback.3, "queued");
+    assert_eq!(fallback.4, "Check cloud status.");
 }

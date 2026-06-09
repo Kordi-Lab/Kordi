@@ -5,6 +5,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
+use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
 };
@@ -49,7 +50,8 @@ fn protocol_error(message: impl Into<String>) -> sqlx_core::Error {
 }
 
 fn parse_schedule(value: Value) -> Result<ScheduledTaskSchedule, sqlx_core::Error> {
-    serde_json::from_value(value).map_err(|err| protocol_error(format!("invalid schedule_json: {err}")))
+    serde_json::from_value(value)
+        .map_err(|err| protocol_error(format!("invalid schedule_json: {err}")))
 }
 
 fn row_to_task(row: TaskRow) -> Result<ScheduledTaskResponse, sqlx_core::Error> {
@@ -243,9 +245,16 @@ pub async fn create_scheduled_task_run_now(
     let Some(task) = read_task(pool, owner_account_id, task_id).await? else {
         return Ok(None);
     };
-    create_run_for_task(pool, owner_account_id, &task.task_id, &task.target_runtime, now, now)
-        .await
-        .map(Some)
+    create_run_for_task(
+        pool,
+        owner_account_id,
+        &task.task_id,
+        &task.target_runtime,
+        now,
+        now,
+    )
+    .await
+    .map(Some)
 }
 
 async fn create_run_for_task(
@@ -280,13 +289,43 @@ async fn create_run_for_task(
     Ok(row_to_run(row))
 }
 
+async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
+    pool: &PgPool,
+    owner_account_id: &str,
+    created_by_account_id: &str,
+    prompt: &str,
+    tool_payload_json: &Value,
+    run: &ScheduledTaskRunResponse,
+) -> Result<(), sqlx_core::Error> {
+    let session_id = tool_payload_json
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("session:scheduled:{}", owner_account_id));
+    claim_run(
+        pool,
+        &ClaimRunRequest {
+            request_message_id: run.run_id.clone(),
+            session_id,
+            owner_account_id: owner_account_id.to_string(),
+            requester_account_id: created_by_account_id.to_string(),
+            prompt: prompt.to_string(),
+            idempotency_key: format!("scheduled:{}", run.run_id),
+        },
+    )
+    .await?;
+    Ok(())
+}
+
 pub async fn claim_due_scheduled_task_runs(
     pool: &PgPool,
     now: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<ScheduledTaskRunResponse>, sqlx_core::Error> {
-    let rows = query_as::<_, (String, String, String, Value, String, Option<String>)>(
-        "SELECT task_id, owner_account_id, target_runtime, schedule_json, next_run_at, next_run_at
+    let rows = query_as::<_, (String, String, String, String, String, Value, Value, String, Option<String>)>(
+        "SELECT task_id, owner_account_id, created_by_account_id, target_runtime, prompt, tool_payload_json, schedule_json, next_run_at, next_run_at
            FROM scheduled_tool_tasks
           WHERE enabled = TRUE AND status = 'active' AND next_run_at IS NOT NULL AND next_run_at <= $1
           ORDER BY next_run_at ASC, task_id ASC
@@ -298,7 +337,18 @@ pub async fn claim_due_scheduled_task_runs(
     .await?;
 
     let mut runs = Vec::new();
-    for (task_id, owner_account_id, target_runtime, schedule_json, next_run_at, due_at_text) in rows {
+    for (
+        task_id,
+        owner_account_id,
+        created_by_account_id,
+        target_runtime,
+        prompt,
+        tool_payload_json,
+        schedule_json,
+        next_run_at,
+        due_at_text,
+    ) in rows
+    {
         let due_at = DateTime::parse_from_rfc3339(
             due_at_text
                 .as_deref()
@@ -306,7 +356,26 @@ pub async fn claim_due_scheduled_task_runs(
         )
         .map_err(|err| protocol_error(format!("invalid next_run_at: {err}")))?
         .with_timezone(&Utc);
-        let run = create_run_for_task(pool, &owner_account_id, &task_id, &target_runtime, due_at, now).await?;
+        let run = create_run_for_task(
+            pool,
+            &owner_account_id,
+            &task_id,
+            &target_runtime,
+            due_at,
+            now,
+        )
+        .await?;
+        if target_runtime == "cloud" {
+            enqueue_cloud_agent_fallback_run_for_scheduled_run(
+                pool,
+                &owner_account_id,
+                &created_by_account_id,
+                &prompt,
+                &tool_payload_json,
+                &run,
+            )
+            .await?;
+        }
         let schedule = parse_schedule(schedule_json)?;
         let next = next_run_after(&schedule, due_at)
             .map_err(|err| protocol_error(err.to_string()))?
