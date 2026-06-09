@@ -231,7 +231,10 @@ test('chat companion split controls live on the divider instead of floating over
 
 test('ask agent opens an explicit side session with neutral copy and reference chip', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const sidePanelStart = source.indexOf('data-chat-side-agent-panel="true"');
+  const sidePanelHeader = source.slice(sidePanelStart, source.indexOf('<ScrollArea', sidePanelStart));
 
+  assert.doesNotMatch(sidePanelHeader, /<GripVertical/);
   assert.match(source, /Ask Agent/);
   assert.match(source, /data-chat-side-agent-panel="true"/);
   assert.match(source, /Reference: Current chat/);

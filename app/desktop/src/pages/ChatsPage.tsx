@@ -987,7 +987,6 @@ export function ChatsPage({
         title={`Drag to move ${companionLabel(companionConversation)} left or right`}
       >
         <div className="flex min-w-0 items-start gap-2">
-          <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex min-w-0 flex-wrap items-start gap-1.5 text-white">
               <span className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6">Ask Agent · {companionConversation.name}</span>
