@@ -236,6 +236,15 @@ fn scheduled_task_store_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
 }
 
 #[test]
+fn scheduled_task_run_now_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
+    let store_source = std::fs::read_to_string("src/scheduled_tasks/store.rs").expect("read scheduled store source");
+    let run_now_start = store_source.find("pub async fn create_scheduled_task_run_now").expect("run now function");
+    let create_run_start = store_source.find("async fn create_run_for_task").expect("create run function");
+    let run_now_source = &store_source[run_now_start..create_run_start];
+    assert!(run_now_source.contains("enqueue_cloud_agent_fallback_run_for_scheduled_run"));
+}
+
+#[test]
 fn scheduled_task_worker_claims_due_jobs_on_interval() {
     let worker = std::fs::read_to_string("src/scheduled_tasks/worker.rs").expect("read worker");
     assert!(worker.contains("scheduled_task_sweep_interval"));

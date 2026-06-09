@@ -242,19 +242,32 @@ pub async fn create_scheduled_task_run_now(
     task_id: &str,
     now: DateTime<Utc>,
 ) -> Result<Option<ScheduledTaskRunResponse>, sqlx_core::Error> {
-    let Some(task) = read_task(pool, owner_account_id, task_id).await? else {
+    let Some((task_id, created_by_account_id, target_runtime, prompt, tool_payload_json)) =
+        query_as::<_, (String, String, String, String, Value)>(
+            "SELECT task_id, created_by_account_id, target_runtime, prompt, tool_payload_json
+               FROM scheduled_tool_tasks
+              WHERE owner_account_id = $1 AND task_id = $2 AND status <> 'deleted'",
+        )
+        .bind(owner_account_id)
+        .bind(task_id)
+        .fetch_optional(pool)
+        .await?
+    else {
         return Ok(None);
     };
-    create_run_for_task(
-        pool,
-        owner_account_id,
-        &task.task_id,
-        &task.target_runtime,
-        now,
-        now,
-    )
-    .await
-    .map(Some)
+    let run = create_run_for_task(pool, owner_account_id, &task_id, &target_runtime, now, now).await?;
+    if target_runtime == "cloud" {
+        enqueue_cloud_agent_fallback_run_for_scheduled_run(
+            pool,
+            owner_account_id,
+            &created_by_account_id,
+            &prompt,
+            &tool_payload_json,
+            &run,
+        )
+        .await?;
+    }
+    Ok(Some(run))
 }
 
 async fn create_run_for_task(
