@@ -39,7 +39,7 @@ impl Tool for SearchSessionsTool {
     }
 
     fn description(&self) -> &str {
-        "Search accessible sessions and conversations for relevant messages."
+        "Search accessible sessions and conversations for relevant messages, prior chats, participants, chat counts, and related conversation history."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -142,7 +142,7 @@ impl Tool for ReadSessionTool {
     }
 
     fn description(&self) -> &str {
-        "Read a bounded window of messages from an accessible session."
+        "Read a bounded window of messages from an accessible session when answering questions about prior or related conversation context."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -251,6 +251,19 @@ mod tests {
             execution_mode: crate::ToolExecutionMode::Interactive,
             request_approval: None,
         }
+    }
+
+    #[test]
+    fn tool_descriptions_cover_implicit_session_questions() {
+        let search_description = SearchSessionsTool.description();
+        assert!(search_description.contains("prior chats"));
+        assert!(search_description.contains("participants"));
+        assert!(search_description.contains("chat counts"));
+        assert!(search_description.contains("related conversation history"));
+
+        let read_description = ReadSessionTool.description();
+        assert!(read_description.contains("prior"));
+        assert!(read_description.contains("related conversation context"));
     }
 
     #[tokio::test]
