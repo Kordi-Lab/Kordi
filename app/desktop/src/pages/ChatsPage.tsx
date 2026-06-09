@@ -1131,11 +1131,19 @@ export function ChatsPage({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => setIsCompanionDetailOpen((open) => !open)}
+            draggable={false}
+            onDragStart={(event) => event.preventDefault()}
+            onPointerDownCapture={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsCompanionDetailOpen((open) => !open);
+            }}
             className="app-icon-button app-utility-button h-7 rounded-full px-2.5 text-[11px] text-slate-100 transition"
             title={isCompanionDetailOpen ? 'Hide side chat details' : 'Open side chat details'}
             aria-label={isCompanionDetailOpen ? 'Hide side chat details' : 'Open side chat details'}
             data-companion-detail-toggle="true"
+            data-kordi-window-drag="false"
           >
             {isCompanionDetailOpen ? 'Hide' : 'Details'}
           </Button>
