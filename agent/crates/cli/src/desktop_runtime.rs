@@ -593,6 +593,13 @@ impl DesktopRuntimeSession {
         self.setup.tool_ctx.reach_out = runtime;
     }
 
+    pub fn set_scheduled_tasks_cloud_runtime(&mut self, api_base: String, token: String) {
+        self.setup.tool_ctx.schedule_task = Some(crate::scheduled_tasks_runtime::build_scheduled_tasks_runtime(
+            api_base,
+            token,
+        ));
+    }
+
     pub fn sync_context_messages(
         &mut self,
         messages: &[DesktopChatContextMessage],
@@ -1144,6 +1151,7 @@ fn build_turn_config(
             reach_out: setup.tool_ctx.reach_out.clone(),
             reflection: setup.tool_ctx.reflection.clone(),
             task_operator: setup.tool_ctx.task_operator.clone(),
+            schedule_task: setup.tool_ctx.schedule_task.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },

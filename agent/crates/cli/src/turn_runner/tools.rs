@@ -492,6 +492,7 @@ fn tool_context_with_output_forwarding(
         reach_out: env.tool_ctx.reach_out.clone(),
         reflection: env.tool_ctx.reflection.clone(),
         task_operator: env.tool_ctx.task_operator.clone(),
+        schedule_task: env.tool_ctx.schedule_task.clone(),
         execution_mode: env.tool_ctx.execution_mode,
         request_approval: env.tool_ctx.request_approval.clone(),
     }

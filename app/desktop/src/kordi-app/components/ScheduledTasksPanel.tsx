@@ -1,8 +1,44 @@
 import type { ScheduledTask } from '@/features/cloud/scheduledTasksClient';
 
-function scheduleLabel(task: ScheduledTask): string {
+type ScheduledTasksPanelProps = {
+  tasks: ScheduledTask[];
+  onPause: (taskId: string) => void;
+  onResume: (taskId: string) => void;
+  onRunNow: (taskId: string) => void;
+  onDelete: (taskId: string) => void;
+  now?: Date;
+  timeZone?: string;
+};
+
+function dateParts(date: Date, timeZone?: string): { day: string; time: string } {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  return {
+    day: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+}
+
+function friendlyInstantLabel(value: string, now: Date, timeZone?: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const scheduled = dateParts(date, timeZone);
+  const current = dateParts(now, timeZone);
+  if (scheduled.day === current.day) return `Today ${scheduled.time}`;
+  return `${scheduled.day} ${scheduled.time}`;
+}
+
+function scheduleLabel(task: ScheduledTask, now: Date, timeZone?: string): string {
   if (task.schedule.kind === 'daily') return `Daily at ${task.schedule.time} ${task.schedule.timezone ?? 'UTC'}`;
-  return `Once at ${task.schedule.at}`;
+  return friendlyInstantLabel(task.schedule.at, now, timeZone);
 }
 
 function runtimeLabel(task: ScheduledTask): string {
@@ -21,13 +57,9 @@ export function ScheduledTasksPanel({
   onResume,
   onRunNow,
   onDelete,
-}: {
-  tasks: ScheduledTask[];
-  onPause: (taskId: string) => void;
-  onResume: (taskId: string) => void;
-  onRunNow: (taskId: string) => void;
-  onDelete: (taskId: string) => void;
-}) {
+  now = new Date(),
+  timeZone,
+}: ScheduledTasksPanelProps) {
   return (
     <section className="app-scheduled-tools-panel grid gap-3">
       <header className="grid gap-1">
@@ -45,7 +77,7 @@ export function ScheduledTasksPanel({
               <div className="flex items-start justify-between gap-3">
                 <div className="grid gap-1">
                   <h3 className="text-[14px] font-semibold text-foreground">{task.title}</h3>
-                  <p className="text-[12px] text-muted-foreground">{scheduleLabel(task)} · {runtimeLabel(task)}</p>
+                  <p className="text-[12px] text-muted-foreground">{scheduleLabel(task, now, timeZone)} · {runtimeLabel(task)}</p>
                   <p className="text-[12px] text-muted-foreground">{statusLabel(task)}</p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-1.5">

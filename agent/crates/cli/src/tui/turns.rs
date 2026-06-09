@@ -186,6 +186,7 @@ impl TuiController {
                 reach_out: self.session_setup.tool_ctx.reach_out.clone(),
                 reflection: None,
                 task_operator: None,
+                schedule_task: self.session_setup.tool_ctx.schedule_task.clone(),
                 execution_mode: self.session_setup.tool_ctx.execution_mode,
                 request_approval: self.session_setup.tool_ctx.request_approval.clone(),
             },

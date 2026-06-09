@@ -144,6 +144,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             session_id.clone(),
             sibling_conn.clone(),
         )),
+        schedule_task: None,
         execution_mode: kordi_tools::ToolExecutionMode::NonInteractive,
         request_approval: None,
     };

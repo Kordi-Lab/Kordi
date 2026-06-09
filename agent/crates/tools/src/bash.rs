@@ -360,6 +360,7 @@ mod tests {
             reach_out: None,
             reflection: None,
             task_operator: None,
+            schedule_task: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: Some(Arc::new(|_| {
                 Box::pin(async {
