@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use chrono::{TimeZone, Utc};
 use kordi_cloud_server::events::EventBus;
@@ -17,7 +17,7 @@ use kordi_cloud_server::scheduled_tasks::store::{
     claim_due_scheduled_task_runs, create_scheduled_task, create_scheduled_task_run_now,
     list_scheduled_tasks, pause_scheduled_task, resume_scheduled_task, soft_delete_scheduled_task,
 };
-use kordi_cloud_server::server::{router, ServerState};
+use kordi_cloud_server::server::{ServerState, router};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -155,10 +155,12 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
         .await
         .expect("delete");
     assert!(deleted);
-    assert!(list_scheduled_tasks(&pool, &account_id)
-        .await
-        .expect("list after delete")
-        .is_empty());
+    assert!(
+        list_scheduled_tasks(&pool, &account_id)
+            .await
+            .expect("list after delete")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -236,17 +238,33 @@ fn scheduled_task_store_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
 }
 
 #[test]
+fn cloud_agent_scheduled_responses_are_written_to_cloud_sync_events() {
+    let runs_source = std::fs::read_to_string("src/cloud_agent_runtime/runs.rs")
+        .expect("read cloud agent runs source");
+    assert!(runs_source.contains("INSERT INTO cloud_sync_events"));
+    assert!(runs_source.contains("message.upsert"));
+    assert!(runs_source.contains("\"messageId\""));
+    assert!(runs_source.contains("\"sessionId\""));
+}
+
+#[test]
 fn cloud_agent_completion_updates_scheduled_task_run_status() {
-    let runs_source = std::fs::read_to_string("src/cloud_agent_runtime/runs.rs").expect("read cloud agent runs source");
+    let runs_source = std::fs::read_to_string("src/cloud_agent_runtime/runs.rs")
+        .expect("read cloud agent runs source");
     assert!(runs_source.contains("mark_scheduled_task_run_completed"));
     assert!(runs_source.contains("mark_scheduled_task_run_failed"));
 }
 
 #[test]
 fn scheduled_task_run_now_enqueues_cloud_agent_fallback_runs_for_cloud_jobs() {
-    let store_source = std::fs::read_to_string("src/scheduled_tasks/store.rs").expect("read scheduled store source");
-    let run_now_start = store_source.find("pub async fn create_scheduled_task_run_now").expect("run now function");
-    let create_run_start = store_source.find("async fn create_run_for_task").expect("create run function");
+    let store_source = std::fs::read_to_string("src/scheduled_tasks/store.rs")
+        .expect("read scheduled store source");
+    let run_now_start = store_source
+        .find("pub async fn create_scheduled_task_run_now")
+        .expect("run now function");
+    let create_run_start = store_source
+        .find("async fn create_run_for_task")
+        .expect("create run function");
     let run_now_source = &store_source[run_now_start..create_run_start];
     assert!(run_now_source.contains("enqueue_cloud_agent_fallback_run_for_scheduled_run"));
 }
@@ -335,9 +353,11 @@ async fn run_now_and_due_claim_separate_cloud_and_local_required_runs() {
         .find(|run| run.task_id == cloud.task_id)
         .expect("cloud run");
     assert_eq!(cloud_run.status, "queued");
-    assert!(claimed
-        .iter()
-        .any(|run| run.task_id == local.task_id && run.status == "waiting_for_desktop"));
+    assert!(
+        claimed
+            .iter()
+            .any(|run| run.task_id == local.task_id && run.status == "waiting_for_desktop")
+    );
 
     let fallback: (String, String, String, String, String) = query_as(
         "SELECT idempotency_key, request_message_id, session_id, status, prompt FROM cloud_agent_fallback_runs WHERE idempotency_key = $1",
