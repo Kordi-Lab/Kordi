@@ -9,7 +9,7 @@ import {
   buildAskAgentSessionReferenceContext,
   chatSideAgentConversationForOpenRequest,
   cloudSelfAgentSyncStatusLabel,
-  humanSideFromCompanionDrop,
+  humanSideForCompanionSide,
   pairedCompanionConversation,
   parseAskAgentTriggerCommand,
 } from '../src/pages/ChatsPage';
@@ -164,13 +164,11 @@ test('chat companion drag drop chooses the target side from the drop half', () =
   assert.equal(chatCompanionSideFromDropPosition(150, 100, 100), 'right');
 });
 
-test('chat companion side keeps human and agent absolute positions stable', () => {
+test('ask agent side defaults to the right for both human and agent main sessions', () => {
   assert.equal(chatCompanionSideForPaneKinds('human', 'left'), 'right');
-  assert.equal(chatCompanionSideForPaneKinds('agent', 'left'), 'left');
-  assert.equal(chatCompanionSideForPaneKinds('human', 'right'), 'left');
   assert.equal(chatCompanionSideForPaneKinds('agent', 'right'), 'right');
-  assert.equal(humanSideFromCompanionDrop('human', 'left'), 'left');
-  assert.equal(humanSideFromCompanionDrop('agent', 'left'), 'right');
+  assert.equal(humanSideForCompanionSide('human', 'right'), 'left');
+  assert.equal(humanSideForCompanionSide('agent', 'right'), 'right');
 });
 
 test('chat companion candidates treat owned-agent chats with human participants as agents', () => {

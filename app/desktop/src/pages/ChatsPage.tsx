@@ -367,11 +367,12 @@ export function chatCompanionSideForPaneKinds(
   return oppositeCompanionSide(humanSide);
 }
 
-export function humanSideFromCompanionDrop(
-  companionKind: 'human' | 'agent' | null,
-  droppedSide: CompanionSide,
+export function humanSideForCompanionSide(
+  activeKind: 'human' | 'agent' | null,
+  companionSide: CompanionSide,
 ): CompanionSide {
-  return companionKind === 'human' ? droppedSide : oppositeCompanionSide(droppedSide);
+  if (activeKind === 'agent') return companionSide;
+  return oppositeCompanionSide(companionSide);
 }
 
 export function chatCompanionSideFromDropPosition(clientX: number, left: number, width: number): CompanionSide {
@@ -878,7 +879,7 @@ export function ChatsPage({
     if (!isDraggingCompanion) return;
     event.preventDefault();
     const side = updateCompanionDropPreview(event);
-    if (side) setHumanPaneSide(humanSideFromCompanionDrop(companionPaneKind, side));
+    if (side) setHumanPaneSide(humanSideForCompanionSide(activePaneKind, side));
     setIsDraggingCompanion(false);
     setCompanionDropPreviewSide(null);
   };
@@ -910,6 +911,7 @@ export function ChatsPage({
     if (!onCreateAgentSession) return false;
     const createdConversationId = await onCreateAgentSession();
     if (!createdConversationId) return false;
+    setHumanPaneSide(humanSideForCompanionSide(activePaneKind, 'right'));
     setOpenSideAgentConversationId(createdConversationId);
     setSelectedCompanionConversationId(createdConversationId);
     setSideAgentReferenceContext(buildAskAgentSessionReferenceContext(activeConv));
@@ -926,6 +928,7 @@ export function ChatsPage({
     }
     const targetConversation = selectedCompanionConversation ?? suggestedSideAgentConversation;
     if (!targetConversation) return false;
+    setHumanPaneSide(humanSideForCompanionSide(activePaneKind, 'right'));
     setOpenSideAgentConversationId(targetConversation.id);
     setSelectedCompanionConversationId(targetConversation.id);
     setSideAgentReferenceContext(buildAskAgentSessionReferenceContext(activeConv));
