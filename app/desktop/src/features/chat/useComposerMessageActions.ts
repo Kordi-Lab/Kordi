@@ -23,6 +23,7 @@ type UseComposerMessageActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'isNativeShell'
   | 'activeConversationIsBridge'
+  | 'chatConversations'
   | 'activeConvId'
   | 'activeConvCanonicalSessionId'
   | 'activeConvMessages'
@@ -83,6 +84,7 @@ type UseComposerMessageActionsArgs = Pick<
 export function useComposerMessageActions({
   isNativeShell,
   activeConversationIsBridge,
+  chatConversations,
   activeConvId,
   activeConvCanonicalSessionId,
   activeConvMessages,
@@ -209,6 +211,7 @@ export function useComposerMessageActions({
     activeConvId,
     activeConvMessages,
     activeConvMentionScope,
+    chatConversations,
     attachmentSummaryText,
     canonicalSessionState,
     hasAnyDesktopAuth,

@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { ComposerScope, Conversation, DesktopChatState, ResolvedThemeMode } from '@/kordi-app/types';
+import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 
 type UseKordiShellViewModelArgs = {
@@ -19,7 +20,7 @@ type UseKordiShellViewModelArgs = {
   selectComposerProviderChoice: (scope: ComposerScope, option: ComposerProviderOption) => Promise<void>;
   handleStopDesktopChatTurn: () => Promise<void> | void;
   handleSendProjectMessage: (draftOverride?: string) => Promise<void> | void;
-  handleSendChatMessage: (draftOverride?: string) => Promise<void> | void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => Promise<void> | void;
 };
 
 export function useKordiShellViewModel({
@@ -82,8 +83,8 @@ export function useKordiShellViewModel({
     void handleSendProjectMessage(draftOverride);
   }, [handleSendProjectMessage]);
 
-  const wrappedSendChatMessage = useCallback((draftOverride?: string) => {
-    void handleSendChatMessage(draftOverride);
+  const wrappedSendChatMessage = useCallback((draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => {
+    void handleSendChatMessage(draftOverride, targetSessionId, contextMessages);
   }, [handleSendChatMessage]);
 
   return {

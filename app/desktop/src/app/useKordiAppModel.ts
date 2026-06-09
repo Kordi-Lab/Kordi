@@ -90,13 +90,14 @@ import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/
 import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, Message, ParticipantSpaceViewModel } from '@/kordi-app/types';
-import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import type { BridgeSettingsDraft, BridgeWizardDraft } from '@/app/kordiShellSlots.types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
 import {
   addCanonicalSessionParticipants,
   appendCanonicalMessage,
   archiveDesktopChatSession,
+  createDesktopChatSession,
   createDesktopProject,
   createDesktopProjectFromFolder,
   fetchCanonicalSessionState,
@@ -1285,6 +1286,7 @@ export function useKordiAppModel({
   } = useComposerController({
     isNativeShell,
     activeConversationIsBridge,
+    chatConversations,
     // Pass the SAME chatDraftSessionId the reader uses (see composerDraftsView
     // above). Passing `activeConv.id` here while reading under raw activeConvId
     // was the bug — read/write keys diverged when raw activeConvId was empty
@@ -1348,9 +1350,11 @@ export function useKordiAppModel({
     setActiveConvId,
   });
 
-  const handleSendChatMessageWithQuoteClear = useCallback((draftOverride?: string) => (
+  const handleSendChatMessageWithQuoteClear = useCallback((draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => (
     sendChatMessageWithImmediateQuoteClear({
       draftOverride,
+      targetSessionId,
+      contextMessages,
       currentDraft: composerDraftsView.chat,
       attachmentCount: composerUi.chatComposerAttachments.length,
       activeChatQuote,
@@ -2308,6 +2312,29 @@ export function useKordiAppModel({
     handleSendProjectMessage,
     handleSendChatMessage: handleSendChatMessageWithQuoteClear,
   });
+  const setChatComposerTextForSession = useCallback((sessionId: string, value: string) => {
+    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, value));
+  }, [composerUi.setComposerDrafts]);
+
+  const handleCreateSideAgentSession = useCallback(async () => {
+    if (!isNativeShell) return null;
+    try {
+      setDesktopChatError(null);
+      const previousActiveSessionId = desktopChatState?.activeSessionId ?? null;
+      const nextState = await createDesktopChatSession();
+      const sessionId = nextState.activeSessionId?.trim() || null;
+      setDesktopChatState(previousActiveSessionId
+        ? { ...nextState, activeSessionId: previousActiveSessionId }
+        : nextState);
+      if (sessionId) {
+        composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
+      }
+      return sessionId;
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to create agent session');
+      return null;
+    }
+  }, [composerUi.setComposerDrafts, desktopChatState?.activeSessionId, isNativeShell, setDesktopChatError, setDesktopChatState]);
 
   const shellArgs = useKordiShellArgs({
     isNativeShell,
@@ -2329,6 +2356,8 @@ export function useKordiAppModel({
     collapseChatSessions,
     showSessionRail,
     sessionRailWidth,
+    detailRailWidth,
+    onDetailResizeMouseDown: startPanelResize('detail'),
     chatConversations,
     isDesktopChatLoading,
     desktopChatError,
@@ -2337,6 +2366,7 @@ export function useKordiAppModel({
     contactParticipantSpaces,
     agentParticipantSpaces,
     handleCreateChatSession,
+    handleCreateSideAgentSession,
     handleSelectChatSession,
     handleStartChatWithPerson,
     handleStartChatWithAgent,
@@ -2497,6 +2527,7 @@ export function useKordiAppModel({
     updateChatComposerDraft: (value, target) => updateComposerDraft('chat', value, target),
     setProjectComposerText,
     setChatComposerText,
+    setChatComposerTextForSession,
     activeChatQuote,
     onClearChatQuote,
     onReplyMessage,
@@ -2609,7 +2640,7 @@ export function useKordiAppModel({
     isSingleWorkspacePage,
     showSessionRail,
     collapseChatSessions,
-    showRightDetailRail,
+    showRightDetailRail: activeNav === 'chats' ? false : showRightDetailRail,
     isDetailPanelCollapsed,
     detailRailWidth,
     onSessionResizeMouseDown: startPanelResize('session'),

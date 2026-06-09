@@ -39,6 +39,7 @@ export type PendingUserMessage = { text: string; time: string } | null;
 export type UseComposerControllerArgs = {
   isNativeShell: boolean;
   activeConversationIsBridge: boolean;
+  chatConversations: Conversation[];
   activeConvId: string;
   activeConvCanonicalSessionId?: string | null;
   activeConvMessages: Message[];

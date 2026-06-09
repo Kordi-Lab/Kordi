@@ -1,10 +1,11 @@
-import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
+import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react';
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type {
   Agent,
   BridgeAgentRequestControl,
@@ -84,6 +85,7 @@ export type AssembleKordiShellSlotsArgs = {
   filteredConversations: Conversation[];
   setActiveNav: Dispatch<SetStateAction<'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings'>>;
   handleCreateChatSession: () => Promise<void>;
+  handleCreateSideAgentSession: () => Promise<string | null>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
   runtimeProjects: Project[];
@@ -240,6 +242,8 @@ export type AssembleKordiShellSlotsArgs = {
   isDetailPanelCollapsed: boolean;
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
   setIsSessionPanelCollapsed: Dispatch<SetStateAction<boolean>>;
+  detailRailWidth: number;
+  onDetailResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   activeProject: Project;
   activeProjectSession: Project['sessions'][number];
   desktopSessionRenameDraft: string;
@@ -280,6 +284,7 @@ export type AssembleKordiShellSlotsArgs = {
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setProjectComposerText: (value: string) => void;
   setChatComposerText: (value: string) => void;
+  setChatComposerTextForSession: (sessionId: string, value: string) => void;
   activeChatQuote: ComposerQuoteState | null;
   onClearChatQuote: () => void;
   onReplyMessage: (message: Message) => void;
@@ -317,7 +322,7 @@ export type AssembleKordiShellSlotsArgs = {
   handleStopDesktopChatTurn: () => void;
   handleStopBridgeAgentRequest: (request: BridgeAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
-  handleSendChatMessage: (draftOverride?: string) => void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => void;
   handleForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   showChatDetailRail: boolean;
   activeDetailTab: DetailTab;
@@ -434,6 +439,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'cloudSession'
   | 'chatConversations'
   | 'handleCreateChatSession'
+  | 'handleCreateSideAgentSession'
   | 'handleSelectChatSession'
   | 'handleStartChatWithAgent'
   | 'filteredGroupedContacts'
@@ -531,6 +537,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showRightDetailRail'
   | 'isDetailPanelCollapsed'
   | 'setIsDetailPanelCollapsed'
+  | 'detailRailWidth'
+  | 'onDetailResizeMouseDown'
   | 'activeProject'
   | 'activeProjectSession'
   | 'desktopSessionRenameDraft'
@@ -590,6 +598,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'
+  | 'setChatComposerTextForSession'
   | 'activeChatQuote'
   | 'onClearChatQuote'
   | 'onReplyMessage'
@@ -617,7 +626,9 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeBridgeAwaitingReply'
   | 'lastBridgePollAtLabel'
   | 'isBridgePolling'
->;
+> & {
+  rightDetailRail?: ReactNode;
+};
 
 export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isNativeShell'
