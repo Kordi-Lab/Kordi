@@ -3,6 +3,7 @@ import { CheckCircle2, Circle, CornerDownLeft, FileText, XCircle } from 'lucide-
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
 import type { ConversationParticipant, DesktopChatTurnSnapshot, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
+import type { ScheduledTask } from '@/features/cloud/scheduledTasksClient';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
 import { cn } from '@/lib/utils';
 
@@ -28,9 +29,12 @@ type TaskActivityDashboardPanelProps = {
   emptyMessage: string;
   artifacts?: SessionArtifact[];
   taskActivities?: SessionTaskActivity[];
+  scheduledTasks?: ScheduledTask[];
   targetParticipants?: TaskTargetParticipant[];
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
+  now?: Date;
+  timeZone?: string;
 };
 
 function statusCheckboxClass(tone: TaskDashboardTone) {
@@ -419,6 +423,80 @@ function taskActivityToDashboardItem(activity: SessionTaskActivity, targetPartic
   };
 }
 
+function scheduledDateParts(date: Date, timeZone?: string): { day: string; time: string } {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  return {
+    day: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+}
+
+function friendlyScheduledInstantLabel(value: string, now: Date, timeZone?: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const scheduled = scheduledDateParts(date, timeZone);
+  const current = scheduledDateParts(now, timeZone);
+  if (scheduled.day === current.day) return `Today ${scheduled.time}`;
+  return `${scheduled.day} ${scheduled.time}`;
+}
+
+function scheduledTaskScheduleLabel(task: ScheduledTask, now: Date, timeZone?: string): string {
+  if (task.schedule.kind === 'daily') return `Daily at ${task.schedule.time} ${task.schedule.timezone ?? 'UTC'}`;
+  return friendlyScheduledInstantLabel(task.schedule.at, now, timeZone);
+}
+
+function scheduledTaskRuntimeLabel(task: ScheduledTask): string {
+  return task.targetRuntime === 'local_required' ? 'Requires Desktop' : 'Cloud';
+}
+
+function scheduledTaskStatusLabel(task: ScheduledTask): string {
+  if (task.lastRunStatus === 'waiting_for_desktop') return 'Waiting for Desktop';
+  if (task.status === 'paused') return 'Paused';
+  if (task.lastRunStatus) return task.lastRunStatus.replace(/_/g, ' ');
+  return 'Scheduled';
+}
+
+function scheduledTaskDashboardStatus(task: ScheduledTask): TaskDashboardItem['status'] {
+  if (task.status === 'paused') return 'waiting';
+  if (task.lastRunStatus === 'completed') return 'completed';
+  if (task.lastRunStatus === 'failed') return 'failed';
+  return 'planned';
+}
+
+function scheduledTaskToDashboardItem(task: ScheduledTask, now: Date, timeZone?: string): TaskDashboardItemWithParticipants {
+  const status = scheduledTaskDashboardStatus(task);
+  return {
+    id: `scheduled:${task.taskId}`,
+    title: task.title,
+    summary: scheduledTaskStatusLabel(task),
+    status,
+    statusLabel: scheduledTaskStatusLabel(task),
+    tone: dashboardToneFromStatus(status),
+    target: null,
+    writeScope: [],
+    live: false,
+    timeLabel: `${scheduledTaskScheduleLabel(task, now, timeZone)} · ${scheduledTaskRuntimeLabel(task)}`,
+    startedAtMs: null,
+    responseMessageId: null,
+    taskId: task.taskId,
+    artifactIds: [],
+    involvedParticipantNames: [],
+    targetParticipants: [],
+    subtasks: [],
+    subtaskCount: 0,
+    activeSubtaskCount: 0,
+  };
+}
+
 function TaskRow({
   task,
   artifacts,
@@ -515,7 +593,7 @@ function mergeTaskTargetParticipants(participants: TaskTargetParticipant[]) {
   return [...byKey.values()];
 }
 
-export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse }: TaskActivityDashboardPanelProps) {
+export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], scheduledTasks = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse, now = new Date(), timeZone }: TaskActivityDashboardPanelProps) {
   // Conversation message arrays can be updated in place while Bridge/canonical polling is active.
   // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
   // as the transcript rerenders, even if the array identity did not change.
@@ -529,10 +607,11 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, a
     profileImageUrl: participant.profileImageUrl,
   })));
   const mergedTargetParticipants = mergeTaskTargetParticipants([...activityTargetParticipants, ...targetParticipants]);
+  const scheduledRows = dedupeTaskRowsByKeys(scheduledTasks.map((task) => scheduledTaskToDashboardItem(task, now, timeZone)));
   const taskActivityRows = dedupeTaskRowsByKeys(taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants)));
-  const existingTaskKeys = new Set(taskActivityRows.flatMap(taskDedupeKeys));
+  const existingTaskKeys = new Set([...scheduledRows, ...taskActivityRows].flatMap(taskDedupeKeys));
   const localRows = dashboard.tasks.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)));
-  const tasks = [...taskActivityRows, ...localRows];
+  const tasks = [...scheduledRows, ...taskActivityRows, ...localRows];
 
   return (
     <section className="app-detail-section">

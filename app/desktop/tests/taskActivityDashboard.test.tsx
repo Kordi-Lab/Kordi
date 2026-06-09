@@ -29,6 +29,35 @@ function userMessage(text: string, id = `user:${text.slice(0, 16)}`): Message {
   };
 }
 
+test('right-panel task dashboard renders scheduled jobs as normal task rows', () => {
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [],
+    emptyMessage: 'No tasks',
+    now: new Date('2026-06-09T08:00:00Z'),
+    timeZone: 'UTC',
+    scheduledTasks: [{
+      taskId: 'scheduled_task_disk',
+      title: 'Check disk usage',
+      prompt: 'Check local disk usage and save the result.',
+      schedule: { kind: 'once', at: '2026-06-09T12:00:00Z' },
+      targetRuntime: 'local_required',
+      enabled: true,
+      status: 'active',
+      nextRunAt: '2026-06-09T12:00:00Z',
+      lastRunAt: null,
+      lastRunStatus: 'waiting_for_desktop',
+      lastRunError: null,
+      createdAt: '2026-06-09T08:00:00Z',
+      updatedAt: '2026-06-09T08:00:00Z',
+    }],
+  }));
+
+  assert.match(markup, /Check disk usage/);
+  assert.match(markup, /Today 12:00 · Requires Desktop/);
+  assert.match(markup, /Waiting for Desktop/);
+  assert.doesNotMatch(markup, /Scheduled tools/);
+});
+
 test('right-panel Cloud task rows show stable task id instead of repeating the title', () => {
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [],
@@ -447,7 +476,14 @@ test('task panel uses the matched canonical participant avatar instead of a fall
   const withMatchedParticipant = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [assistantTurnMessage(turn)],
     emptyMessage: 'No tasks',
-    targetParticipants: [{ id: 'human:user-2', name: 'Kordi User 2', kind: 'human', role: 'person', avatarKey: 'different-local-key' }],
+    targetParticipants: [{
+      id: 'human:user-2',
+      name: 'Kordi User 2',
+      kind: 'human',
+      role: 'person',
+      avatarKey: 'different-local-key',
+      profileImageUrl: 'https://example.test/kordi-user-2.png',
+    }],
   }));
   const withFallbackParticipant = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [assistantTurnMessage(turn)],
@@ -455,7 +491,8 @@ test('task panel uses the matched canonical participant avatar instead of a fall
     targetParticipants: [],
   }));
 
-  assert.notEqual(withMatchedParticipant, withFallbackParticipant);
+  assert.match(withMatchedParticipant, /kordi-user-2\.png/);
+  assert.doesNotMatch(withFallbackParticipant, /kordi-user-2\.png/);
 });
 
 test('task dashboard creates and closes durable task_operator task events by task id', () => {

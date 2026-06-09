@@ -7,7 +7,6 @@ import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, Desk
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
-import { ScheduledTasksPanel } from '@/kordi-app/components/ScheduledTasksPanel';
 import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 
@@ -410,24 +409,18 @@ function ChatDetailPanelView({
 
   return (
     <div className="app-detail-sheet">
-      <ScheduledTasksPanel
-        tasks={scheduledTasks.tasks}
-        onPause={(taskId) => { void scheduledTasks.pause(taskId); }}
-        onResume={(taskId) => { void scheduledTasks.resume(taskId); }}
-        onRunNow={(taskId) => { void scheduledTasks.runNow(taskId); }}
-        onDelete={(taskId) => { void scheduledTasks.remove(taskId); }}
-      />
-      {scheduledTasks.error ? <div className="app-inspector-empty">{scheduledTasks.error}</div> : null}
       <TaskActivityDashboardPanel
         messages={activeConv.messages}
         liveTurn={activeLiveTurn?.sessionId === activeSessionId ? activeLiveTurn : null}
         taskActivities={activeConv.taskActivities ?? []}
+        scheduledTasks={scheduledTasks.tasks}
         targetParticipants={activeConv.canonicalParticipants ?? []}
         emptyMessage={activeConversationIsBridge ? 'No planning or execution task activity in this chat yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}
         onOpenArtifact={onOpenArtifact}
         onNavigateToResponse={onNavigateToResponse}
       />
+      {scheduledTasks.error ? <div className="app-inspector-empty">{scheduledTasks.error}</div> : null}
     </div>
   );
 }
