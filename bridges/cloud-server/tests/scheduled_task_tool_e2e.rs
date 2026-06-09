@@ -2,8 +2,14 @@
 //! available and skip on developer machines without Postgres, matching the
 //! existing cloud-server e2e test pattern.
 
+use std::sync::Arc;
+
+use axum::body::{to_bytes, Body};
+use axum::http::{Request, StatusCode};
 use chrono::{TimeZone, Utc};
+use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
+use kordi_cloud_server::server::{router, ServerState};
 use kordi_cloud_server::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskTargetRuntime,
 };
@@ -14,6 +20,7 @@ use kordi_cloud_server::scheduled_tasks::store::{
 };
 use sqlx_core::query::query;
 use sqlx_postgres::PgPool;
+use tower::util::ServiceExt;
 
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
@@ -24,6 +31,49 @@ async fn try_pool() -> Option<PgPool> {
             None
         }
     }
+}
+
+fn unique_email(prefix: &str) -> String {
+    format!("{prefix}-{}@e2e.local", uuid::Uuid::new_v4().simple())
+}
+
+fn signup_body(email: &str, password: &str) -> Body {
+    Body::from(
+        serde_json::json!({
+            "email": email,
+            "password": password,
+            "displayName": "Scheduled Tool E2E",
+            "avatarUrl": "data:image/png;base64,iVBORw0KGgo=",
+        })
+        .to_string(),
+    )
+}
+
+fn post(uri: &str, body: Body) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(body)
+        .unwrap()
+}
+
+fn post_json_with_token(uri: &str, token: &str, body: serde_json::Value) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
+async fn read_json(response: axum::response::Response) -> serde_json::Value {
+    let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    if bytes.is_empty() {
+        return serde_json::Value::Null;
+    }
+    serde_json::from_slice(&bytes).unwrap()
 }
 
 async fn seed_account(pool: &PgPool, account_id: &str) {
@@ -79,6 +129,60 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
     let deleted = soft_delete_scheduled_task(&pool, &account_id, &task.task_id).await.expect("delete");
     assert!(deleted);
     assert!(list_scheduled_tasks(&pool, &account_id).await.expect("list after delete").is_empty());
+}
+
+#[tokio::test]
+async fn scheduled_task_tool_api_creates_local_required_task_and_run_now_waits_for_desktop() {
+    let Some(pool) = try_pool().await else { return };
+    let email = unique_email("scheduled-tool-create");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let app = router(state);
+
+    let signup_response = app
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(signup_response.status(), StatusCode::OK);
+    let signup_json = read_json(signup_response).await;
+    let token = signup_json["session"]["token"].as_str().expect("session token");
+
+    let create_response = app
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/scheduled-tasks",
+            token,
+            serde_json::json!({
+                "title": "Morning local check",
+                "prompt": "Check my Downloads folder every morning when my Mac is online.",
+                "schedule": { "kind": "daily", "time": "09:00", "timezone": "UTC" },
+                "targetRuntime": "localRequired",
+                "toolPayload": { "tool": "agent.run", "requiresLocalMac": true }
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::OK);
+    let create_json = read_json(create_response).await;
+    assert_eq!(create_json["task"]["title"], "Morning local check");
+    assert_eq!(create_json["task"]["targetRuntime"], "local_required");
+    let task_id = create_json["task"]["taskId"].as_str().expect("task id");
+
+    let run_response = app
+        .oneshot(post_json_with_token(
+            &format!("/v1/cloud/scheduled-tasks/{task_id}/run-now"),
+            token,
+            serde_json::json!({}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(run_response.status(), StatusCode::OK);
+    let run_json = read_json(run_response).await;
+    assert_eq!(run_json["run"]["taskId"], task_id);
+    assert_eq!(run_json["run"]["status"], "waiting_for_desktop");
 }
 
 #[test]
