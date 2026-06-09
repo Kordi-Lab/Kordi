@@ -93,6 +93,23 @@ fn policy_allows_public_remote_web_but_blocks_private_networks() {
 }
 
 #[test]
+fn web_fetch_private_url_is_blocked_in_cloud_runner() {
+    let request = RunnerToolRequest {
+        tool_name: "web_fetch",
+        path_args: Vec::new(),
+        url_args: vec!["http://127.0.0.1:1420/private"],
+        requester_account_id: "acct_requester",
+        owner_account_id: "acct_owner",
+        data_owner_account_id: None,
+    };
+
+    assert_eq!(
+        decide_runner_tool(&request),
+        RunnerToolDecision::Block(RunnerToolBlockReason::PrivateNetwork)
+    );
+}
+
+#[test]
 fn policy_blocks_unsupported_tools_and_other_user_data() {
     let outreach = ctx_request("reach_out");
     assert_eq!(

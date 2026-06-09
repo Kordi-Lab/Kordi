@@ -381,6 +381,15 @@ async fn model_loop_executes_local_web_fetch_tool_in_cloud_sandbox() {
     assert!(content.contains("Source text from controlled server"), "content was: {content}");
 }
 
+#[test]
+fn cloud_executor_routes_web_search_to_local_tool_not_placeholder() {
+    let source = std::fs::read_to_string("src/tools.rs").expect("read cloud runner tools source");
+    assert!(source.contains("WebSearchTool"));
+    assert!(source.contains("WebFetchTool"));
+    assert!(!source.contains("RemoteWebAllowed"));
+    assert!(!source.contains("remote web access is allowed by policy"));
+}
+
 #[tokio::test]
 async fn model_loop_exports_artifact_when_requested() {
     let client = RecordingClient::default();
