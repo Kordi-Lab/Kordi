@@ -9,14 +9,15 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::auth::routes::{cloud_session_middleware, CloudSession};
+use crate::auth::routes::{CloudSession, cloud_session_middleware};
 use crate::cloud_agent_runtime::routes::runner_authorized_for_scheduled_tasks;
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
 };
 use crate::scheduled_tasks::store::{
     claim_due_scheduled_task_runs, create_scheduled_task, create_scheduled_task_run_now,
-    list_scheduled_tasks, pause_scheduled_task, resume_scheduled_task, soft_delete_scheduled_task,
+    list_scheduled_task_runs, list_scheduled_tasks, pause_scheduled_task, resume_scheduled_task,
+    soft_delete_scheduled_task,
 };
 use crate::server::ServerState;
 
@@ -53,11 +54,24 @@ struct ClaimRunsRequest {
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
-        .route("/v1/cloud/scheduled-tasks", get(list_tasks).post(create_task))
+        .route(
+            "/v1/cloud/scheduled-tasks",
+            get(list_tasks).post(create_task),
+        )
         .route("/v1/cloud/scheduled-tasks/:task_id", delete(delete_task))
         .route("/v1/cloud/scheduled-tasks/:task_id/pause", post(pause_task))
-        .route("/v1/cloud/scheduled-tasks/:task_id/resume", post(resume_task))
-        .route("/v1/cloud/scheduled-tasks/:task_id/run-now", post(run_task_now))
+        .route(
+            "/v1/cloud/scheduled-tasks/:task_id/resume",
+            post(resume_task),
+        )
+        .route(
+            "/v1/cloud/scheduled-tasks/:task_id/run-now",
+            post(run_task_now),
+        )
+        .route(
+            "/v1/cloud/scheduled-tasks/:task_id/runs",
+            get(list_task_runs),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
@@ -206,7 +220,9 @@ async fn run_task_now(
     Extension(session): Extension<CloudSession>,
     Path(task_id): Path<String>,
 ) -> Response {
-    match create_scheduled_task_run_now(state.db_pool(), &session.account_id, &task_id, Utc::now()).await {
+    match create_scheduled_task_run_now(state.db_pool(), &session.account_id, &task_id, Utc::now())
+        .await
+    {
         Ok(Some(run)) => Json(ScheduledTaskRunEnvelope { run }).into_response(),
         Ok(None) => error_response(
             "scheduled_task_not_found",
@@ -218,6 +234,24 @@ async fn run_task_now(
             error_response(
                 "server_error",
                 "Could not run scheduled task.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
+
+async fn list_task_runs(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(task_id): Path<String>,
+) -> Response {
+    match list_scheduled_task_runs(state.db_pool(), &session.account_id, &task_id, 20).await {
+        Ok(runs) => Json(ScheduledTaskRunsEnvelope { runs }).into_response(),
+        Err(err) => {
+            eprintln!("[scheduled_tasks] list runs: {err}");
+            error_response(
+                "server_error",
+                "Could not list scheduled task runs.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
         }

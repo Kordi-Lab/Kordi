@@ -414,6 +414,7 @@ function ChatDetailPanelView({
         liveTurn={activeLiveTurn?.sessionId === activeSessionId ? activeLiveTurn : null}
         taskActivities={activeConv.taskActivities ?? []}
         scheduledTasks={scheduledTasks.tasks}
+        scheduledRunsByTaskId={scheduledTasks.runsByTaskId}
         targetParticipants={activeConv.canonicalParticipants ?? []}
         emptyMessage={activeConversationIsBridge ? 'No planning or execution task activity in this chat yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}

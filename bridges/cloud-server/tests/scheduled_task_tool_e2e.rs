@@ -15,7 +15,8 @@ use kordi_cloud_server::scheduled_tasks::models::{
 use kordi_cloud_server::scheduled_tasks::schedule::ScheduledTaskSchedule;
 use kordi_cloud_server::scheduled_tasks::store::{
     claim_due_scheduled_task_runs, create_scheduled_task, create_scheduled_task_run_now,
-    list_scheduled_tasks, pause_scheduled_task, resume_scheduled_task, soft_delete_scheduled_task,
+    list_scheduled_task_runs, list_scheduled_tasks, pause_scheduled_task, resume_scheduled_task,
+    soft_delete_scheduled_task,
 };
 use kordi_cloud_server::server::{ServerState, router};
 use sqlx_core::query::query;
@@ -281,13 +282,64 @@ fn scheduled_task_worker_claims_due_jobs_on_interval() {
 }
 
 #[test]
+fn scheduled_task_run_history_store_and_route_are_available() {
+    let store_source = std::fs::read_to_string("src/scheduled_tasks/store.rs").expect("read store");
+    let routes_source =
+        std::fs::read_to_string("src/scheduled_tasks/routes.rs").expect("read routes");
+    assert!(store_source.contains("pub async fn list_scheduled_task_runs"));
+    assert!(routes_source.contains("/v1/cloud/scheduled-tasks/:task_id/runs"));
+}
+
+#[test]
 fn scheduled_task_routes_are_registered_under_cloud_api() {
     let source = std::fs::read_to_string("src/scheduled_tasks/routes.rs").expect("read routes");
     assert!(source.contains("/v1/cloud/scheduled-tasks"));
     assert!(source.contains("/v1/cloud/scheduled-tasks/:task_id/pause"));
     assert!(source.contains("/v1/cloud/scheduled-tasks/:task_id/resume"));
     assert!(source.contains("/v1/cloud/scheduled-tasks/:task_id/run-now"));
+    assert!(source.contains("/v1/cloud/scheduled-tasks/:task_id/runs"));
     assert!(source.contains("/v1/cloud/scheduled-task-runs/claim"));
+}
+
+#[tokio::test]
+async fn scheduled_task_run_history_lists_latest_runs_for_owned_task() {
+    let Some(pool) = try_pool().await else { return };
+    let account_id = format!("acct_owner_{}", uuid::Uuid::new_v4().simple());
+    seed_account(&pool, &account_id).await;
+    let task = create_scheduled_task(
+        &pool,
+        &account_id,
+        &account_id,
+        CreateScheduledTaskRequest {
+            title: "Search latest OpenAI news".to_string(),
+            prompt: "Search the web for the latest OpenAI news.".to_string(),
+            schedule: ScheduledTaskSchedule::Once {
+                at: "2026-06-09T20:16:00+08:00".to_string(),
+            },
+            target_runtime: ScheduledTaskTargetRuntime::Cloud,
+            tool_payload: serde_json::json!({ "sessionId": "session:scheduled:history" }),
+        },
+        Utc.with_ymd_and_hms(2026, 6, 9, 12, 15, 0).unwrap(),
+    )
+    .await
+    .expect("task");
+    let run = create_scheduled_task_run_now(
+        &pool,
+        &account_id,
+        &task.task_id,
+        Utc.with_ymd_and_hms(2026, 6, 9, 12, 16, 0).unwrap(),
+    )
+    .await
+    .expect("run now")
+    .expect("run");
+
+    let runs = list_scheduled_task_runs(&pool, &account_id, &task.task_id, 5)
+        .await
+        .expect("list runs");
+
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].run_id, run.run_id);
+    assert_eq!(runs[0].task_id, task.task_id);
 }
 
 #[tokio::test]

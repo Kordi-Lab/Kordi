@@ -5,11 +5,11 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
+use crate::cloud_agent_runtime::runs::{ClaimRunRequest, claim_run};
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
 };
-use crate::scheduled_tasks::schedule::{next_run_after, ScheduledTaskSchedule};
+use crate::scheduled_tasks::schedule::{ScheduledTaskSchedule, next_run_after};
 
 type TaskRow = (
     String,
@@ -255,7 +255,8 @@ pub async fn create_scheduled_task_run_now(
     else {
         return Ok(None);
     };
-    let run = create_run_for_task(pool, owner_account_id, &task_id, &target_runtime, now, now).await?;
+    let run =
+        create_run_for_task(pool, owner_account_id, &task_id, &target_runtime, now, now).await?;
     if target_runtime == "cloud" {
         enqueue_cloud_agent_fallback_run_for_scheduled_run(
             pool,
@@ -360,6 +361,27 @@ async fn create_run_for_task(
     .fetch_one(pool)
     .await?;
     Ok(row_to_run(row))
+}
+
+pub async fn list_scheduled_task_runs(
+    pool: &PgPool,
+    owner_account_id: &str,
+    task_id: &str,
+    limit: i64,
+) -> Result<Vec<ScheduledTaskRunResponse>, sqlx_core::Error> {
+    let rows = query_as::<_, RunRow>(
+        "SELECT run_id, task_id, status, target_runtime, due_at, result_message, error_code, error_message, created_at, updated_at, completed_at
+           FROM scheduled_tool_task_runs
+          WHERE owner_account_id = $1 AND task_id = $2
+          ORDER BY created_at DESC, run_id DESC
+          LIMIT $3",
+    )
+    .bind(owner_account_id)
+    .bind(task_id)
+    .bind(limit.clamp(1, 50))
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(row_to_run).collect())
 }
 
 async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(

@@ -3,7 +3,7 @@ import { CheckCircle2, Circle, CornerDownLeft, FileText, XCircle } from 'lucide-
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
 import type { ConversationParticipant, DesktopChatTurnSnapshot, Message, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
-import type { ScheduledTask } from '@/features/cloud/scheduledTasksClient';
+import type { ScheduledTask, ScheduledTaskRun } from '@/features/cloud/scheduledTasksClient';
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
 import { cn } from '@/lib/utils';
 
@@ -19,8 +19,14 @@ type TaskTargetParticipant = Pick<ConversationParticipant,
   avatarSeed?: string | null;
 };
 
-type TaskDashboardItemWithParticipants = TaskDashboardItem & {
+type TaskDashboardSubtaskWithOutput = TaskDashboardSubtask & {
+  responseMessageId?: string | null;
+  outputPreview?: boolean;
+};
+
+type TaskDashboardItemWithParticipants = Omit<TaskDashboardItem, 'subtasks'> & {
   targetParticipants?: TaskTargetParticipant[];
+  subtasks: TaskDashboardSubtaskWithOutput[];
 };
 
 type TaskActivityDashboardPanelProps = {
@@ -30,6 +36,7 @@ type TaskActivityDashboardPanelProps = {
   artifacts?: SessionArtifact[];
   taskActivities?: SessionTaskActivity[];
   scheduledTasks?: ScheduledTask[];
+  scheduledRunsByTaskId?: Record<string, ScheduledTaskRun[]>;
   targetParticipants?: TaskTargetParticipant[];
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
@@ -264,7 +271,7 @@ function TaskContent({
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
 }) {
-  const rawSecondaryText = task.summary || task.target || (nested ? 'No subtask details yet.' : 'Task is running.');
+  const rawSecondaryText = task.summary || task.target || (nested ? 'No run details yet.' : 'Task is running.');
   const genericCompletedSummary = /^(?:complete|completed|response complete|done)$/i.test(rawSecondaryText.trim());
   const secondaryText = (task.status === 'completed' || task.status === 'waiting') && genericCompletedSummary ? '' : rawSecondaryText;
   const runningElapsed = useRunningElapsedLabel(task.status === 'active', task.id, task.startedAtMs);
@@ -461,6 +468,10 @@ function scheduledTaskRuntimeLabel(task: ScheduledTask): string {
 function scheduledTaskStatusLabel(task: ScheduledTask): string {
   if (task.lastRunStatus === 'waiting_for_desktop') return 'Waiting for Desktop';
   if (task.status === 'paused') return 'Paused';
+  if (task.lastRunStatus === 'completed') return 'Last run completed';
+  if (task.lastRunStatus === 'failed') return task.lastRunError ? `Last run failed: ${task.lastRunError}` : 'Last run failed';
+  if (task.lastRunStatus === 'queued') return 'Queued';
+  if (task.lastRunStatus === 'leased' || task.lastRunStatus === 'running') return 'Running in Cloud';
   if (task.lastRunStatus) return task.lastRunStatus.replace(/_/g, ' ');
   return 'Scheduled';
 }
@@ -469,11 +480,78 @@ function scheduledTaskDashboardStatus(task: ScheduledTask): TaskDashboardItem['s
   if (task.status === 'paused') return 'waiting';
   if (task.lastRunStatus === 'completed') return 'completed';
   if (task.lastRunStatus === 'failed') return 'failed';
+  if (task.lastRunStatus === 'queued' || task.lastRunStatus === 'leased' || task.lastRunStatus === 'running') return 'active';
   return 'planned';
 }
 
-function scheduledTaskToDashboardItem(task: ScheduledTask, now: Date, timeZone?: string): TaskDashboardItemWithParticipants {
+function runDurationLabel(run: ScheduledTaskRun): string | null {
+  const startMs = Date.parse(run.createdAt);
+  const endMs = Date.parse(run.completedAt ?? run.updatedAt);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return null;
+  return formatTaskElapsed(endMs - startMs);
+}
+
+function scheduledRunStatusLabel(run: ScheduledTaskRun): string {
+  const duration = runDurationLabel(run);
+  const status = run.status.replace(/_/g, ' ');
+  return duration ? `${status} · ${duration}` : status;
+}
+
+function messageCloudIds(message: Message): string[] {
+  const id = message.id?.trim() ?? '';
+  return [
+    id,
+    id.startsWith('msg:cloud:self:') ? id.slice('msg:cloud:self:'.length) : null,
+    id.startsWith('bridge-message:') ? id.split(':').filter(Boolean).pop() ?? null : null,
+  ].filter((value): value is string => Boolean(value?.trim()));
+}
+
+function scheduledRunMessage(messages: Message[], resultMessage: string | null): Message | null {
+  const target = resultMessage?.trim();
+  if (!target) return null;
+  return messages.find((message) => messageCloudIds(message).includes(target)) ?? null;
+}
+
+function scheduledRunPreview(message: Message | null, run: ScheduledTaskRun): string {
+  if (message) {
+    const text = message.turn?.assistantText?.trim() || message.text?.trim();
+    if (text) return text.length > 150 ? `${text.slice(0, 147).trimEnd()}…` : text;
+  }
+  if (run.errorMessage?.trim()) return run.errorMessage.trim();
+  if (run.errorCode?.trim()) return run.errorCode.trim().replace(/_/g, ' ');
+  return run.status === 'completed' ? 'Response posted to this session.' : 'Run is still in progress.';
+}
+
+function scheduledRunSubtask(run: ScheduledTaskRun, messages: Message[], now: Date, timeZone?: string): TaskDashboardSubtaskWithOutput {
+  const message = scheduledRunMessage(messages, run.resultMessage);
+  const status: TaskDashboardItem['status'] = run.status === 'completed'
+    ? 'completed'
+    : run.status === 'failed'
+      ? 'failed'
+      : run.status === 'waiting_for_desktop'
+        ? 'waiting'
+        : 'active';
+  return {
+    id: `scheduled-run:${run.runId}`,
+    title: friendlyScheduledInstantLabel(run.dueAt, now, timeZone),
+    summary: scheduledRunPreview(message, run),
+    status,
+    statusLabel: scheduledRunStatusLabel(run),
+    tone: dashboardToneFromStatus(status),
+    target: null,
+    writeScope: [],
+    live: status === 'active',
+    timeLabel: scheduledRunStatusLabel(run),
+    startedAtMs: Date.parse(run.createdAt) || null,
+    responseMessageId: message?.id ?? null,
+    outputPreview: Boolean(message?.id),
+  };
+}
+
+function scheduledTaskToDashboardItem(task: ScheduledTask, now: Date, timeZone: string | undefined, runs: ScheduledTaskRun[], messages: Message[]): TaskDashboardItemWithParticipants {
   const status = scheduledTaskDashboardStatus(task);
+  const runSubtasks = runs.slice(0, 5).map((run) => scheduledRunSubtask(run, messages, now, timeZone));
+  const latestRun = runs[0] ?? null;
   return {
     id: `scheduled:${task.taskId}`,
     title: task.title,
@@ -483,17 +561,34 @@ function scheduledTaskToDashboardItem(task: ScheduledTask, now: Date, timeZone?:
     tone: dashboardToneFromStatus(status),
     target: null,
     writeScope: [],
-    live: false,
+    live: status === 'active',
     timeLabel: `${scheduledTaskScheduleLabel(task, now, timeZone)} · ${scheduledTaskRuntimeLabel(task)}`,
-    startedAtMs: null,
+    startedAtMs: latestRun ? Date.parse(latestRun.createdAt) || null : null,
     responseMessageId: null,
     taskId: task.taskId,
     artifactIds: [],
     involvedParticipantNames: [],
     targetParticipants: [],
-    subtasks: [],
-    subtaskCount: 0,
-    activeSubtaskCount: 0,
+    subtasks: latestRun ? [
+      {
+        id: `scheduled-run-status:${latestRun.runId}`,
+        title: 'Latest run status',
+        summary: latestRun.resultMessage
+          ? 'Message posted to this session.'
+          : latestRun.errorMessage ?? (latestRun.status === 'completed' ? 'Run completed.' : 'Run has not posted a message yet.'),
+        status,
+        statusLabel: scheduledRunStatusLabel(latestRun),
+        tone: dashboardToneFromStatus(status),
+        target: null,
+        writeScope: [],
+        live: status === 'active',
+        timeLabel: scheduledRunStatusLabel(latestRun),
+        startedAtMs: Date.parse(latestRun.createdAt) || null,
+      },
+      ...runSubtasks,
+    ] : [],
+    subtaskCount: latestRun ? runSubtasks.length + 1 : 0,
+    activeSubtaskCount: runSubtasks.filter((run) => run.status === 'active').length,
   };
 }
 
@@ -527,11 +622,32 @@ function TaskRow({
         <TaskContent task={task} artifactId={artifactId} targetParticipants={matchedTargetParticipants} onOpenArtifact={onOpenArtifact} onNavigateToResponse={onNavigateToResponse} />
       </summary>
       <div className="mt-3 space-y-2 border-l border-[color:var(--app-divider)] pl-4">
-        {task.subtasks.map((subtask) => (
-          <div key={subtask.id} className="rounded-2xl bg-[color:var(--app-transcript-assistant-bg)]/45 px-3 py-2.5">
-            <TaskContent task={subtask} nested />
-          </div>
-        ))}
+        {task.subtasks.map((subtask) => {
+          const rowClassName = 'rounded-2xl bg-[color:var(--app-transcript-assistant-bg)]/45 px-3 py-2.5';
+          const responseMessageId = subtask.responseMessageId;
+          if (!responseMessageId) {
+            return (
+              <div key={subtask.id} className={rowClassName}>
+                <TaskContent task={subtask} nested />
+              </div>
+            );
+          }
+          return (
+            <button
+              key={subtask.id}
+              type="button"
+              data-scheduled-run-output={subtask.outputPreview ? 'true' : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onNavigateToResponse?.(responseMessageId);
+              }}
+              className={cn('block w-full text-left transition hover:bg-[color:var(--app-transcript-assistant-bg)]/70', rowClassName)}
+            >
+              <TaskContent task={subtask} nested />
+            </button>
+          );
+        })}
       </div>
     </details>
   );
@@ -593,7 +709,7 @@ function mergeTaskTargetParticipants(participants: TaskTargetParticipant[]) {
   return [...byKey.values()];
 }
 
-export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], scheduledTasks = [], targetParticipants = [], onOpenArtifact, onNavigateToResponse, now = new Date(), timeZone }: TaskActivityDashboardPanelProps) {
+export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], scheduledTasks = [], scheduledRunsByTaskId = {}, targetParticipants = [], onOpenArtifact, onNavigateToResponse, now = new Date(), timeZone }: TaskActivityDashboardPanelProps) {
   // Conversation message arrays can be updated in place while Bridge/canonical polling is active.
   // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
   // as the transcript rerenders, even if the array identity did not change.
@@ -607,7 +723,7 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, a
     profileImageUrl: participant.profileImageUrl,
   })));
   const mergedTargetParticipants = mergeTaskTargetParticipants([...activityTargetParticipants, ...targetParticipants]);
-  const scheduledRows = dedupeTaskRowsByKeys(scheduledTasks.map((task) => scheduledTaskToDashboardItem(task, now, timeZone)));
+  const scheduledRows = dedupeTaskRowsByKeys(scheduledTasks.map((task) => scheduledTaskToDashboardItem(task, now, timeZone, scheduledRunsByTaskId[task.taskId] ?? [], messages)));
   const taskActivityRows = dedupeTaskRowsByKeys(taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants)));
   const existingTaskKeys = new Set([...scheduledRows, ...taskActivityRows].flatMap(taskDedupeKeys));
   const localRows = dashboard.tasks.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)));

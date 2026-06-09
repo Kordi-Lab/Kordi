@@ -68,6 +68,11 @@ export async function listScheduledTasks(config: ScheduledTasksClientConfig): Pr
   return result.tasks;
 }
 
+export async function listScheduledTaskRuns(config: ScheduledTasksClientConfig, taskId: string): Promise<ScheduledTaskRun[]> {
+  const result = await requestJson<{ runs: ScheduledTaskRun[] }>(config, `/v1/cloud/scheduled-tasks/${encodeURIComponent(taskId)}/runs`);
+  return result.runs;
+}
+
 export async function createScheduledTask(config: ScheduledTasksClientConfig, input: CreateScheduledTaskInput): Promise<ScheduledTask> {
   const result = await requestJson<{ task: ScheduledTask }>(config, '/v1/cloud/scheduled-tasks', {
     method: 'POST',

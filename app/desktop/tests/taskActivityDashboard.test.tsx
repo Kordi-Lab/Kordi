@@ -1740,6 +1740,73 @@ test('task panel renders artifact navigation as soon as the task has a generated
   assert.match(markup, /data-task-action="open-artifact"/);
 });
 
+test('scheduled task rows expand to show run status and response previews', () => {
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [{
+      id: 'msg:cloud:self:cloudrunmsg_news',
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      isOwnMessage: false,
+      showSenderMeta: true,
+      text: '',
+      time: '20:17',
+      turn: {
+        id: 'turn-news',
+        sessionId: 'session-news',
+        prompt: '',
+        status: 'complete',
+        message: 'Complete',
+        assistantText: 'As of Tuesday, June 9, 2026, the latest notable OpenAI updates include IPO paperwork and research exchange news.',
+        thinkingText: '',
+        tools: [],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    }],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+    scheduledTasks: [{
+      taskId: 'scheduled_task_news',
+      title: 'Search latest OpenAI news',
+      prompt: 'Search the web for OpenAI news.',
+      schedule: { kind: 'daily', time: '20:16', timezone: 'UTC+8' },
+      targetRuntime: 'cloud',
+      enabled: true,
+      status: 'active',
+      nextRunAt: '2026-06-10T12:16:00Z',
+      lastRunAt: '2026-06-09T12:16:00Z',
+      lastRunStatus: 'completed',
+      lastRunError: null,
+      createdAt: '2026-06-09T12:15:00Z',
+      updatedAt: '2026-06-09T12:17:08Z',
+    }],
+    scheduledRunsByTaskId: {
+      scheduled_task_news: [{
+        runId: 'scheduled_run_news',
+        taskId: 'scheduled_task_news',
+        status: 'completed',
+        targetRuntime: 'cloud',
+        dueAt: '2026-06-09T12:16:00Z',
+        resultMessage: 'cloudrunmsg_news',
+        errorCode: null,
+        errorMessage: null,
+        createdAt: '2026-06-09T12:16:02Z',
+        updatedAt: '2026-06-09T12:17:08Z',
+        completedAt: '2026-06-09T12:17:08Z',
+      }],
+    },
+    now: new Date('2026-06-09T12:18:00Z'),
+  }));
+
+  assert.match(markup, /Search latest OpenAI news/);
+  assert.match(markup, /Latest run status/);
+  assert.match(markup, /completed · 1m 06s/);
+  assert.match(markup, /As of Tuesday, June 9, 2026, the latest notable OpenAI updates/);
+  assert.match(markup, /data-scheduled-run-output="true"/);
+});
+
 test('task panel lets long task titles wrap instead of truncating them', () => {
   const liveTurn: DesktopChatTurnSnapshot = {
     id: 'turn-1',
