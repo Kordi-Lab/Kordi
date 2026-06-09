@@ -15,6 +15,7 @@ fn make_ctx(dir: &Path) -> ToolContext {
         reflection: None,
         session_observation: None,
         task_operator: None,
+        schedule_task: None,
         execution_mode: crate::ToolExecutionMode::Interactive,
         request_approval: None,
     }

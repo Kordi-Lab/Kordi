@@ -1150,6 +1150,54 @@ test('cloud self-agent canonical sync materializes restored Cloud private agent 
   ]);
 });
 
+test('cloud self-agent canonical sync materializes scheduled run responses without a matching user request id', () => {
+  const userMessage: CloudMessage = {
+    messageId: 'msg_schedule_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'Schedule a cloud task to search OpenAI news at 19:43.',
+    createdAt: '2026-06-09T11:42:14.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'scheduled-session',
+  };
+  const scheduledResponse: CloudMessage = {
+    messageId: 'cloudrunmsg_openai_summary',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: encodeCloudAgentResponse({ requestId: 'scheduled_run_openai_summary', text: 'Here is the latest OpenAI news summary.' }),
+    createdAt: '2026-06-09T11:44:19.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'scheduled-session',
+  };
+  const state = {
+    sessions: [],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages: [scheduledResponse, userMessage], state });
+
+  assert.deepEqual(plan.messageRequests.map((request) => ({
+    id: request.id,
+    senderRole: request.senderRole,
+    messageKind: request.messageKind,
+    contentText: request.contentText,
+    parentMessageId: request.parentMessageId ?? null,
+    sourceEventId: request.sourceEventId,
+  })), [
+    { id: 'msg:cloud:self:msg_schedule_request', senderRole: 'user', messageKind: 'text', contentText: 'Schedule a cloud task to search OpenAI news at 19:43.', parentMessageId: null, sourceEventId: 'msg_schedule_request' },
+    { id: 'msg:cloud:self:cloudrunmsg_openai_summary', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Here is the latest OpenAI news summary.', parentMessageId: null, sourceEventId: 'cloudrunmsg_openai_summary' },
+  ]);
+});
+
 test('cloud self-agent canonical sync deduplicates repeated Cloud rows within the same restore batch', () => {
   const createdAt = '2026-05-16T08:11:27.120Z';
   const duplicateRequestA: CloudMessage = {

@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 mod prompt;
 mod provider;
 
-pub use prompt::cloud_sandbox_system_prompt;
+pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
 pub use provider::{OpenAiCompatibleProvider, OpenAiProviderConfig};
 
 use crate::artifacts::export_sandbox_file;
@@ -13,8 +13,8 @@ use crate::sandbox_client::SandboxBackendHandle;
 use crate::tool_policy::RunnerToolRequest;
 use crate::tools::{CloudToolExecutor, CloudToolOutput};
 
-pub const MAX_MODEL_CALLS: usize = 3;
-pub const MAX_TOOL_CALLS: usize = 5;
+pub const MAX_MODEL_CALLS: usize = 8;
+pub const MAX_TOOL_CALLS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelToolCall {
@@ -134,17 +134,31 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     } else {
         Vec::new()
     };
+    let url_args = if matches!(call.name.as_str(), "web_fetch" | "browser_fetch") {
+        call.arguments
+            .get("url")
+            .and_then(Value::as_str)
+            .map(|url| vec![url])
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let request = RunnerToolRequest {
         tool_name: &call.name,
         path_args,
-        url_args: Vec::new(),
+        url_args,
         requester_account_id: &run.requester_account_id,
         owner_account_id: &run.owner_account_id,
         data_owner_account_id: None,
     };
 
     match executor
-        .execute(request, Some(primary.as_str()), Some(content))
+        .execute(
+            request,
+            Some(primary.as_str()),
+            Some(content),
+            &call.arguments,
+        )
         .await
     {
         Ok(output) => format_tool_output(output),
@@ -202,6 +216,5 @@ fn format_tool_output(output: CloudToolOutput) -> String {
             "exit_code={}\nstdout:\n{}\nstderr:\n{}",
             output.exit_code, output.stdout, output.stderr
         ),
-        CloudToolOutput::RemoteWebAllowed => "remote web access is allowed by policy".to_string(),
     }
 }

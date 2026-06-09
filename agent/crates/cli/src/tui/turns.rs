@@ -187,6 +187,7 @@ impl TuiController {
                 reflection: None,
                 session_observation: self.session_setup.tool_ctx.session_observation.clone(),
                 task_operator: None,
+                schedule_task: self.session_setup.tool_ctx.schedule_task.clone(),
                 execution_mode: self.session_setup.tool_ctx.execution_mode,
                 request_approval: self.session_setup.tool_ctx.request_approval.clone(),
             },
