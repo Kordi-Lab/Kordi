@@ -236,9 +236,12 @@ test('ask agent opens an explicit side session with neutral copy and reference c
   assert.match(source, /Reference: Current chat/);
   assert.match(source, /Agent session/);
   assert.match(source, /title="New agent session"/);
-  assert.match(source, /aria-label="Change side chat"/);
+  assert.match(source, /aria-label="Side chat options"/);
   assert.match(source, /aria-label="Close side chat"/);
-  assert.match(source, /Close side chat/);
+  assert.match(source, /data-side-chat-session-list="true"/);
+  assert.match(source, />\s*Back\s*</);
+  assert.doesNotMatch(source, /aria-label="Change side chat"/);
+  assert.doesNotMatch(source, /<span>Close side chat<\/span>/);
   assert.doesNotMatch(source, />\s*New session\s*</);
   assert.doesNotMatch(source, /Ask co-pilot|Co-pilot|Private helper|Ask privately|data-chat-copilot-scope/);
   assert.doesNotMatch(source, /const companionConversation =[^;]+\?\? suggestedCompanionConversation/s);
