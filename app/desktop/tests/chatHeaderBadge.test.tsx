@@ -238,6 +238,8 @@ test('ask agent opens an explicit side session with neutral copy and reference c
   assert.match(source, /aria-label="Side chat options"/);
   assert.match(source, /aria-label="Close side chat"/);
   assert.match(source, /data-side-chat-root-menu="true"/);
+  assert.match(source, /bg-\[#1f1f1f\]/);
+  assert.match(source, /text-\[13px\]/);
   assert.match(source, />\s*New chat\s*</);
   assert.match(source, />\s*Switch Chat\s*</);
   assert.match(source, /data-side-chat-session-list="true"/);
@@ -256,7 +258,18 @@ test('ask agent slash trigger opens the side session instead of sending slash te
   assert.match(source, /const handleSendChatMessage = \(draftOverride\?: string\) =>/);
   assert.match(source, /parseAskAgentTriggerCommand\(draft\)/);
   assert.match(source, /openSideAgentPanel\(trigger\.prompt\)/);
+  assert.match(source, /void openSideAgentPanel\(trigger\.prompt\)\.then/);
   assert.match(source, /onSendChatMessage\(draftOverride\)/);
+});
+
+test('ask agent from an active agent chat creates a fresh side session instead of switching the main agent session', () => {
+  const pageSource = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+
+  assert.match(pageSource, /activePaneKind === 'agent' && onCreateAgentSession/);
+  assert.match(pageSource, /createSideAgentSession\(initialPrompt\)/);
+  assert.match(appModelSource, /const previousActiveSessionId = desktopChatState\?\.activeSessionId \?\? null/);
+  assert.match(appModelSource, /activeSessionId: previousActiveSessionId/);
 });
 
 test('ask agent new session action switches the side panel to the created agent session', () => {

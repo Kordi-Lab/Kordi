@@ -679,6 +679,7 @@ export function ChatsPage({
   const showCompanionPane = Boolean(companionConversation && !isCompanionFolded);
   const companionDraftText = companionConversation ? companionDrafts[companionConversation.id] ?? '' : '';
   const activePaneKind = conversationPaneKind(activeConv);
+  const canOpenSideAgentPanel = Boolean(suggestedSideAgentConversation || (activePaneKind === 'agent' && onCreateAgentSession));
   const companionPaneKind = companionConversation ? conversationPaneKind(companionConversation) : null;
   const companionSide = chatCompanionSideForPaneKinds(activePaneKind, humanPaneSide);
   const companionConversationHasBridgeTransport = companionConversation?.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local') ?? false;
@@ -905,34 +906,43 @@ export function ChatsPage({
       return next;
     });
   };
-  const openSideAgentPanel = (initialPrompt = '') => {
+  const createSideAgentSession = async (initialPrompt = '') => {
+    if (!onCreateAgentSession) return false;
+    const createdConversationId = await onCreateAgentSession();
+    if (!createdConversationId) return false;
+    setOpenSideAgentConversationId(createdConversationId);
+    setSelectedCompanionConversationId(createdConversationId);
+    setSideAgentReferenceContext(buildAskAgentSessionReferenceContext(activeConv));
+    setIsCompanionFolded(false);
+    const trimmedPrompt = initialPrompt.trim();
+    if (trimmedPrompt) {
+      updateCompanionDraft(createdConversationId, trimmedPrompt);
+    }
+    return true;
+  };
+  const openSideAgentPanel = async (initialPrompt = '') => {
+    if (activePaneKind === 'agent' && onCreateAgentSession) {
+      return createSideAgentSession(initialPrompt);
+    }
     const targetConversation = selectedCompanionConversation ?? suggestedSideAgentConversation;
     if (!targetConversation) return false;
     setOpenSideAgentConversationId(targetConversation.id);
     setSelectedCompanionConversationId(targetConversation.id);
     setSideAgentReferenceContext(buildAskAgentSessionReferenceContext(activeConv));
     setIsCompanionFolded(false);
-    if (initialPrompt.trim()) {
-      updateCompanionDraft(targetConversation.id, initialPrompt.trim());
+    const trimmedPrompt = initialPrompt.trim();
+    if (trimmedPrompt) {
+      updateCompanionDraft(targetConversation.id, trimmedPrompt);
     }
     return true;
-  };
-  const createSideAgentSession = async () => {
-    if (!onCreateAgentSession) return;
-    const createdConversationId = await onCreateAgentSession();
-    if (!createdConversationId) return;
-    setOpenSideAgentConversationId(createdConversationId);
-    setSelectedCompanionConversationId(createdConversationId);
-    setSideAgentReferenceContext(buildAskAgentSessionReferenceContext(activeConv));
-    setIsCompanionFolded(false);
   };
   const handleSendChatMessage = (draftOverride?: string) => {
     const draft = draftOverride ?? chatComposerText;
     const trigger = parseAskAgentTriggerCommand(draft);
     if (trigger) {
-      if (openSideAgentPanel(trigger.prompt)) {
-        setChatComposerText('');
-      }
+      void openSideAgentPanel(trigger.prompt).then((opened) => {
+        if (opened) setChatComposerText('');
+      });
       return;
     }
     onSendChatMessage(draftOverride);
@@ -1005,7 +1015,7 @@ export function ChatsPage({
           </Button>
           {isSideAgentActionsOpen ? (
             <div
-              className="absolute right-8 top-full z-30 mt-2 w-52 rounded-[22px] border border-white/10 bg-[#343434] p-2 text-[15px] font-medium text-white shadow-[0_18px_44px_rgba(0,0,0,0.45)]"
+              className="absolute right-8 top-full z-30 mt-2 w-44 rounded-[18px] border border-white/10 bg-[#1f1f1f] p-1.5 text-[13px] font-medium text-white shadow-[0_18px_44px_rgba(0,0,0,0.55)]"
               data-side-chat-options-menu="true"
               data-side-chat-root-menu="true"
             >
@@ -1013,7 +1023,7 @@ export function ChatsPage({
                 <div data-side-chat-session-list="true">
                   <button
                     type="button"
-                    className="mb-1 flex w-full items-center gap-2 rounded-[14px] px-2 py-2 text-left text-[15px] transition hover:bg-white/10"
+                    className="mb-1 flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition hover:bg-white/10"
                     onClick={() => setIsSideAgentSessionListOpen(false)}
                   >
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -1025,7 +1035,7 @@ export function ChatsPage({
                       key={conversation.id}
                       type="button"
                       className={cn(
-                        'flex w-full items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left text-[14px] transition hover:bg-white/10',
+                        'flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition hover:bg-white/10',
                         conversation.id === companionConversation.id ? 'text-pink-200' : 'text-white',
                       )}
                       title={`Switch to ${conversation.name}`}
@@ -1048,7 +1058,7 @@ export function ChatsPage({
                   {onCreateAgentSession ? (
                     <button
                       type="button"
-                      className="flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition hover:bg-white/10"
+                      className="flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition hover:bg-white/10"
                       title="New chat"
                       aria-label="New chat"
                       onClick={() => {
@@ -1063,7 +1073,7 @@ export function ChatsPage({
                   ) : null}
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-3 rounded-[14px] px-3 py-2.5 text-left transition hover:bg-white/10"
+                    className="flex w-full items-center justify-between gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition hover:bg-white/10"
                     onClick={() => setIsSideAgentSessionListOpen(true)}
                   >
                     <span>Switch Chat</span>
@@ -1473,14 +1483,14 @@ export function ChatsPage({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {suggestedSideAgentConversation && !showCompanionPane ? (
+          {canOpenSideAgentPanel && !showCompanionPane ? (
             <Button
               type="button"
               variant="secondary"
-              onClick={() => openSideAgentPanel()}
+              onClick={() => { void openSideAgentPanel(); }}
               className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full border border-pink-300/30 bg-white/[0.06] px-3 text-[12px] font-semibold text-pink-200 transition hover:bg-pink-400/10"
               aria-label="Ask Agent"
-              title={`Ask Agent with ${suggestedSideAgentConversation.name}`}
+              title={suggestedSideAgentConversation ? `Ask Agent with ${suggestedSideAgentConversation.name}` : 'Ask Agent in a new session'}
             >
               <Columns2 className="mr-1.5 h-3.5 w-3.5" />
               Ask Agent

@@ -2320,9 +2320,12 @@ export function useKordiAppModel({
     if (!isNativeShell) return null;
     try {
       setDesktopChatError(null);
+      const previousActiveSessionId = desktopChatState?.activeSessionId ?? null;
       const nextState = await createDesktopChatSession();
-      setDesktopChatState(nextState);
       const sessionId = nextState.activeSessionId?.trim() || null;
+      setDesktopChatState(previousActiveSessionId
+        ? { ...nextState, activeSessionId: previousActiveSessionId }
+        : nextState);
       if (sessionId) {
         composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, ''));
       }
@@ -2331,7 +2334,7 @@ export function useKordiAppModel({
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to create agent session');
       return null;
     }
-  }, [composerUi.setComposerDrafts, isNativeShell, setDesktopChatError, setDesktopChatState]);
+  }, [composerUi.setComposerDrafts, desktopChatState?.activeSessionId, isNativeShell, setDesktopChatError, setDesktopChatState]);
 
   const shellArgs = useKordiShellArgs({
     isNativeShell,
