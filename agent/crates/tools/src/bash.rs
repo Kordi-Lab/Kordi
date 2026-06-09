@@ -361,6 +361,7 @@ mod tests {
             reflection: None,
             session_observation: None,
             task_operator: None,
+            schedule_task: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: Some(Arc::new(|_| {
                 Box::pin(async {

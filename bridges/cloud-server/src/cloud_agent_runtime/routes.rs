@@ -99,6 +99,10 @@ fn runner_authorized(headers: &HeaderMap) -> bool {
     value == format!("Bearer {expected}")
 }
 
+pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
+    runner_authorized(headers)
+}
+
 fn runner_unauthorized() -> Response {
     error_response(
         "invalid_runner_token",

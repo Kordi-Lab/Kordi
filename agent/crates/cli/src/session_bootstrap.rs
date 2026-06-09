@@ -642,6 +642,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
             session_id.clone(),
             sibling_conn.clone(),
         )),
+        schedule_task: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     };

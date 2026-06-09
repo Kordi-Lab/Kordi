@@ -18,6 +18,7 @@ pub mod reflection_tool;
 mod registry;
 pub mod registry_plan;
 pub(crate) mod sandbox;
+pub mod schedule_task;
 pub mod scheduler;
 pub mod session_observation;
 pub(crate) mod support;
@@ -47,4 +48,8 @@ pub use types::{
     TaskOperatorFn, TaskOperatorFuture, TaskOperatorRuntime, Tool, ToolApprovalDecision,
     ToolApprovalOutcome, ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult,
     ToolScheduling, WebSearchRuntime,
+};
+pub use schedule_task::{
+    ScheduleTaskFn, ScheduleTaskFuture, ScheduleTaskRequest, ScheduleTaskResponse,
+    ScheduleTaskRuntime, ScheduleTaskSchedule, ScheduleTaskTargetRuntime,
 };

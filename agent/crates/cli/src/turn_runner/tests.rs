@@ -794,6 +794,7 @@ fn test_tool_context() -> kordi_tools::ToolContext {
         reflection: None,
         session_observation: None,
         task_operator: None,
+        schedule_task: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     }

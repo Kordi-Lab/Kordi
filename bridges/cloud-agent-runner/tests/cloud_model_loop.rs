@@ -1,4 +1,7 @@
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 use async_trait::async_trait;
 use kordi_cloud_agent_runner::client::{
@@ -6,9 +9,11 @@ use kordi_cloud_agent_runner::client::{
     ProviderAuthMaterial, RunnerClientError,
 };
 use kordi_cloud_agent_runner::model_loop::{
-    run_model_loop, CloudModelProvider, ModelProviderResponse, ModelToolCall, OpenAiProviderConfig,
+    run_model_loop, tool_catalog, CloudModelProvider, ModelProviderResponse, ModelToolCall,
+    OpenAiProviderConfig,
 };
 use kordi_cloud_agent_runner::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
+use kordi_tools::{web_fetch::WebFetchTool, web_search::WebSearchTool, Tool};
 use serde_json::{json, Value};
 
 #[derive(Default)]
@@ -141,6 +146,62 @@ fn sandbox_handle() -> SandboxBackendHandle {
     sandbox()
 }
 
+fn spawn_single_response_server(body: &'static str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+    let addr = listener.local_addr().expect("local addr");
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept request");
+        let mut request_buf = [0_u8; 2048];
+        let _ = stream.read(&mut request_buf);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("write response");
+        stream.flush().expect("flush response");
+    });
+    format!("http://localtest.me:{}/news", addr.port())
+}
+
+#[test]
+fn cloud_tool_catalog_uses_local_web_tool_definitions() {
+    let catalog = tool_catalog();
+    let web_search = catalog
+        .iter()
+        .find(|tool| tool["function"]["name"] == "web_search")
+        .expect("cloud catalog should expose web_search");
+    let web_fetch = catalog
+        .iter()
+        .find(|tool| tool["function"]["name"] == "web_fetch")
+        .expect("cloud catalog should expose web_fetch");
+
+    let local_search = WebSearchTool.definition();
+    let local_fetch = WebFetchTool.definition();
+
+    assert_eq!(web_search["function"]["name"], local_search.name);
+    assert_eq!(
+        web_search["function"]["description"],
+        local_search.description
+    );
+    assert_eq!(
+        web_search["function"]["parameters"],
+        local_search.parameters_schema
+    );
+
+    assert_eq!(web_fetch["function"]["name"], local_fetch.name);
+    assert_eq!(
+        web_fetch["function"]["description"],
+        local_fetch.description
+    );
+    assert_eq!(
+        web_fetch["function"]["parameters"],
+        local_fetch.parameters_schema
+    );
+}
+
 #[tokio::test]
 async fn model_loop_completes_text_response() {
     let client = RecordingClient::default();
@@ -242,6 +303,111 @@ async fn model_loop_returns_boundary_explanation_for_owner_local_tool() {
                 .contains("Cloud fallback")
             && !message["content"].as_str().unwrap().contains("approval")
     }));
+}
+
+#[tokio::test]
+async fn model_loop_allows_short_research_tasks_to_make_several_tool_calls_then_finish() {
+    let client = RecordingClient::default();
+    let provider = FakeProvider::new(vec![
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_1".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf one"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_2".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf two"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_3".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf three"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_4".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf four"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_5".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf five"}),
+        }]),
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_6".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command":"printf six"}),
+        }]),
+        ModelProviderResponse::FinalText("Research summary complete".to_string()),
+    ]);
+
+    let text = run_model_loop(
+        &client,
+        &provider,
+        &run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(text, "Research summary complete");
+}
+
+#[tokio::test]
+async fn model_loop_executes_local_web_fetch_tool_in_cloud_sandbox() {
+    std::env::set_var("NO_PROXY", "localtest.me,127.0.0.1,localhost");
+    std::env::set_var("no_proxy", "localtest.me,127.0.0.1,localhost");
+    let client = RecordingClient::default();
+    let url = spawn_single_response_server(
+        "<html><head><title>OpenAI Test News</title></head><body><main><h1>OpenAI ships a test update</h1><p>Source text from controlled server.</p></main></body></html>",
+    );
+    let provider = FakeProvider::new(vec![
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "call_fetch".to_string(),
+            name: "web_fetch".to_string(),
+            arguments: json!({"url": url, "max_chars": 4000}),
+        }]),
+        ModelProviderResponse::FinalText("Fetched controlled OpenAI test news".to_string()),
+    ]);
+
+    let text = run_model_loop(
+        &client,
+        &provider,
+        &run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(text, "Fetched controlled OpenAI test news");
+    let calls = provider.seen_messages.lock().unwrap();
+    let final_context = calls.last().unwrap();
+    let tool_message = final_context
+        .iter()
+        .find(|message| message["role"] == "tool" && message["name"] == "web_fetch")
+        .expect("web_fetch tool output should be fed back to model");
+    let content = tool_message["content"].as_str().unwrap();
+    assert!(content.contains("Web Fetch"), "content was: {content}");
+    assert!(
+        content.contains("OpenAI ships a test update"),
+        "content was: {content}"
+    );
+    assert!(
+        content.contains("Source text from controlled server"),
+        "content was: {content}"
+    );
+}
+
+#[test]
+fn cloud_executor_routes_web_search_to_local_tool_not_placeholder() {
+    let source = std::fs::read_to_string("src/tools.rs").expect("read cloud runner tools source");
+    assert!(source.contains("WebSearchTool"));
+    assert!(source.contains("WebFetchTool"));
+    assert!(!source.contains("RemoteWebAllowed"));
+    assert!(!source.contains("remote web access is allowed by policy"));
 }
 
 #[tokio::test]

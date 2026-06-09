@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react';
+import { memo, useEffect, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
@@ -7,6 +7,7 @@ import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, Desk
 import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
+import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 
 type ActiveConversation = {
@@ -233,6 +234,11 @@ function ChatDetailPanelView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
+  const scheduledTasks = useScheduledTasks({ enabled: true });
+
+  useEffect(() => {
+    if (activeLiveTurn?.completed) void scheduledTasks.refresh();
+  }, [activeLiveTurn?.completed, scheduledTasks.refresh]);
 
   if (activeDetailTab === 'info') {
     return (
@@ -407,12 +413,16 @@ function ChatDetailPanelView({
         messages={activeConv.messages}
         liveTurn={activeLiveTurn?.sessionId === activeSessionId ? activeLiveTurn : null}
         taskActivities={activeConv.taskActivities ?? []}
+        scheduledTasks={scheduledTasks.tasks}
+        scheduledRunsByTaskId={scheduledTasks.runsByTaskId}
+        currentSessionId={activeConv.canonicalSessionId ?? activeConv.id}
         targetParticipants={activeConv.canonicalParticipants ?? []}
         emptyMessage={activeConversationIsBridge ? 'No planning or execution task activity in this chat yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}
         onOpenArtifact={onOpenArtifact}
         onNavigateToResponse={onNavigateToResponse}
       />
+      {scheduledTasks.error ? <div className="app-inspector-empty">{scheduledTasks.error}</div> : null}
     </div>
   );
 }

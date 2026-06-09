@@ -73,6 +73,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
             rate_limiter,
         ))
         .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
+        .merge(crate::scheduled_tasks::routes::routes(state.clone()))
         .merge(ws_router)
         .route("/health", axum::routing::get(health))
         .layer(cors)
@@ -201,6 +202,7 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
+    crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     let sweeper_state = state.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(crate::presence::presence_sweep_interval());
