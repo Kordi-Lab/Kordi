@@ -223,6 +223,7 @@ test('chat companion split controls live on the divider instead of floating over
 
   assert.match(source, /data-split-layout-divider="true"/);
   assert.doesNotMatch(source, /data-split-layout-toolbar/);
+  assert.doesNotMatch(source, /setIsCompanionFolded\(true\)/);
 });
 
 test('ask agent opens an explicit side session with neutral copy and reference chip', () => {

@@ -1094,21 +1094,6 @@ export function ChatsPage({
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
-            setIsCompanionFolded(true);
-          }}
-          className="app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100 transition"
-          aria-label={`Hide ${companionLabel(companionConversation)}`}
-          title={`Hide ${companionConversation.name}`}
-        >
-          <Columns2 className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant="secondary"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
             moveCompanionToSide(oppositeCompanionSide(companionSide));
           }}
           className="app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100 transition"
