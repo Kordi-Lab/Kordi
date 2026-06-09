@@ -238,6 +238,9 @@ test('ask agent opens an explicit side session with neutral copy and reference c
   assert.match(source, /aria-label="Side chat options"/);
   assert.match(source, /aria-label="Close side chat"/);
   assert.match(source, /data-side-chat-root-menu="true"/);
+  assert.match(source, /app-page-header[^"`]*z-40/);
+  assert.match(source, /data-side-chat-options-menu="true"/);
+  assert.match(source, /z-50/);
   assert.match(source, /bg-\[#1f1f1f\]/);
   assert.match(source, /text-\[13px\]/);
   assert.match(source, />\s*New chat\s*</);

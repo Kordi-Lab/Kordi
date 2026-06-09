@@ -971,7 +971,7 @@ export function ChatsPage({
   const companionPane = companionConversation ? (
     <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-white/[0.06] bg-white/[0.025] data-[side=left]:border-r data-[side=right]:border-l" data-side={companionSide} data-chat-side-agent-panel="true">
       <div
-        className="app-page-header flex min-h-[112px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3 active:cursor-grabbing"
+        className="app-page-header relative z-40 flex min-h-[112px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3 active:cursor-grabbing"
         draggable
         onDragStart={handleCompanionDragStart}
         onDragEnd={handleCompanionDragEnd}
@@ -1015,7 +1015,7 @@ export function ChatsPage({
           </Button>
           {isSideAgentActionsOpen ? (
             <div
-              className="absolute right-8 top-full z-30 mt-2 w-44 rounded-[18px] border border-white/10 bg-[#1f1f1f] p-1.5 text-[13px] font-medium text-white shadow-[0_18px_44px_rgba(0,0,0,0.55)]"
+              className="absolute right-8 top-full z-50 mt-2 w-44 rounded-[18px] border border-white/10 bg-[#1f1f1f] p-1.5 text-[13px] font-medium text-white shadow-[0_18px_44px_rgba(0,0,0,0.55)]"
               data-side-chat-options-menu="true"
               data-side-chat-root-menu="true"
             >
