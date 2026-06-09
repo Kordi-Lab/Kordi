@@ -12,6 +12,8 @@ pub fn builtin_tools() -> Vec<Box<dyn Tool>> {
         Box::new(crate::find::FindTool),
         Box::new(crate::grep::GrepTool),
         Box::new(crate::ls::LsTool),
+        Box::new(crate::session_observation::SearchSessionsTool),
+        Box::new(crate::session_observation::ReadSessionTool),
         Box::new(crate::web_search::WebSearchTool),
         Box::new(crate::web_fetch::WebFetchTool),
         Box::new(crate::browser_fetch::BrowserFetchTool),
@@ -43,6 +45,8 @@ mod tests {
             "web_search",
             "web_fetch",
             "browser_fetch",
+            "search_sessions",
+            "read_session",
         ] {
             let metadata = metadata_for(name);
             assert_eq!(metadata.layer, ToolLayer::Observation, "{name}");

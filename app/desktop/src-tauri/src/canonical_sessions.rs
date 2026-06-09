@@ -20,6 +20,7 @@ mod presence;
 mod prompt_context;
 mod sanitization;
 mod schema;
+mod session_observation;
 #[cfg(test)]
 mod tests;
 
@@ -84,6 +85,9 @@ use self::parent_sessions::{
 };
 use self::presence::update_presence_in_db;
 use self::schema::{ensure_local_profile, initialize_schema};
+pub(crate) use self::session_observation::{
+    read_session_for_observation, search_sessions_for_observation,
+};
 
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
 const SCHEMA_VERSION: i64 = 1;
