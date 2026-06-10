@@ -74,6 +74,45 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.requestId, 'msg_request');
 });
 
+test('cloud group control envelopes preserve quote message actions for recipients', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:quote',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_reply',
+      senderAccountId: 'acct_a',
+      text: 'hi',
+      createdAtMs: 123,
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'quote',
+        source: {
+          sourceSessionId: 'session:group:quote',
+          sourceMessageId: 'msg_source',
+          sourceMessageKind: 'text',
+          senderLabel: 'Bob',
+          textPreview: 'hey everyone',
+          attachmentCount: 0,
+          timeLabel: '00:48',
+        },
+      },
+    },
+  });
+
+  const parsed = parseCloudGroupControl(body);
+  assert.equal(parsed?.message?.messageAction?.kind, 'quote');
+  assert.equal(parsed?.message?.messageAction?.source.sourceMessageId, 'msg_source');
+  assert.equal(parsed?.message?.messageAction?.source.senderLabel, 'Bob');
+  assert.equal(parsed?.message?.messageAction?.source.textPreview, 'hey everyone');
+});
+
 test('cloud group control envelopes round trip attachments', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',

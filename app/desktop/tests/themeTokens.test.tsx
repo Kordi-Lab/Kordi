@@ -108,6 +108,22 @@ test('shell.css applies backdrop-filter and a paper-grain layer on the workspace
   assert.match(shellCss, /\.app-shell::before\s*{[\s\S]*mix-blend-mode:\s*multiply/);
 });
 
+test('light theme utility buttons use flat navigation-chip styling instead of raised glass', () => {
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const raisedSurfaceBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-input-shell,[\s\S]*?\.app-surface-muted\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const flatButtonBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-icon-button,[\s\S]*?\.app-control-chip\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const flatButtonHoverBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-icon-button:hover,[\s\S]*?\.app-control-chip:hover\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const activeChipBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-control-chip-active\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.doesNotMatch(raisedSurfaceBlock, /\.app-icon-button|\.app-utility-button|\.app-control-chip/);
+  assert.match(flatButtonBlock, /background:\s*rgba\(15, 23, 42, 0\.055\);/);
+  assert.match(flatButtonBlock, /box-shadow:\s*none;/);
+  assert.doesNotMatch(flatButtonBlock, /0 8px 18px|0 -2px 6px|inset 0 -1px/);
+  assert.match(flatButtonHoverBlock, /background:\s*rgba\(15, 23, 42, 0\.08\);/);
+  assert.match(activeChipBlock, /background:\s*rgba\(15, 23, 42, 0\.095\);/);
+  assert.match(activeChipBlock, /box-shadow:\s*none;/);
+});
+
 test('composer send area keeps the outer surface without an inner input pop or divider', () => {
   const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');

@@ -20,7 +20,7 @@ test('cloud avatar opens a small account menu before the centered settings modal
   assert.match(sidebar, /CloudProfileRowCopyButton label=\{row\.label\} value=\{row\.value\}/);
   assert.match(sidebar, /cloudAccountDialogTab !== null/);
   assert.doesNotMatch(sidebar, /isOpen=\{isProfileCardOpen\}/);
-  assert.match(slot, /cloudSettings=\{isCloud \? \{/);
+  assert.match(slot, /cloudSettings=\{\{/);
   assert.match(modal, /role="dialog"/);
   assert.match(modal, /aria-label="Account settings"/);
   assert.match(modal, /fixed inset-0/);
@@ -38,6 +38,28 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /fileToAvatarDataUrl/);
   assert.match(modal, /onUpdateProfile\(input\)/);
   assert.match(modal, /initialTab/);
+});
+
+test('cloud settings modal uses cool chat-aligned light palette instead of warm gray', () => {
+  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const authPage = readSource('kordi-app/auth/AuthPage.tsx');
+  const themeOverrides = readSource('styles/theme-overrides.css');
+
+  assert.match(modal, /app-cloud-account-settings-overlay/);
+  assert.match(modal, /app-cloud-account-settings-dialog/);
+  assert.doesNotMatch(modal, /bg-black\/45/);
+  assert.doesNotMatch(`${modal}\n${authPage}`, /rgba\(126,111,64/);
+  const modalPaletteBlock = themeOverrides.slice(
+    themeOverrides.indexOf('.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list'),
+    themeOverrides.indexOf('.bridge-app.theme-light .app-agent-shell'),
+  );
+
+  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-cloud-account-settings-dialog\s*\{/);
+  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-cloud-account-settings-overlay\s*\{/);
+  assert.match(modalPaletteBlock, /rgba\(37, 99, 235, 0\.12\)/);
+  assert.match(modalPaletteBlock, /rgba\(248, 251, 255, 0\.96\)/);
+  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-auth-provider-glyph[\s\S]*rgba\(239, 246, 255, 0\.96\)/);
+  assert.doesNotMatch(modalPaletteBlock, /rgba\(147, 128, 109|rgba\(138, 118, 98|rgba\(126,111,64/);
 });
 
 test('cloud authentication tab suppresses nested auth header and stays narrow', () => {

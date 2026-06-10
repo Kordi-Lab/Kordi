@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Eye, LoaderCircle, Plus, Search, Trash2, UserPlus, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, LoaderCircle, Plus, Search, Trash2, UserPlus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { selfObjectLabel } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
-import { BridgeChip, ContactRequestRow, ContactRow } from './components';
+import { ContactRequestRow, ContactRow } from './components';
 import { EditableIdentityAvatar } from './components/EditableIdentityAvatar';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
@@ -215,7 +214,7 @@ export function ContactsPage({
               <button
                 type="button"
                 onClick={onToggleRequests}
-                className="app-surface-muted flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition"
+                className="app-contacts-section-button flex w-full items-center justify-between gap-3 rounded-[24px] px-3.5 py-2.5 text-left transition"
               >
                 <div className="min-w-0">
                   <div className="text-[13px] font-medium leading-5 text-white">New requests</div>
@@ -225,7 +224,7 @@ export function ContactsPage({
                   {pendingRequestCount > 0 ? (
                     <div className="app-badge-attention px-2 py-0.5 text-[10px] font-medium">{pendingRequestCount}</div>
                   ) : (
-                    <div className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-slate-400">No pending</div>
+                    <div className="app-contacts-status-chip rounded-full px-2 py-0.5 text-[10px] font-medium">No pending</div>
                   )}
                   <ChevronDown className={cn('h-4 w-4 text-slate-400 transition', isContactRequestsOpen ? 'rotate-180' : '')} />
                 </div>
@@ -243,7 +242,7 @@ export function ContactsPage({
                       actionState={contactRequestActionState(request)}
                     />
                   )) : (
-                    <div className="app-surface-muted rounded-2xl px-3 py-3 text-[12px] text-slate-400">No pending contact approvals.</div>
+                    <div className="app-contacts-section-button rounded-[24px] px-3 py-3 text-[12px] text-[color:var(--utility-muted-text)]">No pending contact approvals.</div>
                   )}
                   {contactRequestActionError ? (
                     <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
@@ -259,7 +258,7 @@ export function ContactsPage({
                 <div className="text-[13px] font-medium leading-5 text-white">Contacts</div>
                 <div className="text-[11.5px] leading-4 text-slate-400">Foldable classes with quick letter jump.</div>
               </div>
-              <Button variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => setIsAddContactOpen((open) => !open)} disabled={!onAddContactByNodeId}>
+              <Button variant="secondary" className="app-contacts-action-chip h-9 rounded-full px-4 text-[13px] font-medium" onClick={() => setIsAddContactOpen((open) => !open)} disabled={!onAddContactByNodeId}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add
               </Button>
@@ -292,7 +291,7 @@ export function ContactsPage({
                     placeholder="Account ID, e.g. acct_..."
                     className="app-input-shell h-8 min-w-0 flex-1 rounded-[12px] px-2.5 text-[12px] text-slate-100 outline-none"
                   />
-                  <Button type="submit" className="h-8 rounded-[12px] px-3 text-[12px]" disabled={!contactNodeId.trim() || lookupState === 'searching' || addContactState === 'saving'}>
+                  <Button type="submit" className="app-contacts-action-chip h-8 rounded-full px-3 text-[12px]" disabled={!contactNodeId.trim() || lookupState === 'searching' || addContactState === 'saving'}>
                     {lookupResult
                       ? (addContactState === 'saving' ? 'Sending…' : 'Send request')
                       : (lookupState === 'searching' ? 'Searching…' : 'Search')}
@@ -311,7 +310,7 @@ export function ContactsPage({
                     ) : (
                       <Button
                         type="button"
-                        className="h-8 w-8 shrink-0 rounded-full p-0"
+                        className="app-contacts-action-chip h-8 w-8 shrink-0 rounded-full p-0"
                         aria-label={`Send request to ${lookupResult.displayName || lookupResult.accountId}`}
                         title="Send request"
                         disabled={addContactState === 'saving' || requestedContactNodeIds.includes(lookupResult.accountId)}
@@ -354,7 +353,7 @@ export function ContactsPage({
                       <button
                         type="button"
                         onClick={() => onToggleGroup(group.id)}
-                        className="app-surface-muted flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left transition"
+                        className="app-contacts-section-button flex w-full items-center justify-between rounded-[24px] px-3.5 py-3 text-left transition"
                       >
                         <div className="flex items-center gap-3">
                           {expandedContactGroups[group.id] ? (
@@ -414,7 +413,7 @@ export function ContactsPage({
                   <button
                     type="button"
                     onClick={onCloseOverlay}
-                    className="app-icon-button rounded-full p-2 text-slate-300 transition hover:text-white"
+                    className="app-contacts-action-chip rounded-full p-2 transition"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -437,37 +436,18 @@ export function ContactsPage({
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           <Badge className={cn('rounded-full px-2.5 py-1', getStatusBadgeClass(activeContact.status))}>{activeContact.status}</Badge>
-                          <Badge variant="secondary" className="app-badge-neutral rounded-full px-2.5 py-1">
-                            Owner: {selfObjectLabel(activeContact.owner)}
-                          </Badge>
                         </div>
                       </div>
                     </div>
-                    <div className="mb-4 text-sm text-slate-300">{activeContact.detail}</div>
-                    <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-slate-400">Joined bridges</div>
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      {activeContact.bridges.map((bridge) => (
-                        <BridgeChip key={bridge} bridge={bridge} />
-                      ))}
-                    </div>
-                    <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-slate-400">Discoverable on</div>
-                    <div className="mb-5 flex flex-wrap gap-2">
-                      {activeContact.discoverableOn.map((bridge) => (
-                        <BridgeChip key={bridge} bridge={bridge} />
-                      ))}
-                    </div>
+                    <div className="mb-5 text-sm text-slate-300">{activeContact.detail}</div>
                     <div className="grid gap-2">
-                      <Button className="rounded-xl" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.bridgeHostId || !activeContact.bridgePeerNodeId}>
+                      <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.bridgeHostId || !activeContact.bridgePeerNodeId}>
                         Message
-                      </Button>
-                      <Button variant="secondary" className="rounded-xl">
-                        <Eye className="mr-2 h-4 w-4" />
-                        View full profile
                       </Button>
                       {canRemoveActiveContact ? (
                         <Button
                           variant="secondary"
-                          className="rounded-xl border-rose-400/20 bg-rose-400/10 text-rose-100 hover:bg-rose-400/15"
+                          className="rounded-full border-rose-400/20 bg-rose-400/10 text-rose-100 shadow-none hover:bg-rose-400/15"
                           onClick={() => { void submitRemoveContact(); }}
                           disabled={removeContactState === 'saving'}
                         >
@@ -491,7 +471,7 @@ export function ContactsPage({
                     </div>
                     <div className="mb-5 text-sm text-slate-300">{activeContactRequest.detail}</div>
                     <div className="grid gap-2">
-                      <Button className="rounded-xl" onClick={() => { void submitContactRequestAction(activeContactRequest, 'accept'); }} disabled={!onAcceptRequest || Boolean(contactRequestAction)}>
+                      <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => { void submitContactRequestAction(activeContactRequest, 'accept'); }} disabled={!onAcceptRequest || Boolean(contactRequestAction)}>
                         {contactRequestActionState(activeContactRequest) === 'accepting' ? (
                           <>
                             <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
@@ -499,7 +479,7 @@ export function ContactsPage({
                           </>
                         ) : 'Accept'}
                       </Button>
-                      <Button variant="secondary" className="rounded-xl" onClick={() => { void submitContactRequestAction(activeContactRequest, 'reject'); }} disabled={!onRejectRequest || Boolean(contactRequestAction)}>
+                      <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => { void submitContactRequestAction(activeContactRequest, 'reject'); }} disabled={!onRejectRequest || Boolean(contactRequestAction)}>
                         {contactRequestActionState(activeContactRequest) === 'rejecting' ? (
                           <>
                             <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
@@ -507,7 +487,7 @@ export function ContactsPage({
                           </>
                         ) : 'Reject'}
                       </Button>
-                      <Button variant="secondary" className="rounded-xl" onClick={onCloseOverlay} disabled={Boolean(contactRequestAction)}>
+                      <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={onCloseOverlay} disabled={Boolean(contactRequestAction)}>
                         Close review
                       </Button>
                     </div>

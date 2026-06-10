@@ -191,8 +191,46 @@
 
 .bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
 .bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section {
-  background: rgba(15, 23, 42, 0.035);
-  border-color: rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.88) 0%, rgba(241, 247, 255, 0.78) 100%);
+  border-color: rgba(37, 99, 235, 0.12);
+}
+
+.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-count-chip {
+  border-color: rgba(37, 99, 235, 0.14);
+  background: rgba(37, 99, 235, 0.055);
+  color: rgb(71 85 105);
+}
+
+.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-rows {
+  border-color: rgba(37, 99, 235, 0.10) !important;
+  background: rgba(255, 255, 255, 0.58) !important;
+  box-shadow: none !important;
+}
+
+.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-row {
+  border-color: rgba(37, 99, 235, 0.08) !important;
+}
+
+.bridge-app.theme-light .app-auth-settings-page .app-auth-provider-row:hover {
+  background: rgba(37, 99, 235, 0.045) !important;
+}
+
+.bridge-app.theme-light .app-cloud-account-settings-overlay {
+  background: rgba(15, 23, 42, 0.24) !important;
+}
+
+.bridge-app.theme-light .app-cloud-account-settings-dialog {
+  border-color: rgba(37, 99, 235, 0.12) !important;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96) 0%, rgba(241, 247, 255, 0.92) 100%) !important;
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.045),
+    0 18px 44px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+.bridge-app.theme-light .app-cloud-account-settings-dialog > div:first-child {
+  border-right-color: rgba(37, 99, 235, 0.10) !important;
+  background: rgba(248, 251, 255, 0.52);
 }
 
 .bridge-app.theme-light .app-agent-shell {
@@ -296,9 +334,6 @@
 }
 
 .bridge-app.theme-light .app-input-shell,
-.bridge-app.theme-light .app-icon-button,
-.bridge-app.theme-light .app-utility-button,
-.bridge-app.theme-light .app-control-chip,
 .bridge-app.theme-light .app-list-item:hover,
 .bridge-app.theme-light .app-composer-shell,
 .bridge-app.theme-light .app-surface-muted {
@@ -310,16 +345,28 @@
     inset 0 -1px 0 rgba(138, 118, 98, 0.05);
 }
 
+.bridge-app.theme-light .app-icon-button,
+.bridge-app.theme-light .app-utility-button,
+.bridge-app.theme-light .app-control-chip {
+  border-color: rgba(15, 23, 42, 0.10);
+  background: rgba(15, 23, 42, 0.055);
+  color: rgb(31 41 55);
+  box-shadow: none;
+}
+
+.bridge-app.theme-light .app-icon-button:hover,
+.bridge-app.theme-light .app-utility-button:hover,
+.bridge-app.theme-light .app-control-chip:hover {
+  border-color: rgba(15, 23, 42, 0.13);
+  background: rgba(15, 23, 42, 0.08);
+  color: rgb(17 24 39);
+}
+
 .bridge-app.theme-light .app-control-chip-active {
-  border-color: rgba(43, 35, 32, 0.12);
-  background: rgba(255, 255, 255, 0.94);
-  color: rgb(31 27 25);
-  box-shadow:
-    0 0 0 1px rgba(131, 112, 93, 0.03),
-    0 8px 18px rgba(147, 128, 109, 0.05),
-    0 -2px 6px rgba(255, 255, 255, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.46),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+  border-color: rgba(15, 23, 42, 0.13);
+  background: rgba(15, 23, 42, 0.095);
+  color: rgb(17 24 39);
+  box-shadow: none;
 }
 
 .bridge-app.theme-light .app-list-item-active {
@@ -603,13 +650,12 @@
 }
 
 /* Provider glyph avatars carry per-provider dark gradient fills that are
- * tuned for dark mode. In light mode we neutralize the gradient to a
- * uniform soft slate disc; the icon inside keeps its color identity via
- * the text-* overrides further up. */
+ * tuned for dark mode. In light mode we replace the neutral gray disc with
+ * a quiet blue-tinted surface so the auth panel aligns with the chat shell. */
 .bridge-app.theme-light .app-auth-provider-glyph {
-  background: rgba(15, 23, 42, 0.045) !important;
-  border-color: rgba(15, 23, 42, 0.08) !important;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.02) !important;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(219, 234, 254, 0.72) 100%) !important;
+  border-color: rgba(37, 99, 235, 0.14) !important;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.04) !important;
 }
 
 .bridge-app.theme-light .bg-slate-800 {
