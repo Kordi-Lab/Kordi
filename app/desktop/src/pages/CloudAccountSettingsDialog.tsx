@@ -329,7 +329,7 @@ export function CloudAccountSettingsDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[180] flex items-center justify-center bg-black/45 px-6 py-6 backdrop-blur-md"
+      className="app-cloud-account-settings-overlay fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/35 px-6 py-6 backdrop-blur-md"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -338,7 +338,7 @@ export function CloudAccountSettingsDialog({
         role="dialog"
         aria-label="Account settings"
         aria-modal="true"
-        className="app-modal-panel grid h-[min(720px,calc(100vh-48px))] w-[min(920px,calc(100vw-48px))] overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(126,111,64,0.10),rgba(15,16,18,0.22)_46%,rgba(10,11,13,0.28))] text-white shadow-[var(--app-shadow-float)] md:grid-cols-[220px_minmax(0,1fr)]"
+        className="app-modal-panel app-cloud-account-settings-dialog grid h-[min(720px,calc(100vh-48px))] w-[min(920px,calc(100vw-48px))] overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(37,99,235,0.08),rgba(15,23,42,0.18)_46%,rgba(15,23,42,0.24))] text-white shadow-[var(--app-shadow-float)] md:grid-cols-[220px_minmax(0,1fr)]"
       >
         <div className="flex min-h-0 flex-col border-r border-white/10 p-4">
           <div className="mb-4 min-w-0 px-3 py-2">

@@ -119,6 +119,33 @@ function cloudMessageAttachments(value: unknown): CloudMessageAttachment[] {
   return value.map(cloudMessageAttachmentFromRecord).filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
 }
 
+function cloudMessageActionFromRecord(value: unknown): MessageActionMetadata | null {
+  const record = objectRecord(value);
+  if (record.schemaVersion !== 1 || (record.kind !== 'quote' && record.kind !== 'forward')) return null;
+  const source = objectRecord(record.source);
+  const sourceSessionId = cleanText(typeof source.sourceSessionId === 'string' ? source.sourceSessionId : null);
+  const sourceMessageId = cleanText(typeof source.sourceMessageId === 'string' ? source.sourceMessageId : null);
+  const senderLabel = cleanText(typeof source.senderLabel === 'string' ? source.senderLabel : null);
+  if (!sourceSessionId || !sourceMessageId || !senderLabel) return null;
+  const attachmentCount = typeof source.attachmentCount === 'number' && Number.isFinite(source.attachmentCount)
+    ? Math.max(0, Math.floor(source.attachmentCount))
+    : 0;
+  return {
+    schemaVersion: 1,
+    kind: record.kind,
+    source: {
+      sourceSessionId,
+      sourceMessageId,
+      sourceMessageKind: typeof source.sourceMessageKind === 'string' ? source.sourceMessageKind : null,
+      senderLabel,
+      textPreview: cleanText(typeof source.textPreview === 'string' ? source.textPreview : null),
+      attachmentCount,
+      createdAtMs: typeof source.createdAtMs === 'number' && Number.isFinite(source.createdAtMs) ? source.createdAtMs : null,
+      timeLabel: cleanText(typeof source.timeLabel === 'string' ? source.timeLabel : null) || null,
+    },
+  };
+}
+
 function cloudAvatarUrlForLimit(value: string | null | undefined, maxDataUrlLength: number): string | null {
   const url = cleanText(value);
   if (!url) return null;
@@ -351,6 +378,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
         forkSnapshot: candidate.forkSnapshot === true,
         attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
+        messageAction: cloudMessageActionFromRecord((candidate as { messageAction?: unknown }).messageAction),
       };
     }
     const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);

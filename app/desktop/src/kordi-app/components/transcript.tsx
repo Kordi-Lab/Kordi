@@ -850,7 +850,7 @@ function MessageBubbleView({
       aria-pressed={isSelectedForAction}
       aria-label={selectionLabel}
       className={cn(
-        'app-message-selection-control grid h-6.5 w-6.5 shrink-0 place-items-center rounded-full border text-[color:var(--utility-foreground)] transition',
+        'app-message-selection-control grid h-5.5 w-5.5 shrink-0 place-items-center rounded-full border text-[color:var(--utility-foreground)] transition',
         isSelectedForAction
           ? 'border-[color:var(--app-sidebar-accent)] bg-[color:var(--app-sidebar-accent)] text-[color:var(--app-sidebar-accent-text)]'
           : 'border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] hover:bg-[color:var(--app-control-hover)]',
@@ -889,7 +889,7 @@ function MessageBubbleView({
         onToggleSelectedMessage?.(msg);
       }}
     >
-      {isSelectedForAction ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+      {isSelectedForAction ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
     </button>
   ) : null;
 

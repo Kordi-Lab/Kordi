@@ -234,7 +234,7 @@ export function ProjectsPage({
           <button
             type="button"
             onClick={() => setIsSessionPanelCollapsed((collapsed) => !collapsed)}
-            className="app-icon-button app-utility-button grid h-7.5 w-7.5 shrink-0 place-items-center rounded-[12px] text-slate-100 transition"
+            className="app-icon-button app-utility-button grid h-7.5 w-7.5 shrink-0 place-items-center rounded-[12px] transition"
             aria-label={collapseChatSessions ? 'Open project panel' : 'Close project panel'}
             title={collapseChatSessions ? 'Open project panel' : 'Close project panel'}
           >
@@ -303,7 +303,7 @@ export function ProjectsPage({
               type="button"
               variant="secondary"
               onClick={onCreateProjectSession}
-              className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] text-slate-100 transition"
+              className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
               title="Create a new session in this project"
             >
               New session
@@ -314,7 +314,7 @@ export function ProjectsPage({
               type="button"
               variant="secondary"
               onClick={() => setIsDetailPanelCollapsed((collapsed) => !collapsed)}
-              className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] text-slate-100 transition"
+              className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
               aria-label={isDetailPanelCollapsed ? 'Open project details' : 'Hide project details'}
               title={isDetailPanelCollapsed ? 'Open project details' : 'Hide project details'}
             >

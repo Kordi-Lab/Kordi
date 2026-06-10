@@ -985,38 +985,31 @@ export function ChatsPage({
   const companionPane = companionConversation ? (
     <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-side={companionSide} data-chat-side-agent-panel="true">
       <div
-        className="app-page-header relative z-40 flex min-h-[112px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3 active:cursor-grabbing"
+        className="app-page-header relative z-40 flex min-h-[72px] shrink-0 cursor-grab items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-2.5 active:cursor-grabbing"
         draggable
         onDragStart={handleCompanionDragStart}
         onDragEnd={handleCompanionDragEnd}
         title={`Drag to move ${companionLabel(companionConversation)} left or right`}
       >
-        <div className="flex min-w-0 items-start gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1">
-            <div className="mb-1 flex min-w-0 flex-wrap items-start gap-1.5 text-white">
-              <span className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6">Ask Agent · {companionConversation.name}</span>
+            <div className="mb-1 flex min-w-0 items-center gap-1.5 text-white">
+              <span className="min-w-0 max-w-[18rem] truncate text-[17px] font-semibold leading-6">Ask Agent · {companionConversation.name}</span>
+              <span data-chat-session-subtitle-pill="true" className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.045] px-2 text-[10.5px] font-medium leading-none text-slate-300">Agent session</span>
             </div>
-            <div className="mt-0.5 text-[11px] leading-5 text-slate-400">Agent session</div>
-            {sideAgentReferenceContext ? (
-              <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[11px] text-slate-300" title={sideAgentReferenceContext}>
-                <span className="h-1.5 w-1.5 rounded-full bg-pink-400" aria-hidden="true" />
-                <span className="truncate">Reference: Current chat</span>
-              </div>
-            ) : null}
           </div>
         </div>
         <div
-          className="relative flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.035] p-1 shadow-[0_10px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl"
+          className="relative flex shrink-0 items-center gap-0.5"
           draggable={false}
           onDragStart={(event) => event.preventDefault()}
           onPointerDown={(event) => event.stopPropagation()}
           aria-label="Side chat controls"
+          data-side-chat-controls="true"
         >
-          <Button
+          <button
             type="button"
-            size="icon"
-            variant="secondary"
-            className="app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100 transition"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 text-[color:var(--utility-muted-text)] opacity-70 transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
             title="Side chat options"
             aria-label="Side chat options"
             onClick={() => {
@@ -1025,31 +1018,31 @@ export function ChatsPage({
             }}
           >
             <Ellipsis className="h-3.5 w-3.5" />
-          </Button>
+          </button>
           {isSideAgentActionsOpen ? (
             <div
-              className="absolute right-8 top-full z-50 mt-2 w-44 rounded-[18px] border border-white/10 bg-[#1f1f1f] p-1.5 text-[13px] font-medium text-white shadow-[0_18px_44px_rgba(0,0,0,0.55)]"
               data-side-chat-options-menu="true"
               data-side-chat-root-menu="true"
+              className="absolute right-8 top-full z-50 mt-2 w-44 rounded-[18px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] p-1.5 text-[13px] font-medium text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl"
             >
               {isSideAgentSessionListOpen ? (
                 <div data-side-chat-session-list="true">
                   <button
                     type="button"
-                    className="mb-1 flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition hover:bg-white/10"
+                    className="mb-1 flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition hover:bg-[color:var(--app-control-hover)]"
                     onClick={() => setIsSideAgentSessionListOpen(false)}
                   >
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                     <span>Back</span>
                   </button>
-                  <div className="mb-1 h-px bg-white/12" aria-hidden="true" />
+                  <div className="mb-1 h-px bg-[color:var(--app-divider)]" aria-hidden="true" />
                   {companionCandidates.map((conversation) => (
                     <button
                       key={conversation.id}
                       type="button"
                       className={cn(
-                        'flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition hover:bg-white/10',
-                        conversation.id === companionConversation.id ? 'text-pink-200' : 'text-white',
+                        'flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition hover:bg-[color:var(--app-control-hover)]',
+                        conversation.id === companionConversation.id ? 'text-pink-500 dark:text-pink-200' : 'text-[color:var(--utility-foreground)]',
                       )}
                       title={`Switch to ${conversation.name}`}
                       onClick={() => {
@@ -1071,7 +1064,7 @@ export function ChatsPage({
                   {onCreateAgentSession ? (
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition hover:bg-white/10"
+                      className="flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition hover:bg-[color:var(--app-control-hover)]"
                       title="New chat"
                       aria-label="New chat"
                       onClick={() => {
@@ -1086,7 +1079,7 @@ export function ChatsPage({
                   ) : null}
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition hover:bg-white/10"
+                    className="flex w-full items-center justify-between gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition hover:bg-[color:var(--app-control-hover)]"
                     onClick={() => setIsSideAgentSessionListOpen(true)}
                   >
                     <span>Switch Chat</span>
@@ -1096,10 +1089,8 @@ export function ChatsPage({
               )}
             </div>
           ) : null}
-          <Button
+          <button
             type="button"
-            size="icon"
-            variant="secondary"
             onClick={() => {
               setOpenSideAgentConversationId(null);
               setSelectedCompanionConversationId(null);
@@ -1107,12 +1098,12 @@ export function ChatsPage({
               setIsSideAgentActionsOpen(false);
               setIsSideAgentSessionListOpen(false);
             }}
-            className="app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100 transition"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 text-[color:var(--utility-muted-text)] opacity-70 transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
             title="Close side chat"
             aria-label="Close side chat"
           >
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </button>
         </div>
       </div>
       <ScrollArea className="h-full min-h-0 px-3 py-5">
@@ -1239,9 +1230,13 @@ export function ChatsPage({
       role="separator"
       aria-orientation="vertical"
     >
-      <div className="flex flex-col items-center gap-1 rounded-full border border-white/[0.08] bg-black/20 p-1 opacity-80 shadow-[0_12px_28px_rgba(0,0,0,0.22)] backdrop-blur-xl transition group-hover:opacity-100">
-        <GripVertical className="h-4 w-4 text-slate-400" aria-hidden="true" />
-      </div>
+      <span
+        className="pointer-events-none flex h-9 w-full items-center justify-center text-[color:var(--utility-muted-text)] opacity-45 transition group-hover:opacity-80"
+        data-split-layout-grip="true"
+        aria-hidden="true"
+      >
+        <GripVertical className="h-4 w-4" />
+      </span>
     </div>
   ) : null;
   const ownInlineDetailRail = showRightDetailRail && !isDetailPanelCollapsed && Boolean(rightDetailRail);
@@ -1431,13 +1426,13 @@ export function ChatsPage({
         {showCompanionPane && companionSide === 'left' ? companionPane : null}
         {showCompanionPane && companionSide === 'left' ? splitDivider : null}
         <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-active-side={companionSide === 'left' ? 'right' : 'left'}>
-      <div className="app-page-header flex min-h-[112px] shrink-0 items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
-        <div className="flex min-w-0 items-start gap-2">
+      <div className="app-page-header flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
           {showChatDetailRail && (
             <button
               type="button"
               onClick={() => setIsSessionPanelCollapsed((collapsed) => !collapsed)}
-              className="app-icon-button app-utility-button grid h-7.5 w-7.5 shrink-0 place-items-center rounded-[12px] text-slate-100 transition"
+              className="app-icon-button app-utility-button grid h-7.5 w-7.5 shrink-0 place-items-center rounded-[12px] transition"
               aria-label={collapseChatSessions ? 'Open sessions' : 'Close sessions'}
               title={collapseChatSessions ? 'Open sessions' : 'Close sessions'}
             >
@@ -1445,7 +1440,7 @@ export function ChatsPage({
             </button>
           )}
           <div className="min-w-0 flex-1">
-            <div className="app-page-header-title-row mb-1 flex min-w-0 flex-wrap items-start gap-1.5 text-white">
+            <div className="app-page-header-title-row mb-1 flex min-w-0 items-center gap-1.5 text-white">
               {isNativeShell ? (
                 isEditingDesktopSessionTitle ? (
                   <input
@@ -1477,7 +1472,7 @@ export function ChatsPage({
                       setDesktopSessionRenameDraft(activeConv.name);
                       setIsEditingDesktopSessionTitle(true);
                     }}
-                    className="min-w-0 max-w-full break-words rounded-lg px-1 py-0.5 text-left text-[17px] font-semibold leading-6 text-white transition hover:bg-white/5"
+                    className="min-w-0 max-w-[18rem] truncate rounded-lg px-1 py-0.5 text-left text-[17px] font-semibold leading-6 text-white transition hover:bg-white/5"
                     data-kordi-window-drag="false"
                     title={activeConv.name}
                   >
@@ -1485,7 +1480,7 @@ export function ChatsPage({
                   </h2>
                 )
               ) : (
-                <h2 className="min-w-0 max-w-full break-words text-[17px] font-semibold leading-6" data-kordi-window-drag="false">{activeConv.name}</h2>
+                <h2 className="min-w-0 max-w-[18rem] truncate text-[17px] font-semibold leading-6" data-kordi-window-drag="false">{activeConv.name}</h2>
               )}
               {activeCloudSelfAgentSyncLabel ? (
                 <span
@@ -1508,6 +1503,9 @@ export function ChatsPage({
                   <Cloud className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
               ) : null}
+              {activeSessionSubtitle ? (
+                <span data-chat-session-subtitle-pill="true" className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.045] px-2 text-[10.5px] font-medium leading-none text-slate-300" title={activeSessionSubtitle}>{activeSessionSubtitle}</span>
+              ) : null}
               {activeForkSourceSessionId ? (
                 <button
                   type="button"
@@ -1522,11 +1520,6 @@ export function ChatsPage({
                 </button>
               ) : null}
             </div>
-            {activeSessionSubtitle ? (
-              <div className="mt-0.5 flex min-w-0 items-center text-[11px] leading-5 text-slate-400">
-                <span className="truncate" title={activeSessionSubtitle}>{activeSessionSubtitle}</span>
-              </div>
-            ) : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -1535,7 +1528,7 @@ export function ChatsPage({
               type="button"
               variant="secondary"
               onClick={() => { void openSideAgentPanel(); }}
-              className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full border border-pink-300/30 bg-white/[0.06] px-3 text-[12px] font-semibold text-pink-200 transition hover:bg-pink-400/10"
+              className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
               aria-label="Ask Agent"
               title={suggestedSideAgentConversation ? `Ask Agent with ${suggestedSideAgentConversation.name}` : 'Ask Agent in a new session'}
             >
@@ -1548,7 +1541,7 @@ export function ChatsPage({
               type="button"
               variant="secondary"
               onClick={() => setIsDetailPanelCollapsed((collapsed) => !collapsed)}
-              className="app-icon-button app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] text-slate-100 transition"
+              className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
               aria-label={isDetailPanelCollapsed ? 'Open session details' : 'Hide session details'}
               title={isDetailPanelCollapsed ? 'Open session details' : 'Hide session details'}
             >

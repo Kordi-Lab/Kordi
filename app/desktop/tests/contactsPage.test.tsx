@@ -76,6 +76,30 @@ test('contacts request header uses attention count only for pending requests', (
   assert.match(markup, />Review 2 pending requests\.</);
 });
 
+test('contacts page controls use flat chip styling instead of raised button chrome', () => {
+  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+
+  assert.match(source, /app-contacts-section-button/);
+  assert.match(source, /app-contacts-action-chip/);
+  assert.match(source, /app-contacts-status-chip/);
+  assert.doesNotMatch(source, /app-control-chip rounded-xl border-0/);
+  assert.doesNotMatch(source, /app-surface-muted flex w-full items-center justify-between gap-3 rounded-2xl/);
+  assert.match(shellCss, /\.app-contacts-action-chip[\s\S]*box-shadow:\s*none/);
+  assert.match(shellCss, /\.app-contacts-section-button[\s\S]*box-shadow:\s*none/);
+});
+
+test('contact detail modal removes redundant repeated metadata and unused profile action', () => {
+  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /Contact detail/);
+  assert.doesNotMatch(source, /Owner: \{selfObjectLabel\(activeContact\.owner\)\}/);
+  assert.doesNotMatch(source, />Joined bridges</);
+  assert.doesNotMatch(source, />Discoverable on</);
+  assert.doesNotMatch(source, />\s*View full profile\s*</);
+  assert.doesNotMatch(source, /BridgeChip key=\{bridge\}/);
+});
+
 test('contacts add surface uses account search copy without bridge implementation wording', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
 

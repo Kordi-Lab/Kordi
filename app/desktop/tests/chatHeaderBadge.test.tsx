@@ -46,6 +46,37 @@ test('chat header title text does not flex-grow away from fork or action pills',
   assert.doesNotMatch(source, /min-w-\[10rem\] flex-1 break-words/);
 });
 
+test('chat headers use compact inline subtitle tags instead of tall stacked subtitles', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /min-h-\[112px\]/);
+  assert.match(source, /min-h-\[72px\]/);
+  assert.match(source, /data-chat-session-subtitle-pill="true"/);
+  assert.doesNotMatch(source, /mt-0\.5 flex min-w-0 items-center text-\[11px\] leading-5 text-slate-400/);
+  assert.doesNotMatch(source, /mt-0\.5 text-\[11px\] leading-5 text-slate-400">Agent session/);
+});
+
+test('chat and project header utility buttons follow flat chip styling without standout overrides', () => {
+  const chatSource = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const projectSource = readFileSync(new URL('../src/pages/ProjectsPage.tsx', import.meta.url), 'utf8');
+  const askAgentButton = chatSource.slice(chatSource.indexOf('aria-label="Ask Agent"') - 360, chatSource.indexOf('aria-label="Ask Agent"') + 180);
+  const chatDetailsButton = chatSource.slice(chatSource.indexOf('aria-label={isDetailPanelCollapsed') - 260, chatSource.indexOf('aria-label={isDetailPanelCollapsed') + 180);
+  const projectDetailsButton = projectSource.slice(projectSource.indexOf('aria-label={isDetailPanelCollapsed') - 260, projectSource.indexOf('aria-label={isDetailPanelCollapsed') + 180);
+
+  assert.doesNotMatch(`${askAgentButton}\n${chatDetailsButton}\n${projectDetailsButton}`, /border-pink|bg-white\/\[0\.06\]|text-pink|text-slate-100/);
+  assert.match(askAgentButton, /className="app-utility-button[^"]*font-medium transition"/);
+  assert.match(chatDetailsButton, /className="app-utility-button[^"]*font-medium transition"/);
+  assert.match(projectDetailsButton, /className="app-utility-button[^"]*font-medium transition"/);
+});
+
+test('message selection control is smaller than the old oversized blue circle', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /app-message-selection-control grid h-6\.5 w-6\.5/);
+  assert.match(source, /app-message-selection-control grid h-5\.5 w-5\.5/);
+  assert.match(source, /<Check className="h-3 w-3"/);
+});
+
 test('chat header cloud self-agent sync indicator is icon-only', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   const indicatorStart = source.indexOf('data-cloud-self-agent-sync-status');
@@ -220,7 +251,10 @@ test('chat companion split controls live on the divider instead of floating over
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /data-split-layout-divider="true"/);
+  assert.match(source, /data-split-layout-grip="true"/);
   assert.doesNotMatch(source, /app-chat-split-divider[^"`]*border-x/);
+  assert.doesNotMatch(source, /rounded-full border border-white\/\[0\.08\] bg-black\/20 p-1/);
+  assert.doesNotMatch(source, /shadow-\[0_12px_28px_rgba\(0,0,0,0\.22\)\]/);
   assert.doesNotMatch(source, /app-chat-companion-pane[^"`]*data-\[side=right\]:border-l/);
   assert.doesNotMatch(source, /app-chat-companion-pane[^"`]*data-\[side=left\]:border-r/);
   assert.doesNotMatch(source, /data-split-layout-toolbar/);
@@ -229,7 +263,7 @@ test('chat companion split controls live on the divider instead of floating over
   assert.doesNotMatch(source, /moveCompanionToSide\(/);
 });
 
-test('ask agent opens an explicit side session with neutral copy and reference chip', () => {
+test('ask agent opens an explicit side session with neutral copy and clean header', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   const sidePanelStart = source.indexOf('data-chat-side-agent-panel="true"');
   const sidePanelHeader = source.slice(sidePanelStart, source.indexOf('<ScrollArea', sidePanelStart));
@@ -237,10 +271,15 @@ test('ask agent opens an explicit side session with neutral copy and reference c
   assert.doesNotMatch(sidePanelHeader, /<GripVertical/);
   assert.match(source, /Ask Agent/);
   assert.match(source, /data-chat-side-agent-panel="true"/);
-  assert.match(source, /Reference: Current chat/);
+  assert.doesNotMatch(sidePanelHeader, /Reference: Current chat/);
+  assert.doesNotMatch(sidePanelHeader, /sideAgentReferenceContext/);
   assert.match(source, /Agent session/);
   assert.match(source, /aria-label="Side chat options"/);
   assert.match(source, /aria-label="Close side chat"/);
+  assert.match(sidePanelHeader, /data-side-chat-controls="true"/);
+  assert.doesNotMatch(sidePanelHeader, /rounded-full border border-white\/10 bg-white\/\[0\.035\] p-1 shadow/);
+  assert.doesNotMatch(sidePanelHeader, /app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100/);
+  assert.match(sidePanelHeader, /hover:bg-\[color:var\(--app-control-hover\)\]/);
   assert.match(source, /data-side-chat-root-menu="true"/);
   assert.match(source, /app-page-header[^"`]*z-40/);
   assert.match(source, /data-side-chat-options-menu="true"/);
@@ -257,7 +296,9 @@ test('ask agent opens an explicit side session with neutral copy and reference c
   assert.doesNotMatch(source, /CHAT_SIDE_DETAIL_TABS/);
   assert.match(source, /app-composer-meta mt-2 flex items-center justify-between gap-3 overflow-hidden pt-2\.5" data-companion-send-row="true"/);
   assert.doesNotMatch(source, /shrink-0 border-t border-white\/\[0\.06\] px-5 pb-4 pt-3/);
-  assert.match(source, /bg-\[#1f1f1f\]/);
+  assert.doesNotMatch(source, /bg-\[#1f1f1f\]/);
+  assert.match(source, /data-side-chat-options-menu="true"[^>]+bg-\[var\(--app-modal-bg\)\]/s);
+  assert.match(source, /data-side-chat-options-menu="true"[^>]+text-\[color:var\(--utility-foreground\)\]/s);
   assert.match(source, /text-\[13px\]/);
   assert.match(source, />\s*New chat\s*</);
   assert.match(source, />\s*Switch Chat\s*</);
