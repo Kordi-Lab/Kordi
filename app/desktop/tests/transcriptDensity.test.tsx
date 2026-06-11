@@ -650,7 +650,7 @@ test('pinned message bar renders sender preview and unpin affordance', () => {
   assert.match(markup, /aria-label="Unpin pinned message"/);
 });
 
-test('pin and unpin confirmation dialogs match compact confirmation flow', () => {
+test('pin and unpin confirmation dialogs use compact clear copy', () => {
   const message: Message = {
     id: 'msg:pin-dialog',
     role: 'person',
@@ -662,26 +662,30 @@ test('pin and unpin confirmation dialogs match compact confirmation flow', () =>
   const pinMarkup = renderToStaticMarkup(createElement(PinMessageDialog, {
     mode: 'pin',
     message,
-    alsoPinForSuper: false,
-    onToggleAlsoPinForSuper: () => undefined,
+    pinForEveryone: false,
+    onTogglePinForEveryone: () => undefined,
     onCancel: () => undefined,
     onConfirm: () => undefined,
   }));
   const unpinMarkup = renderToStaticMarkup(createElement(PinMessageDialog, {
     mode: 'unpin',
     message,
-    alsoPinForSuper: false,
-    onToggleAlsoPinForSuper: () => undefined,
+    pinForEveryone: false,
+    onTogglePinForEveryone: () => undefined,
     onCancel: () => undefined,
     onConfirm: () => undefined,
   }));
 
-  assert.match(pinMarkup, /Would you like to pin this message\?/);
-  assert.match(pinMarkup, /Also pin for super/);
+  assert.match(pinMarkup, /Pin this message\?/);
+  assert.match(pinMarkup, /Pin for everyone/);
+  assert.doesNotMatch(pinMarkup, /super/i);
+  assert.match(pinMarkup, /max-w-\[28rem\]/);
+  assert.match(pinMarkup, /text-\[15px\]/);
+  assert.match(pinMarkup, /text-\[14px\]/);
   assert.match(pinMarkup, />Cancel</);
   assert.match(pinMarkup, />Pin</);
-  assert.match(unpinMarkup, /Would you like to unpin this message\?/);
-  assert.doesNotMatch(unpinMarkup, /Also pin for super/);
+  assert.match(unpinMarkup, /Unpin this message\?/);
+  assert.doesNotMatch(unpinMarkup, /Pin for everyone/);
   assert.match(unpinMarkup, />Unpin</);
 });
 

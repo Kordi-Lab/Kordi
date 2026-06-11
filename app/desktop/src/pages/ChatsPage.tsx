@@ -230,37 +230,37 @@ export function PinnedMessageBar({
 export function PinMessageDialog({
   mode,
   message: _message,
-  alsoPinForSuper,
-  onToggleAlsoPinForSuper,
+  pinForEveryone,
+  onTogglePinForEveryone,
   onCancel,
   onConfirm,
 }: {
   mode: 'pin' | 'unpin';
   message: Message;
-  alsoPinForSuper: boolean;
-  onToggleAlsoPinForSuper: (value: boolean) => void;
+  pinForEveryone: boolean;
+  onTogglePinForEveryone: (value: boolean) => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const isPin = mode === 'pin';
   return (
     <div className="fixed inset-0 z-[300] grid place-items-center bg-black/45 px-4" data-pin-message-dialog={mode}>
-      <div className="w-full max-w-[34rem] rounded-[18px] bg-white px-8 py-7 text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
-        <div className="text-[18px] font-medium leading-7">
-          {isPin ? 'Would you like to pin this message?' : 'Would you like to unpin this message?'}
+      <div className="w-full max-w-[28rem] rounded-[16px] bg-white px-6 py-5 text-slate-950 shadow-[0_20px_56px_rgba(15,23,42,0.24)]">
+        <div className="text-[15px] font-medium leading-6">
+          {isPin ? 'Pin this message?' : 'Unpin this message?'}
         </div>
         {isPin ? (
-          <label className="mt-7 flex items-center gap-4 text-[17px] font-medium leading-6">
+          <label className="mt-5 flex items-center gap-3 text-[14px] font-medium leading-5">
             <input
               type="checkbox"
-              checked={alsoPinForSuper}
-              onChange={(event) => onToggleAlsoPinForSuper(event.currentTarget.checked)}
-              className="h-7 w-7 rounded border-2 border-slate-300"
+              checked={pinForEveryone}
+              onChange={(event) => onTogglePinForEveryone(event.currentTarget.checked)}
+              className="h-5.5 w-5.5 rounded border-2 border-slate-300"
             />
-            <span>Also pin for super</span>
+            <span>Pin for everyone</span>
           </label>
         ) : null}
-        <div className="mt-8 flex justify-end gap-8 text-[16px] font-semibold text-pink-500">
+        <div className="mt-6 flex justify-end gap-6 text-[14px] font-semibold text-pink-500">
           <button type="button" onClick={onCancel} className="rounded-full px-2 py-1 transition hover:bg-pink-50">Cancel</button>
           <button type="button" onClick={onConfirm} className="rounded-full px-2 py-1 transition hover:bg-pink-50">{isPin ? 'Pin' : 'Unpin'}</button>
         </div>
@@ -744,7 +744,7 @@ export function ChatsPage({
   const [splitLeftFraction, setSplitLeftFraction] = useState(0.5);
   const [pinnedMessageIdsByConversationId, setPinnedMessageIdsByConversationId] = useState<Record<string, string | null>>({});
   const [pinDialog, setPinDialog] = useState<{ mode: 'pin' | 'unpin'; message: Message } | null>(null);
-  const [alsoPinForSuper, setAlsoPinForSuper] = useState(false);
+  const [pinForEveryone, setPinForEveryone] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
@@ -924,7 +924,7 @@ export function ChatsPage({
     setPinnedMessageIdsByConversationId((current) => ({ ...current, [activeConv.id]: null }));
   }, [activeConv.id, pinnedMessage, pinnedMessageId]);
   const requestPinMessage = useCallback((message: Message) => {
-    setAlsoPinForSuper(false);
+    setPinForEveryone(false);
     setPinDialog({ mode: 'pin', message });
   }, []);
   const requestUnpinMessage = useCallback((message: Message) => {
@@ -2137,8 +2137,8 @@ export function ChatsPage({
           <PinMessageDialog
             mode={pinDialog.mode}
             message={pinDialog.message}
-            alsoPinForSuper={alsoPinForSuper}
-            onToggleAlsoPinForSuper={setAlsoPinForSuper}
+            pinForEveryone={pinForEveryone}
+            onTogglePinForEveryone={setPinForEveryone}
             onCancel={() => setPinDialog(null)}
             onConfirm={handleConfirmPinDialog}
           />
