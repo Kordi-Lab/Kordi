@@ -27,6 +27,7 @@ export type AddContactLookupResult = {
   avatarUrl: string | null;
   isContact: boolean;
   isSelf: boolean;
+  isRequestPending?: boolean;
 };
 
 export type ChatCreateDialogProps = {
@@ -197,7 +198,7 @@ export function ChatCreateDialog({
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [contactNodeId, setContactNodeId] = useState('');
-  const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'error'>('idle');
+  const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'pending' | 'error'>('idle');
   const [addContactError, setAddContactError] = useState('');
   const [requestingContactNodeId, setRequestingContactNodeId] = useState<string | null>(null);
   const [requestedContactNodeIds, setRequestedContactNodeIds] = useState<string[]>([]);
@@ -215,6 +216,7 @@ export function ChatCreateDialog({
   const addContactSubtitle = onLookupContact
     ? 'Send an approval request by Kordi account ID.'
     : 'Send an approval request by Bridge node ID.';
+  const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
 
   if (!isOpen) return null;
 
@@ -258,6 +260,11 @@ export function ChatCreateDialog({
   const submitAddContact = async (nodeIdInput: string) => {
     const nodeId = nodeIdInput.trim();
     if (!nodeId || !onAddContact || addContactState === 'saving') return;
+    if (requestedContactNodeIds.includes(nodeId) || (lookupResult?.accountId === nodeId && lookupResult.isRequestPending)) {
+      setAddContactState('pending');
+      setRequestedContactNodeIds((current) => (current.includes(nodeId) ? current : [...current, nodeId]));
+      return;
+    }
     setAddContactState('saving');
     setRequestingContactNodeId(nodeId);
     setAddContactError('');
@@ -409,6 +416,8 @@ export function ChatCreateDialog({
                 <span className="text-[11px] text-[color:var(--utility-muted-text)]">That's you</span>
               ) : lookupResult.isContact ? (
                 <span className="text-[11px] text-[color:var(--utility-muted-text)]">Already in contacts</span>
+              ) : lookupRequestPending ? (
+                <span className="text-[11px] font-medium text-amber-100">Request pending</span>
               ) : (
                 <Button
                   type="button"
@@ -430,14 +439,16 @@ export function ChatCreateDialog({
 
           <div className="min-h-4 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]" aria-live="polite">
             {addContactState === 'sent'
-              ? 'Request sent. They will appear in your contacts after they accept.'
-              : lookupState === 'error'
-                ? lookupError || 'Lookup failed.'
-                : addContactState === 'error'
-                  ? addContactError || 'Unable to send contact request.'
-                  : lookupResult
-                    ? 'Tap Add to send a contact request.'
-                    : 'Enter an account ID, then Search to preview the profile.'}
+              ? 'Request sent. Track it under Sent invites while they review it.'
+              : addContactState === 'pending' || lookupRequestPending
+                ? 'Request pending. Track it under Sent invites while they review it.'
+                : lookupState === 'error'
+                  ? lookupError || 'Lookup failed.'
+                  : addContactState === 'error'
+                    ? addContactError || 'Unable to send contact request.'
+                    : lookupResult
+                      ? 'Tap Add to send a contact request.'
+                      : 'Enter an account ID, then Search to preview the profile.'}
           </div>
 
           <div className="flex gap-1.5">
@@ -445,10 +456,10 @@ export function ChatCreateDialog({
             <Button
               type="submit"
               className="h-8 flex-1 rounded-[12px] px-3 text-[12px]"
-              disabled={!contactNodeId.trim() || lookupState === 'searching' || addContactState === 'saving'}
+              disabled={!contactNodeId.trim() || lookupState === 'searching' || addContactState === 'saving' || lookupRequestPending}
             >
               {lookupResult
-                ? (addContactState === 'saving' ? 'Sending…' : 'Send request')
+                ? (lookupRequestPending ? 'Request pending' : addContactState === 'saving' ? 'Sending…' : 'Send request')
                 : (lookupState === 'searching' ? 'Searching…' : 'Search')}
             </Button>
           </div>

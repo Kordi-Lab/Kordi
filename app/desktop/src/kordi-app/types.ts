@@ -247,6 +247,7 @@ export type ContactRequest = {
   time: string;
   profileImageUrl?: string | null;
   avatarSeed?: string | null;
+  avatarName?: string | null;
   source?: 'demo' | 'bridge';
   bridgeHostId?: string | null;
   bridgeRequestId?: string | null;

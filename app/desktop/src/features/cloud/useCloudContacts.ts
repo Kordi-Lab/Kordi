@@ -487,6 +487,7 @@ export function cloudRequestToContactRequest(row: CloudContactRequest): ContactR
     time: row.createdAt,
     profileImageUrl: cloudAvatarImageUrl(row.counterpart?.avatarUrl),
     avatarSeed: cloudAvatarSeedForAccount(counterpartId, row.counterpart?.avatarUrl),
+    avatarName: counterpartName,
     source: 'bridge',
     bridgeHostId: CLOUD_HOST_SENTINEL,
     bridgeRequestId: row.requestId,
