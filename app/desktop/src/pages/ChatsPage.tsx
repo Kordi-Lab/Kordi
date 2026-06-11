@@ -180,6 +180,95 @@ function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubb
   );
 }
 
+function chatMessageActionId(message: Message) {
+  return message.id?.trim() || message.entryId?.trim() || message.turn?.id?.trim() || '';
+}
+
+function pinnedMessagePreview(message: Message) {
+  const text = message.turn?.assistantText?.trim() || message.text.trim() || message.detail?.trim();
+  if (text) return text.replace(/\s+/g, ' ');
+  const attachments = message.attachments ?? [];
+  if (attachments.length === 1) return attachments[0]?.kind === 'image' ? 'Photo' : attachments[0]?.name || 'Attachment';
+  if (attachments.length > 1) return `${attachments.length} attachments`;
+  return 'Message';
+}
+
+export function PinnedMessageBar({
+  message,
+  onOpenMessage,
+  onRequestUnpin,
+}: {
+  message: Message;
+  onOpenMessage?: () => void;
+  onRequestUnpin: () => void;
+}) {
+  const sender = message.sender?.trim();
+  const preview = pinnedMessagePreview(message);
+  return (
+    <div data-pinned-message-bar="true" className="app-pinned-message-bar shrink-0 border-b border-[color:var(--app-divider)] bg-[color:var(--app-panel-bg)] px-5 py-2.5 shadow-sm">
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onOpenMessage} className="min-w-0 flex-1 text-left" aria-label="Open pinned message">
+          <div className="truncate text-[14px] font-semibold text-pink-400">Pinned message</div>
+          <div className="truncate text-[12px] text-[color:var(--utility-muted-text)]">
+            {sender ? `${sender}: ${preview}` : preview}
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={onRequestUnpin}
+          className="app-icon-button grid h-8 w-8 shrink-0 place-items-center rounded-full text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
+          aria-label="Unpin pinned message"
+          title="Unpin pinned message"
+        >
+          <X className="h-5 w-5" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function PinMessageDialog({
+  mode,
+  message: _message,
+  alsoPinForSuper,
+  onToggleAlsoPinForSuper,
+  onCancel,
+  onConfirm,
+}: {
+  mode: 'pin' | 'unpin';
+  message: Message;
+  alsoPinForSuper: boolean;
+  onToggleAlsoPinForSuper: (value: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isPin = mode === 'pin';
+  return (
+    <div className="fixed inset-0 z-[300] grid place-items-center bg-black/45 px-4" data-pin-message-dialog={mode}>
+      <div className="w-full max-w-[34rem] rounded-[18px] bg-white px-8 py-7 text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+        <div className="text-[18px] font-medium leading-7">
+          {isPin ? 'Would you like to pin this message?' : 'Would you like to unpin this message?'}
+        </div>
+        {isPin ? (
+          <label className="mt-7 flex items-center gap-4 text-[17px] font-medium leading-6">
+            <input
+              type="checkbox"
+              checked={alsoPinForSuper}
+              onChange={(event) => onToggleAlsoPinForSuper(event.currentTarget.checked)}
+              className="h-7 w-7 rounded border-2 border-slate-300"
+            />
+            <span>Also pin for super</span>
+          </label>
+        ) : null}
+        <div className="mt-8 flex justify-end gap-8 text-[16px] font-semibold text-pink-500">
+          <button type="button" onClick={onCancel} className="rounded-full px-2 py-1 transition hover:bg-pink-50">Cancel</button>
+          <button type="button" onClick={onConfirm} className="rounded-full px-2 py-1 transition hover:bg-pink-50">{isPin ? 'Pin' : 'Unpin'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type Attachment = {
   id: string;
   name: string;
@@ -653,6 +742,9 @@ export function ChatsPage({
   const [isDraggingCompanion, setIsDraggingCompanion] = useState(false);
   const [isCompanionFolded, setIsCompanionFolded] = useState(false);
   const [splitLeftFraction, setSplitLeftFraction] = useState(0.5);
+  const [pinnedMessageIdsByConversationId, setPinnedMessageIdsByConversationId] = useState<Record<string, string | null>>({});
+  const [pinDialog, setPinDialog] = useState<{ mode: 'pin' | 'unpin'; message: Message } | null>(null);
+  const [alsoPinForSuper, setAlsoPinForSuper] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
@@ -822,12 +914,42 @@ export function ChatsPage({
     [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
+  const pinnedMessageId = pinnedMessageIdsByConversationId[activeConv.id] ?? null;
+  const pinnedMessage = useMemo(() => {
+    if (!pinnedMessageId) return null;
+    return attributedTranscriptMessages.find((message) => chatMessageActionId(message) === pinnedMessageId) ?? null;
+  }, [attributedTranscriptMessages, pinnedMessageId]);
+  useEffect(() => {
+    if (!pinnedMessageId || pinnedMessage) return;
+    setPinnedMessageIdsByConversationId((current) => ({ ...current, [activeConv.id]: null }));
+  }, [activeConv.id, pinnedMessage, pinnedMessageId]);
+  const requestPinMessage = useCallback((message: Message) => {
+    setAlsoPinForSuper(false);
+    setPinDialog({ mode: 'pin', message });
+  }, []);
+  const requestUnpinMessage = useCallback((message: Message) => {
+    setPinDialog({ mode: 'unpin', message });
+  }, []);
   const handleNavigateToTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
     const targetMessageId = sourceMessage
       ? resolveTranscriptMessageIdForSource(sourceMessage, attributedTranscriptMessages)
       : messageId;
     navigateToTranscriptMessage(targetMessageId || messageId, chatTranscriptScrollRef);
   }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
+  const handleOpenPinnedMessage = useCallback(() => {
+    if (!pinnedMessageId) return;
+    handleNavigateToTranscriptMessage(pinnedMessageId);
+  }, [handleNavigateToTranscriptMessage, pinnedMessageId]);
+  const handleConfirmPinDialog = useCallback(() => {
+    if (!pinDialog) return;
+    const messageId = chatMessageActionId(pinDialog.message);
+    setPinDialog(null);
+    if (!messageId) return;
+    setPinnedMessageIdsByConversationId((current) => ({
+      ...current,
+      [activeConv.id]: pinDialog.mode === 'pin' ? messageId : null,
+    }));
+  }, [activeConv.id, pinDialog]);
   // Index of the last message that came from the fork's snapshot
   // (everything inherited from the source up through the anchor). The
   // divider goes after this message so any continuation the user
@@ -1560,6 +1682,14 @@ export function ChatsPage({
         />
       ) : null}
 
+      {pinnedMessage ? (
+        <PinnedMessageBar
+          message={pinnedMessage}
+          onOpenMessage={handleOpenPinnedMessage}
+          onRequestUnpin={() => requestUnpinMessage(pinnedMessage)}
+        />
+      ) : null}
+
         <ScrollArea
           ref={chatTranscriptScrollRef}
           className="min-h-0 flex-1 px-3.5 py-5 sm:px-4"
@@ -1582,6 +1712,9 @@ export function ChatsPage({
                   onReplyMessage={onReplyMessage}
                   onForwardMessage={onForwardMessage}
                   onSelectMessage={onSelectMessage}
+                  onRequestPinMessage={requestPinMessage}
+                  onRequestUnpinMessage={requestUnpinMessage}
+                  pinnedMessageId={pinnedMessageId}
                   selectionMode={messageSelectionMode}
                   selectedMessageIds={selectedMessageIds}
                   isMessageSelectable={isMessageSelectable}
@@ -2000,6 +2133,16 @@ export function ChatsPage({
       </div>
         </section>
         {inlineDetailRail}
+        {pinDialog ? (
+          <PinMessageDialog
+            mode={pinDialog.mode}
+            message={pinDialog.message}
+            alsoPinForSuper={alsoPinForSuper}
+            onToggleAlsoPinForSuper={setAlsoPinForSuper}
+            onCancel={() => setPinDialog(null)}
+            onConfirm={handleConfirmPinDialog}
+          />
+        ) : null}
         {showCompanionPane && companionSide === 'right' ? splitDivider : null}
         {showCompanionPane && companionSide === 'right' ? companionPane : null}
       </div>

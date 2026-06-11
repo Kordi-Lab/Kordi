@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { PinMessageDialog, PinnedMessageBar } from '../src/pages/ChatsPage';
 import { ContactRequestRow, LiveChatTurnCard, MessageBubble, MessageContextMenuContent, messageContextMenuPosition } from '../src/kordi-app/components/transcript';
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
@@ -476,6 +477,7 @@ test('own group read receipts are not shown inline and are available from the me
 
 test('message context menu content lists read receipts when available', () => {
   const message: Message = {
+    id: 'msg:read-receipts-menu',
     role: 'user',
     sender: 'Me',
     senderType: 'human',
@@ -494,11 +496,12 @@ test('message context menu content lists read receipts when available', () => {
 
   assert.match(markup, /data-message-context-menu-content="true"/);
   assert.match(markup, /w-\[13\.5rem\]/);
-  assert.match(markup, /data-message-context-menu-reactions="true"/);
+  assert.doesNotMatch(markup, /data-message-context-menu-reactions="true"/);
   assert.match(markup, /Reply/);
   assert.match(markup, /Copy Text/);
-  assert.match(markup, /Delete/);
   assert.match(markup, /Select/);
+  assert.doesNotMatch(markup, />Edit</);
+  assert.doesNotMatch(markup, />Delete</);
   assert.match(markup, /data-message-context-menu-seen-row="true"/);
   assert.match(markup, /2 Seen/);
   assert.match(markup, /title="Seen by Alice, Bob"/);
@@ -508,7 +511,7 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /font-normal/);
   assert.match(markup, /leading-\[1\.45\]/);
   assert.match(markup, /style="font-size:10px;font-weight:400;line-height:1\.45"/);
-  assert.match(markup, /h-6 w-6/);
+  assert.doesNotMatch(markup, /h-6 w-6/);
   assert.match(markup, /py-1\.5/);
   assert.doesNotMatch(markup, /text-\[9\.5px\]/);
   assert.doesNotMatch(markup, /text-\[11px\]/);
@@ -522,7 +525,7 @@ test('message context menu content lists read receipts when available', () => {
   assert.doesNotMatch(markup, /py-2/);
 });
 
-test('message context menu exposes Reply, Forward, and Select actions for eligible messages', () => {
+test('message context menu exposes only wired actions for eligible messages', () => {
   const message: Message = {
     id: 'msg:quote-target',
     role: 'person',
@@ -537,14 +540,149 @@ test('message context menu exposes Reply, Forward, and Select actions for eligib
     onReplyMessage: () => undefined,
     onForwardMessage: () => undefined,
     onSelectMessage: () => undefined,
+    onRequestPinMessage: () => undefined,
   }));
 
   assert.match(markup, />Reply</);
   assert.match(markup, />Forward</);
   assert.match(markup, />Select</);
+  assert.match(markup, />Pin</);
   assert.match(markup, /data-message-context-menu-action="reply"/);
   assert.match(markup, /data-message-context-menu-action="forward"/);
   assert.match(markup, /data-message-context-menu-action="select"/);
+  assert.match(markup, /data-message-context-menu-action="pin"/);
+  assert.doesNotMatch(markup, /data-message-context-menu-reactions="true"/);
+  assert.doesNotMatch(markup, />Edit</);
+  assert.doesNotMatch(markup, />Delete</);
+  assert.doesNotMatch(markup, />View 1 Reply/);
+});
+
+test('message context menu exposes Unpin for pinned messages', () => {
+  const message: Message = {
+    id: 'msg:pinned',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Pinned text',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    isPinned: true,
+    onRequestPinMessage: () => undefined,
+    onRequestUnpinMessage: () => undefined,
+  }));
+
+  assert.match(markup, />Unpin</);
+  assert.match(markup, /data-message-context-menu-action="unpin"/);
+  assert.doesNotMatch(markup, />Pin</);
+});
+
+test('message context menu hides text copy when no text exists', () => {
+  const message: Message = {
+    id: 'msg:empty',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: '',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
+
+  assert.doesNotMatch(markup, />Copy Text</);
+  assert.doesNotMatch(markup, /data-message-context-menu-action="copy-text"/);
+});
+
+test('message context menu hides reply forward select and pin for live turns until completed', () => {
+  const message: Message = {
+    id: 'turn-live-message',
+    role: 'owned-agent',
+    sender: 'My Kordi',
+    senderType: 'agent',
+    text: '',
+    time: '10:42',
+    turn: {
+      id: 'turn-live',
+      sessionId: 'session-1',
+      prompt: 'hello',
+      status: 'writing',
+      message: 'Replying…',
+      assistantText: 'partial',
+      thinkingText: '',
+      tools: [],
+      completed: false,
+      succeeded: false,
+    },
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    onReplyMessage: () => undefined,
+    onForwardMessage: () => undefined,
+    onSelectMessage: () => undefined,
+    onRequestPinMessage: () => undefined,
+  }));
+
+  assert.doesNotMatch(markup, />Reply</);
+  assert.doesNotMatch(markup, />Forward</);
+  assert.doesNotMatch(markup, />Select</);
+  assert.doesNotMatch(markup, />Pin</);
+  assert.match(markup, />Copy Text</);
+});
+
+test('pinned message bar renders sender preview and unpin affordance', () => {
+  const message: Message = {
+    id: 'msg:pinned-bar',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Pinned message body',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(PinnedMessageBar, {
+    message,
+    onOpenMessage: () => undefined,
+    onRequestUnpin: () => undefined,
+  }));
+
+  assert.match(markup, /data-pinned-message-bar="true"/);
+  assert.match(markup, /Pinned message/);
+  assert.match(markup, /Alice: Pinned message body/);
+  assert.match(markup, /aria-label="Unpin pinned message"/);
+});
+
+test('pin and unpin confirmation dialogs match compact confirmation flow', () => {
+  const message: Message = {
+    id: 'msg:pin-dialog',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Pin me',
+    time: '10:42',
+  };
+  const pinMarkup = renderToStaticMarkup(createElement(PinMessageDialog, {
+    mode: 'pin',
+    message,
+    alsoPinForSuper: false,
+    onToggleAlsoPinForSuper: () => undefined,
+    onCancel: () => undefined,
+    onConfirm: () => undefined,
+  }));
+  const unpinMarkup = renderToStaticMarkup(createElement(PinMessageDialog, {
+    mode: 'unpin',
+    message,
+    alsoPinForSuper: false,
+    onToggleAlsoPinForSuper: () => undefined,
+    onCancel: () => undefined,
+    onConfirm: () => undefined,
+  }));
+
+  assert.match(pinMarkup, /Would you like to pin this message\?/);
+  assert.match(pinMarkup, /Also pin for super/);
+  assert.match(pinMarkup, />Cancel</);
+  assert.match(pinMarkup, />Pin</);
+  assert.match(unpinMarkup, /Would you like to unpin this message\?/);
+  assert.doesNotMatch(unpinMarkup, /Also pin for super/);
+  assert.match(unpinMarkup, />Unpin</);
 });
 
 test('message bubble exposes a non-text drag-select handle before selection mode starts', () => {
@@ -624,6 +762,7 @@ test('message context menu position stays close to the clicked message rectangle
 
 test('messages without read receipts still expose the Telegram-style message context menu', () => {
   const message: Message = {
+    id: 'msg:no-read-receipts-menu',
     role: 'person',
     sender: 'Alice',
     senderType: 'human',
