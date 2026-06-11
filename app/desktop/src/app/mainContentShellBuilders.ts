@@ -176,6 +176,8 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       ?? args.activeBridgeHost,
     desktopChatState: args.desktopChatState,
     cloudSelfAgentSyncStatus: args.cloudSelfAgentSyncStatusBySessionId?.[activeCloudSelfAgentSessionId] ?? null,
+    cloudSessionPin: args.cloudSessionPinsById?.[activeCloudSelfAgentSessionId] ?? null,
+    onUpdateCloudSessionPin: args.onUpdateCloudSessionPin,
     onUpdateBridgeAgentModelRouting: args.handleUpdateBridgeAgentModelRouting,
     isEditingDesktopSessionTitle: args.isEditingDesktopSessionTitle,
     setIsEditingDesktopSessionTitle: args.setIsEditingDesktopSessionTitle,

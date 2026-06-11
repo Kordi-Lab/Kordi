@@ -6,6 +6,7 @@ import {
   applyCloudSyncEventsToMessagesByPeer,
   applyCloudSyncEventsToSessionActivity,
   applyCloudSyncEventsToSessionForks,
+  applyCloudSyncEventsToSessionPins,
   cloudSessionVisibilityStorageKey,
   cloudSyncCursorStorageKey,
   loadCloudSessionVisibility,
@@ -159,6 +160,64 @@ test('cloud diff sync applies session fork events', () => {
     parentMessageId: 'msg:parent',
     createdByAccountId: 'acct_me',
     createdAt: '2026-05-16T08:41:00Z',
+  });
+});
+
+test('cloud diff sync applies shared session pin update events', () => {
+  const next = applyCloudSyncEventsToSessionPins({}, [{
+    eventId: '20',
+    eventType: 'session.pin.updated',
+    peerAccountId: 'session:group:1',
+    messageId: 'msg:group:visible',
+    occurredAt: '2026-06-11T20:00:00Z',
+    payload: {
+      sessionId: 'session:group:1',
+      messageId: 'msg:group:visible',
+      scope: 'shared',
+      updatedByAccountId: 'acct_a',
+      updatedAt: '2026-06-11T20:00:00Z',
+    },
+  }]);
+
+  assert.deepEqual(next['session:group:1'], {
+    sessionId: 'session:group:1',
+    sharedMessageId: 'msg:group:visible',
+    privateMessageId: null,
+    effectiveMessageId: 'msg:group:visible',
+    updatedAt: '2026-06-11T20:00:00Z',
+  });
+});
+
+test('cloud diff sync applies shared session unpin update events', () => {
+  const next = applyCloudSyncEventsToSessionPins({
+    'session:group:1': {
+      sessionId: 'session:group:1',
+      sharedMessageId: 'msg:old',
+      privateMessageId: null,
+      effectiveMessageId: 'msg:old',
+      updatedAt: '2026-06-11T19:00:00Z',
+    },
+  }, [{
+    eventId: '21',
+    eventType: 'session.pin.updated',
+    peerAccountId: 'session:group:1',
+    messageId: null,
+    occurredAt: '2026-06-11T20:01:00Z',
+    payload: {
+      sessionId: 'session:group:1',
+      messageId: null,
+      scope: 'shared',
+      updatedByAccountId: 'acct_a',
+      updatedAt: '2026-06-11T20:01:00Z',
+    },
+  }]);
+
+  assert.deepEqual(next['session:group:1'], {
+    sessionId: 'session:group:1',
+    sharedMessageId: null,
+    privateMessageId: null,
+    effectiveMessageId: null,
+    updatedAt: '2026-06-11T20:01:00Z',
   });
 });
 

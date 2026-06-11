@@ -142,6 +142,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "scheduled task tool",
         sql: include_str!("../../migrations/0022_scheduled_task_tool.sql"),
     },
+    EmbeddedMigration {
+        version: 23,
+        description: "cloud session pinned messages",
+        sql: include_str!("../../migrations/0023_cloud_session_pins.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

@@ -30,6 +30,7 @@ import {
 } from '@/features/bridge/agentModelRouting';
 import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
+import type { CloudSessionPin } from '@/features/cloud/authClient';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
@@ -548,6 +549,8 @@ type ChatsPageProps = {
   activeBridgeModelHost: DesktopBridgeHost | null;
   desktopChatState: DesktopChatState | null;
   cloudSelfAgentSyncStatus?: CloudSelfAgentSyncStatus | null;
+  cloudSessionPin?: CloudSessionPin | null;
+  onUpdateCloudSessionPin?: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
   onUpdateBridgeAgentModelRouting: (
     hostId: string,
     agentId: string,
@@ -644,6 +647,8 @@ export function ChatsPage({
   activeBridgeModelHost,
   desktopChatState,
   cloudSelfAgentSyncStatus,
+  cloudSessionPin,
+  onUpdateCloudSessionPin,
   onUpdateBridgeAgentModelRouting,
   isEditingDesktopSessionTitle,
   setIsEditingDesktopSessionTitle,
@@ -743,12 +748,21 @@ export function ChatsPage({
   const [isCompanionFolded, setIsCompanionFolded] = useState(false);
   const [splitLeftFraction, setSplitLeftFraction] = useState(0.5);
   const [pinnedMessageIdsByConversationId, setPinnedMessageIdsByConversationId] = useState<Record<string, string | null>>({});
+  const [optimisticCloudPinBySessionId, setOptimisticCloudPinBySessionId] = useState<Record<string, CloudSessionPin>>({});
   const [pinDialog, setPinDialog] = useState<{ mode: 'pin' | 'unpin'; message: Message } | null>(null);
   const [pinForEveryone, setPinForEveryone] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
+  const activeConversationUsesCloudPins = Boolean(
+    activeSessionId
+      && onUpdateCloudSessionPin
+      && activeConv.bridges.some((bridgeId) => isCloudBridgeHostId(bridgeId)),
+  );
+  const activeCloudSessionPin = activeConversationUsesCloudPins
+    ? optimisticCloudPinBySessionId[activeSessionId] ?? cloudSessionPin ?? null
+    : null;
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
   const activeConversationIsGroupFork = isGroupForkSession(activeConv);
   // Forking is hidden for group chats and historical group-derived forks because
@@ -914,15 +928,17 @@ export function ChatsPage({
     [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
-  const pinnedMessageId = pinnedMessageIdsByConversationId[activeConv.id] ?? null;
+  const pinnedMessageId = activeConversationUsesCloudPins
+    ? activeCloudSessionPin?.effectiveMessageId ?? null
+    : pinnedMessageIdsByConversationId[activeConv.id] ?? null;
   const pinnedMessage = useMemo(() => {
     if (!pinnedMessageId) return null;
     return attributedTranscriptMessages.find((message) => chatMessageActionId(message) === pinnedMessageId) ?? null;
   }, [attributedTranscriptMessages, pinnedMessageId]);
   useEffect(() => {
-    if (!pinnedMessageId || pinnedMessage) return;
+    if (!pinnedMessageId || pinnedMessage || activeConversationUsesCloudPins) return;
     setPinnedMessageIdsByConversationId((current) => ({ ...current, [activeConv.id]: null }));
-  }, [activeConv.id, pinnedMessage, pinnedMessageId]);
+  }, [activeConv.id, activeConversationUsesCloudPins, pinnedMessage, pinnedMessageId]);
   const requestPinMessage = useCallback((message: Message) => {
     setPinForEveryone(false);
     setPinDialog({ mode: 'pin', message });
@@ -945,11 +961,43 @@ export function ChatsPage({
     const messageId = chatMessageActionId(pinDialog.message);
     setPinDialog(null);
     if (!messageId) return;
+
+    if (activeConversationUsesCloudPins && onUpdateCloudSessionPin && activeSessionId) {
+      const scope = pinDialog.mode === 'pin'
+        ? (pinForEveryone ? 'shared' : 'private')
+        : activeCloudSessionPin?.sharedMessageId === messageId ? 'shared' : 'private';
+      const nextMessageId = pinDialog.mode === 'pin' ? messageId : null;
+      const now = new Date().toISOString();
+      const base: CloudSessionPin = activeCloudSessionPin ?? {
+        sessionId: activeSessionId,
+        sharedMessageId: null,
+        privateMessageId: null,
+        effectiveMessageId: null,
+        updatedAt: null,
+      };
+      const optimistic: CloudSessionPin = scope === 'shared'
+        ? { ...base, sharedMessageId: nextMessageId, effectiveMessageId: base.privateMessageId || nextMessageId, updatedAt: now }
+        : { ...base, privateMessageId: nextMessageId, effectiveMessageId: nextMessageId || base.sharedMessageId, updatedAt: now };
+      setOptimisticCloudPinBySessionId((current) => ({ ...current, [activeSessionId]: optimistic }));
+      void onUpdateCloudSessionPin({ sessionId: activeSessionId, messageId: nextMessageId, scope })
+        .then((pin) => {
+          setOptimisticCloudPinBySessionId((current) => ({ ...current, [pin.sessionId]: pin }));
+        })
+        .catch(() => {
+          setOptimisticCloudPinBySessionId((current) => {
+            const next = { ...current };
+            delete next[activeSessionId];
+            return next;
+          });
+        });
+      return;
+    }
+
     setPinnedMessageIdsByConversationId((current) => ({
       ...current,
       [activeConv.id]: pinDialog.mode === 'pin' ? messageId : null,
     }));
-  }, [activeConv.id, pinDialog]);
+  }, [activeCloudSessionPin, activeConv.id, activeConversationUsesCloudPins, activeSessionId, onUpdateCloudSessionPin, pinDialog, pinForEveryone]);
   // Index of the last message that came from the fork's snapshot
   // (everything inherited from the source up through the anchor). The
   // divider goes after this message so any continuation the user
