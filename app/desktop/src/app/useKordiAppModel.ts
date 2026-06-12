@@ -22,6 +22,7 @@ import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
+import { createDesktopUpdateController, type DesktopUpdateController, type DesktopUpdateState } from '@/features/update/desktopUpdater';
 import {
   type CloudGroupParticipant,
   cloudGroupIdentityRequest,
@@ -2282,6 +2283,28 @@ export function useKordiAppModel({
     setCanonicalSessionState(nextState);
   }, [canonicalSessionState, isNativeShell, setDesktopChatError]);
 
+  const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState>({ kind: 'idle' });
+  const desktopUpdateControllerRef = useRef<DesktopUpdateController | null>(null);
+  if (desktopUpdateControllerRef.current === null) {
+    desktopUpdateControllerRef.current = createDesktopUpdateController({
+      onStateChange: setDesktopUpdateState,
+    });
+  }
+
+  useEffect(() => {
+    void desktopUpdateControllerRef.current?.check();
+  }, []);
+
+  const handleInstallDesktopUpdate = useCallback(() => {
+    void desktopUpdateControllerRef.current?.install();
+  }, []);
+  const handleRestartDesktopUpdate = useCallback(() => {
+    void desktopUpdateControllerRef.current?.restart();
+  }, []);
+  const handleCancelDesktopUpdateRestart = useCallback(() => {
+    desktopUpdateControllerRef.current?.reset();
+  }, []);
+
   const {
     rootThemeClass,
     lastBridgePollAtLabel,
@@ -2348,6 +2371,10 @@ export function useKordiAppModel({
     activeNav,
     setActiveNav,
     cloudSession,
+    desktopUpdateState,
+    handleInstallDesktopUpdate,
+    handleRestartDesktopUpdate,
+    handleCancelDesktopUpdateRestart,
     activeConvId,
     setActiveConvId,
     activeProjectId,

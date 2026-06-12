@@ -203,6 +203,20 @@ function baseSidebarProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
+test('WorkspaceSidebar shows the compact Update button in the Chats header when an update is available', () => {
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    desktopUpdateState: { kind: 'available', version: '0.0.1-beta.4', currentVersion: '0.0.1-beta.3' },
+    onInstallDesktopUpdate: () => {},
+    onRestartDesktopUpdate: () => {},
+    onCancelDesktopUpdateRestart: () => {},
+  }) as never));
+
+  const chatsHeaderMarkup = markup.slice(markup.indexOf('>Chats<'), markup.indexOf('>Chats<') + 900);
+  assert.match(chatsHeaderMarkup, /app-update-button/);
+  assert.match(chatsHeaderMarkup, />Update</);
+  assert.doesNotMatch(chatsHeaderMarkup, /Kordi update available/);
+});
+
 test('WorkspaceSidebar cloud profile uses the provider image avatar instead of a generated pixel fallback', () => {
   const cloudAccount: CloudAccount = {
     accountId: 'acct_provider',

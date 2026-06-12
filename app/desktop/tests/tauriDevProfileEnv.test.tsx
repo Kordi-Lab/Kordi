@@ -27,6 +27,17 @@ test('buildBeforeDevCommand forwards explicit Cloud API base into the Vite dev s
   assert.match(command, / VITE_KORDI_CLOUD_API_BASE='http:\/\/127\.0\.0\.1:17081' /);
 });
 
+test('buildBeforeDevCommand forwards the desktop update preview flag into Vite', () => {
+  const command = buildBeforeDevCommand({
+    title: 'Kordi Cloud Update Preview',
+    host: '127.0.0.1',
+    port: 1484,
+    env: { VITE_KORDI_PREVIEW_UPDATE: 'available' },
+  });
+
+  assert.match(command, / VITE_KORDI_PREVIEW_UPDATE='available' /);
+});
+
 test('buildBeforeDevCommand omits edition env when no edition is configured', () => {
   const command = buildBeforeDevCommand({
     title: 'Kordi',

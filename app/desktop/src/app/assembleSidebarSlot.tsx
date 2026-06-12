@@ -96,6 +96,10 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         activeNav={args.activeNav}
         setActiveNav={args.setActiveNav}
         chatConversations={args.chatConversations}
+        desktopUpdateState={args.desktopUpdateState}
+        onInstallDesktopUpdate={args.handleInstallDesktopUpdate}
+        onRestartDesktopUpdate={args.handleRestartDesktopUpdate}
+        onCancelDesktopUpdateRestart={args.handleCancelDesktopUpdateRestart}
         onCreateChatSession={() => {
           void args.handleCreateChatSession();
         }}

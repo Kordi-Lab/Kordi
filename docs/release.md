@@ -58,6 +58,16 @@ This command:
 
 `pnpm dev:desktop` and `pnpm build:desktop` both call this workflow.
 
+## In-app desktop updates
+
+Packaged desktop builds use Tauri's signed updater. Release builds must provide the Tauri updater signing private key via the release environment and publish the generated updater archive plus companion `.sig` file on the GitHub Release. The hosted update endpoint is the desktop app's stable check URL, but its manifest is derived from the latest release metadata and release assets:
+
+```text
+https://coordinar.io/api/desktop-updates/{{target}}/{{arch}}/{{current_version}}
+```
+
+The hosted endpoint returns no update when the latest release has no matching updater archive/signature pair for the requested target and architecture, or when the latest release version matches the current app version. The desktop app checks this endpoint quietly. When an update is available, the Chats header shows the blue `Update` button; installation runs in-app and prompts for restart only after install finishes.
+
 ## Validation before release
 
 Recommended baseline:
