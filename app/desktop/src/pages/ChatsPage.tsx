@@ -15,6 +15,7 @@ import {
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
+  Pin,
   Send,
   Split,
   SquarePen,
@@ -28,8 +29,9 @@ import {
   localOwnedBridgeAgentsForModelRouting,
   routingSelectionForBridgeAgent,
 } from '@/features/bridge/agentModelRouting';
-import { isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
+import { isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
+import type { CloudSessionPin } from '@/features/cloud/authClient';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
@@ -175,6 +177,121 @@ function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubb
             {message.attachments.length} attachment{message.attachments.length === 1 ? '' : 's'} waiting
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function chatMessageActionId(message: Message) {
+  return message.id?.trim() || message.entryId?.trim() || message.turn?.id?.trim() || '';
+}
+
+function stableCloudPinMessageId(message: Message, conversationId: string) {
+  const actionId = chatMessageActionId(message);
+  const bridgePrefix = `bridge-message:${conversationId}:`;
+  if (actionId.startsWith(bridgePrefix)) {
+    return actionId.slice(bridgePrefix.length).trim() || actionId;
+  }
+  return actionId;
+}
+
+function pinnedMessageCandidateIds(message: Message, conversationId: string) {
+  return [...new Set([chatMessageActionId(message), stableCloudPinMessageId(message, conversationId)].map((value) => value.trim()).filter(Boolean))];
+}
+
+function pinnedMessagePreview(message: Message) {
+  const text = message.turn?.assistantText?.trim() || message.text.trim() || message.detail?.trim();
+  if (text) return text.replace(/\s+/g, ' ');
+  const attachments = message.attachments ?? [];
+  if (attachments.length === 1) return attachments[0]?.kind === 'image' ? 'Photo' : attachments[0]?.name || 'Attachment';
+  if (attachments.length > 1) return `${attachments.length} attachments`;
+  return 'Message';
+}
+
+function pinnedMessageSenderLabel(message: Message) {
+  const sourceLabel = message.sourceSenderLabel?.trim();
+  if (sourceLabel && sourceLabel.toLowerCase() !== 'me') return sourceLabel;
+  const sender = message.sender?.trim();
+  if (sender && sender.toLowerCase() !== 'me') return sender;
+  return sourceLabel || sender || '';
+}
+
+export function PinnedMessageBar({
+  message,
+  onOpenMessage,
+  onRequestUnpin,
+}: {
+  message: Message;
+  onOpenMessage?: () => void;
+  onRequestUnpin: () => void;
+}) {
+  const sender = pinnedMessageSenderLabel(message);
+  const preview = pinnedMessagePreview(message);
+  return (
+    <div
+      data-pinned-message-bar="true"
+      className="app-pinned-message-bar shrink-0 border-b border-[color:var(--app-divider)] px-4 py-2"
+      style={{ background: 'color-mix(in srgb, var(--app-panel-bg) 94%, var(--app-text) 6%)' }}
+    >
+      <div className="flex min-h-9 items-center gap-2.5">
+        <Pin className="h-3.5 w-3.5 shrink-0 text-[color:var(--utility-muted-text)]" aria-hidden="true" />
+        <button type="button" onClick={onOpenMessage} className="min-w-0 flex-1 text-left" aria-label="Open pinned message">
+          <div className="text-[12px] font-medium leading-4 text-[color:var(--utility-muted-text)]">pinged</div>
+          <div className="truncate text-[13px] leading-4 text-[color:var(--app-text)]">
+            {sender ? `${sender}: ${preview}` : preview}
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={onRequestUnpin}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-hover-bg)] hover:text-[color:var(--app-text)] focus:outline-none focus:ring-2 focus:ring-[color:var(--app-focus)]"
+          aria-label="Unpin pinned message"
+          title="Unpin pinned message"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function PinMessageDialog({
+  mode,
+  message: _message,
+  pinForEveryone,
+  onTogglePinForEveryone,
+  onCancel,
+  onConfirm,
+}: {
+  mode: 'pin' | 'unpin';
+  message: Message;
+  pinForEveryone: boolean;
+  onTogglePinForEveryone: (value: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isPin = mode === 'pin';
+  return (
+    <div className="fixed inset-0 z-[300] grid place-items-center bg-black/45 px-4" data-pin-message-dialog={mode}>
+      <div className="w-full max-w-[28rem] rounded-[16px] bg-white px-6 py-5 text-slate-950 shadow-[0_20px_56px_rgba(15,23,42,0.24)]">
+        <div className="text-[15px] font-medium leading-6">
+          {isPin ? 'Pin this message?' : 'Unpin this message?'}
+        </div>
+        {isPin ? (
+          <label className="mt-5 flex items-center gap-3 text-[14px] font-medium leading-5">
+            <input
+              type="checkbox"
+              checked={pinForEveryone}
+              onChange={(event) => onTogglePinForEveryone(event.currentTarget.checked)}
+              className="h-5.5 w-5.5 rounded border-2 border-slate-300"
+            />
+            <span>Pin for everyone</span>
+          </label>
+        ) : null}
+        <div className="mt-6 flex justify-end gap-6 text-[14px] font-semibold text-pink-500">
+          <button type="button" onClick={onCancel} className="rounded-full px-2 py-1 transition hover:bg-pink-50">Cancel</button>
+          <button type="button" onClick={onConfirm} className="rounded-full px-2 py-1 transition hover:bg-pink-50">{isPin ? 'Pin' : 'Unpin'}</button>
+        </div>
       </div>
     </div>
   );
@@ -459,6 +576,8 @@ type ChatsPageProps = {
   activeBridgeModelHost: DesktopBridgeHost | null;
   desktopChatState: DesktopChatState | null;
   cloudSelfAgentSyncStatus?: CloudSelfAgentSyncStatus | null;
+  cloudSessionPin?: CloudSessionPin | null;
+  onUpdateCloudSessionPin?: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
   onUpdateBridgeAgentModelRouting: (
     hostId: string,
     agentId: string,
@@ -555,6 +674,8 @@ export function ChatsPage({
   activeBridgeModelHost,
   desktopChatState,
   cloudSelfAgentSyncStatus,
+  cloudSessionPin,
+  onUpdateCloudSessionPin,
   onUpdateBridgeAgentModelRouting,
   isEditingDesktopSessionTitle,
   setIsEditingDesktopSessionTitle,
@@ -653,12 +774,47 @@ export function ChatsPage({
   const [isDraggingCompanion, setIsDraggingCompanion] = useState(false);
   const [isCompanionFolded, setIsCompanionFolded] = useState(false);
   const [splitLeftFraction, setSplitLeftFraction] = useState(0.5);
+  const [pinnedMessageIdsByConversationId, setPinnedMessageIdsByConversationId] = useState<Record<string, string | null>>({});
+  const [optimisticCloudPinBySessionId, setOptimisticCloudPinBySessionId] = useState<Record<string, CloudSessionPin>>({});
+  const [pinDialog, setPinDialog] = useState<{ mode: 'pin' | 'unpin'; message: Message } | null>(null);
+  const [pinForEveryone, setPinForEveryone] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
   const activeConversationIsGroupFork = isGroupForkSession(activeConv);
+  const activeConversationUsesCloudPins = Boolean(
+    activeSessionId
+      && onUpdateCloudSessionPin
+      && (
+        activeConv.bridges.some((bridgeId) => isCloudBridgeHostId(bridgeId))
+        || isCloudBridgeHostId(activeConv.bridgeTarget?.hostId)
+        || isCloudBridgeHostId(activeConv.identity?.bridgeHostId)
+        || isCloudBridgeConversationId(activeConv.id)
+        || activeConversationIsGroupSession
+      ),
+  );
+  useEffect(() => {
+    if (!activeConversationUsesCloudPins || !activeSessionId || cloudSessionPin?.sessionId !== activeSessionId) return;
+    setOptimisticCloudPinBySessionId((current) => {
+      if (!current[activeSessionId]) return current;
+      const next = { ...current };
+      delete next[activeSessionId];
+      return next;
+    });
+  }, [
+    activeConversationUsesCloudPins,
+    activeSessionId,
+    cloudSessionPin?.effectiveMessageId,
+    cloudSessionPin?.privateMessageId,
+    cloudSessionPin?.sessionId,
+    cloudSessionPin?.sharedMessageId,
+    cloudSessionPin?.updatedAt,
+  ]);
+  const activeCloudSessionPin = activeConversationUsesCloudPins
+    ? optimisticCloudPinBySessionId[activeSessionId] ?? cloudSessionPin ?? null
+    : null;
   // Forking is hidden for group chats and historical group-derived forks because
   // the resulting private continuation/visibility semantics are confusing in a
   // shared chat. The local draft and ephemeral bridge transports remain excluded
@@ -822,12 +978,84 @@ export function ChatsPage({
     [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
   );
   const attributedTranscriptMessages = attributedTranscript.messages;
+  const pinnedMessageId = activeConversationUsesCloudPins
+    ? activeCloudSessionPin?.effectiveMessageId ?? null
+    : pinnedMessageIdsByConversationId[activeConv.id] ?? null;
+  const pinnedMessage = useMemo(() => {
+    if (!pinnedMessageId) return null;
+    return attributedTranscriptMessages.find((message) => (
+      activeConversationUsesCloudPins
+        ? pinnedMessageCandidateIds(message, activeConv.id).includes(pinnedMessageId)
+        : chatMessageActionId(message) === pinnedMessageId
+    )) ?? null;
+  }, [activeConv.id, activeConversationUsesCloudPins, attributedTranscriptMessages, pinnedMessageId]);
+  useEffect(() => {
+    if (!pinnedMessageId || pinnedMessage || activeConversationUsesCloudPins) return;
+    setPinnedMessageIdsByConversationId((current) => ({ ...current, [activeConv.id]: null }));
+  }, [activeConv.id, activeConversationUsesCloudPins, pinnedMessage, pinnedMessageId]);
+  const requestPinMessage = useCallback((message: Message) => {
+    setPinForEveryone(false);
+    setPinDialog({ mode: 'pin', message });
+  }, []);
+  const requestUnpinMessage = useCallback((message: Message) => {
+    setPinDialog({ mode: 'unpin', message });
+  }, []);
   const handleNavigateToTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
     const targetMessageId = sourceMessage
       ? resolveTranscriptMessageIdForSource(sourceMessage, attributedTranscriptMessages)
       : messageId;
     navigateToTranscriptMessage(targetMessageId || messageId, chatTranscriptScrollRef);
   }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
+  const handleOpenPinnedMessage = useCallback(() => {
+    if (!pinnedMessageId) return;
+    handleNavigateToTranscriptMessage(pinnedMessage ? chatMessageActionId(pinnedMessage) : pinnedMessageId);
+  }, [handleNavigateToTranscriptMessage, pinnedMessage, pinnedMessageId]);
+  const handleConfirmPinDialog = useCallback(() => {
+    if (!pinDialog) return;
+    const messageId = activeConversationUsesCloudPins
+      ? stableCloudPinMessageId(pinDialog.message, activeConv.id)
+      : chatMessageActionId(pinDialog.message);
+    const messageCandidateIds = pinnedMessageCandidateIds(pinDialog.message, activeConv.id);
+    setPinDialog(null);
+    if (!messageId) return;
+
+    if (activeConversationUsesCloudPins && onUpdateCloudSessionPin && activeSessionId) {
+      const sharedPinnedMessageId = activeCloudSessionPin?.sharedMessageId?.trim() ?? '';
+      const scope = pinDialog.mode === 'pin'
+        ? (pinForEveryone ? 'shared' : 'private')
+        : sharedPinnedMessageId && messageCandidateIds.includes(sharedPinnedMessageId) ? 'shared' : 'private';
+      const nextMessageId = pinDialog.mode === 'pin' ? messageId : null;
+      const now = new Date().toISOString();
+      const base: CloudSessionPin = activeCloudSessionPin ?? {
+        sessionId: activeSessionId,
+        sharedMessageId: null,
+        privateMessageId: null,
+        effectiveMessageId: null,
+        updatedAt: null,
+      };
+      const optimistic: CloudSessionPin = scope === 'shared'
+        ? { ...base, sharedMessageId: nextMessageId, effectiveMessageId: base.privateMessageId || nextMessageId, updatedAt: now }
+        : { ...base, privateMessageId: nextMessageId, effectiveMessageId: nextMessageId || base.sharedMessageId, updatedAt: now };
+      setOptimisticCloudPinBySessionId((current) => ({ ...current, [activeSessionId]: optimistic }));
+      void onUpdateCloudSessionPin({ sessionId: activeSessionId, messageId: nextMessageId, scope })
+        .then((pin) => {
+          setOptimisticCloudPinBySessionId((current) => ({ ...current, [pin.sessionId]: pin }));
+        })
+        .catch(() => {
+          setOptimisticCloudPinBySessionId((current) => {
+            const next = { ...current };
+            delete next[activeSessionId];
+            return next;
+          });
+        });
+      return;
+    }
+
+    setPinnedMessageIdsByConversationId((current) => ({
+      ...current,
+      [activeConv.id]: pinDialog.mode === 'pin' ? messageId : null,
+    }));
+  }, [activeCloudSessionPin, activeConv.id, activeConversationUsesCloudPins, activeSessionId, onUpdateCloudSessionPin, pinDialog, pinForEveryone]);
   // Index of the last message that came from the fork's snapshot
   // (everything inherited from the source up through the anchor). The
   // divider goes after this message so any continuation the user
@@ -1426,7 +1654,7 @@ export function ChatsPage({
         {showCompanionPane && companionSide === 'left' ? companionPane : null}
         {showCompanionPane && companionSide === 'left' ? splitDivider : null}
         <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-active-side={companionSide === 'left' ? 'right' : 'left'}>
-      <div className="app-page-header flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-2.5">
+      <div className="app-page-header flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-2.5 shadow-[0_1px_0_color-mix(in_srgb,var(--app-text)_8%,transparent)]">
         <div className="flex min-w-0 items-center gap-2">
           {showChatDetailRail && (
             <button
@@ -1560,6 +1788,14 @@ export function ChatsPage({
         />
       ) : null}
 
+      {pinnedMessage ? (
+        <PinnedMessageBar
+          message={pinnedMessage}
+          onOpenMessage={handleOpenPinnedMessage}
+          onRequestUnpin={() => requestUnpinMessage(pinnedMessage)}
+        />
+      ) : null}
+
         <ScrollArea
           ref={chatTranscriptScrollRef}
           className="min-h-0 flex-1 px-3.5 py-5 sm:px-4"
@@ -1582,6 +1818,9 @@ export function ChatsPage({
                   onReplyMessage={onReplyMessage}
                   onForwardMessage={onForwardMessage}
                   onSelectMessage={onSelectMessage}
+                  onRequestPinMessage={requestPinMessage}
+                  onRequestUnpinMessage={requestUnpinMessage}
+                  pinnedMessageId={pinnedMessageId}
                   selectionMode={messageSelectionMode}
                   selectedMessageIds={selectedMessageIds}
                   isMessageSelectable={isMessageSelectable}
@@ -2000,6 +2239,16 @@ export function ChatsPage({
       </div>
         </section>
         {inlineDetailRail}
+        {pinDialog ? (
+          <PinMessageDialog
+            mode={pinDialog.mode}
+            message={pinDialog.message}
+            pinForEveryone={pinForEveryone}
+            onTogglePinForEveryone={setPinForEveryone}
+            onCancel={() => setPinDialog(null)}
+            onConfirm={handleConfirmPinDialog}
+          />
+        ) : null}
         {showCompanionPane && companionSide === 'right' ? splitDivider : null}
         {showCompanionPane && companionSide === 'right' ? companionPane : null}
       </div>

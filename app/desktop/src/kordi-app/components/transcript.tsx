@@ -14,12 +14,10 @@ import {
   Forward,
   Split,
   LoaderCircle,
-  Pencil,
   Pin,
   Reply,
   Sparkles,
   SquareArrowOutUpRight,
-  Trash2,
   Undo2,
   User,
 } from 'lucide-react';
@@ -435,6 +433,9 @@ export type MessageContextMenuActionHandlers = {
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
+  onRequestPinMessage?: (message: Message) => void;
+  onRequestUnpinMessage?: (message: Message) => void;
+  isPinned?: boolean;
 };
 
 export type MessageSelectionProps = {
@@ -451,19 +452,28 @@ function messageSelectionId(msg: Message) {
   return msg.id ?? msg.entryId ?? msg.turn?.id ?? '';
 }
 
+function isMessageContextActionEligible(msg: Message) {
+  if (!messageSelectionId(msg)) return false;
+  if (msg.role === 'system' || msg.role === 'action' || msg.role === 'edit') return false;
+  if (msg.turn && !msg.turn.completed) return false;
+  return true;
+}
+
 export function MessageContextMenuContent({
   msg,
   onClose,
   onReplyMessage,
   onForwardMessage,
   onSelectMessage,
+  onRequestPinMessage,
+  onRequestUnpinMessage,
+  isPinned = false,
 }: {
   msg: Message;
   onClose?: () => void;
 } & MessageContextMenuActionHandlers) {
   const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
-  const replyCount = msg.replySummary?.replyCount ?? 0;
-  const reactionItems = ['❤️', '🔥', '👍', '👎', '🥰', '👏'];
+  const actionEligible = isMessageContextActionEligible(msg);
   const copyText = async () => {
     if (!copyableText) return;
     try {
@@ -485,26 +495,27 @@ export function MessageContextMenuContent({
     onSelectMessage?.(msg);
     onClose?.();
   };
+  const handlePin = () => {
+    onRequestPinMessage?.(msg);
+    onClose?.();
+  };
+  const handleUnpin = () => {
+    onRequestUnpinMessage?.(msg);
+    onClose?.();
+  };
 
   return (
     <div className="app-message-context-menu-content w-[13.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
-      <div className="app-message-context-menu-reactions mb-1.5 flex items-center gap-1 rounded-full bg-white px-2 py-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.16)] ring-1 ring-slate-950/10" data-message-context-menu-reactions="true">
-        {reactionItems.map((reaction) => (
-          <button key={reaction} type="button" className="grid h-6 w-6 place-items-center rounded-full text-[14px] transition hover:bg-slate-100" aria-label={`React ${reaction}`}>
-            {reaction}
-          </button>
-        ))}
-        <button type="button" className="ml-auto grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-[14px] text-slate-500" aria-label="More reactions">⌄</button>
-      </div>
       <div className="overflow-hidden rounded-[14px] bg-white py-1 shadow-[0_14px_34px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10">
-        <MessageContextMenuAction action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={handleReply} />
-        {replyCount > 0 ? <MessageContextMenuAction action="view-replies" icon={<Undo2 className="h-4 w-4" />} label={`View ${replyCount} Reply${replyCount === 1 ? '' : 'ies'}`} onClick={onClose} /> : null}
-        <MessageContextMenuAction action="edit" icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={onClose} />
-        <MessageContextMenuAction action="pin" icon={<Pin className="h-4 w-4" />} label="Pin" onClick={onClose} />
-        <MessageContextMenuAction action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} />
-        <MessageContextMenuAction action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={handleForward} />
-        <MessageContextMenuAction action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" onClick={onClose} />
-        <MessageContextMenuAction action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={handleSelect} />
+        {actionEligible ? <MessageContextMenuAction action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={handleReply} /> : null}
+        {actionEligible && (onRequestPinMessage || onRequestUnpinMessage) ? (
+          isPinned
+            ? <MessageContextMenuAction action="unpin" icon={<Pin className="h-4 w-4" />} label="Unpin" onClick={handleUnpin} />
+            : <MessageContextMenuAction action="pin" icon={<Pin className="h-4 w-4" />} label="Pin" onClick={handlePin} />
+        ) : null}
+        {copyableText ? <MessageContextMenuAction action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} /> : null}
+        {actionEligible ? <MessageContextMenuAction action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={handleForward} /> : null}
+        {actionEligible ? <MessageContextMenuAction action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={handleSelect} /> : null}
         <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
       </div>
     </div>
@@ -559,6 +570,9 @@ function MessageContextMenuHost({
   onReplyMessage,
   onForwardMessage,
   onSelectMessage,
+  onRequestPinMessage,
+  onRequestUnpinMessage,
+  isPinned,
 }: {
   msg: Message;
   id?: string;
@@ -610,34 +624,48 @@ function MessageContextMenuHost({
       setMessageContextMenu({ ...messageContextMenu, ...next });
     }
   }, [messageContextMenu]);
+  useLayoutEffect(() => {
+    if (!messageContextMenu || typeof document === 'undefined') return;
+
+    const closeIfOutsideMenu = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current && menuRef.current.contains(target)) return;
+      setMessageContextMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMessageContextMenu(null);
+    };
+
+    document.addEventListener('pointerdown', closeIfOutsideMenu, true);
+    document.addEventListener('contextmenu', closeIfOutsideMenu, true);
+    document.addEventListener('keydown', closeOnEscape, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutsideMenu, true);
+      document.removeEventListener('contextmenu', closeIfOutsideMenu, true);
+      document.removeEventListener('keydown', closeOnEscape, true);
+    };
+  }, [messageContextMenu]);
   const menuLayer = messageContextMenu ? (
-    <>
-      <div
-        className="fixed inset-0 z-[250]"
-        onMouseDown={() => setMessageContextMenu(null)}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          setMessageContextMenu(null);
-        }}
-        aria-hidden="true"
+    <div
+      ref={menuRef}
+      className="app-message-context-menu fixed z-[260]"
+      style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
+      role="menu"
+      onMouseDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <MessageContextMenuContent
+        msg={msg}
+        onClose={() => setMessageContextMenu(null)}
+        onReplyMessage={onReplyMessage}
+        onForwardMessage={onForwardMessage}
+        onSelectMessage={onSelectMessage}
+        onRequestPinMessage={onRequestPinMessage}
+        onRequestUnpinMessage={onRequestUnpinMessage}
+        isPinned={isPinned}
       />
-      <div
-        ref={menuRef}
-        className="app-message-context-menu fixed z-[260]"
-        style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
-        role="menu"
-        onMouseDown={(event) => event.stopPropagation()}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <MessageContextMenuContent
-          msg={msg}
-          onClose={() => setMessageContextMenu(null)}
-          onReplyMessage={onReplyMessage}
-          onForwardMessage={onForwardMessage}
-          onSelectMessage={onSelectMessage}
-        />
-      </div>
-    </>
+    </div>
   ) : null;
 
   return (
@@ -731,6 +759,9 @@ function MessageBubbleView({
   onReplyMessage,
   onForwardMessage,
   onSelectMessage,
+  onRequestPinMessage,
+  onRequestUnpinMessage,
+  pinnedMessageId,
   selectionMode = false,
   selectedMessageIds,
   isMessageSelectable,
@@ -755,6 +786,9 @@ function MessageBubbleView({
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
+  onRequestPinMessage?: (message: Message) => void;
+  onRequestUnpinMessage?: (message: Message) => void;
+  pinnedMessageId?: string | null;
   plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
@@ -762,8 +796,9 @@ function MessageBubbleView({
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
-  const menuActionHandlers = { onReplyMessage, onForwardMessage, onSelectMessage };
   const selectionId = messageSelectionId(msg);
+  const isPinned = Boolean(selectionId && pinnedMessageId === selectionId);
+  const menuActionHandlers = { onReplyMessage, onForwardMessage, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, isPinned };
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
@@ -1368,6 +1403,9 @@ export const MessageBubble = memo(
     && previous.onReplyMessage === next.onReplyMessage
     && previous.onForwardMessage === next.onForwardMessage
     && previous.onSelectMessage === next.onSelectMessage
+    && previous.onRequestPinMessage === next.onRequestPinMessage
+    && previous.onRequestUnpinMessage === next.onRequestUnpinMessage
+    && previous.pinnedMessageId === next.pinnedMessageId
     && previous.selectionMode === next.selectionMode
     && previous.selectedMessageIds === next.selectedMessageIds
     && previous.isMessageSelectable === next.isMessageSelectable
