@@ -735,6 +735,15 @@ test('message bubble renders selected check control in selection mode', () => {
   assert.match(markup, /Deselect message from Alice at 10:42/);
 });
 
+test('message context menu installs document-level outside dismissal listeners', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /document\.addEventListener\('pointerdown'/);
+  assert.match(source, /document\.addEventListener\('contextmenu'/);
+  assert.match(source, /document\.addEventListener\('keydown'/);
+  assert.match(source, /menuRef\.current\.contains\(target\)/);
+});
+
 test('message context menu position stays close to the clicked message rectangle', () => {
   const below = messageContextMenuPosition({
     clientX: 340,

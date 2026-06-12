@@ -624,37 +624,48 @@ function MessageContextMenuHost({
       setMessageContextMenu({ ...messageContextMenu, ...next });
     }
   }, [messageContextMenu]);
+  useLayoutEffect(() => {
+    if (!messageContextMenu || typeof document === 'undefined') return;
+
+    const closeIfOutsideMenu = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current && menuRef.current.contains(target)) return;
+      setMessageContextMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMessageContextMenu(null);
+    };
+
+    document.addEventListener('pointerdown', closeIfOutsideMenu, true);
+    document.addEventListener('contextmenu', closeIfOutsideMenu, true);
+    document.addEventListener('keydown', closeOnEscape, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutsideMenu, true);
+      document.removeEventListener('contextmenu', closeIfOutsideMenu, true);
+      document.removeEventListener('keydown', closeOnEscape, true);
+    };
+  }, [messageContextMenu]);
   const menuLayer = messageContextMenu ? (
-    <>
-      <div
-        className="fixed inset-0 z-[250]"
-        onMouseDown={() => setMessageContextMenu(null)}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          setMessageContextMenu(null);
-        }}
-        aria-hidden="true"
+    <div
+      ref={menuRef}
+      className="app-message-context-menu fixed z-[260]"
+      style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
+      role="menu"
+      onMouseDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <MessageContextMenuContent
+        msg={msg}
+        onClose={() => setMessageContextMenu(null)}
+        onReplyMessage={onReplyMessage}
+        onForwardMessage={onForwardMessage}
+        onSelectMessage={onSelectMessage}
+        onRequestPinMessage={onRequestPinMessage}
+        onRequestUnpinMessage={onRequestUnpinMessage}
+        isPinned={isPinned}
       />
-      <div
-        ref={menuRef}
-        className="app-message-context-menu fixed z-[260]"
-        style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
-        role="menu"
-        onMouseDown={(event) => event.stopPropagation()}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <MessageContextMenuContent
-          msg={msg}
-          onClose={() => setMessageContextMenu(null)}
-          onReplyMessage={onReplyMessage}
-          onForwardMessage={onForwardMessage}
-          onSelectMessage={onSelectMessage}
-          onRequestPinMessage={onRequestPinMessage}
-          onRequestUnpinMessage={onRequestUnpinMessage}
-          isPinned={isPinned}
-        />
-      </div>
-    </>
+    </div>
   ) : null;
 
   return (
