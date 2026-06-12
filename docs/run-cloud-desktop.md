@@ -67,7 +67,7 @@ VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
 pnpm dev:cloud:multi -- --users user1,user2,user3
 ```
 
-Only use tunnel/local backend options if you have explicit operator access or are running your own compatible hosted API.
+Only use tunnel/local backend options if you have explicit operator access or are running your own compatible hosted API. For operator tunnel debugging, use environment placeholders and keep real private host details out of docs, PRs, issues, and shared logs. See [Internal/operator local tunnel debug pipeline](hosted-cloud-developer-guide.md#internaloperator-local-tunnel-debug-pipeline).
 
 ## Environment variables
 
@@ -87,6 +87,7 @@ Only use tunnel/local backend options if you have explicit operator access or ar
   curl <PUBLIC_TEST_CLOUD_API_BASE>/health
   ```
 
+- For operator tunnel debugging, verify the local tunnel endpoint and each desktop log's `VITE_KORDI_CLOUD_API_BASE` before changing code. Do not switch to production as a workaround unless an operator explicitly asks.
 - If Tauri fails before the app opens, run `pnpm install` again and confirm the Rust toolchain is installed.
 - If multi-instance ports are already in use, stop old instances or choose a smaller user set.
 - Do not use `--reset` unless you intentionally want to delete that local test user's desktop state.

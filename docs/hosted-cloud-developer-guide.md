@@ -53,6 +53,43 @@ curl -fsS "$VITE_KORDI_CLOUD_API_BASE/health"
 
 Expected: HTTP 200 or a healthy response.
 
+## Internal/operator local tunnel debug pipeline
+
+Use this path only when an operator explicitly asks you to test against a private hosted backend through a local tunnel. Keep all real operator hostnames, projects, account names, private IPs, and credentials out of commits, PRs, screenshots, and shared logs.
+
+Set the operator-provided values in your shell. Use placeholders in docs and bug reports:
+
+```bash
+export KORDI_CLOUD_USE_LOCAL_TUNNEL=1
+export KORDI_CLOUD_SSH_TARGET="<OPERATOR_SSH_TARGET>"
+export KORDI_CLOUD_SSH_ZONE="<OPERATOR_SSH_ZONE>"
+export KORDI_CLOUD_LOCAL_PORT="<LOCAL_TUNNEL_PORT>"
+export KORDI_CLOUD_VM_PORT="<REMOTE_FORWARD_PORT>"
+```
+
+Before launching desktop clients, verify the selected tunnel endpoint is healthy:
+
+```bash
+curl -fsS "http://127.0.0.1:${KORDI_CLOUD_LOCAL_PORT}/health"
+```
+
+Launch isolated users through the tunnel-enabled helper:
+
+```bash
+pnpm dev:cloud:multi -- --users user1,user2,user3
+```
+
+The tunnel helper sets `VITE_KORDI_CLOUD_API_BASE` for the launched local desktop instances. The API base should point at the local tunnel endpoint, not at production, when this debug path is in use.
+
+When debugging sync or login failures in this mode:
+
+1. Confirm `/health` succeeds on the local tunnel endpoint.
+2. Confirm each desktop log shows the expected `VITE_KORDI_CLOUD_API_BASE` value for that launch.
+3. Confirm the local desktop URLs are only UI windows; they are not backend URLs.
+4. Check whether the change path requires a hosted server deploy: use Path C for server code changes and Path D for schema changes.
+5. If the tunnel drops, restart the tunnel or relaunch the tunnel helper. Do not silently switch to production as a workaround.
+6. Redact tokens, account IDs when needed, private hostnames, project names, database details, and local filesystem paths before sharing logs.
+
 ## Launch one local desktop
 
 Use this for single-account testing after exporting `VITE_KORDI_CLOUD_API_BASE`:
@@ -138,6 +175,26 @@ VITE_KORDI_CLOUD_API_BASE="<HOSTED_CLOUD_API_BASE>"
 ```
 
 Use `--reset` when you want a clean local login/data state. Omit `--reset` when you want to preserve the local account session and cached desktop state for that test user.
+
+### Debug checklist for multi-user runs
+
+Before attributing a multi-user bug to app code, record the selected backend without exposing private infrastructure:
+
+```text
+Selected backend mode: public test API / self-hosted API / operator local tunnel
+Health check: pass / fail
+Desktop user logs show expected VITE_KORDI_CLOUD_API_BASE: yes / no
+Local UI URLs under test: <LOCAL_UI_URLS>
+Change path: no backend change / server change / database migration / runner change
+```
+
+If a message, pin, read receipt, group update, or presence change does not sync:
+
+1. Verify the backend health check first.
+2. Verify the sending client did not report a load/send failure.
+3. Verify the receiving client is connected to the same backend mode.
+4. For backend changes, verify the server deploy and migration state before retesting.
+5. Only then inspect redacted desktop/server logs for the event or API request.
 
 ## Decision tree: do we need to redeploy the hosted server?
 
