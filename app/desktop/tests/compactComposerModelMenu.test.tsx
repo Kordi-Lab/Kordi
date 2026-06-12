@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { CompactComposerModelMenu } from '../src/kordi-app/components/composer';
 import { shouldUseCompactModelRouteMenu } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
@@ -50,15 +51,26 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.match(markup, /lucide-menu/);
   assert.match(markup, /place-items-center/);
   assert.match(markup, /text-slate-400/);
-  assert.match(markup, /bg-\[rgba\(43,43,46,0\.82\)\]/);
-  assert.match(markup, /backdrop-blur-2xl/);
-  assert.match(markup, /bg-white\/8/);
-  assert.match(markup, /bg-slate-200/);
+  assert.match(markup, /app-compact-model-menu/);
+  assert.match(markup, /app-compact-model-menu-save/);
+  assert.doesNotMatch(markup, /only you see this/);
+  assert.doesNotMatch(markup, /changes stay local in this popout until you save them\./);
+  assert.doesNotMatch(markup, /pending route:/);
+  assert.doesNotMatch(markup, /provider · gpt-5\.5/);
+  assert.doesNotMatch(markup, /provider · gpt-5\.1/);
+  assert.doesNotMatch(markup, /bg-\[rgba\(43,43,46,0\.82\)\]/);
+  assert.doesNotMatch(markup, /bg-neutral-950\/25/);
+  assert.doesNotMatch(markup, /bg-white\/8/);
+  assert.doesNotMatch(markup, /bg-slate-200/);
   assert.doesNotMatch(markup, /data-compact-model-trigger="bare"[\s\S]{0,240}rounded-full/);
   assert.doesNotMatch(markup, /data-compact-model-trigger="bare"[\s\S]{0,260}bg-emerald/);
   assert.doesNotMatch(markup, /text-sky|bg-sky|ring-sky|hover:text-sky|hover:bg-sky/);
   assert.equal((markup.match(/<details/g) ?? []).length, 3);
+  assert.equal((markup.match(/app-compact-model-menu-chevron/g) ?? []).length, 3);
+  assert.equal((markup.match(/lucide-chevron-down/g) ?? []).length, 3);
   assert.doesNotMatch(markup, /<details open=""/);
+  assert.match(markup, />Agent Model</);
+  assert.doesNotMatch(markup, />model route</);
   assert.match(markup, />provider</);
   assert.match(markup, />model</);
   assert.match(markup, />thinking level</);
@@ -68,6 +80,16 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.doesNotMatch(markup, />Model</);
   assert.doesNotMatch(markup, />Thinking level</);
   assert.doesNotMatch(markup, />Save</);
+});
+
+test('compact model route menu uses light-theme tokenized popover colors', () => {
+  const css = readDesktopShellCss();
+
+  assert.match(css, /\.app-compact-model-menu\s*{[\s\S]*background:\s*var\(--app-compact-model-menu-bg\);/);
+  assert.match(css, /\.app-compact-model-menu-save\s*{[\s\S]*background:\s*var\(--app-compact-model-menu-save-bg\);/);
+  assert.match(css, /\.app-compact-model-menu details\[open\] \.app-compact-model-menu-chevron\s*{[\s\S]*transform:\s*rotate\(180deg\);/);
+  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu\s*{[\s\S]*--app-compact-model-menu-bg:\s*rgba\(255, 255, 255, 0\.72\);/);
+  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu\s*{[\s\S]*--app-compact-model-menu-save-bg:\s*rgb\(15 23 42\);/);
 });
 
 test('compact model route menu is scoped to group and human contact chats', () => {

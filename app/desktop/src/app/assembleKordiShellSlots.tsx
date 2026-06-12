@@ -6,10 +6,15 @@ import { assembleSidebarSlot } from '@/app/assembleSidebarSlot';
 import type { KordiShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleKordiShellSlots(args: KordiShellArgs) {
+  const rightDetailRail = assembleRightDetailSlot(args.rightDetail);
+
   return {
     sidebar: assembleSidebarSlot(args.sidebar),
-    mainContent: assembleMainContentSlot(args.mainContent),
-    rightDetailRail: assembleRightDetailSlot(args.rightDetail),
+    mainContent: assembleMainContentSlot({
+      ...args.mainContent,
+      rightDetailRail,
+    }),
+    rightDetailRail,
     ...assembleOverlaySlots(args.overlay),
   };
 }

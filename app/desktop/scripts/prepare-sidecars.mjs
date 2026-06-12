@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
@@ -59,6 +59,22 @@ function ensureRepo(label, relativePath) {
   return repoPath;
 }
 
+function resolveBuiltBinary(repoPath, configuredBinary) {
+  const configuredPath = join(repoPath, configuredBinary);
+  if (existsSync(configuredPath)) {
+    return configuredPath;
+  }
+
+  if (process.env.CARGO_TARGET_DIR) {
+    const sharedTargetPath = resolve(process.env.CARGO_TARGET_DIR, 'release', basename(configuredBinary));
+    if (existsSync(sharedTargetPath)) {
+      return sharedTargetPath;
+    }
+  }
+
+  return configuredPath;
+}
+
 function copyBinary(label, sourcePath, targetName) {
   if (!existsSync(sourcePath)) {
     console.error(`[kordi] Missing built binary for ${label}: ${sourcePath}`);
@@ -101,7 +117,7 @@ run(
 
 copyBinary(
   'Kordi runtime',
-  join(
+  resolveBuiltBinary(
     kordiRuntimeRepo,
     workspaceConfig.kordiRuntimeBinary ?? workspaceConfig.bbAgentBinary,
   ),
@@ -110,7 +126,7 @@ copyBinary(
 
 copyBinary(
   'Bridges',
-  join(bridgesRepo, workspaceConfig.bridgesBinary),
+  resolveBuiltBinary(bridgesRepo, workspaceConfig.bridgesBinary),
   `bridges-${targetTriple}`
 );
 

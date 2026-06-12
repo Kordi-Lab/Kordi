@@ -5,6 +5,7 @@ import {
   cloudGroupIdentityRequest,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupDeliveryStateFromMessages,
+  cloudGroupReadReceiptSummaryFromMessages,
   cloudGroupControlMessagesForAccount,
   cloudGroupLocalAgentRequestAlreadyHandled,
   cloudGroupMessageReadPeerIds,
@@ -71,6 +72,45 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.deliveryState, 'processing');
   assert.equal(parsed?.message?.replyToMessageId, 'msg_request');
   assert.equal(parsed?.message?.requestId, 'msg_request');
+});
+
+test('cloud group control envelopes preserve quote message actions for recipients', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:quote',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_reply',
+      senderAccountId: 'acct_a',
+      text: 'hi',
+      createdAtMs: 123,
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'quote',
+        source: {
+          sourceSessionId: 'session:group:quote',
+          sourceMessageId: 'msg_source',
+          sourceMessageKind: 'text',
+          senderLabel: 'Bob',
+          textPreview: 'hey everyone',
+          attachmentCount: 0,
+          timeLabel: '00:48',
+        },
+      },
+    },
+  });
+
+  const parsed = parseCloudGroupControl(body);
+  assert.equal(parsed?.message?.messageAction?.kind, 'quote');
+  assert.equal(parsed?.message?.messageAction?.source.sourceMessageId, 'msg_source');
+  assert.equal(parsed?.message?.messageAction?.source.senderLabel, 'Bob');
+  assert.equal(parsed?.message?.messageAction?.source.textPreview, 'hey everyone');
 });
 
 test('cloud group control envelopes round trip attachments', () => {
@@ -188,7 +228,7 @@ test('cloud group messages carry concrete session id separately from shared grou
   assert.equal(parsed?.groupSpaceId, 'session:group:original-space');
 });
 
-test('cloud group delivery status follows hidden pairwise cloud read receipts', () => {
+test('cloud group delivery status becomes read when any recipient has read the outbound message', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',
     groupId: 'session:group:one',
@@ -207,7 +247,7 @@ test('cloud group delivery status follows hidden pairwise cloud read receipts', 
       { messageId: 'cloud_1', fromAccountId: 'acct_me', toAccountId: 'acct_peer_a', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: null, direction: 'outgoing' },
       { messageId: 'cloud_2', fromAccountId: 'acct_me', toAccountId: 'acct_peer_b', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: '2026-05-11T00:00:02Z', direction: 'outgoing' },
     ],
-  }), 'delivered');
+  }), 'read');
 
   assert.equal(cloudGroupDeliveryStateFromMessages({
     accountId: 'acct_me',
@@ -217,6 +257,96 @@ test('cloud group delivery status follows hidden pairwise cloud read receipts', 
       { messageId: 'cloud_2', fromAccountId: 'acct_me', toAccountId: 'acct_peer_b', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: '2026-05-11T00:00:01Z', readAt: '2026-05-11T00:00:03Z', direction: 'outgoing' },
     ],
   }), 'read');
+});
+
+test('cloudGroupReadReceiptSummaryFromMessages returns only recipients who read the outbound group message', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:test',
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_1',
+      text: 'hello',
+      senderAccountId: 'acct_me',
+      senderDisplayName: 'Me',
+      createdAt: '2026-06-06T12:00:00Z',
+    },
+  });
+
+  const summary = cloudGroupReadReceiptSummaryFromMessages({
+    accountId: 'acct_me',
+    messageId: 'msg_1',
+    messages: [
+      {
+        messageId: 'copy_1',
+        fromAccountId: 'acct_me',
+        toAccountId: 'acct_a',
+        body,
+        createdAt: '2026-06-06T12:00:00Z',
+        deliveredAt: '2026-06-06T12:00:01Z',
+        readAt: '2026-06-06T12:00:02Z',
+        direction: 'outgoing',
+      },
+      {
+        messageId: 'copy_2',
+        fromAccountId: 'acct_me',
+        toAccountId: 'acct_b',
+        body,
+        createdAt: '2026-06-06T12:00:00Z',
+        deliveredAt: '2026-06-06T12:00:01Z',
+        readAt: null,
+        direction: 'outgoing',
+      },
+    ],
+  });
+
+  assert.deepEqual(summary, {
+    count: 1,
+    participants: [{ accountId: 'acct_a', identityId: 'human:acct_a', readAt: '2026-06-06T12:00:02Z' }],
+  });
+});
+
+test('cloudGroupReadReceiptSummaryFromMessages returns null when no recipients have read', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:test',
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_1',
+      text: 'hello',
+      senderAccountId: 'acct_me',
+      senderDisplayName: 'Me',
+      createdAt: '2026-06-06T12:00:00Z',
+    },
+  });
+
+  const summary = cloudGroupReadReceiptSummaryFromMessages({
+    accountId: 'acct_me',
+    messageId: 'msg_1',
+    messages: [{
+      messageId: 'copy_1',
+      fromAccountId: 'acct_me',
+      toAccountId: 'acct_a',
+      body,
+      createdAt: '2026-06-06T12:00:00Z',
+      deliveredAt: '2026-06-06T12:00:01Z',
+      readAt: null,
+      direction: 'outgoing',
+    }],
+  });
+
+  assert.equal(summary, null);
 });
 
 test('cloud group peer discovery expands beyond direct contacts from existing controls', () => {

@@ -9,9 +9,12 @@ pub fn builtin_tools() -> Vec<Box<dyn Tool>> {
         Box::new(crate::write::WriteTool),
         Box::new(crate::plan_tool::UpdatePlanTool),
         Box::new(crate::task_operator::TaskOperatorTool),
+        Box::new(crate::schedule_task::ScheduleTaskTool),
         Box::new(crate::find::FindTool),
         Box::new(crate::grep::GrepTool),
         Box::new(crate::ls::LsTool),
+        Box::new(crate::session_observation::SearchSessionsTool),
+        Box::new(crate::session_observation::ReadSessionTool),
         Box::new(crate::web_search::WebSearchTool),
         Box::new(crate::web_fetch::WebFetchTool),
         Box::new(crate::browser_fetch::BrowserFetchTool),
@@ -43,6 +46,8 @@ mod tests {
             "web_search",
             "web_fetch",
             "browser_fetch",
+            "search_sessions",
+            "read_session",
         ] {
             let metadata = metadata_for(name);
             assert_eq!(metadata.layer, ToolLayer::Observation, "{name}");
@@ -65,6 +70,31 @@ mod tests {
         assert_eq!(metadata.layer, ToolLayer::Operator);
         assert_eq!(metadata.risk, ToolRiskLevel::Medium);
         assert!(!metadata.supports_parallel);
+    }
+
+    #[test]
+    fn builtin_tools_include_schedule_task_as_operator_tool() {
+        let metadata = metadata_for("schedule_task");
+        assert_eq!(metadata.layer, ToolLayer::Operator);
+        assert_eq!(metadata.risk, ToolRiskLevel::Medium);
+        assert!(!metadata.supports_parallel);
+    }
+
+    #[test]
+    fn schedule_task_description_guides_runtime_choice() {
+        let tool = builtin_tools()
+            .into_iter()
+            .find(|tool| tool.name() == "schedule_task")
+            .expect("missing schedule_task tool");
+        let description = tool.description();
+        assert!(description.contains("Cloud-backed scheduled task"));
+        assert!(description.contains("localRequired"));
+        assert!(description.contains("Interpret unqualified times"));
+        assert!(description.contains("user's local Desktop timezone"));
+        assert!(description.contains("local files, disk usage, Downloads, screenshots"));
+        assert!(description.contains("cloud"));
+        assert!(description.contains("web search, communication, reminders"));
+        assert!(description.contains("Do not use bash, at, cron"));
     }
 
     #[test]

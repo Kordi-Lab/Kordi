@@ -5,6 +5,7 @@ import type { SendCloudGroupControlInput } from '@/features/cloud/useCloudBridge
 import type { ComposerDraftState } from './composerDrafts';
 import type {
   CanonicalSessionState,
+  ComposerQuoteState,
   ComposerScope,
   ComposerSelectorType,
   Conversation,
@@ -38,6 +39,7 @@ export type PendingUserMessage = { text: string; time: string } | null;
 export type UseComposerControllerArgs = {
   isNativeShell: boolean;
   activeConversationIsBridge: boolean;
+  chatConversations: Conversation[];
   activeConvId: string;
   activeConvCanonicalSessionId?: string | null;
   activeConvMessages: Message[];
@@ -58,6 +60,7 @@ export type UseComposerControllerArgs = {
   setComposerSelections: Dispatch<SetStateAction<ComposerSelectionState>>;
   composerDrafts: Record<ComposerScope, string>;
   setComposerDrafts: Dispatch<SetStateAction<ComposerDraftState>>;
+  activeChatQuote?: ComposerQuoteState | null;
   setProjectWorkspaces: Dispatch<SetStateAction<Project[]>>;
   setOpenComposerSelector: Dispatch<SetStateAction<ComposerSelectorState>>;
   chatComposerAttachments: AttachmentItem[];

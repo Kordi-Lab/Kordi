@@ -110,7 +110,7 @@ export function AuthProviderList({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="text-[14px] font-medium tracking-[-0.015em] text-white">Choose a provider</div>
-            <div className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-slate-300">
+            <div className="app-auth-provider-count-chip rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-slate-300">
               {configuredCount} saved · {providers.length} total
             </div>
           </div>
@@ -153,7 +153,7 @@ export function AuthProviderList({
       ) : null}
 
       <ScrollArea className="min-h-0 flex-1 pr-1">
-        <div className="w-full overflow-hidden rounded-[22px] border border-white/8 bg-white/[0.025] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <div className="app-auth-provider-rows w-full overflow-hidden rounded-[22px] border border-white/8 bg-white/[0.025] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
           {providers.map((provider, index) => {
             const selected = provider.id === selectedProviderId;
 

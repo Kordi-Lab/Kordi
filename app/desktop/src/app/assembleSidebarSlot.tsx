@@ -6,7 +6,6 @@ import { WorkspaceSidebar } from '@/pages/WorkspaceSidebar';
 import type { SidebarShellArgs } from '@/app/kordiShellSlots.types';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
-import { currentKordiEdition } from '@/features/cloud/edition';
 import { loadSession } from '@/features/cloud/session';
 import { isPendingIncomingCloudContactRequest, useCloudContacts } from '@/features/cloud/useCloudContacts';
 
@@ -34,26 +33,16 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
 }
 
 function SidebarSlot({ args }: SidebarSlotProps) {
-  // Hooks must run on every render; the cloud branch only takes effect
-  // when the desktop is launched in cloud edition.
-  const edition = currentKordiEdition();
   const cloudSession = args.cloudSession;
-  const cloud = useCloudContacts(edition === 'cloud' ? cloudSession.account : null);
+  const cloud = useCloudContacts(cloudSession.account);
 
-  // Bridge path is unreachable in cloud edition — gate purely on
-  // edition so a race between the parent shell's session bootstrap
-  // and this slot's bootstrap can't trip a "Set up a Bridge host"
-  // error on cloud users.
-  const isCloud = edition === 'cloud';
-
-  // Cloud-mode profile lookup for the search-first Add-contacts UX in
-  // the chat-create dialog. Stable across renders so the dialog
-  // doesn't reset its internal state on every keystroke.
+  // Cloud profile lookup for the search-first Add-contacts UX in the
+  // chat-create dialog. Stable across renders so the dialog doesn't
+  // reset its internal state on every keystroke.
   const cloudAuthClient = useMemo(() => defaultCloudAuthClient(), []);
   const onLookupContact = useMemo<
     ((idOrEmail: string) => Promise<AddContactLookupResult | null>) | undefined
   >(() => {
-    if (!isCloud) return undefined;
     return async (rawId: string) => {
       const trimmed = rawId.trim();
       if (!trimmed) return null;
@@ -83,25 +72,18 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         throw err;
       }
     };
-  }, [isCloud, cloudAuthClient]);
+  }, [cloudAuthClient]);
 
   const onAddContactByNodeId = async (rawId: string) => {
-    if (isCloud) {
-      if (!cloudSession.account) {
-        throw new Error('Account is not ready yet — try again in a moment.');
-      }
-      const trimmed = rawId.trim();
-      if (!trimmed) return;
-      if (!trimmed.startsWith('acct_')) {
-        throw new Error('Kordi IDs start with "acct_".');
-      }
-      await cloud.sendRequest(trimmed);
-      return;
+    if (!cloudSession.account) {
+      throw new Error('Account is not ready yet — try again in a moment.');
     }
-    if (!args.activeBridgeHost?.id) {
-      throw new Error('Set up a Bridge host before adding contacts.');
+    const trimmed = rawId.trim();
+    if (!trimmed) return;
+    if (!trimmed.startsWith('acct_')) {
+      throw new Error('Kordi IDs start with "acct_".');
     }
-    await args.handleAddBridgeContact(args.activeBridgeHost.id, rawId);
+    await cloud.sendRequest(trimmed);
   };
 
   return (
@@ -145,7 +127,7 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         onCreateChatGroup={args.handleCreateChatGroup}
         onAddContactByNodeId={onAddContactByNodeId}
         onLookupContact={onLookupContact}
-        addContactPlaceholder={isCloud ? 'Account ID, e.g. acct_…' : undefined}
+        addContactPlaceholder="Account ID, e.g. acct_…"
         onCreateChatSessionInParticipantSpace={args.handleCreateChatSessionInParticipantSpace}
         onRenameChatGroup={args.handleRenameChatGroup}
         onRenameChatSession={(sessionId, title) => {
@@ -176,20 +158,18 @@ function SidebarSlot({ args }: SidebarSlotProps) {
           void args.handleSelectProjectSession(projectId, sessionId);
         }}
         groupedContacts={args.groupedContacts}
-        displayedContacts={isCloud ? cloud.contacts : args.displayedContacts}
-        addableContacts={isCloud ? [] : args.addableContacts}
-        contactRequestCount={isCloud
-          ? cloud.requests.filter(isPendingIncomingCloudContactRequest).length
-          : (args.contactRequests?.length ?? 0)}
+        displayedContacts={cloud.contacts}
+        addableContacts={[]}
+        contactRequestCount={cloud.requests.filter(isPendingIncomingCloudContactRequest).length}
         setActiveContactGroup={args.setActiveContactGroup}
         setActiveContactId={args.setActiveContactId}
         displayedAgents={args.displayedAgents}
         activeBridgeHost={args.activeBridgeHost}
         localProfileAvatarSeed={args.localProfileAvatarSeed}
-        cloudAccount={isCloud ? cloudSession.account : null}
+        cloudAccount={cloudSession.account}
         cloudAccountDialogTab={args.cloudAccountDialogTab}
         setCloudAccountDialogTab={args.setCloudAccountDialogTab}
-        cloudSettings={isCloud ? {
+        cloudSettings={{
           settingsSections: args.settingsSections,
           activeSettingsSectionId: args.activeSettingsSectionId,
           setActiveSettingsSectionId: args.setActiveSettingsSectionId,
@@ -207,9 +187,9 @@ function SidebarSlot({ args }: SidebarSlotProps) {
           handleLogoutProvider: args.handleLogoutProvider,
           themeMode: args.themeMode,
           setThemeMode: args.setThemeMode,
-        } : undefined}
-        onUpdateCloudProfile={isCloud ? async (input) => { await cloudSession.updateProfile(input); } : undefined}
-        onCloudSignOut={isCloud ? async () => { await cloudSession.signOut(); } : undefined}
+        }}
+        onUpdateCloudProfile={async (input) => { await cloudSession.updateProfile(input); }}
+        onCloudSignOut={async () => { await cloudSession.signOut(); }}
         isBridgePolling={args.isBridgePolling}
         onRefreshBridge={() => {
           void args.refreshDesktopBridge();

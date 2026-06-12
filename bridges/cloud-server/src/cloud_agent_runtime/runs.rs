@@ -1,10 +1,13 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 
 use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
+use crate::scheduled_tasks::store::{
+    mark_scheduled_task_run_completed, mark_scheduled_task_run_failed,
+};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
@@ -72,6 +75,7 @@ pub async fn requester_can_target_owner(
 
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
+const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
 const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES: i64 = 12;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -103,6 +107,8 @@ struct CloudGroupMessage {
     reply_to_message_id: Option<String>,
     #[serde(rename = "requestId", skip_serializing_if = "Option::is_none")]
     request_id: Option<String>,
+    #[serde(rename = "messageAction", skip_serializing_if = "Option::is_none")]
+    message_action: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -165,6 +171,47 @@ fn encode_cloud_group_envelope(envelope: &CloudGroupEnvelope) -> String {
     )
 }
 
+async fn append_cloud_agent_response_sync_event(
+    pool: &PgPool,
+    account_id: &str,
+    peer_account_id: &str,
+    message_id: &str,
+    from_account_id: &str,
+    to_account_id: &str,
+    body: &str,
+    session_id: &str,
+    created_at: &str,
+    direction: &str,
+) -> Result<(), sqlx_core::Error> {
+    query(
+        "INSERT INTO cloud_sync_events \
+         (account_id, event_type, peer_account_id, message_id, payload_json, occurred_at) \
+         VALUES ($1, 'message.upsert', $2, $3, $4, $5)",
+    )
+    .bind(account_id)
+    .bind(peer_account_id)
+    .bind(message_id)
+    .bind(serde_json::json!({
+        "sessionId": session_id,
+        "message": {
+            "messageId": message_id,
+            "fromAccountId": from_account_id,
+            "toAccountId": to_account_id,
+            "body": body,
+            "sessionId": session_id,
+            "createdAt": created_at,
+            "deliveredAt": created_at,
+            "readAt": null,
+            "direction": direction,
+            "attachments": [],
+        }
+    }))
+    .bind(created_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 fn cloud_group_response_body(
     request_envelope: &CloudGroupEnvelope,
     owner_account_id: &str,
@@ -208,8 +255,51 @@ fn cloud_group_response_body(
             delivery_state: Some(delivery_state.to_string()),
             reply_to_message_id: Some(request_message_id.to_string()),
             request_id: Some(request_message_id.to_string()),
+            message_action: None,
         }),
     })
+}
+
+fn direct_message_envelope(body: &str) -> Option<serde_json::Value> {
+    let encoded = body.trim().strip_prefix(CLOUD_DIRECT_MESSAGE_PREFIX)?;
+    let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
+    let Some(action) = action else {
+        return String::new();
+    };
+    let kind = action
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    let source = action.get("source").and_then(serde_json::Value::as_object);
+    let sender = source
+        .and_then(|source| source.get("senderLabel"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown sender");
+    let source_message_id = source
+        .and_then(|source| source.get("sourceMessageId"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown");
+    let preview = source
+        .and_then(|source| source.get("textPreview"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!(": {}", value.chars().take(180).collect::<String>()))
+        .unwrap_or_default();
+    match kind {
+        "quote" => format!(" [quotes message {source_message_id} from {sender}{preview}]"),
+        "forward" => format!(" [forwarded from message {source_message_id} by {sender}{preview}]"),
+        _ => String::new(),
+    }
 }
 
 fn fallback_prompt_history_line(
@@ -217,12 +307,48 @@ fn fallback_prompt_history_line(
     owner_account_id: &str,
     message: &CloudFallbackHistoryMessage,
 ) -> Option<String> {
-    let (label, text) = if let Some(text) = cloud_agent_response_text(&message.body) {
-        ("Owner's Kordi", text)
+    let (label, text, suffix) = if let Some(text) = cloud_agent_response_text(&message.body) {
+        ("Owner's Kordi", text, String::new())
+    } else if let Some(envelope) = parse_cloud_group_envelope(&message.body) {
+        let group_message = envelope.message?;
+        let label = if group_message.sender_account_id == requester_account_id {
+            "Requester"
+        } else if group_message.sender_account_id == owner_account_id {
+            if group_message.sender_kind.as_deref() == Some("agent") {
+                "Owner's Kordi"
+            } else {
+                "Owner"
+            }
+        } else {
+            "Participant"
+        };
+        (
+            label,
+            strip_leading_agent_mention(&group_message.text),
+            action_context_suffix(group_message.message_action.as_ref()),
+        )
+    } else if let Some(envelope) = direct_message_envelope(&message.body) {
+        let text = envelope
+            .get("text")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let suffix = action_context_suffix(envelope.get("messageAction"));
+        if message.from_account_id == requester_account_id {
+            ("Requester", strip_leading_agent_mention(&text), suffix)
+        } else if message.from_account_id == owner_account_id {
+            ("Owner", text.trim().to_string(), suffix)
+        } else {
+            return None;
+        }
     } else if message.from_account_id == requester_account_id {
-        ("Requester", strip_leading_agent_mention(&message.body))
+        (
+            "Requester",
+            strip_leading_agent_mention(&message.body),
+            String::new(),
+        )
     } else if message.from_account_id == owner_account_id {
-        ("Owner", message.body.trim().to_string())
+        ("Owner", message.body.trim().to_string(), String::new())
     } else {
         return None;
     };
@@ -230,7 +356,7 @@ fn fallback_prompt_history_line(
     if text.is_empty() {
         return None;
     }
-    Some(format!("{label}: {text}"))
+    Some(format!("{label}: {text}{suffix}"))
 }
 
 fn fallback_prompt_with_history(
@@ -441,6 +567,7 @@ mod tests {
                 delivery_state: None,
                 reply_to_message_id: None,
                 request_id: None,
+                message_action: None,
             }),
         };
 
@@ -459,7 +586,10 @@ mod tests {
         assert_eq!(response.kind, "group-message");
         assert_eq!(message.sender_account_id, "acct_owner");
         assert_eq!(message.sender_kind.as_deref(), Some("agent"));
-        assert_eq!(message.sender_display_name.as_deref(), Some("Owner's Kordi"));
+        assert_eq!(
+            message.sender_display_name.as_deref(),
+            Some("Owner's Kordi")
+        );
         assert_eq!(message.request_id.as_deref(), Some("msg:ui:request"));
         assert_eq!(message.delivery_state.as_deref(), Some("complete"));
         assert_eq!(message.text, "Hello everyone!");
@@ -722,8 +852,12 @@ pub fn encode_cloud_agent_response_body(request_message_id: &str, response_text:
 fn cloud_agent_failure_response_text(error_code: &str) -> &'static str {
     match error_code {
         "missing_provider_auth" => "No provider configured yet.",
-        "model_provider_error" => "Cloud fallback could not complete this request because the configured provider/model failed.",
-        "sandbox_error" => "Cloud fallback could not complete this request because the sandbox failed.",
+        "model_provider_error" => {
+            "Cloud fallback could not complete this request because the configured provider/model failed."
+        }
+        "sandbox_error" => {
+            "Cloud fallback could not complete this request because the sandbox failed."
+        }
         _ => "Cloud fallback could not complete this request.",
     }
 }
@@ -767,7 +901,9 @@ async fn ensure_group_response_messages(
     response_text: &str,
     delivery_state: &str,
 ) -> Result<Option<String>, sqlx_core::Error> {
-    let Some(request_envelope) = cloud_group_request_envelope_for_run(pool, session_id, request_message_id).await? else {
+    let Some(request_envelope) =
+        cloud_group_request_envelope_for_run(pool, session_id, request_message_id).await?
+    else {
         return Ok(None);
     };
     let response_group_message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
@@ -807,6 +943,19 @@ async fn ensure_group_response_messages(
         .bind(&now_string)
         .bind(session_id)
         .execute(pool)
+        .await?;
+        append_cloud_agent_response_sync_event(
+            pool,
+            &recipient_account_id,
+            owner_account_id,
+            &message_id,
+            owner_account_id,
+            &recipient_account_id,
+            &response_body,
+            session_id,
+            &now_string,
+            "incoming",
+        )
         .await?;
     }
     if let Some(message_id) = &first_message_id {
@@ -851,6 +1000,7 @@ pub async fn complete_run(
         return Ok(None);
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
+    let mut direct_response_sync_event: Option<String> = None;
     let response_message_id = if let Some(message_id) = ensure_group_response_messages(
         pool,
         run_id,
@@ -880,9 +1030,26 @@ pub async fn complete_run(
             &response_body,
         )
         .await?;
+        direct_response_sync_event = Some(message_id.clone());
         message_id
     };
-    let now = Utc::now().to_rfc3339();
+    if let Some(message_id) = direct_response_sync_event.as_deref() {
+        append_cloud_agent_response_sync_event(
+            pool,
+            &requester_account_id,
+            &owner_account_id,
+            message_id,
+            &owner_account_id,
+            &requester_account_id,
+            &response_body,
+            &session_id,
+            &Utc::now().to_rfc3339(),
+            "incoming",
+        )
+        .await?;
+    }
+    let now = Utc::now();
+    let now_text = now.to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'completed', response_message_id = $3, \
@@ -892,12 +1059,16 @@ pub async fn complete_run(
     )
     .bind(run_id)
     .bind(runner_id)
-    .bind(response_message_id)
-    .bind(now)
+    .bind(&response_message_id)
+    .bind(&now_text)
     .fetch_optional(pool)
     .await?;
     match row {
-        Some(row) => runner_response_from_row(pool, row).await.map(Some),
+        Some(row) => {
+            mark_scheduled_task_run_completed(pool, &request_message_id, &response_message_id, now)
+                .await?;
+            runner_response_from_row(pool, row).await.map(Some)
+        }
         None => Ok(None),
     }
 }
@@ -925,6 +1096,7 @@ pub async fn fail_run(
     };
     let failure_text = cloud_agent_failure_response_text(error_code);
     let response_body = encode_failed_cloud_agent_response_body(&request_message_id, error_code);
+    let mut direct_response_sync_event: Option<String> = None;
     let response_message_id = if let Some(message_id) = ensure_group_response_messages(
         pool,
         run_id,
@@ -954,8 +1126,26 @@ pub async fn fail_run(
             &response_body,
         )
         .await?;
+        direct_response_sync_event = Some(message_id.clone());
         message_id
     };
+    if let Some(message_id) = direct_response_sync_event.as_deref() {
+        append_cloud_agent_response_sync_event(
+            pool,
+            &requester_account_id,
+            &owner_account_id,
+            message_id,
+            &owner_account_id,
+            &requester_account_id,
+            &response_body,
+            &session_id,
+            &Utc::now().to_rfc3339(),
+            "incoming",
+        )
+        .await?;
+    }
+    let now = Utc::now();
+    let now_text = now.to_rfc3339();
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'failed', response_message_id = $5, error_code = $3, error_message = $4, updated_at = $6, completed_at = $6 \
@@ -966,12 +1156,16 @@ pub async fn fail_run(
     .bind(runner_id)
     .bind(error_code)
     .bind(message)
-    .bind(response_message_id)
-    .bind(Utc::now().to_rfc3339())
+    .bind(&response_message_id)
+    .bind(&now_text)
     .fetch_optional(pool)
     .await?;
     match row {
-        Some(row) => runner_response_from_row(pool, row).await.map(Some),
+        Some(row) => {
+            mark_scheduled_task_run_failed(pool, &request_message_id, error_code, message, now)
+                .await?;
+            runner_response_from_row(pool, row).await.map(Some)
+        }
         None => Ok(None),
     }
 }

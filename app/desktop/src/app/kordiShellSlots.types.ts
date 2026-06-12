@@ -1,11 +1,13 @@
-import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, SetStateAction } from 'react';
+import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react';
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
+import type { CloudSessionPin } from '@/features/cloud/authClient';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import type { DesktopUpdateState } from '@/features/update/desktopUpdater';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type {
   Agent,
   BridgeAgentRequestControl,
@@ -13,6 +15,7 @@ import type {
   ContactClass,
   ContactRequest,
   Conversation,
+  ComposerQuoteState,
   DesktopAuthProvider,
   DesktopAuthState,
   DesktopBridgeConversation,
@@ -60,6 +63,8 @@ export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
   cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
+  cloudSessionPinsById: Record<string, CloudSessionPin>;
+  onUpdateCloudSessionPin: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
   windowWidth: number;
   activeNav: 'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings';
   cloudSession: UseCloudSessionResult;
@@ -88,6 +93,7 @@ export type AssembleKordiShellSlotsArgs = {
   filteredConversations: Conversation[];
   setActiveNav: Dispatch<SetStateAction<'chats' | 'contacts' | 'projects' | 'agents' | 'bridge' | 'settings'>>;
   handleCreateChatSession: () => Promise<void>;
+  handleCreateSideAgentSession: () => Promise<string | null>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
   runtimeProjects: Project[];
@@ -244,6 +250,8 @@ export type AssembleKordiShellSlotsArgs = {
   isDetailPanelCollapsed: boolean;
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
   setIsSessionPanelCollapsed: Dispatch<SetStateAction<boolean>>;
+  detailRailWidth: number;
+  onDetailResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   activeProject: Project;
   activeProjectSession: Project['sessions'][number];
   desktopSessionRenameDraft: string;
@@ -284,6 +292,23 @@ export type AssembleKordiShellSlotsArgs = {
   updateChatComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setProjectComposerText: (value: string) => void;
   setChatComposerText: (value: string) => void;
+  setChatComposerTextForSession: (sessionId: string, value: string) => void;
+  activeChatQuote: ComposerQuoteState | null;
+  onClearChatQuote: () => void;
+  onReplyMessage: (message: Message) => void;
+  onForwardMessage: (message: Message) => void;
+  onSelectMessage: (message: Message) => void;
+  messageSelectionMode: boolean;
+  selectedMessageCount: number;
+  selectedMessageIds: ReadonlySet<string>;
+  isMessageSelectable: (message: Message) => boolean;
+  onToggleSelectedMessage: (message: Message) => void;
+  onSelectionDragStart: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter: (message: Message) => void;
+  onSelectionDragEnd: () => void;
+  onCancelMessageSelection: () => void;
+  onCopySelectedMessages: () => void;
+  onForwardSelectedMessages: () => void;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
   activeRuntimeSessionId?: string;
   activeRuntimeContextStatus?: DesktopChatState['activeSession']['contextWindowStatus'];
@@ -305,7 +330,7 @@ export type AssembleKordiShellSlotsArgs = {
   handleStopDesktopChatTurn: () => void;
   handleStopBridgeAgentRequest: (request: BridgeAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
-  handleSendChatMessage: (draftOverride?: string) => void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => void;
   handleForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   showChatDetailRail: boolean;
   activeDetailTab: DetailTab;
@@ -426,6 +451,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'cloudSession'
   | 'chatConversations'
   | 'handleCreateChatSession'
+  | 'handleCreateSideAgentSession'
   | 'handleSelectChatSession'
   | 'handleStartChatWithAgent'
   | 'filteredGroupedContacts'
@@ -503,6 +529,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isNativeShell'
   | 'desktopChatState'
   | 'cloudSelfAgentSyncStatusBySessionId'
+  | 'cloudSessionPinsById'
+  | 'onUpdateCloudSessionPin'
   | 'desktopAuthState'
   | 'isDesktopAuthLoading'
   | 'desktopAuthError'
@@ -523,6 +551,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showRightDetailRail'
   | 'isDetailPanelCollapsed'
   | 'setIsDetailPanelCollapsed'
+  | 'detailRailWidth'
+  | 'onDetailResizeMouseDown'
   | 'activeProject'
   | 'activeProjectSession'
   | 'desktopSessionRenameDraft'
@@ -582,6 +612,23 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'
+  | 'setChatComposerTextForSession'
+  | 'activeChatQuote'
+  | 'onClearChatQuote'
+  | 'onReplyMessage'
+  | 'onForwardMessage'
+  | 'onSelectMessage'
+  | 'messageSelectionMode'
+  | 'selectedMessageCount'
+  | 'selectedMessageIds'
+  | 'isMessageSelectable'
+  | 'onToggleSelectedMessage'
+  | 'onSelectionDragStart'
+  | 'onSelectionDragEnter'
+  | 'onSelectionDragEnd'
+  | 'onCancelMessageSelection'
+  | 'onCopySelectedMessages'
+  | 'onForwardSelectedMessages'
   | 'composerSelectionChat'
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'
@@ -593,7 +640,9 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeBridgeAwaitingReply'
   | 'lastBridgePollAtLabel'
   | 'isBridgePolling'
->;
+> & {
+  rightDetailRail?: ReactNode;
+};
 
 export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'isNativeShell'

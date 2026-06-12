@@ -215,6 +215,36 @@
     0 8px 18px rgba(0, 0, 0, 0.08);
 }
 
+.app-contacts-action-chip {
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 82%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 88%, transparent);
+  color: var(--utility-foreground);
+  box-shadow: none;
+}
+
+.app-contacts-action-chip:hover {
+  border-color: color-mix(in oklab, var(--app-control-border) 96%, transparent);
+  background: color-mix(in oklab, var(--app-control-hover) 92%, transparent);
+}
+
+.app-contacts-section-button {
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 70%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 56%, transparent);
+  color: var(--utility-foreground);
+  box-shadow: none;
+}
+
+.app-contacts-section-button:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
+}
+
+.app-contacts-status-chip {
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 70%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 62%, transparent);
+  color: var(--utility-muted-text);
+  box-shadow: none;
+}
+
 .app-list-item {
   border: 1px solid transparent;
   background: transparent;

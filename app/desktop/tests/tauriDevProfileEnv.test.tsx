@@ -3,17 +3,16 @@ import { test } from 'node:test';
 
 import { buildBeforeDevCommand } from '../scripts/tauri-dev-env.mjs';
 
-test('buildBeforeDevCommand forwards Cloud Edition env into the Vite dev server command', () => {
+test('buildBeforeDevCommand does not forward removed edition env into the Vite dev server command', () => {
   const command = buildBeforeDevCommand({
-    title: 'Kordi Cloud Edition Login Gate',
+    title: 'Kordi Cloud',
     host: '127.0.0.1',
     port: 1492,
-    env: { KORDI_EDITION: 'cloud' },
+    env: { KORDI_EDITION: 'local', VITE_KORDI_EDITION: 'local' },
   });
 
-  assert.match(command, /^VITE_KORDI_WINDOW_TITLE='Kordi Cloud Edition Login Gate' /);
-  assert.match(command, / VITE_KORDI_EDITION='cloud' /);
-  assert.match(command, / KORDI_EDITION='cloud' /);
+  assert.match(command, /^VITE_KORDI_WINDOW_TITLE='Kordi Cloud' /);
+  assert.doesNotMatch(command, /VITE_KORDI_EDITION|KORDI_EDITION/);
   assert.match(command, /npm run dev:web -- --host 127\.0\.0\.1 --port 1492 --strictPort$/);
 });
 
@@ -37,18 +36,6 @@ test('buildBeforeDevCommand forwards the desktop update preview flag into Vite',
   });
 
   assert.match(command, / VITE_KORDI_PREVIEW_UPDATE='available' /);
-});
-
-test('buildBeforeDevCommand lets an explicit Vite edition override the runtime edition', () => {
-  const command = buildBeforeDevCommand({
-    title: 'Kordi',
-    host: '127.0.0.1',
-    port: 1420,
-    env: { VITE_KORDI_EDITION: 'cloud', KORDI_EDITION: 'local' },
-  });
-
-  assert.match(command, / VITE_KORDI_EDITION='cloud' /);
-  assert.match(command, / KORDI_EDITION='local' /);
 });
 
 test('buildBeforeDevCommand omits edition env when no edition is configured', () => {

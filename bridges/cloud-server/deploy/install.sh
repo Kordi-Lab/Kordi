@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 #
-# install.sh — RUN ON THE VM (or via gcloud compute ssh).
+# install.sh — RUN ON AN OPERATOR-PROVIDED HOST.
 #
 # Installs the kordi-cloud-server systemd unit, asks before stopping
 # whatever is currently bound to port 17081, then enables + starts the new
 # service. Idempotent: safe to re-run after a `sync-and-build.sh` rebuild.
 #
-# Usage on the VM:
-#   sudo bash /home/shu_yang/kordi-cloud-server-deploy/bridges/cloud-server/deploy/install.sh
-#
-# Or from your laptop:
-#   gcloud compute ssh shu_yang@takotako --zone us-central1-c \
-#     --command 'sudo bash /home/shu_yang/kordi-cloud-server-deploy/bridges/cloud-server/deploy/install.sh'
+# Usage on the host:
+#   sudo KORDI_CLOUD_DEPLOY_USER=<operator-user> KORDI_CLOUD_DEPLOY_GROUP=<operator-group> \
+#     bash /path/to/kordi/bridges/cloud-server/deploy/install.sh
 
 set -euo pipefail
 
@@ -20,8 +17,8 @@ if [[ "${EUID}" -ne 0 ]]; then
 	exit 1
 fi
 
-DEPLOY_USER="${KORDI_CLOUD_DEPLOY_USER:-shu_yang}"
-DEPLOY_GROUP="${KORDI_CLOUD_DEPLOY_GROUP:-shu_yang}"
+DEPLOY_USER="${KORDI_CLOUD_DEPLOY_USER:?Set KORDI_CLOUD_DEPLOY_USER to the operator deploy user}"
+DEPLOY_GROUP="${KORDI_CLOUD_DEPLOY_GROUP:?Set KORDI_CLOUD_DEPLOY_GROUP to the operator deploy group}"
 DEPLOY_DIR="/home/${DEPLOY_USER}/kordi-cloud-server-deploy"
 DATA_DIR="/home/${DEPLOY_USER}/kordi-cloud-server-data"
 BINARY="${DEPLOY_DIR}/target/release/kordi-cloud-server"

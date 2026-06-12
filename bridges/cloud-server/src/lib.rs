@@ -12,6 +12,7 @@ pub mod events;
 pub mod messages;
 pub mod pg;
 pub mod presence;
+pub mod scheduled_tasks;
 pub mod server;
 pub mod updates;
 pub mod ws;

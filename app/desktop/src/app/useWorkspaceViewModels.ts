@@ -5,7 +5,6 @@ import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
-import { currentKordiEdition } from '@/features/cloud/edition';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import { presenceStatusForAccount, type CloudPresenceStore } from '@/features/cloud/presence';
 import {
@@ -433,6 +432,7 @@ export function useWorkspaceViewModels({
         },
         messages,
         reflectionLessonArtifacts,
+        previewLiveTurn: desktopLiveTurnsForViewModel[session.id] ?? null,
         updatedAtLabel: session.updatedAtLabel,
         statusIndicator,
         bridgeTarget: undefined,
@@ -518,10 +518,7 @@ export function useWorkspaceViewModels({
 
   const nativeChatPlaceholder = useMemo(
     () => {
-      const suppressLoadingCopy = currentKordiEdition() === 'cloud';
-      const placeholderText = isDesktopChatLoading && !suppressLoadingCopy
-        ? 'Opening my local chat history…'
-        : 'Blank drafts stay local until the first real send.';
+      const placeholderText = 'Blank drafts stay local until the first real send.';
       return {
       id: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
       canonicalSessionId: undefined,
@@ -541,7 +538,7 @@ export function useWorkspaceViewModels({
       }],
     };
     },
-    [isDesktopChatLoading],
+    [],
   );
 
   const activeConv = useMemo(() => activeConversationForSelection(activeConvId, chatConversations, {

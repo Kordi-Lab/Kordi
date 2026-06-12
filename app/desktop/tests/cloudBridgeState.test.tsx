@@ -15,6 +15,7 @@ import {
 } from '../src/features/cloud/cloudBridgeState';
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { cloudGroupForkPayloadFromSessionMetadata, cloudGroupParticipantsWithProfiles, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
@@ -44,6 +45,7 @@ import {
   saveCachedCloudMessagesByPeer,
 } from '../src/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
+import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
 const account: CloudAccount = {
@@ -61,6 +63,288 @@ const peer = cloudContactToContact({
   avatarUrl: null,
   nodeId: 'node_peer',
   createdAt: '2026-05-11T00:00:00Z',
+});
+
+test('direct Cloud forwarded envelopes survive bridge transcript mapping', () => {
+  const source = {
+    sourceSessionId: 'session:source',
+    sourceMessageId: 'msg:source',
+    senderLabel: 'Peer Person',
+    textPreview: 'Original message',
+    attachmentCount: 0,
+    timeLabel: '10:42',
+  };
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'Original message',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source,
+    },
+  });
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_cloud_forward',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body,
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+  }, undefined, 'Kordi');
+
+  assert.equal(bridgeMessage.messageAction?.kind, 'forward');
+  assert.equal(view.messages[0]?.messageAction?.kind, 'forward');
+  assert.equal(view.messages[0]?.messageAction?.source.senderLabel, 'Peer Person');
+});
+
+test('direct Cloud forwarded headers rewrite legacy Me labels to the remote human profile name', () => {
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'h every',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source: {
+        sourceSessionId: 'session:legacy',
+        sourceMessageId: 'msg:legacy',
+        senderLabel: 'Me',
+        textPreview: 'legacy source',
+        attachmentCount: 0,
+        timeLabel: '13:46',
+      },
+    },
+  });
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_legacy_me_forward',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body,
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    canonicalSessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: account.accountId,
+      localHumanName: account.displayName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      remoteHumanId: 'acct_peer',
+      remoteHumanName: 'Peer Person',
+      remoteAgentId: 'cloud-agent:acct_peer',
+      remoteAgentName: "Peer Person's Kordi",
+    },
+  }, undefined, 'Kordi');
+
+  assert.equal(view.messages[0]?.messageAction?.source.senderLabel, 'Peer Person');
+  assert.equal(view.messages[0]?.sourceMessage?.senderLabel, 'Peer Person');
+});
+
+test('direct Cloud forwarded headers rewrite legacy My Kordi labels to the remote agent profile name', () => {
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'agent source',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source: {
+        sourceSessionId: 'session:legacy-agent',
+        sourceMessageId: 'msg:legacy-agent',
+        senderLabel: 'My Kordi',
+        textPreview: 'legacy agent source',
+        attachmentCount: 0,
+        timeLabel: '13:46',
+      },
+    },
+  });
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_legacy_agent_forward',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body,
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    canonicalSessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: account.accountId,
+      localHumanName: account.displayName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      remoteHumanId: 'acct_peer',
+      remoteHumanName: 'Peer Person',
+      remoteAgentId: 'cloud-agent:acct_peer',
+      remoteAgentName: "Peer Person's Kordi",
+    },
+  }, undefined, 'Kordi');
+
+  assert.equal(view.messages[0]?.messageAction?.source.senderLabel, "Peer Person's Kordi");
+  assert.equal(view.messages[0]?.sourceMessage?.senderLabel, "Peer Person's Kordi");
+});
+
+test('direct Cloud forwards use real local display name as source sender label', () => {
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_plain_source',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body: 'source text',
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    canonicalSessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: account.accountId,
+      localHumanName: account.displayName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      remoteHumanId: 'acct_peer',
+      remoteHumanName: 'Peer Person',
+      remoteAgentId: 'cloud-agent:acct_peer',
+      remoteAgentName: "Peer Person's Kordi",
+    },
+  }, undefined, 'Kordi');
+  const source = messageActionSourceFromMessage(view.messages[0]!, view.canonicalSessionId!);
+
+  assert.equal(view.messages[0]?.sender, 'Me');
+  assert.equal(source?.senderLabel, 'Me Cloud');
+});
+
+test('direct Cloud forwards use real remote human name as source sender label', () => {
+  const bridgeMessage = cloudMessageToBridgeMessage(account, {
+    messageId: 'msg_remote_source',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body: 'remote text',
+    createdAt: '2026-06-08T04:53:47.645Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  }, peer);
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId('acct_peer', 'person'),
+    peerNodeId: 'acct_peer',
+    peerRuntime: 'person',
+    peerDisplayName: 'Peer Person',
+    peerOwnerName: 'Peer Person',
+    canonicalSessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    messages: [bridgeMessage],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:47.645Z'),
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: account.accountId,
+      localHumanName: account.displayName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      remoteHumanId: 'acct_peer',
+      remoteHumanName: 'Peer Person',
+      remoteAgentId: 'cloud-agent:acct_peer',
+      remoteAgentName: "Peer Person's Kordi",
+    },
+  }, undefined, 'Kordi');
+  const source = messageActionSourceFromMessage(view.messages[0]!, view.canonicalSessionId!);
+
+  assert.equal(view.messages[0]?.sender, 'Peer Person');
+  assert.equal(source?.senderLabel, 'Peer Person');
+});
+
+test('direct Cloud forwards use real local agent owner name as source sender label', () => {
+  const view = mapBridgeConversationToViewModel({
+    id: cloudBridgeConversationId(account.accountId, 'kordi-desktop', 'session:self'),
+    peerNodeId: account.accountId,
+    peerRuntime: 'kordi-desktop',
+    peerDisplayName: 'My Kordi',
+    peerOwnerName: account.displayName,
+    canonicalSessionId: 'session:self',
+    messages: [{
+      id: 'msg_agent_source',
+      direction: 'outbound_response',
+      sender: 'My Kordi',
+      text: 'Agent answer',
+      timeLabel: '10:43',
+      timestampMs: Date.parse('2026-06-08T04:53:48.645Z'),
+      deliveryState: 'complete',
+      attachments: [],
+      localTurn: null,
+    }],
+    unreadCount: 0,
+    updatedAtMs: Date.parse('2026-06-08T04:53:48.645Z'),
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: account.accountId,
+      localHumanName: account.displayName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      remoteHumanId: account.accountId,
+      remoteHumanName: account.displayName,
+      remoteAgentId: 'cloud-local-agent',
+      remoteAgentName: 'My Kordi',
+    },
+  }, undefined, 'Kordi');
+  const source = messageActionSourceFromMessage(view.messages[0]!, view.canonicalSessionId!);
+
+  assert.equal(view.messages[0]?.sender, 'My Kordi');
+  assert.equal(source?.senderLabel, "Me Cloud's Kordi");
 });
 
 test('cloud agent runtime routes fall back to current composer route for unconfigured cloud sessions', () => {
@@ -863,6 +1147,54 @@ test('cloud self-agent canonical sync materializes restored Cloud private agent 
   })), [
     { id: 'msg:cloud:self:msg_self_request', senderRole: 'user', messageKind: 'text', contentText: 'sync this question', parentMessageId: null, sourceEventId: 'msg_self_request' },
     { id: 'msg:cloud:self:msg_self_answer', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'synced answer', parentMessageId: 'msg:cloud:self:msg_self_request', sourceEventId: 'msg_self_answer' },
+  ]);
+});
+
+test('cloud self-agent canonical sync materializes scheduled run responses without a matching user request id', () => {
+  const userMessage: CloudMessage = {
+    messageId: 'msg_schedule_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'Schedule a cloud task to search OpenAI news at 19:43.',
+    createdAt: '2026-06-09T11:42:14.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'scheduled-session',
+  };
+  const scheduledResponse: CloudMessage = {
+    messageId: 'cloudrunmsg_openai_summary',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: encodeCloudAgentResponse({ requestId: 'scheduled_run_openai_summary', text: 'Here is the latest OpenAI news summary.' }),
+    createdAt: '2026-06-09T11:44:19.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'scheduled-session',
+  };
+  const state = {
+    sessions: [],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages: [scheduledResponse, userMessage], state });
+
+  assert.deepEqual(plan.messageRequests.map((request) => ({
+    id: request.id,
+    senderRole: request.senderRole,
+    messageKind: request.messageKind,
+    contentText: request.contentText,
+    parentMessageId: request.parentMessageId ?? null,
+    sourceEventId: request.sourceEventId,
+  })), [
+    { id: 'msg:cloud:self:msg_schedule_request', senderRole: 'user', messageKind: 'text', contentText: 'Schedule a cloud task to search OpenAI news at 19:43.', parentMessageId: null, sourceEventId: 'msg_schedule_request' },
+    { id: 'msg:cloud:self:cloudrunmsg_openai_summary', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Here is the latest OpenAI news summary.', parentMessageId: null, sourceEventId: 'cloudrunmsg_openai_summary' },
   ]);
 });
 

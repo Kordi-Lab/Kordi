@@ -1,8 +1,8 @@
 // CloudContactsAdapter — when the desktop runs in cloud edition, wrap
 // the existing ContactsPage with a thin layer that overrides its
 // callbacks + data with the cloud auth client's responses. The page's
-// markup, grouping, and "New requests" inbox are all reused — only
-// the data source and the mutations change.
+// markup, grouping, incoming request inbox, and sender-side pending
+// invites are all reused — only the data source and mutations change.
 //
 // Used by MainContentSwitch on the contacts route, and exposes the
 // raw cloud-aware contact list for the ChatCreateDialog so the "+"
@@ -11,7 +11,7 @@
 import { useMemo } from 'react';
 import type { ComponentProps } from 'react';
 
-import { CLOUD_HOST_SENTINEL, cloudContactToContact, isPendingIncomingCloudContactRequest, useCloudContacts } from './useCloudContacts';
+import { CLOUD_HOST_SENTINEL, cloudContactToContact, useCloudContacts } from './useCloudContacts';
 import { useCloudPresence } from './useCloudPresence';
 import type { CloudAccount } from './authClient';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
@@ -35,15 +35,6 @@ type CloudContactsAdapterProps = {
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
   const presence = useCloudPresence(account);
-
-  // Inbox only shows incoming requests — outgoing ones are the
-  // sender's own actions and surfacing them in the inbox with
-  // Accept/Reject would be wrong. They'll re-appear as accepted
-  // contacts (or vanish on rejection) on the next refresh.
-  const inboxRequests = useMemo(
-    () => cloud.requests.filter(isPendingIncomingCloudContactRequest),
-    [cloud.requests],
-  );
 
   const visibleCloudContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
@@ -99,6 +90,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     if (!trimmed.startsWith('acct_')) {
       throw new Error('Account IDs start with "acct_".');
     }
+    if (hasOutgoingPendingRequestForAccount(cloud.requests, trimmed)) return;
     await cloud.sendRequest(trimmed);
   };
 
@@ -116,6 +108,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       avatarUrl: profile.avatarUrl,
       isSelf: profile.accountId === account.accountId,
       isContact: cloud.contacts.some((contact) => cloudAccountIdForContact(contact) === profile.accountId),
+      isRequestPending: hasOutgoingPendingRequestForAccount(cloud.requests, profile.accountId),
     };
   };
 
@@ -147,7 +140,7 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       {...contactsPageProps}
       filteredGroupedContacts={filteredGroupedContacts}
       addableContacts={[]}
-      contactRequests={inboxRequests}
+      contactRequests={cloud.requests}
       activeContactId={activeContactId}
       activeContact={activeContact}
       activeContactRequest={activeContactRequest}
@@ -196,6 +189,17 @@ function cloudAccountIdForContact(contact: Contact | undefined): string | null {
 
 function isCloudSelfAgentContact(contact: Contact | undefined): boolean {
   return contact?.classType === 'my-agents' && contact.bridgeHostId === CLOUD_HOST_SENTINEL;
+}
+
+function hasOutgoingPendingRequestForAccount(requests: ContactRequest[], accountId: string): boolean {
+  const trimmed = accountId.trim();
+  if (!trimmed) return false;
+  return requests.some((request) => {
+    const direction = request.direction?.trim().toLowerCase();
+    const status = request.status?.trim().toLowerCase() || 'pending';
+    const targetId = (request.targetNodeId || request.detail).trim();
+    return direction === 'outgoing' && status === 'pending' && targetId === trimmed;
+  });
 }
 
 function cloudAccountToSelfContact(account: CloudAccount): Contact {

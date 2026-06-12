@@ -8,6 +8,7 @@ import type {
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 
+import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } from './cloudTransportGuards';
@@ -53,6 +54,7 @@ export type CloudGroupControlEnvelope = {
     requestId?: string | null;
     forkSnapshot?: boolean | null;
     attachments?: CloudMessageAttachment[];
+    messageAction?: MessageActionMetadata | null;
   } | null;
 };
 
@@ -115,6 +117,33 @@ function cloudMessageAttachmentFromRecord(value: unknown): CloudMessageAttachmen
 function cloudMessageAttachments(value: unknown): CloudMessageAttachment[] {
   if (!Array.isArray(value)) return [];
   return value.map(cloudMessageAttachmentFromRecord).filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
+}
+
+function cloudMessageActionFromRecord(value: unknown): MessageActionMetadata | null {
+  const record = objectRecord(value);
+  if (record.schemaVersion !== 1 || (record.kind !== 'quote' && record.kind !== 'forward')) return null;
+  const source = objectRecord(record.source);
+  const sourceSessionId = cleanText(typeof source.sourceSessionId === 'string' ? source.sourceSessionId : null);
+  const sourceMessageId = cleanText(typeof source.sourceMessageId === 'string' ? source.sourceMessageId : null);
+  const senderLabel = cleanText(typeof source.senderLabel === 'string' ? source.senderLabel : null);
+  if (!sourceSessionId || !sourceMessageId || !senderLabel) return null;
+  const attachmentCount = typeof source.attachmentCount === 'number' && Number.isFinite(source.attachmentCount)
+    ? Math.max(0, Math.floor(source.attachmentCount))
+    : 0;
+  return {
+    schemaVersion: 1,
+    kind: record.kind,
+    source: {
+      sourceSessionId,
+      sourceMessageId,
+      sourceMessageKind: typeof source.sourceMessageKind === 'string' ? source.sourceMessageKind : null,
+      senderLabel,
+      textPreview: cleanText(typeof source.textPreview === 'string' ? source.textPreview : null),
+      attachmentCount,
+      createdAtMs: typeof source.createdAtMs === 'number' && Number.isFinite(source.createdAtMs) ? source.createdAtMs : null,
+      timeLabel: cleanText(typeof source.timeLabel === 'string' ? source.timeLabel : null) || null,
+    },
+  };
 }
 
 function cloudAvatarUrlForLimit(value: string | null | undefined, maxDataUrlLength: number): string | null {
@@ -349,6 +378,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
         forkSnapshot: candidate.forkSnapshot === true,
         attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
+        messageAction: cloudMessageActionFromRecord((candidate as { messageAction?: unknown }).messageAction),
       };
     }
     const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);
@@ -825,8 +855,46 @@ export function cloudGroupDeliveryStateFromMessages(input: {
     return envelope?.kind === 'group-message' && envelope.message?.id === messageId;
   });
   if (matching.length === 0) return null;
-  if (matching.every((message) => Boolean(message.readAt))) return 'read';
+  if (matching.some((message) => Boolean(message.readAt))) return 'read';
   return 'delivered';
+}
+
+export type CloudGroupReadReceiptSummary = {
+  count: number;
+  participants: Array<{
+    accountId: string;
+    identityId: string;
+    readAt: string;
+  }>;
+};
+
+export function cloudGroupReadReceiptSummaryFromMessages(input: {
+  accountId: string;
+  messageId: string;
+  messages: CloudMessage[];
+}): CloudGroupReadReceiptSummary | null {
+  const accountId = cleanText(input.accountId);
+  const messageId = cleanText(input.messageId);
+  if (!accountId || !messageId) return null;
+
+  const participantsByAccountId = new Map<string, { accountId: string; identityId: string; readAt: string }>();
+  for (const message of input.messages) {
+    if (message.fromAccountId !== accountId || message.direction !== 'outgoing' || !message.readAt) continue;
+    const envelope = parseCloudGroupControl(message.body);
+    if (envelope?.kind !== 'group-message' || envelope.message?.id !== messageId) continue;
+    const recipientAccountId = cleanText(message.toAccountId);
+    const readAt = cleanText(message.readAt);
+    if (!recipientAccountId || !readAt) continue;
+    participantsByAccountId.set(recipientAccountId, {
+      accountId: recipientAccountId,
+      identityId: `human:${recipientAccountId}`,
+      readAt,
+    });
+  }
+
+  const participants = [...participantsByAccountId.values()]
+    .sort((left, right) => left.accountId.localeCompare(right.accountId));
+  return participants.length > 0 ? { count: participants.length, participants } : null;
 }
 
 export function shouldRouteMentionThroughCloudGroup(input: {

@@ -1,13 +1,26 @@
 # Kordi
 
-Kordi is a monorepo for three core product layers plus one app-facing orchestration layer that ship together as one desktop experience:
+Kordi is the desktop product for account-based chats, contacts, groups, and hosted agent execution.
 
-- `app/desktop` — the macOS desktop application (React + Tauri)
-- `app/server` — the app-facing local orchestration server
-- `agent` — the local agent runtime
-- `bridges` — the local and remote network stack
+Primary product pieces:
 
-The repository is organized so the app, server, runtime, and network layers can evolve together while still keeping clear boundaries.
+- `app/desktop` — macOS desktop application (React + Tauri)
+- `bridges/cloud-server` — hosted API for auth, contacts, chats, sync, read state, and update manifests
+- `bridges/cloud-agent-runner` — hosted agent runner and sandbox execution
+- `agent` — agent/runtime source used by hosted runner integration and internal developer workflows
+- `shared` — shared protocol/type surfaces
+
+Production API:
+
+```text
+https://coordinar.io
+```
+
+For development or QA, do **not** use the production server for destructive or load-style testing. Use an operator-provided public test hosted API base, or host your own compatible hosted server:
+
+```text
+<PUBLIC_TEST_CLOUD_API_BASE>
+```
 
 ## Repository layout
 
@@ -15,13 +28,12 @@ The repository is organized so the app, server, runtime, and network layers can 
 kordi/
   app/
     desktop/               # React + Tauri desktop app
-    server/                # App-facing local orchestration server
-  agent/                   # Agent runtime source
-  bridges/                 # Network / daemon / registry source
-  shared/
-    rust/protocol/         # Shared Rust protocol surface
-    typescript/protocol/   # Shared TypeScript protocol surface
-  docs/                    # Monorepo-level docs
+  agent/                   # Agent/runtime source
+  bridges/
+    cloud-server/          # Hosted API
+    cloud-agent-runner/    # Hosted runner/sandbox
+  shared/                  # Shared Rust/TypeScript contracts
+  docs/                    # Product, development, release docs
 ```
 
 ## Prerequisites
@@ -30,93 +42,61 @@ kordi/
 - `pnpm` 10+
 - Rust toolchain (`rustup`)
 
-Install JavaScript dependencies once from the repository root:
+Install dependencies once:
 
 ```bash
 cd /path/to/kordi
 pnpm install
 ```
 
-## Development entrypoints
-
-> **Cloud Desktop:** to run the account-based Cloud Edition desktop app, set `VITE_KORDI_EDITION=cloud`, `KORDI_EDITION=cloud`, and `VITE_KORDI_CLOUD_API_BASE=<HOSTED_CLOUD_API_BASE>`, then run `pnpm dev:desktop`. See [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) for quick start instructions and [docs/hosted-cloud-developer-guide.md](docs/hosted-cloud-developer-guide.md) for hosted Cloud testing and deployment guidance.
-
-Run all of these from the monorepo root:
+## Development commands
 
 | Task | Command | Description |
 |------|---------|-------------|
-| Start the whole local app stack | `pnpm dev` | Runs the app server and launches the Tauri desktop app together. |
-| Start the macOS desktop shell only | `pnpm dev:desktop` | Launches the desktop shell and prepares the local sidecars it needs. |
-| Start the web preview only | `pnpm dev:web` | Runs the frontend in a browser-only development mode without Tauri. |
-| Run the app-facing server only | `pnpm run:app-server -- --help` | Starts or inspects the local orchestration server separately. |
-| Prepare Tauri sidecars manually | `pnpm prepare:sidecars` | Builds and copies the local agent and bridges binaries for desktop packaging. |
-| Run the agent CLI/TUI | `pnpm run:agent -- --help` | Invokes the local runtime directly. |
-| Run the Bridges CLI | `pnpm run:bridges -- --help` | Invokes the local bridge/network CLI directly. |
-| Start the Bridges registry | `pnpm dev:registry` | Runs the registry service for bridge-network development. |
-| Lint the desktop app | `pnpm lint` | Runs the desktop frontend linter. |
-| Check the app server crate | `pnpm check:app-server` | Verifies the app-facing server crate builds. |
-| Check all Rust crates | `pnpm check:rust` | Verifies the Rust workspace builds. |
-| Run the common validation pass | `pnpm check` | Runs the standard lint + Rust workspace validation pass. |
-
-## Build entrypoints
-
-Run all of these from the monorepo root:
-
-| Task | Command | Description |
-|------|---------|-------------|
-| Build the macOS app | `pnpm build:desktop` | Produces the packaged desktop application with local sidecars. |
-| Build the web UI | `pnpm build:web` | Produces the browser-targeted frontend bundle. |
-| Build the agent runtime | `pnpm build:agent` | Produces the local runtime binary. |
-| Build the Bridges CLI | `pnpm build:bridges` | Produces the local bridge/network binary. |
-| Build the Bridges registry | `pnpm build:registry` | Produces the registry service build output. |
+| Start desktop | `pnpm dev` | Opens the desktop app. Defaults to the production origin unless `VITE_KORDI_CLOUD_API_BASE` is set. |
+| Start desktop explicitly | `pnpm dev:cloud` | Same product path as `pnpm dev`. |
+| Start multiple users | `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev:cloud:multi -- --users user1,user2` | Multi-window sync/contact/group testing against a test or self-hosted API. |
+| Build desktop | `pnpm build:desktop` | Builds the desktop package. |
+| Build web UI | `pnpm build:web` | Builds the browser-targeted frontend bundle. |
+| Lint desktop app | `pnpm lint` | Runs the desktop frontend linter. |
+| Check Rust workspace | `pnpm check:rust` | Verifies Rust crates. |
+| Common validation | `pnpm check` | Runs the standard lint + typecheck + Rust validation pass. |
 
 ## Responsibilities by directory
 
 ### `app/desktop`
 
-Owns the product UI, Tauri shell, bundled sidecars, and desktop packaging.
+Owns the product UI, native Tauri shell, desktop packaging, account/login surface, chats, contacts, groups, and sync integration.
 
 See [app/desktop/README.md](app/desktop/README.md).
 
-### `app/server`
+### `bridges/cloud-server`
 
-Owns the app-facing local orchestration layer that composes desktop-facing state from the runtime and bridge services.
+Owns the hosted API used by the desktop product: account auth, contacts, direct/group messages, read state, sync, provider-auth snapshots, update manifests, and runner coordination.
 
-See [docs/app-server.md](docs/app-server.md).
+### `bridges/cloud-agent-runner`
+
+Owns hosted fallback execution, model loop integration, sandbox tool policy, and artifact export.
 
 ### `agent`
 
-Owns the local agent runtime, tools, providers, sessions, and terminal UX.
+Owns agent/runtime internals shared with hosted runner integration and internal local developer workflows.
 
-See [agent/README.md](agent/README.md).
+### `shared`
 
-### `bridges`
-
-Owns the network layer, daemon, CLI, coordination server, registry, and Bridges skill assets.
-
-See [bridges/README.md](bridges/README.md).
-
-## Shared protocol layer
-
-Use `shared/rust/protocol` and `shared/typescript/protocol` for types or contracts that must be shared across the app, agent, and network layers. Keep app-facing integration contracts here instead of duplicating them inside product-specific code.
+Owns Rust/TypeScript contracts that cross process or package boundaries.
 
 ## Documentation map
 
-- [docs/development.md](docs/development.md) — root command map and day-to-day development entrypoints
-- [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) — quick start for running and building the Cloud Edition desktop app
-- [docs/hosted-cloud-developer-guide.md](docs/hosted-cloud-developer-guide.md) — hosted Cloud testing, deployment decision tree, migration guidance, and redaction rules
-- [docs/cloud-edition.md](docs/cloud-edition.md) — hosted Cloud Edition architecture, launch, sync, and deployment notes
-- [docs/architecture.md](docs/architecture.md) — structural view of the app, server, agent, and bridges layers
-- [docs/app-server.md](docs/app-server.md) — app-facing local server contract and integration plan
-- [docs/release.md](docs/release.md) — packaging and release responsibilities by layer
-- [app/desktop/README.md](app/desktop/README.md) — desktop app responsibilities and local entrypoints
-- [agent/README.md](agent/README.md) — agent runtime guide
-- [bridges/README.md](bridges/README.md) — Bridges network guide
+- [docs/development.md](docs/development.md) — development command map
+- [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) — Kordi Desktop quick start
+- [docs/hosted-cloud-developer-guide.md](docs/hosted-cloud-developer-guide.md) — Hosted testing/deployment guidance and redaction rules
+- [docs/cloud-edition.md](docs/cloud-edition.md) — hosted architecture and runtime notes
+- [docs/release.md](docs/release.md) — packaging and release responsibilities
+- [app/desktop/README.md](app/desktop/README.md) — desktop app responsibilities and entrypoints
 
-## Monorepo notes
+## Notes
 
-- The desktop app expects `agent` and `bridges` to exist inside this monorepo.
-- `app/desktop/kordi.workspace.json` is the local sidecar build map for Tauri packaging.
-- Sidecars are built from source during `pnpm dev:desktop` and `pnpm build:desktop`.
-
-For a concise command map, see [docs/development.md](docs/development.md).
+- Production builds use `https://coordinar.io` as the product hosted API origin.
+- Hosted/dev runs must set `VITE_KORDI_CLOUD_API_BASE` explicitly, for example `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted server.
+- Do not commit auth tokens, provider tokens, account secrets, database credentials, or private operator infrastructure details.

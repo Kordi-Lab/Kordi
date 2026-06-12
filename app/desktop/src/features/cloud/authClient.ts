@@ -224,6 +224,14 @@ export type CloudSessionVisibility = {
   deletedSessionIds: string[];
 };
 
+export type CloudSessionPin = {
+  sessionId: string;
+  sharedMessageId: string | null;
+  privateMessageId: string | null;
+  effectiveMessageId: string | null;
+  updatedAt: string | null;
+};
+
 export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
   participantAccountIds: string[];
   clientUpdatedAt?: string | null;
@@ -869,6 +877,33 @@ export class CloudAuthClient {
       hiddenSessionIds: response?.hiddenSessionIds ?? [],
       deletedSessionIds: response?.deletedSessionIds ?? [],
     };
+  }
+
+  async getCloudSessionPin(token: string, sessionId: string): Promise<CloudSessionPin> {
+    const response = await this.send<{ pin: CloudSessionPin }>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pin`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not load pinned message.',
+    );
+    if (!response?.pin) throw new Error('Empty response from cloud server.');
+    return response.pin;
+  }
+
+  async updateCloudSessionPin(token: string, sessionId: string, input: { messageId: string | null; scope: 'private' | 'shared' }): Promise<CloudSessionPin> {
+    const response = await this.send<{ pin: CloudSessionPin }>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pin`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ messageId: input.messageId, scope: input.scope }),
+      },
+      'Could not update pinned message.',
+    );
+    if (!response?.pin) throw new Error('Empty response from cloud server.');
+    return response.pin;
   }
 
   async hideCloudSession(token: string, sessionId: string): Promise<void> {

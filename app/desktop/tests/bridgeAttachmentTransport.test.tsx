@@ -5,6 +5,7 @@ import test from 'node:test';
 import { canonicalAttachments } from '../src/features/canonical/readModel/messageMapping';
 import {
   appendOptimisticBridgeMessage,
+  appendOptimisticOutboundMessage,
   bridgeAttachmentTransportFields,
   failedPreparedCanonicalUserMessage,
   markOptimisticBridgeMessageFailed,
@@ -12,7 +13,7 @@ import {
   prepareCanonicalUserMessage,
   toOptimisticAttachments,
 } from '../src/features/chat/messageActions/optimistic';
-import type { CanonicalSessionState } from '../src/kordi-app/types';
+import type { CanonicalSessionState, DesktopChatState } from '../src/kordi-app/types';
 
 const imageAttachment = {
   id: 'first',
@@ -100,6 +101,46 @@ test('attachment-only bridge optimistic messages render as attachment cards with
   assert.equal(conversation?.messages[0]?.attachments?.[0]?.localPath, '/tmp/pi-clipboard-1.png');
 });
 
+test('optimistic bridge messages include quoted reply metadata immediately', () => {
+  const next = appendOptimisticBridgeMessage({
+    configPath: '/tmp/config.json',
+    legacyConfigPath: '/tmp/legacy.json',
+    conversationsPath: '/tmp/conversations.sqlite3',
+    activeHostId: 'host-1',
+    hosts: [],
+    localServer: { running: false },
+    conversations: [{
+      id: 'bridge:host-1:peer-1:person',
+      hostId: 'host-1',
+      peerNodeId: 'peer-1',
+      peerRuntime: 'person',
+      title: 'Peer',
+      subtitle: 'Peer',
+      unreadCount: 0,
+      updatedAtMs: 1,
+      updatedAtLabel: '12:00',
+      awaitingReply: false,
+      peerTyping: false,
+      messages: [],
+    }],
+  }, 'bridge:host-1:peer-1:person', 'Yes, ship it', '12:31', 'pending-1', [], 'Yes, ship it', {
+    action: 'quote',
+    source: {
+      sourceSessionId: 'session:one',
+      sourceMessageId: 'msg:source',
+      senderLabel: 'Alice',
+      textPreview: 'Can we ship?',
+      attachmentCount: 0,
+      createdAtMs: null,
+      timeLabel: '10:42',
+    },
+  });
+
+  const optimistic = next?.conversations[0]?.messages[0];
+  assert.equal(optimistic?.messageAction?.kind, 'quote');
+  assert.equal(optimistic?.messageAction?.source.sourceMessageId, 'msg:source');
+});
+
 test('canonical optimistic bridge messages can be marked failed for visible send errors', () => {
   const state = {
     sessions: [{ id: 'session-1', updatedAtMs: 1, lastMessageAtMs: 1 }],
@@ -148,10 +189,8 @@ test('Cloud group send paths label optimistic canonical rows with Cloud UI trans
   assert.match(cloudMentionBranch, /prepareCanonicalUserMessage\([\s\S]*?'cloud-group-ui'/);
   assert.doesNotMatch(cloudMentionBranch, /prepareCanonicalUserMessage\([\s\S]*?'desktop-bridge-ui'/);
 
-  const groupSendStart = source.indexOf('const isGroupSessionMessage = shouldStayInCanonicalSession && activeGroupSessionIsGroup;');
-  const groupSendEnd = source.indexOf('if (preparedCanonicalMessage && isGroupSessionMessage && cloudGroupTargetIds.length > 0)', groupSendStart);
-  const groupSendPrepare = source.slice(groupSendStart, groupSendEnd);
-  assert.match(groupSendPrepare, /isGroupSessionMessage && cloudGroupTargetIds\.length > 0 \? 'cloud-group-ui' : 'desktop-bridge-ui'/);
+  assert.match(cloudMentionBranch, /cloudGroupTargetIds\.length === 0/);
+  assert.match(cloudMentionBranch, /targetAccountIds: cloudGroupTargetIds/);
 });
 
 
@@ -169,6 +208,115 @@ test('prepared Cloud group UI messages use Cloud source transport metadata', () 
 
   assert.equal(prepared?.request.sourceTransport, 'cloud-group-ui');
   assert.equal(prepared?.request.sourceEventId?.startsWith('cloud-group-ui:session:group:cloud:'), true);
+});
+
+
+test('optimistic outbound chat messages include quoted reply metadata immediately', () => {
+  const state: DesktopChatState = {
+    cwd: '/tmp/kordi',
+    activeSessionId: 'session:one',
+    sessions: [{
+      id: 'session:one',
+      title: 'Alice',
+      subtitle: 'Can we ship?',
+      updatedAtLabel: '10:42',
+      messageCount: 1,
+      draft: false,
+    }],
+    projects: [],
+    activeSession: {
+      id: 'session:one',
+      title: 'Alice',
+      subtitle: 'Can we ship?',
+      provider: 'openai',
+      providerLabel: 'OpenAI',
+      model: 'gpt-5.4',
+      modelLabel: 'GPT-5.4',
+      thinking: 'xhigh',
+      thinkingLabel: 'xhigh',
+      thinkingLevels: [],
+      updatedAtLabel: '10:42',
+      messageCount: 1,
+      draft: false,
+      contextWindowText: '',
+      contextWindowStatus: { contextWindow: 0, autoCompaction: false },
+      project: null,
+      messages: [],
+    },
+    localAgent: {
+      label: 'My Kordi',
+      systemPrompt: '',
+      loadedSkills: [],
+      loadedTools: [],
+      loadedPlugins: [],
+      identityFiles: [],
+      defaultProvider: 'openai',
+      defaultModel: 'gpt-5.4',
+      workspaceRoot: '/tmp/kordi',
+      lastActivities: [],
+    },
+    modelOptions: [],
+    slashCommands: [],
+  };
+
+  const next = appendOptimisticOutboundMessage(
+    state,
+    'session:one',
+    'Yes, ship it',
+    'Yes, ship it',
+    [],
+    '12:31',
+    [],
+    {
+      action: 'quote',
+      source: {
+        sourceSessionId: 'session:one',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Alice',
+        textPreview: 'Can we ship?',
+        attachmentCount: 0,
+        createdAtMs: null,
+        timeLabel: '10:42',
+      },
+    },
+  );
+
+  const optimistic = next.activeSession.messages[0] as typeof next.activeSession.messages[number] & {
+    replyToMessageId?: string | null;
+    messageAction?: { kind?: string; source?: { senderLabel?: string } } | null;
+  };
+  assert.equal(optimistic.replyToMessageId, 'msg:source');
+  assert.equal(optimistic.messageAction?.kind, 'quote');
+  assert.equal(optimistic.messageAction?.source?.senderLabel, 'Alice');
+});
+
+test('prepared canonical user messages persist quoted reply metadata', () => {
+  const prepared = prepareCanonicalUserMessage(
+    'session:one',
+    'human:me',
+    'Yes, ship it',
+    [],
+    '12:31',
+    'desktop-chat-ui',
+    'sending',
+    [],
+    {
+      action: 'quote',
+      source: {
+        sourceSessionId: 'session:one',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Alice',
+        textPreview: 'Can we ship?',
+        attachmentCount: 0,
+        createdAtMs: null,
+        timeLabel: '10:42',
+      },
+    },
+  );
+
+  assert.equal(prepared?.request.parentMessageId, 'msg:source');
+  assert.equal((prepared?.request.content as { replyToMessageId?: string }).replyToMessageId, 'msg:source');
+  assert.equal((prepared?.request.content as { messageAction?: { kind?: string } }).messageAction?.kind, 'quote');
 });
 
 

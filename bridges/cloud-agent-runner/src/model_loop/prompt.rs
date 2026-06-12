@@ -1,3 +1,4 @@
+use kordi_tools::{web_fetch::WebFetchTool, web_search::WebSearchTool, Tool};
 use serde_json::{json, Value};
 
 pub fn cloud_sandbox_system_prompt() -> &'static str {
@@ -45,6 +46,8 @@ pub fn tool_catalog() -> Vec<Value> {
             "Run a shell command inside the Cloud sandbox.",
             vec![("command", "string")],
         ),
+        local_tool_schema(&WebSearchTool),
+        local_tool_schema(&WebFetchTool),
         tool_schema(
             "export_artifact",
             "Export a file from the Cloud sandbox into chat attachments.",
@@ -55,6 +58,18 @@ pub fn tool_catalog() -> Vec<Value> {
             ],
         ),
     ]
+}
+
+fn local_tool_schema(tool: &dyn Tool) -> Value {
+    let definition = tool.definition();
+    json!({
+        "type": "function",
+        "function": {
+            "name": definition.name,
+            "description": definition.description,
+            "parameters": definition.parameters_schema,
+        }
+    })
 }
 
 fn tool_schema(name: &str, description: &str, properties: Vec<(&str, &str)>) -> Value {

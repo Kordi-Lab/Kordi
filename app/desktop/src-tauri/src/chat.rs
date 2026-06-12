@@ -20,6 +20,7 @@ pub(crate) mod canonical_sync;
 pub(crate) mod message_route;
 pub(crate) mod model_options;
 pub(crate) mod session_actions;
+pub(crate) mod session_observation;
 pub(crate) mod turns;
 
 pub(crate) use attachments::{
@@ -34,6 +35,16 @@ pub(super) fn now_millis() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as i64)
         .unwrap_or_default()
+}
+
+fn attach_cloud_scheduled_task_runtime(runtime: &mut DesktopRuntimeSession) {
+    match crate::cloud_session::cloud_session_load() {
+        Ok(Some(session)) if !session.token.trim().is_empty() => {
+            runtime.set_scheduled_tasks_cloud_runtime(crate::cloud_api_base_url_from_env(), session.token);
+        }
+        Ok(_) => {}
+        Err(err) => eprintln!("Unable to load Cloud session for scheduled task runtime: {err}"),
+    }
 }
 
 use bridge_outreach::prepare_desktop_session_for_send;
@@ -227,9 +238,10 @@ async fn ensure_transient_draft_runtime(
         }
     }
 
-    let runtime = DesktopRuntimeSession::create_new(cwd.to_path_buf())
+    let mut runtime = DesktopRuntimeSession::create_new(cwd.to_path_buf())
         .await
         .map_err(|err| err.to_string())?;
+    attach_cloud_scheduled_task_runtime(&mut runtime);
     let handle = Arc::new(tokio::sync::Mutex::new(runtime));
     let mut sessions = manager.sessions.lock().await;
     Ok(sessions
@@ -306,9 +318,10 @@ async fn ensure_loaded_session(
         if persisted.iter().any(|session| session.id == session_id)
             || session_exists_globally(&session_id)?
         {
-            let runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
+            let mut runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
                 .await
                 .map_err(|err| err.to_string())?;
+            attach_cloud_scheduled_task_runtime(&mut runtime);
             sessions.insert(
                 session_id.clone(),
                 Arc::new(tokio::sync::Mutex::new(runtime)),
@@ -319,9 +332,10 @@ async fn ensure_loaded_session(
 
     if let Some(session_id) = persisted.first().map(|session| session.id.clone()) {
         if !sessions.contains_key(&session_id) {
-            let runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
+            let mut runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
                 .await
                 .map_err(|err| err.to_string())?;
+            attach_cloud_scheduled_task_runtime(&mut runtime);
             sessions.insert(
                 session_id.clone(),
                 Arc::new(tokio::sync::Mutex::new(runtime)),
@@ -351,7 +365,7 @@ async fn ensure_loaded_or_create_explicit_session(
 
     let persisted =
         kordi_cli::desktop_runtime::list_session_summaries(cwd).map_err(|err| err.to_string())?;
-    let runtime = if persisted.iter().any(|session| session.id == session_id)
+    let mut runtime = if persisted.iter().any(|session| session.id == session_id)
         || session_exists_globally(&session_id)?
     {
         DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
@@ -362,6 +376,7 @@ async fn ensure_loaded_or_create_explicit_session(
             .await
             .map_err(|err| err.to_string())?
     };
+    attach_cloud_scheduled_task_runtime(&mut runtime);
 
     let mut sessions = manager.sessions.lock().await;
     sessions.insert(
@@ -400,9 +415,10 @@ async fn build_chat_state(
         let mut sessions = manager.sessions.lock().await;
 
         if !sessions.contains_key(&active_session_id) {
-            let runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &active_session_id)
+            let mut runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &active_session_id)
                 .await
                 .map_err(|err| err.to_string())?;
+            attach_cloud_scheduled_task_runtime(&mut runtime);
             sessions.insert(
                 active_session_id.clone(),
                 Arc::new(tokio::sync::Mutex::new(runtime)),
@@ -522,6 +538,7 @@ pub async fn desktop_chat_new_project_session(
     let mut runtime = DesktopRuntimeSession::create_new(resolved_project_root.clone())
         .await
         .map_err(|err| err.to_string())?;
+    attach_cloud_scheduled_task_runtime(&mut runtime);
     runtime
         .materialize_session()
         .map_err(|err| err.to_string())?;
@@ -803,12 +820,13 @@ pub async fn desktop_chat_fork_session_from_message(
         });
     }
 
-    let runtime = kordi_cli::desktop_runtime::DesktopRuntimeSession::resume(
+    let mut runtime = kordi_cli::desktop_runtime::DesktopRuntimeSession::resume(
         std::path::PathBuf::from(&outcome.cwd),
         &outcome.session_id,
     )
     .await
     .map_err(|err| err.to_string())?;
+    attach_cloud_scheduled_task_runtime(&mut runtime);
 
     {
         let mut sessions = manager.sessions.lock().await;
@@ -852,6 +870,7 @@ pub async fn desktop_chat_send_message(
     let session_handle = session;
     let (provider, model) = {
         let mut session = session_handle.lock().await;
+        attach_cloud_scheduled_task_runtime(&mut session);
         prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
         let detail = session.detail().map_err(|err| err.to_string())?;
         (detail.provider, detail.model)

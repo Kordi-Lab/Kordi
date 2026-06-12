@@ -1,8 +1,8 @@
 # Postgres StatefulSet + headless Service for the Kordi cloud server.
 #
 # Single replica running on the k3s local-path StorageClass — fine for the
-# single-node cluster on takotako; switch to a managed Postgres operator
-# (CloudNativePG) when we add HA / replication.
+# single-node cluster on an operator-provided host; switch to a managed
+# Postgres operator (CloudNativePG) when we add HA / replication.
 #
 # Credentials live in a separate Secret named `postgres-credentials` with
 # key `password`. Apply that out of band (see deploy/k3s/README.md). The

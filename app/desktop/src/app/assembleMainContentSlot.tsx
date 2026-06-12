@@ -1,9 +1,5 @@
 import { MainContentSwitch } from '@/app/MainContentSwitch';
-import {
-  buildBridgePageProps,
-  buildChatsPageProps,
-  buildProjectsPageProps,
-} from '@/app/mainContentShellBuilders';
+import { buildChatsPageProps } from '@/app/mainContentShellBuilders';
 import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
 import { bridgeAgentForChatStart } from '@/features/chat/chatCreateFlows';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
@@ -156,32 +152,6 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           void args.handleSelectChatSession(sessionId);
         },
       }}
-      bridgePageProps={buildBridgePageProps(args)}
-      settingsPageProps={{
-        settingsRailWidth: args.settingsRailWidth,
-        settingsContentRef: args.settingsContentRef,
-        activeSettingsSectionId: args.activeSettingsSectionId,
-        setActiveSettingsSectionId: args.setActiveSettingsSectionId,
-        settingsSections: args.settingsSections,
-        activeSettingsSection: args.activeSettingsSection,
-        authSettingsLayoutWidth: args.authSettingsLayoutWidth,
-        isNativeShell: args.isNativeShell,
-        localProfileAvatarSeed: args.localProfileAvatarSeed,
-        desktopAuthState: args.desktopAuthState,
-        isDesktopAuthLoading: args.isDesktopAuthLoading,
-        desktopAuthError: args.desktopAuthError,
-        activeLoginProviderId: args.activeLoginProviderId,
-        selectAuthProvider: args.selectAuthProvider,
-        openLoginFlow: args.openLoginFlow,
-        refreshDesktopAuth: args.refreshDesktopAuth,
-        handleSelectAuthChoice: args.handleSelectAuthChoice,
-        handleRemoveAuthProfile: args.handleRemoveAuthProfile,
-        handleLogoutProvider: args.handleLogoutProvider,
-        onEnterChat: openLocalAgentChat,
-        themeMode: args.themeMode,
-        setThemeMode: args.setThemeMode,
-      }}
-      projectsPageProps={buildProjectsPageProps(args)}
       chatsPageProps={buildChatsPageProps(args)}
     />
   );

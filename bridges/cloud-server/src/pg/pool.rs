@@ -137,6 +137,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud agent run artifacts",
         sql: include_str!("../../migrations/0021_cloud_agent_run_artifacts.sql"),
     },
+    EmbeddedMigration {
+        version: 22,
+        description: "scheduled task tool",
+        sql: include_str!("../../migrations/0022_scheduled_task_tool.sql"),
+    },
+    EmbeddedMigration {
+        version: 23,
+        description: "cloud session pinned messages",
+        sql: include_str!("../../migrations/0023_cloud_session_pins.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

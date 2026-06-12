@@ -23,6 +23,7 @@ type UseComposerMessageActionsArgs = Pick<
   UseComposerControllerArgs,
   | 'isNativeShell'
   | 'activeConversationIsBridge'
+  | 'chatConversations'
   | 'activeConvId'
   | 'activeConvCanonicalSessionId'
   | 'activeConvMessages'
@@ -42,6 +43,7 @@ type UseComposerMessageActionsArgs = Pick<
   | 'composerSelections'
   | 'composerDrafts'
   | 'setComposerDrafts'
+  | 'activeChatQuote'
   | 'setProjectWorkspaces'
   | 'setOpenComposerSelector'
   | 'chatComposerAttachments'
@@ -82,6 +84,7 @@ type UseComposerMessageActionsArgs = Pick<
 export function useComposerMessageActions({
   isNativeShell,
   activeConversationIsBridge,
+  chatConversations,
   activeConvId,
   activeConvCanonicalSessionId,
   activeConvMessages,
@@ -101,6 +104,7 @@ export function useComposerMessageActions({
   composerSelections,
   composerDrafts,
   setComposerDrafts,
+  activeChatQuote,
   setProjectWorkspaces,
   setOpenComposerSelector,
   chatComposerAttachments,
@@ -207,6 +211,7 @@ export function useComposerMessageActions({
     activeConvId,
     activeConvMessages,
     activeConvMentionScope,
+    chatConversations,
     attachmentSummaryText,
     canonicalSessionState,
     hasAnyDesktopAuth,
@@ -214,6 +219,7 @@ export function useComposerMessageActions({
     chatComposerAttachments,
     composerSelections,
     composerDrafts,
+    activeChatQuote,
     desktopBridgeState,
     desktopChatState,
     desktopLiveTurn,

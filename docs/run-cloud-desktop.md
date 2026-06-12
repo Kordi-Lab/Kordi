@@ -1,94 +1,100 @@
-# Run Kordi Cloud Desktop
+# Run Kordi Desktop
 
-This guide is for running the account-based Cloud Edition desktop app from a local checkout. Cloud Edition uses the hosted Kordi Cloud API for auth, contacts, direct messages, groups, read receipts, and Cloud sync while still running your local desktop agent sidecars on your machine.
+This guide is for running the account-based Kordi desktop app from a local checkout.
+
+Production API:
+
+```text
+https://coordinar.io
+```
+
+For development or QA, use an operator-provided public test API base or host your own compatible server:
+
+```text
+<PUBLIC_TEST_CLOUD_API_BASE>
+```
+
+Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized.
 
 ## Prerequisites
 
 - macOS development machine with Tauri prerequisites installed.
 - Node.js 20+ and `pnpm` 10+.
 - Rust toolchain from `rustup`.
-- A reachable Cloud API. For normal use, use `https://kordi.cloud`.
+- A reachable hosted API.
 
-Install dependencies once from the repository root:
+Install dependencies once:
 
 ```bash
 cd /path/to/kordi
 pnpm install
 ```
 
-## Run Cloud Desktop in development
+## Run Kordi Desktop
 
-From the repository root:
+Use the product default:
 
 ```bash
-VITE_KORDI_EDITION=cloud \
-KORDI_EDITION=cloud \
-VITE_KORDI_CLOUD_API_BASE=https://kordi.cloud \
-pnpm dev:desktop
+pnpm dev
 ```
 
-This launches the Tauri desktop app in Cloud Edition mode and points it at the hosted Cloud API.
+Target a public test or self-hosted API by setting the hosted API base explicitly:
+
+```bash
+VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
+```
 
 What to expect:
 
-1. The desktop app opens in Cloud login mode.
-2. Sign in with an email/password account or a configured OAuth provider.
-3. The local desktop sidecars are still prepared and run locally; Cloud only handles account/network sync.
+1. The desktop app opens in account login mode.
+2. Sign in with an account or configured OAuth provider.
+3. Contacts, chats, groups, read state, and hosted agent fallback route through the selected hosted API.
 
-## Build a Cloud Desktop package
-
-To produce a Cloud Edition desktop build:
+## Build a Kordi Desktop package
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=https://kordi.cloud \
-pnpm --dir app/desktop tauri:build:cloud
+pnpm build:desktop
 ```
 
-The `tauri:build:cloud` script sets `VITE_KORDI_EDITION=cloud` and `KORDI_EDITION=cloud` for the build.
+The desktop build path uses the product configuration.
 
-## Optional: run multiple isolated Cloud users for development
+## Optional: run multiple isolated users
 
-Use this when testing Cloud contacts, groups, or multi-user sync locally. Each user gets isolated app data under `app/desktop/.multi-instance-data/<user>/`.
+Use this when testing contacts, groups, unread state, or multi-user sync. Each user gets isolated local desktop data, while product data comes from `VITE_KORDI_CLOUD_API_BASE`.
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=https://kordi.cloud \
-pnpm --dir app/desktop tauri:dev:multi:cloud -- --users user1,user2,user3
+VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
+pnpm dev:cloud:multi -- --users user1,user2,user3
 ```
 
-To point those instances at a local Cloud API tunnel instead:
-
-```bash
-KORDI_CLOUD_USE_LOCAL_TUNNEL=1 \
-VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
-pnpm --dir app/desktop tauri:dev:multi:cloud -- --users user1,user2,user3
-```
-
-Only use the local tunnel option if you have access to the development Cloud server or are running your own compatible Cloud API.
+Only use tunnel/local backend options if you have explicit operator access or are running your own compatible hosted API. For operator tunnel debugging, use environment placeholders and keep real private host details out of docs, PRs, issues, and shared logs. See [Internal/operator local tunnel debug pipeline](hosted-cloud-developer-guide.md#internaloperator-local-tunnel-debug-pipeline).
 
 ## Environment variables
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `VITE_KORDI_EDITION=cloud` | Dev run | Enables Cloud Edition UI/runtime behavior in the frontend. |
-| `KORDI_EDITION=cloud` | Dev run | Enables Cloud Edition behavior for the desktop shell/sidecars. |
-| `VITE_KORDI_CLOUD_API_BASE` | Recommended | Cloud API base URL. Use `https://kordi.cloud` for hosted Cloud. |
-| `KORDI_CLOUD_USE_LOCAL_TUNNEL=1` | Optional | Multi-instance helper flag for local tunnel development. |
+| Variable | Purpose |
+| --- | --- |
+| `VITE_KORDI_CLOUD_API_BASE` | Hosted API base URL. Use `<PUBLIC_TEST_CLOUD_API_BASE>` for testing or `https://coordinar.io` for production. |
+| `KORDI_CLOUD_API_BASE` | Native/backend hosted API override when a helper needs it. |
+| `KORDI_CLOUD_USE_LOCAL_TUNNEL=1` | Internal/operator tunnel mode for multi-instance development. |
+
+`main` contains one product path.
 
 ## Troubleshooting
 
-- If the app opens in local mode, confirm both `VITE_KORDI_EDITION=cloud` and `KORDI_EDITION=cloud` are set for dev runs.
-- If login or sync fails, verify the API base URL is reachable:
+- If login or sync fails, verify the selected API base is reachable:
 
   ```bash
-  curl https://kordi.cloud/health
+  curl <PUBLIC_TEST_CLOUD_API_BASE>/health
   ```
 
+- For operator tunnel debugging, verify the local tunnel endpoint and each desktop log's `VITE_KORDI_CLOUD_API_BASE` before changing code. Do not switch to production as a workaround unless an operator explicitly asks.
 - If Tauri fails before the app opens, run `pnpm install` again and confirm the Rust toolchain is installed.
-- If multi-instance ports are already in use, stop the old instances or choose a smaller user set.
-- Do not use `--reset` with multi-instance data unless you intentionally want to delete that user's local dev state.
+- If multi-instance ports are already in use, stop old instances or choose a smaller user set.
+- Do not use `--reset` unless you intentionally want to delete that local test user's desktop state.
 
 ## Related docs
 
-- [Cloud Edition architecture and backend notes](cloud-edition.md)
+- [Kordi architecture and backend notes](cloud-edition.md)
+- [Hosted developer guide](hosted-cloud-developer-guide.md)
 - [Desktop app README](../app/desktop/README.md)
 - [Development command map](development.md)

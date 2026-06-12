@@ -155,7 +155,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     && (args.activeConv.bridgeTarget.runtime?.trim().toLowerCase() === 'person' || args.activeConv.type === 'person')
     ? args.activeConv.bridgeTarget
     : null;
-  const activeCloudSelfAgentSessionId = args.activeConv.canonicalSessionId ?? args.activeConv.id;
+  const activeCloudSelfAgentSessionId = args.activeConv?.canonicalSessionId ?? args.activeConv?.id ?? '';
 
   return {
     isNativeShell: args.isNativeShell,
@@ -165,13 +165,19 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     showRightDetailRail: args.showRightDetailRail,
     isDetailPanelCollapsed: args.isDetailPanelCollapsed,
     setIsDetailPanelCollapsed: args.setIsDetailPanelCollapsed,
+    rightDetailRail: args.rightDetailRail,
+    detailRailWidth: args.detailRailWidth,
+    onDetailResizeMouseDown: args.onDetailResizeMouseDown,
     activeConv: args.activeConv,
+    chatConversations: args.chatConversations,
     activeConversationIsBridge: args.activeConversationIsBridge,
     activeBridgeModelHost: args.activeBridgeConversationHost
       ?? args.desktopBridgeState?.hosts.find((host) => host.id === args.activeConv.bridgeTarget?.hostId)
       ?? args.activeBridgeHost,
     desktopChatState: args.desktopChatState,
-    cloudSelfAgentSyncStatus: args.cloudSelfAgentSyncStatusBySessionId[activeCloudSelfAgentSessionId] ?? null,
+    cloudSelfAgentSyncStatus: args.cloudSelfAgentSyncStatusBySessionId?.[activeCloudSelfAgentSessionId] ?? null,
+    cloudSessionPin: args.cloudSessionPinsById?.[activeCloudSelfAgentSessionId] ?? null,
+    onUpdateCloudSessionPin: args.onUpdateCloudSessionPin,
     onUpdateBridgeAgentModelRouting: args.handleUpdateBridgeAgentModelRouting,
     isEditingDesktopSessionTitle: args.isEditingDesktopSessionTitle,
     setIsEditingDesktopSessionTitle: args.setIsEditingDesktopSessionTitle,
@@ -206,6 +212,23 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     chatComposerText: args.chatComposerText,
     updateChatComposerDraft: args.updateChatComposerDraft,
     setChatComposerText: args.setChatComposerText,
+    setChatComposerTextForSession: args.setChatComposerTextForSession,
+    activeChatQuote: args.activeChatQuote,
+    onClearChatQuote: args.onClearChatQuote,
+    onReplyMessage: args.onReplyMessage,
+    onForwardMessage: args.onForwardMessage,
+    onSelectMessage: args.onSelectMessage,
+    messageSelectionMode: args.messageSelectionMode,
+    selectedMessageCount: args.selectedMessageCount,
+    selectedMessageIds: args.selectedMessageIds,
+    isMessageSelectable: args.isMessageSelectable,
+    onToggleSelectedMessage: args.onToggleSelectedMessage,
+    onSelectionDragStart: args.onSelectionDragStart,
+    onSelectionDragEnter: args.onSelectionDragEnter,
+    onSelectionDragEnd: args.onSelectionDragEnd,
+    onCancelMessageSelection: args.onCancelMessageSelection,
+    onCopySelectedMessages: args.onCopySelectedMessages,
+    onForwardSelectedMessages: args.onForwardSelectedMessages,
     composerControlsRef: args.composerControlsRef,
     activeRuntimeContextStatus: args.activeRuntimeContextStatus,
     activeRuntimeCacheText: args.activeRuntimeCacheText,
@@ -226,6 +249,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       ? () => args.handleAddBridgeContact(activeBridgeContactTarget.hostId, activeBridgeContactTarget.nodeId)
       : undefined,
     onSendChatMessage: args.handleSendChatMessage,
+    onCreateAgentSession: args.handleCreateSideAgentSession,
     onForkChatMessage: args.handleForkChatMessage,
     onSelectSession: args.handleSelectChatSession,
     hasAnyAuth: authStateHasChatReadyProvider(args.desktopAuthState, args.chatModelOptions),

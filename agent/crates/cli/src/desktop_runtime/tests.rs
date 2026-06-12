@@ -177,6 +177,28 @@ fn test_model(provider: &str, id: &str, reasoning: bool) -> Model {
 
 #[allow(clippy::await_holding_lock)]
 #[tokio::test]
+async fn desktop_runtime_attaches_cloud_scheduled_task_runtime() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings {
+        default_provider: Some("openai".to_string()),
+        default_model: Some("gpt-4o-mini".to_string()),
+        ..Settings::default()
+    }
+    .save_global()?;
+
+    let mut runtime = DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), "session-schedule-runtime").await?;
+    assert!(runtime.setup.tool_ctx.schedule_task.is_none());
+    runtime.set_scheduled_tasks_cloud_runtime("https://cloud.example/".to_string(), "session-token".to_string());
+    assert!(runtime.setup.tool_ctx.schedule_task.is_some());
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
 async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result<()> {
     let _lock = env_lock().lock().unwrap();
     let home = tempfile::tempdir().expect("home tempdir");

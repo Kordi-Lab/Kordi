@@ -7,6 +7,7 @@ mod live_models;
 #[allow(dead_code)]
 mod reflection_runtime;
 mod runtime_model;
+pub mod scheduled_tasks_runtime;
 #[allow(dead_code)]
 mod session_bootstrap;
 #[allow(dead_code)]

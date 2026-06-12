@@ -1,49 +1,51 @@
-# Kordi Hosted Cloud Developer Guide
+# Kordi Hosted Developer Guide
 
-This guide explains how developers should test and deploy against the hosted Cloud environment currently used for development.
+This guide explains how developers should test and deploy against a hosted environment.
 
-Use the shared hosted test server below for developer Cloud testing. Do not put tokens, provider credentials, database credentials, account secrets, or private operator host details in GitHub issues, PRs, screenshots, commits, or shared logs.
+Production API is `https://coordinar.io`. Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized. For development and QA, use an operator-provided public test API base or host your own compatible server.
+
+Do not put tokens, provider credentials, database credentials, account secrets, or private operator host details in GitHub issues, PRs, screenshots, commits, or shared logs.
 
 ## Mental model
 
-The hosted Cloud setup has two separate parts:
+The hosted setup has two separate parts:
 
-1. Hosted Cloud backend
-   - Remote Cloud server service
+1. Hosted backend
+   - Remote server service
    - Remote database
-   - Remote Cloud agent runner
+   - Remote agent runner
 
 2. Local developer desktop instances
    - Local Tauri desktop app
    - Local Vite dev server, usually `127.0.0.1:<port>`
    - Local isolated user data directories
-   - Pointed at the hosted Cloud backend by environment variables
+   - Pointed at the hosted backend by environment variables
 
-A local URL such as `http://127.0.0.1:1484` is only the local desktop test UI. It is not the hosted Cloud backend.
+A local URL such as `http://127.0.0.1:1484` is only the local desktop test UI. It is not the hosted backend.
 
-## Current shared hosted test server
+## Select a hosted test server
 
-Use this Cloud API base for the shared developer test environment:
+Use a public test API base supplied by an operator, or the HTTPS origin of your own compatible server:
 
 ```bash
-export HOSTED_CLOUD_API_BASE="https://coordinar.io"
+export HOSTED_CLOUD_API_BASE="<PUBLIC_TEST_CLOUD_API_BASE>"
 ```
 
 If an operator rotates the test server, update only this value and keep the rest of the guide unchanged.
 
 ## Required local environment
 
+Hosted/dev runs must set `VITE_KORDI_CLOUD_API_BASE` explicitly before launching desktop clients. Do not rely on the production default for hosted testing.
+
 Set these before launching desktop clients:
 
 ```bash
-export HOSTED_CLOUD_API_BASE="https://coordinar.io"
-export VITE_KORDI_EDITION=cloud
-export KORDI_EDITION=cloud
+export HOSTED_CLOUD_API_BASE="<PUBLIC_TEST_CLOUD_API_BASE>"
 export VITE_KORDI_CLOUD_API_BASE="$HOSTED_CLOUD_API_BASE"
 export KORDI_CLOUD_API_BASE="$HOSTED_CLOUD_API_BASE"
 ```
 
-Health check the hosted Cloud backend:
+Health check the hosted backend:
 
 ```bash
 curl -fsS "$VITE_KORDI_CLOUD_API_BASE/health"
@@ -51,13 +53,50 @@ curl -fsS "$VITE_KORDI_CLOUD_API_BASE/health"
 
 Expected: HTTP 200 or a healthy response.
 
-## Launch one local Cloud desktop
+## Internal/operator local tunnel debug pipeline
 
-Use this for single-account testing:
+Use this path only when an operator explicitly asks you to test against a private hosted backend through a local tunnel. Keep all real operator hostnames, projects, account names, private IPs, and credentials out of commits, PRs, screenshots, and shared logs.
+
+Set the operator-provided values in your shell. Use placeholders in docs and bug reports:
+
+```bash
+export KORDI_CLOUD_USE_LOCAL_TUNNEL=1
+export KORDI_CLOUD_SSH_TARGET="<OPERATOR_SSH_TARGET>"
+export KORDI_CLOUD_SSH_ZONE="<OPERATOR_SSH_ZONE>"
+export KORDI_CLOUD_LOCAL_PORT="<LOCAL_TUNNEL_PORT>"
+export KORDI_CLOUD_VM_PORT="<REMOTE_FORWARD_PORT>"
+```
+
+Before launching desktop clients, verify the selected tunnel endpoint is healthy:
+
+```bash
+curl -fsS "http://127.0.0.1:${KORDI_CLOUD_LOCAL_PORT}/health"
+```
+
+Launch isolated users through the tunnel-enabled helper:
+
+```bash
+pnpm dev:cloud:multi -- --users user1,user2,user3
+```
+
+The tunnel helper sets `VITE_KORDI_CLOUD_API_BASE` for the launched local desktop instances. The API base should point at the local tunnel endpoint, not at production, when this debug path is in use.
+
+When debugging sync or login failures in this mode:
+
+1. Confirm `/health` succeeds on the local tunnel endpoint.
+2. Confirm each desktop log shows the expected `VITE_KORDI_CLOUD_API_BASE` value for that launch.
+3. Confirm the local desktop URLs are only UI windows; they are not backend URLs.
+4. Check whether the change path requires a hosted server deploy: use Path C for server code changes and Path D for schema changes.
+5. If the tunnel drops, restart the tunnel or relaunch the tunnel helper. Do not silently switch to production as a workaround.
+6. Redact tokens, account IDs when needed, private hostnames, project names, database details, and local filesystem paths before sharing logs.
+
+## Launch one local desktop
+
+Use this for single-account testing after exporting `VITE_KORDI_CLOUD_API_BASE`:
 
 ```bash
 pnpm install
-pnpm dev:desktop
+pnpm dev
 ```
 
 If the Tauri launcher reports missing sidecar binaries, run:
@@ -66,9 +105,9 @@ If the Tauri launcher reports missing sidecar binaries, run:
 pnpm prepare:sidecars
 ```
 
-`pnpm prepare:sidecars` is local desktop setup only. It does not host Cloud, deploy Cloud, or run the Cloud server.
+`pnpm prepare:sidecars` is local desktop setup only. It does not host, deploy, or run the hosted server.
 
-## Launch multiple local Cloud users
+## Launch multiple local users
 
 Create a local-only config file. Do not commit it.
 
@@ -76,7 +115,7 @@ Create a local-only config file. Do not commit it.
 cat > /tmp/kordi-hosted-cloud-users.yaml <<'YAML'
 defaults:
   host: 127.0.0.1
-  titlePrefix: Kordi Cloud
+  titlePrefix: Kordi
   dataRoot: /tmp/kordi-hosted-cloud-data
   logsRoot: /tmp/kordi-hosted-cloud-logs
   runtimeRoot: /tmp/kordi-hosted-cloud-runtime
@@ -84,19 +123,19 @@ defaults:
 users:
   - id: user1
     port: 1482
-    title: Kordi Cloud user1
+    title: Kordi user1
 
   - id: user2
     port: 1484
-    title: Kordi Cloud user2
+    title: Kordi user2
 
   - id: user3
     port: 1486
-    title: Kordi Cloud user3
+    title: Kordi user3
 YAML
 ```
 
-Launch two users from a clean local state:
+Launch two users from a clean local state after exporting `VITE_KORDI_CLOUD_API_BASE`:
 
 ```bash
 pnpm dev:desktop:multi -- --config /tmp/kordi-hosted-cloud-users.yaml --reset --users user1,user2
@@ -109,7 +148,7 @@ http://127.0.0.1:1482
 http://127.0.0.1:1484
 ```
 
-Log in as a different Cloud account in each window.
+Log in as a different account in each window.
 
 Local logs:
 
@@ -129,7 +168,7 @@ Local logs:
 - local app data directories
 - local log and runtime directories
 
-It does not configure the hosted Cloud backend and does not contain the Cloud host. The hosted Cloud backend is selected by:
+It does not configure the hosted backend and does not contain the hosted API host. The hosted backend is selected by:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE="<HOSTED_CLOUD_API_BASE>"
@@ -137,26 +176,46 @@ VITE_KORDI_CLOUD_API_BASE="<HOSTED_CLOUD_API_BASE>"
 
 Use `--reset` when you want a clean local login/data state. Omit `--reset` when you want to preserve the local account session and cached desktop state for that test user.
 
-## Decision tree: do we need to redeploy the Cloud server?
+### Debug checklist for multi-user runs
 
-### Path A: no database change and no Cloud server backend change
+Before attributing a multi-user bug to app code, record the selected backend without exposing private infrastructure:
 
-Use the existing deployed Cloud server service. Do not redeploy the Cloud server.
+```text
+Selected backend mode: public test API / self-hosted API / operator local tunnel
+Health check: pass / fail
+Desktop user logs show expected VITE_KORDI_CLOUD_API_BASE: yes / no
+Local UI URLs under test: <LOCAL_UI_URLS>
+Change path: no backend change / server change / database migration / runner change
+```
+
+If a message, pin, read receipt, group update, or presence change does not sync:
+
+1. Verify the backend health check first.
+2. Verify the sending client did not report a load/send failure.
+3. Verify the receiving client is connected to the same backend mode.
+4. For backend changes, verify the server deploy and migration state before retesting.
+5. Only then inspect redacted desktop/server logs for the event or API request.
+
+## Decision tree: do we need to redeploy the hosted server?
+
+### Path A: no database change and no hosted server backend change
+
+Use the existing deployed hosted server service. Do not redeploy the hosted server.
 
 This path applies to:
 
 - Desktop UI changes
-- Desktop Cloud client changes
+- Desktop API client changes
 - Sidebar/chat visual changes
 - Local testing config changes
-- Tests that only need existing Cloud APIs
+- Tests that only need existing hosted APIs
 
 Developer action:
 
 1. Pull the branch or commit under test.
-2. Set the Cloud environment variables listed above.
+2. Set the API environment variables listed above.
 3. Restart the local desktop instance or multi-instance launcher.
-4. Test against the existing hosted Cloud backend.
+4. Test against the existing hosted backend.
 
 Example:
 
@@ -165,8 +224,6 @@ git checkout <branch-under-test>
 git pull
 pnpm install
 
-export VITE_KORDI_EDITION=cloud
-export KORDI_EDITION=cloud
 export VITE_KORDI_CLOUD_API_BASE="<HOSTED_CLOUD_API_BASE>"
 export KORDI_CLOUD_API_BASE="<HOSTED_CLOUD_API_BASE>"
 
@@ -179,13 +236,13 @@ What this redeploys or restarts:
 
 What this does not redeploy:
 
-- Cloud server
+- Hosted server
 - Database
-- Cloud agent runner
+- Hosted agent runner
 
-### Path B: Cloud agent runner change only
+### Path B: hosted agent runner change only
 
-Use this when only the Cloud runner changes and the Cloud server/database schema do not change.
+Use this when only the hosted runner changes and the hosted server/database schema do not change.
 
 Examples:
 
@@ -197,9 +254,9 @@ Examples:
 Developer action:
 
 1. Build/test runner changes.
-2. Redeploy the Cloud agent runner only.
-3. Do not redeploy the Cloud server unless server code also changed.
-4. Test from local desktop instances against the same hosted Cloud backend.
+2. Redeploy the hosted agent runner only.
+3. Do not redeploy the hosted server unless server code also changed.
+4. Test from local desktop instances against the same hosted backend.
 
 Use the project runner deploy script if available in the branch:
 
@@ -217,7 +274,7 @@ kubectl -n kordi-cloud logs deployment/kordi-cloud-agent-runner --since=10m
 
 Do not paste runner tokens into logs or chat.
 
-### Path C: Cloud server code change without database schema change
+### Path C: hosted server code change without database schema change
 
 Use this when `bridges/cloud-server` code changed but there is no new migration and no database schema requirement.
 
@@ -231,7 +288,7 @@ Examples:
 Developer action:
 
 1. Verify there are no migration changes.
-2. Deploy the Cloud server with a rolling restart.
+2. Deploy the hosted server with a rolling restart.
 3. Verify health and logs.
 4. Test from local desktop instances.
 
@@ -254,7 +311,7 @@ curl -fsS "<HOSTED_CLOUD_API_BASE>/health"
 
 ### Path D: database schema changed
 
-A database change requires a Cloud server deploy.
+A database change requires a hosted server deploy.
 
 This path applies when any of these changed:
 
@@ -271,11 +328,11 @@ Before deploy checklist:
 - Migration is idempotent where possible.
 - Migration is registered in the embedded migration list if the branch uses embedded migrations.
 - Server tests pass.
-- Cloud server can start against a fresh or migrated database.
+- Hosted server can start against a fresh or migrated database.
 
 Important implementation note:
 
-The Cloud server migration runner applies embedded migrations at server startup. If a new SQL migration file is added, make sure the server code includes it in the embedded migration list, for example in the Postgres pool/migration module.
+The hosted server migration runner applies embedded migrations at server startup. If a new SQL migration file is added, make sure the server code includes it in the embedded migration list, for example in the Postgres pool/migration module.
 
 Deploy steps:
 
@@ -307,20 +364,20 @@ ORDER BY version;
 If rollout fails:
 
 1. Stop testing immediately.
-2. Capture Cloud server logs with secrets redacted.
+2. Capture hosted server logs with secrets redacted.
 3. Check whether migration partially applied.
 4. If the migration did not apply, roll back the deployment image.
 5. If the migration applied and is incompatible with the previous server, follow the written rollback plan for that migration.
 
 Never run a destructive migration without a tested rollback or restore plan.
 
-## Hosted Cloud test matrix
+## Hosted test matrix
 
-Run these after any Cloud-related change.
+Run these after any backend-related change.
 
 ### Login persistence
 
-1. Launch local desktop in Cloud mode.
+1. Launch local desktop in account mode.
 2. Log in.
 3. Quit and relaunch without deleting local data.
 4. Confirm the same account loads.
@@ -365,22 +422,22 @@ Expected:
 - Group membership stays stable.
 - No duplicate group sessions.
 
-### Offline direct Cloud agent fallback
+### Offline direct hosted agent fallback
 
 1. user1 and user2 are contacts.
 2. user2 has provider auth configured.
 3. Quit user2 desktop completely.
 4. user1 sends a request to user2's agent.
-5. Wait for Cloud runner response.
+5. Wait for hosted runner response.
 6. Reopen user2.
 
 Expected:
 
-- Cloud handles the request once.
+- The hosted runner handles the request once.
 - One assistant response appears.
 - Reconnect does not process the same request again.
 
-Cloud-owned request states:
+Hosted request states:
 
 ```text
 queued
@@ -389,12 +446,12 @@ running
 completed
 ```
 
-### Offline group Cloud agent fallback
+### Offline group hosted agent fallback
 
 1. Create a group with user1 and user2.
 2. Quit user2.
 3. user1 sends a group request to user2's agent.
-4. Wait for Cloud runner response.
+4. Wait for hosted runner response.
 5. Reopen user2.
 
 Expected:
@@ -406,12 +463,12 @@ Expected:
 ## Bug report template
 
 ```text
-Hosted Cloud bug
+Hosted bug
 
 Desktop commit:
 <git sha>
 
-Cloud backend:
+Hosted backend:
 <HOSTED_CLOUD_API_BASE, redacted if needed>
 
 Change path:

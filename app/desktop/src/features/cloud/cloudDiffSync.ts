@@ -1,4 +1,4 @@
-import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
+import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
@@ -10,6 +10,8 @@ export type CloudSessionVisibilityState = {
   hiddenSessionIds: Set<string>;
   deletedSessionIds: Set<string>;
 };
+
+export type CloudSessionPinsById = Record<string, CloudSessionPin>;
 
 export function cloudSyncCursorStorageKey(accountId: string): string {
   return `${CLOUD_SYNC_CURSOR_PREFIX}${accountId.trim()}`;
@@ -333,6 +335,46 @@ export function applyCloudSyncEventsToSessionForks(
   return next;
 }
 
+function normalizeCloudSessionPin(value: unknown, existing?: CloudSessionPin | null): CloudSessionPin | null {
+  const record = objectRecord(value);
+  if (!record) return null;
+  const sessionId = cleanText(record.sessionId);
+  if (!sessionId) return null;
+  const scope = cleanText(record.scope).toLowerCase();
+  const hasMessageId = Object.prototype.hasOwnProperty.call(record, 'messageId');
+  const messageId = hasMessageId ? cleanText(record.messageId) || null : undefined;
+  const sharedMessageId = scope === 'shared'
+    ? messageId ?? null
+    : cleanText(record.sharedMessageId) || existing?.sharedMessageId || null;
+  const privateMessageId = scope === 'private'
+    ? messageId ?? null
+    : cleanText(record.privateMessageId) || existing?.privateMessageId || null;
+  return {
+    sessionId,
+    sharedMessageId,
+    privateMessageId,
+    effectiveMessageId: privateMessageId || sharedMessageId || null,
+    updatedAt: cleanText(record.updatedAt) || null,
+  };
+}
+
+export function applyCloudSyncEventsToSessionPins(
+  current: CloudSessionPinsById,
+  events: CloudSyncEvent[],
+): CloudSessionPinsById {
+  let next = current;
+  for (const event of events) {
+    if (event.eventType !== 'session.pin.updated') continue;
+    const payload = objectRecord(event.payload);
+    const sessionId = cleanText(payload?.sessionId) || cleanText(event.peerAccountId);
+    if (!sessionId) continue;
+    const pin = normalizeCloudSessionPin({ ...payload, sessionId }, next[sessionId]);
+    if (!pin) continue;
+    next = { ...next, [sessionId]: pin };
+  }
+  return next;
+}
+
 export function applyCloudSyncEventsToSessionActivity(
   current: CloudSessionActivityStore,
   events: CloudSyncEvent[],
@@ -365,6 +407,7 @@ export type SyncCloudDiffOnceInput = {
   messagesByPeer: Record<string, CloudMessage[]>;
   sessionActivity?: CloudSessionActivityStore;
   sessionForksById?: Record<string, CloudSessionForkSummary>;
+  sessionPinsById?: CloudSessionPinsById;
   hiddenSessionIds?: ReadonlySet<string>;
   deletedSessionIds?: ReadonlySet<string>;
   cursorStorage?: Storage | null;
@@ -375,6 +418,7 @@ export type SyncCloudDiffOnceResult = {
   messagesByPeer: Record<string, CloudMessage[]>;
   sessionActivity: CloudSessionActivityStore;
   sessionForksById: Record<string, CloudSessionForkSummary>;
+  sessionPinsById: CloudSessionPinsById;
   hiddenSessionIds: Set<string>;
   deletedSessionIds: Set<string>;
   cursor: string;
@@ -399,12 +443,12 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   try {
     response = await input.fetchEvents(previousCursor);
   } catch {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const nextCursor = normalizeCursor(response.cursor);
   if (cursorWentBackwards(previousCursor, nextCursor)) {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const events = response.events ?? [];
@@ -424,6 +468,7 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
     events,
   );
   const sessionForksById = applyCloudSyncEventsToSessionForks(input.sessionForksById ?? {}, events);
+  const sessionPinsById = applyCloudSyncEventsToSessionPins(input.sessionPinsById ?? {}, events);
   saveCloudSyncCursor(input.accountId, nextCursor, storage);
-  return { messagesByPeer, sessionActivity, sessionForksById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
+  return { messagesByPeer, sessionActivity, sessionForksById, sessionPinsById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
 }
