@@ -90,6 +90,7 @@ pnpm check:rust
 pnpm check
 ```
 
+For hosted desktop debugging, multi-user sync checks, and operator tunnel rules, see [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md).
 For Rust artifact size notes and inactive worktree cleanup, see [`development/desktop-rust-build-artifacts.md`](development/desktop-rust-build-artifacts.md).
 For overlong-file thresholds and refactor boundaries, see [`development/maintainability-boundaries.md`](development/maintainability-boundaries.md).
 
