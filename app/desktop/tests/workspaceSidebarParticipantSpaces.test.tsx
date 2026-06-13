@@ -57,6 +57,33 @@ function contact(overrides: Partial<Contact> = {}): Contact {
   };
 }
 
+test('participant space session preview skips blank live agent turn and shows latest user input', () => {
+  const participantSpaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:self-agent:panel-preview',
+      canonicalSessionId: 'session:self-agent:panel-preview',
+      name: 'what are we talking in this group',
+      type: 'owned-agent',
+      subtitle: 'session:self-agent:panel-preview',
+      participants: ['Me', 'My Kordi'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'agent:me', name: 'My Kordi', kind: 'agent', role: 'delegate', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'agent' },
+      ],
+      messages: [
+        { id: 'old-user', role: 'user', sender: 'Me', senderType: 'human', text: 'what are we talking in this group', time: '00:55', isOwnMessage: true },
+        { id: 'old-agent', role: 'owned-agent', sender: 'My Kordi', senderType: 'agent', text: '', time: '00:56', turn: { id: 'old-agent', sessionId: 'session:self-agent:panel-preview', prompt: '', status: 'complete', message: 'Complete', assistantText: 'old answer', thinkingText: '', tools: [], completed: true, succeeded: true, error: null } },
+        { id: 'new-user', role: 'user', sender: 'Me', senderType: 'human', text: 'hii', time: '01:04', isOwnMessage: true },
+        { id: 'live-agent', role: 'owned-agent', sender: 'My Kordi', senderType: 'agent', text: '', time: '01:04', turn: { id: 'live-agent', sessionId: 'session:self-agent:panel-preview', prompt: 'hii', status: 'processing', message: 'Observation: reading', assistantText: '', thinkingText: 'Observation: reading', tools: [], completed: false, succeeded: false, error: null, replyToMessageId: 'new-user' }, replyToMessageId: 'new-user' },
+      ],
+    }),
+  ]);
+
+  const session = participantSpaces[0]?.sessions.find((item) => item.id === 'session:self-agent:panel-preview');
+
+  assert.equal(session?.preview, 'hii');
+});
+
 function bridgeConversation(overrides: Partial<DesktopBridgeConversation> = {}): DesktopBridgeConversation {
   return {
     id: 'bridge:host-1:node-bob:kordi-desktop',
