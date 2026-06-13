@@ -324,7 +324,23 @@ export function cloudApiBaseUrl(env?: { VITE_KORDI_CLOUD_API_BASE?: string }): s
   return DEFAULT_CLOUD_API_BASE_URL;
 }
 
-export function cloudRealtimeWebSocketEnabled(baseUrl = cloudApiBaseUrl()): boolean {
+type CloudRealtimeEnv = {
+  VITE_KORDI_CLOUD_REALTIME_WS?: string;
+};
+
+function cloudRealtimeWebSocketEnvValue(env?: CloudRealtimeEnv): string | undefined {
+  const explicit = env?.VITE_KORDI_CLOUD_REALTIME_WS;
+  if (explicit !== undefined) return explicit;
+  if (typeof import.meta !== 'undefined') {
+    return (import.meta as ImportMeta & { env?: CloudRealtimeEnv }).env?.VITE_KORDI_CLOUD_REALTIME_WS;
+  }
+  return undefined;
+}
+
+export function cloudRealtimeWebSocketEnabled(baseUrl = cloudApiBaseUrl(), env?: CloudRealtimeEnv): boolean {
+  const override = cloudRealtimeWebSocketEnvValue(env)?.trim().toLowerCase();
+  if (override && ['0', 'false', 'off', 'disabled', 'no'].includes(override)) return false;
+  if (override && ['1', 'true', 'on', 'enabled', 'yes'].includes(override)) return true;
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
     return host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';

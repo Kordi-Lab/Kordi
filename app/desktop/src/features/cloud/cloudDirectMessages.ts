@@ -1,4 +1,5 @@
 import type { MessageActionMetadata } from '../../kordi-app/types/message';
+import { cachedCloudEnvelopeParse } from './cloudEnvelopeParseCache';
 
 export const CLOUD_DIRECT_MESSAGE_PREFIX = 'kordi-cloud-message:';
 
@@ -37,14 +38,18 @@ export function encodeCloudDirectMessageEnvelope(input: CloudDirectMessageEnvelo
   return `${CLOUD_DIRECT_MESSAGE_PREFIX}${encodeBase64Url(JSON.stringify(input))}`;
 }
 
+const cloudDirectMessageParseCache = new Map<string, { readonly value: CloudDirectMessageEnvelope | null }>();
+
 export function parseCloudDirectMessageEnvelope(body: string): CloudDirectMessageEnvelope | null {
   if (!body.startsWith(CLOUD_DIRECT_MESSAGE_PREFIX)) return null;
-  try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_DIRECT_MESSAGE_PREFIX.length)));
-    return isCloudDirectMessageEnvelope(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  return cachedCloudEnvelopeParse(cloudDirectMessageParseCache, body, () => {
+    try {
+      const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_DIRECT_MESSAGE_PREFIX.length)));
+      return isCloudDirectMessageEnvelope(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
 }
 
 export function cloudDirectMessageDisplayText(body: string): string {
