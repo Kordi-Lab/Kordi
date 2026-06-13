@@ -193,8 +193,11 @@ test('cloud auth client gives local SSH tunnels a longer default timeout', () =>
   assert.equal(defaultCloudRequestTimeoutMs('http://localhost:17081'), 45_000);
 });
 
-test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
+test('cloud realtime WebSockets stay off for local SSH tunnel tests and explicit opt-out', () => {
   assert.equal(cloudRealtimeWebSocketEnabled('https://coordinar.io'), true);
+  assert.equal(cloudRealtimeWebSocketEnabled('https://coordinar.io', { VITE_KORDI_CLOUD_REALTIME_WS: '0' }), false);
+  assert.equal(cloudRealtimeWebSocketEnabled('https://coordinar.io', { VITE_KORDI_CLOUD_REALTIME_WS: 'false' }), false);
+  assert.equal(cloudRealtimeWebSocketEnabled('https://coordinar.io', { VITE_KORDI_CLOUD_REALTIME_WS: '1' }), true);
   assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081'), false);
   assert.equal(cloudRealtimeWebSocketEnabled('http://localhost:17081'), false);
 });

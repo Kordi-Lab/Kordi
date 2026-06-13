@@ -10,6 +10,7 @@ import type {
 
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
+import { cachedCloudEnvelopeParse } from './cloudEnvelopeParseCache';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
@@ -345,63 +346,67 @@ export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): strin
   return `${CLOUD_GROUP_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
 }
 
+const cloudGroupControlParseCache = new Map<string, { readonly value: CloudGroupControlEnvelope | null }>();
+
 export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope | null {
   if (!body.startsWith(CLOUD_GROUP_PREFIX)) return null;
-  try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
-    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update', 'session-fork'].includes(parsed.kind ?? '')) return null;
-    const kind = parsed.kind as CloudGroupControlKind;
-    if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;
-    if (typeof parsed.createdByAccountId !== 'string' || !parsed.createdByAccountId.trim()) return null;
-    if (!parsed.actor || typeof parsed.actor !== 'object') return null;
-    if (!Array.isArray(parsed.participants)) return null;
-    const actor = cloudGroupNormalizeParticipant(parsed.actor as CloudGroupParticipant);
-    const participants = uniqueByAccount(parsed.participants as CloudGroupParticipant[]);
-    if (!actor.accountId || participants.length === 0) return null;
-    let message: CloudGroupControlEnvelope['message'] = null;
-    if (kind === 'group-message') {
-      const candidate = parsed.message;
-      if (!candidate || typeof candidate !== 'object') return null;
-      if (typeof candidate.id !== 'string' || typeof candidate.senderAccountId !== 'string' || typeof candidate.text !== 'string') return null;
-      const createdAtMs = typeof candidate.createdAtMs === 'number' && Number.isFinite(candidate.createdAtMs)
-        ? candidate.createdAtMs
-        : Date.now();
-      message = {
-        id: candidate.id,
-        senderAccountId: candidate.senderAccountId,
-        text: candidate.text,
-        createdAtMs,
-        senderKind: candidate.senderKind === 'agent' ? 'agent' : 'human',
-        senderDisplayName: typeof candidate.senderDisplayName === 'string' && candidate.senderDisplayName.trim() ? candidate.senderDisplayName.trim() : null,
-        deliveryState: typeof candidate.deliveryState === 'string' && candidate.deliveryState.trim() ? candidate.deliveryState.trim() : null,
-        replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
-        requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
-        forkSnapshot: candidate.forkSnapshot === true,
-        attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
-        messageAction: cloudMessageActionFromRecord((candidate as { messageAction?: unknown }).messageAction),
+  return cachedCloudEnvelopeParse(cloudGroupControlParseCache, body, () => {
+    try {
+      const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
+      if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update', 'session-fork'].includes(parsed.kind ?? '')) return null;
+      const kind = parsed.kind as CloudGroupControlKind;
+      if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;
+      if (typeof parsed.createdByAccountId !== 'string' || !parsed.createdByAccountId.trim()) return null;
+      if (!parsed.actor || typeof parsed.actor !== 'object') return null;
+      if (!Array.isArray(parsed.participants)) return null;
+      const actor = cloudGroupNormalizeParticipant(parsed.actor as CloudGroupParticipant);
+      const participants = uniqueByAccount(parsed.participants as CloudGroupParticipant[]);
+      if (!actor.accountId || participants.length === 0) return null;
+      let message: CloudGroupControlEnvelope['message'] = null;
+      if (kind === 'group-message') {
+        const candidate = parsed.message;
+        if (!candidate || typeof candidate !== 'object') return null;
+        if (typeof candidate.id !== 'string' || typeof candidate.senderAccountId !== 'string' || typeof candidate.text !== 'string') return null;
+        const createdAtMs = typeof candidate.createdAtMs === 'number' && Number.isFinite(candidate.createdAtMs)
+          ? candidate.createdAtMs
+          : Date.now();
+        message = {
+          id: candidate.id,
+          senderAccountId: candidate.senderAccountId,
+          text: candidate.text,
+          createdAtMs,
+          senderKind: candidate.senderKind === 'agent' ? 'agent' : 'human',
+          senderDisplayName: typeof candidate.senderDisplayName === 'string' && candidate.senderDisplayName.trim() ? candidate.senderDisplayName.trim() : null,
+          deliveryState: typeof candidate.deliveryState === 'string' && candidate.deliveryState.trim() ? candidate.deliveryState.trim() : null,
+          replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
+          requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
+          forkSnapshot: candidate.forkSnapshot === true,
+          attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
+          messageAction: cloudMessageActionFromRecord((candidate as { messageAction?: unknown }).messageAction),
+        };
+      }
+      const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);
+      const fork = forkRecord.forkSessionId && forkRecord.parentSessionId ? {
+        forkSessionId: cleanText(typeof forkRecord.forkSessionId === 'string' ? forkRecord.forkSessionId : null),
+        parentSessionId: cleanText(typeof forkRecord.parentSessionId === 'string' ? forkRecord.parentSessionId : null),
+        parentMessageId: cleanText(typeof forkRecord.parentMessageId === 'string' ? forkRecord.parentMessageId : null) || null,
+        createdAtMs: typeof forkRecord.createdAtMs === 'number' && Number.isFinite(forkRecord.createdAtMs) ? forkRecord.createdAtMs : null,
+      } : null;
+      return {
+        kind,
+        groupId: parsed.groupId.trim(),
+        groupSpaceId: typeof parsed.groupSpaceId === 'string' && parsed.groupSpaceId.trim() ? parsed.groupSpaceId.trim() : null,
+        groupTitle: typeof parsed.groupTitle === 'string' && parsed.groupTitle.trim() ? parsed.groupTitle.trim() : null,
+        createdByAccountId: parsed.createdByAccountId.trim(),
+        actor,
+        participants,
+        fork,
+        message,
       };
+    } catch {
+      return null;
     }
-    const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);
-    const fork = forkRecord.forkSessionId && forkRecord.parentSessionId ? {
-      forkSessionId: cleanText(typeof forkRecord.forkSessionId === 'string' ? forkRecord.forkSessionId : null),
-      parentSessionId: cleanText(typeof forkRecord.parentSessionId === 'string' ? forkRecord.parentSessionId : null),
-      parentMessageId: cleanText(typeof forkRecord.parentMessageId === 'string' ? forkRecord.parentMessageId : null) || null,
-      createdAtMs: typeof forkRecord.createdAtMs === 'number' && Number.isFinite(forkRecord.createdAtMs) ? forkRecord.createdAtMs : null,
-    } : null;
-    return {
-      kind,
-      groupId: parsed.groupId.trim(),
-      groupSpaceId: typeof parsed.groupSpaceId === 'string' && parsed.groupSpaceId.trim() ? parsed.groupSpaceId.trim() : null,
-      groupTitle: typeof parsed.groupTitle === 'string' && parsed.groupTitle.trim() ? parsed.groupTitle.trim() : null,
-      createdByAccountId: parsed.createdByAccountId.trim(),
-      actor,
-      participants,
-      fork,
-      message,
-    };
-  } catch {
-    return null;
-  }
+  });
 }
 
 export function isCloudGroupControlMessage(body: string): boolean {

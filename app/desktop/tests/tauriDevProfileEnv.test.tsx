@@ -27,6 +27,17 @@ test('buildBeforeDevCommand forwards explicit Cloud API base into the Vite dev s
   assert.match(command, / VITE_KORDI_CLOUD_API_BASE='http:\/\/127\.0\.0\.1:17081' /);
 });
 
+test('buildBeforeDevCommand forwards explicit Cloud realtime WebSocket override', () => {
+  const command = buildBeforeDevCommand({
+    title: 'Kordi Cloud',
+    host: '127.0.0.1',
+    port: 1502,
+    env: { VITE_KORDI_CLOUD_REALTIME_WS: '0' },
+  });
+
+  assert.match(command, / VITE_KORDI_CLOUD_REALTIME_WS='0' /);
+});
+
 test('buildBeforeDevCommand omits edition env when no edition is configured', () => {
   const command = buildBeforeDevCommand({
     title: 'Kordi',

@@ -1,4 +1,5 @@
 import type { CloudAccount, CloudMessage } from './authClient';
+import { cachedCloudEnvelopeParse } from './cloudEnvelopeParseCache';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
 
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
@@ -120,24 +121,29 @@ export function encodeCloudAgentResponse(input: { requestId: string; text: strin
   return `${CLOUD_AGENT_RESPONSE_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
 }
 
+const cloudAgentResponseParseCache = new Map<string, { readonly value: CloudAgentResponseEnvelope | null }>();
+const cloudAgentCancelParseCache = new Map<string, { readonly value: CloudAgentCancelEnvelope | null }>();
+
 export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelope | null {
   if (!body.startsWith(CLOUD_AGENT_RESPONSE_PREFIX)) return null;
-  try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_RESPONSE_PREFIX.length))) as Partial<CloudAgentResponseEnvelope>;
-    if (parsed.kind !== 'agent-response') return null;
-    if (typeof parsed.requestId !== 'string' || typeof parsed.text !== 'string') return null;
-    const deliveryState = parsed.deliveryState === 'failed' || parsed.deliveryState === 'complete'
-      ? parsed.deliveryState
-      : undefined;
-    return {
-      kind: 'agent-response',
-      requestId: parsed.requestId,
-      text: parsed.text,
-      ...(deliveryState ? { deliveryState } : {}),
-    };
-  } catch {
-    return null;
-  }
+  return cachedCloudEnvelopeParse(cloudAgentResponseParseCache, body, () => {
+    try {
+      const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_RESPONSE_PREFIX.length))) as Partial<CloudAgentResponseEnvelope>;
+      if (parsed.kind !== 'agent-response') return null;
+      if (typeof parsed.requestId !== 'string' || typeof parsed.text !== 'string') return null;
+      const deliveryState = parsed.deliveryState === 'failed' || parsed.deliveryState === 'complete'
+        ? parsed.deliveryState
+        : undefined;
+      return {
+        kind: 'agent-response',
+        requestId: parsed.requestId,
+        text: parsed.text,
+        ...(deliveryState ? { deliveryState } : {}),
+      };
+    } catch {
+      return null;
+    }
+  });
 }
 
 export function encodeCloudAgentCancel(input: { requestId: string }): string {
@@ -150,17 +156,19 @@ export function encodeCloudAgentCancel(input: { requestId: string }): string {
 
 export function parseCloudAgentCancel(body: string): CloudAgentCancelEnvelope | null {
   if (!body.startsWith(CLOUD_AGENT_CANCEL_PREFIX)) return null;
-  try {
-    const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_CANCEL_PREFIX.length))) as Partial<CloudAgentCancelEnvelope>;
-    if (parsed.kind !== 'agent-cancel') return null;
-    if (typeof parsed.requestId !== 'string') return null;
-    return {
-      kind: 'agent-cancel',
-      requestId: parsed.requestId,
-    };
-  } catch {
-    return null;
-  }
+  return cachedCloudEnvelopeParse(cloudAgentCancelParseCache, body, () => {
+    try {
+      const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_AGENT_CANCEL_PREFIX.length))) as Partial<CloudAgentCancelEnvelope>;
+      if (parsed.kind !== 'agent-cancel') return null;
+      if (typeof parsed.requestId !== 'string') return null;
+      return {
+        kind: 'agent-cancel',
+        requestId: parsed.requestId,
+      };
+    } catch {
+      return null;
+    }
+  });
 }
 
 export function isCloudAgentControlMessage(body: string): boolean {
