@@ -1,3 +1,5 @@
+import type { DesktopChatContextMessage } from '@/lib/desktop';
+
 export type EditDiffLine = {
   kind: 'context' | 'add' | 'remove';
   oldNumber?: number;
@@ -190,6 +192,7 @@ export type QueuedDesktopChatMessage = {
   text: string;
   time: string;
   attachments: (MessageAttachment & { id: string; path: string })[];
+  contextMessages?: DesktopChatContextMessage[];
 };
 
 export type BridgeAgentRequestControl = {

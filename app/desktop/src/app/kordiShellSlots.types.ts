@@ -345,6 +345,7 @@ export type AssembleKordiShellSlotsArgs = {
   lastBridgePollAtLabel: string | null;
   activeSessionProject: DesktopChatProjectInfo | null;
   activeQueuedDesktopMessages: QueuedDesktopChatMessage[];
+  queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
   showAuthGate: boolean;
   dismissAuthGate: () => void;
   inlineAuthDialog: {
@@ -556,7 +557,9 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'chatTranscriptScrollRef'
   | 'onProjectTranscriptScroll'
   | 'setActiveSourcePreview'
+  | 'activeArtifactId'
   | 'setActiveArtifactId'
+  | 'activeDetailTab'
   | 'setActiveDetailTab'
   | 'desktopLiveTurn'
   | 'filteredProjectSlashCommands'
@@ -626,6 +629,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleSendChatMessage'
   | 'handleForkChatMessage'
   | 'activeQueuedDesktopMessages'
+  | 'queuedDesktopMessagesBySession'
   | 'activeBridgeConversationHost'
   | 'activeBridgeConversation'
   | 'activeBridgeAwaitingReply'

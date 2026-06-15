@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
+import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
+import { RightDetailRail } from '@/pages/RightDetailRail';
 import {
   bridgeAgentRoutingChangeNotice,
   bridgeChatRoutingControlVisibility,
@@ -59,6 +61,7 @@ import type {
   DesktopChatSlashCommand,
   DesktopChatState,
   DesktopChatTurnSnapshot,
+  DetailTab,
   EditFilePreview,
   Message,
   MessageSourceReference,
@@ -75,16 +78,27 @@ import {
   focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
+import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
-import { navigateToTranscriptMessage } from '@/kordi-app/components/transcriptReplyAttribution';
+import { navigateToTranscriptMessage, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage, isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
+
+function scheduleTranscriptScrollToBottom<T extends HTMLElement>(scrollRef: RefObject<T | null>) {
+  if (typeof window === 'undefined') return;
+  const scheduleFrame = typeof window.requestAnimationFrame === 'function'
+    ? window.requestAnimationFrame.bind(window)
+    : (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
+  scheduleFrame(() => {
+    scheduleFrame(() => scrollTranscriptToBottom(scrollRef as RefObject<HTMLElement | null>));
+  });
+}
 
 const GENERIC_CHAT_HEADER_SUBTITLES = new Set([
   'agent chat',
@@ -303,6 +317,239 @@ type Attachment = {
   path: string;
   kind: 'image' | 'file';
 };
+
+type ChatComposerShellProps = {
+  children: ReactNode;
+  chatComposerAttachments?: Attachment[];
+  saveDesktopAttachments?: (files: File[]) => Promise<Attachment[]>;
+  saveDesktopAttachmentPaths?: (paths: string[]) => Promise<Attachment[]>;
+  removeChatComposerAttachment?: (id: string) => void;
+  activeChatQuote?: ComposerQuoteState | null;
+  onForwardMessage?: (message: Message) => void;
+  onOpenMessageDetail?: (message: Message) => void;
+  rightDetailRail?: ReactNode;
+  setIsDetailPanelCollapsed?: Dispatch<SetStateAction<boolean>>;
+  className?: string;
+};
+
+function ChatComposerShell({ children }: ChatComposerShellProps) {
+  return <>{children}</>;
+}
+
+type ChatSessionPaneProps = {
+  messages: Message[];
+  liveTurn?: DesktopChatTurnSnapshot | null;
+  liveTurnSender: string;
+  shouldRenderLiveTurn: boolean;
+  scrollRef: RefObject<HTMLDivElement | null>;
+  scrollClassName: string;
+  onTranscriptScroll?: () => void;
+  emptyState?: ReactNode;
+  composer: ReactNode;
+  queuedMessages?: QueuedDesktopChatMessage[];
+  isCompressionActive?: boolean;
+  plainAgentResponse?: boolean;
+  forkSnapshotBoundaryIndex?: number;
+  activeForkSourceSessionId?: string | null;
+  activeForkSourceTitle?: string | null;
+  onSelectSession?: (sessionId: string) => void;
+  onOpenSource: (file: EditFilePreview) => void;
+  onOpenArtifact: (artifactId: string) => void;
+  onOpenAuthSettings: () => void;
+  onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
+  onOpenMessageDetail?: (message: Message) => void;
+  onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
+  onStopActiveTurn?: () => void;
+  onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
+  onForkMessage?: (entryId: string) => void;
+  messageForksByEntryId?: Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>;
+  onOpenForkSession?: (sessionId: string) => void;
+  onReplyMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void;
+  onSelectMessage?: (message: Message) => void;
+  onRequestPinMessage?: (message: Message) => void;
+  onRequestUnpinMessage?: (message: Message) => void;
+  pinnedMessageId?: string | null;
+  selectionMode?: boolean;
+  selectedMessageIds?: ReadonlySet<string>;
+  isMessageSelectable?: (message: Message) => boolean;
+  onToggleSelectedMessage?: (message: Message) => void;
+  onSelectionDragStart?: (message: Message, shouldSelect: boolean) => void;
+  onSelectionDragEnter?: (message: Message) => void;
+  onSelectionDragEnd?: () => void;
+  selectedMessageCount?: number;
+  onCancelMessageSelection?: () => void;
+  onCopySelectedMessages?: () => void;
+  onForwardSelectedMessages?: () => void;
+  messageSelectionMode?: boolean;
+  rightDetailRail?: ReactNode;
+  setIsDetailPanelCollapsed?: Dispatch<SetStateAction<boolean>>;
+};
+
+function ChatSessionPane({
+  messages,
+  liveTurn,
+  liveTurnSender,
+  shouldRenderLiveTurn,
+  scrollRef,
+  scrollClassName,
+  onTranscriptScroll,
+  emptyState,
+  composer,
+  queuedMessages = [],
+  isCompressionActive = false,
+  plainAgentResponse = false,
+  forkSnapshotBoundaryIndex = -1,
+  activeForkSourceSessionId = null,
+  activeForkSourceTitle = null,
+  onSelectSession,
+  onOpenSource,
+  onOpenArtifact,
+  onOpenAuthSettings,
+  onNavigateToMessage,
+  onOpenMessageDetail,
+  onStopBridgeAgentRequest,
+  onStopActiveTurn,
+  onRequestBridgeContact,
+  onForkMessage,
+  messageForksByEntryId,
+  onOpenForkSession,
+  onReplyMessage,
+  onForwardMessage,
+  onSelectMessage,
+  onRequestPinMessage,
+  onRequestUnpinMessage,
+  pinnedMessageId,
+  selectionMode = false,
+  selectedMessageIds,
+  isMessageSelectable,
+  onToggleSelectedMessage,
+  onSelectionDragStart,
+  onSelectionDragEnter,
+  onSelectionDragEnd,
+  selectedMessageCount = 0,
+  onCancelMessageSelection,
+  onCopySelectedMessages,
+  onForwardSelectedMessages,
+  messageSelectionMode = false,
+}: ChatSessionPaneProps) {
+  return (
+    <>
+      <ScrollArea
+        ref={scrollRef}
+        className={scrollClassName}
+        onScroll={onTranscriptScroll}
+      >
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
+          {messages.length > 0 ? messages.map((msg, idx) => (
+            <Fragment key={transcriptMessageRenderKey(msg, idx)}>
+              <MessageBubble
+                msg={msg}
+                onOpenSource={onOpenSource}
+                onOpenArtifact={onOpenArtifact}
+                onOpenAuthSettings={onOpenAuthSettings}
+                onNavigateToMessage={onNavigateToMessage}
+                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                onRequestBridgeContact={onRequestBridgeContact}
+                onForkMessage={onForkMessage}
+                messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
+                onOpenForkSession={onOpenForkSession}
+                onReplyMessage={onReplyMessage}
+                onForwardMessage={onForwardMessage}
+                onOpenMessageDetail={onOpenMessageDetail}
+                onSelectMessage={onSelectMessage}
+                onRequestPinMessage={onRequestPinMessage}
+                onRequestUnpinMessage={onRequestUnpinMessage}
+                pinnedMessageId={pinnedMessageId}
+                selectionMode={selectionMode}
+                selectedMessageIds={selectedMessageIds}
+                isMessageSelectable={isMessageSelectable}
+                onToggleSelectedMessage={onToggleSelectedMessage}
+                onSelectionDragStart={onSelectionDragStart}
+                onSelectionDragEnter={onSelectionDragEnter}
+                onSelectionDragEnd={onSelectionDragEnd}
+                plainAgentResponse={plainAgentResponse}
+                isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(messages, idx, -1)}
+                isGroupedWithNext={isGroupedWithAdjacentHumanMessage(messages, idx, 1)}
+              />
+              {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
+                <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
+                  <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => onSelectSession?.(activeForkSourceSessionId)}
+                    disabled={!onSelectSession}
+                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
+                  >
+                    <Split className="h-3 w-3" />
+                    <span>Forked from conversation</span>
+                  </button>
+                  <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                </div>
+              ) : null}
+            </Fragment>
+          )) : !shouldRenderLiveTurn ? emptyState : null}
+          {shouldRenderLiveTurn && liveTurn ? (
+            <LiveChatTurnMessage
+              turn={liveTurn}
+              sender={liveTurnSender}
+              onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+              onStopActiveTurn={onStopActiveTurn}
+              plainAgentResponse={plainAgentResponse}
+              onNavigateToMessage={onNavigateToMessage}
+              onOpenArtifact={onOpenArtifact}
+              onOpenAuthSettings={onOpenAuthSettings}
+            />
+          ) : null}
+          {queuedMessages.map((message) => (
+            <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
+          ))}
+        </motion.div>
+      </ScrollArea>
+      {messageSelectionMode && selectedMessageCount > 0 ? (
+        <div className="px-5 pt-3">
+          <div
+            data-message-selection-bar="true"
+            className="app-message-selection-bar flex items-center justify-between gap-3 rounded-[22px] border border-[color:var(--app-control-border)] bg-[color:var(--app-modal-bg)] px-3.5 py-2.5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-[var(--app-glass-blur-float)]"
+          >
+            <div className="text-[12px] font-semibold tabular-nums">
+              {selectedMessageCount} selected
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)]"
+                onClick={onCancelMessageSelection}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[color:var(--utility-foreground)] transition hover:bg-[color:var(--app-control-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onCopySelectedMessages}
+                disabled={!onCopySelectedMessages || selectedMessageCount <= 0}
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                Copy
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--app-sidebar-accent)] px-3 py-1.5 text-[12px] font-semibold text-[color:var(--app-sidebar-accent-text)] transition disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={onForwardSelectedMessages}
+                disabled={!onForwardSelectedMessages || selectedMessageCount <= 0}
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                Forward
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {composer}
+    </>
+  );
+}
 
 type CompanionSide = 'left' | 'right';
 
@@ -569,6 +816,10 @@ type ChatsPageProps = {
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
   rightDetailRail?: ReactNode;
   detailRailWidth?: number;
+  activeDetailTab: DetailTab;
+  setActiveDetailTab: Dispatch<SetStateAction<DetailTab>>;
+  activeArtifactId: string | null;
+  setActiveArtifactId: Dispatch<SetStateAction<string | null>>;
   onDetailResizeMouseDown?: MouseEventHandler<HTMLDivElement>;
   activeConv: Conversation;
   chatConversations: Conversation[];
@@ -600,6 +851,7 @@ type ChatsPageProps = {
   onOpenArtifact: (artifactId: string) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   queuedDesktopMessages: QueuedDesktopChatMessage[];
+  queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
   filteredChatSlashCommands: DesktopChatSlashCommand[];
   filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
@@ -667,6 +919,10 @@ export function ChatsPage({
   setIsDetailPanelCollapsed,
   rightDetailRail,
   detailRailWidth = 344,
+  activeDetailTab,
+  setActiveDetailTab,
+  activeArtifactId,
+  setActiveArtifactId,
   onDetailResizeMouseDown,
   activeConv,
   chatConversations,
@@ -688,6 +944,7 @@ export function ChatsPage({
   onOpenArtifact,
   desktopLiveTurn,
   queuedDesktopMessages,
+  queuedDesktopMessagesBySession,
   filteredChatSlashCommands,
   filteredChatMentionTargets,
   chatSlashMenuIndex,
@@ -779,6 +1036,11 @@ export function ChatsPage({
   const [pinDialog, setPinDialog] = useState<{ mode: 'pin' | 'unpin'; message: Message } | null>(null);
   const [pinForEveryone, setPinForEveryone] = useState(false);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const companionTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
+  const companionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const [isCompanionDetailPanelCollapsed, setIsCompanionDetailPanelCollapsed] = useState(true);
+  const [companionActiveDetailTab, setCompanionActiveDetailTab] = useState<DetailTab>('info');
+  const [companionActiveArtifactId, setCompanionActiveArtifactId] = useState<string | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
@@ -844,6 +1106,7 @@ export function ChatsPage({
   const suggestedSideAgentConversation = selectedCompanionConversation ?? suggestedCompanionConversation;
   const companionConversation = chatSideAgentConversationForOpenRequest(openSideAgentConversationId, companionCandidates);
   const showCompanionPane = Boolean(companionConversation && !isCompanionFolded);
+  const showCompanionDetailRail = showRightDetailRail && Boolean(companionConversation);
   const companionDraftText = companionConversation ? companionDrafts[companionConversation.id] ?? '' : '';
   const activePaneKind = conversationPaneKind(activeConv);
   const canOpenSideAgentPanel = Boolean(suggestedSideAgentConversation || (activePaneKind === 'agent' && onCreateAgentSession));
@@ -1088,6 +1351,12 @@ export function ChatsPage({
     });
   }, [companionConversation, companionSuppressAgentReplyAttribution, companionTranscriptLiveTurn]);
   const companionTranscriptMessages = companionTranscript.messages;
+  const handleNavigateToCompanionTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
+    const targetMessageId = sourceMessage
+      ? resolveTranscriptMessageIdForSource(sourceMessage, companionTranscriptMessages)
+      : messageId;
+    navigateToTranscriptMessage(targetMessageId || messageId, companionTranscriptScrollRef);
+  }, [companionTranscriptMessages]);
   const attributedCompanionTranscriptLiveTurn = companionTranscript.liveTurn ?? companionTranscriptLiveTurn;
   const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const updateCompanionDropPreview = (event: DragEvent<HTMLElement>) => {
@@ -1134,12 +1403,13 @@ export function ChatsPage({
   };
   const sendCompanionDraft = (conversation: Conversation) => {
     const draft = companionDrafts[conversation.id] ?? '';
-    if (!draft.trim()) return;
+    if (!draft.trim() && chatComposerAttachments.length === 0) return;
     const referenceContextMessage = sideAgentReferenceContext
       ? buildAskAgentSessionReferenceContextMessage(activeConv, sideAgentReferenceContext)
       : null;
     const contextMessages = referenceContextMessage ? [referenceContextMessage] : [];
     onSendChatMessage(draft, conversation.id, contextMessages);
+    scheduleTranscriptScrollToBottom(companionTranscriptScrollRef);
     setCompanionDrafts((current) => {
       const next = { ...current };
       delete next[conversation.id];
@@ -1187,7 +1457,11 @@ export function ChatsPage({
       });
       return;
     }
+    const shouldJumpToSentMessage = draft.trim().length > 0 || chatComposerAttachments.length > 0;
     onSendChatMessage(draftOverride);
+    if (shouldJumpToSentMessage) {
+      scheduleTranscriptScrollToBottom(chatTranscriptScrollRef);
+    }
   };
   const updateSplitFromPointer = (clientX: number) => {
     const container = splitContainerRef.current;
@@ -1334,115 +1608,191 @@ export function ChatsPage({
           </button>
         </div>
       </div>
-      <ScrollArea className="h-full min-h-0 px-3 py-5">
-        <div className="space-y-1">
-          {companionTranscriptMessages.length > 0 ? companionTranscriptMessages.map((msg, idx) => (
-            <MessageBubble
-              key={transcriptMessageRenderKey(msg, idx)}
-              msg={msg}
-              onOpenSource={onOpenSource}
-              onOpenArtifact={onOpenArtifact}
-              onOpenAuthSettings={openAuthentication}
-              onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-              onRequestBridgeContact={onRequestBridgeContact}
-              onForkMessage={onForkChatMessage ? (entryId) => {
-                void onForkChatMessage(companionConversation.id, entryId);
-              } : undefined}
-              onOpenForkSession={onSelectSession}
-              plainAgentResponse={companionSuppressAgentReplyAttribution}
-              isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(companionTranscriptMessages, idx, -1)}
-              isGroupedWithNext={isGroupedWithAdjacentHumanMessage(companionTranscriptMessages, idx, 1)}
-            />
-          )) : !shouldRenderCompanionLiveTurn ? (
-            <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
-              No messages in this side chat yet.
-            </div>
-          ) : null}
-          {shouldRenderCompanionLiveTurn && attributedCompanionTranscriptLiveTurn ? (
-            <LiveChatTurnMessage
-              turn={attributedCompanionTranscriptLiveTurn}
-              sender={companionLiveTurnSender}
-              onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-              onStopActiveTurn={onStopDesktopChatTurn}
-              plainAgentResponse={companionSuppressAgentReplyAttribution}
-              onOpenArtifact={onOpenArtifact}
-              onOpenAuthSettings={openAuthentication}
-            />
-          ) : null}
-        </div>
-      </ScrollArea>
-      <div className="shrink-0 px-5 pb-4 pt-3" data-companion-composer-footer="true">
-        <div className="app-composer-shell rounded-[26px] p-3">
-          <div className="relative">
-            <div className="app-composer-input rounded-[18px] px-4 py-2.5">
-              <textarea
-                rows={1}
-                value={companionDraftText}
-                onPointerDown={(event) => event.stopPropagation()}
-                onChange={(event) => updateCompanionDraft(companionConversation.id, event.target.value, event.target)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
-                    event.preventDefault();
-                    sendCompanionDraft(companionConversation);
-                  }
-                }}
-                className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                placeholder={companionPaneKind === 'agent' ? 'Ask the agent…' : `Message ${companionConversation.name}`}
-                data-composer-scope="companion"
-              />
-            </div>
+      <ChatSessionPane
+        messages={companionTranscriptMessages}
+        liveTurn={attributedCompanionTranscriptLiveTurn}
+        liveTurnSender={companionLiveTurnSender}
+        shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
+        scrollRef={companionTranscriptScrollRef}
+        scrollClassName="h-full min-h-0 px-3 py-5"
+        queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
+        emptyState={(
+          <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
+            No messages in this side chat yet.
           </div>
-          <div className="app-composer-meta mt-2 flex items-center justify-between gap-3 overflow-hidden pt-2.5" data-companion-send-row="true">
-            <span className="h-9 w-9 shrink-0" aria-hidden="true" />
-            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden">
-              {companionShowsLocalAgentControls ? (
-                <div className="flex min-w-0 items-center justify-end gap-2 overflow-hidden" data-companion-model-controls="true">
-                  {isNativeShell || companionRuntimeContextStatus ? (
-                    <ComposerRuntimeStatus
-                      contextStatus={companionRuntimeContextStatus}
-                      cacheText={companionRuntimeCacheText}
-                    />
+        )}
+        plainAgentResponse={companionSuppressAgentReplyAttribution}
+        onOpenSource={onOpenSource}
+        onOpenArtifact={onOpenArtifact}
+        onOpenAuthSettings={openAuthentication}
+        onNavigateToMessage={handleNavigateToCompanionTranscriptMessage}
+        onOpenMessageDetail={onSelectMessage}
+        onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+        onStopActiveTurn={onStopDesktopChatTurn}
+        onRequestBridgeContact={onRequestBridgeContact}
+        onForkMessage={onForkChatMessage ? (entryId) => {
+          void onForkChatMessage(companionConversation.id, entryId);
+        } : undefined}
+        onOpenForkSession={onSelectSession}
+        onForwardMessage={onForwardMessage}
+        onSelectMessage={onSelectMessage}
+        rightDetailRail={rightDetailRail}
+        setIsDetailPanelCollapsed={setIsDetailPanelCollapsed}
+        composer={(
+          <ChatComposerShell
+            className="pt-3"
+            chatComposerAttachments={chatComposerAttachments}
+            saveDesktopAttachments={saveDesktopAttachments}
+            saveDesktopAttachmentPaths={saveDesktopAttachmentPaths}
+            removeChatComposerAttachment={removeChatComposerAttachment}
+            activeChatQuote={activeChatQuote}
+            onForwardMessage={onForwardMessage}
+            rightDetailRail={rightDetailRail}
+            setIsDetailPanelCollapsed={setIsDetailPanelCollapsed}
+          >
+            <div data-companion-composer-frame="true" className="shrink-0 px-5 pb-4 pt-3">
+              <div className="app-composer-shell rounded-[26px] p-3" data-companion-composer-footer="true">
+              <div className="relative">
+                <div
+                  className={cn(
+                    'app-composer-input rounded-[18px] transition',
+                    chatComposerAttachments.length > 0 ? 'px-3 pb-1.5 pt-1' : 'px-4 py-2.5',
+                  )}
+                >
+                  <input
+                    ref={companionAttachmentInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      if (files.length > 0) {
+                        void saveDesktopAttachments(files);
+                      }
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                  {chatComposerAttachments.length > 0 ? (
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                      {chatComposerAttachments.map((attachment) => (
+                        <div
+                          key={attachment.id}
+                          className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-2.5 text-[11px] text-[color:var(--utility-foreground)]"
+                        >
+                          {attachment.kind === 'image' ? <ImageIcon className="h-3.5 w-3.5 shrink-0 text-sky-300" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-slate-300" />}
+                          <span className="max-w-[220px] truncate leading-none">{attachment.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeChatComposerAttachment(attachment.id)}
+                            className="text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
+                            aria-label={`Remove ${attachment.name}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   ) : null}
-                  <div className="min-w-0 max-w-full overflow-hidden">
-                    <ComposerModelControls
-                      scope="chat"
-                      selection={composerSelection}
-                      openSelector={openComposerSelector}
-                      onToggleSelector={toggleComposerSelector}
-                      onSelectValue={(scope, type, value) => {
-                        void selectComposerValue(scope, type, value);
-                      }}
-                      authLabel={composerAuthLabel}
-                      authOptions={composerAuthOptions}
-                      onSelectAuthChoice={(scope, providerId, choice) => {
-                        void selectComposerAuthChoice(scope, providerId, choice);
-                      }}
-                      onSelectProviderChoice={(scope, option) => {
-                        void selectComposerProviderChoice(scope, option);
-                      }}
-                      providerOptions={composerProviderOptions}
-                      modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
-                    />
-                  </div>
+                  <textarea
+                    rows={1}
+                    value={companionDraftText}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onChange={(event) => updateCompanionDraft(companionConversation.id, event.target.value, event.target)}
+                    onPaste={(event) => {
+                      const files = extractClipboardFiles(event.clipboardData);
+                      if (files.length > 0) {
+                        event.preventDefault();
+                        void saveDesktopAttachments(files);
+                        return;
+                      }
+
+                      const pastedPaths = extractPastedLocalFilePaths(
+                        event.clipboardData.getData('text/plain'),
+                        event.clipboardData.getData('text/uri-list'),
+                      );
+                      if (pastedPaths.length > 0) {
+                        event.preventDefault();
+                        void saveDesktopAttachmentPaths(pastedPaths);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+                        event.preventDefault();
+                        sendCompanionDraft(companionConversation);
+                      }
+                    }}
+                    className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+                    placeholder={companionPaneKind === 'agent' ? 'Ask the agent…' : `Message ${companionConversation.name}`}
+                    data-composer-scope="chat"
+                  />
                 </div>
-              ) : null}
-              <Button
-                type="button"
-                size="icon"
-                variant="secondary"
-                onClick={() => sendCompanionDraft(companionConversation)}
-                className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
-                title={`Send to ${companionConversation.name}`}
-                aria-label={`Send to ${companionConversation.name}`}
-                disabled={!companionDraftText.trim()}
-                data-companion-send-control="true"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
+              </div>
+              <div data-companion-send-row="true" className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
+                <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="app-icon-button h-9 w-9 shrink-0 rounded-full border-0"
+                    onClick={() => companionAttachmentInputRef.current?.click()}
+                    title="Add attachment"
+                    aria-label="Add attachment"
+                    data-companion-attachment-control="true"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden">
+                  {companionShowsLocalAgentControls ? (
+                    <div className="flex min-w-0 items-center justify-end gap-2 overflow-hidden" data-companion-model-controls="true">
+                      {isNativeShell || companionRuntimeContextStatus ? (
+                        <ComposerRuntimeStatus
+                          contextStatus={companionRuntimeContextStatus}
+                          cacheText={companionRuntimeCacheText}
+                        />
+                      ) : null}
+                      <div className="min-w-0 max-w-full overflow-hidden">
+                        <ComposerModelControls
+                          scope="chat"
+                          selection={composerSelection}
+                          openSelector={openComposerSelector}
+                          onToggleSelector={toggleComposerSelector}
+                          onSelectValue={(scope, type, value) => {
+                            void selectComposerValue(scope, type, value);
+                          }}
+                          authLabel={composerAuthLabel}
+                          authOptions={composerAuthOptions}
+                          onSelectAuthChoice={(scope, providerId, choice) => {
+                            void selectComposerAuthChoice(scope, providerId, choice);
+                          }}
+                          onSelectProviderChoice={(scope, option) => {
+                            void selectComposerProviderChoice(scope, option);
+                          }}
+                          providerOptions={composerProviderOptions}
+                          modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    onClick={() => sendCompanionDraft(companionConversation)}
+                    className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
+                    title={`Send to ${companionConversation.name}`}
+                    aria-label={`Send to ${companionConversation.name}`}
+                    disabled={!companionDraftText.trim() && chatComposerAttachments.length === 0}
+                    data-companion-send-control="true"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+          </ChatComposerShell>
+        )}
+      />
     </aside>
   ) : null;
   const splitDivider = showCompanionPane && companionConversation ? (
@@ -1465,6 +1815,57 @@ export function ChatsPage({
       >
         <GripVertical className="h-4 w-4" />
       </span>
+    </div>
+  ) : null;
+  const companionDetailTabs = useMemo<Array<{ id: DetailTab; label: string }>>(() => [
+    { id: 'info', label: 'Info' },
+    { id: 'artifacts', label: 'Artifacts' },
+    { id: 'tasks', label: 'Tasks' },
+  ], []);
+  const companionArtifacts = useMemo(() => (
+    companionConversation
+      ? extractSessionArtifacts(companionConversation.messages, attributedCompanionTranscriptLiveTurn, companionConversation.reflectionLessonArtifacts)
+      : []
+  ), [attributedCompanionTranscriptLiveTurn, companionConversation]);
+  const companionInlineDetailRail = showCompanionDetailRail && !isCompanionDetailPanelCollapsed && companionConversation ? (
+    <div
+      className="relative h-full min-h-0 min-w-0 overflow-hidden border-l border-white/[0.06] bg-white/[0.025]"
+      style={{ width: detailRailWidth }}
+      data-chat-companion-detail-rail="true"
+    >
+      <RightDetailRail
+        detailTabs={companionDetailTabs}
+        activeDetailTab={companionActiveDetailTab}
+        onSelectDetailTab={(tab) => setCompanionActiveDetailTab(tab)}
+        activeSourcePreview={null}
+        onCloseSourcePreview={() => {}}
+      >
+        <ChatDetailPanel
+          isNativeShell={isNativeShell}
+          activeDetailTab={companionActiveDetailTab}
+          activeConv={companionConversation}
+          activeConvHasSubtitle={Boolean(formatSessionIdSubtitle(companionConversation.subtitle))}
+          activeLastMessage={companionConversation.messages[companionConversation.messages.length - 1]}
+          activeLiveTurn={attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.id || attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.canonicalSessionId ? attributedCompanionTranscriptLiveTurn : null}
+          activeConversationIsBridge={false}
+          activeBridgeConversationHostNodeId={null}
+          activeBridgeConversationHostUrl={null}
+          activeBridgeConversation={null}
+          activeBridgeAwaitingReply={false}
+          isBridgePolling={false}
+          lastBridgePollAtLabel={null}
+          activeSessionProject={null}
+          artifacts={companionArtifacts}
+          activeArtifactId={companionActiveArtifactId}
+          onSelectArtifact={setCompanionActiveArtifactId}
+          onOpenArtifact={(artifactId) => {
+            setCompanionActiveArtifactId(artifactId);
+            setCompanionActiveDetailTab('artifacts');
+          }}
+          onNavigateToResponse={handleNavigateToCompanionTranscriptMessage}
+          onOpenOutreachThread={onSelectSession}
+        />
+      </RightDetailRail>
     </div>
   ) : null;
   const ownInlineDetailRail = showRightDetailRail && !isDetailPanelCollapsed && Boolean(rightDetailRail);
@@ -1621,12 +2022,13 @@ export function ChatsPage({
   };
 
   const chatSplitGridColumns = (() => {
-    const detailColumn = ownInlineDetailRail ? ` ${detailRailWidth}px` : '';
-    if (!showCompanionPane) return ownInlineDetailRail ? `minmax(0, 1fr)${detailColumn}` : undefined;
+    const ownDetailColumn = ownInlineDetailRail ? ` ${detailRailWidth}px` : '';
+    const companionDetailColumn = companionInlineDetailRail ? ` ${detailRailWidth}px` : '';
+    if (!showCompanionPane) return ownInlineDetailRail ? `minmax(0, 1fr)${ownDetailColumn}` : undefined;
     if (companionSide === 'left') {
-      return `minmax(280px, ${splitLeftFraction}fr) 10px minmax(280px, ${1 - splitLeftFraction}fr)${detailColumn}`;
+      return `minmax(280px, ${splitLeftFraction}fr)${companionDetailColumn} 10px minmax(280px, ${1 - splitLeftFraction}fr)${ownDetailColumn}`;
     }
-    return `minmax(280px, ${splitLeftFraction}fr)${detailColumn} 10px minmax(280px, ${1 - splitLeftFraction}fr)`;
+    return `minmax(280px, ${splitLeftFraction}fr)${ownDetailColumn} 10px minmax(280px, ${1 - splitLeftFraction}fr)${companionDetailColumn}`;
   })();
 
   return (
@@ -1652,6 +2054,7 @@ export function ChatsPage({
         }}
       >
         {showCompanionPane && companionSide === 'left' ? companionPane : null}
+        {showCompanionPane && companionSide === 'left' ? companionInlineDetailRail : null}
         {showCompanionPane && companionSide === 'left' ? splitDivider : null}
         <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-active-side={companionSide === 'left' ? 'right' : 'left'}>
       <div className="app-page-header flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-2.5 shadow-[0_1px_0_color-mix(in_srgb,var(--app-text)_8%,transparent)]">
@@ -1796,78 +2199,59 @@ export function ChatsPage({
         />
       ) : null}
 
-        <ScrollArea
-          ref={chatTranscriptScrollRef}
-          className="min-h-0 flex-1 px-3.5 py-5 sm:px-4"
-          onScroll={onTranscriptScroll}
-        >
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-            {attributedTranscriptMessages.map((msg, idx) => (
-              <Fragment key={transcriptMessageRenderKey(msg, idx)}>
-                <MessageBubble
-                  msg={msg}
-                  onOpenSource={onOpenSource}
-                  onOpenArtifact={onOpenArtifact}
-                  onOpenAuthSettings={openAuthentication}
-                  onNavigateToMessage={handleNavigateToTranscriptMessage}
-                  onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-                  onRequestBridgeContact={onRequestBridgeContact}
-                  onForkMessage={handleForkMessage}
-                  messageForks={msg.entryId ? messageForksByEntryId.get(msg.entryId) : undefined}
-                  onOpenForkSession={onSelectSession}
-                  onReplyMessage={onReplyMessage}
-                  onForwardMessage={onForwardMessage}
-                  onSelectMessage={onSelectMessage}
-                  onRequestPinMessage={requestPinMessage}
-                  onRequestUnpinMessage={requestUnpinMessage}
-                  pinnedMessageId={pinnedMessageId}
-                  selectionMode={messageSelectionMode}
-                  selectedMessageIds={selectedMessageIds}
-                  isMessageSelectable={isMessageSelectable}
-                  onToggleSelectedMessage={onToggleSelectedMessage}
-                  onSelectionDragStart={onSelectionDragStart}
-                  onSelectionDragEnter={onSelectionDragEnter}
-                  onSelectionDragEnd={onSelectionDragEnd}
-                  plainAgentResponse={suppressAgentReplyAttribution}
-                  isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, -1)}
-                  isGroupedWithNext={isGroupedWithAdjacentHumanMessage(attributedTranscriptMessages, idx, 1)}
-                />
-                {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
-                  <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
-                    <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                    <button
-                      type="button"
-                      onClick={() => onSelectSession?.(activeForkSourceSessionId)}
-                      disabled={!onSelectSession}
-                      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
-                      title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
-                    >
-                      <Split className="h-3 w-3" />
-                      <span>Forked from conversation</span>
-                    </button>
-                    <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                  </div>
-                ) : null}
-              </Fragment>
-            ))}
-            {shouldRenderLiveTurn && attributedActiveTranscriptLiveTurn ? (
-              <LiveChatTurnMessage
-                turn={attributedActiveTranscriptLiveTurn}
-                sender={liveTurnSender}
-                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-                onStopActiveTurn={onStopDesktopChatTurn}
-                plainAgentResponse={suppressAgentReplyAttribution}
-                onNavigateToMessage={handleNavigateToTranscriptMessage}
-                onOpenArtifact={onOpenArtifact}
-                onOpenAuthSettings={openAuthentication}
-              />
-            ) : null}
-            {queuedDesktopMessages.map((message) => (
-              <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
-            ))}
-          </motion.div>
-        </ScrollArea>
-
+      <ChatSessionPane
+        messages={attributedTranscriptMessages}
+        liveTurn={attributedActiveTranscriptLiveTurn}
+        liveTurnSender={liveTurnSender}
+        shouldRenderLiveTurn={shouldRenderLiveTurn}
+        scrollRef={chatTranscriptScrollRef}
+        scrollClassName="min-h-0 flex-1 px-3.5 py-5 sm:px-4"
+        onTranscriptScroll={onTranscriptScroll}
+        queuedMessages={queuedDesktopMessages}
+        isCompressionActive={isCompressionActive}
+        plainAgentResponse={suppressAgentReplyAttribution}
+        forkSnapshotBoundaryIndex={forkSnapshotBoundaryIndex}
+        activeForkSourceSessionId={activeForkSourceSessionId}
+        activeForkSourceTitle={activeForkSourceTitle}
+        onSelectSession={onSelectSession}
+        onOpenSource={onOpenSource}
+        onOpenArtifact={onOpenArtifact}
+        onOpenAuthSettings={openAuthentication}
+        onNavigateToMessage={handleNavigateToTranscriptMessage}
+        onOpenMessageDetail={onSelectMessage}
+        onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+        onStopActiveTurn={onStopDesktopChatTurn}
+        onRequestBridgeContact={onRequestBridgeContact}
+        onForkMessage={handleForkMessage}
+        messageForksByEntryId={messageForksByEntryId}
+        onOpenForkSession={onSelectSession}
+        onReplyMessage={onReplyMessage}
+        onForwardMessage={onForwardMessage}
+        onSelectMessage={onSelectMessage}
+        onRequestPinMessage={requestPinMessage}
+        onRequestUnpinMessage={requestUnpinMessage}
+        pinnedMessageId={pinnedMessageId}
+        selectionMode={messageSelectionMode}
+        selectedMessageIds={selectedMessageIds}
+        isMessageSelectable={isMessageSelectable}
+        onToggleSelectedMessage={onToggleSelectedMessage}
+        onSelectionDragStart={onSelectionDragStart}
+        onSelectionDragEnter={onSelectionDragEnter}
+        onSelectionDragEnd={onSelectionDragEnd}
+        rightDetailRail={rightDetailRail}
+        setIsDetailPanelCollapsed={setIsDetailPanelCollapsed}
+        composer={(
+          <ChatComposerShell
+            chatComposerAttachments={chatComposerAttachments}
+            saveDesktopAttachments={saveDesktopAttachments}
+            saveDesktopAttachmentPaths={saveDesktopAttachmentPaths}
+            removeChatComposerAttachment={removeChatComposerAttachment}
+            activeChatQuote={activeChatQuote}
+            onForwardMessage={onForwardMessage}
+            onOpenMessageDetail={onSelectMessage}
+            rightDetailRail={rightDetailRail}
+            setIsDetailPanelCollapsed={setIsDetailPanelCollapsed}
+          >
       <div className="shrink-0 px-5 pb-4 pt-3">
         {messageSelectionMode && selectedMessageCount > 0 ? (
           <div
@@ -2237,6 +2621,9 @@ export function ChatsPage({
           </div>
         </div>
       </div>
+          </ChatComposerShell>
+        )}
+      />
         </section>
         {inlineDetailRail}
         {pinDialog ? (
@@ -2251,6 +2638,7 @@ export function ChatsPage({
         ) : null}
         {showCompanionPane && companionSide === 'right' ? splitDivider : null}
         {showCompanionPane && companionSide === 'right' ? companionPane : null}
+        {showCompanionPane && companionSide === 'right' ? companionInlineDetailRail : null}
       </div>
     </div>
   );

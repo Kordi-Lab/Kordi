@@ -2589,6 +2589,7 @@ export function useKordiAppModel({
     lastBridgePollAtLabel,
     activeSessionProject,
     activeQueuedDesktopMessages,
+    queuedDesktopMessagesBySession,
     showAuthGate,
     dismissAuthGate,
     inlineAuthDialog,

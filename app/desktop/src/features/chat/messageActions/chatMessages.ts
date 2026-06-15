@@ -296,12 +296,14 @@ export function queuedDesktopChatMessageFromDraft({
   time,
   attachments,
   scope = 'chat',
+  contextMessages,
 }: {
   sessionId: string;
   text: string;
   time: string;
   attachments: QueuedDesktopChatMessage['attachments'];
   scope?: QueuedDesktopChatMessage['scope'];
+  contextMessages?: DesktopChatContextMessage[];
 }): QueuedDesktopChatMessage {
   const timestamp = Date.now();
   const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -314,6 +316,7 @@ export function queuedDesktopChatMessageFromDraft({
     text,
     time,
     attachments,
+    ...(contextMessages && contextMessages.length > 0 ? { contextMessages } : null),
   };
 }
 
@@ -824,12 +827,13 @@ export function useChatMessageActions({
     return message;
   }, [setQueuedDesktopMessagesBySessionNow]);
 
-  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments']) => {
+  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments'], contextMessages: DesktopChatContextMessage[] = []) => {
     const queuedMessage = queuedDesktopChatMessageFromDraft({
       sessionId,
       text: draftText,
       time: formatDesktopEventTime(),
       attachments,
+      contextMessages,
     });
     enqueueLocalQueuedMessage(queuedMessage);
     shouldAutoFollowChatRef.current = true;
@@ -878,7 +882,7 @@ export function useChatMessageActions({
       setDesktopChatError(null);
       const attachmentPaths = message.attachments.map((item) => item.path);
       const previewText = attachmentSummaryText(message.text);
-      const turn = await startDesktopChatMessage(message.sessionId, message.text, attachmentPaths);
+      const turn = await startDesktopChatMessage(message.sessionId, message.text, attachmentPaths, null, message.contextMessages ?? []);
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         message.sessionId,
         canonicalHumanIdentityId,
@@ -925,10 +929,149 @@ export function useChatMessageActions({
     flushQueuedDesktopMessagesForSessionRef.current(activeConvId);
   }, [activeConvId, activeConversationIsBridge, desktopLiveTurn, isNativeShell, localChatSendInFlightRef, queuedDesktopMessagesBySession]);
 
+  const sendLocalAgentChatMessage = useCallback(async ({
+    targetConversationId,
+    canonicalSessionId,
+    text,
+    attachments,
+    sentAt,
+    quote,
+    contextMessages,
+    clearDraftSessionIds,
+    materializedState,
+    setSendingState,
+  }: {
+    targetConversationId: string;
+    canonicalSessionId: string;
+    text: string;
+    attachments: typeof chatComposerAttachments;
+    sentAt: string;
+    quote: typeof activeChatQuote;
+    contextMessages: DesktopChatContextMessage[];
+    clearDraftSessionIds: string[];
+    materializedState?: DesktopChatState | null;
+    setSendingState: boolean;
+  }) => {
+    if (setSendingState) setIsDesktopChatSending(true);
+    shouldAutoFollowChatRef.current = true;
+    setDesktopChatError(null);
+    setPendingUserChatMessage(null);
+    const attachmentPaths = attachments.map((item) => item.path);
+    const previewText = attachmentSummaryText(text);
+    const preparedCanonicalMessage = prepareCanonicalUserMessage(
+      canonicalSessionId,
+      canonicalHumanIdentityId,
+      text,
+      attachments,
+      sentAt,
+      'desktop-chat-ui',
+      'sending',
+      [],
+      quote,
+    );
+
+    setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
+    setDesktopChatState((current) => {
+      const baseState = materializedState && current?.activeSessionId !== targetConversationId
+        ? materializedState
+        : current;
+      if (!baseState) return current;
+      return appendOptimisticOutboundMessage(baseState, targetConversationId, previewText, text, attachments, sentAt, [], quote);
+    });
+    setComposerDrafts((current: ComposerDraftState) => (
+      clearDraftSessionIds.reduce(
+        (next, sessionId) => updateScopeDraft(next, 'chat', sessionId, ''),
+        current,
+      )
+    ));
+    setChatComposerAttachments([]);
+    resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+
+    try {
+      await persistCanonicalUserMessage(preparedCanonicalMessage);
+      const turn = await startDesktopChatMessage(targetConversationId, text, attachmentPaths, null, contextMessages);
+      watchLocalTurnAndFlushQueue(turn, async (finalTurn) => {
+        const noProviderFailure = isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message || finalTurn.assistantText);
+        if (!noProviderFailure || !preparedCanonicalMessage) return;
+        const sentUserRequest = {
+          ...preparedCanonicalMessage.request,
+          status: 'sent',
+          content: {
+            ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
+            deliveryState: 'sent',
+          },
+        };
+        try {
+          const stateAfterUser = await upsertCanonicalMessage(sentUserRequest);
+          const failedReplyRequest = canonicalNoProviderFailedAgentMessageRequest({
+            state: stateAfterUser ?? canonicalSessionState,
+            sessionId: canonicalSessionId,
+            requestMessageId: preparedCanonicalMessage.messageId,
+          });
+          const nextState = failedReplyRequest ? await appendCanonicalMessage(failedReplyRequest) : stateAfterUser;
+          if (nextState) setCanonicalSessionState(nextState);
+        } catch (error) {
+          setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+            current,
+            canonicalSessionId,
+            preparedCanonicalMessage.messageId,
+            cloudAgentNoProviderNoticeText(),
+          ));
+          setDesktopChatError(error instanceof Error ? error.message : 'Unable to save provider notice');
+        }
+      });
+      if (setSendingState) setIsDesktopChatSending(false);
+    } catch (error) {
+      setPendingUserChatMessage(null);
+      if (localChatSendInFlightRef.current?.sessionId === targetConversationId) {
+        localChatSendInFlightRef.current = null;
+      }
+      if (setSendingState) setIsDesktopChatSending(false);
+      if (isCloudAgentNoProviderConfiguredError(error) && preparedCanonicalMessage) {
+        setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+          current,
+          canonicalSessionId,
+          preparedCanonicalMessage.messageId,
+          cloudAgentNoProviderNoticeText(),
+        ));
+        setDesktopChatError(null);
+        return;
+      }
+      const failureDetail = error instanceof Error ? error.message : 'Unable to send chat message';
+      setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+        current,
+        canonicalSessionId,
+        preparedCanonicalMessage?.messageId ?? null,
+        failureDetail,
+      ));
+      void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
+        .catch((saveError: unknown) => {
+          setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+        });
+      setDesktopChatError(failureDetail);
+    }
+  }, [
+    activeChatQuote,
+    attachmentSummaryText,
+    canonicalHumanIdentityId,
+    canonicalSessionState,
+    chatComposerAttachments,
+    localChatSendInFlightRef,
+    setCanonicalSessionState,
+    setChatComposerAttachments,
+    setComposerDrafts,
+    setDesktopChatError,
+    setDesktopChatState,
+    setIsDesktopChatSending,
+    setPendingUserChatMessage,
+    shouldAutoFollowChatRef,
+    watchLocalTurnAndFlushQueue,
+  ]);
+
   const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string, contextMessages: DesktopChatContextMessage[] = []) => {
     if (!isNativeShell) return;
     const text = rawText.trim();
-    if (!text) return;
+    if (!text && chatComposerAttachments.length === 0) return;
 
     const targetConversation = chatConversations.find((conversation) => (
       conversation.id === targetSessionId || conversation.canonicalSessionId === targetSessionId
@@ -1053,41 +1196,45 @@ export function useChatMessageActions({
       return;
     }
 
-    try {
-      const delayReason = localChatSendDelayReason({
-        inFlight: localChatSendInFlightRef.current,
-        targetSessionId: targetConversation.id,
-        desktopLiveTurn: null,
-      });
-      if (delayReason) {
-        setDesktopChatError('Kordi is still preparing this session. Your draft is preserved.');
-        return;
-      }
-      localChatSendInFlightRef.current = { sessionId: targetConversation.id };
-      shouldAutoFollowChatRef.current = true;
-      setDesktopChatError(null);
-      const previewText = attachmentSummaryText(text);
-      const turn = await startDesktopChatMessage(targetConversation.id, text, [], null, contextMessages);
-      setDesktopChatState((current) => current
-        ? appendOptimisticOutboundMessage(current, targetConversation.id, previewText, text, [], sentAt)
-        : current);
-      clearTargetDraft();
-      watchLocalTurnAndFlushQueue(turn);
-    } catch (error) {
-      if (localChatSendInFlightRef.current?.sessionId === targetConversation.id) {
-        localChatSendInFlightRef.current = null;
-      }
-      setDesktopChatError(error instanceof Error ? error.message : 'Unable to send side chat message');
+    const delayReason = localChatSendDelayReason({
+      inFlight: localChatSendInFlightRef.current,
+      targetSessionId: targetConversation.id,
+      desktopLiveTurn: null,
+    });
+    if (delayReason === 'same-session-running') {
+      queueLocalDraftForSession(targetConversation.id, text, chatComposerAttachments, contextMessages);
+      return;
     }
+    if (delayReason) {
+      setDesktopChatError('Kordi is still preparing this session. Your draft is preserved.');
+      return;
+    }
+    localChatSendInFlightRef.current = { sessionId: targetConversation.id };
+    await sendLocalAgentChatMessage({
+      targetConversationId: targetConversation.id,
+      canonicalSessionId: targetConversation.canonicalSessionId ?? targetConversation.id,
+      text,
+      attachments: chatComposerAttachments,
+      sentAt,
+      quote: activeChatQuote,
+      contextMessages,
+      clearDraftSessionIds: [targetConversation.id],
+      setSendingState: false,
+    });
+    clearTargetDraft();
   }, [
+    activeChatQuote,
     attachmentSummaryText,
     canonicalHumanIdentityId,
+    chatComposerAttachments,
     chatConversations,
     desktopBridgeState,
     isNativeShell,
     localChatSendInFlightRef,
+    queueLocalDraftForSession,
     sendCloudBridgeMessage,
     sendCloudGroupControl,
+    sendLocalAgentChatMessage,
     setCanonicalSessionState,
     setCloudBridgeState,
     setComposerDrafts,
@@ -1457,11 +1604,10 @@ export function useChatMessageActions({
       localChatSendInFlightRef.current = { sessionId: resolvedSessionId };
 
       const sentAt = formatDesktopEventTime();
-      const attachmentPaths = chatComposerAttachments.map((item) => item.path);
       const previewText = attachmentSummaryText(text);
       const restoredCloudContextMessages = restoredCloudSelfAgentContextMessages(activeConvMessages);
       setPendingUserChatMessage(null);
-      const parentSessionIdForMessage = activeConvCanonicalSessionId ?? resolvedSessionId;
+      const parentSessionIdForMessage = targetSessionId ?? activeConvCanonicalSessionId ?? resolvedSessionId;
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         parentSessionIdForMessage,
         canonicalHumanIdentityId,
@@ -1562,80 +1708,18 @@ export function useChatMessageActions({
         }, 450);
         return;
       }
-      setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-      setDesktopChatState((current) => {
-        const baseState = materializedState && current?.activeSessionId !== resolvedSessionId
-          ? materializedState
-          : current;
-        if (!baseState) {
-          return current;
-        }
-        return appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, chatComposerAttachments, sentAt, [], activeChatQuote);
+      await sendLocalAgentChatMessage({
+        targetConversationId: resolvedSessionId,
+        canonicalSessionId: parentSessionIdForMessage,
+        text,
+        attachments: chatComposerAttachments,
+        sentAt,
+        quote: activeChatQuote,
+        contextMessages: restoredCloudContextMessages,
+        clearDraftSessionIds: chatDraftSessionIdsToClearForSend(activeConvId, resolvedSessionId),
+        materializedState,
+        setSendingState: true,
       });
-      setComposerDrafts((current: ComposerDraftState) => (
-        chatDraftSessionIdsToClearForSend(activeConvId, resolvedSessionId).reduce(
-          (next, sessionId) => updateScopeDraft(next, 'chat', sessionId, ''),
-          current,
-        )
-      ));
-      setChatComposerAttachments([]);
-      resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-      void persistCanonicalUserMessage(preparedCanonicalMessage)
-        .catch((error: unknown) => {
-          setDesktopChatError(error instanceof Error ? error.message : 'Unable to save message');
-        })
-        .then(() => startDesktopChatMessage(resolvedSessionId, text, attachmentPaths, null, restoredCloudContextMessages))
-        .then((turn) => {
-          watchLocalTurnAndFlushQueue(turn, async (finalTurn) => {
-            const noProviderFailure = isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message || finalTurn.assistantText);
-            if (!noProviderFailure || !activeConvCanonicalSessionId || !preparedCanonicalMessage) return;
-            const sentUserRequest = {
-              ...preparedCanonicalMessage.request,
-              status: 'sent',
-              content: {
-                ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
-                deliveryState: 'sent',
-              },
-            };
-            try {
-              const stateAfterUser = await upsertCanonicalMessage(sentUserRequest);
-              const failedReplyRequest = canonicalNoProviderFailedAgentMessageRequest({
-                state: stateAfterUser ?? canonicalSessionState,
-                sessionId: activeConvCanonicalSessionId,
-                requestMessageId: preparedCanonicalMessage.messageId,
-              });
-              const nextState = failedReplyRequest ? await appendCanonicalMessage(failedReplyRequest) : stateAfterUser;
-              if (nextState) setCanonicalSessionState(nextState);
-            } catch (error) {
-              setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
-                current,
-                activeConvCanonicalSessionId,
-                preparedCanonicalMessage.messageId,
-                cloudAgentNoProviderNoticeText(),
-              ));
-              setDesktopChatError(error instanceof Error ? error.message : 'Unable to save provider notice');
-            }
-          });
-          setIsDesktopChatSending(false);
-        })
-        .catch((error: unknown) => {
-          setPendingUserChatMessage(null);
-          if (localChatSendInFlightRef.current?.sessionId === resolvedSessionId) {
-            localChatSendInFlightRef.current = null;
-          }
-          setIsDesktopChatSending(false);
-          if (isCloudAgentNoProviderConfiguredError(error) && activeConvCanonicalSessionId && preparedCanonicalMessage) {
-            setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
-              current,
-              activeConvCanonicalSessionId,
-              preparedCanonicalMessage.messageId,
-              cloudAgentNoProviderNoticeText(),
-            ));
-            setDesktopChatError(null);
-            return;
-          }
-          setDesktopChatError(error instanceof Error ? error.message : 'Unable to send chat message');
-        });
     } catch (error) {
       setPendingUserChatMessage(null);
       localChatSendInFlightRef.current = null;
