@@ -60,7 +60,8 @@ test('chat and project header utility buttons follow flat chip styling without s
   const chatSource = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   const projectSource = readFileSync(new URL('../src/pages/ProjectsPage.tsx', import.meta.url), 'utf8');
   const askAgentButton = chatSource.slice(chatSource.indexOf('aria-label="Ask Agent"') - 360, chatSource.indexOf('aria-label="Ask Agent"') + 180);
-  const chatDetailsButton = chatSource.slice(chatSource.indexOf('aria-label={isDetailPanelCollapsed') - 260, chatSource.indexOf('aria-label={isDetailPanelCollapsed') + 180);
+  const mainChatDetailButtonStart = chatSource.indexOf('className="app-utility-button', chatSource.indexOf('aria-label="Ask Agent"'));
+  const chatDetailsButton = chatSource.slice(mainChatDetailButtonStart - 120, mainChatDetailButtonStart + 320);
   const projectDetailsButton = projectSource.slice(projectSource.indexOf('aria-label={isDetailPanelCollapsed') - 260, projectSource.indexOf('aria-label={isDetailPanelCollapsed') + 180);
 
   assert.doesNotMatch(`${askAgentButton}\n${chatDetailsButton}\n${projectDetailsButton}`, /border-pink|bg-white\/\[0\.06\]|text-pink|text-slate-100/);
@@ -266,7 +267,7 @@ test('chat companion split controls live on the divider instead of floating over
 test('ask agent opens an explicit side session with neutral copy and clean header', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   const sidePanelStart = source.indexOf('data-chat-side-agent-panel="true"');
-  const sidePanelHeader = source.slice(sidePanelStart, source.indexOf('<ScrollArea', sidePanelStart));
+  const sidePanelHeader = source.slice(sidePanelStart, source.indexOf('<ChatSessionPane', sidePanelStart));
 
   assert.doesNotMatch(sidePanelHeader, /<GripVertical/);
   assert.match(source, /Ask Agent/);
@@ -294,7 +295,9 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
   assert.doesNotMatch(source, /data-chat-side-detail-rail/);
   assert.doesNotMatch(source, /setIsCompanionDetailOpen/);
   assert.doesNotMatch(source, /CHAT_SIDE_DETAIL_TABS/);
-  assert.match(source, /app-composer-meta mt-2 flex items-center justify-between gap-3 overflow-hidden pt-2\.5" data-companion-send-row="true"/);
+  assert.match(source, /data-companion-send-row="true" className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2\.5"/);
+  assert.doesNotMatch(sidePanelHeader, /data-side-chat-session-detail-toggle="true"/);
+  assert.match(source, /data-companion-attachment-control="true"/);
   assert.doesNotMatch(source, /shrink-0 border-t border-white\/\[0\.06\] px-5 pb-4 pt-3/);
   assert.doesNotMatch(source, /bg-\[#1f1f1f\]/);
   assert.match(source, /data-side-chat-options-menu="true"[^>]+bg-\[var\(--app-modal-bg\)\]/s);
@@ -365,7 +368,7 @@ test('ask agent side transcript renders the same live turn and tool UI as My age
   assert.match(source, /suppressLiveTurnEchoMessages\(\s*companionConversation\.messages, companionTranscriptLiveTurn/s);
   assert.match(source, /buildReplyAttribution\(messages, companionTranscriptLiveTurn/);
   assert.match(source, /attributedCompanionTranscriptLiveTurn/);
-  assert.match(source, /<LiveChatTurnMessage[\s\S]*turn=\{attributedCompanionTranscriptLiveTurn\}/);
+  assert.match(source, /<ChatSessionPane[\s\S]*liveTurn=\{attributedCompanionTranscriptLiveTurn\}/);
 });
 
 test('human panes do not show agent model controls while agent side panes use agent placeholder', () => {

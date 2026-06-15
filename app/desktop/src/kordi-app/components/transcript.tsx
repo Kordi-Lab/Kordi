@@ -432,6 +432,7 @@ function MessageContextMenuAction({ icon, label, action, onClick }: { icon: Reac
 export type MessageContextMenuActionHandlers = {
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onOpenMessageDetail?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;
   onRequestUnpinMessage?: (message: Message) => void;
@@ -464,6 +465,7 @@ export function MessageContextMenuContent({
   onClose,
   onReplyMessage,
   onForwardMessage,
+  onOpenMessageDetail,
   onSelectMessage,
   onRequestPinMessage,
   onRequestUnpinMessage,
@@ -491,6 +493,10 @@ export function MessageContextMenuContent({
     onForwardMessage?.(msg);
     onClose?.();
   };
+  const handleOpenDetails = () => {
+    onOpenMessageDetail?.(msg);
+    onClose?.();
+  };
   const handleSelect = () => {
     onSelectMessage?.(msg);
     onClose?.();
@@ -515,6 +521,7 @@ export function MessageContextMenuContent({
         ) : null}
         {copyableText ? <MessageContextMenuAction action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} /> : null}
         {actionEligible ? <MessageContextMenuAction action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={handleForward} /> : null}
+        {actionEligible && onOpenMessageDetail ? <MessageContextMenuAction action="details" icon={<SquareArrowOutUpRight className="h-4 w-4" />} label="Details" onClick={handleOpenDetails} /> : null}
         {actionEligible ? <MessageContextMenuAction action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={handleSelect} /> : null}
         <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
       </div>
@@ -758,6 +765,7 @@ function MessageBubbleView({
   onOpenForkSession,
   onReplyMessage,
   onForwardMessage,
+  onOpenMessageDetail,
   onSelectMessage,
   onRequestPinMessage,
   onRequestUnpinMessage,
@@ -785,6 +793,7 @@ function MessageBubbleView({
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onOpenMessageDetail?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;
   onRequestUnpinMessage?: (message: Message) => void;
@@ -798,7 +807,7 @@ function MessageBubbleView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(msg.sender);
   const selectionId = messageSelectionId(msg);
   const isPinned = Boolean(selectionId && pinnedMessageId === selectionId);
-  const menuActionHandlers = { onReplyMessage, onForwardMessage, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, isPinned };
+  const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, isPinned };
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
@@ -1402,6 +1411,7 @@ export const MessageBubble = memo(
     && previous.onOpenForkSession === next.onOpenForkSession
     && previous.onReplyMessage === next.onReplyMessage
     && previous.onForwardMessage === next.onForwardMessage
+    && previous.onOpenMessageDetail === next.onOpenMessageDetail
     && previous.onSelectMessage === next.onSelectMessage
     && previous.onRequestPinMessage === next.onRequestPinMessage
     && previous.onRequestUnpinMessage === next.onRequestUnpinMessage
