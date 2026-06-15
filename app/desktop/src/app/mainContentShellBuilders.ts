@@ -202,6 +202,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     },
     desktopLiveTurn: args.desktopLiveTurn,
     queuedDesktopMessages: args.activeQueuedDesktopMessages,
+    queuedDesktopMessagesBySession: args.queuedDesktopMessagesBySession,
     filteredChatSlashCommands: args.filteredChatSlashCommands,
     filteredChatMentionTargets: args.filteredChatMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,

@@ -276,6 +276,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeBridgeConversation: args.activeBridgeConversation,
       activeBridgeAwaitingReply: args.activeBridgeAwaitingReply,
       activeQueuedDesktopMessages: args.activeQueuedDesktopMessages,
+      queuedDesktopMessagesBySession: args.queuedDesktopMessagesBySession,
       lastBridgePollAtLabel: args.lastBridgePollAtLabel,
       isBridgePolling: args.isBridgePolling,
     },

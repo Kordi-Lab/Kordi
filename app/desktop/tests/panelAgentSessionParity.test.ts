@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 const chatsPageSource = () => readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
+const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
 
 function blockBetween(source: string, startNeedle: string, endNeedle: string): string {
   const start = source.indexOf(startNeedle);
@@ -113,6 +114,26 @@ test('sending from main or side-panel chat schedules a jump to the sent message'
   assert.notEqual(createSideStart, -1, 'side-panel send block should have an end boundary');
   const sideSendBlock = source.slice(sideSendStart, createSideStart);
   assert.match(sideSendBlock, /scheduleTranscriptScrollToBottom\(companionTranscriptScrollRef\)/, 'side-panel send should jump its own transcript to the new message');
+});
+
+test('side-panel queued local-agent sends preserve draft visibility and reference context while a turn is running', () => {
+  const chatsSource = chatsPageSource();
+  const actionsSource = chatMessagesSource();
+  const typesSource = messageTypesSource();
+
+  const side = sidePanelBlock(chatsSource);
+  assert.match(side, /queuedMessages=\{queuedDesktopMessagesBySession\[companionConversation\.id\] \?\? \[\]\}/, 'side-panel transcript should render queued drafts for its own session');
+
+  assert.match(typesSource, /contextMessages\?: DesktopChatContextMessage\[\]/, 'queued local messages should preserve optional side Agent reference context');
+
+  const targetedStart = actionsSource.indexOf('const sendTargetedChatMessage = useCallback');
+  const activeStart = actionsSource.indexOf('return useCallback', targetedStart);
+  assert.notEqual(targetedStart, -1, 'targeted side-panel send path should exist');
+  assert.notEqual(activeStart, -1, 'active send path should exist after targeted send path');
+  const targetedSendBlock = actionsSource.slice(targetedStart, activeStart);
+  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetConversation\.id, text, chatComposerAttachments, contextMessages\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
+  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*return;[\s\S]*\}\s*if \(delayReason\) \{[\s\S]*Kordi is still preparing this session/, 'side-panel send should only fall back to the preparing error after the same-session queue case');
+  assert.match(actionsSource, /startDesktopChatMessage\(message\.sessionId, message\.text, attachmentPaths, null, message\.contextMessages \?\? \[\]\)/, 'flushing queued side messages should send their preserved reference context');
 });
 
 test('side-panel local-agent sends use the shared local send pipeline instead of duplicating optimistic persistence', () => {

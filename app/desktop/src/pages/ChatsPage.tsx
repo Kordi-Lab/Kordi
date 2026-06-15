@@ -851,6 +851,7 @@ type ChatsPageProps = {
   onOpenArtifact: (artifactId: string) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   queuedDesktopMessages: QueuedDesktopChatMessage[];
+  queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
   filteredChatSlashCommands: DesktopChatSlashCommand[];
   filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
@@ -943,6 +944,7 @@ export function ChatsPage({
   onOpenArtifact,
   desktopLiveTurn,
   queuedDesktopMessages,
+  queuedDesktopMessagesBySession,
   filteredChatSlashCommands,
   filteredChatMentionTargets,
   chatSlashMenuIndex,
@@ -1613,6 +1615,7 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
         scrollRef={companionTranscriptScrollRef}
         scrollClassName="h-full min-h-0 px-3 py-5"
+        queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
         emptyState={(
           <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
             No messages in this side chat yet.

@@ -296,12 +296,14 @@ export function queuedDesktopChatMessageFromDraft({
   time,
   attachments,
   scope = 'chat',
+  contextMessages,
 }: {
   sessionId: string;
   text: string;
   time: string;
   attachments: QueuedDesktopChatMessage['attachments'];
   scope?: QueuedDesktopChatMessage['scope'];
+  contextMessages?: DesktopChatContextMessage[];
 }): QueuedDesktopChatMessage {
   const timestamp = Date.now();
   const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -314,6 +316,7 @@ export function queuedDesktopChatMessageFromDraft({
     text,
     time,
     attachments,
+    ...(contextMessages && contextMessages.length > 0 ? { contextMessages } : null),
   };
 }
 
@@ -824,12 +827,13 @@ export function useChatMessageActions({
     return message;
   }, [setQueuedDesktopMessagesBySessionNow]);
 
-  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments']) => {
+  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments'], contextMessages: DesktopChatContextMessage[] = []) => {
     const queuedMessage = queuedDesktopChatMessageFromDraft({
       sessionId,
       text: draftText,
       time: formatDesktopEventTime(),
       attachments,
+      contextMessages,
     });
     enqueueLocalQueuedMessage(queuedMessage);
     shouldAutoFollowChatRef.current = true;
@@ -878,7 +882,7 @@ export function useChatMessageActions({
       setDesktopChatError(null);
       const attachmentPaths = message.attachments.map((item) => item.path);
       const previewText = attachmentSummaryText(message.text);
-      const turn = await startDesktopChatMessage(message.sessionId, message.text, attachmentPaths);
+      const turn = await startDesktopChatMessage(message.sessionId, message.text, attachmentPaths, null, message.contextMessages ?? []);
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         message.sessionId,
         canonicalHumanIdentityId,
@@ -1197,6 +1201,10 @@ export function useChatMessageActions({
       targetSessionId: targetConversation.id,
       desktopLiveTurn: null,
     });
+    if (delayReason === 'same-session-running') {
+      queueLocalDraftForSession(targetConversation.id, text, chatComposerAttachments, contextMessages);
+      return;
+    }
     if (delayReason) {
       setDesktopChatError('Kordi is still preparing this session. Your draft is preserved.');
       return;
@@ -1223,6 +1231,7 @@ export function useChatMessageActions({
     desktopBridgeState,
     isNativeShell,
     localChatSendInFlightRef,
+    queueLocalDraftForSession,
     sendCloudBridgeMessage,
     sendCloudGroupControl,
     sendLocalAgentChatMessage,
