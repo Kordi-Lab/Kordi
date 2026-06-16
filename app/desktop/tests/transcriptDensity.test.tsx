@@ -988,6 +988,51 @@ test('renders peer human sender names inside the bubble with colorful bold styli
   assert.doesNotMatch(markup, /app-message-meta px-1[\s\S]*xin hai Mouse/);
 });
 
+test('compact contact density hides peer sender names and uses squarer tighter human bubbles', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'xin hai Mouse',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: true,
+    text: '我都不知道',
+    time: '10:00',
+    senderAvatarSeed: 'person:xinhai',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    densityMode: 'contact-compact',
+  }));
+
+  assert.match(markup, /data-transcript-density="contact-compact"/);
+  assert.match(markup, /app-message-row-contact-compact/);
+  assert.match(markup, /app-message-bubble-contact-compact/);
+  assert.match(markup, /px-3 py-1\.5/);
+  assert.match(markup, /rounded-\[12px\]/);
+  assert.match(markup, /h-5\.5 w-5\.5/);
+  assert.doesNotMatch(markup, /app-message-inline-sender/);
+  assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
+});
+
+test('default and group-style human bubbles still render inline sender names', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'xin hai Mouse',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: true,
+    text: 'Group context still needs a visible sender label.',
+    time: '10:00',
+    senderAvatarSeed: 'person:xinhai',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-chat-bubble-peer[\s\S]*app-message-inline-sender/);
+  assert.match(markup, />xin hai Mouse<\/div>/);
+  assert.doesNotMatch(markup, /data-transcript-density="contact-compact"/);
+});
 
 test('groups consecutive same-sender human messages with one inline name and one avatar', () => {
   const first: Message = {
