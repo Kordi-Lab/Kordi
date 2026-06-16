@@ -39,6 +39,17 @@ test('chat headers do not render My agent or chat-kind label pills', () => {
   assert.doesNotMatch(source, />\s*\{companionLabel\(companionConversation\)\}\s*<\/span>/);
 });
 
+test('contact compact transcript density is scoped to direct human sessions', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /function chatTranscriptDensityMode\(conversation: Conversation\)/);
+  assert.match(source, /conversationIsDirectHumanContact\(conversation\)/);
+  assert.match(source, /densityMode=\{chatTranscriptDensityMode\(activeConv\)\}/);
+  assert.match(source, /densityMode=\{chatTranscriptDensityMode\(companionConversation\)\}/);
+  assert.match(source, /return 'contact-compact'/);
+  assert.match(source, /return 'default'/);
+});
+
 test('chat header title text does not flex-grow away from fork or action pills', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
