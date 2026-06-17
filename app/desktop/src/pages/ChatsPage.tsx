@@ -81,6 +81,7 @@ import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionCon
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
+import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { navigateToTranscriptMessage, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage, isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
@@ -382,6 +383,7 @@ type ChatSessionPaneProps = {
   onCopySelectedMessages?: () => void;
   onForwardSelectedMessages?: () => void;
   messageSelectionMode?: boolean;
+  densityMode?: TranscriptDensityMode;
   rightDetailRail?: ReactNode;
   setIsDetailPanelCollapsed?: Dispatch<SetStateAction<boolean>>;
 };
@@ -432,6 +434,7 @@ function ChatSessionPane({
   onCopySelectedMessages,
   onForwardSelectedMessages,
   messageSelectionMode = false,
+  densityMode = 'default',
 }: ChatSessionPaneProps) {
   return (
     <>
@@ -464,6 +467,7 @@ function ChatSessionPane({
                 selectionMode={selectionMode}
                 selectedMessageIds={selectedMessageIds}
                 isMessageSelectable={isMessageSelectable}
+                densityMode={densityMode}
                 onToggleSelectedMessage={onToggleSelectedMessage}
                 onSelectionDragStart={onSelectionDragStart}
                 onSelectionDragEnter={onSelectionDragEnter}
@@ -579,6 +583,25 @@ function conversationIsHumanChat(conversation: Conversation) {
 function conversationIsAgentChat(conversation: Conversation) {
   return !conversationIsGroupChat(conversation)
     && (conversation.type === 'owned-agent' || conversation.type === 'external-agent');
+}
+
+function conversationUsesCompactHumanTranscriptDensity(conversation: Conversation) {
+  if (conversationIsAgentChat(conversation)) return false;
+  if (conversationIsGroupChat(conversation)) return true;
+  if (conversation.type === 'person') return true;
+  const directness = conversation.directness?.trim().toLowerCase() ?? '';
+  if (/\b(?:direct|person|contact)\b/.test(directness)) return true;
+  const nonSelfHumanCount = (conversation.canonicalParticipants ?? [])
+    .filter((participant) => !participantIsSelf(participant) && participant.kind === 'human')
+    .length;
+  return nonSelfHumanCount === 1;
+}
+
+function chatTranscriptDensityMode(conversation: Conversation): TranscriptDensityMode {
+  if (conversationIsAgentChat(conversation)) return 'agent-compact';
+  if (conversationIsGroupChat(conversation)) return 'group-compact';
+  if (conversationUsesCompactHumanTranscriptDensity(conversation)) return 'contact-compact';
+  return 'default';
 }
 
 function addScopedKey(keys: Set<string>, scope: string, value?: string | null) {
@@ -1615,6 +1638,7 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
         scrollRef={companionTranscriptScrollRef}
         scrollClassName="h-full min-h-0 px-3 py-5"
+        densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
         emptyState={(
           <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
@@ -2206,6 +2230,7 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderLiveTurn}
         scrollRef={chatTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 px-3.5 py-5 sm:px-4"
+        densityMode={chatTranscriptDensityMode(activeConv)}
         onTranscriptScroll={onTranscriptScroll}
         queuedMessages={queuedDesktopMessages}
         isCompressionActive={isCompressionActive}

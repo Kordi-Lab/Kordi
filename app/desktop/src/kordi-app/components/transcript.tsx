@@ -752,6 +752,8 @@ export type MessageForkSummary = {
   updatedAtLabel?: string;
 };
 
+export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact' | 'agent-compact';
+
 function MessageBubbleView({
   msg,
   onOpenSource,
@@ -780,6 +782,7 @@ function MessageBubbleView({
   plainAgentResponse = false,
   isGroupedWithPrevious = false,
   isGroupedWithNext = false,
+  densityMode = 'default',
 }: {
   msg: Message;
   onOpenSource?: (file: EditFilePreview) => void;
@@ -801,6 +804,7 @@ function MessageBubbleView({
   plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
+  densityMode?: TranscriptDensityMode;
 } & MessageSelectionProps) {
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
@@ -1187,6 +1191,9 @@ function MessageBubbleView({
   const isOwnHumanMessage = (msg.isOwnMessage ?? (msg.role === 'user')) && (msg.senderType ?? 'human') === 'human';
   const isPeerHumanMessage = !isOwnHumanMessage && ((msg.senderType === 'human') || msg.role === 'person');
   const isAgentMessage = !isOwnHumanMessage && !isPeerHumanMessage;
+  const compactDensity = densityMode !== 'default' && !isAgentMessage ? densityMode : undefined;
+  const useHumanCompactDensity = Boolean(compactDensity);
+  const hideHumanSenderForCompactDensity = useHumanCompactDensity;
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
   const bubble = isOwnHumanMessage
     ? 'app-chat-bubble-user'
@@ -1208,7 +1215,7 @@ function MessageBubbleView({
     : msg.role === 'owned-agent'
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
-  const showInlineHumanSender = Boolean(!isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
+  const showInlineHumanSender = Boolean(!hideHumanSenderForCompactDensity && !isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
   const showContactRequestAction = Boolean(
     isOwnHumanMessage
       && deliveryVisual?.tone === 'red'
@@ -1236,20 +1243,27 @@ function MessageBubbleView({
       onPointerCancel={handleRowSelectionDragEnd}
       className={cn(
         'flex w-full flex-col gap-1',
-        isGroupedWithPrevious ? 'pt-0.5' : 'pt-1',
-        isGroupedWithNext ? 'pb-0' : 'pb-1',
+        useHumanCompactDensity ? 'pt-0.5' : (isGroupedWithPrevious ? 'pt-0.5' : 'pt-1'),
+        useHumanCompactDensity ? (isGroupedWithNext ? 'pb-0' : 'pb-0.5') : (isGroupedWithNext ? 'pb-0' : 'pb-1'),
+        useHumanCompactDensity ? 'app-message-row-contact-compact' : '',
         align,
         isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
         showContactRequestAction ? 'w-full' : '',
         isSelectedForAction ? 'app-message-selection-selected' : '',
       )}
+      data-transcript-density={compactDensity}
     >
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
           {isAgentMessage ? msg.sender : showCompactFooter ? msg.sender : `${msg.sender} • ${msg.time}`}
         </div>
       ) : null}
-      <div className={cn('flex items-end', showAvatarSlot || selectionControl ? 'gap-2' : 'gap-0', isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row', isAgentMessage ? 'w-full' : '')}>
+      <div className={cn(
+        'flex items-end',
+        showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
+        isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
+        isAgentMessage ? 'w-full' : '',
+      )}>
         {selectionControl}
         {showAvatar ? (
           <IdentityAvatar
@@ -1257,13 +1271,17 @@ function MessageBubbleView({
             seed={avatarSeed}
             name={avatarName}
             imageUrl={msg.senderProfileImageUrl}
-            className="mb-0.5 h-7 w-7 border border-white/10"
+            className={cn(
+              'mb-0.5 border border-white/10',
+              useHumanCompactDensity ? 'h-5.5 w-5.5' : 'h-7 w-7',
+            )}
           />
         ) : showAvatarSlot ? (
-          <span className="app-message-avatar-spacer h-7 w-7 shrink-0" aria-hidden="true" />
+          <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-5.5 w-5.5' : 'h-7 w-7')} aria-hidden="true" />
         ) : null}
         <div
           data-message-context-menu-anchor="true"
+          data-transcript-density={compactDensity}
           onClick={(event) => {
             if (!selectableInSelectionMode) return;
             const target = event.target instanceof Element ? event.target : null;
@@ -1279,11 +1297,15 @@ function MessageBubbleView({
           isOwnHumanMessage
             ? hasOnlyImageAttachments
               ? 'w-fit max-w-[31rem] p-0'
-              : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
+              : useHumanCompactDensity
+                ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
+                : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
               ? hasOnlyImageAttachments
                 ? 'w-fit max-w-[31rem] p-0'
-                : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
+                : useHumanCompactDensity
+                  ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('peer'))
+                  : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
               : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
           !hasOnlyImageAttachments && bubble,
         )}
@@ -1425,6 +1447,7 @@ export const MessageBubble = memo(
     && previous.onSelectionDragEnd === next.onSelectionDragEnd
     && previous.plainAgentResponse === next.plainAgentResponse
     && previous.messageForks === next.messageForks
+    && previous.densityMode === next.densityMode
     && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
     && previous.isGroupedWithNext === next.isGroupedWithNext
     && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),

@@ -995,10 +995,10 @@
 
 .app-live-assistant-answer-surface {
   border: 0;
-  border-radius: 16px;
+  border-radius: 8px;
   background: color-mix(in oklab, var(--utility-foreground) 3%, transparent);
   box-shadow: none;
-  padding: 0.78rem 0.9rem 0.68rem;
+  padding: 0.55rem 0.7rem 0.5rem;
 }
 
 .app-live-assistant-answer-content {
