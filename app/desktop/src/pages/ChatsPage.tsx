@@ -585,8 +585,9 @@ function conversationIsAgentChat(conversation: Conversation) {
     && (conversation.type === 'owned-agent' || conversation.type === 'external-agent');
 }
 
-function conversationIsDirectHumanContact(conversation: Conversation) {
-  if (conversationIsGroupChat(conversation) || conversationIsAgentChat(conversation)) return false;
+function conversationUsesCompactHumanTranscriptDensity(conversation: Conversation) {
+  if (conversationIsAgentChat(conversation)) return false;
+  if (conversationIsGroupChat(conversation)) return true;
   if (conversation.type === 'person') return true;
   const directness = conversation.directness?.trim().toLowerCase() ?? '';
   if (/\b(?:direct|person|contact)\b/.test(directness)) return true;
@@ -597,7 +598,9 @@ function conversationIsDirectHumanContact(conversation: Conversation) {
 }
 
 function chatTranscriptDensityMode(conversation: Conversation): TranscriptDensityMode {
-  if (conversationIsDirectHumanContact(conversation)) return 'contact-compact';
+  if (conversationIsAgentChat(conversation)) return 'default';
+  if (conversationIsGroupChat(conversation)) return 'group-compact';
+  if (conversationUsesCompactHumanTranscriptDensity(conversation)) return 'contact-compact';
   return 'default';
 }
 

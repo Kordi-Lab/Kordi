@@ -752,7 +752,7 @@ export type MessageForkSummary = {
   updatedAtLabel?: string;
 };
 
-export type TranscriptDensityMode = 'default' | 'contact-compact';
+export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact';
 
 function MessageBubbleView({
   msg,
@@ -1191,7 +1191,9 @@ function MessageBubbleView({
   const isOwnHumanMessage = (msg.isOwnMessage ?? (msg.role === 'user')) && (msg.senderType ?? 'human') === 'human';
   const isPeerHumanMessage = !isOwnHumanMessage && ((msg.senderType === 'human') || msg.role === 'person');
   const isAgentMessage = !isOwnHumanMessage && !isPeerHumanMessage;
-  const useContactCompactDensity = densityMode === 'contact-compact' && !isAgentMessage;
+  const compactDensity = densityMode !== 'default' && !isAgentMessage ? densityMode : undefined;
+  const useHumanCompactDensity = Boolean(compactDensity);
+  const hideHumanSenderForCompactDensity = compactDensity === 'contact-compact';
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
   const bubble = isOwnHumanMessage
     ? 'app-chat-bubble-user'
@@ -1213,7 +1215,7 @@ function MessageBubbleView({
     : msg.role === 'owned-agent'
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
-  const showInlineHumanSender = Boolean(!useContactCompactDensity && !isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
+  const showInlineHumanSender = Boolean(!hideHumanSenderForCompactDensity && !isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
   const showContactRequestAction = Boolean(
     isOwnHumanMessage
       && deliveryVisual?.tone === 'red'
@@ -1241,15 +1243,15 @@ function MessageBubbleView({
       onPointerCancel={handleRowSelectionDragEnd}
       className={cn(
         'flex w-full flex-col gap-1',
-        useContactCompactDensity ? 'pt-0.5' : (isGroupedWithPrevious ? 'pt-0.5' : 'pt-1'),
-        useContactCompactDensity ? (isGroupedWithNext ? 'pb-0' : 'pb-0.5') : (isGroupedWithNext ? 'pb-0' : 'pb-1'),
-        useContactCompactDensity ? 'app-message-row-contact-compact' : '',
+        useHumanCompactDensity ? 'pt-0.5' : (isGroupedWithPrevious ? 'pt-0.5' : 'pt-1'),
+        useHumanCompactDensity ? (isGroupedWithNext ? 'pb-0' : 'pb-0.5') : (isGroupedWithNext ? 'pb-0' : 'pb-1'),
+        useHumanCompactDensity ? 'app-message-row-contact-compact' : '',
         align,
         isAgentMessage ? 'w-full max-w-[min(100%,42rem)]' : '',
         showContactRequestAction ? 'w-full' : '',
         isSelectedForAction ? 'app-message-selection-selected' : '',
       )}
-      data-transcript-density={useContactCompactDensity ? 'contact-compact' : undefined}
+      data-transcript-density={compactDensity}
     >
       {showHeaderMeta ? (
         <div className="app-message-meta px-1">
@@ -1258,7 +1260,7 @@ function MessageBubbleView({
       ) : null}
       <div className={cn(
         'flex items-end',
-        showAvatarSlot || selectionControl ? (useContactCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
+        showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
         isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
         isAgentMessage ? 'w-full' : '',
       )}>
@@ -1271,15 +1273,15 @@ function MessageBubbleView({
             imageUrl={msg.senderProfileImageUrl}
             className={cn(
               'mb-0.5 border border-white/10',
-              useContactCompactDensity ? 'h-5.5 w-5.5' : 'h-7 w-7',
+              useHumanCompactDensity ? 'h-5.5 w-5.5' : 'h-7 w-7',
             )}
           />
         ) : showAvatarSlot ? (
-          <span className={cn('app-message-avatar-spacer shrink-0', useContactCompactDensity ? 'h-5.5 w-5.5' : 'h-7 w-7')} aria-hidden="true" />
+          <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-5.5 w-5.5' : 'h-7 w-7')} aria-hidden="true" />
         ) : null}
         <div
           data-message-context-menu-anchor="true"
-          data-transcript-density={useContactCompactDensity ? 'contact-compact' : undefined}
+          data-transcript-density={compactDensity}
           onClick={(event) => {
             if (!selectableInSelectionMode) return;
             const target = event.target instanceof Element ? event.target : null;
@@ -1295,13 +1297,13 @@ function MessageBubbleView({
           isOwnHumanMessage
             ? hasOnlyImageAttachments
               ? 'w-fit max-w-[31rem] p-0'
-              : useContactCompactDensity
+              : useHumanCompactDensity
                 ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[12px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
                 : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
               ? hasOnlyImageAttachments
                 ? 'w-fit max-w-[31rem] p-0'
-                : useContactCompactDensity
+                : useHumanCompactDensity
                   ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[12px] px-3 py-1.5', humanMessageBubbleShapeClass('peer'))
                   : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
               : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',

@@ -1015,7 +1015,7 @@ test('compact contact density hides peer sender names and uses squarer tighter h
   assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
 });
 
-test('default and group-style human bubbles still render inline sender names', () => {
+test('default human bubbles still render inline sender names', () => {
   const message: Message = {
     role: 'person',
     sender: 'xin hai Mouse',
@@ -1032,6 +1032,39 @@ test('default and group-style human bubbles still render inline sender names', (
   assert.match(markup, /app-chat-bubble-peer[\s\S]*app-message-inline-sender/);
   assert.match(markup, />xin hai Mouse<\/div>/);
   assert.doesNotMatch(markup, /data-transcript-density="contact-compact"/);
+});
+
+test('compact group density keeps first sender labels while hiding repeated labels', () => {
+  const first: Message = {
+    id: 'msg:first-group-compact',
+    role: 'person',
+    sender: 'xin hai Mouse',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: true,
+    text: 'Group context still needs a visible sender label.',
+    time: '10:00',
+    senderAvatarSeed: 'person:xinhai',
+  };
+  const second: Message = {
+    ...first,
+    id: 'msg:second-group-compact',
+    text: 'But repeated rows should stay compact.',
+  };
+
+  const markup = renderToStaticMarkup(createElement('div', null,
+    createElement(MessageBubble, { msg: first, densityMode: 'group-compact', isGroupedWithNext: true }),
+    createElement(MessageBubble, { msg: second, densityMode: 'group-compact', isGroupedWithPrevious: true }),
+  ));
+
+  assert.match(markup, /data-transcript-density="group-compact"/);
+  assert.match(markup, /app-message-row-contact-compact/);
+  assert.match(markup, /app-message-bubble-contact-compact/);
+  assert.match(markup, /px-3 py-1\.5/);
+  assert.match(markup, /rounded-\[12px\]/);
+  assert.equal((markup.match(/app-message-inline-sender/g) ?? []).length, 1);
+  assert.match(markup, />xin hai Mouse<\/div>/);
+  assert.equal((markup.match(/data-avatar-kind="human"/g) ?? []).length, 1);
 });
 
 test('groups consecutive same-sender human messages with one inline name and one avatar', () => {
