@@ -1009,7 +1009,7 @@ test('compact contact density hides peer sender names and uses squarer tighter h
   assert.match(markup, /app-message-row-contact-compact/);
   assert.match(markup, /app-message-bubble-contact-compact/);
   assert.match(markup, /px-3 py-1\.5/);
-  assert.match(markup, /rounded-\[12px\]/);
+  assert.match(markup, /rounded-\[8px\]/);
   assert.match(markup, /h-5\.5 w-5\.5/);
   assert.doesNotMatch(markup, /app-message-inline-sender/);
   assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
@@ -1061,7 +1061,7 @@ test('compact group density hides sender labels inside message bubbles', () => {
   assert.match(markup, /app-message-row-contact-compact/);
   assert.match(markup, /app-message-bubble-contact-compact/);
   assert.match(markup, /px-3 py-1\.5/);
-  assert.match(markup, /rounded-\[12px\]/);
+  assert.match(markup, /rounded-\[8px\]/);
   assert.doesNotMatch(markup, /app-message-inline-sender/);
   assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
   assert.equal((markup.match(/data-avatar-kind="human"/g) ?? []).length, 1);

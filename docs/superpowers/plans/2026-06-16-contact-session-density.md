@@ -194,13 +194,13 @@ Update human bubble classes by replacing the human bubble branches with compact-
             ? hasOnlyImageAttachments
               ? 'w-fit max-w-[31rem] p-0'
               : useContactCompactDensity
-                ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[12px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
+                ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
                 : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
               ? hasOnlyImageAttachments
                 ? 'w-fit max-w-[31rem] p-0'
                 : useContactCompactDensity
-                  ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[12px] px-3 py-1.5', humanMessageBubbleShapeClass('peer'))
+                  ? cn('app-message-bubble-contact-compact w-fit min-w-[5.5rem] max-w-[36rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('peer'))
                   : cn('w-fit min-w-[6.75rem] max-w-[34rem] px-4 py-2.5', humanMessageBubbleShapeClass('peer'))
               : 'w-fit max-w-full rounded-[20px] px-3.5 py-2.5',
 ```
