@@ -1193,7 +1193,7 @@ function MessageBubbleView({
   const isAgentMessage = !isOwnHumanMessage && !isPeerHumanMessage;
   const compactDensity = densityMode !== 'default' && !isAgentMessage ? densityMode : undefined;
   const useHumanCompactDensity = Boolean(compactDensity);
-  const hideHumanSenderForCompactDensity = compactDensity === 'contact-compact';
+  const hideHumanSenderForCompactDensity = useHumanCompactDensity;
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
   const bubble = isOwnHumanMessage
     ? 'app-chat-bubble-user'

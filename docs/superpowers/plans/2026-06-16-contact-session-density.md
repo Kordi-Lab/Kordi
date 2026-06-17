@@ -4,7 +4,7 @@
 
 **Goal:** Make human chat sessions show more messages per viewport using the approved **Balanced Compact** visual direction.
 
-**Architecture:** Add explicit transcript density modes selected by `ChatsPage` from conversation context and passed down through `ChatSessionPane` into `MessageBubble`. Keep default transcript rendering unchanged for Agent sessions. In compact contact mode, direct human message bubbles hide inline sender names; in compact group mode, group messages keep the first sender label for each consecutive sender run and hide repeated labels. Both compact human modes use smaller avatar/spacer sizes, tighter vertical row spacing, and squarer/denser bubble padding while preserving message actions and status affordances.
+**Architecture:** Add explicit transcript density modes selected by `ChatsPage` from conversation context and passed down through `ChatSessionPane` into `MessageBubble`. Keep default transcript rendering unchanged for Agent sessions. In compact contact and compact group modes, human message bubbles hide inline sender names inside the message box. Both compact human modes use smaller avatar/spacer sizes, tighter vertical row spacing, and squarer/denser bubble padding while preserving message actions and status affordances.
 
 **Tech Stack:** React, TypeScript, Tailwind utility classes, Node test runner with `tsx`, server-rendered markup tests in `app/desktop/tests/transcriptDensity.test.tsx`.
 
@@ -16,7 +16,7 @@ The user selected **Balanced Compact** from the browser mockup:
 
 - Initially applied to contact/direct human sessions only; user later approved applying the same compact treatment to group human chats too.
 - Hide sender labels in direct/contact chats because the session header/avatar already identifies the peer.
-- In group chats, keep the first sender label for each consecutive sender run and hide repeated labels.
+- In group chats, remove sender labels from inside message bubbles too, relying on avatars/header context instead of text inside the bubble.
 - Make bubbles more compact and more square, not ultra-dense.
 - Preserve Agent sessions unchanged.
 - Preserve reply/forward/selection/context-menu/read-receipt/pin behavior.
@@ -34,7 +34,7 @@ The user selected **Balanced Compact** from the browser mockup:
   - Pass contact compact mode for main and side human direct/contact sessions, group compact mode for group chats, and default mode for Agent sessions.
 - Modify: `app/desktop/tests/transcriptDensity.test.tsx`
   - Add/adjust tests proving compact contact bubbles hide names and use tighter/squarer classes.
-  - Add group compact tests proving first sender labels remain visible while repeated labels are hidden.
+  - Add group compact tests proving sender labels are removed from inside message bubbles.
   - Keep a default-mode test proving sender names still render where needed.
 
 ---
@@ -408,7 +408,7 @@ Use this PR body:
 ```md
 ## Summary
 - Adds compact transcript density modes for direct/contact and group human chat sessions.
-- Hides direct/contact sender names, keeps first sender labels in group runs, and tightens avatar, row, and bubble spacing.
+- Hides sender names inside direct/contact and group message bubbles, and tightens avatar, row, and bubble spacing.
 - Keeps Agent sessions on the default transcript density.
 
 Closes #581.
@@ -417,13 +417,13 @@ Closes #581.
 - [ ] `pnpm --dir app/desktop exec tsx --test tests/transcriptDensity.test.tsx tests/chatHeaderBadge.test.tsx tests/panelAgentSessionParity.test.ts tests/chatsPageQuotePreview.test.tsx`
 - [ ] `pnpm --dir app/desktop exec tsc --noEmit --pretty false`
 - [ ] `git diff --check`
-- [ ] Manual preview: contact/direct chats are denser; group chats are denser while keeping first sender labels; Agent sessions unchanged.
+- [ ] Manual preview: contact/direct and group chats are denser with no sender names inside message bubbles; Agent sessions unchanged.
 ```
 
 ---
 
 ## Self-Review
 
-- Spec coverage: The plan implements Balanced Compact for direct/contact and group human sessions, hides or reduces repeated names according to chat type, uses tighter/squarer bubbles, and preserves Agent defaults.
+- Spec coverage: The plan implements Balanced Compact for direct/contact and group human sessions, hides sender names inside compact human message bubbles, uses tighter/squarer bubbles, and preserves Agent defaults.
 - Placeholder scan: No placeholders, TODOs, or undefined implementation steps remain.
 - Type consistency: `TranscriptDensityMode`, `densityMode`, `conversationUsesCompactHumanTranscriptDensity`, and `chatTranscriptDensityMode` names are consistent across tasks.
