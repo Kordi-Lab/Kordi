@@ -39,14 +39,14 @@ test('chat headers do not render My agent or chat-kind label pills', () => {
   assert.doesNotMatch(source, />\s*\{companionLabel\(companionConversation\)\}\s*<\/span>/);
 });
 
-test('compact transcript density applies to human chats but not agent sessions', () => {
+test('compact transcript density applies to human and agent sessions', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /function chatTranscriptDensityMode\(conversation: Conversation\)/);
   assert.match(source, /conversationUsesCompactHumanTranscriptDensity\(conversation\)/);
   assert.match(source, /densityMode=\{chatTranscriptDensityMode\(activeConv\)\}/);
   assert.match(source, /densityMode=\{chatTranscriptDensityMode\(companionConversation\)\}/);
-  assert.match(source, /if \(conversationIsAgentChat\(conversation\)\) return 'default';/);
+  assert.match(source, /if \(conversationIsAgentChat\(conversation\)\) return 'agent-compact';/);
   assert.match(source, /if \(conversationIsGroupChat\(conversation\)\) return 'group-compact';/);
   assert.match(source, /return 'contact-compact'/);
   assert.match(source, /return 'default'/);

@@ -752,7 +752,7 @@ export type MessageForkSummary = {
   updatedAtLabel?: string;
 };
 
-export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact';
+export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact' | 'agent-compact';
 
 function MessageBubbleView({
   msg,

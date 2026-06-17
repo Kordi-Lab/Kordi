@@ -1015,6 +1015,30 @@ test('compact contact density hides peer sender names and uses squarer tighter h
   assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
 });
 
+test('compact agent density makes user request bubbles square and tight', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    showSenderMeta: false,
+    text: 'hi',
+    time: '01:07',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    densityMode: 'agent-compact',
+  }));
+
+  assert.match(markup, /data-transcript-density="agent-compact"/);
+  assert.match(markup, /app-message-row-contact-compact/);
+  assert.match(markup, /app-message-bubble-contact-compact/);
+  assert.match(markup, /rounded-\[8px\]/);
+  assert.match(markup, /px-3 py-1\.5/);
+  assert.doesNotMatch(markup, /app-message-inline-sender/);
+});
+
 test('default human bubbles still render inline sender names', () => {
   const message: Message = {
     role: 'person',
@@ -1092,6 +1116,16 @@ test('groups consecutive same-sender human messages with one inline name and one
 
   assert.equal((markup.match(/app-message-inline-sender/g) ?? []).length, 1);
   assert.equal((markup.match(/data-avatar-kind="human"/g) ?? []).length, 1);
+});
+
+test('assistant response surfaces are square and tighter with less blank space', () => {
+  const css = readDesktopShellCss();
+  const surfaceBlock = css.match(/\.app-live-assistant-answer-surface\s*\{[^}]+\}/)?.[0] ?? '';
+
+  assert.match(surfaceBlock, /border-radius:\s*8px;/);
+  assert.match(surfaceBlock, /padding:\s*0\.55rem 0\.7rem 0\.5rem;/);
+  assert.doesNotMatch(surfaceBlock, /border-radius:\s*16px;/);
+  assert.doesNotMatch(surfaceBlock, /padding:\s*0\.78rem 0\.9rem 0\.68rem;/);
 });
 
 test('renders completed assistant responses as a compact contrast surface', () => {

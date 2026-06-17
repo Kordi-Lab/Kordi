@@ -598,7 +598,7 @@ function conversationUsesCompactHumanTranscriptDensity(conversation: Conversatio
 }
 
 function chatTranscriptDensityMode(conversation: Conversation): TranscriptDensityMode {
-  if (conversationIsAgentChat(conversation)) return 'default';
+  if (conversationIsAgentChat(conversation)) return 'agent-compact';
   if (conversationIsGroupChat(conversation)) return 'group-compact';
   if (conversationUsesCompactHumanTranscriptDensity(conversation)) return 'contact-compact';
   return 'default';
