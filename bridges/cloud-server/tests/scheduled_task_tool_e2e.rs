@@ -167,6 +167,42 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
 }
 
 #[tokio::test]
+async fn scheduled_task_store_does_not_strand_new_once_tasks_at_or_before_creation_time() {
+    let Some(pool) = try_pool().await else { return };
+    let account_id = format!("acct_owner_{}", uuid::Uuid::new_v4().simple());
+    seed_account(&pool, &account_id).await;
+    let now = Utc.with_ymd_and_hms(2026, 6, 8, 9, 0, 30).unwrap();
+    let task = create_scheduled_task(
+        &pool,
+        &account_id,
+        &account_id,
+        CreateScheduledTaskRequest {
+            title: "Immediate check".to_string(),
+            prompt: "Run the check right away.".to_string(),
+            schedule: ScheduledTaskSchedule::Once {
+                at: "2026-06-08T09:00:00Z".to_string(),
+            },
+            target_runtime: ScheduledTaskTargetRuntime::Cloud,
+            tool_payload: serde_json::json!({ "sessionId": "session:scheduled:immediate" }),
+        },
+        now,
+    )
+    .await
+    .expect("create task");
+
+    assert_eq!(task.status, "active");
+    assert_eq!(task.next_run_at.as_deref(), Some("2026-06-08T09:00:30+00:00"));
+
+    let claimed = claim_due_scheduled_task_runs(&pool, now, 10)
+        .await
+        .expect("claim due");
+    assert!(
+        claimed.iter().any(|run| run.task_id == task.task_id),
+        "new immediate one-shot task should be claimable instead of stranded"
+    );
+}
+
+#[tokio::test]
 async fn scheduled_task_tool_api_creates_local_required_task_and_run_now_waits_for_desktop() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("scheduled-tool-create");
@@ -228,6 +264,20 @@ fn scheduled_task_schema_migration_is_embedded_in_pool_runner() {
     assert!(pool_source.contains("version: 22"));
     assert!(pool_source.contains("0022_scheduled_task_tool.sql"));
     assert!(pool_source.contains("scheduled task tool"));
+}
+
+#[test]
+fn stranded_scheduled_task_backfill_migration_is_embedded_and_skips_tasks_with_runs() {
+    let pool_source = std::fs::read_to_string("src/pg/pool.rs").expect("read pool source");
+    assert!(pool_source.contains("version: 24"));
+    assert!(pool_source.contains("0024_backfill_stranded_scheduled_tasks.sql"));
+
+    let migration = std::fs::read_to_string("migrations/0024_backfill_stranded_scheduled_tasks.sql")
+        .expect("read backfill migration");
+    assert!(migration.contains("task.next_run_at IS NULL"));
+    assert!(migration.contains("task.status = 'active'"));
+    assert!(migration.contains("NOT EXISTS"));
+    assert!(migration.contains("scheduled_tool_task_runs"));
 }
 
 #[test]

@@ -9,7 +9,7 @@ use crate::cloud_agent_runtime::runs::{ClaimRunRequest, claim_run};
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
 };
-use crate::scheduled_tasks::schedule::{ScheduledTaskSchedule, next_run_after};
+use crate::scheduled_tasks::schedule::{ScheduledTaskSchedule, initial_next_run_at, next_run_after};
 
 type TaskRow = (
     String,
@@ -98,7 +98,7 @@ pub async fn create_scheduled_task(
     now: DateTime<Utc>,
 ) -> Result<ScheduledTaskResponse, sqlx_core::Error> {
     let task_id = format!("scheduled_task_{}", Uuid::new_v4().simple());
-    let next_run_at = next_run_after(&input.schedule, now)
+    let next_run_at = initial_next_run_at(&input.schedule, now)
         .map_err(|err| protocol_error(err.to_string()))?
         .map(ts);
     let schedule_json = serde_json::to_value(&input.schedule)

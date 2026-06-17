@@ -18,6 +18,21 @@ pub enum ScheduleError {
     UnsupportedTimezone,
 }
 
+pub fn initial_next_run_at(
+    schedule: &ScheduledTaskSchedule,
+    created_at: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>, ScheduleError> {
+    match schedule {
+        ScheduledTaskSchedule::Once { at } => {
+            let at = DateTime::parse_from_rfc3339(at)
+                .map_err(|_| ScheduleError::InvalidOnceAt)?
+                .with_timezone(&Utc);
+            Ok(Some(if at > created_at { at } else { created_at }))
+        }
+        ScheduledTaskSchedule::Daily { .. } => next_run_after(schedule, created_at),
+    }
+}
+
 pub fn next_run_after(
     schedule: &ScheduledTaskSchedule,
     after: DateTime<Utc>,
@@ -51,7 +66,7 @@ pub fn next_run_after(
 
 #[cfg(test)]
 mod tests {
-    use super::{next_run_after, ScheduleError, ScheduledTaskSchedule};
+    use super::{initial_next_run_at, next_run_after, ScheduleError, ScheduledTaskSchedule};
     use chrono::{TimeZone, Utc};
 
     #[test]
@@ -64,6 +79,19 @@ mod tests {
         assert_eq!(
             next_run_after(&schedule, Utc.with_ymd_and_hms(2026, 6, 9, 14, 31, 0).unwrap()).unwrap(),
             None
+        );
+    }
+
+    #[test]
+    fn initial_once_schedule_at_or_before_creation_time_runs_immediately() {
+        let schedule = ScheduledTaskSchedule::Once { at: "2026-06-09T14:30:00Z".to_string() };
+        assert_eq!(
+            initial_next_run_at(&schedule, Utc.with_ymd_and_hms(2026, 6, 9, 14, 30, 1).unwrap()).unwrap(),
+            Some(Utc.with_ymd_and_hms(2026, 6, 9, 14, 30, 1).unwrap())
+        );
+        assert_eq!(
+            initial_next_run_at(&schedule, Utc.with_ymd_and_hms(2026, 6, 9, 14, 30, 0).unwrap()).unwrap(),
+            Some(Utc.with_ymd_and_hms(2026, 6, 9, 14, 30, 0).unwrap())
         );
     }
 
