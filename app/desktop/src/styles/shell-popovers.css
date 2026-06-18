@@ -36,11 +36,12 @@
 }
 
 .app-compact-model-menu {
-  --app-compact-model-menu-bg: rgba(43, 43, 46, 0.68);
-  --app-compact-model-menu-header-bg: rgba(10, 10, 10, 0.16);
+  --app-compact-model-menu-bg: rgba(43, 43, 46, 0.94);
+  --app-compact-model-menu-header-bg: rgba(10, 10, 10, 0.58);
   --app-compact-model-menu-save-bg: rgb(226 232 240);
   --app-compact-model-menu-save-text: rgb(2 6 23);
   --app-compact-model-menu-save-hover-bg: rgb(255 255 255);
+  --app-divider: rgba(148, 163, 184, 0.18);
   border: 1px solid var(--app-divider);
   background: var(--app-compact-model-menu-bg);
   color: var(--utility-foreground);
@@ -49,12 +50,29 @@
   -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
 }
 
-.bridge-app.theme-light .app-compact-model-menu {
-  --app-compact-model-menu-bg: rgba(255, 255, 255, 0.72);
-  --app-compact-model-menu-header-bg: rgba(248, 250, 252, 0.62);
+.app-compact-model-menu-layer {
+  position: fixed;
+  z-index: 2147483000;
+  transform: translateY(calc(-100% - 0.5rem));
+  transform-origin: left bottom;
+  animation: app-compact-model-menu-enter 150ms var(--app-motion-ease) both;
+}
+
+.bridge-app.theme-light .app-compact-model-menu,
+.app-compact-model-menu-light {
+  --app-compact-model-menu-bg: rgba(255, 255, 255, 0.96);
+  --app-compact-model-menu-header-bg: rgba(248, 250, 252, 0.9);
   --app-compact-model-menu-save-bg: rgb(15 23 42);
   --app-compact-model-menu-save-text: rgb(255 255 255);
   --app-compact-model-menu-save-hover-bg: rgb(30 41 59);
+}
+
+.app-compact-model-menu-light {
+  --utility-foreground: rgb(15 23 42);
+  --utility-muted-text: rgb(71 85 105);
+  --app-divider: rgba(15, 23, 42, 0.1);
+  --app-control-bg: rgb(241 245 249);
+  --app-shadow-float: 0 24px 60px rgba(15, 23, 42, 0.16);
 }
 
 .app-compact-model-menu-header {
@@ -84,6 +102,18 @@
 
 .app-compact-model-menu-save:hover {
   background: var(--app-compact-model-menu-save-hover-bg);
+}
+
+@keyframes app-compact-model-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-100% - 0.28rem)) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(calc(-100% - 0.5rem)) scale(1);
+  }
 }
 
 .app-composer-mention-menu {

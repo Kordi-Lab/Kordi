@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   AtSign,
   Bot,
@@ -18,6 +18,7 @@ import {
   UserRound,
   Wrench,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
 import { composerModeOptions, composerModelOptions, composerThinkingOptions } from '../data';
@@ -325,7 +326,10 @@ export function CompactComposerModelMenu({
     (option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue && option.active,
   ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
 
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+  const [menuThemeClass, setMenuThemeClass] = useState('');
   const [stagedProviderValue, setStagedProviderValue] = useState(selectedProviderOption?.value ?? '');
   const [stagedModel, setStagedModel] = useState(selection.model);
   const [stagedThinking, setStagedThinking] = useState(selection.thinking);
@@ -357,6 +361,39 @@ export function CompactComposerModelMenu({
   const modelSummary = lowerComposerLabel(stagedModelOption?.label ?? stagedModel);
   const thinkingSummary = lowerComposerLabel(composerThinkingLabel(stagedThinkingValue));
 
+  const updateMenuPosition = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewportPadding = 24;
+    const menuWidth = Math.min(352, Math.max(240, window.innerWidth - (viewportPadding * 2)));
+    const left = Math.min(
+      Math.max(viewportPadding, rect.left),
+      Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+    );
+    const availableAbove = Math.max(192, rect.top - viewportPadding);
+    const appShell = trigger.closest('.bridge-app');
+    setMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-compact-model-menu-light' : '');
+    setMenuStyle({
+      left: `${left}px`,
+      top: `${Math.max(viewportPadding, rect.top)}px`,
+      maxHeight: `min(31rem, ${availableAbove}px)`,
+      width: 'min(22rem, calc(100vw - 3rem))',
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [isOpen, updateMenuPosition]);
+
   const chooseProvider = (option: ComposerProviderOption) => {
     const providerId = normalizeComposerProviderId(option.providerId);
     const firstProviderModel = modelOptions.find((model) => (model.provider ?? providerId) === providerId);
@@ -384,11 +421,125 @@ export function CompactComposerModelMenu({
     setIsOpen(false);
   };
 
+
+  const renderMenu = () => (
+    <div
+      className={cn('app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] text-[12px] leading-[1.38]', menuThemeClass)}
+      style={menuStyle}
+    >
+      <div className="app-compact-model-menu-header flex items-center justify-between gap-3 px-3.5 py-3">
+        <div className="font-medium">Agent Model</div>
+      </div>
+      <div className="px-2.5 py-2">
+        <details className="border-b border-[color:var(--app-divider)] py-1">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+            <span className="font-medium">provider</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{providerSummary}</span>
+              <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+            </span>
+          </summary>
+          <div className="space-y-1 pb-2 pl-3 pt-1">
+            {providerOptions.map((option) => {
+              const isSelected = stagedProviderOption?.value === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => chooseProvider(option)}
+                  className={cn(
+                    'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    isSelected ? 'app-composer-popover-item-active' : '',
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate">{lowerComposerLabel(option.label)}</span>
+                    {option.detail ? <span className="block truncate text-[11px] text-[color:var(--utility-muted-text)]">{lowerComposerLabel(option.detail)}</span> : null}
+                  </span>
+                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                </button>
+              );
+            })}
+          </div>
+        </details>
+        <details className="border-b border-[color:var(--app-divider)] py-1">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+            <span className="font-medium">model</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{modelSummary}</span>
+              <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+            </span>
+          </summary>
+          <div className="space-y-1 pb-2 pl-3 pt-1">
+            {visibleModelOptions.map((option) => {
+              const isSelected = stagedModel === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => chooseModel(option)}
+                  className={cn(
+                    'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    isSelected ? 'app-composer-popover-item-active' : '',
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate">{lowerComposerLabel(option.label)}</span>
+                    {option.detail ? <span className="block truncate text-[11px] text-[color:var(--utility-muted-text)]">{lowerComposerLabel(option.detail)}</span> : null}
+                  </span>
+                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                </button>
+              );
+            })}
+          </div>
+        </details>
+        <details className="py-1">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+            <span className="font-medium">thinking level</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{thinkingSummary}</span>
+              <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+            </span>
+          </summary>
+          <div className="space-y-1 pb-2 pl-3 pt-1">
+            {stagedThinkingLevels.map((value) => {
+              const isSelected = stagedThinkingValue === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStagedThinking(value)}
+                  className={cn(
+                    'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    isSelected ? 'app-composer-popover-item-active' : '',
+                  )}
+                >
+                  <span>{lowerComposerLabel(composerThinkingLabel(value))}</span>
+                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                </button>
+              );
+            })}
+          </div>
+        </details>
+      </div>
+      <div className="flex items-center justify-end gap-3 border-t border-[color:var(--app-divider)] px-3.5 py-3">
+        <span className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={cancel} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]">cancel</button>
+          <button type="button" onClick={save} className="app-compact-model-menu-save rounded-full px-3 py-1.5 text-[12px] font-semibold transition">save</button>
+        </span>
+      </div>
+    </div>
+
+  );
   return (
     <div className="relative shrink-0" data-compact-model-menu="true" data-composer-scope={scope}>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setIsOpen((current) => !current)}
+        onClick={() => {
+          if (!isOpen) updateMenuPosition();
+          setIsOpen((current) => !current);
+        }}
         className="relative grid h-9 w-9 shrink-0 place-items-center border-0 bg-transparent text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/60"
         title="model route"
         aria-label="model route"
@@ -397,111 +548,7 @@ export function CompactComposerModelMenu({
       >
         <Menu className="h-[18px] w-[18px] text-slate-400" strokeWidth={2.25} aria-hidden="true" />
       </button>
-      {isOpen ? (
-        <div className="app-compact-model-menu absolute bottom-full left-0 z-30 mb-2 max-h-[min(31rem,65vh)] w-[min(22rem,calc(100vw-3rem))] overflow-y-auto rounded-[18px] text-[12px] leading-[1.38]">
-          <div className="app-compact-model-menu-header flex items-center justify-between gap-3 px-3.5 py-3">
-            <div className="font-medium">Agent Model</div>
-          </div>
-          <div className="px-2.5 py-2">
-            <details className="border-b border-[color:var(--app-divider)] py-1">
-              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
-                <span className="font-medium">provider</span>
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{providerSummary}</span>
-                  <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-                </span>
-              </summary>
-              <div className="space-y-1 pb-2 pl-3 pt-1">
-                {providerOptions.map((option) => {
-                  const isSelected = stagedProviderOption?.value === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => chooseProvider(option)}
-                      className={cn(
-                        'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                        isSelected ? 'app-composer-popover-item-active' : '',
-                      )}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate">{lowerComposerLabel(option.label)}</span>
-                        {option.detail ? <span className="block truncate text-[11px] text-[color:var(--utility-muted-text)]">{lowerComposerLabel(option.detail)}</span> : null}
-                      </span>
-                      <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </details>
-            <details className="border-b border-[color:var(--app-divider)] py-1">
-              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
-                <span className="font-medium">model</span>
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{modelSummary}</span>
-                  <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-                </span>
-              </summary>
-              <div className="space-y-1 pb-2 pl-3 pt-1">
-                {visibleModelOptions.map((option) => {
-                  const isSelected = stagedModel === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => chooseModel(option)}
-                      className={cn(
-                        'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                        isSelected ? 'app-composer-popover-item-active' : '',
-                      )}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate">{lowerComposerLabel(option.label)}</span>
-                        {option.detail ? <span className="block truncate text-[11px] text-[color:var(--utility-muted-text)]">{lowerComposerLabel(option.detail)}</span> : null}
-                      </span>
-                      <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </details>
-            <details className="py-1">
-              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
-                <span className="font-medium">thinking level</span>
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{thinkingSummary}</span>
-                  <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-                </span>
-              </summary>
-              <div className="space-y-1 pb-2 pl-3 pt-1">
-                {stagedThinkingLevels.map((value) => {
-                  const isSelected = stagedThinkingValue === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setStagedThinking(value)}
-                      className={cn(
-                        'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                        isSelected ? 'app-composer-popover-item-active' : '',
-                      )}
-                    >
-                      <span>{lowerComposerLabel(composerThinkingLabel(value))}</span>
-                      <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </details>
-          </div>
-          <div className="flex items-center justify-end gap-3 border-t border-[color:var(--app-divider)] px-3.5 py-3">
-            <span className="flex shrink-0 items-center gap-2">
-              <button type="button" onClick={cancel} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]">cancel</button>
-              <button type="button" onClick={save} className="app-compact-model-menu-save rounded-full px-3 py-1.5 text-[12px] font-semibold transition">save</button>
-            </span>
-          </div>
-        </div>
-      ) : null}
+      {isOpen ? (typeof document !== 'undefined' ? createPortal(renderMenu(), document.body) : renderMenu()) : null}
     </div>
   );
 }

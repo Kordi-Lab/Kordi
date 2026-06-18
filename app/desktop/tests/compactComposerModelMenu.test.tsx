@@ -88,8 +88,42 @@ test('compact model route menu uses light-theme tokenized popover colors', () =>
   assert.match(css, /\.app-compact-model-menu\s*{[\s\S]*background:\s*var\(--app-compact-model-menu-bg\);/);
   assert.match(css, /\.app-compact-model-menu-save\s*{[\s\S]*background:\s*var\(--app-compact-model-menu-save-bg\);/);
   assert.match(css, /\.app-compact-model-menu details\[open\] \.app-compact-model-menu-chevron\s*{[\s\S]*transform:\s*rotate\(180deg\);/);
-  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu\s*{[\s\S]*--app-compact-model-menu-bg:\s*rgba\(255, 255, 255, 0\.72\);/);
-  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu\s*{[\s\S]*--app-compact-model-menu-save-bg:\s*rgb\(15 23 42\);/);
+  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu,\n\.app-compact-model-menu-light\s*{[\s\S]*--app-compact-model-menu-bg:\s*rgba\(255, 255, 255, 0\.96\);/);
+  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu,\n\.app-compact-model-menu-light\s*{[\s\S]*--app-compact-model-menu-save-bg:\s*rgb\(15 23 42\);/);
+  assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-foreground:\s*rgb\(15 23 42\);/);
+  assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-muted-text:\s*rgb\(71 85 105\);/);
+});
+
+test('compact model route menu sits above transcript fold controls and uses opaque dark glass', () => {
+  const markup = renderToStaticMarkup(createElement(CompactComposerModelMenu, {
+    scope: 'chat',
+    selection: { mode: 'chat', model: 'openai/gpt-5.1', thinking: 'auto' },
+    providerOptions,
+    modelOptions,
+    defaultOpen: true,
+    onSave: () => {},
+  }));
+  const css = readDesktopShellCss();
+  const menuRule = css.match(/\.app-compact-model-menu\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const layerRule = css.match(/\.app-compact-model-menu-layer\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const darkRootRule = css.match(/\.app-compact-model-menu\s*\{[\s\S]*?--app-compact-model-menu-bg:\s*rgba\(43, 43, 46, 0\.9[0-9]\);[\s\S]*?\n\}/)?.[0] ?? '';
+  const headerRule = css.match(/\.app-compact-model-menu-header\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+
+  assert.match(markup, /app-compact-model-menu-layer/);
+  assert.doesNotMatch(markup, /\bz-30\b/);
+  assert.match(menuRule, /background:\s*var\(--app-compact-model-menu-bg\)/);
+  assert.match(layerRule, /position:\s*fixed/);
+  assert.match(layerRule, /z-index:\s*2147483000/);
+  assert.match(source, /createPortal\(renderMenu\(\), document\.body\)/);
+  assert.match(source, /getBoundingClientRect\(\)/);
+  assert.match(source, /closest\('\.bridge-app'\)/);
+  assert.match(source, /app-compact-model-menu-light/);
+  assert.match(css, /@keyframes\s+app-compact-model-menu-enter/);
+  assert.match(layerRule, /animation:\s*app-compact-model-menu-enter/);
+  assert.match(darkRootRule, /--app-compact-model-menu-bg:\s*rgba\(43, 43, 46, 0\.94\)/);
+  assert.match(darkRootRule, /--app-divider:\s*rgba\(148, 163, 184, 0\.18\)/);
+  assert.match(headerRule, /--app-compact-model-menu-header-bg/);
 });
 
 test('compact model route menu is scoped to group and human contact chats', () => {

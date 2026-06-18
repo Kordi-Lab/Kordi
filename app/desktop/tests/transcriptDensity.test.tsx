@@ -1364,7 +1364,8 @@ test('styles folded answer expand control as muted overlay on the fade', () => {
   assert.doesNotMatch(answerToggleBlock, /rgb\(147 197 253\)/);
   assert.match(overlayToggleBlock, /position:\s*absolute/);
   assert.match(overlayToggleBlock, /bottom:\s*0\.18rem/);
-  assert.match(overlayToggleBlock, /z-index:\s*2/);
+  assert.match(overlayToggleBlock, /z-index:\s*1/);
+  assert.doesNotMatch(overlayToggleBlock, /z-index:\s*2/);
 });
 
 const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-source-message-quote[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer/;
