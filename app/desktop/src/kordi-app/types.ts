@@ -303,6 +303,21 @@ export type Agent = {
   isBridgeDefault?: boolean;
   isBridgeActive?: boolean;
   isBridgeRegistered?: boolean;
+  cloudAgentId?: string;
+  cloudAgentAccessScope?: 'private';
+  cloudAgentOwnerAccountId?: string;
+  cloudAgentSourceSummary?: string | null;
+  cloudAgentBoundaries?: string[];
+  cloudAgentResources?: Array<{
+    kind: string;
+    value: string;
+    title?: string | null;
+    summary?: string | null;
+  }>;
+  cloudAgentSkills?: Array<{
+    name: string;
+    description: string;
+  }>;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
   bridgeReachouts?: AgentBridgeReachout[];

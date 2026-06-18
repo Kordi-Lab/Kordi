@@ -1,4 +1,5 @@
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
+import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
@@ -408,6 +409,7 @@ export type SyncCloudDiffOnceInput = {
   sessionActivity?: CloudSessionActivityStore;
   sessionForksById?: Record<string, CloudSessionForkSummary>;
   sessionPinsById?: CloudSessionPinsById;
+  cloudAgentsById?: Record<string, CloudAgentDefinition>;
   hiddenSessionIds?: ReadonlySet<string>;
   deletedSessionIds?: ReadonlySet<string>;
   cursorStorage?: Storage | null;
@@ -419,6 +421,7 @@ export type SyncCloudDiffOnceResult = {
   sessionActivity: CloudSessionActivityStore;
   sessionForksById: Record<string, CloudSessionForkSummary>;
   sessionPinsById: CloudSessionPinsById;
+  cloudAgentsById: Record<string, CloudAgentDefinition>;
   hiddenSessionIds: Set<string>;
   deletedSessionIds: Set<string>;
   cursor: string;
@@ -443,12 +446,12 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   try {
     response = await input.fetchEvents(previousCursor);
   } catch {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, cloudAgentsById: input.cloudAgentsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const nextCursor = normalizeCursor(response.cursor);
   if (cursorWentBackwards(previousCursor, nextCursor)) {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, cloudAgentsById: input.cloudAgentsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const events = response.events ?? [];
@@ -469,6 +472,7 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   );
   const sessionForksById = applyCloudSyncEventsToSessionForks(input.sessionForksById ?? {}, events);
   const sessionPinsById = applyCloudSyncEventsToSessionPins(input.sessionPinsById ?? {}, events);
+  const cloudAgentsById = applyCloudAgentSyncEvents(input.cloudAgentsById ?? {}, events);
   saveCloudSyncCursor(input.accountId, nextCursor, storage);
-  return { messagesByPeer, sessionActivity, sessionForksById, sessionPinsById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
+  return { messagesByPeer, sessionActivity, sessionForksById, sessionPinsById, cloudAgentsById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
 }

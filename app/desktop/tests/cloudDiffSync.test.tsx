@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { CloudMessage } from '../src/features/cloud/authClient';
+import type { CloudAgentDefinition } from '../src/features/cloud/cloudAgents';
 import {
   applyCloudSyncEventsToMessagesByPeer,
   applyCloudSyncEventsToSessionActivity,
@@ -334,6 +335,49 @@ test('syncCloudDiffOnce clears removed visibility when a later message update ar
 
   assert.deepEqual(result.messagesByPeer, { acct_peer: [updatedMessage] });
   assert.deepEqual([...result.deletedSessionIds], []);
+});
+
+test('syncCloudDiffOnce applies cloud agent definition events', async () => {
+  const storage = memoryStorage();
+  const cloudAgent: CloudAgentDefinition = {
+    agentId: 'cloud_agent_abc',
+    ownerAccountId: 'acct_me',
+    accessScope: 'private',
+    status: 'active',
+    name: 'Docs Helper',
+    role: 'Technical Support Agent',
+    description: null,
+    systemPrompt: 'Use docs only.',
+    sourceSummary: 'Docs helper',
+    boundaries: [],
+    resources: [],
+    skills: [],
+    modelRouting: {},
+    createdAt: '2026-06-18T00:00:00Z',
+    updatedAt: '2026-06-18T00:00:00Z',
+    archivedAt: null,
+  };
+
+  const result = await syncCloudDiffOnce({
+    accountId: 'acct_me',
+    cursorStorage: storage,
+    messagesByPeer: {},
+    cloudAgentsById: {},
+    fetchEvents: async () => ({
+      cursor: '31',
+      hasMore: false,
+      events: [{
+        eventId: '30',
+        eventType: 'agent.definition.upserted',
+        peerAccountId: null,
+        messageId: null,
+        payload: { agent: cloudAgent },
+        occurredAt: '2026-06-18T00:01:00Z',
+      }],
+    }),
+  });
+
+  assert.equal(result.cloudAgentsById.cloud_agent_abc?.name, 'Docs Helper');
 });
 
 test('syncCloudDiffOnce advances cursor only after applying events', async () => {
