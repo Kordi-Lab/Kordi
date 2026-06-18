@@ -1,3 +1,4 @@
+import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 
@@ -23,6 +24,7 @@ export type AgentsPageProps = {
   ) => Promise<void> | void;
   onMessageAgent?: (agent: Agent) => void;
   onOpenAgentReachoutSession?: (sessionId: string) => void;
+  onCreateCloudAgent?: (input: CreateCloudAgentInput) => Promise<Agent>;
 };
 
 export type AgentConfigDraft = {

@@ -11,19 +11,31 @@ export function AgentsSidebar({
   agentConfigs,
   getStatusBadgeClass,
   onOpenAgent,
+  onCreateAgentClick,
 }: {
   agents: Agent[];
   activeAgentId: string;
   agentConfigs: Record<string, AgentConfigDraft>;
   getStatusBadgeClass: (value: string) => string;
   onOpenAgent: (agentId: string) => void;
+  onCreateAgentClick?: () => void;
 }) {
   return (
     <aside className="app-agent-sidebar flex min-h-0 flex-col">
       <div className="app-agent-panel-header px-4 py-4">
-        <div>
-          <div className="app-agent-panel-title text-[14px] font-medium">Agents</div>
-          <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">{agents.length} visible identities • choose one to inspect in the middle and edit files on the right</div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="app-agent-panel-title text-[14px] font-medium">Agents</div>
+            <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">{agents.length} visible identities • choose one to inspect in the middle and edit files on the right</div>
+          </div>
+          <button
+            type="button"
+            className="app-agent-inspector-row shrink-0 rounded-[12px] border px-3 py-2 text-[12px] font-medium transition hover:border-white/18"
+            onClick={onCreateAgentClick}
+            disabled={!onCreateAgentClick}
+          >
+            + New agent
+          </button>
         </div>
       </div>
 

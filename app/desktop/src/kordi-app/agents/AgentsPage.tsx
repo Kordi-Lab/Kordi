@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { AgentContentPane } from './AgentContentPane';
+import { AgentCreateDialog } from './AgentCreateDialog';
 import { AgentDetailPane } from './AgentDetailPane';
 import { AgentsSidebar } from './AgentsSidebar';
 import type { AgentsPageProps } from './model';
@@ -15,7 +17,9 @@ export function AgentsPage({
   onUpdateAgentModelRouting,
   onMessageAgent,
   onOpenAgentReachoutSession,
+  onCreateCloudAgent,
 }: AgentsPageProps) {
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const {
     agentConfigs,
     activeAgentConfig,
@@ -51,6 +55,7 @@ export function AgentsPage({
           agentConfigs={agentConfigs}
           getStatusBadgeClass={getStatusBadgeClass}
           onOpenAgent={onOpenAgent}
+          onCreateAgentClick={onCreateCloudAgent ? () => setCreateDialogOpen(true) : undefined}
         />
         <AgentDetailPane
           activeAgent={activeAgent}
@@ -98,6 +103,12 @@ export function AgentsPage({
           onFileDraftChange={updateActiveFileDraft}
         />
       </div>
+      <AgentCreateDialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        onCreateCloudAgent={onCreateCloudAgent}
+        onCreated={(agent) => onOpenAgent(agent.id)}
+      />
     </div>
   );
 }

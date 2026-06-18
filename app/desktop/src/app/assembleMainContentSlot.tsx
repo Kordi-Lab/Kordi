@@ -151,6 +151,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           args.setActiveNav('chats');
           void args.handleSelectChatSession(sessionId);
         },
+        onCreateCloudAgent: args.handleCreateCloudAgent,
       }}
       chatsPageProps={buildChatsPageProps(args)}
     />

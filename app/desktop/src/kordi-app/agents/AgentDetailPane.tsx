@@ -43,6 +43,21 @@ const EMPTY_MODEL_ROUTING_DRAFT: ModelRoutingDraft = {
   thinking: null,
 };
 
+function AgentAccessMenu({ agent }: { agent: Agent }) {
+  if (!agent.cloudAgentId) return null;
+  return (
+    <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
+      <div className="app-agent-row-title font-medium">Access</div>
+      <select className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]" value="private" onChange={() => undefined} aria-label="Agent access">
+        <option value="private">Private — only me</option>
+        <option value="contacts" disabled>Share with contacts — coming later</option>
+        <option value="workspace" disabled>Workspace/shared Cloud — coming later</option>
+      </select>
+      <div className="app-agent-row-meta mt-2">Synced privately to your Cloud account.</div>
+    </div>
+  );
+}
+
 function EditHistorySection({ entries }: { entries: AgentEditHistoryEntry[] }) {
   return (
     <AgentInspectorSection title="Edit history" detail="Recent saved changes, shown in file path style.">
@@ -682,6 +697,8 @@ export function AgentDetailPane({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-5 px-5 py-5">
+          <AgentAccessMenu agent={activeAgent} />
+
           {modelRoutingSection}
 
           {(activeAgent.bridgeReachouts?.length ?? 0) > 0 ? (

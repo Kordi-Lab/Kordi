@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildFallbackShapeAgentDraft,
   normalizeShapeAgentDraft,
   parseShapeAgentDraftJson,
   parseShapeResources,
@@ -43,6 +44,18 @@ test('parseShapeAgentDraftJson handles fenced json and rejects malformed model o
   assert.equal(parsed?.name, 'Docs Helper');
   assert.equal(parseShapeAgentDraftJson('not json'), null);
   assert.equal(parseShapeAgentDraftJson('{"name":"Missing prompt"}'), null);
+});
+
+test('buildFallbackShapeAgentDraft creates a usable private agent draft from inputs', () => {
+  const draft = buildFallbackShapeAgentDraft({
+    resources: [{ kind: 'url', value: 'https://docs.example.com' }],
+    identity: 'A technical support helper for docs.',
+  });
+
+  assert.equal(draft.name, 'Technical Support Helper');
+  assert.match(draft.systemPrompt, /private Cloud agent/i);
+  assert.match(draft.sourceSummary, /https:\/\/docs\.example\.com/);
+  assert.ok(draft.skills.some((skill) => skill.name === 'navigate-knowledge'));
 });
 
 test('buildShapeAgentDraftPrompt includes private cloud access and shape output contract', () => {

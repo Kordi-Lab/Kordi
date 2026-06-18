@@ -6,6 +6,7 @@ import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessage
 import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
+import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import { presenceStatusForAccount, type CloudPresenceStore } from '@/features/cloud/presence';
 import {
   buildProjectRoutingGroups,
@@ -263,6 +264,7 @@ type UseWorkspaceViewModelsArgs = {
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
   mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
   cloudSessionActivity?: CloudSessionActivityStore;
+  cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
   cloudPresence?: CloudPresenceStore;
 };
 
@@ -290,6 +292,7 @@ export function useWorkspaceViewModels({
   desktopLiveTurnsBySession,
   mapDesktopMessages,
   cloudSessionActivity = EMPTY_CLOUD_SESSION_ACTIVITY,
+  cloudAgentDefinitionsById = {},
   cloudPresence = {},
 }: UseWorkspaceViewModelsArgs) {
   const canonicalReadModel = useMemo(() => createCanonicalSessionReadModel(canonicalSessionState), [canonicalSessionState]);
@@ -886,8 +889,17 @@ export function useWorkspaceViewModels({
       });
     }
 
+    const existingIds = new Set(items.map((agent) => agent.id));
+    for (const cloudAgent of Object.values(cloudAgentDefinitionsById).sort((left, right) => left.name.localeCompare(right.name))) {
+      const agent = cloudAgentDefinitionToAgent(cloudAgent);
+      if (!existingIds.has(agent.id)) {
+        items.push(agent);
+        existingIds.add(agent.id);
+      }
+    }
+
     return items;
-  }, [desktopBridgeState?.hosts, desktopBridgeState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentBridgeReachoutsByAgentId]);
+  }, [cloudAgentDefinitionsById, desktopBridgeState?.hosts, desktopBridgeState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentBridgeReachoutsByAgentId]);
 
   const groupedContacts = useMemo(
     () =>

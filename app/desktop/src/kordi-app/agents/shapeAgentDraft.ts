@@ -101,3 +101,54 @@ export function parseShapeAgentDraftJson(raw: string): ShapeAgentDraft | null {
     return null;
   }
 }
+
+function titleCaseWords(value: string) {
+  return value
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1).toLowerCase()}`)
+    .join(' ');
+}
+
+function inferredName(identity: string) {
+  const lower = identity.toLowerCase();
+  if (lower.includes('technical support') || lower.includes('docs')) return 'Technical Support Helper';
+  if (lower.includes('customer')) return 'Customer Support Helper';
+  if (lower.includes('sales') || lower.includes('shopping')) return 'Sales Assistant';
+  if (lower.includes('tutor') || lower.includes('teach')) return 'Learning Tutor';
+  return `${titleCaseWords(identity) || 'Cloud'} Agent`;
+}
+
+export function buildFallbackShapeAgentDraft(input: {
+  resources: ShapeAgentResourceInput[];
+  identity: string;
+}): ShapeAgentDraft {
+  const identity = input.identity.trim() || 'A focused private assistant shaped from the provided resources.';
+  const resourcesSummary = input.resources.length > 0
+    ? input.resources.map((resource) => `${resource.kind}: ${resource.value}`).join('; ')
+    : 'No external resources were provided; the draft is based on the identity description.';
+  const name = inferredName(identity);
+  const role = name.includes('Support') ? 'Technical support agent' : name.includes('Tutor') ? 'Tutor agent' : 'Private Cloud agent';
+  return {
+    name,
+    role,
+    description: identity,
+    sourceSummary: resourcesSummary,
+    systemPrompt: [
+      `You are ${name}, a private Cloud agent available only to your creator.`,
+      `Role: ${role}.`,
+      `Use the available source context and this intent: ${identity}`,
+      'Be concise, ask clarifying questions when needed, and clearly state when information is not available from the provided sources.',
+    ].join('\n'),
+    boundaries: [
+      'Private to the creator; do not assume public or workspace-wide access.',
+      'Do not invent source-backed facts when the resources are insufficient.',
+      'Ask for clarification before acting on ambiguous requests.',
+    ],
+    skills: [
+      { name: 'navigate-knowledge', description: 'Search and summarize the provided resources before answering.' },
+      { name: 'clarify-requirements', description: 'Ask concise follow-up questions when the request is underspecified.' },
+    ],
+  };
+}

@@ -1,6 +1,7 @@
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react';
 
 import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
 import type { CloudSessionPin } from '@/features/cloud/authClient';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
@@ -105,6 +106,7 @@ export type AssembleKordiShellSlotsArgs = {
   setActiveContactGroup: Dispatch<SetStateAction<ContactClass>>;
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: Agent[];
+  handleCreateCloudAgent: (input: CreateCloudAgentInput) => Promise<Agent>;
   activeBridgeHost: DesktopBridgeHost | null;
   localProfileAvatarSeed?: string | null;
   refreshDesktopBridge: () => Promise<void>;
@@ -468,6 +470,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleOpenBridgeConversation'
   | 'handleStartBridgePersonSession'
   | 'displayedAgents'
+  | 'handleCreateCloudAgent'
   | 'activeAgentId'
   | 'activeAgent'
   | 'isAgentOverlayOpen'
