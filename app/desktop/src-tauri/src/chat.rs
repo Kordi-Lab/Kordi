@@ -506,6 +506,22 @@ async fn build_chat_state(
 }
 
 #[tauri::command]
+pub async fn desktop_shape_agent_draft(
+    manager: State<'_, DesktopChatManager>,
+    prompt: String,
+) -> Result<DesktopChatTurnSnapshot, String> {
+    run_bridge_agent_prompt(
+        manager.inner(),
+        "shape-agent-creator",
+        "shape-agent-draft",
+        prompt,
+        Vec::new(),
+        None,
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn desktop_chat_state(
     manager: State<'_, DesktopChatManager>,
     active_session_id: Option<String>,

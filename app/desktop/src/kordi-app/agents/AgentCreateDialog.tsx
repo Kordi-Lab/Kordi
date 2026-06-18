@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { Agent } from '../types';
-import { buildFallbackShapeAgentDraft, parseShapeResources, type ShapeAgentDraft } from './shapeAgentDraft';
+import { parseShapeResources, type ShapeAgentDraft } from './shapeAgentDraft';
 import { buildShapeAgentDraftPrompt } from './shapeAgentPrompts';
+import { draftShapeAgentWithDesktopRuntime } from './shapeAgentRuntime';
 
 type AgentCreateDialogProps = {
   open: boolean;
@@ -32,6 +33,7 @@ export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated
   const [draft, setDraft] = useState<ShapeAgentDraft | null>(null);
   const [feedback, setFeedback] = useState<{ tone: 'idle' | 'info' | 'error' | 'success'; text: string }>({ tone: 'idle', text: '' });
   const [creating, setCreating] = useState(false);
+  const [shaping, setShaping] = useState(false);
 
   const resources = useMemo(() => parseShapeResources(resourcesText), [resourcesText]);
   const shapePrompt = useMemo(() => buildShapeAgentDraftPrompt({ resources, identity }), [identity, resources]);
@@ -39,10 +41,21 @@ export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated
 
   if (!open) return null;
 
-  const generateDraft = () => {
-    const nextDraft = buildFallbackShapeAgentDraft({ resources, identity });
-    setDraft(nextDraft);
-    setFeedback({ tone: 'info', text: 'Draft shaped from your inputs. LLM refinement will plug into this same schema next.' });
+  const generateDraft = async () => {
+    setShaping(true);
+    setFeedback({ tone: 'info', text: 'Shaping draft with the local Agent runtime…' });
+    try {
+      const result = await draftShapeAgentWithDesktopRuntime({ resources, identity });
+      setDraft(result.draft);
+      setFeedback({
+        tone: result.source === 'llm' ? 'success' : 'info',
+        text: result.source === 'llm'
+          ? 'LLM-shaped draft is ready to review.'
+          : `Draft shaped from your inputs. ${result.error ?? 'The local model was unavailable.'}`,
+      });
+    } finally {
+      setShaping(false);
+    }
   };
 
   const createAgent = async () => {
@@ -114,7 +127,7 @@ export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated
               </select>
               <div className="app-agent-row-meta mt-2">MVP agents are creator-owned/private Cloud sync only.</div>
             </div>
-            <Button className="rounded-xl text-[12px]" onClick={generateDraft}>Shape draft</Button>
+            <Button className="rounded-xl text-[12px]" onClick={() => void generateDraft()} disabled={shaping}>{shaping ? 'Shaping…' : 'Shape draft'}</Button>
           </div>
 
           <div className="space-y-4 px-5 py-5">

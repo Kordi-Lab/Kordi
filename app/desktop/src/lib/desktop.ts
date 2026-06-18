@@ -781,6 +781,11 @@ export async function startDesktopChatMessage(
   });
 }
 
+export async function runDesktopShapeAgentDraft(prompt: string) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<DesktopChatTurnSnapshot>('desktop_shape_agent_draft', { prompt });
+}
+
 export async function runDesktopChatSkillCommand(sessionId: string, text: string) {
   return invokeDesktop<string>('desktop_chat_run_skill_command', { sessionId, text });
 }
