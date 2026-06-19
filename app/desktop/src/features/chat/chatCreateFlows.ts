@@ -192,6 +192,7 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
   const peerDisplayName = cleanText(agent.name);
   const peerOwnerName = cleanText(agent.bridgeOwnerName);
   const peerAgentId = cleanText(agent.bridgeAgentId);
+  const cloudAgentId = cleanText(agent.cloudAgentId);
 
   return {
     createdFrom: 'chat-create-flow' as const,
@@ -203,7 +204,47 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
     ...(peerDisplayName && bridgeHostId ? { peerDisplayName } : {}),
     ...(peerOwnerName ? { peerOwnerName } : {}),
     ...(peerAgentId ? { peerAgentId, targetAgentId: peerAgentId } : {}),
+    ...(cloudAgentId ? {
+      cloudAgentId,
+      cloudAgentName: agent.name,
+      cloudAgentRole: agent.role,
+      cloudAgentSystemPrompt: agent.systemPrompt,
+      cloudAgentSourceSummary: agent.cloudAgentSourceSummary ?? null,
+      cloudAgentBoundaries: agent.cloudAgentBoundaries ?? [],
+      cloudAgentSkills: agent.cloudAgentSkills ?? [],
+    } : {}),
   };
+}
+
+export function cloudAgentContextMessagesFromConversation(conversation: unknown) {
+  const conversationRecord = metadataRecord(conversation);
+  const metadata = metadataRecord(conversationRecord.metadata);
+  const cloudAgentId = metadataText(metadata, 'cloudAgentId');
+  const name = metadataText(metadata, 'cloudAgentName');
+  const role = metadataText(metadata, 'cloudAgentRole');
+  const systemPrompt = metadataText(metadata, 'cloudAgentSystemPrompt');
+  if (!cloudAgentId || !name || !systemPrompt) return [];
+
+  const sourceSummary = metadataText(metadata, 'cloudAgentSourceSummary');
+  const boundaries = metadataStringArray(metadata, 'cloudAgentBoundaries');
+  const skills = metadataSkills(metadata);
+  const text = [
+    `You are ${name}${role ? `, ${role}` : ''}.`,
+    'For this conversation, answer as this private Cloud Agent rather than the default Kordi agent.',
+    'Cloud Agent system prompt:',
+    systemPrompt,
+    sourceSummary ? `Source summary: ${sourceSummary}` : '',
+    boundaries.length ? `Boundaries:\n${boundaries.map((boundary) => `- ${boundary}`).join('\n')}` : '',
+    skills.length ? `Suggested skills:\n${skills.map((skill) => `- ${skill.name}: ${skill.description}`).join('\n')}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  return [{
+    id: `cloud-agent-definition:${cloudAgentId}`,
+    authorName: `${name} definition`,
+    authorKind: 'agent' as const,
+    text,
+    createdAtMs: null,
+  }];
 }
 
 export type ParticipantSpaceContinuationMetadataInput = {
@@ -262,6 +303,23 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 function metadataText(metadata: Record<string, unknown>, key: string) {
   const value = metadata[key];
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function metadataStringArray(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0) : [];
+}
+
+function metadataSkills(metadata: Record<string, unknown>) {
+  const value = metadata.cloudAgentSkills;
+  if (!Array.isArray(value)) return [] as Array<{ name: string; description: string }>;
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const record = entry as Record<string, unknown>;
+    const name = typeof record.name === 'string' ? record.name.trim() : '';
+    const description = typeof record.description === 'string' ? record.description.trim() : '';
+    return name && description ? [{ name, description }] : [];
+  });
 }
 
 function normalizedMatchKey(value?: string | null) {

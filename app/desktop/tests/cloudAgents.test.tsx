@@ -63,6 +63,18 @@ test('cloudAgentDefinitionToAgent maps private cloud definition into Agent page 
   assert.equal(agent.cloudAgentSourceSummary, 'Description-only docs helper');
 });
 
+test('cloudAgentDefinitionToAgent preserves runtime-shaping context for private agent chats', () => {
+  const definition = normalizeCloudAgentDefinition(rawAgent);
+  assert.ok(definition);
+
+  const agent = cloudAgentDefinitionToAgent(definition);
+
+  assert.equal(agent.cloudAgentId, 'cloud_agent_abc');
+  assert.equal(agent.cloudAgentSourceSummary, 'Description-only docs helper');
+  assert.deepEqual(agent.cloudAgentBoundaries, ['No account access']);
+  assert.equal(agent.cloudAgentSkills?.[0]?.description, 'Find source-backed answers');
+});
+
 test('applyCloudAgentSyncEvents upserts and archives cloud agent definitions', () => {
   const upserted = applyCloudAgentSyncEvents({}, [{
     eventId: '1',

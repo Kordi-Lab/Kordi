@@ -847,6 +847,13 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   assert.doesNotMatch(markup, /Group • 1 session/);
 });
 
+test('WorkspaceSidebar opens the agent picker from plus while the Agent tab is active', () => {
+  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /initialMode=\{chatChannel === 'agent' \? 'agent' : 'menu'\}/);
+  assert.match(source, /setIsChatCreateDialogOpen\(true\);/);
+});
+
 test('ChatCreateDialog renders compact theme-aware choices beside the plus button', () => {
   const markup = renderToStaticMarkup(createElement(ChatCreateDialog, {
     isOpen: true,

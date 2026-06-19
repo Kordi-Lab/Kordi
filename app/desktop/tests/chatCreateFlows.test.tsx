@@ -5,6 +5,7 @@ import {
   buildChatCreateAgentOptions,
   buildChatAgentSessionMetadata,
   buildChatAgentSessionKind,
+  cloudAgentContextMessagesFromConversation,
   buildChatCreateGroupBridgeInviteParticipants,
   buildChatCreateGroupBridgeInviteTargets,
   buildChatCreateGroupMetadata,
@@ -276,6 +277,32 @@ test('agent create flow starts a new selected-agent session under My chats', () 
     agentId: 'agent:reviewer',
     participantSpaceKind: 'self',
   });
+});
+
+test('private cloud agent sessions carry runtime context for local execution', () => {
+  const selectedAgent = agent({
+    id: 'cloud-agent:cloud_agent_abc',
+    name: 'Kordi Project Driver',
+    role: 'Project planning agent',
+    isOwned: true,
+    cloudAgentId: 'cloud_agent_abc',
+    cloudAgentAccessScope: 'private',
+    systemPrompt: 'You are Kordi Project Driver. Help plan projects only.',
+    cloudAgentSourceSummary: 'Created from project-management notes.',
+    cloudAgentBoundaries: ['Stay focused on project planning'],
+    cloudAgentSkills: [{ name: 'project-planning', description: 'Plan milestones and blockers' }],
+  });
+
+  const metadata = buildChatAgentSessionMetadata(selectedAgent);
+  assert.equal(metadata.cloudAgentId, 'cloud_agent_abc');
+  assert.equal(metadata.cloudAgentName, 'Kordi Project Driver');
+  assert.equal(metadata.cloudAgentSystemPrompt, 'You are Kordi Project Driver. Help plan projects only.');
+
+  const contextMessages = cloudAgentContextMessagesFromConversation({ metadata } as Conversation);
+  assert.equal(contextMessages.length, 1);
+  assert.match(contextMessages[0]?.text ?? '', /You are Kordi Project Driver/);
+  assert.match(contextMessages[0]?.text ?? '', /Stay focused on project planning/);
+  assert.match(contextMessages[0]?.text ?? '', /project-planning/);
 });
 
 test('external bridge agent create flow stores bridge target metadata for My chats routing', () => {

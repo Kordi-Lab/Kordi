@@ -1338,7 +1338,8 @@ export function WorkspaceSidebar({
           <button
             type="button"
             onClick={() => {
-              void onCreateChatSession();
+              setChatCreateAnchor(null);
+              setIsChatCreateDialogOpen(true);
             }}
             className="app-participant-space-action app-participant-space-context-create inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[9px] px-2 text-[11px] font-medium transition"
             title="New My agent session"
@@ -1926,6 +1927,7 @@ export function WorkspaceSidebar({
         onAddContact={onAddContactByNodeId}
         onLookupContact={onLookupContact}
         addContactPlaceholder={addContactPlaceholder}
+        initialMode={chatChannel === 'agent' ? 'agent' : 'menu'}
         anchorRect={chatCreateAnchor}
       />
 

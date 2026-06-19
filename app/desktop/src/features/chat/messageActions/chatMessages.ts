@@ -11,6 +11,7 @@ import {
 } from '@/features/cloud/cloudGroupMessages';
 import { bridgeConversationIdsToMarkReadOnUserActivity } from '@/features/bridge/readReceipts';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
@@ -1715,7 +1716,10 @@ export function useChatMessageActions({
         attachments: chatComposerAttachments,
         sentAt,
         quote: activeChatQuote,
-        contextMessages: restoredCloudContextMessages,
+        contextMessages: [
+          ...cloudAgentContextMessagesFromConversation(activeConvMentionScope ?? { metadata: null }),
+          ...restoredCloudContextMessages,
+        ],
         clearDraftSessionIds: chatDraftSessionIdsToClearForSend(activeConvId, resolvedSessionId),
         materializedState,
         setSendingState: true,
