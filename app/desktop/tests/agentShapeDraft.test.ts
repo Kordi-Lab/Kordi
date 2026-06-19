@@ -75,3 +75,25 @@ test('buildShapeAgentDraftPrompt includes private cloud access and shape output 
   assert.match(prompt, /A technical support agent for product docs\./);
   assert.match(prompt, /"systemPrompt"/);
 });
+
+test('buildShapeAgentDraftPrompt includes existing Kordi creator tools and skills', () => {
+  const prompt = buildShapeAgentDraftPrompt({
+    resources: [{ kind: 'text', value: 'Project agent' }],
+    identity: 'Push development forward.',
+    creatorAgent: {
+      name: 'Kordi',
+      role: 'My agent',
+      systemPrompt: 'You are an expert coding assistant.',
+      loadedTools: ['read', 'bash', 'edit'],
+      loadedSkills: ['brainstorming', 'test-driven-development'],
+      identityFiles: ['AGENTS.md'],
+    },
+  });
+
+  assert.match(prompt, /Existing creator Agent/i);
+  assert.match(prompt, /Name: Kordi/);
+  assert.match(prompt, /Tools available to the creator during shaping: read, bash, edit/);
+  assert.match(prompt, /Skills available to the creator during shaping: brainstorming, test-driven-development/);
+  assert.match(prompt, /Identity files visible to the creator: AGENTS\.md/);
+  assert.match(prompt, /Use the creator Agent's available tools and skills to shape the draft/i);
+});

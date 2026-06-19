@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use kordi_cli::desktop_runtime::DesktopRuntimeSession;
+use serde::Deserialize;
 
 use super::turns::{desktop_task_tools_from_messages, snapshot_turn, update_turn};
 use super::{
@@ -41,7 +42,8 @@ async fn ensure_bridge_agent_execution_session(
     Ok((session_id, handle))
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct DesktopBridgeAgentModelRouting {
     pub default_model: Option<String>,
     pub default_auth_provider: Option<String>,

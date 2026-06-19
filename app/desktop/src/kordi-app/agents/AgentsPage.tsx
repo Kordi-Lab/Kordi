@@ -20,6 +20,10 @@ export function AgentsPage({
   onCreateCloudAgent,
 }: AgentsPageProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const creatorAgent = agents.find((agent) => agent.id === 'desktop:local-agent')
+    ?? agents.find((agent) => agent.name.trim().toLowerCase() === 'kordi' && !agent.cloudAgentId)
+    ?? agents.find((agent) => agent.isOwned && !agent.cloudAgentId)
+    ?? null;
   const {
     agentConfigs,
     activeAgentConfig,
@@ -106,6 +110,7 @@ export function AgentsPage({
       <AgentCreateDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
+        creatorAgent={creatorAgent}
         onCreateCloudAgent={onCreateCloudAgent}
         onCreated={(agent) => onOpenAgent(agent.id)}
       />

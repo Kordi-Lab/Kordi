@@ -8,6 +8,28 @@ import { AgentsSidebar } from '../src/kordi-app/agents/AgentsSidebar';
 import { AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
 import type { Agent } from '../src/kordi-app/types';
 
+const creatorAgent: Agent = {
+  id: 'desktop:local-agent',
+  name: 'Kordi',
+  role: 'My agent',
+  messaging: 'Local runtime',
+  status: 'Active',
+  tasks: 0,
+  defaultProvider: 'openai',
+  defaultModel: 'openai/gpt-5.5',
+  defaultAuthProvider: 'openai',
+  defaultAuthChoice: 'api-key',
+  bridgesConfig: 'Local runtime',
+  contactId: 'desktop:local-agent',
+  systemPrompt: 'You are an expert coding assistant.',
+  identityFiles: ['AGENTS.md'],
+  loadedTools: ['read', 'bash', 'edit'],
+  loadedSkills: ['brainstorming', 'test-driven-development'],
+  loadedPlugins: [],
+  lastActivities: [],
+  isOwned: true,
+};
+
 const cloudAgent: Agent = {
   id: 'cloud-agent:cloud_agent_1',
   cloudAgentId: 'cloud_agent_1',
@@ -32,11 +54,17 @@ const cloudAgent: Agent = {
 test('AgentCreateDialog shows private-only access menu and future sharing options', () => {
   const markup = renderToStaticMarkup(createElement(AgentCreateDialog, {
     open: true,
+    creatorAgent,
     onClose: () => undefined,
     onCreateCloudAgent: async () => cloudAgent,
   }));
 
   assert.match(markup, /Create Cloud Agent/);
+  assert.match(markup, /Created by Kordi/);
+  assert.match(markup, /3 tools/);
+  assert.match(markup, /2 skills/);
+  assert.match(markup, /read/);
+  assert.match(markup, /brainstorming/);
   assert.match(markup, /Private — only me/);
   assert.match(markup, /Share with contacts — coming later/);
   assert.match(markup, /Workspace\/shared Cloud — coming later/);

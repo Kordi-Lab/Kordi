@@ -5,29 +5,36 @@ import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { Agent } from '../types';
 import { parseShapeResources, type ShapeAgentDraft } from './shapeAgentDraft';
 import { buildShapeAgentDraftPrompt } from './shapeAgentPrompts';
-import { draftShapeAgentWithDesktopRuntime } from './shapeAgentRuntime';
+import { draftShapeAgentWithDesktopRuntime, shapeAgentRouteFromCreatorAgent } from './shapeAgentRuntime';
 
 type AgentCreateDialogProps = {
   open: boolean;
   onClose: () => void;
+  creatorAgent?: Agent | null;
   onCreateCloudAgent?: (input: CreateCloudAgentInput) => Promise<Agent>;
   onCreated?: (agent: Agent) => void;
 };
 
-function resourcesForPayload(resources: ReturnType<typeof parseShapeResources>) {
-  return resources.map((resource) => ({
+function resourcesForPayload(resources: ReturnType<typeof parseShapeResources>, creatorAgent?: Agent | null) {
+  const creatorResource = creatorAgent ? [{
+    kind: 'creator-agent',
+    value: creatorAgent.id,
+    title: creatorAgent.name,
+    summary: `${creatorAgent.loadedTools.length} tools, ${creatorAgent.loadedSkills.length} skills used during shaping`,
+  }] : [];
+  return [...creatorResource, ...resources.map((resource) => ({
     kind: resource.kind,
     value: resource.value,
     title: null,
     summary: null,
-  }));
+  }))];
 }
 
 function skillsForPayload(draft: ShapeAgentDraft) {
   return draft.skills.map((skill) => ({ name: skill.name, description: skill.description }));
 }
 
-export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated }: AgentCreateDialogProps) {
+export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAgent, onCreated }: AgentCreateDialogProps) {
   const [resourcesText, setResourcesText] = useState('');
   const [identity, setIdentity] = useState('');
   const [draft, setDraft] = useState<ShapeAgentDraft | null>(null);
@@ -36,7 +43,9 @@ export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated
   const [shaping, setShaping] = useState(false);
 
   const resources = useMemo(() => parseShapeResources(resourcesText), [resourcesText]);
-  const shapePrompt = useMemo(() => buildShapeAgentDraftPrompt({ resources, identity }), [identity, resources]);
+  const creatorRoute = useMemo(() => shapeAgentRouteFromCreatorAgent(creatorAgent), [creatorAgent]);
+  const shapePrompt = useMemo(() => buildShapeAgentDraftPrompt({ resources, identity, creatorAgent }), [creatorAgent, identity, resources]);
+  const canShape = Boolean(creatorAgent && creatorRoute && !shaping);
   const canCreate = Boolean(onCreateCloudAgent && draft && !creating);
 
   if (!open) return null;
@@ -45,7 +54,11 @@ export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated
     setShaping(true);
     setFeedback({ tone: 'info', text: 'Shaping draft with the local Agent runtime…' });
     try {
-      const result = await draftShapeAgentWithDesktopRuntime({ resources, identity });
+      if (!creatorAgent || !creatorRoute) {
+        setFeedback({ tone: 'error', text: "Configure Kordi's LLM provider and model route before shaping a Cloud Agent." });
+        return;
+      }
+      const result = await draftShapeAgentWithDesktopRuntime({ resources, identity, creatorAgent, route: creatorRoute });
       setDraft(result.draft);
       setFeedback({
         tone: result.source === 'llm' ? 'success' : 'info',
@@ -71,7 +84,7 @@ export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated
         systemPrompt: draft.systemPrompt,
         sourceSummary: draft.sourceSummary,
         boundaries: draft.boundaries,
-        resources: resourcesForPayload(resources),
+        resources: resourcesForPayload(resources, creatorAgent),
         skills: skillsForPayload(draft),
         modelRouting: {},
       });
@@ -91,13 +104,28 @@ export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated
         <div className="app-agent-panel-header flex items-start justify-between gap-4 px-5 py-4">
           <div>
             <div id="agent-create-title" className="app-agent-panel-title text-[16px] font-semibold">Create Cloud Agent</div>
-            <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">Shape a private Agent from resources, then sync it to your Cloud account.</div>
+            <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">Kordi shapes the private Agent with its configured LLM provider, tools, and skills.</div>
           </div>
           <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onClose}>Close</Button>
         </div>
 
         <div className="grid max-h-[min(78vh,46rem)] gap-0 overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="space-y-4 border-r border-[color:var(--app-divider)] px-5 py-5">
+            <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
+              <div className="app-agent-row-title font-medium">Created by {creatorAgent?.name ?? 'Kordi'}</div>
+              <div className="app-agent-row-meta mt-1">Uses Kordi's configured LLM provider and current tool/skill context during shaping.</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="app-agent-chip rounded-full border px-2.5 py-1">{creatorAgent?.loadedTools.length ?? 0} tools</span>
+                <span className="app-agent-chip rounded-full border px-2.5 py-1">{creatorAgent?.loadedSkills.length ?? 0} skills</span>
+                <span className="app-agent-chip rounded-full border px-2.5 py-1">{creatorAgent?.identityFiles.length ?? 0} files</span>
+              </div>
+              <div className="app-agent-row-meta mt-3 line-clamp-2">Tools: {(creatorAgent?.loadedTools ?? []).slice(0, 8).join(', ') || 'none exposed'}</div>
+              <div className="app-agent-row-meta mt-1 line-clamp-2">Skills: {(creatorAgent?.loadedSkills ?? []).slice(0, 8).join(', ') || 'none exposed'}</div>
+              <div className={cn('mt-2 text-[12px]', creatorRoute ? 'text-emerald-300' : 'text-rose-300')}>
+                {creatorRoute ? `LLM route: ${creatorRoute.defaultAuthProvider} · ${creatorRoute.defaultModel}` : "Configure Kordi's LLM provider/model before shaping."}
+              </div>
+            </div>
+
             <div>
               <label className="app-agent-row-title text-[12px] font-medium" htmlFor="agent-resources">Resources</label>
               <textarea
@@ -127,7 +155,7 @@ export function AgentCreateDialog({ open, onClose, onCreateCloudAgent, onCreated
               </select>
               <div className="app-agent-row-meta mt-2">MVP agents are creator-owned/private Cloud sync only.</div>
             </div>
-            <Button className="rounded-xl text-[12px]" onClick={() => void generateDraft()} disabled={shaping}>{shaping ? 'Shaping…' : 'Shape draft'}</Button>
+            <Button className="rounded-xl text-[12px]" onClick={() => void generateDraft()} disabled={!canShape}>{shaping ? 'Shaping…' : 'Shape draft with Kordi'}</Button>
           </div>
 
           <div className="space-y-4 px-5 py-5">

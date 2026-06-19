@@ -1,22 +1,57 @@
 import { runDesktopShapeAgentDraft } from '@/lib/desktop';
+import type { Agent } from '../types';
 import {
   buildFallbackShapeAgentDraft,
   parseShapeAgentDraftJson,
   type ShapeAgentDraft,
   type ShapeAgentResourceInput,
 } from './shapeAgentDraft';
-import { buildShapeAgentDraftPrompt } from './shapeAgentPrompts';
+import { buildShapeAgentDraftPrompt, type ShapeAgentCreatorContext } from './shapeAgentPrompts';
 
-type ShapeAgentRunner = (prompt: string) => Promise<{ assistantText?: string | null; message?: string | null; succeeded?: boolean } | null>;
+export type ShapeAgentRoute = {
+  defaultModel?: string | null;
+  defaultAuthProvider?: string | null;
+  defaultAuthChoice?: string | null;
+  fallbackModel?: string | null;
+  fallbackAuthProvider?: string | null;
+  fallbackAuthChoice?: string | null;
+  thinking?: string | null;
+};
+
+type ShapeAgentRunner = (prompt: string, route: ShapeAgentRoute) => Promise<{ assistantText?: string | null; message?: string | null; succeeded?: boolean } | null>;
+
+function cleanText(value?: string | null) {
+  return value?.trim() || null;
+}
+
+export function shapeAgentRouteFromCreatorAgent(agent?: Agent | null): ShapeAgentRoute | null {
+  const defaultModel = cleanText(agent?.defaultModel);
+  const defaultAuthProvider = cleanText(agent?.defaultAuthProvider) || cleanText(agent?.defaultProvider);
+  if (!defaultModel || !defaultAuthProvider) return null;
+  return {
+    defaultModel,
+    defaultAuthProvider,
+    defaultAuthChoice: cleanText(agent?.defaultAuthChoice),
+    fallbackModel: cleanText(agent?.fallbackModel),
+    fallbackAuthProvider: cleanText(agent?.fallbackAuthProvider),
+    fallbackAuthChoice: cleanText(agent?.fallbackAuthChoice),
+    thinking: cleanText(agent?.defaultThinking),
+  };
+}
 
 export async function draftShapeAgentWithRunner(input: {
   resources: ShapeAgentResourceInput[];
   identity: string;
+  creatorAgent?: ShapeAgentCreatorContext | null;
+  route?: ShapeAgentRoute | null;
   runPrompt: ShapeAgentRunner;
 }): Promise<{ draft: ShapeAgentDraft; source: 'llm' | 'fallback'; error?: string | null }> {
-  const prompt = buildShapeAgentDraftPrompt({ resources: input.resources, identity: input.identity });
+  if (!input.creatorAgent || !input.route?.defaultModel || !input.route?.defaultAuthProvider) {
+    throw new Error("Configure Kordi's LLM provider and model route before shaping a Cloud Agent.");
+  }
+  const prompt = buildShapeAgentDraftPrompt({ resources: input.resources, identity: input.identity, creatorAgent: input.creatorAgent });
   try {
-    const turn = await input.runPrompt(prompt);
+    const turn = await input.runPrompt(prompt, input.route);
     const text = turn?.assistantText?.trim() || turn?.message?.trim() || '';
     const draft = text ? parseShapeAgentDraftJson(text) : null;
     if (draft) return { draft, source: 'llm' };
@@ -37,6 +72,8 @@ export async function draftShapeAgentWithRunner(input: {
 export async function draftShapeAgentWithDesktopRuntime(input: {
   resources: ShapeAgentResourceInput[];
   identity: string;
+  creatorAgent?: ShapeAgentCreatorContext | null;
+  route?: ShapeAgentRoute | null;
 }) {
   return draftShapeAgentWithRunner({
     ...input,

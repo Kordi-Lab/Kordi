@@ -509,6 +509,7 @@ async fn build_chat_state(
 pub async fn desktop_shape_agent_draft(
     manager: State<'_, DesktopChatManager>,
     prompt: String,
+    route: DesktopBridgeAgentModelRouting,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     run_bridge_agent_prompt(
         manager.inner(),
@@ -516,7 +517,7 @@ pub async fn desktop_shape_agent_draft(
         "shape-agent-draft",
         prompt,
         Vec::new(),
-        None,
+        Some(route),
     )
     .await
 }
