@@ -28,7 +28,6 @@ export async function archiveAgentFromMenu({
   onFeedback?.({ tone: 'info', text: `Deleting ${agent.name}…` });
   try {
     await onArchiveCloudAgent(agent);
-    onFeedback?.({ tone: 'success', text: `Deleted ${agent.name}.` });
     return true;
   } catch (error) {
     onFeedback?.({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to delete agent.' });
