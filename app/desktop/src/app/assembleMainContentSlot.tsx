@@ -140,6 +140,11 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           );
         },
         onMessageAgent: (agent) => {
+          if (agent.cloudAgentId) {
+            void args.handleStartChatWithAgent(agent);
+            return;
+          }
+
           if (agent.isOwned) {
             void openLocalAgentChat();
             return;
@@ -151,6 +156,8 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           args.setActiveNav('chats');
           void args.handleSelectChatSession(sessionId);
         },
+        onCreateCloudAgent: args.handleCreateCloudAgent,
+        onArchiveCloudAgent: args.handleArchiveCloudAgent,
       }}
       chatsPageProps={buildChatsPageProps(args)}
     />

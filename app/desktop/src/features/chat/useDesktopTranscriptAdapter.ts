@@ -24,6 +24,27 @@ type DesktopTranscriptAvatarSeeds = {
   agentDisplayName?: string | null;
 };
 
+type DesktopTranscriptSessionContext = {
+  metadata?: unknown;
+};
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function metadataText(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function cloudAgentTranscriptIdentity(context?: DesktopTranscriptSessionContext) {
+  const metadata = metadataRecord(context?.metadata);
+  const id = metadataText(metadata, 'cloudAgentId');
+  const name = metadataText(metadata, 'cloudAgentName');
+  if (!id || !name) return null;
+  return { id, name };
+}
+
 function desktopTranscriptMessageId(sessionId: string, message: DesktopChatMessage, index: number) {
   const role = message.role.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-') || 'message';
   return `desktop-message:${sessionId}:${message.timestampMs}:${index}:${role}`;
@@ -45,7 +66,9 @@ export function mapDesktopMessagesForTranscript(
   sessionId: string,
   messages: DesktopChatMessage[],
   avatarSeeds?: DesktopTranscriptAvatarSeeds,
+  sessionContext?: DesktopTranscriptSessionContext,
 ): Message[] {
+  const cloudAgentIdentity = cloudAgentTranscriptIdentity(sessionContext);
   return messages.flatMap((message, index) => {
     const isAssistant = message.role === 'assistant';
     const failedAssistant = isAssistant && message.failed === true;
@@ -63,6 +86,9 @@ export function mapDesktopMessagesForTranscript(
       return [];
     }
 
+    const assistantSenderLabel = cloudAgentIdentity?.name || firstPersonPossessiveLabel(message.sender ?? 'Kordi');
+    const assistantAvatarSeed = cloudAgentIdentity?.id || avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed(message.sender ?? 'Kordi');
+
     return [{
       id: desktopTranscriptMessageId(sessionId, message, index),
       entryId: message.entryId ?? null,
@@ -76,12 +102,12 @@ export function mapDesktopMessagesForTranscript(
               : ('user' as const),
       sender:
         message.role === 'assistant'
-          ? firstPersonPossessiveLabel(message.sender ?? 'Kordi')
+          ? assistantSenderLabel
           : message.role === 'user'
             ? selfDisplayName(message.sender ?? 'Me', true)
             : message.sender ?? undefined,
       sourceSenderLabel: message.role === 'assistant'
-        ? (avatarSeeds?.agentDisplayName?.trim() || firstPersonPossessiveLabel(message.sender ?? 'Kordi'))
+        ? (cloudAgentIdentity?.name || avatarSeeds?.agentDisplayName?.trim() || firstPersonPossessiveLabel(message.sender ?? 'Kordi'))
         : message.role === 'user'
           ? (avatarSeeds?.humanDisplayName?.trim() || selfDisplayName(message.sender ?? 'Me', true))
           : message.sender ?? null,
@@ -89,7 +115,7 @@ export function mapDesktopMessagesForTranscript(
       time: message.timeLabel,
       detail: message.role === 'assistant' ? undefined : (message.detail ?? undefined),
       senderAvatarSeed: message.role === 'assistant'
-        ? (avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed(message.sender ?? 'Kordi'))
+        ? assistantAvatarSeed
         : message.role === 'user'
           ? (avatarSeeds?.human?.trim() || getLocalProfileAvatarSeed())
           : undefined,
@@ -137,8 +163,8 @@ export function mapDesktopMessagesForTranscript(
 }
 
 export function useDesktopTranscriptAdapter({ localAvatarSeedsRef }: UseDesktopTranscriptAdapterArgs = {}) {
-  const mapDesktopMessages = useCallback((sessionId: string, messages: DesktopChatMessage[]): Message[] => (
-    mapDesktopMessagesForTranscript(sessionId, messages, localAvatarSeedsRef?.current)
+  const mapDesktopMessages = useCallback((sessionId: string, messages: DesktopChatMessage[], sessionContext?: DesktopTranscriptSessionContext): Message[] => (
+    mapDesktopMessagesForTranscript(sessionId, messages, localAvatarSeedsRef?.current, sessionContext)
   ), [localAvatarSeedsRef]);
 
   return {

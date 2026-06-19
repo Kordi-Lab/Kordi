@@ -22,6 +22,8 @@ import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
+import { cloudAgentDefinitionToAgent } from '@/features/cloud/cloudAgents';
+import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import {
   type CloudGroupParticipant,
   cloudGroupIdentityRequest,
@@ -432,6 +434,10 @@ export function useKordiAppModel({
     deleteCloudSession,
     cancelCloudBridgeAgentRequest,
     refreshCloudBridgeMessages,
+    refreshCloudAgents,
+    createCloudAgentDefinition,
+    archiveCloudAgentDefinition,
+    cloudAgentDefinitionsById,
     refreshCloudContacts,
     cloudSessionActivity,
     refreshCloudSessionActivity,
@@ -620,6 +626,21 @@ export function useKordiAppModel({
     void refreshCloudBridgeMessages();
   }, [refreshCanonicalState, refreshCloudBridgeMessages, refreshCloudContacts]);
 
+  const handleCreateCloudAgent = useCallback(async (input: CreateCloudAgentInput) => {
+    const definition = await createCloudAgentDefinition(input);
+    await refreshCloudAgents().catch(() => undefined);
+    const agent = cloudAgentDefinitionToAgent(definition);
+    agentsUi.setActiveAgentId(agent.id);
+    return agent;
+  }, [agentsUi, createCloudAgentDefinition, refreshCloudAgents]);
+
+  const handleArchiveCloudAgent = useCallback(async (agent: Agent) => {
+    if (!agent.cloudAgentId) throw new Error('Only private Cloud Agents can be deleted here.');
+    await archiveCloudAgentDefinition(agent.cloudAgentId);
+    await refreshCloudAgents().catch(() => undefined);
+    agentsUi.setActiveAgentId((current) => (current === agent.id ? 'desktop:local-agent' : current));
+  }, [agentsUi, archiveCloudAgentDefinition, refreshCloudAgents]);
+
   const combinedHiddenSessionIds = useMemo(() => new Set([
     ...locallyHiddenSessionIds,
     ...cloudHiddenSessionIds,
@@ -679,6 +700,7 @@ export function useKordiAppModel({
     desktopLiveTurnsBySession,
     mapDesktopMessages,
     cloudSessionActivity,
+    cloudAgentDefinitionsById,
     cloudPresence: cloudPresence.snapshot,
   });
 
@@ -2403,6 +2425,8 @@ export function useKordiAppModel({
     setActiveContactGroup: contactsUi.setActiveContactGroup,
     setActiveContactId: contactsUi.setActiveContactId,
     displayedAgents,
+    handleCreateCloudAgent,
+    handleArchiveCloudAgent,
     activeBridgeHost,
     localProfileAvatarSeed,
     refreshDesktopBridge,

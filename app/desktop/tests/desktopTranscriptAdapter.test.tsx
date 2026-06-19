@@ -88,6 +88,25 @@ test('desktop transcript maps plain completed assistant replies to foldable sour
   assert.match(markup, /— 3 more lines\. Click to show all —/);
 });
 
+test('private cloud agent transcript labels assistant turns with the selected cloud agent name', () => {
+  const [mapped] = mapDesktopMessagesForTranscript('session:self-agent:cloud', [{
+    role: 'assistant',
+    sender: 'My Kordi',
+    text: 'Hi! I’m Kordi Project Driver — your private project agent.',
+    timeLabel: '22:07',
+    timestampMs: 2,
+  }], undefined, {
+    metadata: {
+      cloudAgentId: 'cloud_agent_abc',
+      cloudAgentName: 'Kordi Project Driver',
+    },
+  });
+
+  assert.equal(mapped.sender, 'Kordi Project Driver');
+  assert.equal(mapped.sourceSenderLabel, 'Kordi Project Driver');
+  assert.equal(mapped.senderAvatarSeed, 'cloud_agent_abc');
+});
+
 test('self-agent chat can render completed assistant replies without reply quote, request reply line, background, or folding', () => {
   const longReply = [
     'There is still no substantive progress.',

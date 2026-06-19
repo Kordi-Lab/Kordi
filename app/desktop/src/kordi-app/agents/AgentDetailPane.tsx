@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,29 @@ import { promptDisplayText } from './promptDisplay';
 import { AgentConfigList, AgentInspectorSection } from './shared';
 
 type DetailTarget = { kind: 'prompt' } | { kind: 'file'; path: string } | null;
+
+type ArchiveAgentFeedback = { tone: 'info' | 'success' | 'error'; text: string };
+
+export async function archiveAgentFromMenu({
+  agent,
+  onArchiveCloudAgent,
+  onFeedback,
+}: {
+  agent: Agent;
+  onArchiveCloudAgent?: (agent: Agent) => Promise<void> | void;
+  onFeedback?: (feedback: ArchiveAgentFeedback | null) => void;
+}) {
+  if (!agent.cloudAgentId || !onArchiveCloudAgent) return false;
+
+  onFeedback?.({ tone: 'info', text: `Deleting ${agent.name}…` });
+  try {
+    await onArchiveCloudAgent(agent);
+    return true;
+  } catch (error) {
+    onFeedback?.({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to delete agent.' });
+    return false;
+  }
+}
 
 type RoutingOption = {
   value: string;
@@ -42,6 +65,98 @@ const EMPTY_MODEL_ROUTING_DRAFT: ModelRoutingDraft = {
   fallbackAuthChoice: null,
   thinking: null,
 };
+
+export function AgentDeleteConfirmDialog({
+  agent,
+  isDeleting,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  agent: Agent;
+  isDeleting: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]"
+      onMouseDown={() => {
+        if (!isDeleting) onCancel();
+      }}
+    >
+      <div className="app-modal-panel w-full max-w-md rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="text-[16px] font-semibold">Delete this agent?</div>
+        <div className="mt-2 text-[13px] leading-6 text-slate-400">
+          <span className="font-medium text-slate-200">{agent.name}</span> will be removed from your Agent page and your signed-in cloud devices.
+        </div>
+        <div className="mt-3 text-[13px] leading-6 text-slate-400">
+          It is kept as an archived Cloud record, not hard-deleted forever.
+        </div>
+        {error ? (
+          <div className="mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100">
+            {error}
+          </div>
+        ) : null}
+        <div className="mt-5 flex justify-end gap-3">
+          <Button variant="secondary" className="rounded-full px-4" autoFocus disabled={isDeleting} onClick={onCancel}>Cancel</Button>
+          <Button
+            className="rounded-full bg-rose-500 px-4 text-white hover:bg-rose-400"
+            disabled={isDeleting}
+            onClick={() => { onConfirm(); }}
+          >
+            {isDeleting ? 'Deleting…' : 'Delete agent'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AgentActionsMenu({ agent, onRequestArchive }: {
+  agent: Agent;
+  onRequestArchive?: (agent: Agent) => void;
+}) {
+  if (!agent.cloudAgentId || agent.cloudAgentAccessScope !== 'private' || !onRequestArchive) return null;
+  return (
+    <details className="relative">
+      <summary
+        className="app-agent-inspector-row flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl border text-slate-300 transition hover:border-white/18 hover:text-white [&::-webkit-details-marker]:hidden"
+        aria-label="More agent actions"
+        title="More agent actions"
+      >
+        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+      </summary>
+      <div className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-[14px] border border-white/10 bg-slate-950/95 p-1 shadow-2xl">
+        <button
+          type="button"
+          className="w-full rounded-[10px] px-3 py-2 text-left text-[12px] font-medium text-rose-200 transition hover:bg-rose-500/12 hover:text-rose-100"
+          onClick={() => {
+            onRequestArchive(agent);
+          }}
+        >
+          Delete agent
+        </button>
+      </div>
+    </details>
+  );
+}
+
+function AgentAccessMenu({ agent }: { agent: Agent }) {
+  if (!agent.cloudAgentId) return null;
+  return (
+    <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
+      <div className="app-agent-row-title font-medium">Access</div>
+      <select className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]" value="private" onChange={() => undefined} aria-label="Agent access">
+        <option value="private">Private — only me</option>
+        <option value="contacts" disabled>Share with contacts — coming later</option>
+        <option value="workspace" disabled>Workspace/shared Cloud — coming later</option>
+      </select>
+      <div className="app-agent-row-meta mt-2">Synced privately to your Cloud account.</div>
+    </div>
+  );
+}
 
 function EditHistorySection({ entries }: { entries: AgentEditHistoryEntry[] }) {
   return (
@@ -376,6 +491,7 @@ export function AgentDetailPane({
   onReset,
   onMessage,
   onOpenReachoutSession,
+  onArchiveCloudAgent,
   onOpenPromptDetail,
   onStartEditing,
   onSave,
@@ -407,6 +523,7 @@ export function AgentDetailPane({
   onReset: (agent: Agent) => void;
   onMessage?: () => void;
   onOpenReachoutSession?: (sessionId: string) => void;
+  onArchiveCloudAgent?: (agent: Agent) => Promise<void> | void;
   onOpenPromptDetail: (agentId: string) => void;
   onStartEditing: (agentId: string, section: 'prompt' | 'skills') => void;
   onSave: (agent: Agent, section: 'prompt' | 'skills') => void;
@@ -428,11 +545,19 @@ export function AgentDetailPane({
   const [routingDraft, setRoutingDraft] = useState<ModelRoutingDraft>(persistedRoutingDraft);
   const [isRoutingSaving, setIsRoutingSaving] = useState(false);
   const [routingSaveFeedback, setRoutingSaveFeedback] = useState<{ tone: 'idle' | 'success' | 'error'; text: string } | null>(null);
+  const [archiveFeedback, setArchiveFeedback] = useState<ArchiveAgentFeedback | null>(null);
+  const [archiveConfirmAgent, setArchiveConfirmAgent] = useState<Agent | null>(null);
+  const [isArchiveDeleting, setIsArchiveDeleting] = useState(false);
+  const [archiveDeleteError, setArchiveDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setRoutingDraft(persistedRoutingDraft);
     setIsRoutingSaving(false);
     setRoutingSaveFeedback(null);
+    setArchiveFeedback(null);
+    setArchiveConfirmAgent(null);
+    setIsArchiveDeleting(false);
+    setArchiveDeleteError(null);
   }, [persistedRoutingDraft, persistedRoutingKey]);
 
   if (!activeAgent || !activeAgentConfig) {
@@ -559,6 +684,26 @@ export function AgentDetailPane({
   const routingIdleCopy = routingPersistsToBridge
     ? 'Select routes instantly; saved routes run this Bridge agent.'
     : 'Saved locally until this agent is connected to Bridge; connected Bridge agents inherit it.';
+  const confirmArchiveAgent = () => {
+    if (!archiveConfirmAgent || isArchiveDeleting) return;
+    setIsArchiveDeleting(true);
+    setArchiveDeleteError(null);
+    void archiveAgentFromMenu({
+      agent: archiveConfirmAgent,
+      onArchiveCloudAgent,
+      onFeedback: setArchiveFeedback,
+    })
+      .then((archived) => {
+        if (archived) {
+          setArchiveConfirmAgent(null);
+        } else {
+          setArchiveDeleteError('Unable to delete agent. Please try again.');
+        }
+      })
+      .finally(() => {
+        setIsArchiveDeleting(false);
+      });
+  };
   const modelRoutingSection = activeAgent.isOwned ? (
     <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned agent. These choices are private and not announced in shared chat history.">
       <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px] leading-5">
@@ -647,23 +792,31 @@ export function AgentDetailPane({
               <div className="app-agent-panel-subtitle text-[12px] font-medium">Agent inspector</div>
               <div className="app-agent-hero-title mt-1 truncate text-[22px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
               <div className="app-agent-panel-subtitle mt-1 text-[13px]">Middle panel lists each item. Click prompt or markdown files to open detail on the right.</div>
-            {activeSaveFeedback ? (
+            {archiveFeedback || activeSaveFeedback ? (
               <div
                 className={cn(
                   'mt-2 text-[12px]',
-                  activeSaveFeedback.tone === 'success'
+                  (archiveFeedback?.tone ?? activeSaveFeedback?.tone) === 'success'
                     ? 'text-emerald-300'
-                    : activeSaveFeedback.tone === 'error'
+                    : (archiveFeedback?.tone ?? activeSaveFeedback?.tone) === 'error'
                       ? 'text-rose-300'
                       : 'text-slate-400',
                 )}
               >
-                {activeSaveFeedback.text}
+                {archiveFeedback?.text ?? activeSaveFeedback?.text}
               </div>
               ) : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <AgentActionsMenu
+              agent={activeAgent}
+              onRequestArchive={onArchiveCloudAgent ? (agent) => {
+                setArchiveFeedback(null);
+                setArchiveDeleteError(null);
+                setArchiveConfirmAgent(agent);
+              } : undefined}
+            />
             {isEditable ? (
               <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => onReset(activeAgent)}>
                 Reset
@@ -672,7 +825,7 @@ export function AgentDetailPane({
             <Button
               className="rounded-xl text-[12px]"
               onClick={() => onMessage?.()}
-              disabled={!onMessage || !activeAgent.bridgeHostId || !activeAgent.bridgePeerNodeId}
+              disabled={!onMessage || (!activeAgent.cloudAgentId && (!activeAgent.bridgeHostId || !activeAgent.bridgePeerNodeId))}
             >
               Message
             </Button>
@@ -682,6 +835,22 @@ export function AgentDetailPane({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-5 px-5 py-5">
+          {archiveConfirmAgent ? (
+            <AgentDeleteConfirmDialog
+              agent={archiveConfirmAgent}
+              isDeleting={isArchiveDeleting}
+              error={archiveDeleteError}
+              onCancel={() => {
+                if (isArchiveDeleting) return;
+                setArchiveConfirmAgent(null);
+                setArchiveDeleteError(null);
+              }}
+              onConfirm={confirmArchiveAgent}
+            />
+          ) : null}
+
+          <AgentAccessMenu agent={activeAgent} />
+
           {modelRoutingSection}
 
           {(activeAgent.bridgeReachouts?.length ?? 0) > 0 ? (

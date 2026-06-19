@@ -234,6 +234,23 @@ test('sidebar chat-create agent option opens owned agents with local My chats cr
   assert.deepEqual(calls, ['createLocal', 'startAgent:agent:remote']);
 });
 
+test('sidebar chat-create private cloud agent option routes to the selected cloud agent', async () => {
+  const calls: string[] = [];
+  const element = assembleSidebarSlot(baseSidebarArgs({
+    handleCreateChatSession: async () => { calls.push('createLocal'); },
+    handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startCloudAgent:${agent.cloudAgentId}`); },
+  }) as never) as never as { props: { onStartChatWithAgent: (agent: Record<string, unknown>) => Promise<void> } };
+
+  await element.props.onStartChatWithAgent({
+    id: 'cloud-agent:cloud_agent_abc',
+    isOwned: true,
+    cloudAgentId: 'cloud_agent_abc',
+    name: 'Kordi Project Driver',
+  });
+
+  assert.deepEqual(calls, ['startCloudAgent:cloud_agent_abc']);
+});
+
 test('contact Message starts a fresh person session instead of selecting an existing one', () => {
   const calls: string[] = [];
   const element = assembleMainContentSlot(baseShellArgs(calls) as never) as never as { props: { contactsPageProps: { onMessageContact: (contact: Record<string, unknown>) => void } } };
@@ -288,6 +305,22 @@ test('agent Message starts a fresh external agent session under My chats', () =>
   });
 
   assert.deepEqual(calls, ['startAgent:host-1:node-shared:agent-bob']);
+});
+
+test('private cloud-created agent Message routes to that agent instead of Kordi', () => {
+  const calls: string[] = [];
+  const element = assembleMainContentSlot(baseShellArgs(calls, {
+    handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startCloudAgent:${agent.cloudAgentId}`); },
+  }) as never) as never as { props: { agentsPageProps: { onMessageAgent: (agent: Record<string, unknown>) => void } } };
+
+  element.props.agentsPageProps.onMessageAgent({
+    id: 'cloud-agent:cloud_agent_abc',
+    cloudAgentId: 'cloud_agent_abc',
+    isOwned: true,
+    name: 'Kordi Project Driver',
+  });
+
+  assert.deepEqual(calls, ['startCloudAgent:cloud_agent_abc']);
 });
 
 test('external agent contact Message starts an agent session instead of routing to the person space', () => {

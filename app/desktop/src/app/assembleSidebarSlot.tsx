@@ -17,6 +17,10 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       args={args}
       onStartChatWithPerson={args.handleStartChatWithPerson}
       onStartChatWithAgent={async (agent) => {
+        if (agent.cloudAgentId) {
+          await args.handleStartChatWithAgent(agent);
+          return;
+        }
         if (agent.isOwned) {
           await args.handleCreateChatSession();
           return;
@@ -114,6 +118,10 @@ function SidebarSlot({ args }: SidebarSlotProps) {
           void args.handleStartChatWithPerson(contact);
         }}
         onStartChatWithAgent={async (agent) => {
+          if (agent.cloudAgentId) {
+            await args.handleStartChatWithAgent(agent);
+            return;
+          }
           if (agent.isOwned) {
             await args.handleCreateChatSession();
             return;

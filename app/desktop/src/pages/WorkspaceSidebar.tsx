@@ -49,7 +49,7 @@ import {
   type SessionContextMenuTarget,
 } from '@/pages/SessionActionOverlays';
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
-import type { ChatCreatePopoverAnchor } from '@/pages/ChatCreateDialog';
+import type { ChatCreateMode, ChatCreatePopoverAnchor } from '@/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
 import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 
@@ -578,6 +578,7 @@ export function WorkspaceSidebar({
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
+  const [chatCreateInitialMode, setChatCreateInitialMode] = useState<ChatCreateMode>('menu');
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
   const [localCloudAccountDialogTab, setLocalCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const isCloudAccountDialogControlled = Boolean(setControlledCloudAccountDialogTab);
@@ -657,6 +658,7 @@ export function WorkspaceSidebar({
   const openChatCreateDialog = (event: ReactMouseEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     setActiveNav('chats');
+    setChatCreateInitialMode('menu');
     setChatCreateAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     setIsChatCreateDialogOpen(true);
   };
@@ -1338,7 +1340,9 @@ export function WorkspaceSidebar({
           <button
             type="button"
             onClick={() => {
-              void onCreateChatSession();
+              setChatCreateInitialMode('agent');
+              setChatCreateAnchor(null);
+              setIsChatCreateDialogOpen(true);
             }}
             className="app-participant-space-action app-participant-space-context-create inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[9px] px-2 text-[11px] font-medium transition"
             title="New My agent session"
@@ -1912,6 +1916,7 @@ export function WorkspaceSidebar({
       ) : null}
 
       <ChatCreateDialog
+        key={isChatCreateDialogOpen ? chatCreateInitialMode : 'closed'}
         isOpen={isChatCreateDialogOpen}
         contacts={displayedContacts}
         addableContacts={addableContacts}
@@ -1926,6 +1931,7 @@ export function WorkspaceSidebar({
         onAddContact={onAddContactByNodeId}
         onLookupContact={onLookupContact}
         addContactPlaceholder={addContactPlaceholder}
+        initialMode={chatCreateInitialMode}
         anchorRect={chatCreateAnchor}
       />
 

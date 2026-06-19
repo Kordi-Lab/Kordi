@@ -152,6 +152,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "backfill stranded scheduled tasks",
         sql: include_str!("../../migrations/0024_backfill_stranded_scheduled_tasks.sql"),
     },
+    EmbeddedMigration {
+        version: 25,
+        description: "cloud agent definitions",
+        sql: include_str!("../../migrations/0025_cloud_agent_definitions.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

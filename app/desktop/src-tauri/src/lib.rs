@@ -365,6 +365,7 @@ pub fn run() {
             chat::artifacts::desktop_chat_artifact_preview,
             chat::artifacts::desktop_chat_artifact_directory,
             chat::desktop_chat_state,
+            chat::desktop_shape_agent_draft,
             chat::desktop_chat_new_session,
             chat::desktop_chat_new_project_session,
             chat::desktop_chat_prepare_draft_session,

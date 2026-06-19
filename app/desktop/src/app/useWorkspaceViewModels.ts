@@ -6,6 +6,7 @@ import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessage
 import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId, isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import { CLOUD_PIXEL_AVATAR_URL_PREFIX, cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
+import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import { presenceStatusForAccount, type CloudPresenceStore } from '@/features/cloud/presence';
 import {
   buildProjectRoutingGroups,
@@ -261,8 +262,9 @@ type UseWorkspaceViewModelsArgs = {
   cachedProjectSessionMessages: Record<string, Message[]>;
   localSessionUnreadCounts: Record<string, number>;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
-  mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
+  mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[], sessionContext?: { metadata?: unknown }) => Message[];
   cloudSessionActivity?: CloudSessionActivityStore;
+  cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
   cloudPresence?: CloudPresenceStore;
 };
 
@@ -290,6 +292,7 @@ export function useWorkspaceViewModels({
   desktopLiveTurnsBySession,
   mapDesktopMessages,
   cloudSessionActivity = EMPTY_CLOUD_SESSION_ACTIVITY,
+  cloudAgentDefinitionsById = {},
   cloudPresence = {},
 }: UseWorkspaceViewModelsArgs) {
   const canonicalReadModel = useMemo(() => createCanonicalSessionReadModel(canonicalSessionState), [canonicalSessionState]);
@@ -349,6 +352,9 @@ export function useWorkspaceViewModels({
     }
 
     const localAgentLabel = desktopChatState.localAgent?.label || 'Kordi';
+    const canonicalSessionMetadataById = new Map(
+      (canonicalSessionState?.sessions ?? []).map((session) => [session.id, session.metadata]),
+    );
     const activeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
       ?? desktopBridgeState?.hosts[0]
       ?? null;
@@ -394,7 +400,11 @@ export function useWorkspaceViewModels({
       const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
       const activeMessages = isActiveSession
         ? preferLatestMessages(
-            mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages),
+            mapDesktopMessages(
+              desktopChatState.activeSession.id,
+              desktopChatState.activeSession.messages,
+              { metadata: canonicalSessionMetadataById.get(desktopChatState.activeSession.id) },
+            ),
             cachedChatSessionMessages[session.id],
             Boolean(desktopLiveTurnsForViewModel[session.id]),
             desktopLiveTurnsForViewModel[session.id],
@@ -886,8 +896,17 @@ export function useWorkspaceViewModels({
       });
     }
 
+    const existingIds = new Set(items.map((agent) => agent.id));
+    for (const cloudAgent of Object.values(cloudAgentDefinitionsById).sort((left, right) => left.name.localeCompare(right.name))) {
+      const agent = cloudAgentDefinitionToAgent(cloudAgent);
+      if (!existingIds.has(agent.id)) {
+        items.push(agent);
+        existingIds.add(agent.id);
+      }
+    }
+
     return items;
-  }, [desktopBridgeState?.hosts, desktopBridgeState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentBridgeReachoutsByAgentId]);
+  }, [cloudAgentDefinitionsById, desktopBridgeState?.hosts, desktopBridgeState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentBridgeReachoutsByAgentId]);
 
   const groupedContacts = useMemo(
     () =>
@@ -990,7 +1009,11 @@ export function useWorkspaceViewModels({
           const baseMessages =
             desktopSession && desktopChatState?.activeSessionId === sessionId
               ? preferLatestMessages(
-                  mapDesktopMessages(sessionId, desktopChatState.activeSession.messages),
+                  mapDesktopMessages(
+                    sessionId,
+                    desktopChatState.activeSession.messages,
+                    { metadata: canonicalSession?.metadata },
+                  ),
                   cachedProjectSessionMessages[sessionId],
                   Boolean(desktopLiveTurnsForViewModel[sessionId]),
                   desktopLiveTurnsForViewModel[sessionId],

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Bot, MessageSquare, UserPlus, Users, X } from 'lucide-react';
 
@@ -13,6 +13,7 @@ import {
 import type { Agent, Contact } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
+import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 
 export type ChatCreatePopoverAnchor = {
   left: number;
@@ -53,7 +54,8 @@ export type ChatCreateDialogProps = {
   anchorRect?: ChatCreatePopoverAnchor | null;
 };
 
-type CreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
+export type ChatCreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
+type CreateMode = ChatCreateMode;
 type PopoverPlacement = 'right' | 'left' | 'floating';
 type PopoverStyle = CSSProperties & {
   '--app-create-enter-x'?: string;
@@ -209,6 +211,13 @@ export function ChatCreateDialog({
   const groupPersonOptions = useMemo(() => buildChatCreateGroupPersonOptions(contacts), [contacts]);
   const agentOptions = useMemo(() => buildChatCreateAgentOptions(agents), [agents]);
   const visibleAddableContacts = useMemo(() => addableContacts.filter((contact) => contact.bridgePeerNodeId?.trim()), [addableContacts]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+    }
+  }, [initialMode, isOpen]);
+
   const selectedPeople = groupPersonOptions.filter((option) => selectedContactIds.includes(option.id));
   const selectedGroupContactIds = selectedPeople.map((option) => option.id);
   const defaultGroupName = groupDefaultName(selectedPeople.map((option) => option.label));
@@ -221,7 +230,7 @@ export function ChatCreateDialog({
   if (!isOpen) return null;
 
   const close = () => {
-    setMode('menu');
+    setMode(initialMode);
     setSelectedContactIds([]);
     setGroupName('');
     setContactNodeId('');
@@ -363,16 +372,28 @@ export function ChatCreateDialog({
                   void onStartAgent(option.agent);
                   close();
                 }}
-                className="app-chat-create-list-item w-full rounded-[12px] border px-2.5 py-2 text-left transition"
+                className="app-chat-create-list-item flex w-full items-center gap-2 rounded-[12px] border px-2.5 py-2 text-left transition"
               >
-                <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">{option.label}</span>
-                <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{option.detail}</span>
+                <IdentityAvatar
+                  kind="agent"
+                  seed={option.agent.avatarSeed || option.agent.cloudAgentId || option.agent.id}
+                  name={option.agent.name}
+                  imageUrl={option.agent.profileImageUrl ?? null}
+                  avatarKey={option.agent.cloudAgentId || option.agent.id}
+                  className="h-7 w-7"
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-[12.5px] font-medium leading-4 text-[color:var(--utility-foreground)]">{option.label}</span>
+                  <span className="mt-px block truncate text-[10.5px] text-[color:var(--utility-muted-text)]">{option.detail}</span>
+                </span>
               </button>
             )) : (
               <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No agents available.</div>
             )}
           </div>
-          <Button type="button" variant="secondary" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+          {initialMode === 'menu' ? (
+            <Button type="button" variant="secondary" className="h-8 w-full rounded-[12px] text-[12px]" onClick={() => setMode('menu')}>Back</Button>
+          ) : null}
         </div>
       ) : null}
 

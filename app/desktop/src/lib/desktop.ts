@@ -781,6 +781,21 @@ export async function startDesktopChatMessage(
   });
 }
 
+export type DesktopShapeAgentRoute = {
+  defaultModel?: string | null;
+  defaultAuthProvider?: string | null;
+  defaultAuthChoice?: string | null;
+  fallbackModel?: string | null;
+  fallbackAuthProvider?: string | null;
+  fallbackAuthChoice?: string | null;
+  thinking?: string | null;
+};
+
+export async function runDesktopShapeAgentDraft(prompt: string, route: DesktopShapeAgentRoute) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<DesktopChatTurnSnapshot>('desktop_shape_agent_draft', { prompt, route });
+}
+
 export async function runDesktopChatSkillCommand(sessionId: string, text: string) {
   return invokeDesktop<string>('desktop_chat_run_skill_command', { sessionId, text });
 }
