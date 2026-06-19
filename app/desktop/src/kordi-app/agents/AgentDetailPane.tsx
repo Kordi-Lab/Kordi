@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,34 @@ import { promptDisplayText } from './promptDisplay';
 import { AgentConfigList, AgentInspectorSection } from './shared';
 
 type DetailTarget = { kind: 'prompt' } | { kind: 'file'; path: string } | null;
+
+type ArchiveAgentFeedback = { tone: 'info' | 'success' | 'error'; text: string };
+
+export async function archiveAgentFromMenu({
+  agent,
+  confirm,
+  onArchiveCloudAgent,
+  onFeedback,
+}: {
+  agent: Agent;
+  confirm: (message: string) => boolean;
+  onArchiveCloudAgent?: (agent: Agent) => Promise<void> | void;
+  onFeedback?: (feedback: ArchiveAgentFeedback | null) => void;
+}) {
+  if (!agent.cloudAgentId || !onArchiveCloudAgent) return false;
+  const ok = confirm(`Delete ${agent.name}? It will be removed from your Agent page, but kept as an archived Cloud record.`);
+  if (!ok) return false;
+
+  onFeedback?.({ tone: 'info', text: `Deleting ${agent.name}…` });
+  try {
+    await onArchiveCloudAgent(agent);
+    onFeedback?.({ tone: 'success', text: `Deleted ${agent.name}.` });
+    return true;
+  } catch (error) {
+    onFeedback?.({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to delete agent.' });
+    return false;
+  }
+}
 
 type RoutingOption = {
   value: string;
@@ -42,6 +70,41 @@ const EMPTY_MODEL_ROUTING_DRAFT: ModelRoutingDraft = {
   fallbackAuthChoice: null,
   thinking: null,
 };
+
+function AgentActionsMenu({ agent, onArchiveCloudAgent, onFeedback }: {
+  agent: Agent;
+  onArchiveCloudAgent?: (agent: Agent) => Promise<void> | void;
+  onFeedback?: (feedback: ArchiveAgentFeedback | null) => void;
+}) {
+  if (!agent.cloudAgentId || agent.cloudAgentAccessScope !== 'private' || !onArchiveCloudAgent) return null;
+  return (
+    <details className="relative">
+      <summary
+        className="app-agent-inspector-row flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl border text-slate-300 transition hover:border-white/18 hover:text-white [&::-webkit-details-marker]:hidden"
+        aria-label="More agent actions"
+        title="More agent actions"
+      >
+        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+      </summary>
+      <div className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-[14px] border border-white/10 bg-slate-950/95 p-1 shadow-2xl">
+        <button
+          type="button"
+          className="w-full rounded-[10px] px-3 py-2 text-left text-[12px] font-medium text-rose-200 transition hover:bg-rose-500/12 hover:text-rose-100"
+          onClick={() => {
+            void archiveAgentFromMenu({
+              agent,
+              confirm: (message) => (typeof window === 'undefined' ? false : window.confirm(message)),
+              onArchiveCloudAgent,
+              onFeedback,
+            });
+          }}
+        >
+          Delete agent
+        </button>
+      </div>
+    </details>
+  );
+}
 
 function AgentAccessMenu({ agent }: { agent: Agent }) {
   if (!agent.cloudAgentId) return null;
@@ -391,6 +454,7 @@ export function AgentDetailPane({
   onReset,
   onMessage,
   onOpenReachoutSession,
+  onArchiveCloudAgent,
   onOpenPromptDetail,
   onStartEditing,
   onSave,
@@ -422,6 +486,7 @@ export function AgentDetailPane({
   onReset: (agent: Agent) => void;
   onMessage?: () => void;
   onOpenReachoutSession?: (sessionId: string) => void;
+  onArchiveCloudAgent?: (agent: Agent) => Promise<void> | void;
   onOpenPromptDetail: (agentId: string) => void;
   onStartEditing: (agentId: string, section: 'prompt' | 'skills') => void;
   onSave: (agent: Agent, section: 'prompt' | 'skills') => void;
@@ -443,11 +508,13 @@ export function AgentDetailPane({
   const [routingDraft, setRoutingDraft] = useState<ModelRoutingDraft>(persistedRoutingDraft);
   const [isRoutingSaving, setIsRoutingSaving] = useState(false);
   const [routingSaveFeedback, setRoutingSaveFeedback] = useState<{ tone: 'idle' | 'success' | 'error'; text: string } | null>(null);
+  const [archiveFeedback, setArchiveFeedback] = useState<ArchiveAgentFeedback | null>(null);
 
   useEffect(() => {
     setRoutingDraft(persistedRoutingDraft);
     setIsRoutingSaving(false);
     setRoutingSaveFeedback(null);
+    setArchiveFeedback(null);
   }, [persistedRoutingDraft, persistedRoutingKey]);
 
   if (!activeAgent || !activeAgentConfig) {
@@ -662,23 +729,24 @@ export function AgentDetailPane({
               <div className="app-agent-panel-subtitle text-[12px] font-medium">Agent inspector</div>
               <div className="app-agent-hero-title mt-1 truncate text-[22px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
               <div className="app-agent-panel-subtitle mt-1 text-[13px]">Middle panel lists each item. Click prompt or markdown files to open detail on the right.</div>
-            {activeSaveFeedback ? (
+            {archiveFeedback || activeSaveFeedback ? (
               <div
                 className={cn(
                   'mt-2 text-[12px]',
-                  activeSaveFeedback.tone === 'success'
+                  (archiveFeedback?.tone ?? activeSaveFeedback?.tone) === 'success'
                     ? 'text-emerald-300'
-                    : activeSaveFeedback.tone === 'error'
+                    : (archiveFeedback?.tone ?? activeSaveFeedback?.tone) === 'error'
                       ? 'text-rose-300'
                       : 'text-slate-400',
                 )}
               >
-                {activeSaveFeedback.text}
+                {archiveFeedback?.text ?? activeSaveFeedback?.text}
               </div>
               ) : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <AgentActionsMenu agent={activeAgent} onArchiveCloudAgent={onArchiveCloudAgent} onFeedback={setArchiveFeedback} />
             {isEditable ? (
               <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => onReset(activeAgent)}>
                 Reset

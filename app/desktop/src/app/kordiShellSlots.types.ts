@@ -107,6 +107,7 @@ export type AssembleKordiShellSlotsArgs = {
   setActiveContactId: Dispatch<SetStateAction<string>>;
   displayedAgents: Agent[];
   handleCreateCloudAgent: (input: CreateCloudAgentInput) => Promise<Agent>;
+  handleArchiveCloudAgent: (agent: Agent) => Promise<void>;
   activeBridgeHost: DesktopBridgeHost | null;
   localProfileAvatarSeed?: string | null;
   refreshDesktopBridge: () => Promise<void>;
@@ -471,6 +472,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleStartBridgePersonSession'
   | 'displayedAgents'
   | 'handleCreateCloudAgent'
+  | 'handleArchiveCloudAgent'
   | 'activeAgentId'
   | 'activeAgent'
   | 'isAgentOverlayOpen'

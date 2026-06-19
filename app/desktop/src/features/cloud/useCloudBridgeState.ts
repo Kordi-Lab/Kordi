@@ -1707,6 +1707,7 @@ export type UseCloudBridgeStateResult = {
   refreshCloudBridgeMessages(): Promise<void>;
   refreshCloudAgents(): Promise<void>;
   createCloudAgentDefinition(input: CreateCloudAgentInput): Promise<CloudAgentDefinition>;
+  archiveCloudAgentDefinition(agentId: string): Promise<CloudAgentDefinition>;
   cloudAgentDefinitionsById: Record<string, CloudAgentDefinition>;
   cloudSessionActivity: CloudSessionActivityStore;
   refreshCloudSessionActivity(sessionId: string): Promise<void>;
@@ -2070,6 +2071,17 @@ export function useCloudBridgeState({
     if (!session?.token) throw new Error('Sign in to Cloud before creating an agent.');
     const agent = await cloudAgentsClient.createCloudAgent(session.token, input);
     setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
+    return agent;
+  }, [cloudAgentsClient]);
+
+  const archiveCloudAgentDefinition = useCallback(async (agentId: string) => {
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Sign in to Cloud before deleting an agent.');
+    const agent = await cloudAgentsClient.archiveCloudAgent(session.token, agentId);
+    setCloudAgentDefinitionsById((current) => {
+      const { [agent.agentId]: _removed, ...rest } = current;
+      return rest;
+    });
     return agent;
   }, [cloudAgentsClient]);
 
@@ -4102,6 +4114,7 @@ export function useCloudBridgeState({
     refreshCloudBridgeMessages,
     refreshCloudAgents,
     createCloudAgentDefinition,
+    archiveCloudAgentDefinition,
     cloudAgentDefinitionsById,
     cloudSessionActivity,
     refreshCloudSessionActivity,

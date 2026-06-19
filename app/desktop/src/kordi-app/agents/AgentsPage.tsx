@@ -18,6 +18,7 @@ export function AgentsPage({
   onMessageAgent,
   onOpenAgentReachoutSession,
   onCreateCloudAgent,
+  onArchiveCloudAgent,
 }: AgentsPageProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const creatorAgent = agents.find((agent) => agent.id === 'desktop:local-agent')
@@ -79,6 +80,7 @@ export function AgentsPage({
               : undefined
           }
           onOpenReachoutSession={onOpenAgentReachoutSession}
+          onArchiveCloudAgent={onArchiveCloudAgent}
           onOpenPromptDetail={openPromptDetail}
           onStartEditing={startEditing}
           onSave={(agent, section) => void saveAgentConfig(agent, section)}

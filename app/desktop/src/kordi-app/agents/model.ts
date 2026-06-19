@@ -25,6 +25,7 @@ export type AgentsPageProps = {
   onMessageAgent?: (agent: Agent) => void;
   onOpenAgentReachoutSession?: (sessionId: string) => void;
   onCreateCloudAgent?: (input: CreateCloudAgentInput) => Promise<Agent>;
+  onArchiveCloudAgent?: (agent: Agent) => Promise<void>;
 };
 
 export type AgentConfigDraft = {

@@ -436,6 +436,7 @@ export function useKordiAppModel({
     refreshCloudBridgeMessages,
     refreshCloudAgents,
     createCloudAgentDefinition,
+    archiveCloudAgentDefinition,
     cloudAgentDefinitionsById,
     refreshCloudContacts,
     cloudSessionActivity,
@@ -632,6 +633,13 @@ export function useKordiAppModel({
     agentsUi.setActiveAgentId(agent.id);
     return agent;
   }, [agentsUi, createCloudAgentDefinition, refreshCloudAgents]);
+
+  const handleArchiveCloudAgent = useCallback(async (agent: Agent) => {
+    if (!agent.cloudAgentId) throw new Error('Only private Cloud Agents can be deleted here.');
+    await archiveCloudAgentDefinition(agent.cloudAgentId);
+    await refreshCloudAgents().catch(() => undefined);
+    agentsUi.setActiveAgentId((current) => (current === agent.id ? 'desktop:local-agent' : current));
+  }, [agentsUi, archiveCloudAgentDefinition, refreshCloudAgents]);
 
   const combinedHiddenSessionIds = useMemo(() => new Set([
     ...locallyHiddenSessionIds,
@@ -2418,6 +2426,7 @@ export function useKordiAppModel({
     setActiveContactId: contactsUi.setActiveContactId,
     displayedAgents,
     handleCreateCloudAgent,
+    handleArchiveCloudAgent,
     activeBridgeHost,
     localProfileAvatarSeed,
     refreshDesktopBridge,

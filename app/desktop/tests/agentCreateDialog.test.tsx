@@ -85,15 +85,15 @@ test('AgentsSidebar exposes New agent action when cloud creation is available', 
   assert.doesNotMatch(markup, /disabled=""[^>]*>\+ New agent/);
 });
 
-test('AgentDetailPane shows private access menu for cloud-created agents', () => {
-  const markup = renderToStaticMarkup(createElement(AgentDetailPane, {
-    activeAgent: cloudAgent,
-    activeAgentConfig: { systemPrompt: cloudAgent.systemPrompt, loadedSkills: cloudAgent.loadedSkills },
-    activePersistedConfig: { systemPrompt: cloudAgent.systemPrompt, loadedSkills: cloudAgent.loadedSkills, loadedTools: [], loadedPlugins: [], editHistory: [] },
+function renderAgentDetail(agent: Agent, extraProps: Partial<Parameters<typeof AgentDetailPane>[0]> = {}) {
+  return renderToStaticMarkup(createElement(AgentDetailPane, {
+    activeAgent: agent,
+    activeAgentConfig: { systemPrompt: agent.systemPrompt, loadedSkills: agent.loadedSkills },
+    activePersistedConfig: { systemPrompt: agent.systemPrompt, loadedSkills: agent.loadedSkills, loadedTools: [], loadedPlugins: [], editHistory: [] },
     activeDetail: { kind: 'prompt' },
     activeSaveFeedback: null,
     activeEditingSection: null,
-    availableSkills: cloudAgent.loadedSkills,
+    availableSkills: agent.loadedSkills,
     onUpdateModelRouting: undefined,
     onReset: () => undefined,
     onOpenPromptDetail: () => undefined,
@@ -102,8 +102,53 @@ test('AgentDetailPane shows private access menu for cloud-created agents', () =>
     onCancelEditing: () => undefined,
     onToggleSkill: () => undefined,
     onSelectIdentityFile: () => undefined,
+    ...extraProps,
   }));
+}
+
+test('AgentDetailPane shows private access menu for cloud-created agents', () => {
+  const markup = renderAgentDetail(cloudAgent);
 
   assert.match(markup, /Private — only me/);
   assert.match(markup, /Synced privately to your Cloud account/);
+});
+
+test('AgentDetailPane exposes delete action only for private cloud agents', () => {
+  const cloudMarkup = renderAgentDetail(cloudAgent, { onArchiveCloudAgent: async () => undefined });
+  const kordiMarkup = renderAgentDetail(creatorAgent, { onArchiveCloudAgent: async () => undefined });
+
+  assert.match(cloudMarkup, /More agent actions/);
+  assert.match(cloudMarkup, /Delete agent/);
+  assert.doesNotMatch(kordiMarkup, /Delete agent/);
+});
+
+test('archiveAgentFromMenu confirms and archives private cloud agents', async () => {
+  const { archiveAgentFromMenu } = await import('../src/kordi-app/agents/AgentDetailPane');
+  let archivedAgent: Agent | null = null;
+  const feedback: string[] = [];
+
+  const archived = await archiveAgentFromMenu({
+    agent: cloudAgent,
+    confirm: () => true,
+    onArchiveCloudAgent: async (agent) => { archivedAgent = agent; },
+    onFeedback: (message) => feedback.push(message.text),
+  });
+
+  assert.equal(archived, true);
+  assert.equal(archivedAgent?.id, cloudAgent.id);
+  assert.deepEqual(feedback, ['Deleting Docs Helper…', 'Deleted Docs Helper.']);
+});
+
+test('archiveAgentFromMenu does not archive when confirmation is cancelled', async () => {
+  const { archiveAgentFromMenu } = await import('../src/kordi-app/agents/AgentDetailPane');
+  let called = false;
+
+  const archived = await archiveAgentFromMenu({
+    agent: cloudAgent,
+    confirm: () => false,
+    onArchiveCloudAgent: async () => { called = true; },
+  });
+
+  assert.equal(archived, false);
+  assert.equal(called, false);
 });
