@@ -12,7 +12,7 @@
 # DATABASE_URL pointing at the in-cluster Postgres service.
 
 # ---------- builder ----------
-FROM rust:1.83-slim-bookworm AS builder
+FROM rust:1.88-slim-bookworm AS builder
 
 # rusqlite uses the bundled SQLite, which still needs a C toolchain at link time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
