@@ -1913,6 +1913,7 @@ export function WorkspaceSidebar({
       ) : null}
 
       <ChatCreateDialog
+        key={isChatCreateDialogOpen ? chatChannel : 'closed'}
         isOpen={isChatCreateDialogOpen}
         contacts={displayedContacts}
         addableContacts={addableContacts}
