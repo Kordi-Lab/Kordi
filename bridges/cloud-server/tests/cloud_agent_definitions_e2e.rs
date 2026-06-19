@@ -114,6 +114,23 @@ fn cloud_agent_routes_are_mounted_in_source() {
     assert!(store_source.contains("access_scope = $4"));
 }
 
+#[test]
+fn shared_cloud_agent_lookup_is_mention_safe_in_source() {
+    let routes = std::fs::read_to_string("src/cloud_agents/routes.rs").expect("read cloud agent routes source");
+    let models = std::fs::read_to_string("src/cloud_agents/models.rs").expect("read cloud agent models source");
+    let store = std::fs::read_to_string("src/cloud_agents/store.rs").expect("read cloud agent store source");
+
+    assert!(routes.contains("/v1/cloud/agents/shared"));
+    assert!(models.contains("SharedCloudAgentSummary"));
+    assert!(store.contains("list_shared_agent_summaries"));
+    assert!(models.contains("pub struct SharedCloudAgentSummary"));
+    let summary_start = models.find("pub struct SharedCloudAgentSummary").expect("summary struct");
+    let summary_source = &models[summary_start..models[summary_start..].find("}\n").map(|index| summary_start + index).unwrap_or(models.len())];
+    assert!(!summary_source.contains("system_prompt"));
+    assert!(!summary_source.contains("model_routing"));
+    assert!(!summary_source.contains("resources"));
+}
+
 #[tokio::test]
 async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
     let Some(pool) = try_pool().await else { return };

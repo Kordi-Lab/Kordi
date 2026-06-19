@@ -7,7 +7,9 @@ use uuid::Uuid;
 use crate::cloud_agents::models::{
     clean_access_scope, clean_optional_text, clean_required_text, clean_string_list,
     CloudAgentDefinition, CloudAgentResource, CloudAgentSkill, CreateCloudAgentRequest,
-    UpdateCloudAgentRequest, CLOUD_AGENT_STATUS_ACTIVE, CLOUD_AGENT_STATUS_ARCHIVED,
+    SharedCloudAgentSummary, UpdateCloudAgentRequest,
+    CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS, CLOUD_AGENT_STATUS_ACTIVE,
+    CLOUD_AGENT_STATUS_ARCHIVED,
 };
 
 const NAME_MAX_LEN: usize = 120;
@@ -218,6 +220,52 @@ pub async fn list_agent_definitions(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(row_to_definition).collect())
+}
+
+pub async fn list_shared_agent_summaries(
+    pool: &PgPool,
+    owner_account_ids: &[String],
+) -> Result<Vec<SharedCloudAgentSummary>, CloudAgentStoreError> {
+    let owners: Vec<String> = owner_account_ids
+        .iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .take(50)
+        .collect();
+    if owners.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rows = query_as::<_, (String, String, Option<String>, String, String, String, Option<String>, String)>(
+        "SELECT a.agent_id, a.owner_account_id, c.display_name, a.access_scope, a.name, a.role, a.description, a.updated_at
+         FROM cloud_agent_definitions a
+         LEFT JOIN cloud_accounts c ON c.account_id = a.owner_account_id
+         WHERE a.owner_account_id = ANY($1)
+           AND a.status = $2
+           AND a.access_scope = $3
+         ORDER BY a.updated_at DESC, a.agent_id ASC",
+    )
+    .bind(&owners)
+    .bind(CLOUD_AGENT_STATUS_ACTIVE)
+    .bind(CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| SharedCloudAgentSummary {
+            agent_id: row.0,
+            owner_account_id: row.1,
+            owner_display_name: row.2,
+            access_scope: row.3,
+            name: row.4,
+            role: row.5,
+            description: row.6,
+            updated_at: row.7,
+        })
+        .collect())
 }
 
 pub async fn update_agent_definition(
