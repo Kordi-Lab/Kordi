@@ -54,7 +54,8 @@ export type ChatCreateDialogProps = {
   anchorRect?: ChatCreatePopoverAnchor | null;
 };
 
-type CreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
+export type ChatCreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
+type CreateMode = ChatCreateMode;
 type PopoverPlacement = 'right' | 'left' | 'floating';
 type PopoverStyle = CSSProperties & {
   '--app-create-enter-x'?: string;

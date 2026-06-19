@@ -49,7 +49,7 @@ import {
   type SessionContextMenuTarget,
 } from '@/pages/SessionActionOverlays';
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
-import type { ChatCreatePopoverAnchor } from '@/pages/ChatCreateDialog';
+import type { ChatCreateMode, ChatCreatePopoverAnchor } from '@/pages/ChatCreateDialog';
 import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
 import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 
@@ -578,6 +578,7 @@ export function WorkspaceSidebar({
   const [moveSessionTarget, setMoveSessionTarget] = useState<SessionActionTarget | null>(null);
   const [isCreateProjectDialogOpen, setIsCreateProjectDialogOpen] = useState(false);
   const [isChatCreateDialogOpen, setIsChatCreateDialogOpen] = useState(false);
+  const [chatCreateInitialMode, setChatCreateInitialMode] = useState<ChatCreateMode>('menu');
   const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
   const [localCloudAccountDialogTab, setLocalCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const isCloudAccountDialogControlled = Boolean(setControlledCloudAccountDialogTab);
@@ -657,6 +658,7 @@ export function WorkspaceSidebar({
   const openChatCreateDialog = (event: ReactMouseEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     setActiveNav('chats');
+    setChatCreateInitialMode('menu');
     setChatCreateAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     setIsChatCreateDialogOpen(true);
   };
@@ -1338,6 +1340,7 @@ export function WorkspaceSidebar({
           <button
             type="button"
             onClick={() => {
+              setChatCreateInitialMode('agent');
               setChatCreateAnchor(null);
               setIsChatCreateDialogOpen(true);
             }}
@@ -1913,7 +1916,7 @@ export function WorkspaceSidebar({
       ) : null}
 
       <ChatCreateDialog
-        key={isChatCreateDialogOpen ? chatChannel : 'closed'}
+        key={isChatCreateDialogOpen ? chatCreateInitialMode : 'closed'}
         isOpen={isChatCreateDialogOpen}
         contacts={displayedContacts}
         addableContacts={addableContacts}
@@ -1928,7 +1931,7 @@ export function WorkspaceSidebar({
         onAddContact={onAddContactByNodeId}
         onLookupContact={onLookupContact}
         addContactPlaceholder={addContactPlaceholder}
-        initialMode={chatChannel === 'agent' ? 'agent' : 'menu'}
+        initialMode={chatCreateInitialMode}
         anchorRect={chatCreateAnchor}
       />
 

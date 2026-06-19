@@ -847,12 +847,15 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   assert.doesNotMatch(markup, /Group • 1 session/);
 });
 
-test('WorkspaceSidebar opens the agent picker from plus while the Agent tab is active', () => {
+test('WorkspaceSidebar uses menu for the global plus and agent picker for Agent-tab New session', () => {
   const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
   const dialogSource = readFileSync(new URL('../src/pages/ChatCreateDialog.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /initialMode=\{chatChannel === 'agent' \? 'agent' : 'menu'\}/);
-  assert.match(source, /setIsChatCreateDialogOpen\(true\);/);
+  assert.match(source, /const \[chatCreateInitialMode, setChatCreateInitialMode\] = useState<ChatCreateMode>\('menu'\)/);
+  assert.match(source, /const openChatCreateDialog = \(event: ReactMouseEvent<HTMLElement>\) => \{[\s\S]*setChatCreateInitialMode\('menu'\);[\s\S]*setIsChatCreateDialogOpen\(true\);[\s\S]*\};/);
+  assert.match(source, /setChatCreateInitialMode\('agent'\);[\s\S]*setIsChatCreateDialogOpen\(true\);/);
+  assert.match(source, /initialMode=\{chatCreateInitialMode\}/);
+  assert.doesNotMatch(source, /initialMode=\{chatChannel === 'agent' \? 'agent' : 'menu'\}/);
   assert.match(dialogSource, /if \(isOpen\) \{\s*setMode\(initialMode\);\s*\}/);
 });
 
