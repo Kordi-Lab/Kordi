@@ -25,7 +25,7 @@ import { loadQueuedDesktopMessagesBySession, saveQueuedDesktopMessagesBySession 
 
 type UseDesktopChatStateArgs = {
   isNativeShell: boolean;
-  mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
+  mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[], sessionContext?: { metadata?: unknown }) => Message[];
 };
 
 function notifyBackgroundSessionCompletion(turn: DesktopChatTurnSnapshot) {

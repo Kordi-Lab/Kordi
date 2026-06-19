@@ -262,7 +262,7 @@ type UseWorkspaceViewModelsArgs = {
   cachedProjectSessionMessages: Record<string, Message[]>;
   localSessionUnreadCounts: Record<string, number>;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
-  mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[]) => Message[];
+  mapDesktopMessages: (sessionId: string, messages: DesktopChatMessage[], sessionContext?: { metadata?: unknown }) => Message[];
   cloudSessionActivity?: CloudSessionActivityStore;
   cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
   cloudPresence?: CloudPresenceStore;
@@ -352,6 +352,9 @@ export function useWorkspaceViewModels({
     }
 
     const localAgentLabel = desktopChatState.localAgent?.label || 'Kordi';
+    const canonicalSessionMetadataById = new Map(
+      (canonicalSessionState?.sessions ?? []).map((session) => [session.id, session.metadata]),
+    );
     const activeHost = desktopBridgeState?.hosts.find((host) => host.id === desktopBridgeState.activeHostId)
       ?? desktopBridgeState?.hosts[0]
       ?? null;
@@ -397,7 +400,11 @@ export function useWorkspaceViewModels({
       const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
       const activeMessages = isActiveSession
         ? preferLatestMessages(
-            mapDesktopMessages(desktopChatState.activeSession.id, desktopChatState.activeSession.messages),
+            mapDesktopMessages(
+              desktopChatState.activeSession.id,
+              desktopChatState.activeSession.messages,
+              { metadata: canonicalSessionMetadataById.get(desktopChatState.activeSession.id) },
+            ),
             cachedChatSessionMessages[session.id],
             Boolean(desktopLiveTurnsForViewModel[session.id]),
             desktopLiveTurnsForViewModel[session.id],
@@ -1002,7 +1009,11 @@ export function useWorkspaceViewModels({
           const baseMessages =
             desktopSession && desktopChatState?.activeSessionId === sessionId
               ? preferLatestMessages(
-                  mapDesktopMessages(sessionId, desktopChatState.activeSession.messages),
+                  mapDesktopMessages(
+                    sessionId,
+                    desktopChatState.activeSession.messages,
+                    { metadata: canonicalSession?.metadata },
+                  ),
                   cachedProjectSessionMessages[sessionId],
                   Boolean(desktopLiveTurnsForViewModel[sessionId]),
                   desktopLiveTurnsForViewModel[sessionId],
