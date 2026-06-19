@@ -234,6 +234,9 @@ pub async fn update_agent_definition(
         return Ok(None);
     }
 
+    if let Some(value) = input.access_scope {
+        current.access_scope = clean_access_scope(Some(&value)).map_err(CloudAgentStoreError::Invalid)?;
+    }
     if let Some(value) = input.name {
         current.name = clean_required_text(&value, "name", NAME_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
     }
@@ -265,9 +268,9 @@ pub async fn update_agent_definition(
     let now_text = timestamp(now);
     let row = query_as::<_, CloudAgentRow>(
         "UPDATE cloud_agent_definitions
-         SET name = $4, role = $5, description = $6, system_prompt = $7, source_summary = $8,
-             boundaries_json = $9, resources_json = $10, skills_json = $11, model_routing_json = $12,
-             updated_at = $13
+         SET access_scope = $4, name = $5, role = $6, description = $7, system_prompt = $8, source_summary = $9,
+             boundaries_json = $10, resources_json = $11, skills_json = $12, model_routing_json = $13,
+             updated_at = $14
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = $3
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
@@ -276,6 +279,7 @@ pub async fn update_agent_definition(
     .bind(owner_account_id)
     .bind(agent_id)
     .bind(CLOUD_AGENT_STATUS_ACTIVE)
+    .bind(&current.access_scope)
     .bind(&current.name)
     .bind(&current.role)
     .bind(&current.description)

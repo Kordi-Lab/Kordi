@@ -108,6 +108,10 @@ fn cloud_agent_routes_are_mounted_in_source() {
     let routes_source = std::fs::read_to_string("src/cloud_agents/routes.rs").expect("read cloud agent routes source");
     assert!(server_source.contains("cloud_agents::routes::routes"));
     assert!(routes_source.contains("/v1/cloud/agents"));
+    let models_source = std::fs::read_to_string("src/cloud_agents/models.rs").expect("read cloud agent models source");
+    let store_source = std::fs::read_to_string("src/cloud_agents/store.rs").expect("read cloud agent store source");
+    assert!(models_source.contains("participant_conversations"));
+    assert!(store_source.contains("access_scope = $4"));
 }
 
 #[tokio::test]
@@ -171,12 +175,14 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
             Method::PUT,
             &format!("/v1/cloud/agents/{agent_id}"),
             Some(&owner_token),
-            Body::from(json!({ "name": "Docs Helper v2" }).to_string()),
+            Body::from(json!({ "name": "Docs Helper v2", "accessScope": "participant_conversations" }).to_string()),
         ))
         .await
         .unwrap();
     assert_eq!(owner_update.status(), StatusCode::OK);
-    assert_eq!(read_json(owner_update).await["agent"]["name"], "Docs Helper v2");
+    let updated = read_json(owner_update).await;
+    assert_eq!(updated["agent"]["name"], "Docs Helper v2");
+    assert_eq!(updated["agent"]["accessScope"], "participant_conversations");
 
     let owner_archive = router
         .clone()
@@ -201,7 +207,7 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
 }
 
 #[tokio::test]
-async fn cloud_agent_create_rejects_non_private_access() {
+async fn cloud_agent_create_rejects_unsupported_access() {
     let Some(pool) = try_pool().await else { return };
     let router = test_router(pool);
     let (_owner_id, owner_token) = signup(&router, "agent-private-only").await;
