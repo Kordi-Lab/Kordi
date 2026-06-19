@@ -140,6 +140,11 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           );
         },
         onMessageAgent: (agent) => {
+          if (agent.cloudAgentId) {
+            void args.handleStartChatWithAgent(agent);
+            return;
+          }
+
           if (agent.isOwned) {
             void openLocalAgentChat();
             return;

@@ -825,7 +825,7 @@ export function AgentDetailPane({
             <Button
               className="rounded-xl text-[12px]"
               onClick={() => onMessage?.()}
-              disabled={!onMessage || !activeAgent.bridgeHostId || !activeAgent.bridgePeerNodeId}
+              disabled={!onMessage || (!activeAgent.cloudAgentId && (!activeAgent.bridgeHostId || !activeAgent.bridgePeerNodeId))}
             >
               Message
             </Button>

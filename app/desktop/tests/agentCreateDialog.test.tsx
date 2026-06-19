@@ -123,6 +123,13 @@ test('AgentDetailPane shows private access menu for cloud-created agents', () =>
   assert.match(markup, /Synced privately to your Cloud account/);
 });
 
+test('AgentDetailPane enables Message for private cloud-created agents', () => {
+  const markup = renderAgentDetail(cloudAgent, { onMessage: () => undefined });
+
+  assert.match(markup, />Message<\/button>/);
+  assert.doesNotMatch(markup, /disabled="">Message<\/button>/);
+});
+
 test('AgentDetailPane exposes delete action only for private cloud agents', () => {
   const cloudMarkup = renderAgentDetail(cloudAgent, { onArchiveCloudAgent: async () => undefined });
   const kordiMarkup = renderAgentDetail(creatorAgent, { onArchiveCloudAgent: async () => undefined });
