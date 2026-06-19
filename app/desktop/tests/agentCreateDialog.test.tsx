@@ -72,6 +72,15 @@ test('AgentCreateDialog shows private-only access menu and future sharing option
   assert.match(markup, /MVP agents are creator-owned\/private Cloud sync only/);
 });
 
+test('AgentCreateDialog keeps shape and create actions in a sticky footer', () => {
+  const source = readFileSync(new URL('../src/kordi-app/agents/AgentCreateDialog.tsx', import.meta.url), 'utf8');
+  const footerStart = source.indexOf('app-agent-create-actions');
+
+  assert.notEqual(footerStart, -1);
+  assert.notEqual(source.indexOf('Shape draft with Kordi', footerStart), -1);
+  assert.notEqual(source.indexOf('Create private Agent', footerStart), -1);
+});
+
 test('AgentsSidebar exposes New agent action when cloud creation is available', () => {
   const markup = renderToStaticMarkup(createElement(AgentsSidebar, {
     agents: [cloudAgent],

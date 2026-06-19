@@ -109,7 +109,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
           <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onClose}>Close</Button>
         </div>
 
-        <div className="grid max-h-[min(78vh,46rem)] gap-0 overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid max-h-[min(70vh,42rem)] gap-0 overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="space-y-4 border-r border-[color:var(--app-divider)] px-5 py-5">
             <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
               <div className="app-agent-row-title font-medium">Created by {creatorAgent?.name ?? 'Kordi'}</div>
@@ -155,16 +155,12 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
               </select>
               <div className="app-agent-row-meta mt-2">MVP agents are creator-owned/private Cloud sync only.</div>
             </div>
-            <Button className="rounded-xl text-[12px]" onClick={() => void generateDraft()} disabled={!canShape}>{shaping ? 'Shaping…' : 'Shape draft with Kordi'}</Button>
           </div>
 
           <div className="space-y-4 px-5 py-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="app-agent-row-title text-[13px] font-medium">Draft</div>
-                <div className="app-agent-row-meta mt-1 text-[11px]">Output follows the Cloud Agent definition schema.</div>
-              </div>
-              <Button className="rounded-xl text-[12px]" disabled={!canCreate} onClick={() => void createAgent()}>{creating ? 'Creating…' : 'Create private Agent'}</Button>
+            <div>
+              <div className="app-agent-row-title text-[13px] font-medium">Draft</div>
+              <div className="app-agent-row-meta mt-1 text-[11px]">Output follows the Cloud Agent definition schema.</div>
             </div>
 
             {draft ? (
@@ -180,6 +176,16 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
               <div className="app-agent-empty-state rounded-[18px] border border-dashed px-4 py-10 text-center text-[13px] leading-5">Add resources and identity, then click Shape draft.</div>
             )}
             {feedback.text ? <div className={cn('text-[12px]', feedback.tone === 'error' ? 'text-rose-300' : feedback.tone === 'success' ? 'text-emerald-300' : 'text-slate-400')}>{feedback.text}</div> : null}
+          </div>
+        </div>
+
+        <div className="app-agent-create-actions flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--app-divider)] px-5 py-4">
+          <div className="app-agent-row-meta text-[12px] leading-5">
+            Shape prepares the draft. Create saves it as your private Cloud Agent.
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => void generateDraft()} disabled={!canShape}>{shaping ? 'Shaping…' : 'Shape draft with Kordi'}</Button>
+            <Button className="rounded-xl text-[12px]" disabled={!canCreate} onClick={() => void createAgent()}>{creating ? 'Creating…' : 'Create private Agent'}</Button>
           </div>
         </div>
       </div>
