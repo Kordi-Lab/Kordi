@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -122,14 +123,38 @@ test('AgentDetailPane exposes delete action only for private cloud agents', () =
   assert.doesNotMatch(kordiMarkup, /Delete agent/);
 });
 
-test('archiveAgentFromMenu confirms and archives private cloud agents', async () => {
+test('AgentDetailPane uses an in-app delete dialog instead of native window.confirm', () => {
+  const source = readFileSync(new URL('../src/kordi-app/agents/AgentDetailPane.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /window\.confirm/);
+  assert.match(source, /AgentDeleteConfirmDialog/);
+});
+
+test('AgentDeleteConfirmDialog renders recoverable archive copy', async () => {
+  const { AgentDeleteConfirmDialog } = await import('../src/kordi-app/agents/AgentDetailPane');
+  const markup = renderToStaticMarkup(createElement(AgentDeleteConfirmDialog, {
+    agent: cloudAgent,
+    isDeleting: false,
+    error: null,
+    onCancel: () => undefined,
+    onConfirm: () => undefined,
+  }));
+
+  assert.match(markup, /Delete this agent\?/);
+  assert.match(markup, /Docs Helper/);
+  assert.match(markup, /removed from your Agent page/);
+  assert.match(markup, /kept as an archived Cloud record/);
+  assert.match(markup, /Cancel/);
+  assert.match(markup, /Delete agent/);
+});
+
+test('archiveAgentFromMenu archives private cloud agents without native confirmation', async () => {
   const { archiveAgentFromMenu } = await import('../src/kordi-app/agents/AgentDetailPane');
   let archivedAgent: Agent | null = null;
   const feedback: string[] = [];
 
   const archived = await archiveAgentFromMenu({
     agent: cloudAgent,
-    confirm: () => true,
     onArchiveCloudAgent: async (agent) => { archivedAgent = agent; },
     onFeedback: (message) => feedback.push(message.text),
   });
@@ -137,18 +162,4 @@ test('archiveAgentFromMenu confirms and archives private cloud agents', async ()
   assert.equal(archived, true);
   assert.equal(archivedAgent?.id, cloudAgent.id);
   assert.deepEqual(feedback, ['Deleting Docs Helper…', 'Deleted Docs Helper.']);
-});
-
-test('archiveAgentFromMenu does not archive when confirmation is cancelled', async () => {
-  const { archiveAgentFromMenu } = await import('../src/kordi-app/agents/AgentDetailPane');
-  let called = false;
-
-  const archived = await archiveAgentFromMenu({
-    agent: cloudAgent,
-    confirm: () => false,
-    onArchiveCloudAgent: async () => { called = true; },
-  });
-
-  assert.equal(archived, false);
-  assert.equal(called, false);
 });
