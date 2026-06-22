@@ -88,6 +88,22 @@ test('mention participant menu is rendered on the foreground popover layer', () 
   assert.doesNotMatch(source, /app-composer-mention-menu[^"`]*z-30/);
 });
 
+test('mention participant menu uses dense chat-scale typography', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  const start = source.indexOf('export function ComposerMentionMenu');
+  const end = source.indexOf('export function composerThinkingLabel', start);
+  assert.ok(start >= 0 && end > start, 'expected ComposerMentionMenu source block');
+  const block = source.slice(start, end);
+
+  assert.match(block, /text-\[12px\]/);
+  assert.match(block, /text-\[11px\]/);
+  assert.match(block, /h-6 w-6/);
+  assert.match(block, /px-2\.5 py-1\.5/);
+  assert.match(block, /Math\.min\(\s*560,/);
+  assert.doesNotMatch(block, /text-\[13px\]/);
+  assert.doesNotMatch(block, /h-7 w-7/);
+});
+
 test('mention participant menu does not render a header or shortcut hint', () => {
   const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
     items: options,
