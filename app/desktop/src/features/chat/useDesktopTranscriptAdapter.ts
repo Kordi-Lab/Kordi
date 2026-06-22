@@ -62,6 +62,13 @@ function desktopMessageActionSource(message: DesktopChatMessage) {
   };
 }
 
+function assistantSenderLabelForTranscript(sender: string | null | undefined, cloudAgentIdentity: { name: string; id: string } | null) {
+  if (cloudAgentIdentity?.name) return cloudAgentIdentity.name;
+  const label = sender?.trim() || 'Kordi';
+  if (/·\s+.+?'s Agent$/u.test(label)) return label;
+  return firstPersonPossessiveLabel(label);
+}
+
 export function mapDesktopMessagesForTranscript(
   sessionId: string,
   messages: DesktopChatMessage[],
@@ -86,7 +93,7 @@ export function mapDesktopMessagesForTranscript(
       return [];
     }
 
-    const assistantSenderLabel = cloudAgentIdentity?.name || firstPersonPossessiveLabel(message.sender ?? 'Kordi');
+    const assistantSenderLabel = assistantSenderLabelForTranscript(message.sender, cloudAgentIdentity);
     const assistantAvatarSeed = cloudAgentIdentity?.id || avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed(message.sender ?? 'Kordi');
 
     return [{
@@ -107,7 +114,7 @@ export function mapDesktopMessagesForTranscript(
             ? selfDisplayName(message.sender ?? 'Me', true)
             : message.sender ?? undefined,
       sourceSenderLabel: message.role === 'assistant'
-        ? (cloudAgentIdentity?.name || avatarSeeds?.agentDisplayName?.trim() || firstPersonPossessiveLabel(message.sender ?? 'Kordi'))
+        ? (avatarSeeds?.agentDisplayName?.trim() || assistantSenderLabel)
         : message.role === 'user'
           ? (avatarSeeds?.humanDisplayName?.trim() || selfDisplayName(message.sender ?? 'Me', true))
           : message.sender ?? null,
