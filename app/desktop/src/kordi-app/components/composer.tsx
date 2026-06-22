@@ -173,6 +173,7 @@ export function ComposerMentionMenu({
 }) {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+  const [menuThemeClass, setMenuThemeClass] = useState('');
 
   const updateMenuPosition = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -181,7 +182,13 @@ export function ComposerMentionMenu({
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const viewportPadding = 24;
-    const menuWidth = Math.min(rect.width, Math.max(240, window.innerWidth - (viewportPadding * 2)));
+    const menuWidth = Math.min(
+      760,
+      Math.max(240, rect.width),
+      Math.max(240, window.innerWidth - (viewportPadding * 2)),
+    );
+    const appShell = anchor.closest('.bridge-app');
+    setMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-composer-mention-menu-light' : '');
     const left = Math.min(
       Math.max(viewportPadding, rect.left),
       Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
@@ -211,7 +218,7 @@ export function ComposerMentionMenu({
   if (items.length === 0) return null;
 
   const renderMenu = () => (
-    <div className="app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[24px] border px-2 py-2 shadow-[var(--app-shadow-float)]" style={menuStyle}>
+    <div className={cn('app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[24px] border px-2 py-2 shadow-[var(--app-shadow-float)]', menuThemeClass)} style={menuStyle}>
       <div className="max-h-[inherit] overflow-y-auto pr-1">
         <div className="space-y-0.5">
           {items.map((item, index) => {

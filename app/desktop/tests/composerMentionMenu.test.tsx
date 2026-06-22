@@ -60,6 +60,16 @@ test('mention participant menu uses its own solid surface instead of the shared 
   assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
 });
 
+test('mention participant menu can carry light theme after portaling outside the app shell', () => {
+  const css = readDesktopShellCss();
+  const lightRule = cssRule(css, '.app-composer-mention-menu-light');
+  assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
+
+  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  assert.match(source, /setMenuThemeClass/);
+  assert.match(source, /app-composer-mention-menu-light/);
+});
+
 test('mention participant menu is rendered on the foreground popover layer', () => {
   const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
     items: options,
