@@ -59,6 +59,10 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
       deliveryState: 'processing',
       replyToMessageId: 'msg_request',
       requestId: 'msg_request',
+      targetCloudAgentId: 'cloud_agent_project',
+      targetCloudAgentName: 'Project Driver',
+      targetCloudAgentOwnerAccountId: 'acct_owner',
+      targetCloudAgentOwnerName: 'Shuyang',
     },
   });
 
@@ -72,6 +76,10 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.message?.deliveryState, 'processing');
   assert.equal(parsed?.message?.replyToMessageId, 'msg_request');
   assert.equal(parsed?.message?.requestId, 'msg_request');
+  assert.equal(parsed?.message?.targetCloudAgentId, 'cloud_agent_project');
+  assert.equal(parsed?.message?.targetCloudAgentName, 'Project Driver');
+  assert.equal(parsed?.message?.targetCloudAgentOwnerAccountId, 'acct_owner');
+  assert.equal(parsed?.message?.targetCloudAgentOwnerName, 'Shuyang');
 });
 
 test('cloud group control envelopes preserve quote message actions for recipients', () => {

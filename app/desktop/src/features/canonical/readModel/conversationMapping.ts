@@ -45,12 +45,42 @@ function transcriptTurnRichness(messages: Message[]) {
   );
 }
 
+function agentReplyTargetId(message: Message) {
+  return message.replyToMessageId?.trim() || message.turn?.replyToMessageId?.trim() || null;
+}
+
+function agentReplyTargetKey(message: Message) {
+  const targetId = agentReplyTargetId(message);
+  if (!targetId || (message.role !== 'owned-agent' && message.role !== 'external-agent')) return null;
+  return `${message.role}\u0000${targetId}`;
+}
+
+function canonicalSupersedesExistingLiveAgentTurn(existingMessages: Message[], canonicalMessages: Message[]) {
+  const completedCanonicalReplyTargets = new Set(
+    canonicalMessages.flatMap((message) => {
+      if (!message.turn || message.turn.completed === false) return [];
+      if (!messageResponseText(message)) return [];
+      const key = agentReplyTargetKey(message);
+      return key ? [key] : [];
+    }),
+  );
+  if (completedCanonicalReplyTargets.size === 0) return false;
+
+  return existingMessages.some((message) => {
+    if (!message.turn || message.turn.completed) return false;
+    const key = agentReplyTargetKey(message);
+    return Boolean(key && completedCanonicalReplyTargets.has(key));
+  });
+}
+
 export function shouldUseCanonicalMessages(existingMessages: Message[], canonicalMessages: Message[]) {
   if (canonicalMessages.length === 0) return false;
   const existingHasLiveTurn = existingMessages.some((message) => message.turn && !message.turn.completed);
   if (existingHasLiveTurn) {
     const canonicalHasLiveTurn = canonicalMessages.some((message) => message.turn && !message.turn.completed);
-    if (!canonicalHasLiveTurn && canonicalMessages.length <= existingMessages.length) return false;
+    if (!canonicalHasLiveTurn && canonicalMessages.length <= existingMessages.length) {
+      return canonicalSupersedesExistingLiveAgentTurn(existingMessages, canonicalMessages);
+    }
   }
 
   const existingRichness = transcriptTurnRichness(existingMessages);

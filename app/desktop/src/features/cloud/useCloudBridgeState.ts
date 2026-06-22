@@ -70,6 +70,7 @@ import {
 } from './cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteForSession,
+  cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
 import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
@@ -111,8 +112,8 @@ import {
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
-import { defaultCloudAgentsClient, type CreateCloudAgentInput } from './cloudAgentsClient';
-import type { CloudAgentDefinition } from './cloudAgents';
+import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
+import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgents';
 import { loadCloudSessionVisibility, removeCloudSessionMessages, saveCloudSessionVisibility, syncCloudDiffOnce, type CloudSessionPinsById } from './cloudDiffSync';
 import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
@@ -133,7 +134,7 @@ export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
 export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
-export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 5_000;
+export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 45_000;
 
 export function cloudBootstrapPeerIds(
   account: CloudAccount | null | undefined,
@@ -337,6 +338,9 @@ type CloudAgentMentionCandidate = {
   targetAccountId: string;
   targetHumanDisplayName: string;
   targetAgentDisplayName: string;
+  targetCloudAgentId?: string | null;
+  targetCloudAgentName?: string | null;
+  targetCloudAgentOwnerName?: string | null;
 };
 
 function accountIdForHumanIdentity(state: CanonicalSessionState, identityId?: string | null): string | null {
@@ -437,14 +441,30 @@ export function cloudAgentMentionCandidates(
       if (cleanText(typeof mention.bridgeHostId === 'string' ? mention.bridgeHostId : null) !== CLOUD_HOST_SENTINEL) return [];
       const targetAccountId = cleanText(typeof mention.humanId === 'string' ? mention.humanId : null)
         || cleanText(typeof mention.nodeId === 'string' ? mention.nodeId : null);
-      if (!targetAccountId || targetAccountId === accountId) return [];
+      const targetCloudAgentId = cleanText(typeof mention.agentId === 'string' ? mention.agentId : null).startsWith('cloud_agent_')
+        ? cleanText(typeof mention.agentId === 'string' ? mention.agentId : null)
+        : null;
+      if (!targetAccountId || (targetAccountId === accountId && !targetCloudAgentId)) return [];
       const humanIdentity = identityByHumanId.get(targetAccountId);
       const agentIdentity = identityById.get(`agent:cloud:${targetAccountId}`);
       const targetHumanDisplayName = cleanText(humanIdentity?.displayName)
+        || cleanText(typeof mention.ownerName === 'string' ? mention.ownerName : null)
         || cleanText(typeof mention.label === 'string' ? mention.label.replace(/'?sKordi$/u, '') : null)
         || targetAccountId;
-      const targetAgentDisplayName = cleanText(agentIdentity?.displayName) || `${targetHumanDisplayName}'s Kordi`;
-      return [{ requestMessage: message, targetAccountId, targetHumanDisplayName, targetAgentDisplayName }];
+      const targetAgentDisplayName = targetCloudAgentId
+        ? cleanText(typeof mention.displayLabel === 'string' ? mention.displayLabel : null)
+          || cleanText(typeof mention.label === 'string' ? mention.label : null)
+          || 'Shared Agent'
+        : cleanText(agentIdentity?.displayName) || `${targetHumanDisplayName}'s Kordi`;
+      return [{
+        requestMessage: message,
+        targetAccountId,
+        targetHumanDisplayName,
+        targetAgentDisplayName,
+        targetCloudAgentId,
+        targetCloudAgentName: targetCloudAgentId ? targetAgentDisplayName : null,
+        targetCloudAgentOwnerName: targetCloudAgentId ? targetHumanDisplayName : null,
+      }];
     });
   });
 }
@@ -517,7 +537,9 @@ function upsertCanonicalRequestIntoLocalState(
   return { ...current, messages };
 }
 
-function cloudGroupAgentNoProviderFallbackRequest(input: {
+export const CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE = 'Cloud Agent did not reply yet. The owner device may be offline or still starting.';
+
+function cloudGroupAgentUnavailableFallbackRequest(input: {
   sessionId: string;
   requestMessageId: string;
   targetAccountId: string;
@@ -542,14 +564,21 @@ function cloudGroupAgentNoProviderFallbackRequest(input: {
       deliveryState: 'failed',
       requestId: requestMessageId,
       replyToMessageId: requestMessageId,
-      error: cloudAgentNoProviderNoticeText(),
+      error: CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE,
     },
     parentMessageId: requestMessageId,
     status: 'failed',
     createdAtMs,
-    sourceTransport: 'cloud-group-agent',
-    sourceEventId: `cloud-group-agent-no-provider-timeout:${requestMessageId}:${targetAccountId}`,
+    sourceTransport: 'cloud-group-agent-offline',
+    sourceEventId: `cloud-group-agent-unavailable-timeout:${requestMessageId}:${targetAccountId}`,
   };
+}
+
+function cloudGroupTerminalTimeoutPlaceholderMatches(message: CanonicalSessionMessage, noticeId: string) {
+  if (!cloudGroupRequestSlotMatches(message, noticeId)) return false;
+  return message.sourceTransport === 'cloud-group-agent-offline'
+    || message.sourceEventId?.startsWith('cloud-group-agent-unavailable-timeout:') === true
+    || message.sourceEventId?.startsWith('cloud-group-agent-no-provider-timeout:') === true;
 }
 
 function removeCloudGroupOfflinePlaceholder(
@@ -558,6 +587,49 @@ function removeCloudGroupOfflinePlaceholder(
 ): CanonicalSessionState | null {
   if (!current) return current;
   const nextMessages = current.messages.filter((message) => !cloudGroupOfflinePlaceholderMatches(message, noticeId));
+  return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
+}
+
+function cloudGroupPendingAgentRowMatches(
+  message: CanonicalSessionMessage,
+  requestId: string,
+  targetAccountId: string,
+) {
+  const trimmedRequestId = requestId.trim();
+  const trimmedTargetAccountId = targetAccountId.trim();
+  if (!trimmedRequestId || !trimmedTargetAccountId) return false;
+  if (message.senderIdentityId !== `agent:cloud:${trimmedTargetAccountId}`) return false;
+  if (!message.sourceTransport?.startsWith('cloud-group-agent')) return false;
+  const content = objectContent(message.content);
+  const linkedRequestId = cleanText(message.parentMessageId)
+    || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+    || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+  if (linkedRequestId !== trimmedRequestId) return false;
+  const status = message.status.trim().toLowerCase();
+  const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+  return status === 'processing'
+    || deliveryState === 'processing'
+    || message.sourceTransport === 'cloud-group-agent-offline'
+    || message.sourceEventId?.startsWith('cloud-group-agent-unavailable-timeout:') === true
+    || message.sourceEventId?.startsWith('cloud-group-agent-no-provider-timeout:') === true;
+}
+
+function removeCloudGroupTimeoutPlaceholderForTerminalResponse(
+  current: CanonicalSessionState | null,
+  noticeId: string,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  const nextMessages = current.messages.filter((message) => !cloudGroupTerminalTimeoutPlaceholderMatches(message, noticeId));
+  return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
+}
+
+function removeCloudGroupPendingRowsForTerminalResponse(
+  current: CanonicalSessionState | null,
+  requestId: string,
+  targetAccountId: string,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  const nextMessages = current.messages.filter((message) => !cloudGroupPendingAgentRowMatches(message, requestId, targetAccountId));
   return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
 }
 
@@ -1707,8 +1779,11 @@ export type UseCloudBridgeStateResult = {
   refreshCloudBridgeMessages(): Promise<void>;
   refreshCloudAgents(): Promise<void>;
   createCloudAgentDefinition(input: CreateCloudAgentInput): Promise<CloudAgentDefinition>;
+  updateCloudAgentDefinition(agentId: string, input: UpdateCloudAgentInput): Promise<CloudAgentDefinition>;
   archiveCloudAgentDefinition(agentId: string): Promise<CloudAgentDefinition>;
+  refreshSharedCloudAgents(ownerAccountIds: string[]): Promise<SharedCloudAgentSummary[]>;
   cloudAgentDefinitionsById: Record<string, CloudAgentDefinition>;
+  sharedCloudAgents: SharedCloudAgentSummary[];
   cloudSessionActivity: CloudSessionActivityStore;
   refreshCloudSessionActivity(sessionId: string): Promise<void>;
   publishCloudTaskActivity(input: UpsertCloudTaskActivityInput): Promise<void>;
@@ -1773,6 +1848,7 @@ export function useCloudBridgeState({
   const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
   const [cloudSessionPinsById, setCloudSessionPinsById] = useState<CloudSessionPinsById>({});
   const [cloudAgentDefinitionsById, setCloudAgentDefinitionsById] = useState<Record<string, CloudAgentDefinition>>({});
+  const [sharedCloudAgentsByOwner, setSharedCloudAgentsByOwner] = useState<Record<string, SharedCloudAgentSummary[]>>({});
   const [cloudHiddenSessionIds, setCloudHiddenSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).hiddenSessionIds);
   const [cloudDeletedSessionIds, setCloudDeletedSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).deletedSessionIds);
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
@@ -2066,10 +2142,37 @@ export function useCloudBridgeState({
     setCloudAgentDefinitionsById((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
   }, [account, cloudAgentsClient]);
 
+  const sharedCloudAgents = useMemo(() => Object.values(sharedCloudAgentsByOwner).flat(), [sharedCloudAgentsByOwner]);
+
+  const refreshSharedCloudAgents = useCallback(async (ownerAccountIds: string[]) => {
+    const owners = [...new Set(ownerAccountIds.map((value) => value.trim()).filter(Boolean))];
+    if (!account || owners.length === 0) {
+      setSharedCloudAgentsByOwner((current) => (Object.keys(current).length === 0 ? current : {}));
+      return [];
+    }
+    const session = await loadSession();
+    if (!session?.token) return [];
+    const agents = await cloudAgentsClient.listSharedCloudAgents(session.token, owners);
+    const next: Record<string, SharedCloudAgentSummary[]> = {};
+    for (const agent of agents) {
+      next[agent.ownerAccountId] = [...(next[agent.ownerAccountId] ?? []), agent];
+    }
+    setSharedCloudAgentsByOwner((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+    return agents;
+  }, [account, cloudAgentsClient]);
+
   const createCloudAgentDefinition = useCallback(async (input: CreateCloudAgentInput) => {
     const session = await loadSession();
     if (!session?.token) throw new Error('Sign in to Cloud before creating an agent.');
     const agent = await cloudAgentsClient.createCloudAgent(session.token, input);
+    setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
+    return agent;
+  }, [cloudAgentsClient]);
+
+  const updateCloudAgentDefinition = useCallback(async (agentId: string, input: UpdateCloudAgentInput) => {
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Sign in to Cloud before updating an agent.');
+    const agent = await cloudAgentsClient.updateCloudAgent(session.token, agentId, input);
     setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
     return agent;
   }, [cloudAgentsClient]);
@@ -2256,11 +2359,15 @@ export function useCloudBridgeState({
         const timerId = cloudGroupOfflineTimersRef.current.get(key);
         if (timerId !== undefined) window.clearTimeout(timerId);
         cloudGroupOfflineTimersRef.current.delete(key);
-        setCanonicalSessionState((current) => (
-          responseState === 'processing'
-            ? setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId)
-            : removeCloudGroupOfflinePlaceholder(current, noticeId)
-        ));
+        setCanonicalSessionState((current) => {
+          if (responseState === 'processing') {
+            return setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId);
+          }
+          if (responseState === 'terminal') {
+            return removeCloudGroupPendingRowsForTerminalResponse(current, candidate.requestMessage.id, candidate.targetAccountId);
+          }
+          return current;
+        });
         continue;
       }
       if (cloudGroupOfflineTimersRef.current.has(key)) continue;
@@ -2277,7 +2384,7 @@ export function useCloudBridgeState({
             setCanonicalSessionState((current) => setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId));
             return;
           }
-          const failedNoticeRequest = cloudGroupAgentNoProviderFallbackRequest({
+          const failedNoticeRequest = cloudGroupAgentUnavailableFallbackRequest({
             sessionId: candidate.requestMessage.sessionId,
             requestMessageId: candidate.requestMessage.id,
             targetAccountId: candidate.targetAccountId,
@@ -2780,16 +2887,40 @@ export function useCloudBridgeState({
       // ("Processing…" + the real response).
       if (senderIsAgent && messageReplyToId) {
         const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`;
-        nextState = removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
+        if (agentDeliveryState === 'processing') {
+          nextState = removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
+        } else {
+          nextState = removeCloudGroupPendingRowsForTerminalResponse(nextState, messageReplyToId, envelope.message.senderAccountId) ?? nextState;
+        }
       }
       setCanonicalSessionState(nextState);
     }
 
+    if (messageAlreadyExists && senderIsAgent && messageReplyToId && agentDeliveryState !== 'processing') {
+      const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`;
+      const cleanedState = removeCloudGroupPendingRowsForTerminalResponse(nextState, messageReplyToId, envelope.message.senderAccountId)
+        ?? removeCloudGroupTimeoutPlaceholderForTerminalResponse(nextState, offlinePlaceholderId)
+        ?? nextState;
+      if (cleanedState !== nextState) {
+        nextState = cleanedState;
+        setCanonicalSessionState(nextState);
+      }
+    }
+
     const groupMessageIsOwn = envelope.message.senderAccountId === account.accountId;
-    const groupMessageMentionsLocalAgent = envelope.message.forkSnapshot === true ? false : cloudMessageMentionsLocalAgent(
-      envelope.message.text,
-      account,
-      { allowFirstPerson: groupMessageIsOwn },
+    const targetCloudAgentId = cleanText(envelope.message.targetCloudAgentId);
+    const targetCloudAgentOwnerAccountId = cleanText(envelope.message.targetCloudAgentOwnerAccountId);
+    const groupMessageTargetsOwnedHostedCloudAgent = Boolean(
+      targetCloudAgentId.startsWith('cloud_agent_')
+      && targetCloudAgentOwnerAccountId === account.accountId,
+    );
+    const groupMessageMentionsLocalAgent = envelope.message.forkSnapshot === true ? false : (
+      groupMessageTargetsOwnedHostedCloudAgent
+      || cloudMessageMentionsLocalAgent(
+        envelope.message.text,
+        account,
+        { allowFirstPerson: groupMessageIsOwn },
+      )
     );
     if (
       !senderIsAgent
@@ -2831,8 +2962,13 @@ export function useCloudBridgeState({
           void refreshCloudBridgeMessages();
           return;
         }
+        const hostedAgentName = cleanText(envelope.message!.targetCloudAgentName);
+        const hostedAgentOwnerName = cleanText(envelope.message!.targetCloudAgentOwnerName)
+          || cleanText(account.displayName)
+          || cleanText(account.primaryEmail)
+          || 'Cloud user';
         const agentIdentityId = `agent:cloud:${account.accountId}`;
-        const agentDisplayName = `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`;
+        const agentDisplayName = hostedAgentName || `${hostedAgentOwnerName}'s Kordi`;
         await upsertCanonicalIdentity({
           id: agentIdentityId,
           kind: 'agent',
@@ -2857,7 +2993,7 @@ export function useCloudBridgeState({
           messageKind: 'agent-turn',
           contentText: 'processing...',
           content: {
-            sender: 'My Kordi',
+            sender: agentDisplayName,
             timestampMs: processingCreatedAtMs,
             deliveryState: 'processing',
             bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
@@ -2915,11 +3051,18 @@ export function useCloudBridgeState({
           setLocalAgentTurnsByRequestId((current) => ({ ...current, [envelope.message!.id]: turn }));
         };
         const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${envelope.groupId}`;
+        const runtimeRoute = cloudAgentRuntimeRouteForTargetCloudAgent({
+          targetCloudAgentId: envelope.message!.targetCloudAgentId,
+          cloudAgentDefinitionsById,
+          routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
+          runtimeSessionId,
+          fallbackRoute: defaultCloudAgentRuntimeRoute,
+        });
         const startedTurn = await startDesktopChatMessage(
           runtimeSessionId,
           prompt,
           agentAttachmentPaths,
-          cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId, defaultCloudAgentRuntimeRoute),
+          runtimeRoute,
           contextMessages,
           visibleTaskRecords,
         );
@@ -2985,7 +3128,7 @@ export function useCloudBridgeState({
         // dedup separately from the intermediate processing envelope; the
         // own-round-trip guard in the receive-side handler suppresses
         // duplicate writes when this envelope comes back via cloud polling.
-        const responseState = await upsertCanonicalMessage({
+        const responseStateBeforeCleanup = await upsertCanonicalMessage({
           id: processingMessageId,
           sessionId: envelope.groupId,
           senderIdentityId: agentIdentityId,
@@ -2993,7 +3136,7 @@ export function useCloudBridgeState({
           messageKind: 'agent-turn',
           contentText: responseContentText,
           content: {
-            sender: 'My Kordi',
+            sender: agentDisplayName,
             timestampMs: responseCreatedAtMs,
             deliveryState: responseDeliveryState,
             bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
@@ -3007,6 +3150,10 @@ export function useCloudBridgeState({
           sourceTransport: 'cloud-group-agent',
           sourceEventId: `cloud-group-agent:${responseMessageId}`,
         });
+        const offlinePlaceholderId = `msg:cloud-agent-offline:${envelope.message!.id}:${account.accountId}`;
+        const responseState = removeCloudGroupPendingRowsForTerminalResponse(responseStateBeforeCleanup, envelope.message!.id, account.accountId)
+          ?? removeCloudGroupTimeoutPlaceholderForTerminalResponse(responseStateBeforeCleanup, offlinePlaceholderId)
+          ?? responseStateBeforeCleanup;
         setCanonicalSessionState(responseState);
         const responseBody = encodeCloudGroupControl({
           kind: 'group-message',
@@ -3044,7 +3191,12 @@ export function useCloudBridgeState({
           const responseCreatedAtMs = Date.now();
           const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;
           const responseMessageId = `msg:cloud-agent-no-provider:${envelope.message!.id}:${account.accountId}`;
-          const agentDisplayName = `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`;
+          const hostedAgentName = cleanText(envelope.message!.targetCloudAgentName);
+          const hostedAgentOwnerName = cleanText(envelope.message!.targetCloudAgentOwnerName)
+            || cleanText(account.displayName)
+            || cleanText(account.primaryEmail)
+            || 'Cloud user';
+          const agentDisplayName = hostedAgentName || `${hostedAgentOwnerName}'s Kordi`;
           void (async () => {
             const nextState = await upsertCanonicalMessage({
               id: processingMessageId,
@@ -3054,7 +3206,7 @@ export function useCloudBridgeState({
               messageKind: 'agent-turn',
               contentText: '',
               content: {
-                sender: 'My Kordi',
+                sender: agentDisplayName,
                 timestampMs: responseCreatedAtMs,
                 deliveryState: 'failed',
                 bridgeConversationId: cloudGroupAgentConversationId(envelope.groupId),
@@ -3122,6 +3274,7 @@ export function useCloudBridgeState({
     account,
     activeConversationId,
     client,
+    cloudAgentDefinitionsById,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
     mergeMessage,
@@ -4114,8 +4267,11 @@ export function useCloudBridgeState({
     refreshCloudBridgeMessages,
     refreshCloudAgents,
     createCloudAgentDefinition,
+    updateCloudAgentDefinition,
     archiveCloudAgentDefinition,
+    refreshSharedCloudAgents,
     cloudAgentDefinitionsById,
+    sharedCloudAgents,
     cloudSessionActivity,
     refreshCloudSessionActivity,
     publishCloudTaskActivity,

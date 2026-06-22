@@ -171,11 +171,55 @@ export function ComposerMentionMenu({
   selectedIndex: number;
   onSelect: (value: string) => void;
 }) {
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+  const [menuThemeClass, setMenuThemeClass] = useState('');
+
+  const updateMenuPosition = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const anchor = anchorRef.current;
+    const container = anchor?.parentElement;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const viewportPadding = 24;
+    const menuWidth = Math.min(
+      480,
+      Math.max(240, rect.width),
+      Math.max(240, window.innerWidth - (viewportPadding * 2)),
+    );
+    const appShell = anchor.closest('.bridge-app');
+    setMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-composer-mention-menu-light' : '');
+    const left = Math.min(
+      Math.max(viewportPadding, rect.left),
+      Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+    );
+    const top = Math.max(viewportPadding, rect.top - 10);
+    const availableAbove = Math.max(160, top - viewportPadding);
+    setMenuStyle({
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${menuWidth}px`,
+      maxHeight: `min(18rem, ${availableAbove}px)`,
+      transform: 'translateY(-100%)',
+    });
+  }, []);
+
+  useEffect(() => {
+    if (items.length === 0) return undefined;
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [items.length, updateMenuPosition]);
+
   if (items.length === 0) return null;
 
-  return (
-    <div className="app-composer-mention-menu absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[24px] border px-2 py-2 shadow-[var(--app-shadow-float)]">
-      <div className="max-h-[min(28rem,54vh)] overflow-y-auto pr-1">
+  const renderMenu = () => (
+    <div className={cn('app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[18px] border px-1 py-1 shadow-[var(--app-shadow-float)]', menuThemeClass)} style={menuStyle}>
+      <div className="max-h-[inherit] overflow-y-auto pr-1">
         <div className="space-y-0.5">
           {items.map((item, index) => {
             const active = index === selectedIndex;
@@ -189,36 +233,35 @@ export function ComposerMentionMenu({
                   onSelect(item.value);
                 }}
                 className={cn(
-                  'app-composer-mention-menu-item flex w-full items-center gap-3 rounded-[16px] px-3 py-2 text-left text-[13px] transition',
+                  'app-composer-mention-menu-item flex w-full items-center gap-2 rounded-[12px] px-2 py-1 text-left text-[11px] transition',
                   active && 'app-composer-mention-menu-item-active',
                 )}
               >
-                <div className="app-composer-mention-menu-icon grid h-7 w-7 shrink-0 place-items-center rounded-full">
-                  <Icon className={cn('h-4 w-4', item.targetKind === 'bridge-agent' ? 'text-violet-300' : 'text-sky-300')} />
+                <div className="app-composer-mention-menu-icon grid h-5 w-5 shrink-0 place-items-center rounded-full">
+                  <Icon className={cn('h-3 w-3', item.targetKind === 'bridge-agent' ? 'text-violet-300' : 'text-sky-300')} />
                 </div>
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-medium"><AtSign className="mr-0.5 inline h-3.5 w-3.5 align-[-2px] text-slate-500" />{item.label}</span>
-                    <span className={cn('app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[10px]', active && 'app-composer-mention-menu-kind-active')}>
+                    <span className="app-composer-mention-menu-label truncate text-[12px] leading-4"><AtSign className="mr-0.5 inline h-3 w-3 align-[-1px] text-slate-500" />{item.label}</span>
+                    <span className={cn('app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[9px]', active && 'app-composer-mention-menu-kind-active')}>
                       {item.targetKind === 'bridge-agent' ? 'agent' : 'person'}
                     </span>
                   </div>
-                  {item.detail ? <div className={cn('app-composer-mention-menu-detail truncate text-[12px]', active && 'app-composer-mention-menu-detail-active')}>{item.detail}</div> : null}
+                  {item.detail ? <div className={cn('app-composer-mention-menu-detail truncate text-[10px] leading-3.5', active && 'app-composer-mention-menu-detail-active')}>{item.detail}</div> : null}
                 </div>
-                {item.unreadCount && item.unreadCount > 0 ? (
-                  <span className={cn(
-                    'grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums',
-                    active ? 'bg-sky-300 text-slate-950' : 'bg-sky-400/20 text-sky-200 ring-1 ring-sky-300/30',
-                  )}>
-                    {item.unreadCount > 99 ? '99+' : item.unreadCount}
-                  </span>
-                ) : null}
               </button>
             );
           })}
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <Fragment>
+      <span ref={anchorRef} className="pointer-events-none absolute inset-x-0 top-0 h-0" aria-hidden="true" />
+      {typeof document !== 'undefined' ? createPortal(renderMenu(), document.body) : renderMenu()}
+    </Fragment>
   );
 }
 

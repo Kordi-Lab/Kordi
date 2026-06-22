@@ -4305,7 +4305,7 @@ fn parse_cloud_group_control_for_auth(body: &str) -> Option<CloudGroupControlFor
     serde_json::from_slice::<CloudGroupControlForAuth>(&bytes).ok()
 }
 
-async fn cloud_session_participants(
+pub(crate) async fn cloud_session_participants(
     pool: &PgPool,
     session_id: &str,
 ) -> Result<Vec<String>, sqlx_core::error::Error> {

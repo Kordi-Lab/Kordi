@@ -5,7 +5,9 @@ import { CloudAgentsClient } from '../src/features/cloud/cloudAgentsClient';
 import {
   applyCloudAgentSyncEvents,
   cloudAgentDefinitionToAgent,
+  cloudAgentDefinitionToSharedCloudAgentSummary,
   normalizeCloudAgentDefinition,
+  normalizeSharedCloudAgentSummary,
 } from '../src/features/cloud/cloudAgents';
 
 const rawAgent = {
@@ -27,6 +29,17 @@ const rawAgent = {
   archivedAt: null,
 };
 
+const sharedRawAgent = {
+  agentId: 'cloud_agent_shared',
+  ownerAccountId: 'acct_owner',
+  ownerDisplayName: 'Shuyang',
+  accessScope: 'participant_conversations',
+  name: 'Project Driver',
+  role: 'Planning agent',
+  description: 'Keeps projects moving',
+  updatedAt: '2026-06-19T00:00:00Z',
+};
+
 test('normalizeCloudAgentDefinition accepts complete private cloud agents', () => {
   const agent = normalizeCloudAgentDefinition(rawAgent);
 
@@ -34,6 +47,55 @@ test('normalizeCloudAgentDefinition accepts complete private cloud agents', () =
   assert.equal(agent?.accessScope, 'private');
   assert.equal(agent?.skills[0]?.name, 'navigate-knowledge');
   assert.equal(agent?.resources[0]?.kind, 'text');
+});
+
+test('normalizeCloudAgentDefinition accepts participant conversation owned agents', () => {
+  const agent = normalizeCloudAgentDefinition({
+    ...rawAgent,
+    accessScope: 'participant_conversations',
+  });
+
+  assert.equal(agent?.accessScope, 'participant_conversations');
+  assert.equal(cloudAgentDefinitionToAgent(agent!).status, 'Shared');
+});
+
+test('shared cloud agent summaries are mention safe', () => {
+  const agent = normalizeSharedCloudAgentSummary({
+    ...sharedRawAgent,
+    systemPrompt: 'must not be read',
+    modelRouting: { defaultModel: 'openai/private' },
+  });
+
+  assert.equal(agent?.agentId, 'cloud_agent_shared');
+  assert.equal(agent?.ownerDisplayName, 'Shuyang');
+  assert.equal('systemPrompt' in (agent as object), false);
+  assert.equal('modelRouting' in (agent as object), false);
+});
+
+test('cloudAgentDefinitionToSharedCloudAgentSummary exposes owned shared agents as mention-safe summaries', () => {
+  const privateAgent = normalizeCloudAgentDefinition(rawAgent);
+  const sharedAgent = normalizeCloudAgentDefinition({
+    ...rawAgent,
+    accessScope: 'participant_conversations',
+    name: 'Kordi Project Driver',
+    description: 'Moves the project forward',
+  });
+  assert.ok(privateAgent);
+  assert.ok(sharedAgent);
+
+  assert.equal(cloudAgentDefinitionToSharedCloudAgentSummary(privateAgent, '111'), null);
+  const summary = cloudAgentDefinitionToSharedCloudAgentSummary(sharedAgent, '111');
+
+  assert.deepEqual(summary, {
+    agentId: 'cloud_agent_abc',
+    ownerAccountId: 'acct_owner',
+    ownerDisplayName: '111',
+    accessScope: 'participant_conversations',
+    name: 'Kordi Project Driver',
+    role: 'Technical Support Agent',
+    description: 'Moves the project forward',
+    updatedAt: '2026-06-18T00:01:00Z',
+  });
 });
 
 test('normalizeCloudAgentDefinition rejects malformed payloads', () => {
@@ -110,6 +172,9 @@ test('CloudAgentsClient lists creates updates and archives cloud agents with bea
     if (String(url).endsWith('/v1/cloud/agents/cloud_agent_abc') && init.method === 'PUT') {
       return new Response(JSON.stringify({ agent: { ...rawAgent, name: 'Docs Helper v2' } }), { status: 200 });
     }
+    if (String(url).includes('/v1/cloud/agents/shared') && init.method === 'GET') {
+      return new Response(JSON.stringify({ agents: [sharedRawAgent] }), { status: 200 });
+    }
     if (String(url).endsWith('/v1/cloud/agents/cloud_agent_abc') && init.method === 'DELETE') {
       return new Response(JSON.stringify({ agent: { ...rawAgent, status: 'archived' } }), { status: 200 });
     }
@@ -121,8 +186,9 @@ test('CloudAgentsClient lists creates updates and archives cloud agents with bea
   assert.equal((await client.createCloudAgent('token', rawAgent)).agentId, 'cloud_agent_abc');
   assert.equal((await client.updateCloudAgent('token', 'cloud_agent_abc', { name: 'Docs Helper v2' })).name, 'Docs Helper v2');
   assert.equal((await client.archiveCloudAgent('token', 'cloud_agent_abc')).status, 'archived');
+  assert.equal((await client.listSharedCloudAgents('token', ['acct_owner']))[0]?.agentId, 'cloud_agent_shared');
 
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   for (const call of calls) {
     assert.equal((call.init.headers as Record<string, string>).authorization, 'Bearer token');
   }

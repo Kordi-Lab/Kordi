@@ -7,7 +7,9 @@ use uuid::Uuid;
 use crate::cloud_agents::models::{
     clean_access_scope, clean_optional_text, clean_required_text, clean_string_list,
     CloudAgentDefinition, CloudAgentResource, CloudAgentSkill, CreateCloudAgentRequest,
-    UpdateCloudAgentRequest, CLOUD_AGENT_STATUS_ACTIVE, CLOUD_AGENT_STATUS_ARCHIVED,
+    SharedCloudAgentSummary, UpdateCloudAgentRequest,
+    CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS, CLOUD_AGENT_STATUS_ACTIVE,
+    CLOUD_AGENT_STATUS_ARCHIVED,
 };
 
 const NAME_MAX_LEN: usize = 120;
@@ -220,6 +222,52 @@ pub async fn list_agent_definitions(
     Ok(rows.into_iter().map(row_to_definition).collect())
 }
 
+pub async fn list_shared_agent_summaries(
+    pool: &PgPool,
+    owner_account_ids: &[String],
+) -> Result<Vec<SharedCloudAgentSummary>, CloudAgentStoreError> {
+    let owners: Vec<String> = owner_account_ids
+        .iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .take(50)
+        .collect();
+    if owners.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rows = query_as::<_, (String, String, Option<String>, String, String, String, Option<String>, String)>(
+        "SELECT a.agent_id, a.owner_account_id, c.display_name, a.access_scope, a.name, a.role, a.description, a.updated_at
+         FROM cloud_agent_definitions a
+         LEFT JOIN cloud_accounts c ON c.account_id = a.owner_account_id
+         WHERE a.owner_account_id = ANY($1)
+           AND a.status = $2
+           AND a.access_scope = $3
+         ORDER BY a.updated_at DESC, a.agent_id ASC",
+    )
+    .bind(&owners)
+    .bind(CLOUD_AGENT_STATUS_ACTIVE)
+    .bind(CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| SharedCloudAgentSummary {
+            agent_id: row.0,
+            owner_account_id: row.1,
+            owner_display_name: row.2,
+            access_scope: row.3,
+            name: row.4,
+            role: row.5,
+            description: row.6,
+            updated_at: row.7,
+        })
+        .collect())
+}
+
 pub async fn update_agent_definition(
     pool: &PgPool,
     owner_account_id: &str,
@@ -234,6 +282,9 @@ pub async fn update_agent_definition(
         return Ok(None);
     }
 
+    if let Some(value) = input.access_scope {
+        current.access_scope = clean_access_scope(Some(&value)).map_err(CloudAgentStoreError::Invalid)?;
+    }
     if let Some(value) = input.name {
         current.name = clean_required_text(&value, "name", NAME_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
     }
@@ -265,9 +316,9 @@ pub async fn update_agent_definition(
     let now_text = timestamp(now);
     let row = query_as::<_, CloudAgentRow>(
         "UPDATE cloud_agent_definitions
-         SET name = $4, role = $5, description = $6, system_prompt = $7, source_summary = $8,
-             boundaries_json = $9, resources_json = $10, skills_json = $11, model_routing_json = $12,
-             updated_at = $13
+         SET access_scope = $4, name = $5, role = $6, description = $7, system_prompt = $8, source_summary = $9,
+             boundaries_json = $10, resources_json = $11, skills_json = $12, model_routing_json = $13,
+             updated_at = $14
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = $3
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
@@ -276,6 +327,7 @@ pub async fn update_agent_definition(
     .bind(owner_account_id)
     .bind(agent_id)
     .bind(CLOUD_AGENT_STATUS_ACTIVE)
+    .bind(&current.access_scope)
     .bind(&current.name)
     .bind(&current.role)
     .bind(&current.description)

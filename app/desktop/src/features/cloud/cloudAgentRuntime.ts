@@ -1,5 +1,6 @@
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
+import type { CloudAgentDefinition } from './cloudAgents';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
 import { cloudPeerAccountIdFromConversationId } from './cloudBridgeState';
 
@@ -56,4 +57,37 @@ export function cloudAgentRuntimeRouteForSession(
 ): DesktopChatMessageRoute | null {
   const route = runtimeSessionId ? routesByRuntimeSessionId?.[runtimeSessionId] : null;
   return compactCloudAgentRuntimeRoute(route) ?? compactCloudAgentRuntimeRoute(fallbackRoute);
+}
+
+export function cloudAgentRuntimeRouteFromDefinition(
+  definition: CloudAgentDefinition | null | undefined,
+): DesktopChatMessageRoute | null {
+  const routing = definition?.modelRouting;
+  if (!routing) return null;
+  return compactCloudAgentRuntimeRoute({
+    model: typeof routing.defaultModel === 'string' ? routing.defaultModel : null,
+    authProvider: typeof routing.defaultAuthProvider === 'string' ? routing.defaultAuthProvider : null,
+    authChoice: typeof routing.defaultAuthChoice === 'string' ? routing.defaultAuthChoice : null,
+    thinking: typeof routing.thinking === 'string' ? routing.thinking : null,
+  });
+}
+
+export function cloudAgentRuntimeRouteForTargetCloudAgent(
+  input: {
+    targetCloudAgentId?: string | null;
+    cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition> | null;
+    routesByRuntimeSessionId?: Record<string, DesktopChatMessageRoute> | null;
+    runtimeSessionId?: string | null;
+    fallbackRoute?: DesktopChatMessageRoute | null;
+  },
+): DesktopChatMessageRoute | null {
+  const targetCloudAgentId = cleanText(input.targetCloudAgentId);
+  const definitionRoute = targetCloudAgentId
+    ? cloudAgentRuntimeRouteFromDefinition(input.cloudAgentDefinitionsById?.[targetCloudAgentId])
+    : null;
+  return definitionRoute ?? cloudAgentRuntimeRouteForSession(
+    input.routesByRuntimeSessionId,
+    input.runtimeSessionId,
+    input.fallbackRoute,
+  );
 }

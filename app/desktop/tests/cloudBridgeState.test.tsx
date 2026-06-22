@@ -18,6 +18,7 @@ import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/feature
 import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { cloudGroupForkPayloadFromSessionMetadata, cloudGroupParticipantsWithProfiles, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
+import { sharedCloudAgentMentionCandidatesForConversation } from '../src/features/chat/messageActions/mentions';
 import {
   cloudAgentMentionCandidates,
   cloudBootstrapPeerIds,
@@ -524,6 +525,80 @@ test('cloud bridge messages preserve resolved attachment local paths for inline 
 
   assert.equal(mapped.attachments?.[0]?.attachmentId, 'att_1');
   assert.equal(mapped.attachments?.[0]?.localPath, '/tmp/kordi-cache/Screenshot.png');
+});
+
+test('shared cloud agent mention candidates require owner participant', () => {
+  const sharedAgent = {
+    agentId: 'cloud_agent_project',
+    ownerAccountId: 'acct_owner',
+    ownerDisplayName: 'Shuyang',
+    accessScope: 'participant_conversations' as const,
+    name: 'Project Driver',
+    role: 'Planning agent',
+    description: null,
+    updatedAt: '2026-06-19T00:00:00Z',
+  };
+
+  const withOwner = sharedCloudAgentMentionCandidatesForConversation([sharedAgent], {
+    canonicalParticipants: [
+      { id: 'human:acct_owner', kind: 'human', role: 'person', name: 'Shuyang', humanId: 'acct_owner' },
+      { id: 'human:acct_requester', kind: 'human', role: 'self', name: 'Alice', humanId: 'acct_requester' },
+    ],
+    directness: 'group',
+  });
+
+  assert.equal(withOwner[0]?.handle, 'ProjectDriver');
+  assert.equal(withOwner[0]?.targetAgentId, 'cloud_agent_project');
+  assert.equal(withOwner[0]?.targetOwnerAccountId, 'acct_owner');
+  assert.equal(withOwner[0]?.detailLabel, "Shuyang's Agent");
+
+  const withoutOwner = sharedCloudAgentMentionCandidatesForConversation([sharedAgent], {
+    canonicalParticipants: [
+      { id: 'human:acct_requester', kind: 'human', role: 'self', name: 'Alice', humanId: 'acct_requester' },
+    ],
+    directness: 'group',
+  });
+  assert.deepEqual(withoutOwner, []);
+});
+
+test('cloud group agent mention candidates include owner self-mentions for hosted Cloud Agents', () => {
+  const state = {
+    profile: { humanIdentityId: 'human:me', displayName: '111' },
+    sessions: [],
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: '111', source: 'bridge', bridgeNodeId: 'acct_me', humanId: 'acct_me', ownerIdentityId: null, sourceHostId: 'cloud', agentId: null, avatarKey: 'me', profileImageUrl: null, metadata: null, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [],
+    messages: [{
+      id: 'msg_self_hosted_agent_request',
+      sessionId: 'session:group:abc',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: '@KordiProjectDriver hi',
+      content: { mentions: [{ targetKind: 'bridge-agent', bridgeHostId: 'cloud', humanId: 'acct_me', agentId: 'cloud_agent_project', label: 'Kordi Project Driver', ownerName: '111' }] },
+      parentMessageId: null,
+      delegatedExchangeId: null,
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+      contentHash: null,
+      sourceTransport: 'cloud-group-ui',
+      sourceEventId: 'cloud-group:msg_self_hosted_agent_request',
+    }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: null,
+  } satisfies CanonicalSessionState;
+
+  const candidates = cloudAgentMentionCandidates(state, 'acct_me');
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.targetAccountId, 'acct_me');
+  assert.equal(candidates[0]?.targetCloudAgentId, 'cloud_agent_project');
+  assert.equal(candidates[0]?.targetAgentDisplayName, 'Kordi Project Driver');
 });
 
 test('direct Cloud contact agent mentions are not treated as Cloud group placeholders', () => {

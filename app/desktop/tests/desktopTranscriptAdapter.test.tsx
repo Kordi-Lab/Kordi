@@ -183,6 +183,19 @@ test('desktop transcript maps optimistic quoted replies so the quote renders bef
   assert.equal(mapped.sourceMessage?.text, 'Can we ship?');
 });
 
+test('desktop transcript preserves shared cloud agent owner-attributed sender labels', () => {
+  const [mapped] = mapDesktopMessagesForTranscript('session:group:one', [{
+    role: 'assistant',
+    sender: "Project Driver · Shuyang's Agent",
+    text: 'Done.',
+    timeLabel: '12:32',
+    timestampMs: 2,
+  } as DesktopChatMessage]);
+
+  assert.equal(mapped.sender, "Project Driver · Shuyang's Agent");
+  assert.equal(mapped.sourceSenderLabel, "Project Driver · Shuyang's Agent");
+});
+
 test('desktop transcript maps optimistic own messages with the local profile image url immediately', () => {
   const [mapped] = mapDesktopMessagesForTranscript('session-1', [{
     role: 'user',

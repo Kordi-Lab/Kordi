@@ -304,7 +304,7 @@ export type Agent = {
   isBridgeActive?: boolean;
   isBridgeRegistered?: boolean;
   cloudAgentId?: string;
-  cloudAgentAccessScope?: 'private';
+  cloudAgentAccessScope?: 'private' | 'participant_conversations';
   cloudAgentOwnerAccountId?: string;
   cloudAgentSourceSummary?: string | null;
   cloudAgentBoundaries?: string[];

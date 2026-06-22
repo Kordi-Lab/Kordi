@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const CLOUD_AGENT_ACCESS_PRIVATE: &str = "private";
+pub const CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS: &str = "participant_conversations";
 pub const CLOUD_AGENT_STATUS_ACTIVE: &str = "active";
 pub const CLOUD_AGENT_STATUS_ARCHIVED: &str = "archived";
 
@@ -43,6 +44,19 @@ pub struct CloudAgentDefinition {
     pub archived_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedCloudAgentSummary {
+    pub agent_id: String,
+    pub owner_account_id: String,
+    pub owner_display_name: Option<String>,
+    pub access_scope: String,
+    pub name: String,
+    pub role: String,
+    pub description: Option<String>,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateCloudAgentRequest {
@@ -65,6 +79,7 @@ pub struct CreateCloudAgentRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateCloudAgentRequest {
+    pub access_scope: Option<String>,
     pub name: Option<String>,
     pub role: Option<String>,
     pub description: Option<String>,
@@ -104,7 +119,10 @@ pub fn clean_optional_text(value: Option<&str>, max_len: usize) -> Result<Option
 pub fn clean_access_scope(value: Option<&str>) -> Result<String, String> {
     match value.unwrap_or(CLOUD_AGENT_ACCESS_PRIVATE).trim() {
         "" | CLOUD_AGENT_ACCESS_PRIVATE => Ok(CLOUD_AGENT_ACCESS_PRIVATE.to_string()),
-        _ => Err("Only private agent access is supported in this version".to_string()),
+        CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS => {
+            Ok(CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS.to_string())
+        }
+        _ => Err("Unsupported Cloud Agent access scope".to_string()),
     }
 }
 
@@ -132,6 +150,23 @@ mod tests {
         assert_eq!(clean_access_scope(None).unwrap(), "private");
         assert_eq!(clean_access_scope(Some("")).unwrap(), "private");
         assert_eq!(clean_access_scope(Some(" private ")).unwrap(), "private");
+    }
+
+    #[test]
+    fn access_scope_accepts_participant_conversations() {
+        assert_eq!(
+            clean_access_scope(Some(" participant_conversations ")).unwrap(),
+            "participant_conversations"
+        );
+    }
+
+    #[test]
+    fn update_request_accepts_access_scope_field() {
+        let input: UpdateCloudAgentRequest = serde_json::from_value(serde_json::json!({
+            "accessScope": "participant_conversations"
+        }))
+        .expect("deserialize update request");
+        assert_eq!(input.access_scope.as_deref(), Some("participant_conversations"));
     }
 
     #[test]

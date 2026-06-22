@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -57,6 +58,64 @@ test('mention participant menu uses its own solid surface instead of the shared 
 
   const lightRule = cssRule(css, '.bridge-app.theme-light .app-composer-mention-menu');
   assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
+});
+
+test('mention participant menu can carry light theme after portaling outside the app shell', () => {
+  const css = readDesktopShellCss();
+  const lightRule = cssRule(css, '.app-composer-mention-menu-light');
+  assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
+
+  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  assert.match(source, /setMenuThemeClass/);
+  assert.match(source, /app-composer-mention-menu-light/);
+});
+
+test('mention participant menu is rendered on the foreground popover layer', () => {
+  const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
+    items: options,
+    selectedIndex: 0,
+    onSelect: () => undefined,
+  }));
+
+  assert.match(html, /app-composer-mention-menu-layer/);
+
+  const css = readDesktopShellCss();
+  const layerRule = cssRule(css, '.app-composer-mention-menu-layer');
+  assert.match(layerRule, /z-index:\s*2147483000/);
+
+  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  assert.match(source, /createPortal\(renderMenu\(\), document\.body\)/);
+  assert.doesNotMatch(source, /app-composer-mention-menu[^"`]*z-30/);
+});
+
+test('mention participant menu uses dense chat-scale typography', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  const start = source.indexOf('export function ComposerMentionMenu');
+  const end = source.indexOf('export function composerThinkingLabel', start);
+  assert.ok(start >= 0 && end > start, 'expected ComposerMentionMenu source block');
+  const block = source.slice(start, end);
+
+  assert.match(block, /app-composer-mention-menu-label/);
+  assert.match(block, /app-composer-mention-menu-label[^']*text-\[12px\]/);
+  assert.match(block, /text-\[10px\]/);
+  assert.match(block, /h-5 w-5/);
+  assert.match(block, /px-2 py-1/);
+  assert.match(block, /Math\.min\(\s*480,/);
+  assert.doesNotMatch(block, /text-\[13px\]/);
+  assert.doesNotMatch(block, /font-medium/);
+  assert.doesNotMatch(block, /h-7 w-7/);
+  assert.doesNotMatch(block, /h-6 w-6/);
+});
+
+test('mention participant menu does not render unread count badges', () => {
+  const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
+    items: [{ ...options[0], unreadCount: 7 }],
+    selectedIndex: 0,
+    onSelect: () => undefined,
+  }));
+
+  assert.doesNotMatch(html, />7</);
+  assert.doesNotMatch(html, /tabular-nums/);
 });
 
 test('mention participant menu does not render a header or shortcut hint', () => {

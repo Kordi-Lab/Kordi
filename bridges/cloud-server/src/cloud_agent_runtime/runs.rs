@@ -109,6 +109,14 @@ struct CloudGroupMessage {
     request_id: Option<String>,
     #[serde(rename = "messageAction", skip_serializing_if = "Option::is_none")]
     message_action: Option<serde_json::Value>,
+    #[serde(rename = "targetCloudAgentId", skip_serializing_if = "Option::is_none")]
+    target_cloud_agent_id: Option<String>,
+    #[serde(rename = "targetCloudAgentName", skip_serializing_if = "Option::is_none")]
+    target_cloud_agent_name: Option<String>,
+    #[serde(rename = "targetCloudAgentOwnerAccountId", skip_serializing_if = "Option::is_none")]
+    target_cloud_agent_owner_account_id: Option<String>,
+    #[serde(rename = "targetCloudAgentOwnerName", skip_serializing_if = "Option::is_none")]
+    target_cloud_agent_owner_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -232,11 +240,30 @@ fn cloud_group_response_body(
             avatar_url: None,
             role: Some("person".to_string()),
         });
-    let sender_display_name = if owner.display_name.trim().is_empty() {
-        "Kordi".to_string()
-    } else {
-        format!("{}'s Kordi", owner.display_name.trim())
-    };
+    let shared_agent_label = request_envelope.message.as_ref().and_then(|message| {
+        let agent_name = message.target_cloud_agent_name.as_deref()?.trim();
+        if agent_name.is_empty() {
+            return None;
+        }
+        let owner_name = message
+            .target_cloud_agent_owner_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| owner.display_name.trim());
+        if owner_name.is_empty() {
+            Some(agent_name.to_string())
+        } else {
+            Some(format!("{} · {}'s Agent", agent_name, owner_name))
+        }
+    });
+    let sender_display_name = shared_agent_label.unwrap_or_else(|| {
+        if owner.display_name.trim().is_empty() {
+            "Kordi".to_string()
+        } else {
+            format!("{}'s Kordi", owner.display_name.trim())
+        }
+    });
     encode_cloud_group_envelope(&CloudGroupEnvelope {
         kind: "group-message".to_string(),
         group_id: request_envelope.group_id.clone(),
@@ -256,6 +283,10 @@ fn cloud_group_response_body(
             reply_to_message_id: Some(request_message_id.to_string()),
             request_id: Some(request_message_id.to_string()),
             message_action: None,
+            target_cloud_agent_id: None,
+            target_cloud_agent_name: None,
+            target_cloud_agent_owner_account_id: None,
+            target_cloud_agent_owner_name: None,
         }),
     })
 }
@@ -382,6 +413,131 @@ fn fallback_prompt_with_history(
     )
 }
 
+#[derive(Debug, Clone)]
+struct SharedCloudAgentTarget {
+    agent_id: String,
+    owner_account_id: String,
+    owner_name: Option<String>,
+}
+
+async fn shared_cloud_agent_target_for_claim(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> Result<Option<SharedCloudAgentTarget>, sqlx_core::Error> {
+    let Some(envelope) = cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id).await? else {
+        return Ok(None);
+    };
+    let Some(message) = envelope.message else {
+        return Ok(None);
+    };
+    let Some(agent_id) = message
+        .target_cloud_agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+    else {
+        return Ok(None);
+    };
+    let owner_account_id = message
+        .target_cloud_agent_owner_account_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&input.owner_account_id)
+        .to_string();
+    Ok(Some(SharedCloudAgentTarget {
+        agent_id,
+        owner_account_id,
+        owner_name: message
+            .target_cloud_agent_owner_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+    }))
+}
+
+pub async fn claim_has_shared_cloud_agent_target(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> Result<bool, sqlx_core::Error> {
+    Ok(shared_cloud_agent_target_for_claim(pool, input).await?.is_some())
+}
+
+pub async fn validate_shared_cloud_agent_claim(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> Result<bool, sqlx_core::Error> {
+    let Some(target) = shared_cloud_agent_target_for_claim(pool, input).await? else {
+        return Ok(true);
+    };
+    if target.owner_account_id != input.owner_account_id {
+        return Ok(false);
+    }
+    let participants = crate::auth::routes::cloud_session_participants(pool, &input.session_id).await?;
+    if !participants.iter().any(|id| id == &input.requester_account_id)
+        || !participants.iter().any(|id| id == &input.owner_account_id)
+    {
+        return Ok(false);
+    }
+    let row: Option<(String, String)> = query_as(
+        "SELECT access_scope, status FROM cloud_agent_definitions WHERE agent_id = $1 AND owner_account_id = $2",
+    )
+    .bind(&target.agent_id)
+    .bind(&target.owner_account_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(matches!(row, Some((access_scope, status)) if access_scope == "participant_conversations" && status == "active"))
+}
+
+async fn shared_cloud_agent_prompt_prefix(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> Result<Option<String>, sqlx_core::Error> {
+    let Some(target) = shared_cloud_agent_target_for_claim(pool, input).await? else {
+        return Ok(None);
+    };
+    let row: Option<(String, String, Option<String>, serde_json::Value, serde_json::Value)> = query_as(
+        "SELECT name, system_prompt, source_summary, boundaries_json, skills_json
+         FROM cloud_agent_definitions
+         WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active' AND access_scope = 'participant_conversations'",
+    )
+    .bind(&target.agent_id)
+    .bind(&target.owner_account_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((name, system_prompt, source_summary, boundaries_json, skills_json)) = row else {
+        return Ok(None);
+    };
+    let boundaries: Vec<String> = serde_json::from_value(boundaries_json).unwrap_or_default();
+    let skills: Vec<serde_json::Value> = serde_json::from_value(skills_json).unwrap_or_default();
+    let owner = target.owner_name.unwrap_or(target.owner_account_id);
+    let mut sections = vec![
+        format!("You are {name}, {owner}'s shared Cloud Agent."),
+        "Answer as this shared Cloud Agent, not as the default Kordi agent.".to_string(),
+        format!("Cloud Agent system prompt:\n{system_prompt}"),
+    ];
+    if let Some(summary) = source_summary.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) {
+        sections.push(format!("Source summary:\n{summary}"));
+    }
+    if !boundaries.is_empty() {
+        sections.push(format!("Boundaries:\n{}", boundaries.into_iter().map(|value| format!("- {value}")).collect::<Vec<_>>().join("\n")));
+    }
+    let skill_lines = skills
+        .into_iter()
+        .filter_map(|skill| {
+            let name = skill.get("name")?.as_str()?.trim();
+            let description = skill.get("description")?.as_str()?.trim();
+            (!name.is_empty() && !description.is_empty()).then(|| format!("- {name}: {description}"))
+        })
+        .collect::<Vec<_>>();
+    if !skill_lines.is_empty() {
+        sections.push(format!("Suggested skills:\n{}", skill_lines.join("\n")));
+    }
+    Ok(Some(sections.join("\n\n")))
+}
+
 async fn fallback_prompt_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
@@ -415,12 +571,16 @@ async fn fallback_prompt_for_claim(
     .collect::<Vec<_>>();
     history.reverse();
 
-    Ok(fallback_prompt_with_history(
+    let prompt = fallback_prompt_with_history(
         &input.requester_account_id,
         &input.owner_account_id,
         &input.prompt,
         &history,
-    ))
+    );
+    if let Some(prefix) = shared_cloud_agent_prompt_prefix(pool, input).await? {
+        return Ok(format!("{prefix}\n\nConversation request:\n{prompt}"));
+    }
+    Ok(prompt)
 }
 
 pub async fn lookup_run_for_request(
@@ -568,6 +728,10 @@ mod tests {
                 reply_to_message_id: None,
                 request_id: None,
                 message_action: None,
+                target_cloud_agent_id: None,
+                target_cloud_agent_name: None,
+                target_cloud_agent_owner_account_id: None,
+                target_cloud_agent_owner_name: None,
             }),
         };
 
@@ -593,6 +757,70 @@ mod tests {
         assert_eq!(message.request_id.as_deref(), Some("msg:ui:request"));
         assert_eq!(message.delivery_state.as_deref(), Some("complete"));
         assert_eq!(message.text, "Hello everyone!");
+    }
+
+    #[test]
+    fn shared_cloud_agent_group_response_uses_agent_owner_label() {
+        let request = super::CloudGroupEnvelope {
+            kind: "group-message".to_string(),
+            group_id: "session:group:one".to_string(),
+            group_space_id: Some("session:group:one".to_string()),
+            group_title: None,
+            created_by_account_id: "acct_requester".to_string(),
+            actor: super::CloudGroupParticipant {
+                account_id: "acct_requester".to_string(),
+                display_name: "Requester".to_string(),
+                avatar_url: None,
+                role: Some("admin".to_string()),
+            },
+            participants: vec![
+                super::CloudGroupParticipant {
+                    account_id: "acct_requester".to_string(),
+                    display_name: "Requester".to_string(),
+                    avatar_url: None,
+                    role: Some("admin".to_string()),
+                },
+                super::CloudGroupParticipant {
+                    account_id: "acct_owner".to_string(),
+                    display_name: "Shuyang".to_string(),
+                    avatar_url: None,
+                    role: Some("person".to_string()),
+                },
+            ],
+            message: Some(super::CloudGroupMessage {
+                id: "msg:ui:request".to_string(),
+                sender_account_id: "acct_requester".to_string(),
+                text: "@ProjectDriver help".to_string(),
+                created_at_ms: 1,
+                sender_kind: Some("human".to_string()),
+                sender_display_name: None,
+                delivery_state: None,
+                reply_to_message_id: None,
+                request_id: None,
+                message_action: None,
+                target_cloud_agent_id: Some("cloud_agent_project".to_string()),
+                target_cloud_agent_name: Some("Project Driver".to_string()),
+                target_cloud_agent_owner_account_id: Some("acct_owner".to_string()),
+                target_cloud_agent_owner_name: Some("Shuyang".to_string()),
+            }),
+        };
+
+        let body = super::cloud_group_response_body(
+            &request,
+            "acct_owner",
+            "msg:ui:request",
+            "cloudrunmsg_response",
+            "Done.",
+            "complete",
+            2,
+        );
+        let response = super::parse_cloud_group_envelope(&body).expect("group response envelope");
+        let message = response.message.expect("group response message");
+
+        assert_eq!(
+            message.sender_display_name.as_deref(),
+            Some("Project Driver · Shuyang's Agent")
+        );
     }
 
     #[test]

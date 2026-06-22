@@ -4,9 +4,14 @@ import {
   defaultCloudRequestTimeoutMs,
   type CloudAuthClientOptions,
 } from './authClient';
-import { normalizeCloudAgentDefinition, type CloudAgentDefinition } from './cloudAgents';
+import {
+  normalizeCloudAgentDefinition,
+  normalizeSharedCloudAgentSummary,
+  type CloudAgentDefinition,
+  type SharedCloudAgentSummary,
+} from './cloudAgents';
 
-export type CloudAgentAccessScope = 'private';
+export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
 
 export type CloudAgentResource = {
@@ -34,7 +39,7 @@ export type CreateCloudAgentInput = {
   modelRouting?: Record<string, unknown>;
 };
 
-export type UpdateCloudAgentInput = Partial<Omit<CreateCloudAgentInput, 'accessScope'>>;
+export type UpdateCloudAgentInput = Partial<CreateCloudAgentInput>;
 
 type CloudAgentEnvelope = { agent?: unknown };
 type CloudAgentListResponse = { agents?: unknown[] };
@@ -105,6 +110,18 @@ export class CloudAgentsClient {
     return (Array.isArray(body.agents) ? body.agents : [])
       .map(normalizeCloudAgentDefinition)
       .filter((agent): agent is CloudAgentDefinition => Boolean(agent));
+  }
+
+  async listSharedCloudAgents(token: string, ownerAccountIds: string[]): Promise<SharedCloudAgentSummary[]> {
+    const owners = [...new Set(ownerAccountIds.map((value) => value.trim()).filter(Boolean))];
+    if (owners.length === 0) return [];
+    const body = await this.send<CloudAgentListResponse>(`/v1/cloud/agents/shared?ownerAccountIds=${encodeURIComponent(owners.join(','))}`, {
+      method: 'GET',
+      headers: this.authHeaders(token),
+    }, 'Could not list shared Cloud Agents.');
+    return (Array.isArray(body.agents) ? body.agents : [])
+      .map(normalizeSharedCloudAgentSummary)
+      .filter((agent): agent is SharedCloudAgentSummary => Boolean(agent));
   }
 
   async createCloudAgent(token: string, input: CreateCloudAgentInput): Promise<CloudAgentDefinition> {

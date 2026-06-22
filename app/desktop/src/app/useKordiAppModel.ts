@@ -23,7 +23,7 @@ import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import { cloudAgentDefinitionToAgent } from '@/features/cloud/cloudAgents';
-import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import {
   type CloudGroupParticipant,
   cloudGroupIdentityRequest,
@@ -87,7 +87,7 @@ import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessage
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
-import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
+import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
@@ -436,7 +436,10 @@ export function useKordiAppModel({
     refreshCloudBridgeMessages,
     refreshCloudAgents,
     createCloudAgentDefinition,
+    updateCloudAgentDefinition,
     archiveCloudAgentDefinition,
+    refreshSharedCloudAgents,
+    sharedCloudAgents,
     cloudAgentDefinitionsById,
     refreshCloudContacts,
     cloudSessionActivity,
@@ -633,6 +636,15 @@ export function useKordiAppModel({
     agentsUi.setActiveAgentId(agent.id);
     return agent;
   }, [agentsUi, createCloudAgentDefinition, refreshCloudAgents]);
+
+  const handleUpdateCloudAgent = useCallback(async (agent: Agent, input: UpdateCloudAgentInput) => {
+    if (!agent.cloudAgentId) throw new Error('Only Cloud Agents can be updated here.');
+    const definition = await updateCloudAgentDefinition(agent.cloudAgentId, input);
+    await refreshCloudAgents().catch(() => undefined);
+    const nextAgent = cloudAgentDefinitionToAgent(definition);
+    agentsUi.setActiveAgentId(nextAgent.id);
+    return nextAgent;
+  }, [agentsUi, refreshCloudAgents, updateCloudAgentDefinition]);
 
   const handleArchiveCloudAgent = useCallback(async (agent: Agent) => {
     if (!agent.cloudAgentId) throw new Error('Only private Cloud Agents can be deleted here.');
@@ -923,13 +935,49 @@ export function useKordiAppModel({
     [activeConv, chatConversations],
   );
 
+  const sharedCloudAgentOwnerIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const participant of activeConvMentionScope?.canonicalParticipants ?? []) {
+      if (participant.kind !== 'human') continue;
+      const id = participant.humanId?.trim()
+        || participant.bridgeNodeId?.trim()
+        || participant.id?.trim().replace(/^human:/, '');
+      if (id && id !== cloudSession.account?.accountId) ids.add(id);
+    }
+    return [...ids].sort();
+  }, [activeConvMentionScope?.canonicalParticipants, cloudSession.account?.accountId]);
+
+  useEffect(() => {
+    void refreshSharedCloudAgents(sharedCloudAgentOwnerIds).catch(() => undefined);
+  }, [refreshSharedCloudAgents, sharedCloudAgentOwnerIds]);
+
+  const mentionableCloudAgents = useMemo(() => mentionableCloudAgentSummaries({
+    sharedCloudAgents,
+    ownedCloudAgentsById: cloudAgentDefinitionsById,
+    ownerDisplayName: cloudSession.account?.displayName?.trim()
+      || cloudSession.account?.primaryEmail?.trim()
+      || null,
+  }), [cloudAgentDefinitionsById, cloudSession.account?.displayName, cloudSession.account?.primaryEmail, sharedCloudAgents]);
+
+  const resolveSharedCloudAgentsForMention = useCallback(async () => {
+    const refreshed = await refreshSharedCloudAgents(sharedCloudAgentOwnerIds).catch(() => []);
+    return mentionableCloudAgentSummaries({
+      sharedCloudAgents: [...sharedCloudAgents, ...refreshed],
+      ownedCloudAgentsById: cloudAgentDefinitionsById,
+      ownerDisplayName: cloudSession.account?.displayName?.trim()
+        || cloudSession.account?.primaryEmail?.trim()
+        || null,
+    });
+  }, [cloudAgentDefinitionsById, cloudSession.account?.displayName, cloudSession.account?.primaryEmail, refreshSharedCloudAgents, sharedCloudAgentOwnerIds, sharedCloudAgents]);
+
   const bridgeMentionTargetsByScope = useMemo(() => buildBridgeMentionTargetsByScope({
     isNativeShell,
     desktopBridgeState,
     desktopChatState,
     activeConvMentionScope,
     conversations: chatConversations,
-  }), [activeConvMentionScope, chatConversations, desktopBridgeState, desktopChatState, isNativeShell]);
+    sharedCloudAgents: mentionableCloudAgents,
+  }), [activeConvMentionScope, chatConversations, desktopBridgeState, desktopChatState, isNativeShell, mentionableCloudAgents]);
 
   const chatMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.chat), [composerDraftsView.chat]);
   const projectMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.project), [composerDraftsView.project]);
@@ -1322,6 +1370,8 @@ export function useKordiAppModel({
     activeConvMessages: activeConv.messages,
     activeConvBridgeTarget: activeConv.bridgeTarget,
     activeConvMentionScope,
+    sharedCloudAgents: mentionableCloudAgents,
+    resolveSharedCloudAgentsForMention,
     activeProjectId,
     activeProjectSessionId,
     activeProjectRoot: activeProject.root,
@@ -2426,6 +2476,7 @@ export function useKordiAppModel({
     setActiveContactId: contactsUi.setActiveContactId,
     displayedAgents,
     handleCreateCloudAgent,
+    handleUpdateCloudAgent,
     handleArchiveCloudAgent,
     activeBridgeHost,
     localProfileAvatarSeed,

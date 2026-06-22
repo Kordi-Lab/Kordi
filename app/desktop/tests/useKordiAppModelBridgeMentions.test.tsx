@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildBridgeMentionTargetsByScope } from '../src/app/useKordiAppModelBridgeMentions';
+import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries } from '../src/app/useKordiAppModelBridgeMentions';
 import type { Conversation, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
 
 function bridgeState(): DesktopBridgeState {
@@ -146,6 +146,130 @@ test('buildBridgeMentionTargetsByScope hides chat mentions in direct agent sessi
 
   assert.deepEqual(targets.chat, []);
   assert.equal(targets.project[0]?.label, 'My Kordi');
+});
+
+test('mentionableCloudAgentSummaries merges owned shared Cloud Agents for owner autocomplete and send resolution', () => {
+  const summaries = mentionableCloudAgentSummaries({
+    sharedCloudAgents: [{
+      agentId: 'cloud_agent_remote',
+      ownerAccountId: 'acct_remote',
+      ownerDisplayName: 'Remote',
+      accessScope: 'participant_conversations',
+      name: 'Remote Driver',
+      role: 'Remote helper',
+      description: null,
+      updatedAt: '2026-06-20T00:00:00Z',
+    }],
+    ownedCloudAgentsById: {
+      cloud_agent_private: {
+        agentId: 'cloud_agent_private',
+        ownerAccountId: 'acct_me',
+        accessScope: 'private',
+        status: 'active',
+        name: 'Private Notes',
+        role: 'Private helper',
+        description: null,
+        systemPrompt: 'private prompt',
+        sourceSummary: null,
+        boundaries: [],
+        resources: [],
+        skills: [],
+        modelRouting: {},
+        createdAt: '2026-06-20T00:00:00Z',
+        updatedAt: '2026-06-20T00:00:00Z',
+        archivedAt: null,
+      },
+      cloud_agent_project: {
+        agentId: 'cloud_agent_project',
+        ownerAccountId: 'acct_me',
+        accessScope: 'participant_conversations',
+        status: 'active',
+        name: 'Kordi Project Driver',
+        role: 'Project helper',
+        description: 'Moves work forward',
+        systemPrompt: 'secret prompt',
+        sourceSummary: null,
+        boundaries: [],
+        resources: [],
+        skills: [],
+        modelRouting: { defaultModel: 'private/model' },
+        createdAt: '2026-06-20T00:00:00Z',
+        updatedAt: '2026-06-20T00:01:00Z',
+        archivedAt: null,
+      },
+    },
+    ownerDisplayName: '111',
+  });
+
+  assert.deepEqual(
+    summaries.map((agent) => `${agent.ownerDisplayName}:${agent.name}:${agent.agentId}`),
+    ['Remote:Remote Driver:cloud_agent_remote', '111:Kordi Project Driver:cloud_agent_project'],
+  );
+  assert.equal('systemPrompt' in (summaries[1] as object), false);
+  assert.equal('modelRouting' in (summaries[1] as object), false);
+});
+
+test('buildBridgeMentionTargetsByScope includes shared hosted Cloud Agents for conversation participants', () => {
+  const state = bridgeState();
+  state.activeHostId = 'cloud';
+  state.hosts = [{
+    ...state.hosts[0],
+    id: 'cloud',
+    nodeId: 'acct_me',
+    humanId: 'acct_me',
+    ownerName: '222',
+    displayName: '222',
+    agents: [{
+      ...state.hosts[0].agents[0],
+      id: 'cloud-local-agent',
+      nodeId: 'acct_me',
+      runtime: 'kordi-desktop',
+    }],
+    visiblePeers: [],
+    visiblePeerCount: 0,
+  }];
+  const group = {
+    id: 'session:group:cloud',
+    canonicalSessionId: 'session:group:cloud',
+    name: 'Cloud group',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    bridges: ['cloud'],
+    trust: 'Cloud',
+    directness: 'Group chat',
+    participantSpaceId: 'group:cloud',
+    participants: ['222', '111'],
+    canonicalParticipants: [
+      { id: 'human:acct_me', name: '222', kind: 'human', role: 'self', source: 'local', humanId: 'acct_me', bridgeNodeId: 'acct_me' },
+      { id: 'human:acct_owner', name: '111', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', humanId: 'acct_owner', bridgeNodeId: 'acct_owner' },
+    ],
+    messages: [],
+  } as Conversation;
+
+  const targets = buildBridgeMentionTargetsByScope({
+    isNativeShell: true,
+    desktopBridgeState: state,
+    desktopChatState: desktopChatState(),
+    activeConvMentionScope: group,
+    sharedCloudAgents: [{
+      agentId: 'cloud_agent_project',
+      ownerAccountId: 'acct_owner',
+      ownerDisplayName: '111',
+      accessScope: 'participant_conversations',
+      name: 'Kordi Project Driver',
+      role: 'Project helper',
+      description: null,
+      updatedAt: '2026-06-20T00:00:00Z',
+    }],
+  });
+
+  const projectDriver = targets.chat.find((target) => target.agentId === 'cloud_agent_project');
+  assert.equal(projectDriver?.label, 'Kordi Project Driver');
+  assert.equal(projectDriver?.value, 'KordiProjectDriver');
+  assert.equal(projectDriver?.bridgeHostId, 'cloud');
+  assert.equal(projectDriver?.nodeId, 'acct_owner');
+  assert.equal(projectDriver?.ownerName, '111');
 });
 
 test('buildBridgeMentionTargetsByScope includes group-only people but only reachable agents', () => {

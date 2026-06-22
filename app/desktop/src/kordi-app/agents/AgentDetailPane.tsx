@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
 import { composerThinkingLabel, fallbackComposerThinkingValue, type ComposerModelOption, type ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
-import { formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type PersistedAgentConfig } from './model';
+import { cloudAgentAccessDescription, cloudAgentAccessLabel, formatHistoryPath, getAgentConfigPath, type AgentConfigDraft, type AgentEditHistoryEntry, type AgentSaveFeedback, type PersistedAgentConfig } from './model';
 import { promptDisplayText } from './promptDisplay';
 import { AgentConfigList, AgentInspectorSection } from './shared';
 
@@ -118,7 +118,7 @@ function AgentActionsMenu({ agent, onRequestArchive }: {
   agent: Agent;
   onRequestArchive?: (agent: Agent) => void;
 }) {
-  if (!agent.cloudAgentId || agent.cloudAgentAccessScope !== 'private' || !onRequestArchive) return null;
+  if (!agent.cloudAgentId || !onRequestArchive) return null;
   return (
     <details className="relative">
       <summary
@@ -143,17 +143,30 @@ function AgentActionsMenu({ agent, onRequestArchive }: {
   );
 }
 
-function AgentAccessMenu({ agent }: { agent: Agent }) {
+function AgentAccessMenu({ agent, onUpdateAccess, isSaving }: {
+  agent: Agent;
+  onUpdateAccess?: (agent: Agent, accessScope: 'private' | 'participant_conversations') => Promise<void> | void;
+  isSaving?: boolean;
+}) {
   if (!agent.cloudAgentId) return null;
+  const accessScope = agent.cloudAgentAccessScope === 'participant_conversations' ? 'participant_conversations' : 'private';
   return (
     <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
       <div className="app-agent-row-title font-medium">Access</div>
-      <select className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]" value="private" onChange={() => undefined} aria-label="Agent access">
-        <option value="private">Private — only me</option>
-        <option value="contacts" disabled>Share with contacts — coming later</option>
-        <option value="workspace" disabled>Workspace/shared Cloud — coming later</option>
+      <select
+        className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]"
+        value={accessScope}
+        onChange={(event) => {
+          const next = event.currentTarget.value === 'participant_conversations' ? 'participant_conversations' : 'private';
+          void onUpdateAccess?.(agent, next);
+        }}
+        disabled={!onUpdateAccess || isSaving}
+        aria-label="Agent access"
+      >
+        <option value="private">{cloudAgentAccessLabel('private')}</option>
+        <option value="participant_conversations">{cloudAgentAccessLabel('participant_conversations')}</option>
       </select>
-      <div className="app-agent-row-meta mt-2">Synced privately to your Cloud account.</div>
+      <div className="app-agent-row-meta mt-2">{cloudAgentAccessDescription(accessScope)}</div>
     </div>
   );
 }
@@ -491,6 +504,7 @@ export function AgentDetailPane({
   onReset,
   onMessage,
   onOpenReachoutSession,
+  onUpdateCloudAgent,
   onArchiveCloudAgent,
   onOpenPromptDetail,
   onStartEditing,
@@ -523,6 +537,7 @@ export function AgentDetailPane({
   onReset: (agent: Agent) => void;
   onMessage?: () => void;
   onOpenReachoutSession?: (sessionId: string) => void;
+  onUpdateCloudAgent?: (agent: Agent, input: { accessScope: 'private' | 'participant_conversations' }) => Promise<Agent> | Promise<void> | Agent | void;
   onArchiveCloudAgent?: (agent: Agent) => Promise<void> | void;
   onOpenPromptDetail: (agentId: string) => void;
   onStartEditing: (agentId: string, section: 'prompt' | 'skills') => void;
@@ -549,6 +564,7 @@ export function AgentDetailPane({
   const [archiveConfirmAgent, setArchiveConfirmAgent] = useState<Agent | null>(null);
   const [isArchiveDeleting, setIsArchiveDeleting] = useState(false);
   const [archiveDeleteError, setArchiveDeleteError] = useState<string | null>(null);
+  const [isAccessSaving, setIsAccessSaving] = useState(false);
 
   useEffect(() => {
     setRoutingDraft(persistedRoutingDraft);
@@ -704,6 +720,20 @@ export function AgentDetailPane({
         setIsArchiveDeleting(false);
       });
   };
+
+  const updateCloudAgentAccess = async (agent: Agent, accessScope: 'private' | 'participant_conversations') => {
+    if (!onUpdateCloudAgent || isAccessSaving || agent.cloudAgentAccessScope === accessScope) return;
+    setIsAccessSaving(true);
+    setArchiveFeedback({ tone: 'info', text: `Updating access for ${agent.name}…` });
+    try {
+      await onUpdateCloudAgent(agent, { accessScope });
+      setArchiveFeedback({ tone: 'success', text: `${agent.name} is now ${cloudAgentAccessLabel(accessScope).toLowerCase()}.` });
+    } catch (error) {
+      setArchiveFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to update agent access.' });
+    } finally {
+      setIsAccessSaving(false);
+    }
+  };
   const modelRoutingSection = activeAgent.isOwned ? (
     <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned agent. These choices are private and not announced in shared chat history.">
       <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px] leading-5">
@@ -849,7 +879,11 @@ export function AgentDetailPane({
             />
           ) : null}
 
-          <AgentAccessMenu agent={activeAgent} />
+          <AgentAccessMenu
+            agent={activeAgent}
+            onUpdateAccess={onUpdateCloudAgent ? updateCloudAgentAccess : undefined}
+            isSaving={isAccessSaving}
+          />
 
           {modelRoutingSection}
 

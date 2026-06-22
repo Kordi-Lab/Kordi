@@ -1,20 +1,23 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, put};
 use axum::{Extension, Json, Router};
 use chrono::Utc;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
-use crate::cloud_agents::models::{CloudAgentDefinition, CreateCloudAgentRequest, UpdateCloudAgentRequest};
+use crate::cloud_agents::models::{
+    CloudAgentDefinition, CreateCloudAgentRequest, SharedCloudAgentSummary,
+    UpdateCloudAgentRequest,
+};
 use crate::cloud_agents::store::{
     archive_agent_definition, create_agent_definition, list_agent_definitions,
-    update_agent_definition, CloudAgentStoreError,
+    list_shared_agent_summaries, update_agent_definition, CloudAgentStoreError,
 };
 use crate::server::ServerState;
 
@@ -30,9 +33,22 @@ struct CloudAgentListResponse {
     agents: Vec<CloudAgentDefinition>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedAgentsQuery {
+    owner_account_ids: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedCloudAgentListResponse {
+    agents: Vec<SharedCloudAgentSummary>,
+}
+
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/v1/cloud/agents", get(list_agents).post(create_agent))
+        .route("/v1/cloud/agents/shared", get(list_shared_agents))
         .route("/v1/cloud/agents/:agent_id", put(update_agent).delete(archive_agent))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -75,6 +91,25 @@ async fn list_agents(
     match list_agent_definitions(state.db_pool(), &session.account_id).await {
         Ok(agents) => Json(CloudAgentListResponse { agents }).into_response(),
         Err(err) => store_error_response("list", err),
+    }
+}
+
+async fn list_shared_agents(
+    State(state): State<Arc<ServerState>>,
+    Extension(_session): Extension<CloudSession>,
+    Query(query): Query<SharedAgentsQuery>,
+) -> Response {
+    let owner_ids = query
+        .owner_account_ids
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    match list_shared_agent_summaries(state.db_pool(), &owner_ids).await {
+        Ok(agents) => Json(SharedCloudAgentListResponse { agents }).into_response(),
+        Err(err) => store_error_response("list_shared", err),
     }
 }
 

@@ -1,6 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
+import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type { SendCloudGroupControlInput } from '@/features/cloud/useCloudBridgeState';
 import type { ComposerDraftState } from './composerDrafts';
 import type {
@@ -45,6 +46,8 @@ export type UseComposerControllerArgs = {
   activeConvMessages: Message[];
   activeConvBridgeTarget?: ConversationBridgeTarget | null;
   activeConvMentionScope?: object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>> | null;
+  sharedCloudAgents?: SharedCloudAgentSummary[];
+  resolveSharedCloudAgentsForMention?: () => Promise<SharedCloudAgentSummary[]>;
   activeProjectId: string;
   activeProjectSessionId: string;
   activeProjectRoot?: string | null;

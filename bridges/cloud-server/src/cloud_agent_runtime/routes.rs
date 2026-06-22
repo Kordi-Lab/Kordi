@@ -19,8 +19,9 @@ use crate::cloud_agent_runtime::provider_auth::{
     RunnerProviderAuthMaterialEnvelope,
 };
 use crate::cloud_agent_runtime::runs::{
-    claim_run, complete_run, fail_run, lease_canary_run, lease_next_run, lookup_run_for_request,
-    mark_run_running, requester_can_target_owner, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
+    claim_has_shared_cloud_agent_target, claim_run, complete_run, fail_run, lease_canary_run,
+    lease_next_run, lookup_run_for_request, mark_run_running, requester_can_target_owner,
+    validate_shared_cloud_agent_claim, ClaimRunRequest, CompleteRunRequest, FailRunRequest,
     RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
 };
 use crate::presence::{account_presence_status, presence_timeout, AccountPresenceStatus};
@@ -471,6 +472,40 @@ async fn claim_cloud_agent_run(
         );
     }
 
+    let shared_agent_target = match claim_has_shared_cloud_agent_target(state.db_pool(), &input).await {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] inspect shared agent target: {err}");
+            return error_response(
+                "server_error",
+                "Could not validate Cloud agent run authorization.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let shared_agent_allowed = if shared_agent_target {
+        match validate_shared_cloud_agent_claim(state.db_pool(), &input).await {
+            Ok(value) => value,
+            Err(err) => {
+                eprintln!("[cloud_agent_runtime] validate shared agent target: {err}");
+                return error_response(
+                    "server_error",
+                    "Could not validate Cloud agent run authorization.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        }
+    } else {
+        false
+    };
+    if shared_agent_target && !shared_agent_allowed {
+        return error_response(
+            "agent_not_available",
+            "Shared Cloud Agent is no longer available in this conversation.",
+            StatusCode::FORBIDDEN,
+        );
+    }
+
     let can_target = match requester_can_target_owner(
         state.db_pool(),
         &input.requester_account_id,
@@ -489,10 +524,10 @@ async fn claim_cloud_agent_run(
         }
     };
 
-    if !can_target {
+    if !can_target && !shared_agent_allowed {
         return error_response(
             "agent_not_available",
-            "Cloud fallback is available only to the owner or accepted contacts.",
+            "Cloud fallback is available only to the owner, accepted contacts, or shared agents in conversations with the owner.",
             StatusCode::FORBIDDEN,
         );
     }

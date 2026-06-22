@@ -79,6 +79,7 @@ export type MessageMention = {
   nodeId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
+  displayLabel?: string | null;
 };
 
 export type MessageSourceReference = {
