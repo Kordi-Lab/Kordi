@@ -242,7 +242,7 @@ export function ComposerMentionMenu({
                 </div>
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="app-composer-mention-menu-label truncate text-[10px] leading-3.5"><AtSign className="mr-0.5 inline h-2.5 w-2.5 align-[-1px] text-slate-500" />{item.label}</span>
+                    <span className="app-composer-mention-menu-label truncate text-[12px] leading-4"><AtSign className="mr-0.5 inline h-3 w-3 align-[-1px] text-slate-500" />{item.label}</span>
                     <span className={cn('app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[9px]', active && 'app-composer-mention-menu-kind-active')}>
                       {item.targetKind === 'bridge-agent' ? 'agent' : 'person'}
                     </span>
