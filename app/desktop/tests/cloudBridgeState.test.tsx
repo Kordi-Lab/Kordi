@@ -18,6 +18,7 @@ import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/feature
 import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { cloudGroupForkPayloadFromSessionMetadata, cloudGroupParticipantsWithProfiles, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
+import { sharedCloudAgentMentionCandidatesForConversation } from '../src/features/chat/messageActions/mentions';
 import {
   cloudAgentMentionCandidates,
   cloudBootstrapPeerIds,
@@ -524,6 +525,40 @@ test('cloud bridge messages preserve resolved attachment local paths for inline 
 
   assert.equal(mapped.attachments?.[0]?.attachmentId, 'att_1');
   assert.equal(mapped.attachments?.[0]?.localPath, '/tmp/kordi-cache/Screenshot.png');
+});
+
+test('shared cloud agent mention candidates require owner participant', () => {
+  const sharedAgent = {
+    agentId: 'cloud_agent_project',
+    ownerAccountId: 'acct_owner',
+    ownerDisplayName: 'Shuyang',
+    accessScope: 'participant_conversations' as const,
+    name: 'Project Driver',
+    role: 'Planning agent',
+    description: null,
+    updatedAt: '2026-06-19T00:00:00Z',
+  };
+
+  const withOwner = sharedCloudAgentMentionCandidatesForConversation([sharedAgent], {
+    canonicalParticipants: [
+      { id: 'human:acct_owner', kind: 'human', role: 'person', name: 'Shuyang', humanId: 'acct_owner' },
+      { id: 'human:acct_requester', kind: 'human', role: 'self', name: 'Alice', humanId: 'acct_requester' },
+    ],
+    directness: 'group',
+  });
+
+  assert.equal(withOwner[0]?.handle, 'ProjectDriver');
+  assert.equal(withOwner[0]?.targetAgentId, 'cloud_agent_project');
+  assert.equal(withOwner[0]?.targetOwnerAccountId, 'acct_owner');
+  assert.equal(withOwner[0]?.detailLabel, "Shuyang's Agent");
+
+  const withoutOwner = sharedCloudAgentMentionCandidatesForConversation([sharedAgent], {
+    canonicalParticipants: [
+      { id: 'human:acct_requester', kind: 'human', role: 'self', name: 'Alice', humanId: 'acct_requester' },
+    ],
+    directness: 'group',
+  });
+  assert.deepEqual(withoutOwner, []);
 });
 
 test('direct Cloud contact agent mentions are not treated as Cloud group placeholders', () => {

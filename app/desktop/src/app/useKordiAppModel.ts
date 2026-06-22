@@ -438,6 +438,8 @@ export function useKordiAppModel({
     createCloudAgentDefinition,
     updateCloudAgentDefinition,
     archiveCloudAgentDefinition,
+    refreshSharedCloudAgents,
+    sharedCloudAgents,
     cloudAgentDefinitionsById,
     refreshCloudContacts,
     cloudSessionActivity,
@@ -933,13 +935,30 @@ export function useKordiAppModel({
     [activeConv, chatConversations],
   );
 
+  const sharedCloudAgentOwnerIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const participant of activeConvMentionScope?.canonicalParticipants ?? []) {
+      if (participant.kind !== 'human') continue;
+      const id = participant.humanId?.trim()
+        || participant.bridgeNodeId?.trim()
+        || participant.id?.trim().replace(/^human:/, '');
+      if (id && id !== cloudSession.account?.accountId) ids.add(id);
+    }
+    return [...ids].sort();
+  }, [activeConvMentionScope?.canonicalParticipants, cloudSession.account?.accountId]);
+
+  useEffect(() => {
+    void refreshSharedCloudAgents(sharedCloudAgentOwnerIds).catch(() => undefined);
+  }, [refreshSharedCloudAgents, sharedCloudAgentOwnerIds]);
+
   const bridgeMentionTargetsByScope = useMemo(() => buildBridgeMentionTargetsByScope({
     isNativeShell,
     desktopBridgeState,
     desktopChatState,
     activeConvMentionScope,
     conversations: chatConversations,
-  }), [activeConvMentionScope, chatConversations, desktopBridgeState, desktopChatState, isNativeShell]);
+    sharedCloudAgents,
+  }), [activeConvMentionScope, chatConversations, desktopBridgeState, desktopChatState, isNativeShell, sharedCloudAgents]);
 
   const chatMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.chat), [composerDraftsView.chat]);
   const projectMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.project), [composerDraftsView.project]);
@@ -1332,6 +1351,7 @@ export function useKordiAppModel({
     activeConvMessages: activeConv.messages,
     activeConvBridgeTarget: activeConv.bridgeTarget,
     activeConvMentionScope,
+    sharedCloudAgents,
     activeProjectId,
     activeProjectSessionId,
     activeProjectRoot: activeProject.root,

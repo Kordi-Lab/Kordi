@@ -1,5 +1,6 @@
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
+import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type {
   Conversation,
   ConversationBridgeTarget,
@@ -186,6 +187,63 @@ export function filterBridgeMentionCandidatesForConversation(
   return dedupeBridgeMentionCandidateHandles(
     candidates.filter((candidate) => bridgeMentionOwnerMatchesConversationHumans(candidate.peer, conversation)),
   );
+}
+
+function conversationContainsAccountId(conversation: MentionScopeConversation | null | undefined, accountId: string) {
+  const key = normalizedOwnerKey(accountId);
+  if (!key) return false;
+  for (const participant of conversation?.canonicalParticipants ?? []) {
+    if (participant.kind !== 'human') continue;
+    if (participantHumanIdentityKeys(participant).includes(key)) return true;
+  }
+  return conversationParticipantNameKeys(conversation?.participants).includes(key);
+}
+
+export type SharedCloudAgentMentionCandidate = {
+  agent: SharedCloudAgentSummary;
+  handle: string;
+  normalizedHandle: string;
+  displayLabel: string;
+  detailLabel: string;
+  targetKind: 'cloud-shared-agent';
+  targetAgentId: string;
+  targetOwnerAccountId: string;
+};
+
+export function sharedCloudAgentMentionCandidatesForConversation(
+  agents: SharedCloudAgentSummary[],
+  conversation: MentionScopeConversation | null | undefined,
+): SharedCloudAgentMentionCandidate[] {
+  if (!conversationHasParticipantMentionScope(conversation)) return [];
+  const candidates = agents
+    .filter((agent) => conversationContainsAccountId(conversation, agent.ownerAccountId))
+    .map((agent) => {
+      const displayLabel = agent.name;
+      const handle = mentionHandleForLabel(displayLabel, agent.agentId);
+      const owner = agent.ownerDisplayName?.trim() || agent.ownerAccountId;
+      return {
+        agent,
+        handle,
+        normalizedHandle: normalizeMentionLabel(handle),
+        displayLabel,
+        detailLabel: `${owner}'s Agent`,
+        targetKind: 'cloud-shared-agent' as const,
+        targetAgentId: agent.agentId,
+        targetOwnerAccountId: agent.ownerAccountId,
+      };
+    });
+
+  const used = new Set<string>();
+  return candidates.map((candidate) => {
+    let handle = candidate.handle;
+    let normalizedHandle = candidate.normalizedHandle;
+    if (used.has(normalizedHandle)) {
+      handle = uniqueHandle(candidate.handle, candidate.targetOwnerAccountId.slice(0, 8));
+      normalizedHandle = normalizeMentionLabel(handle);
+    }
+    used.add(normalizedHandle);
+    return { ...candidate, handle, normalizedHandle };
+  });
 }
 
 function conversationImpliesLocalViewerParticipant(conversation: MentionScopeConversation | null | undefined) {
@@ -574,6 +632,7 @@ export function mentionTextStartsWithLabel(text: string, label: string) {
 
 export type ResolveMentionedBridgeTargetOptions = {
   targetKind?: BridgeMentionCandidate['targetKind'];
+  sharedCloudAgents?: SharedCloudAgentSummary[];
 };
 
 export function resolveMentionedBridgeTarget(
@@ -586,7 +645,10 @@ export function resolveMentionedBridgeTarget(
   const candidates = options.targetKind
     ? scopedCandidates.filter((candidate) => candidate.targetKind === options.targetKind)
     : scopedCandidates;
-  if (candidates.length === 0) return null;
+  const sharedCandidates = options.targetKind && options.targetKind !== 'bridge-agent'
+    ? []
+    : sharedCloudAgentMentionCandidatesForConversation(options.sharedCloudAgents ?? [], conversation);
+  if (candidates.length === 0 && sharedCandidates.length === 0) return null;
   const mentionMatches = Array.from(text.matchAll(/(^|\s)@/g));
   if (mentionMatches.length === 0) return null;
 
@@ -596,6 +658,44 @@ export function resolveMentionedBridgeTarget(
     const leadingWhitespace = rawAfterAt.length - rawAfterAt.trimStart().length;
     const afterAt = rawAfterAt.trimStart();
     if (!afterAt) continue;
+
+    const sharedMatch = sharedCandidates
+      .filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.handle) || mentionTextStartsWithLabel(afterAt, candidate.displayLabel))
+      .sort((left, right) => right.normalizedHandle.length - left.normalizedHandle.length)[0] ?? null;
+    if (sharedMatch) {
+      const matchedLabel = mentionTextStartsWithLabel(afterAt, sharedMatch.handle) ? sharedMatch.handle : sharedMatch.displayLabel;
+      let mentionEnd = mentionStart + 1 + leadingWhitespace + matchedLabel.length;
+      if (/[:;,.!?—-]/.test(text[mentionEnd] ?? '')) {
+        mentionEnd += 1;
+      }
+      const requestText = `${text.slice(0, mentionStart)}${text.slice(mentionEnd)}`.replace(/\s+/g, ' ').trim();
+      if (!requestText) continue;
+      const host = {
+        id: 'cloud',
+        nodeId: 'cloud',
+        ownerName: sharedMatch.agent.ownerDisplayName ?? sharedMatch.targetOwnerAccountId,
+        displayName: sharedMatch.agent.ownerDisplayName ?? sharedMatch.targetOwnerAccountId,
+        humanId: sharedMatch.targetOwnerAccountId,
+        agents: [],
+        visiblePeers: [],
+      } as unknown as DesktopBridgeState['hosts'][number];
+      const peer = {
+        nodeId: sharedMatch.targetOwnerAccountId,
+        displayName: sharedMatch.displayLabel,
+        ownerName: sharedMatch.agent.ownerDisplayName ?? sharedMatch.targetOwnerAccountId,
+        runtime: 'kordi-cloud-agent',
+        humanId: sharedMatch.targetOwnerAccountId,
+        agentId: sharedMatch.targetAgentId,
+      } as DesktopBridgeState['hosts'][number]['visiblePeers'][number];
+      return {
+        host,
+        peer,
+        label: sharedMatch.handle,
+        displayLabel: sharedMatch.displayLabel,
+        targetKind: 'bridge-agent' as const,
+        requestText,
+      };
+    }
 
     const safeMatches = candidates
       .filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.handle))

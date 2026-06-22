@@ -707,6 +707,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'activeConvId'
   | 'activeConvMessages'
   | 'activeConvMentionScope'
+  | 'sharedCloudAgents'
   | 'chatConversations'
   | 'canonicalHumanIdentityId'
   | 'chatComposerAttachments'
@@ -754,6 +755,7 @@ export function useChatMessageActions({
   activeConvId,
   activeConvMessages,
   activeConvMentionScope,
+  sharedCloudAgents = [],
   chatConversations,
   attachmentSummaryText,
   canonicalHumanIdentityId,
@@ -1255,7 +1257,10 @@ export function useChatMessageActions({
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
-    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, { targetKind: 'bridge-agent' });
+    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, {
+      targetKind: 'bridge-agent',
+      sharedCloudAgents,
+    });
     const activeGroupSessionScope = {
       canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
       participantSpaceId: activeConvMentionScope?.participantSpaceId,
@@ -1394,6 +1399,7 @@ export function useChatMessageActions({
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         await persistCanonicalUserMessage(preparedCanonicalMessage);
         canonicalUserMessagePersisted = true;
+        const targetCloudAgentId = mentionedTarget?.peer.agentId?.startsWith('cloud_agent_') ? mentionedTarget.peer.agentId : null;
         await sendCloudGroupControl({
           targetAccountIds: cloudGroupTargetIds,
           kind: 'group-message',
@@ -1407,6 +1413,10 @@ export function useChatMessageActions({
             text,
             createdAtMs: Date.now(),
             messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
+            targetCloudAgentId,
+            targetCloudAgentName: targetCloudAgentId ? mentionedTarget?.displayLabel ?? null : null,
+            targetCloudAgentOwnerAccountId: targetCloudAgentId ? mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null : null,
+            targetCloudAgentOwnerName: targetCloudAgentId ? mentionedTarget?.peer.ownerName ?? null : null,
           },
           attachments: chatComposerAttachments,
         });
@@ -1737,6 +1747,7 @@ export function useChatMessageActions({
     activeConvId,
     activeConvMessages,
     activeConvMentionScope,
+    sharedCloudAgents = [],
     activeChatQuote,
     attachmentSummaryText,
     chatComposerAttachments,

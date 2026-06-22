@@ -29,6 +29,7 @@ type UseComposerMessageActionsArgs = Pick<
   | 'activeConvMessages'
   | 'activeConvBridgeTarget'
   | 'activeConvMentionScope'
+  | 'sharedCloudAgents'
   | 'activeProjectId'
   | 'activeProjectSessionId'
   | 'activeProjectRoot'
@@ -90,6 +91,7 @@ export function useComposerMessageActions({
   activeConvMessages,
   activeConvBridgeTarget,
   activeConvMentionScope,
+  sharedCloudAgents,
   activeProjectId,
   activeProjectSessionId,
   activeProjectRoot,
@@ -211,6 +213,7 @@ export function useComposerMessageActions({
     activeConvId,
     activeConvMessages,
     activeConvMentionScope,
+    sharedCloudAgents,
     chatConversations,
     attachmentSummaryText,
     canonicalSessionState,

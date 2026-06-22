@@ -5,9 +5,11 @@ import {
   filterBridgeMentionCandidatesForConversation,
   filterBridgeMentionCandidatesForHost,
   mentionHandleForLabel,
+  sharedCloudAgentMentionCandidatesForConversation,
   shouldIncludeLocalAgentMentionForConversation,
   type MentionScopeConversation,
 } from '@/features/chat/messageActions/mentions';
+import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import type { Conversation, DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
@@ -25,6 +27,7 @@ export type BuildBridgeMentionTargetsParams = {
   desktopChatState: DesktopChatState | null | undefined;
   activeConvMentionScope: MentionScopeConversation | null | undefined;
   conversations?: Conversation[];
+  sharedCloudAgents?: SharedCloudAgentSummary[];
 };
 
 function cleanText(value?: string | null) {
@@ -54,6 +57,7 @@ export function buildBridgeMentionTargetsByScope({
   desktopChatState,
   activeConvMentionScope,
   conversations = [],
+  sharedCloudAgents = [],
 }: BuildBridgeMentionTargetsParams): BridgeMentionTargetsByScope {
   if (!isNativeShell) return { chat: [], project: [] };
 
@@ -141,6 +145,22 @@ export function buildBridgeMentionTargetsByScope({
           humanId: candidate.peer.humanId ?? null,
           agentId: candidate.peer.agentId ?? null,
         }),
+      });
+    }
+
+    for (const candidate of sharedCloudAgentMentionCandidatesForConversation(sharedCloudAgents, conversation)) {
+      pushOption({
+        value: candidate.handle,
+        label: candidate.displayLabel,
+        detail: [candidate.detailLabel, candidate.displayLabel !== candidate.handle ? `@${candidate.handle}` : null].filter((value): value is string => Boolean(value)).join(' • '),
+        targetKind: 'bridge-agent',
+        bridgeHostId: 'cloud',
+        nodeId: candidate.targetOwnerAccountId,
+        runtime: 'kordi-cloud-agent',
+        humanId: candidate.targetOwnerAccountId,
+        agentId: candidate.targetAgentId,
+        ownerName: candidate.agent.ownerDisplayName ?? candidate.targetOwnerAccountId,
+        unreadCount: 0,
       });
     }
 

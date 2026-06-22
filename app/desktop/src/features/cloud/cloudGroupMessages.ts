@@ -55,6 +55,10 @@ export type CloudGroupControlEnvelope = {
     forkSnapshot?: boolean | null;
     attachments?: CloudMessageAttachment[];
     messageAction?: MessageActionMetadata | null;
+    targetCloudAgentId?: string | null;
+    targetCloudAgentName?: string | null;
+    targetCloudAgentOwnerAccountId?: string | null;
+    targetCloudAgentOwnerName?: string | null;
   } | null;
 };
 
@@ -379,6 +383,10 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         forkSnapshot: candidate.forkSnapshot === true,
         attachments: cloudMessageAttachments((candidate as { attachments?: unknown }).attachments),
         messageAction: cloudMessageActionFromRecord((candidate as { messageAction?: unknown }).messageAction),
+        targetCloudAgentId: cleanText(typeof candidate.targetCloudAgentId === 'string' ? candidate.targetCloudAgentId : null) || null,
+        targetCloudAgentName: cleanText(typeof candidate.targetCloudAgentName === 'string' ? candidate.targetCloudAgentName : null) || null,
+        targetCloudAgentOwnerAccountId: cleanText(typeof candidate.targetCloudAgentOwnerAccountId === 'string' ? candidate.targetCloudAgentOwnerAccountId : null) || null,
+        targetCloudAgentOwnerName: cleanText(typeof candidate.targetCloudAgentOwnerName === 'string' ? candidate.targetCloudAgentOwnerName : null) || null,
       };
     }
     const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);

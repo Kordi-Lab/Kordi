@@ -112,7 +112,7 @@ import {
 } from './cloudGroupMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
 import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
-import type { CloudAgentDefinition } from './cloudAgents';
+import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgents';
 import { loadCloudSessionVisibility, removeCloudSessionMessages, saveCloudSessionVisibility, syncCloudDiffOnce, type CloudSessionPinsById } from './cloudDiffSync';
 import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
@@ -337,6 +337,9 @@ type CloudAgentMentionCandidate = {
   targetAccountId: string;
   targetHumanDisplayName: string;
   targetAgentDisplayName: string;
+  targetCloudAgentId?: string | null;
+  targetCloudAgentName?: string | null;
+  targetCloudAgentOwnerName?: string | null;
 };
 
 function accountIdForHumanIdentity(state: CanonicalSessionState, identityId?: string | null): string | null {
@@ -438,13 +441,27 @@ export function cloudAgentMentionCandidates(
       const targetAccountId = cleanText(typeof mention.humanId === 'string' ? mention.humanId : null)
         || cleanText(typeof mention.nodeId === 'string' ? mention.nodeId : null);
       if (!targetAccountId || targetAccountId === accountId) return [];
+      const targetCloudAgentId = cleanText(typeof mention.agentId === 'string' ? mention.agentId : null).startsWith('cloud_agent_')
+        ? cleanText(typeof mention.agentId === 'string' ? mention.agentId : null)
+        : null;
       const humanIdentity = identityByHumanId.get(targetAccountId);
       const agentIdentity = identityById.get(`agent:cloud:${targetAccountId}`);
       const targetHumanDisplayName = cleanText(humanIdentity?.displayName)
+        || cleanText(typeof mention.ownerName === 'string' ? mention.ownerName : null)
         || cleanText(typeof mention.label === 'string' ? mention.label.replace(/'?sKordi$/u, '') : null)
         || targetAccountId;
-      const targetAgentDisplayName = cleanText(agentIdentity?.displayName) || `${targetHumanDisplayName}'s Kordi`;
-      return [{ requestMessage: message, targetAccountId, targetHumanDisplayName, targetAgentDisplayName }];
+      const targetAgentDisplayName = targetCloudAgentId
+        ? cleanText(typeof mention.label === 'string' ? mention.label : null) || 'Shared Agent'
+        : cleanText(agentIdentity?.displayName) || `${targetHumanDisplayName}'s Kordi`;
+      return [{
+        requestMessage: message,
+        targetAccountId,
+        targetHumanDisplayName,
+        targetAgentDisplayName,
+        targetCloudAgentId,
+        targetCloudAgentName: targetCloudAgentId ? targetAgentDisplayName : null,
+        targetCloudAgentOwnerName: targetCloudAgentId ? targetHumanDisplayName : null,
+      }];
     });
   });
 }
@@ -1709,7 +1726,9 @@ export type UseCloudBridgeStateResult = {
   createCloudAgentDefinition(input: CreateCloudAgentInput): Promise<CloudAgentDefinition>;
   updateCloudAgentDefinition(agentId: string, input: UpdateCloudAgentInput): Promise<CloudAgentDefinition>;
   archiveCloudAgentDefinition(agentId: string): Promise<CloudAgentDefinition>;
+  refreshSharedCloudAgents(ownerAccountIds: string[]): Promise<void>;
   cloudAgentDefinitionsById: Record<string, CloudAgentDefinition>;
+  sharedCloudAgents: SharedCloudAgentSummary[];
   cloudSessionActivity: CloudSessionActivityStore;
   refreshCloudSessionActivity(sessionId: string): Promise<void>;
   publishCloudTaskActivity(input: UpsertCloudTaskActivityInput): Promise<void>;
@@ -1774,6 +1793,7 @@ export function useCloudBridgeState({
   const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
   const [cloudSessionPinsById, setCloudSessionPinsById] = useState<CloudSessionPinsById>({});
   const [cloudAgentDefinitionsById, setCloudAgentDefinitionsById] = useState<Record<string, CloudAgentDefinition>>({});
+  const [sharedCloudAgentsByOwner, setSharedCloudAgentsByOwner] = useState<Record<string, SharedCloudAgentSummary[]>>({});
   const [cloudHiddenSessionIds, setCloudHiddenSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).hiddenSessionIds);
   const [cloudDeletedSessionIds, setCloudDeletedSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).deletedSessionIds);
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
@@ -2065,6 +2085,24 @@ export function useCloudBridgeState({
     if (cancelledRef.current) return;
     const next = Object.fromEntries(agents.map((agent) => [agent.agentId, agent]));
     setCloudAgentDefinitionsById((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+  }, [account, cloudAgentsClient]);
+
+  const sharedCloudAgents = useMemo(() => Object.values(sharedCloudAgentsByOwner).flat(), [sharedCloudAgentsByOwner]);
+
+  const refreshSharedCloudAgents = useCallback(async (ownerAccountIds: string[]) => {
+    const owners = [...new Set(ownerAccountIds.map((value) => value.trim()).filter(Boolean))];
+    if (!account || owners.length === 0) {
+      setSharedCloudAgentsByOwner((current) => (Object.keys(current).length === 0 ? current : {}));
+      return;
+    }
+    const session = await loadSession();
+    if (!session?.token) return;
+    const agents = await cloudAgentsClient.listSharedCloudAgents(session.token, owners);
+    const next: Record<string, SharedCloudAgentSummary[]> = {};
+    for (const agent of agents) {
+      next[agent.ownerAccountId] = [...(next[agent.ownerAccountId] ?? []), agent];
+    }
+    setSharedCloudAgentsByOwner((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
   }, [account, cloudAgentsClient]);
 
   const createCloudAgentDefinition = useCallback(async (input: CreateCloudAgentInput) => {
@@ -4125,7 +4163,9 @@ export function useCloudBridgeState({
     createCloudAgentDefinition,
     updateCloudAgentDefinition,
     archiveCloudAgentDefinition,
+    refreshSharedCloudAgents,
     cloudAgentDefinitionsById,
+    sharedCloudAgents,
     cloudSessionActivity,
     refreshCloudSessionActivity,
     publishCloudTaskActivity,
