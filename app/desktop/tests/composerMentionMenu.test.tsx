@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -57,6 +58,24 @@ test('mention participant menu uses its own solid surface instead of the shared 
 
   const lightRule = cssRule(css, '.bridge-app.theme-light .app-composer-mention-menu');
   assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
+});
+
+test('mention participant menu is rendered on the foreground popover layer', () => {
+  const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
+    items: options,
+    selectedIndex: 0,
+    onSelect: () => undefined,
+  }));
+
+  assert.match(html, /app-composer-mention-menu-layer/);
+
+  const css = readDesktopShellCss();
+  const layerRule = cssRule(css, '.app-composer-mention-menu-layer');
+  assert.match(layerRule, /z-index:\s*2147483000/);
+
+  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  assert.match(source, /createPortal\(renderMenu\(\), document\.body\)/);
+  assert.doesNotMatch(source, /app-composer-mention-menu[^"`]*z-30/);
 });
 
 test('mention participant menu does not render a header or shortcut hint', () => {

@@ -171,11 +171,48 @@ export function ComposerMentionMenu({
   selectedIndex: number;
   onSelect: (value: string) => void;
 }) {
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+
+  const updateMenuPosition = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const anchor = anchorRef.current;
+    const container = anchor?.parentElement;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const viewportPadding = 24;
+    const menuWidth = Math.min(rect.width, Math.max(240, window.innerWidth - (viewportPadding * 2)));
+    const left = Math.min(
+      Math.max(viewportPadding, rect.left),
+      Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+    );
+    const top = Math.max(viewportPadding, rect.top - 10);
+    const availableAbove = Math.max(160, top - viewportPadding);
+    setMenuStyle({
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${menuWidth}px`,
+      maxHeight: `min(28rem, ${availableAbove}px)`,
+      transform: 'translateY(-100%)',
+    });
+  }, []);
+
+  useEffect(() => {
+    if (items.length === 0) return undefined;
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [items.length, updateMenuPosition]);
+
   if (items.length === 0) return null;
 
-  return (
-    <div className="app-composer-mention-menu absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[24px] border px-2 py-2 shadow-[var(--app-shadow-float)]">
-      <div className="max-h-[min(28rem,54vh)] overflow-y-auto pr-1">
+  const renderMenu = () => (
+    <div className="app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[24px] border px-2 py-2 shadow-[var(--app-shadow-float)]" style={menuStyle}>
+      <div className="max-h-[inherit] overflow-y-auto pr-1">
         <div className="space-y-0.5">
           {items.map((item, index) => {
             const active = index === selectedIndex;
@@ -219,6 +256,13 @@ export function ComposerMentionMenu({
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <Fragment>
+      <span ref={anchorRef} className="pointer-events-none absolute inset-x-0 top-0 h-0" aria-hidden="true" />
+      {typeof document !== 'undefined' ? createPortal(renderMenu(), document.body) : renderMenu()}
+    </Fragment>
   );
 }
 
