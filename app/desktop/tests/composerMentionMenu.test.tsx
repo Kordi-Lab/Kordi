@@ -95,13 +95,26 @@ test('mention participant menu uses dense chat-scale typography', () => {
   assert.ok(start >= 0 && end > start, 'expected ComposerMentionMenu source block');
   const block = source.slice(start, end);
 
-  assert.match(block, /text-\[12px\]/);
   assert.match(block, /text-\[11px\]/);
-  assert.match(block, /h-6 w-6/);
-  assert.match(block, /px-2\.5 py-1\.5/);
-  assert.match(block, /Math\.min\(\s*560,/);
+  assert.match(block, /text-\[10px\]/);
+  assert.match(block, /h-5 w-5/);
+  assert.match(block, /px-2 py-1/);
+  assert.match(block, /Math\.min\(\s*480,/);
   assert.doesNotMatch(block, /text-\[13px\]/);
+  assert.doesNotMatch(block, /text-\[12px\]/);
   assert.doesNotMatch(block, /h-7 w-7/);
+  assert.doesNotMatch(block, /h-6 w-6/);
+});
+
+test('mention participant menu does not render unread count badges', () => {
+  const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
+    items: [{ ...options[0], unreadCount: 7 }],
+    selectedIndex: 0,
+    onSelect: () => undefined,
+  }));
+
+  assert.doesNotMatch(html, />7</);
+  assert.doesNotMatch(html, /tabular-nums/);
 });
 
 test('mention participant menu does not render a header or shortcut hint', () => {
