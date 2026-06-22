@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -84,4 +85,49 @@ test('Cloud Edition chat right rail includes the Tasks tab', () => {
   assert.match(markup, /Info/);
   assert.match(markup, /Artifacts/);
   assert.match(markup, /Tasks/);
+});
+
+test('inspector lists do not draw a trailing row divider under panel list content', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+
+  assert.match(
+    shellCss,
+    /\.app-inspector-list\s*>\s*:last-child\s*{[^}]*border-bottom:\s*0\s*;[^}]*}/s,
+  );
+});
+
+test('inspector meta lists do not double up with following section dividers', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+
+  assert.match(
+    shellCss,
+    /\.app-inspector-meta-list\s*>\s*:last-child\s*{[^}]*border-bottom:\s*0\s*;[^}]*}/s,
+  );
+});
+
+test('right rail detail sheets do not keep a glass filter edge under empty Tasks content', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+
+  assert.match(
+    shellCss,
+    /\.app-right-detail-rail\s+\.app-detail-sheet\s*{[^}]*backdrop-filter:\s*none\s*;[^}]*-webkit-backdrop-filter:\s*none\s*;[^}]*}/s,
+  );
+});
+
+test('right rail does not inherit main panel shadows or transparency that create light-theme seams', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+
+  assert.match(
+    shellCss,
+    /\.app-right-detail-rail\s*{[^}]*background:\s*var\(--app-main-bg\)\s*;[^}]*box-shadow:\s*none\s*;[^}]*}/s,
+  );
+  assert.match(
+    shellCss,
+    /\.app-right-detail-rail\.app-main-panel\s*{[^}]*backdrop-filter:\s*none\s*;[^}]*-webkit-backdrop-filter:\s*none\s*;[^}]*}/s,
+  );
+  assert.match(
+    themeOverridesCss,
+    /\.bridge-app\.theme-light\s+\.app-right-detail-rail\s*{[^}]*box-shadow:\s*none\s*;[^}]*}/s,
+  );
 });

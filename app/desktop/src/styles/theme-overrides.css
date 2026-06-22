@@ -147,6 +147,10 @@
   }
 }
 
+.bridge-app.theme-light .app-right-detail-rail {
+  box-shadow: none;
+}
+
 .bridge-app.theme-light .app-right-detail-rail .app-detail-sheet {
   box-shadow: none;
 }
