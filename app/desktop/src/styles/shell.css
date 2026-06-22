@@ -783,7 +783,8 @@
 }
 
 .app-right-detail-rail {
-  background: color-mix(in oklab, var(--app-main-bg) 26%, transparent);
+  background: var(--app-main-bg);
+  box-shadow: none;
 }
 
 .app-right-detail-rail .app-inspector-tabs {
@@ -812,6 +813,8 @@
   border: 0;
   border-radius: 0;
   background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow: none;
 }
 
@@ -867,6 +870,14 @@
 .app-inspector-list-row,
 .app-inspector-source-row {
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 54%, transparent);
+}
+
+.app-inspector-list > :last-child {
+  border-bottom: 0;
+}
+
+.app-inspector-meta-list > :last-child {
+  border-bottom: 0;
 }
 
 .app-inspector-meta-row {
@@ -967,6 +978,11 @@
   .app-composer-shell {
     backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
     -webkit-backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
+  }
+
+  .app-right-detail-rail.app-main-panel {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   /* Float tier — popovers and dropdown surfaces. Tighter blur so they read
