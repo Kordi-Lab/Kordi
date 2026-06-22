@@ -134,7 +134,7 @@ export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
 export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
-export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 5_000;
+export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 45_000;
 
 export function cloudBootstrapPeerIds(
   account: CloudAccount | null | undefined,
@@ -590,12 +590,46 @@ function removeCloudGroupOfflinePlaceholder(
   return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
 }
 
+function cloudGroupPendingAgentRowMatches(
+  message: CanonicalSessionMessage,
+  requestId: string,
+  targetAccountId: string,
+) {
+  const trimmedRequestId = requestId.trim();
+  const trimmedTargetAccountId = targetAccountId.trim();
+  if (!trimmedRequestId || !trimmedTargetAccountId) return false;
+  if (message.senderIdentityId !== `agent:cloud:${trimmedTargetAccountId}`) return false;
+  if (!message.sourceTransport?.startsWith('cloud-group-agent')) return false;
+  const content = objectContent(message.content);
+  const linkedRequestId = cleanText(message.parentMessageId)
+    || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
+    || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
+  if (linkedRequestId !== trimmedRequestId) return false;
+  const status = message.status.trim().toLowerCase();
+  const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
+  return status === 'processing'
+    || deliveryState === 'processing'
+    || message.sourceTransport === 'cloud-group-agent-offline'
+    || message.sourceEventId?.startsWith('cloud-group-agent-unavailable-timeout:') === true
+    || message.sourceEventId?.startsWith('cloud-group-agent-no-provider-timeout:') === true;
+}
+
 function removeCloudGroupTimeoutPlaceholderForTerminalResponse(
   current: CanonicalSessionState | null,
   noticeId: string,
 ): CanonicalSessionState | null {
   if (!current) return current;
   const nextMessages = current.messages.filter((message) => !cloudGroupTerminalTimeoutPlaceholderMatches(message, noticeId));
+  return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
+}
+
+function removeCloudGroupPendingRowsForTerminalResponse(
+  current: CanonicalSessionState | null,
+  requestId: string,
+  targetAccountId: string,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  const nextMessages = current.messages.filter((message) => !cloudGroupPendingAgentRowMatches(message, requestId, targetAccountId));
   return nextMessages.length === current.messages.length ? current : { ...current, messages: nextMessages };
 }
 
@@ -2330,7 +2364,7 @@ export function useCloudBridgeState({
             return setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId);
           }
           if (responseState === 'terminal') {
-            return removeCloudGroupTimeoutPlaceholderForTerminalResponse(current, noticeId);
+            return removeCloudGroupPendingRowsForTerminalResponse(current, candidate.requestMessage.id, candidate.targetAccountId);
           }
           return current;
         });
@@ -2853,14 +2887,20 @@ export function useCloudBridgeState({
       // ("Processing…" + the real response).
       if (senderIsAgent && messageReplyToId) {
         const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`;
-        nextState = removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
+        if (agentDeliveryState === 'processing') {
+          nextState = removeCloudGroupOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState;
+        } else {
+          nextState = removeCloudGroupPendingRowsForTerminalResponse(nextState, messageReplyToId, envelope.message.senderAccountId) ?? nextState;
+        }
       }
       setCanonicalSessionState(nextState);
     }
 
     if (messageAlreadyExists && senderIsAgent && messageReplyToId && agentDeliveryState !== 'processing') {
       const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`;
-      const cleanedState = removeCloudGroupTimeoutPlaceholderForTerminalResponse(nextState, offlinePlaceholderId) ?? nextState;
+      const cleanedState = removeCloudGroupPendingRowsForTerminalResponse(nextState, messageReplyToId, envelope.message.senderAccountId)
+        ?? removeCloudGroupTimeoutPlaceholderForTerminalResponse(nextState, offlinePlaceholderId)
+        ?? nextState;
       if (cleanedState !== nextState) {
         nextState = cleanedState;
         setCanonicalSessionState(nextState);
@@ -3111,7 +3151,9 @@ export function useCloudBridgeState({
           sourceEventId: `cloud-group-agent:${responseMessageId}`,
         });
         const offlinePlaceholderId = `msg:cloud-agent-offline:${envelope.message!.id}:${account.accountId}`;
-        const responseState = removeCloudGroupTimeoutPlaceholderForTerminalResponse(responseStateBeforeCleanup, offlinePlaceholderId) ?? responseStateBeforeCleanup;
+        const responseState = removeCloudGroupPendingRowsForTerminalResponse(responseStateBeforeCleanup, envelope.message!.id, account.accountId)
+          ?? removeCloudGroupTimeoutPlaceholderForTerminalResponse(responseStateBeforeCleanup, offlinePlaceholderId)
+          ?? responseStateBeforeCleanup;
         setCanonicalSessionState(responseState);
         const responseBody = encodeCloudGroupControl({
           kind: 'group-message',

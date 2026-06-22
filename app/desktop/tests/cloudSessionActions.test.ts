@@ -235,7 +235,7 @@ test('cloud group read state is driven by cloud metadata, not transient local un
 
 test('cloud group requesting placeholder times out to unavailable notice instead of misleading auth copy', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
-  assert.match(source, /CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS/);
+  assert.match(source, /CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 45_000/);
   const timeoutIndex = source.indexOf('window.setTimeout(() => {');
   assert.ok(timeoutIndex >= 0, 'expected requesting placeholder timeout');
   const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 2500);
@@ -248,7 +248,8 @@ test('cloud group requesting placeholder times out to unavailable notice instead
 
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
-  assert.match(source, /removeCloudGroupTimeoutPlaceholderForTerminalResponse/);
+  assert.match(source, /removeCloudGroupPendingRowsForTerminalResponse/);
+  assert.match(source, /cloudGroupPendingAgentRowMatches/);
   assert.match(source, /cloud-group-agent-unavailable-timeout:/);
   assert.match(source, /sender: agentDisplayName/);
   assert.doesNotMatch(source, /sender:\s*'My Kordi'/);
