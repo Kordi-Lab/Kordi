@@ -111,7 +111,7 @@ import {
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
-import { defaultCloudAgentsClient, type CreateCloudAgentInput } from './cloudAgentsClient';
+import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
 import type { CloudAgentDefinition } from './cloudAgents';
 import { loadCloudSessionVisibility, removeCloudSessionMessages, saveCloudSessionVisibility, syncCloudDiffOnce, type CloudSessionPinsById } from './cloudDiffSync';
 import {
@@ -1707,6 +1707,7 @@ export type UseCloudBridgeStateResult = {
   refreshCloudBridgeMessages(): Promise<void>;
   refreshCloudAgents(): Promise<void>;
   createCloudAgentDefinition(input: CreateCloudAgentInput): Promise<CloudAgentDefinition>;
+  updateCloudAgentDefinition(agentId: string, input: UpdateCloudAgentInput): Promise<CloudAgentDefinition>;
   archiveCloudAgentDefinition(agentId: string): Promise<CloudAgentDefinition>;
   cloudAgentDefinitionsById: Record<string, CloudAgentDefinition>;
   cloudSessionActivity: CloudSessionActivityStore;
@@ -2070,6 +2071,14 @@ export function useCloudBridgeState({
     const session = await loadSession();
     if (!session?.token) throw new Error('Sign in to Cloud before creating an agent.');
     const agent = await cloudAgentsClient.createCloudAgent(session.token, input);
+    setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
+    return agent;
+  }, [cloudAgentsClient]);
+
+  const updateCloudAgentDefinition = useCallback(async (agentId: string, input: UpdateCloudAgentInput) => {
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Sign in to Cloud before updating an agent.');
+    const agent = await cloudAgentsClient.updateCloudAgent(session.token, agentId, input);
     setCloudAgentDefinitionsById((current) => ({ ...current, [agent.agentId]: agent }));
     return agent;
   }, [cloudAgentsClient]);
@@ -4114,6 +4123,7 @@ export function useCloudBridgeState({
     refreshCloudBridgeMessages,
     refreshCloudAgents,
     createCloudAgentDefinition,
+    updateCloudAgentDefinition,
     archiveCloudAgentDefinition,
     cloudAgentDefinitionsById,
     cloudSessionActivity,

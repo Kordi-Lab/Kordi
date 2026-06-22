@@ -1,4 +1,4 @@
-import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import type { CloudAgentAccessScope, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
 
@@ -25,6 +25,7 @@ export type AgentsPageProps = {
   onMessageAgent?: (agent: Agent) => void;
   onOpenAgentReachoutSession?: (sessionId: string) => void;
   onCreateCloudAgent?: (input: CreateCloudAgentInput) => Promise<Agent>;
+  onUpdateCloudAgent?: (agent: Agent, input: UpdateCloudAgentInput) => Promise<Agent> | Promise<void> | Agent | void;
   onArchiveCloudAgent?: (agent: Agent) => Promise<void>;
 };
 
@@ -51,6 +52,18 @@ export type AgentSaveFeedback = {
 };
 
 export const AGENT_CONFIG_STORAGE_KEY = 'kordi.agent-config-drafts.v1';
+
+export function cloudAgentAccessLabel(scope: CloudAgentAccessScope | undefined) {
+  return scope === 'participant_conversations'
+    ? 'Shared in conversations with me'
+    : 'Private — only me';
+}
+
+export function cloudAgentAccessDescription(scope: CloudAgentAccessScope | undefined) {
+  return scope === 'participant_conversations'
+    ? 'People in contact and group sessions that include you can mention this agent.'
+    : 'Synced privately to your Cloud account.';
+}
 
 export function buildAgentDraft(agent: Agent): AgentConfigDraft {
   return {

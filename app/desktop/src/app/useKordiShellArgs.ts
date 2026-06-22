@@ -114,6 +114,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       handleStartBridgePersonSession: args.handleStartBridgePersonSession,
       displayedAgents: args.displayedAgents,
       handleCreateCloudAgent: args.handleCreateCloudAgent,
+      handleUpdateCloudAgent: args.handleUpdateCloudAgent,
       handleArchiveCloudAgent: args.handleArchiveCloudAgent,
       activeAgentId: args.activeAgentId,
       activeAgent: args.activeAgent,

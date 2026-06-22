@@ -18,6 +18,7 @@ export function AgentsPage({
   onMessageAgent,
   onOpenAgentReachoutSession,
   onCreateCloudAgent,
+  onUpdateCloudAgent,
   onArchiveCloudAgent,
 }: AgentsPageProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -80,6 +81,7 @@ export function AgentsPage({
               : undefined
           }
           onOpenReachoutSession={onOpenAgentReachoutSession}
+          onUpdateCloudAgent={onUpdateCloudAgent}
           onArchiveCloudAgent={onArchiveCloudAgent}
           onOpenPromptDetail={openPromptDetail}
           onStartEditing={startEditing}

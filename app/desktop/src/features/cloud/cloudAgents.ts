@@ -84,13 +84,13 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
   const systemPrompt = cleanText(record.systemPrompt);
   const createdAt = cleanText(record.createdAt);
   const updatedAt = cleanText(record.updatedAt);
-  if (!agentId || !ownerAccountId || accessScope !== 'private' || !['active', 'archived'].includes(status) || !name || !role || !systemPrompt || !createdAt || !updatedAt) {
+  if (!agentId || !ownerAccountId || !['private', 'participant_conversations'].includes(accessScope) || !['active', 'archived'].includes(status) || !name || !role || !systemPrompt || !createdAt || !updatedAt) {
     return null;
   }
   return {
     agentId,
     ownerAccountId,
-    accessScope: 'private',
+    accessScope: accessScope as CloudAgentAccessScope,
     status: status as CloudAgentStatus,
     name,
     role,
@@ -121,7 +121,7 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     id: cloudAgentId(definition),
     role: definition.role,
     messaging: 'Cloud synced',
-    status: definition.accessScope === 'private' ? 'Private' : 'Cloud',
+    status: definition.accessScope === 'private' ? 'Private' : 'Shared',
     tasks: 0,
     defaultProvider: 'Cloud',
     defaultModel,
@@ -151,6 +151,39 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     cloudAgentBoundaries: definition.boundaries,
     cloudAgentResources: definition.resources,
     cloudAgentSkills: definition.skills,
+  };
+}
+
+export type SharedCloudAgentSummary = {
+  agentId: string;
+  ownerAccountId: string;
+  ownerDisplayName: string | null;
+  accessScope: 'participant_conversations';
+  name: string;
+  role: string;
+  description: string | null;
+  updatedAt: string;
+};
+
+export function normalizeSharedCloudAgentSummary(value: unknown): SharedCloudAgentSummary | null {
+  const record = objectRecord(value);
+  if (!record) return null;
+  const agentId = cleanText(record.agentId);
+  const ownerAccountId = cleanText(record.ownerAccountId);
+  const accessScope = cleanText(record.accessScope);
+  const name = cleanText(record.name);
+  const role = cleanText(record.role);
+  const updatedAt = cleanText(record.updatedAt);
+  if (!agentId || !ownerAccountId || accessScope !== 'participant_conversations' || !name || !role || !updatedAt) return null;
+  return {
+    agentId,
+    ownerAccountId,
+    ownerDisplayName: cleanNullableText(record.ownerDisplayName),
+    accessScope: 'participant_conversations',
+    name,
+    role,
+    description: cleanNullableText(record.description),
+    updatedAt,
   };
 }
 

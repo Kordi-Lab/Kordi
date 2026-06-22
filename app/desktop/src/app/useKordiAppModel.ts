@@ -23,7 +23,7 @@ import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
 import { resolveCloudLocalProfileAvatar } from '@/features/cloud/avatar';
 import { cloudAgentDefinitionToAgent } from '@/features/cloud/cloudAgents';
-import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import {
   type CloudGroupParticipant,
   cloudGroupIdentityRequest,
@@ -436,6 +436,7 @@ export function useKordiAppModel({
     refreshCloudBridgeMessages,
     refreshCloudAgents,
     createCloudAgentDefinition,
+    updateCloudAgentDefinition,
     archiveCloudAgentDefinition,
     cloudAgentDefinitionsById,
     refreshCloudContacts,
@@ -633,6 +634,15 @@ export function useKordiAppModel({
     agentsUi.setActiveAgentId(agent.id);
     return agent;
   }, [agentsUi, createCloudAgentDefinition, refreshCloudAgents]);
+
+  const handleUpdateCloudAgent = useCallback(async (agent: Agent, input: UpdateCloudAgentInput) => {
+    if (!agent.cloudAgentId) throw new Error('Only Cloud Agents can be updated here.');
+    const definition = await updateCloudAgentDefinition(agent.cloudAgentId, input);
+    await refreshCloudAgents().catch(() => undefined);
+    const nextAgent = cloudAgentDefinitionToAgent(definition);
+    agentsUi.setActiveAgentId(nextAgent.id);
+    return nextAgent;
+  }, [agentsUi, refreshCloudAgents, updateCloudAgentDefinition]);
 
   const handleArchiveCloudAgent = useCallback(async (agent: Agent) => {
     if (!agent.cloudAgentId) throw new Error('Only private Cloud Agents can be deleted here.');
@@ -2426,6 +2436,7 @@ export function useKordiAppModel({
     setActiveContactId: contactsUi.setActiveContactId,
     displayedAgents,
     handleCreateCloudAgent,
+    handleUpdateCloudAgent,
     handleArchiveCloudAgent,
     activeBridgeHost,
     localProfileAvatarSeed,
