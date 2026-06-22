@@ -87,7 +87,7 @@ import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessage
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
-import { buildBridgeMentionTargetsByScope } from '@/app/useKordiAppModelBridgeMentions';
+import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
@@ -951,14 +951,33 @@ export function useKordiAppModel({
     void refreshSharedCloudAgents(sharedCloudAgentOwnerIds).catch(() => undefined);
   }, [refreshSharedCloudAgents, sharedCloudAgentOwnerIds]);
 
+  const mentionableCloudAgents = useMemo(() => mentionableCloudAgentSummaries({
+    sharedCloudAgents,
+    ownedCloudAgentsById: cloudAgentDefinitionsById,
+    ownerDisplayName: cloudSession.account?.displayName?.trim()
+      || cloudSession.account?.primaryEmail?.trim()
+      || null,
+  }), [cloudAgentDefinitionsById, cloudSession.account?.displayName, cloudSession.account?.primaryEmail, sharedCloudAgents]);
+
+  const resolveSharedCloudAgentsForMention = useCallback(async () => {
+    const refreshed = await refreshSharedCloudAgents(sharedCloudAgentOwnerIds).catch(() => []);
+    return mentionableCloudAgentSummaries({
+      sharedCloudAgents: [...sharedCloudAgents, ...refreshed],
+      ownedCloudAgentsById: cloudAgentDefinitionsById,
+      ownerDisplayName: cloudSession.account?.displayName?.trim()
+        || cloudSession.account?.primaryEmail?.trim()
+        || null,
+    });
+  }, [cloudAgentDefinitionsById, cloudSession.account?.displayName, cloudSession.account?.primaryEmail, refreshSharedCloudAgents, sharedCloudAgentOwnerIds, sharedCloudAgents]);
+
   const bridgeMentionTargetsByScope = useMemo(() => buildBridgeMentionTargetsByScope({
     isNativeShell,
     desktopBridgeState,
     desktopChatState,
     activeConvMentionScope,
     conversations: chatConversations,
-    sharedCloudAgents,
-  }), [activeConvMentionScope, chatConversations, desktopBridgeState, desktopChatState, isNativeShell, sharedCloudAgents]);
+    sharedCloudAgents: mentionableCloudAgents,
+  }), [activeConvMentionScope, chatConversations, desktopBridgeState, desktopChatState, isNativeShell, mentionableCloudAgents]);
 
   const chatMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.chat), [composerDraftsView.chat]);
   const projectMentionQuery = useMemo(() => currentMentionQuery(composerDraftsView.project), [composerDraftsView.project]);
@@ -1351,7 +1370,8 @@ export function useKordiAppModel({
     activeConvMessages: activeConv.messages,
     activeConvBridgeTarget: activeConv.bridgeTarget,
     activeConvMentionScope,
-    sharedCloudAgents,
+    sharedCloudAgents: mentionableCloudAgents,
+    resolveSharedCloudAgentsForMention,
     activeProjectId,
     activeProjectSessionId,
     activeProjectRoot: activeProject.root,

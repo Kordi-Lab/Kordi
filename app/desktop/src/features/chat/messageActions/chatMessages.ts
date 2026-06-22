@@ -48,7 +48,7 @@ import {
   mentionForBridgeTarget,
   mentionedPersonIsActiveBridgeTarget,
   mentionsLocalAgent,
-  resolveMentionedBridgeTarget,
+  resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh,
   stripLeadingAddressMentions,
 } from './mentions';
 import {
@@ -708,6 +708,7 @@ type UseChatMessageActionsArgs = Pick<
   | 'activeConvMessages'
   | 'activeConvMentionScope'
   | 'sharedCloudAgents'
+  | 'resolveSharedCloudAgentsForMention'
   | 'chatConversations'
   | 'canonicalHumanIdentityId'
   | 'chatComposerAttachments'
@@ -756,6 +757,7 @@ export function useChatMessageActions({
   activeConvMessages,
   activeConvMentionScope,
   sharedCloudAgents = [],
+  resolveSharedCloudAgentsForMention,
   chatConversations,
   attachmentSummaryText,
   canonicalHumanIdentityId,
@@ -1257,10 +1259,13 @@ export function useChatMessageActions({
     const text = rawText.trim();
     if (!text && chatComposerAttachments.length === 0) return;
 
-    const mentionedTarget = resolveMentionedBridgeTarget(text, desktopBridgeState, activeConvMentionScope, {
-      targetKind: 'bridge-agent',
+    const mentionedTarget = await resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh(
+      text,
+      desktopBridgeState,
+      activeConvMentionScope,
       sharedCloudAgents,
-    });
+      resolveSharedCloudAgentsForMention,
+    );
     const activeGroupSessionScope = {
       canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
       participantSpaceId: activeConvMentionScope?.participantSpaceId,
@@ -1747,7 +1752,8 @@ export function useChatMessageActions({
     activeConvId,
     activeConvMessages,
     activeConvMentionScope,
-    sharedCloudAgents = [],
+    sharedCloudAgents,
+    resolveSharedCloudAgentsForMention,
     activeChatQuote,
     attachmentSummaryText,
     chatComposerAttachments,

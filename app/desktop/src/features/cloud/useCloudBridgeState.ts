@@ -440,10 +440,10 @@ export function cloudAgentMentionCandidates(
       if (cleanText(typeof mention.bridgeHostId === 'string' ? mention.bridgeHostId : null) !== CLOUD_HOST_SENTINEL) return [];
       const targetAccountId = cleanText(typeof mention.humanId === 'string' ? mention.humanId : null)
         || cleanText(typeof mention.nodeId === 'string' ? mention.nodeId : null);
-      if (!targetAccountId || targetAccountId === accountId) return [];
       const targetCloudAgentId = cleanText(typeof mention.agentId === 'string' ? mention.agentId : null).startsWith('cloud_agent_')
         ? cleanText(typeof mention.agentId === 'string' ? mention.agentId : null)
         : null;
+      if (!targetAccountId || (targetAccountId === accountId && !targetCloudAgentId)) return [];
       const humanIdentity = identityByHumanId.get(targetAccountId);
       const agentIdentity = identityById.get(`agent:cloud:${targetAccountId}`);
       const targetHumanDisplayName = cleanText(humanIdentity?.displayName)
@@ -1726,7 +1726,7 @@ export type UseCloudBridgeStateResult = {
   createCloudAgentDefinition(input: CreateCloudAgentInput): Promise<CloudAgentDefinition>;
   updateCloudAgentDefinition(agentId: string, input: UpdateCloudAgentInput): Promise<CloudAgentDefinition>;
   archiveCloudAgentDefinition(agentId: string): Promise<CloudAgentDefinition>;
-  refreshSharedCloudAgents(ownerAccountIds: string[]): Promise<void>;
+  refreshSharedCloudAgents(ownerAccountIds: string[]): Promise<SharedCloudAgentSummary[]>;
   cloudAgentDefinitionsById: Record<string, CloudAgentDefinition>;
   sharedCloudAgents: SharedCloudAgentSummary[];
   cloudSessionActivity: CloudSessionActivityStore;
@@ -2093,16 +2093,17 @@ export function useCloudBridgeState({
     const owners = [...new Set(ownerAccountIds.map((value) => value.trim()).filter(Boolean))];
     if (!account || owners.length === 0) {
       setSharedCloudAgentsByOwner((current) => (Object.keys(current).length === 0 ? current : {}));
-      return;
+      return [];
     }
     const session = await loadSession();
-    if (!session?.token) return;
+    if (!session?.token) return [];
     const agents = await cloudAgentsClient.listSharedCloudAgents(session.token, owners);
     const next: Record<string, SharedCloudAgentSummary[]> = {};
     for (const agent of agents) {
       next[agent.ownerAccountId] = [...(next[agent.ownerAccountId] ?? []), agent];
     }
     setSharedCloudAgentsByOwner((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+    return agents;
   }, [account, cloudAgentsClient]);
 
   const createCloudAgentDefinition = useCallback(async (input: CreateCloudAgentInput) => {

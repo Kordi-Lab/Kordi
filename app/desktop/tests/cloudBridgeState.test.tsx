@@ -561,6 +561,46 @@ test('shared cloud agent mention candidates require owner participant', () => {
   assert.deepEqual(withoutOwner, []);
 });
 
+test('cloud group agent mention candidates include owner self-mentions for hosted Cloud Agents', () => {
+  const state = {
+    profile: { humanIdentityId: 'human:me', displayName: '111' },
+    sessions: [],
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: '111', source: 'bridge', bridgeNodeId: 'acct_me', humanId: 'acct_me', ownerIdentityId: null, sourceHostId: 'cloud', agentId: null, avatarKey: 'me', profileImageUrl: null, metadata: null, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    participants: [],
+    messages: [{
+      id: 'msg_self_hosted_agent_request',
+      sessionId: 'session:group:abc',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: '@KordiProjectDriver hi',
+      content: { mentions: [{ targetKind: 'bridge-agent', bridgeHostId: 'cloud', humanId: 'acct_me', agentId: 'cloud_agent_project', label: 'Kordi Project Driver', ownerName: '111' }] },
+      parentMessageId: null,
+      delegatedExchangeId: null,
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+      contentHash: null,
+      sourceTransport: 'cloud-group-ui',
+      sourceEventId: 'cloud-group:msg_self_hosted_agent_request',
+    }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: null,
+  } satisfies CanonicalSessionState;
+
+  const candidates = cloudAgentMentionCandidates(state, 'acct_me');
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.targetAccountId, 'acct_me');
+  assert.equal(candidates[0]?.targetCloudAgentId, 'cloud_agent_project');
+  assert.equal(candidates[0]?.targetAgentDisplayName, 'Kordi Project Driver');
+});
+
 test('direct Cloud contact agent mentions are not treated as Cloud group placeholders', () => {
   const state = {
     profile: { humanIdentityId: 'human:me', displayName: 'Me' },

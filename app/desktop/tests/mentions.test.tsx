@@ -13,6 +13,7 @@ import {
   mentionScopeConversationForActiveConversation,
   outreachIdentityForBridgeTarget,
   publicLocalAgentMentionText,
+  resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh,
   resolveMentionedBridgeTarget,
 } from '../src/features/chat/messageActions/mentions';
 import type { Conversation, DesktopBridgePeer, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
@@ -601,6 +602,41 @@ test('send-time group mention action resolves member agents but not people or ou
   assert.equal(aliceAgent?.requestText, 'please join');
   assert.equal(alicePerson, null);
   assert.equal(carolAgent, null);
+});
+
+test('send-time group mention action refreshes shared Cloud Agents before resolving plain text handles', async () => {
+  const bridgeState = bridgeStateWithPeers([]);
+  const group = groupConversationWithHumans([
+    { id: 'human:owner', name: '111', humanId: 'acct_owner', bridgeNodeId: 'acct_owner' },
+  ]);
+  let refreshCount = 0;
+
+  const target = await resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh(
+    '@KordiProjectDriver hi',
+    bridgeState,
+    group,
+    [],
+    async () => {
+      refreshCount += 1;
+      return [{
+        agentId: 'cloud_agent_project_driver',
+        ownerAccountId: 'acct_owner',
+        ownerDisplayName: '111',
+        accessScope: 'participant_conversations',
+        name: 'Kordi Project Driver',
+        role: 'Project driver',
+        description: null,
+        updatedAt: '2026-06-22T12:00:00Z',
+      }];
+    },
+  );
+
+  assert.equal(refreshCount, 1);
+  assert.equal(target?.targetKind, 'bridge-agent');
+  assert.equal(target?.peer.agentId, 'cloud_agent_project_driver');
+  assert.equal(target?.peer.humanId, 'acct_owner');
+  assert.equal(target?.displayLabel, 'Kordi Project Driver');
+  assert.equal(target?.requestText, 'hi');
 });
 
 test('group mention resolution ignores stale same-name agents with a different participant identity', () => {

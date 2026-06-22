@@ -730,6 +730,33 @@ export function resolveMentionedBridgeTarget(
   return null;
 }
 
+export async function resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefresh(
+  text: string,
+  bridgeState: DesktopBridgeState | null,
+  conversation: MentionScopeConversation | null | undefined,
+  sharedCloudAgents: SharedCloudAgentSummary[] = [],
+  refreshSharedCloudAgents?: () => Promise<SharedCloudAgentSummary[]>,
+) {
+  let mentionableCloudAgentsForSend = sharedCloudAgents;
+  let mentionedTarget = resolveMentionedBridgeTarget(text, bridgeState, conversation, {
+    targetKind: 'bridge-agent',
+    sharedCloudAgents: mentionableCloudAgentsForSend,
+  });
+  if (!mentionedTarget && text.includes('@') && refreshSharedCloudAgents) {
+    const refreshedCloudAgents = await refreshSharedCloudAgents().catch(() => []);
+    if (refreshedCloudAgents.length > 0) {
+      const byId = new Map(mentionableCloudAgentsForSend.map((agent) => [agent.agentId, agent]));
+      for (const agent of refreshedCloudAgents) byId.set(agent.agentId, agent);
+      mentionableCloudAgentsForSend = [...byId.values()];
+      mentionedTarget = resolveMentionedBridgeTarget(text, bridgeState, conversation, {
+        targetKind: 'bridge-agent',
+        sharedCloudAgents: mentionableCloudAgentsForSend,
+      });
+    }
+  }
+  return mentionedTarget;
+}
+
 export function insertMentionIntoDraft(current: string, label: string) {
   const mention = `@${label}`;
   const match = /(^|\s)@([^\s@\n\r]*)$/.exec(current);

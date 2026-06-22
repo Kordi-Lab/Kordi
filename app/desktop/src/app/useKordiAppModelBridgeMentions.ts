@@ -9,7 +9,7 @@ import {
   shouldIncludeLocalAgentMentionForConversation,
   type MentionScopeConversation,
 } from '@/features/chat/messageActions/mentions';
-import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
+import { cloudAgentDefinitionToSharedCloudAgentSummary, type CloudAgentDefinition, type SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import type { Conversation, DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
@@ -32,6 +32,23 @@ export type BuildBridgeMentionTargetsParams = {
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
+}
+
+export function mentionableCloudAgentSummaries({
+  sharedCloudAgents = [],
+  ownedCloudAgentsById = {},
+  ownerDisplayName = null,
+}: {
+  sharedCloudAgents?: SharedCloudAgentSummary[];
+  ownedCloudAgentsById?: Record<string, CloudAgentDefinition>;
+  ownerDisplayName?: string | null;
+}): SharedCloudAgentSummary[] {
+  const byId = new Map(sharedCloudAgents.map((agent) => [agent.agentId, agent]));
+  for (const definition of Object.values(ownedCloudAgentsById)) {
+    const summary = cloudAgentDefinitionToSharedCloudAgentSummary(definition, ownerDisplayName);
+    if (summary) byId.set(summary.agentId, summary);
+  }
+  return [...byId.values()];
 }
 
 function participantIsLocalSelf(participant: NonNullable<Conversation['canonicalParticipants']>[number]) {

@@ -187,6 +187,23 @@ export function normalizeSharedCloudAgentSummary(value: unknown): SharedCloudAge
   };
 }
 
+export function cloudAgentDefinitionToSharedCloudAgentSummary(
+  definition: CloudAgentDefinition,
+  ownerDisplayName?: string | null,
+): SharedCloudAgentSummary | null {
+  if (definition.status !== 'active' || definition.accessScope !== 'participant_conversations') return null;
+  return {
+    agentId: definition.agentId,
+    ownerAccountId: definition.ownerAccountId,
+    ownerDisplayName: cleanNullableText(ownerDisplayName),
+    accessScope: 'participant_conversations',
+    name: definition.name,
+    role: definition.role,
+    description: definition.description,
+    updatedAt: definition.updatedAt,
+  };
+}
+
 function eventAgent(event: CloudSyncEvent): CloudAgentDefinition | null {
   const payload = objectRecord(event.payload);
   return normalizeCloudAgentDefinition(payload?.agent);

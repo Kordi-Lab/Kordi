@@ -5,6 +5,7 @@ import { CloudAgentsClient } from '../src/features/cloud/cloudAgentsClient';
 import {
   applyCloudAgentSyncEvents,
   cloudAgentDefinitionToAgent,
+  cloudAgentDefinitionToSharedCloudAgentSummary,
   normalizeCloudAgentDefinition,
   normalizeSharedCloudAgentSummary,
 } from '../src/features/cloud/cloudAgents';
@@ -69,6 +70,32 @@ test('shared cloud agent summaries are mention safe', () => {
   assert.equal(agent?.ownerDisplayName, 'Shuyang');
   assert.equal('systemPrompt' in (agent as object), false);
   assert.equal('modelRouting' in (agent as object), false);
+});
+
+test('cloudAgentDefinitionToSharedCloudAgentSummary exposes owned shared agents as mention-safe summaries', () => {
+  const privateAgent = normalizeCloudAgentDefinition(rawAgent);
+  const sharedAgent = normalizeCloudAgentDefinition({
+    ...rawAgent,
+    accessScope: 'participant_conversations',
+    name: 'Kordi Project Driver',
+    description: 'Moves the project forward',
+  });
+  assert.ok(privateAgent);
+  assert.ok(sharedAgent);
+
+  assert.equal(cloudAgentDefinitionToSharedCloudAgentSummary(privateAgent, '111'), null);
+  const summary = cloudAgentDefinitionToSharedCloudAgentSummary(sharedAgent, '111');
+
+  assert.deepEqual(summary, {
+    agentId: 'cloud_agent_abc',
+    ownerAccountId: 'acct_owner',
+    ownerDisplayName: '111',
+    accessScope: 'participant_conversations',
+    name: 'Kordi Project Driver',
+    role: 'Technical Support Agent',
+    description: 'Moves the project forward',
+    updatedAt: '2026-06-18T00:01:00Z',
+  });
 });
 
 test('normalizeCloudAgentDefinition rejects malformed payloads', () => {

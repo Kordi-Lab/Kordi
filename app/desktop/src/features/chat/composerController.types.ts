@@ -47,6 +47,7 @@ export type UseComposerControllerArgs = {
   activeConvBridgeTarget?: ConversationBridgeTarget | null;
   activeConvMentionScope?: object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>> | null;
   sharedCloudAgents?: SharedCloudAgentSummary[];
+  resolveSharedCloudAgentsForMention?: () => Promise<SharedCloudAgentSummary[]>;
   activeProjectId: string;
   activeProjectSessionId: string;
   activeProjectRoot?: string | null;
