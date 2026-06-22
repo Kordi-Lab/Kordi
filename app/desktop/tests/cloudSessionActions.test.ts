@@ -243,7 +243,15 @@ test('cloud group requesting placeholder times out to unavailable notice instead
   assert.match(source, /CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE/);
   assert.match(source, /sourceEventId: `cloud-group-agent-unavailable-timeout:/);
   assert.match(source, /status:\s*'failed'/);
-  assert.match(source, /sourceTransport:\s*'cloud-group-agent'/);
+  assert.match(source, /sourceTransport:\s*'cloud-group-agent-offline'/);
+});
+
+test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /removeCloudGroupTimeoutPlaceholderForTerminalResponse/);
+  assert.match(source, /cloud-group-agent-unavailable-timeout:/);
+  assert.match(source, /sender: agentDisplayName/);
+  assert.doesNotMatch(source, /sender:\s*'My Kordi'/);
 });
 
 test('cloud group hosted-agent metadata targets the owner runtime even when text is not My Kordi', () => {

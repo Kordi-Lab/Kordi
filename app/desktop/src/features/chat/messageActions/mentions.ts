@@ -20,6 +20,7 @@ export function mentionForBridgeTarget(target: ResolvedMentionedBridgeTarget | n
     nodeId: target.peer.nodeId,
     humanId: target.peer.humanId ?? null,
     agentId: target.peer.agentId ?? null,
+    displayLabel: target.peer.agentId?.startsWith('cloud_agent_') ? target.displayLabel : null,
   }];
 }
 
