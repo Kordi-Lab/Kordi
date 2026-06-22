@@ -95,13 +95,15 @@ test('mention participant menu uses dense chat-scale typography', () => {
   assert.ok(start >= 0 && end > start, 'expected ComposerMentionMenu source block');
   const block = source.slice(start, end);
 
-  assert.match(block, /text-\[11px\]/);
-  assert.match(block, /text-\[10px\]/);
+  assert.match(block, /app-composer-mention-menu-label/);
+  assert.match(block, /app-composer-mention-menu-label[^']*text-\[10px\]/);
+  assert.match(block, /text-\[9px\]/);
   assert.match(block, /h-5 w-5/);
   assert.match(block, /px-2 py-1/);
   assert.match(block, /Math\.min\(\s*480,/);
   assert.doesNotMatch(block, /text-\[13px\]/);
   assert.doesNotMatch(block, /text-\[12px\]/);
+  assert.doesNotMatch(block, /font-medium/);
   assert.doesNotMatch(block, /h-7 w-7/);
   assert.doesNotMatch(block, /h-6 w-6/);
 });
