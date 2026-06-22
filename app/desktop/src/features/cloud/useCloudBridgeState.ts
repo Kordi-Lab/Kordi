@@ -70,6 +70,7 @@ import {
 } from './cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteForSession,
+  cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
 import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
@@ -534,7 +535,9 @@ function upsertCanonicalRequestIntoLocalState(
   return { ...current, messages };
 }
 
-function cloudGroupAgentNoProviderFallbackRequest(input: {
+export const CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE = 'Cloud Agent did not reply yet. The owner device may be offline or still starting.';
+
+function cloudGroupAgentUnavailableFallbackRequest(input: {
   sessionId: string;
   requestMessageId: string;
   targetAccountId: string;
@@ -559,13 +562,13 @@ function cloudGroupAgentNoProviderFallbackRequest(input: {
       deliveryState: 'failed',
       requestId: requestMessageId,
       replyToMessageId: requestMessageId,
-      error: cloudAgentNoProviderNoticeText(),
+      error: CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE,
     },
     parentMessageId: requestMessageId,
     status: 'failed',
     createdAtMs,
     sourceTransport: 'cloud-group-agent',
-    sourceEventId: `cloud-group-agent-no-provider-timeout:${requestMessageId}:${targetAccountId}`,
+    sourceEventId: `cloud-group-agent-unavailable-timeout:${requestMessageId}:${targetAccountId}`,
   };
 }
 
@@ -2325,7 +2328,7 @@ export function useCloudBridgeState({
             setCanonicalSessionState((current) => setCloudGroupRequestPlaceholderProcessing(current, candidate, noticeId));
             return;
           }
-          const failedNoticeRequest = cloudGroupAgentNoProviderFallbackRequest({
+          const failedNoticeRequest = cloudGroupAgentUnavailableFallbackRequest({
             sessionId: candidate.requestMessage.sessionId,
             requestMessageId: candidate.requestMessage.id,
             targetAccountId: candidate.targetAccountId,
@@ -2834,10 +2837,19 @@ export function useCloudBridgeState({
     }
 
     const groupMessageIsOwn = envelope.message.senderAccountId === account.accountId;
-    const groupMessageMentionsLocalAgent = envelope.message.forkSnapshot === true ? false : cloudMessageMentionsLocalAgent(
-      envelope.message.text,
-      account,
-      { allowFirstPerson: groupMessageIsOwn },
+    const targetCloudAgentId = cleanText(envelope.message.targetCloudAgentId);
+    const targetCloudAgentOwnerAccountId = cleanText(envelope.message.targetCloudAgentOwnerAccountId);
+    const groupMessageTargetsOwnedHostedCloudAgent = Boolean(
+      targetCloudAgentId.startsWith('cloud_agent_')
+      && targetCloudAgentOwnerAccountId === account.accountId,
+    );
+    const groupMessageMentionsLocalAgent = envelope.message.forkSnapshot === true ? false : (
+      groupMessageTargetsOwnedHostedCloudAgent
+      || cloudMessageMentionsLocalAgent(
+        envelope.message.text,
+        account,
+        { allowFirstPerson: groupMessageIsOwn },
+      )
     );
     if (
       !senderIsAgent
@@ -2879,8 +2891,13 @@ export function useCloudBridgeState({
           void refreshCloudBridgeMessages();
           return;
         }
+        const hostedAgentName = cleanText(envelope.message!.targetCloudAgentName);
+        const hostedAgentOwnerName = cleanText(envelope.message!.targetCloudAgentOwnerName)
+          || cleanText(account.displayName)
+          || cleanText(account.primaryEmail)
+          || 'Cloud user';
         const agentIdentityId = `agent:cloud:${account.accountId}`;
-        const agentDisplayName = `${account.displayName || account.primaryEmail || 'Cloud user'}'s Kordi`;
+        const agentDisplayName = hostedAgentName || `${hostedAgentOwnerName}'s Kordi`;
         await upsertCanonicalIdentity({
           id: agentIdentityId,
           kind: 'agent',
@@ -2963,11 +2980,18 @@ export function useCloudBridgeState({
           setLocalAgentTurnsByRequestId((current) => ({ ...current, [envelope.message!.id]: turn }));
         };
         const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${envelope.groupId}`;
+        const runtimeRoute = cloudAgentRuntimeRouteForTargetCloudAgent({
+          targetCloudAgentId: envelope.message!.targetCloudAgentId,
+          cloudAgentDefinitionsById,
+          routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
+          runtimeSessionId,
+          fallbackRoute: defaultCloudAgentRuntimeRoute,
+        });
         const startedTurn = await startDesktopChatMessage(
           runtimeSessionId,
           prompt,
           agentAttachmentPaths,
-          cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId, defaultCloudAgentRuntimeRoute),
+          runtimeRoute,
           contextMessages,
           visibleTaskRecords,
         );
@@ -3170,6 +3194,7 @@ export function useCloudBridgeState({
     account,
     activeConversationId,
     client,
+    cloudAgentDefinitionsById,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
     mergeMessage,

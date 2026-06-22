@@ -22,6 +22,7 @@ import {
 } from '../src/features/cloud/cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteForSession,
+  cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
 } from '../src/features/cloud/cloudAgentRuntime';
 import { buildCloudBridgeHost, cloudMessageToBridgeMessage } from '../src/features/cloud/cloudBridgeState';
@@ -109,6 +110,53 @@ test('cloud agent runtime route is reflected on the synthetic local cloud agent 
   assert.equal(agent?.defaultAuthChoice, 'work');
   assert.equal(agent?.thinking, 'high');
   assert.equal(buildCloudBridgeHost(account, []).agents[0]?.defaultModel, null);
+});
+
+test('group hosted Cloud Agent runtime route prefers the targeted agent definition route', () => {
+  const route = cloudAgentRuntimeRouteForTargetCloudAgent({
+    targetCloudAgentId: 'cloud_agent_project_driver',
+    cloudAgentDefinitionsById: {
+      cloud_agent_project_driver: {
+        agentId: 'cloud_agent_project_driver',
+        ownerAccountId: 'acct_me',
+        accessScope: 'participant_conversations',
+        status: 'active',
+        name: 'Kordi Project Driver',
+        role: 'Project driver',
+        description: null,
+        systemPrompt: 'Drive projects.',
+        sourceSummary: null,
+        boundaries: [],
+        resources: [],
+        skills: [],
+        modelRouting: {
+          defaultModel: 'openai/gpt-5.1',
+          defaultAuthProvider: 'openai',
+          defaultAuthChoice: 'main',
+          thinking: 'medium',
+        },
+        createdAt: '2026-06-22T12:00:00Z',
+        updatedAt: '2026-06-22T12:00:00Z',
+        archivedAt: null,
+      },
+    },
+    routesByRuntimeSessionId: {
+      'cloud-agent:acct_me:session:group:cloud-room': {
+        model: 'anthropic/claude-opus-4-7',
+        authProvider: 'anthropic',
+        authChoice: 'fallback',
+      },
+    },
+    runtimeSessionId: 'cloud-agent:acct_me:session:group:cloud-room',
+    fallbackRoute: null,
+  });
+
+  assert.deepEqual(route, {
+    model: 'openai/gpt-5.1',
+    authProvider: 'openai',
+    authChoice: 'main',
+    thinking: 'medium',
+  });
 });
 
 test('cloud agent mention matching recognizes local Kordi labels', () => {
