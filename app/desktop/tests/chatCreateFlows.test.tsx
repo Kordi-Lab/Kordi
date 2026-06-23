@@ -6,6 +6,7 @@ import {
   buildChatAgentSessionMetadata,
   buildChatAgentSessionKind,
   cloudAgentContextMessagesFromConversation,
+  cloudAgentContextMessagesFromDefinition,
   buildChatCreateGroupBridgeInviteParticipants,
   buildChatCreateGroupBridgeInviteTargets,
   buildChatCreateGroupMetadata,
@@ -303,6 +304,17 @@ test('private cloud agent sessions carry runtime context for local execution', (
   assert.match(contextMessages[0]?.text ?? '', /You are Kordi Project Driver/);
   assert.match(contextMessages[0]?.text ?? '', /Stay focused on project planning/);
   assert.match(contextMessages[0]?.text ?? '', /project-planning/);
+
+  const definitionContextMessages = cloudAgentContextMessagesFromDefinition({
+    agentId: 'cloud_agent_abc',
+    name: 'Kordi Project Driver',
+    role: 'Project planning agent',
+    systemPrompt: 'You are Kordi Project Driver. Help plan projects only.',
+    sourceSummary: 'Created from project-management notes.',
+    boundaries: ['Stay focused on project planning'],
+    skills: [{ name: 'project-planning', description: 'Plan milestones and blockers' }],
+  });
+  assert.deepEqual(definitionContextMessages, contextMessages);
 });
 
 test('external bridge agent create flow stores bridge target metadata for My chats routing', () => {

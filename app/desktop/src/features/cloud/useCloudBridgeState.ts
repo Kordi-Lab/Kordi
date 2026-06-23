@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 
 import {
   adoptCloudProfileIdentity,
@@ -3059,12 +3060,15 @@ export function useCloudBridgeState({
           if (result.status === 'fulfilled') mergeMessage(result.value);
         });
         const prompt = promptTextForCloudAgentMention(envelope.message!.text);
-        const contextMessages = cloudGroupNativeContextMessages({
-          cloudMessages: allCloudMessages,
-          groupId: envelope.groupId,
-          requestMessageId: envelope.message!.id,
-          requestCreatedAtMs: envelope.message!.createdAtMs,
-        });
+        const contextMessages = [
+          ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[envelope.message!.targetCloudAgentId ?? ''] ?? null),
+          ...cloudGroupNativeContextMessages({
+            cloudMessages: allCloudMessages,
+            groupId: envelope.groupId,
+            requestMessageId: envelope.message!.id,
+            requestCreatedAtMs: envelope.message!.createdAtMs,
+          }),
+        ];
         const visibleTaskRecords = cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, envelope.groupId);
         const agentAttachmentPaths = mappedAttachments
           .map((attachment) => attachment.localPath?.trim() || '')
@@ -3631,15 +3635,18 @@ export function useCloudBridgeState({
           const directDisplayMessage = { ...message, body: cloudDirectMessageDisplayText(message.body) };
           const directDisplayMessages = messages.map((peerMessage) => ({ ...peerMessage, body: cloudDirectMessageDisplayText(peerMessage.body) }));
           const prompt = promptTextForCloudAgentMention(directDisplayMessage.body);
-          const contextMessages = cloudAgentNativeContextMessagesFromDirectCloudSession({
-            messages: directDisplayMessages,
-            requestMessage: directDisplayMessage,
-            localAccountId: account.accountId,
-            localHumanName: account.displayName || account.primaryEmail || 'Me',
-            peerHumanName,
-            localAgentName: 'My Kordi',
-            peerAgentName: `${peerHumanName}'s Kordi`,
-          });
+          const contextMessages = [
+            ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[targetCloudAgentId ?? ''] ?? null),
+            ...cloudAgentNativeContextMessagesFromDirectCloudSession({
+              messages: directDisplayMessages,
+              requestMessage: directDisplayMessage,
+              localAccountId: account.accountId,
+              localHumanName: account.displayName || account.primaryEmail || 'Me',
+              peerHumanName,
+              localAgentName: 'My Kordi',
+              peerAgentName: `${peerHumanName}'s Kordi`,
+            }),
+          ];
           const currentSession = message.attachments?.length ? await loadSession() : null;
           const agentAttachments = currentSession?.token && message.attachments?.length
             ? await resolveCloudMessageAttachments({ token: currentSession.token, client, attachments: message.attachments })

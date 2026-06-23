@@ -9,6 +9,7 @@ import type {
   ParticipantSpaceViewModel,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
+import type { CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 
 export type ChatCreatePersonOption = {
   id: string;
@@ -216,18 +217,16 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
   };
 }
 
-export function cloudAgentContextMessagesFromConversation(conversation: unknown) {
-  const conversationRecord = metadataRecord(conversation);
-  const metadata = metadataRecord(conversationRecord.metadata);
-  const cloudAgentId = metadataText(metadata, 'cloudAgentId');
-  const name = metadataText(metadata, 'cloudAgentName');
-  const role = metadataText(metadata, 'cloudAgentRole');
-  const systemPrompt = metadataText(metadata, 'cloudAgentSystemPrompt');
+export function cloudAgentContextMessagesFromDefinition(definition: Pick<CloudAgentDefinition, 'agentId' | 'name' | 'role' | 'systemPrompt' | 'sourceSummary' | 'boundaries' | 'skills'> | null | undefined) {
+  const cloudAgentId = cleanText(definition?.agentId);
+  const name = cleanText(definition?.name);
+  const role = cleanText(definition?.role);
+  const systemPrompt = cleanText(definition?.systemPrompt);
   if (!cloudAgentId || !name || !systemPrompt) return [];
 
-  const sourceSummary = metadataText(metadata, 'cloudAgentSourceSummary');
-  const boundaries = metadataStringArray(metadata, 'cloudAgentBoundaries');
-  const skills = metadataSkills(metadata);
+  const sourceSummary = cleanText(definition?.sourceSummary);
+  const boundaries = definition?.boundaries ?? [];
+  const skills = definition?.skills ?? [];
   const text = [
     `You are ${name}${role ? `, ${role}` : ''}.`,
     'For this conversation, answer as this private Cloud Agent rather than the default Kordi agent.',
@@ -245,6 +244,20 @@ export function cloudAgentContextMessagesFromConversation(conversation: unknown)
     text,
     createdAtMs: null,
   }];
+}
+
+export function cloudAgentContextMessagesFromConversation(conversation: unknown) {
+  const conversationRecord = metadataRecord(conversation);
+  const metadata = metadataRecord(conversationRecord.metadata);
+  return cloudAgentContextMessagesFromDefinition({
+    agentId: metadataText(metadata, 'cloudAgentId'),
+    name: metadataText(metadata, 'cloudAgentName'),
+    role: metadataText(metadata, 'cloudAgentRole'),
+    systemPrompt: metadataText(metadata, 'cloudAgentSystemPrompt'),
+    sourceSummary: metadataText(metadata, 'cloudAgentSourceSummary'),
+    boundaries: metadataStringArray(metadata, 'cloudAgentBoundaries'),
+    skills: metadataSkills(metadata),
+  });
 }
 
 export type ParticipantSpaceContinuationMetadataInput = {
