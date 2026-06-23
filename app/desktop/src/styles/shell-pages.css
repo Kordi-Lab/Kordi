@@ -422,3 +422,59 @@
 .app-agent-header-action {
   box-shadow: none;
 }
+
+.app-agent-create-overlay {
+  background: var(--app-overlay-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.app-agent-create-dialog {
+  border-color: color-mix(in oklab, var(--app-divider) 82%, transparent);
+  background: var(--app-modal-bg);
+  box-shadow: var(--app-shadow-dialog);
+  color: var(--utility-foreground);
+}
+
+.app-agent-create-body {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--utility-muted-text) 34%, transparent) transparent;
+}
+
+.app-agent-create-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.app-agent-create-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-agent-create-body::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--utility-muted-text) 34%, transparent);
+  background-clip: padding-box;
+}
+
+.app-agent-create-footer {
+  background: color-mix(in oklab, var(--app-modal-bg) 94%, var(--app-control-bg));
+}
+
+.app-agent-create-source-card {
+  border-style: solid;
+  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 44%, transparent);
+}
+
+.app-agent-create-empty-draft {
+  border-style: solid;
+  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 44%, transparent);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .app-agent-create-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}

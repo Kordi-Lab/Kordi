@@ -111,6 +111,9 @@
   --app-mode-tab-active-text: var(--app-text-primary);
   --app-shadow-soft: var(--app-depth-2);
   --app-shadow-float: var(--app-depth-3);
+  --app-shadow-dialog:
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 16px 42px rgba(0, 0, 0, 0.18);
   --app-button-primary-bg: rgba(241, 245, 249, 0.92);
   --app-button-primary-hover: rgb(255 255 255);
   --app-button-primary-text: rgb(13 15 19);
@@ -245,6 +248,9 @@
   --app-mode-tab-active-text: rgb(255 255 255);
   --app-shadow-soft: var(--app-depth-2);
   --app-shadow-float: var(--app-depth-3);
+  --app-shadow-dialog:
+    0 0 0 1px rgba(0, 0, 0, 0.11),
+    0 18px 44px rgba(0, 0, 0, 0.10);
   --app-button-primary-bg: rgb(17 17 17);
   --app-button-primary-hover: rgb(0 0 0);
   --app-button-primary-text: rgb(255 255 255);
