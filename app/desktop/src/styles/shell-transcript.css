@@ -677,7 +677,29 @@
 }
 
 .app-message-inline-sender {
-  color: var(--app-sidebar-title-text);
+  color: var(--app-message-sender-accent, var(--app-sidebar-title-text));
+  letter-spacing: -0.01em;
+}
+
+.app-message-forwarded-header {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid color-mix(in oklab, var(--app-message-forwarded-text) 16%, transparent);
+  border-radius: 999px;
+  background: var(--app-message-forwarded-bg);
+  padding: 3px 8px 3px 7px;
+  color: var(--app-message-forwarded-text);
+  letter-spacing: -0.006em;
+}
+
+.app-message-forwarded-header svg {
+  color: var(--app-message-forwarded-icon);
+  stroke-width: 2.2;
+}
+
+.app-message-forwarded-header-name {
+  color: var(--utility-foreground);
+  font-weight: 720;
 }
 
 .app-message-delivery-clock-face,

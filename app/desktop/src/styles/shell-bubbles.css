@@ -1,7 +1,7 @@
 .app-chat-bubble-user {
   --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
-  --app-message-bubble-stroke: transparent;
-  --app-message-bubble-shadow: none;
+  --app-message-bubble-stroke: color-mix(in oklab, var(--app-chat-bubble-user-bg) 82%, var(--app-border-strong));
+  --app-message-bubble-shadow: var(--app-chat-bubble-user-shadow);
   --app-message-mention: var(--app-chat-mention-own);
   --app-message-meta: var(--app-chat-meta-own);
   border: 0;
@@ -12,8 +12,8 @@
 
 .app-chat-bubble-peer {
   --app-message-bubble-fill: var(--app-chat-bubble-peer-bg);
-  --app-message-bubble-stroke: transparent;
-  --app-message-bubble-shadow: none;
+  --app-message-bubble-stroke: var(--app-chat-bubble-peer-border);
+  --app-message-bubble-shadow: var(--app-chat-bubble-peer-shadow);
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
   border: 0;
@@ -83,7 +83,10 @@
 
 .app-message-mention {
   color: var(--app-message-mention);
-  font-weight: 600;
+  font-weight: 720;
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
   background: transparent;
   border: 0;
   padding: 0;
