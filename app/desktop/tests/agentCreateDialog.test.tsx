@@ -52,7 +52,7 @@ const cloudAgent: Agent = {
   isOwned: true,
 };
 
-test('AgentCreateDialog shows private-only access menu and future sharing options', () => {
+test('AgentCreateDialog shows real cloud access options', () => {
   const markup = renderToStaticMarkup(createElement(AgentCreateDialog, {
     open: true,
     creatorAgent,
@@ -67,9 +67,18 @@ test('AgentCreateDialog shows private-only access menu and future sharing option
   assert.match(markup, /read/);
   assert.match(markup, /brainstorming/);
   assert.match(markup, /Private — only me/);
-  assert.match(markup, /Share with contacts — coming later/);
-  assert.match(markup, /Workspace\/shared Cloud — coming later/);
-  assert.match(markup, /MVP agents are creator-owned\/private Cloud sync only/);
+  assert.match(markup, /Shared in conversations with me/);
+  assert.match(markup, /Synced privately to your Cloud account/);
+  assert.doesNotMatch(markup, /coming later/);
+  assert.doesNotMatch(markup, /Workspace\/shared Cloud/);
+});
+
+test('AgentCreateDialog creates agents with the selected access scope', () => {
+  const source = readFileSync(new URL('../src/kordi-app/agents/AgentCreateDialog.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /const \[accessScope, setAccessScope\]/);
+  assert.match(source, /accessScope,\n\s*name: draft\.name/);
+  assert.doesNotMatch(source, /accessScope: 'private',\n\s*name: draft\.name/);
 });
 
 test('AgentCreateDialog keeps shape and create actions in a sticky footer', () => {
@@ -78,7 +87,7 @@ test('AgentCreateDialog keeps shape and create actions in a sticky footer', () =
 
   assert.notEqual(footerStart, -1);
   assert.notEqual(source.indexOf('Shape draft with Kordi', footerStart), -1);
-  assert.notEqual(source.indexOf('Create private Agent', footerStart), -1);
+  assert.notEqual(source.indexOf('Create Agent', footerStart), -1);
 });
 
 test('AgentsSidebar exposes New agent action when cloud creation is available', () => {
