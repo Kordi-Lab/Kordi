@@ -117,7 +117,7 @@ function conversationParticipantNameKeys(participants: string[] | undefined) {
     .filter((key) => key && !['me', 'you', 'my kordi', 'kordi'].includes(key));
 }
 
-export type MentionScopeConversation = object & Partial<Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>>;
+export type MentionScopeConversation = object & Partial<Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness' | 'bridgeTarget'>>;
 
 function conversationHumanOwnerKeys(conversation: MentionScopeConversation | null | undefined) {
   const keys = new Set<string>();
@@ -147,11 +147,12 @@ export function conversationHasParticipantMentionScope(conversation: MentionScop
   if (!conversation) return false;
   if (conversationHasGroupMentionScope(conversation)) return true;
   const humanKeys = conversationHumanOwnerKeys(conversation);
-  if (humanKeys.size === 0) return false;
+  const bridgeTargetIsPerson = conversation.bridgeTarget?.runtime === 'person' || conversation.bridgeTarget?.agentId === null;
+  if (humanKeys.size === 0 && !bridgeTargetIsPerson) return false;
   const nonSelfHumanCount = (conversation.canonicalParticipants ?? []).filter((participant) => (
     participant.kind === 'human' && !isSelfConversationParticipant(participant)
   )).length;
-  return nonSelfHumanCount > 0 || /\b(?:direct|person|contact)\b/i.test(conversation.directness ?? '');
+  return nonSelfHumanCount > 0 || bridgeTargetIsPerson || /\b(?:direct|person|contact)\b/i.test(conversation.directness ?? '');
 }
 
 export function bridgeMentionOwnerMatchesConversationHumans(
@@ -197,6 +198,11 @@ function conversationContainsAccountId(conversation: MentionScopeConversation | 
     if (participant.kind !== 'human') continue;
     if (participantHumanIdentityKeys(participant).includes(key)) return true;
   }
+  const bridgeTarget = conversation?.bridgeTarget;
+  if ((bridgeTarget?.runtime === 'person' || bridgeTarget?.agentId === null) && (
+    normalizedOwnerKey(bridgeTarget.humanId) === key
+    || normalizedOwnerKey(bridgeTarget.nodeId) === key
+  )) return true;
   return conversationParticipantNameKeys(conversation?.participants).includes(key);
 }
 

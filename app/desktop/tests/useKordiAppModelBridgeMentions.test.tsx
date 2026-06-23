@@ -368,12 +368,9 @@ test('buildBridgeMentionTargetsByScope includes shared hosted Cloud Agents in di
     unread: 0,
     bridges: ['cloud'],
     trust: 'Cloud',
-    directness: 'Direct chat',
+    directness: 'Direct person chat',
     participants: ['222', '111'],
-    canonicalParticipants: [
-      { id: 'human:acct_me', name: '222', kind: 'human', role: 'self', source: 'local', humanId: 'acct_me', bridgeNodeId: 'acct_me' },
-      { id: 'human:acct_owner', name: '111', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', humanId: 'acct_owner', bridgeNodeId: 'acct_owner' },
-    ],
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_owner', humanId: 'acct_owner', ownerName: '111', runtime: 'person', agentId: null },
     messages: [],
   } as Conversation;
 
