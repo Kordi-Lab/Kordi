@@ -7,12 +7,12 @@ export function DetailSection({
   title,
   children,
 }: {
-  title: string;
+  title?: string;
   children: ReactNode;
 }) {
   return (
     <section className="app-auth-detail-section overflow-hidden rounded-[20px] bg-white/[0.035] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.055)]">
-      <div className="px-4 pb-1 pt-3 text-[13px] font-medium tracking-[-0.01em] text-slate-200">{title}</div>
+      {title ? <div className="px-4 pb-1 pt-3 text-[13px] font-medium tracking-[-0.01em] text-slate-200">{title}</div> : null}
       <div>{children}</div>
     </section>
   );

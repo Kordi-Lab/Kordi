@@ -39,7 +39,7 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.doesNotMatch(shellPages, /app-auth-provider-selected/);
 });
 
-test('provider detail view keeps a persistent back control and scroll boundary', () => {
+test('provider detail view keeps a persistent back control without nesting settings scroll areas', () => {
   const authPage = readAuthSource('AuthPage.tsx');
   const providerDetail = readAuthSource('AuthProviderDetail.tsx');
 
@@ -47,7 +47,13 @@ test('provider detail view keeps a persistent back control and scroll boundary',
   assert.doesNotMatch(authPage, /\{provider\.label\} auth/);
   assert.doesNotMatch(authPage, /aria-label="Go forward"/);
   assert.doesNotMatch(authPage, /AuthNavigationControls/);
-  assert.match(authPage, /const settingsDetailContent = showDetailPage \? \([\s\S]*ScrollArea className="min-h-0 flex-1 pr-2"[\s\S]*\{content\}[\s\S]*\) : \(/);
+  const settingsDetailContentStart = authPage.indexOf('const settingsDetailContent');
+  const settingsDetailContentBlock = authPage.slice(
+    settingsDetailContentStart,
+    authPage.indexOf('  return (', settingsDetailContentStart),
+  );
+  assert.match(settingsDetailContentBlock, /const settingsDetailContent = showDetailPage \? \(\s*<div className="min-h-0 w-full min-w-0 max-w-none pb-6"[\s\S]*\{content\}[\s\S]*<\/div>\s*\) : \(/);
+  assert.doesNotMatch(settingsDetailContentBlock, /ScrollArea/);
   assert.match(authPage, /showDetailPage[\s\S]*detailHeader[\s\S]*ScrollArea className="min-h-0 flex-1/);
   assert.match(providerDetail, /className="grid min-h-0 w-full gap-3\.5 pb-6"/);
   assert.doesNotMatch(providerDetail, /overflow-y-auto/);
@@ -72,7 +78,7 @@ test('auth pages avoid all-caps styling and use sentence-case detail chrome', ()
   assert.doesNotMatch(authPage, /\{provider\.label\} auth/);
   assert.doesNotMatch(providerDetail, /What this provider is for/);
   assert.doesNotMatch(providerDetail, /Storage and cleanup/);
-  assert.match(providerDetail, /<DetailSection title="Connect">/);
+  assert.doesNotMatch(providerDetail, /<DetailSection title="Connect">/);
 });
 
 test('login from the first-run gate opens the auth page without routing into settings', () => {
