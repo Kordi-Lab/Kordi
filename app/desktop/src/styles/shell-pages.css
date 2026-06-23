@@ -404,3 +404,21 @@
 .app-agent-code-panel {
   background: var(--app-code-bg);
 }
+
+.app-agent-routing-section {
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
+}
+
+.app-agent-routing-section .app-agent-section-detail {
+  max-width: 42rem;
+}
+
+.app-agent-routing-note {
+  color: var(--utility-muted-text);
+}
+
+.app-agent-header-action {
+  box-shadow: none;
+}

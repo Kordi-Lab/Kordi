@@ -254,6 +254,17 @@
     var(--app-shadow-soft);
 }
 
+.app-contact-row-active {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-contact-row-active:hover,
+.app-contact-row:hover {
+  background: var(--app-control-bg);
+}
+
 
 .app-side-note {
   border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);

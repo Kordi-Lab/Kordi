@@ -357,6 +357,17 @@
   box-shadow: none;
 }
 
+.bridge-app.theme-light .app-contact-row-active {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bridge-app.theme-light .app-contact-row-active:hover,
+.bridge-app.theme-light .app-contact-row:hover {
+  background: rgb(247 247 247) !important;
+}
+
 .bridge-app.theme-light .app-session-row-active {
   border-color: transparent;
   background: var(--app-sidebar-selected-bg);
