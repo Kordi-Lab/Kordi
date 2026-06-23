@@ -347,12 +347,16 @@ function MessageFooter({
   detail,
   isUser,
   compact = false,
+  replySummary,
+  onNavigateToMessage,
 }: {
   time: string;
   status?: string | null;
   detail?: string;
   isUser?: boolean;
   compact?: boolean;
+  replySummary?: Message['replySummary'];
+  onNavigateToMessage?: (messageId: string) => void;
 }) {
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
 
@@ -363,6 +367,7 @@ function MessageFooter({
       isUser ? 'text-black/45' : 'text-slate-500/80',
     )}>
       {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
+      <RequestReplyLine summary={replySummary} own={Boolean(isUser)} inline onNavigateToMessage={onNavigateToMessage} />
       <span className="inline-block min-w-[2.5rem] text-right">{time}</span>
       <MessageDeliveryStatusSlot status={status} />
     </div>
@@ -1337,6 +1342,7 @@ function MessageBubbleView({
                 isOwnHumanMessage ? 'app-message-delivery-footer ml-3 gap-0.5 text-black/45' : 'ml-4 gap-1 text-slate-500/80',
               )}>
                 {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}
+                <RequestReplyLine summary={msg.replySummary} own={isOwnHumanMessage} inline onNavigateToMessage={onNavigateToMessage} />
                 <span className={cn(isOwnHumanMessage && 'inline-block min-w-[2.1rem] text-right')}>{msg.time}</span>
                 {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={deliveryStatus} /> : null}
               </span>
@@ -1353,6 +1359,8 @@ function MessageBubbleView({
                   status={isOwnHumanMessage ? deliveryStatus : undefined}
                   detail={footerDetail}
                   isUser={isOwnHumanMessage}
+                  replySummary={msg.replySummary}
+                  onNavigateToMessage={onNavigateToMessage}
                 />
               ) : null}
             </>
@@ -1383,13 +1391,6 @@ function MessageBubbleView({
         <div className="self-center">
           <ContactRequestFailureNotice detail={msg.detail} onRequestBridgeContact={onRequestBridgeContact} />
         </div>
-      ) : null}
-      {showCompactFooter ? (
-        <RequestReplyLine
-          summary={msg.replySummary}
-          own={isOwnHumanMessage}
-          onNavigateToMessage={onNavigateToMessage}
-        />
       ) : null}
     </MessageContextMenuHost>
   );
@@ -1470,7 +1471,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
   return (
     <button
       onClick={onSelect}
-      className={`flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left transition ${
+      className={`app-contact-row flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left transition ${
         active ? 'app-list-item-active text-white' : 'app-list-item text-white'
       }`}
     >

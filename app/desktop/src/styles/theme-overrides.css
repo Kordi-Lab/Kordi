@@ -398,6 +398,12 @@
     inset 0 -1px 0 rgba(138, 118, 98, 0.045);
 }
 
+.bridge-app.theme-light .app-contact-row.app-list-item-active {
+  border-color: rgba(15, 23, 42, 0.10);
+  background: rgba(15, 23, 42, 0.055);
+  box-shadow: none;
+}
+
 .bridge-app.theme-light .app-session-row-active {
   border-color: transparent;
   background: var(--app-sidebar-selected-bg);

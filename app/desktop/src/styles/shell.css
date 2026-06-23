@@ -248,6 +248,43 @@
   background: color-mix(in oklab, var(--app-control-hover) 74%, transparent);
 }
 
+.app-contacts-content-rail {
+  max-width: none;
+}
+
+.app-contacts-request-row {
+  min-height: 46px;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.app-contacts-search {
+  min-height: 40px;
+  border-radius: 8px;
+}
+
+.app-contacts-sent-invites-row {
+  border: 1px solid color-mix(in oklab, var(--app-control-border) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
+  color: var(--utility-foreground);
+  box-shadow: none;
+}
+
+.app-contacts-group-row {
+  min-height: 44px;
+  border-color: color-mix(in oklab, var(--app-control-border) 72%, transparent);
+  border-style: solid;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--utility-foreground);
+}
+
+.app-contacts-group-row:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 44%, transparent);
+}
+
 .app-contacts-status-chip {
   border: 1px solid color-mix(in oklab, var(--app-control-border) 70%, transparent);
   background: color-mix(in oklab, var(--app-control-bg) 62%, transparent);
@@ -271,6 +308,12 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.03),
     inset 0 -1px 0 rgba(0, 0, 0, 0.08),
     var(--app-shadow-soft);
+}
+
+.app-contact-row.app-list-item-active {
+  border-color: color-mix(in oklab, var(--app-control-border) 86%, transparent);
+  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
+  box-shadow: none;
 }
 
 

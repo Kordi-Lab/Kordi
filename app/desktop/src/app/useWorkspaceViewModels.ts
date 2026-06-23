@@ -541,11 +541,7 @@ export function useWorkspaceViewModels({
       directness: 'Direct chat',
       participants: ['Me', 'My Kordi'],
       bridgeTarget: undefined,
-      messages: [{
-        role: 'system' as const,
-        text: placeholderText,
-        time: '--:--',
-      }],
+      messages: [],
     };
     },
     [],

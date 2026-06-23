@@ -162,6 +162,11 @@ export function ComposerSlashMenu({
   );
 }
 
+function initialComposerMentionMenuThemeClass() {
+  if (typeof document === 'undefined') return '';
+  return document.querySelector('.bridge-app.theme-light') ? 'app-composer-mention-menu-light' : '';
+}
+
 export function ComposerMentionMenu({
   items,
   selectedIndex,
@@ -173,7 +178,7 @@ export function ComposerMentionMenu({
 }) {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
-  const [menuThemeClass, setMenuThemeClass] = useState('');
+  const [menuThemeClass, setMenuThemeClass] = useState(initialComposerMentionMenuThemeClass);
 
   const updateMenuPosition = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -187,7 +192,7 @@ export function ComposerMentionMenu({
       Math.max(240, rect.width),
       Math.max(240, window.innerWidth - (viewportPadding * 2)),
     );
-    const appShell = anchor.closest('.bridge-app');
+    const appShell = anchor.closest('.bridge-app') ?? document.querySelector('.bridge-app.theme-light');
     setMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-composer-mention-menu-light' : '');
     const left = Math.min(
       Math.max(viewportPadding, rect.left),

@@ -138,6 +138,8 @@
 .app-composer-mention-menu-light {
   --app-composer-mention-menu-bg: rgb(255 255 255);
   --app-composer-mention-menu-text: rgb(15 23 42);
+  color-scheme: light;
+  transition: none;
   --app-composer-mention-menu-muted: rgb(71 85 105);
   --app-composer-mention-menu-border: rgba(15, 23, 42, 0.14);
   --app-composer-mention-menu-item-hover-bg: rgb(241 245 249);
