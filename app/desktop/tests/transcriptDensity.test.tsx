@@ -1151,7 +1151,7 @@ test('renders completed assistant responses as a compact contrast surface', () =
   assert.doesNotMatch(markup, /max-w-\[min\(100%,46rem\)\]/);
 });
 
-test('renders request reply status as an external plain one-line count without names', () => {
+test('renders request reply status as a compact icon and count without reply text', () => {
   const message: Message = {
     id: 'msg:request',
     role: 'user',
@@ -1171,7 +1171,8 @@ test('renders request reply status as an external plain one-line count without n
 
   assert.match(markup, /app-message-reply-line/);
   assert.match(markup, /app-message-reply-line-icon/);
-  assert.match(markup, />1 reply · replying…</);
+  assert.match(markup, /app-message-reply-count[^>]*>1</);
+  assert.doesNotMatch(markup, />[^<]*(?:reply|replies|replying…)[^<]*</i);
   assert.doesNotMatch(markup, /↳/);
   assert.doesNotMatch(markup, /Alice|Bob|Kordi/);
   assert.doesNotMatch(markup, /app-message-reply-pill/);
@@ -1203,8 +1204,9 @@ test('renders agent source quote and processing status without an output block b
   assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
   assert.match(markup, /app-source-message-quote/);
   assert.match(markup, /app-source-message-quote-rail/);
-  assert.match(markup, /app-source-message-quote-icon/);
-  assert.match(markup, />You</);
+  assert.doesNotMatch(markup, /app-source-message-quote-icon/);
+  assert.match(markup, />You: <\/span>@AliceKordi review the copy/);
+  assert.doesNotMatch(markup, /app-source-message-quote-label block truncate/);
   assert.doesNotMatch(markup, /Replying to/);
   assert.match(markup, /@AliceKordi review the copy/);
   assert.match(markup, /Processing/);
@@ -1288,12 +1290,16 @@ test('styles source quote colors contextually inside own message bubbles for dar
   const shellCss = readDesktopShellCss();
   const quoteRootBlock = shellCss.match(/\.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
   const ownBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightOwnBubbleQuoteBlock = shellCss.match(/\.bridge-app\.theme-light \.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
   const peerBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-peer \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(quoteRootBlock, /--app-source-message-quote-foreground:\s*var\(--utility-foreground\)/);
   assert.match(quoteRootBlock, /--app-source-message-quote-text:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 82%, var\(--app-source-message-quote-muted\)\)/);
   assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*var\(--app-chat-bubble-user-text\)/);
   assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-muted:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 72%, transparent\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*rgb\(255 255 255\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-label:\s*rgba\(255, 255, 255, 0\.88\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-text:\s*rgba\(255, 255, 255, 0\.76\)/);
   assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 8%, transparent\)/);
 });
 

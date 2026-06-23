@@ -232,23 +232,18 @@ export function ContactsPage({
     <div className="flex h-full min-h-0 min-w-0 flex-1">
       <div className="flex h-full min-h-0 w-full flex-col">
         <div className="border-b border-white/10 px-5 py-4">
-          <div className="w-full">
-            <div className="mb-1 text-white">
-              <h2 className="text-[18px] font-semibold tracking-[-0.01em]">Contacts</h2>
-            </div>
-            <div className="text-[13px] leading-5 text-slate-400">
-              Classified as my agents, other users’ agents, and other users. Compact list, detail on selection.
-            </div>
+          <div className="w-full text-white">
+            <h2 className="text-[18px] font-semibold tracking-[-0.01em]">Contacts</h2>
           </div>
         </div>
 
-        <div className="relative min-h-0 flex-1 px-4 py-4">
-          <div className="flex h-full w-full min-h-0 flex-col">
+        <div className="relative min-h-0 flex-1 px-5 py-4">
+          <div className="app-contacts-content-rail flex h-full w-full min-h-0 flex-col">
             <div className="mb-4">
               <button
                 type="button"
                 onClick={onToggleRequests}
-                className="app-contacts-section-button flex w-full items-center justify-between gap-3 rounded-[24px] px-3.5 py-2.5 text-left transition"
+                className="app-contacts-section-button app-contacts-request-row flex w-full items-center justify-between gap-3 text-left transition"
               >
                 <div className="min-w-0">
                   <div className="text-[13px] font-medium leading-5 text-white">New requests</div>
@@ -275,15 +270,13 @@ export function ContactsPage({
                       onReject={() => { void submitContactRequestAction(request, 'reject'); }}
                       actionState={contactRequestActionState(request)}
                     />
-                  )) : (
-                    <div className="app-contacts-section-button rounded-[24px] px-3 py-3 text-[12px] text-[color:var(--utility-muted-text)]">No requests for you to review.</div>
-                  )}
+                  )) : null}
                   {contactRequestActionError ? (
                     <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
                       {contactRequestActionError}
                     </div>
                   ) : null}
-                  <div className="app-surface-muted rounded-2xl px-3 py-3">
+                  <div className="app-contacts-sent-invites-row px-3 py-3">
                     <button
                       type="button"
                       onClick={() => setIsSentInvitesOpen((open) => !open)}
@@ -331,9 +324,7 @@ export function ContactsPage({
                               </div>
                             </div>
                           </div>
-                        )) : (
-                          <div className="rounded-2xl px-3 py-3 text-[12px] text-slate-400">No sent invites waiting for approval.</div>
-                        )}
+                        )) : null}
                       </div>
                     )}
                   </div>
@@ -341,13 +332,10 @@ export function ContactsPage({
               )}
             </div>
 
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <div className="text-[13px] font-medium leading-5 text-white">Contacts</div>
-                <div className="text-[11.5px] leading-4 text-slate-400">Foldable classes with quick letter jump.</div>
-              </div>
-              <Button variant="secondary" className="app-contacts-action-chip h-9 rounded-full px-4 text-[13px] font-medium" onClick={() => setIsAddContactOpen((open) => !open)} disabled={!onAddContactByNodeId}>
-                <Plus className="mr-2 h-4 w-4" />
+            <div className="app-contacts-section-heading mb-4 flex items-center justify-start gap-2">
+              <div className="text-[13px] font-medium leading-5 text-white">Contacts</div>
+              <Button variant="secondary" className="app-contacts-action-chip app-contacts-add-button h-8 rounded-[8px] px-3 text-[12.5px] font-medium" onClick={() => setIsAddContactOpen((open) => !open)} disabled={!onAddContactByNodeId}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Add
               </Button>
             </div>
@@ -427,7 +415,7 @@ export function ContactsPage({
               </form>
             )}
 
-            <div className="app-input-shell mb-4 flex items-center gap-2 rounded-2xl px-3 py-2 text-slate-300">
+            <div className="app-input-shell app-contacts-search mb-4 flex items-center gap-2 px-3 py-2 text-slate-300">
               <Search className="h-4 w-4" />
               <input
                 value={contactSearch}
@@ -439,13 +427,13 @@ export function ContactsPage({
 
             <div className="relative min-h-0 flex-1">
               <ScrollArea className="h-full pr-2">
-                <div className="space-y-3">
+                <div className="space-y-0">
                   {filteredGroupedContacts.map((group) => (
                     <div key={group.id}>
                       <button
                         type="button"
                         onClick={() => onToggleGroup(group.id)}
-                        className="app-contacts-section-button flex w-full items-center justify-between rounded-[24px] px-3.5 py-3 text-left transition"
+                        className="app-contacts-group-row flex w-full items-center justify-between px-2 py-3 text-left transition"
                       >
                         <div className="flex items-center gap-3">
                           {expandedContactGroups[group.id] ? (
@@ -458,7 +446,7 @@ export function ContactsPage({
                         <div className="text-[12px] text-slate-400">{group.items.length}</div>
                       </button>
                       {expandedContactGroups[group.id] && (
-                        <div className="px-3 pb-1 pt-3">
+                        <div className="px-0 pb-1 pt-2">
                           <div className="space-y-1">
                             {group.items.length > 0 ? (
                               group.items.map((contact, index) => {

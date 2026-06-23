@@ -93,20 +93,18 @@ export function SourceMessageQuote({
     <div className="app-source-message-quote w-full">
       <button
         type="button"
-        className="app-source-message-quote-link grid max-w-full grid-cols-[3px_minmax(0,1fr)_auto] items-start gap-2.5 text-left"
+        className="app-source-message-quote-link grid max-w-full grid-cols-[3px_minmax(0,1fr)] items-start gap-2.5 text-left"
         onClick={navigate}
         title="Jump to original request"
       >
         <span className="app-source-message-quote-rail" aria-hidden="true" />
         <span className="min-w-0">
-          <span className="app-source-message-quote-label block truncate text-[11px] font-medium">{senderLabel}{attachmentText}</span>
           <span className={cn('app-source-message-quote-text-frame', canFold && !expanded && 'app-source-message-quote-folded', 'block')}>
             <span className="app-source-message-quote-text block whitespace-pre-wrap text-[12px] leading-5">
-              {sourceQuoteText(sourceMessage)}
+              <span className="app-source-message-quote-label app-source-message-quote-inline-label font-medium">{senderLabel}{attachmentText}: </span>{sourceQuoteText(sourceMessage)}
             </span>
           </span>
         </span>
-        <CornerDownLeft className="app-source-message-quote-icon mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       </button>
       {canFold ? (
         <button
@@ -130,14 +128,18 @@ export function SourceMessageQuote({
 export function RequestReplyLine({
   summary,
   own,
+  inline = false,
   onNavigateToMessage,
 }: {
   summary?: MessageReplySummary;
   own: boolean;
+  inline?: boolean;
   onNavigateToMessage?: (messageId: string) => void;
 }) {
   const text = replyStatusText(summary);
-  if (!summary || !text) return null;
+  const count = Math.max(0, summary?.replyCount ?? 0);
+  const visibleCount = count > 0 ? String(count) : summary?.pending ? '…' : '';
+  if (!summary || !text || !visibleCount) return null;
   const targetMessageId = summary.targetMessageId?.trim();
   const navigate = () => {
     if (!targetMessageId) return;
@@ -154,14 +156,16 @@ export function RequestReplyLine({
       onClick={navigate}
       disabled={!targetMessageId}
       className={cn(
-        'app-message-reply-line flex w-fit items-center gap-1.5 px-1 text-[10px] font-medium leading-4 transition',
+        'app-message-reply-line inline-flex w-fit items-center gap-[3px] px-0 text-[9.5px] font-medium leading-none transition',
+        inline ? 'align-baseline' : 'mt-0.5',
         own ? 'self-end text-slate-500 hover:text-slate-300' : 'self-start text-slate-500 hover:text-slate-300',
         !targetMessageId && 'cursor-default hover:text-slate-500',
       )}
       aria-label={targetMessageId ? `${text}; jump to latest reply` : text}
+      title={targetMessageId ? text : undefined}
     >
-      <span>{text}</span>
-      <CornerDownLeft className="app-message-reply-line-icon h-3 w-3 shrink-0" aria-hidden="true" />
+      <CornerDownLeft className="app-message-reply-line-icon h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+      <span className="app-message-reply-count">{visibleCount}</span>
     </button>
   );
 }

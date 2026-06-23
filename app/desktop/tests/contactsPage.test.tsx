@@ -66,8 +66,8 @@ test('contacts request header does not show an attention zero badge when no requ
   const markup = renderContactsPage([]);
 
   assert.match(markup, />No pending</);
-  assert.match(markup, />No requests for you to review\.</);
-  assert.match(markup, />No sent invites waiting for approval\.</);
+  assert.equal((markup.match(/No requests for you to review\./g) ?? []).length, 1);
+  assert.equal((markup.match(/No sent invites waiting for approval\./g) ?? []).length, 1);
   assert.doesNotMatch(markup, /app-badge-attention[^>]*>0</);
 });
 
@@ -147,17 +147,41 @@ test('cloud request mapping keeps counterpart name for request avatar fallback',
   assert.equal(mapped.profileImageUrl, 'data:image/png;base64,avatar-111');
 });
 
-test('contacts page controls use flat chip styling instead of raised button chrome', () => {
+test('contacts page controls use a Vercel-style aligned rail with reduced shape', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const componentSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
   const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
 
   assert.match(source, /app-contacts-section-button/);
   assert.match(source, /app-contacts-action-chip/);
   assert.match(source, /app-contacts-status-chip/);
+  assert.match(source, /app-contacts-content-rail/);
+  assert.match(source, /app-contacts-request-row/);
+  assert.match(source, /app-contacts-search/);
+  assert.match(source, /app-contacts-group-row/);
+  assert.match(source, /app-contacts-section-heading/);
+  assert.match(source, /app-contacts-add-button h-8 rounded-\[8px\]/);
+  assert.match(source, /app-contacts-sent-invites-row/);
+  assert.doesNotMatch(source, /Classified as my agents/);
+  assert.doesNotMatch(source, /Foldable classes with quick letter jump/);
+  assert.doesNotMatch(source, /mb-4 flex items-center justify-between/);
   assert.doesNotMatch(source, /app-control-chip rounded-xl border-0/);
   assert.doesNotMatch(source, /app-surface-muted flex w-full items-center justify-between gap-3 rounded-2xl/);
+  assert.doesNotMatch(source, /app-contacts-section-button flex w-full items-center justify-between gap-3 rounded-\[24px\]/);
+  assert.doesNotMatch(source, /app-contacts-section-button flex w-full items-center justify-between rounded-\[24px\]/);
+  assert.doesNotMatch(source, /app-contacts-action-chip h-9 rounded-full px-4/);
   assert.match(shellCss, /\.app-contacts-action-chip[\s\S]*box-shadow:\s*none/);
   assert.match(shellCss, /\.app-contacts-section-button[\s\S]*box-shadow:\s*none/);
+  assert.match(shellCss, /\.app-contacts-content-rail[\s\S]*max-width:\s*none/);
+  assert.match(shellCss, /\.app-contacts-request-row[\s\S]*border-radius:\s*8px/);
+  assert.match(shellCss, /\.app-contacts-search[\s\S]*border-radius:\s*8px/);
+  assert.match(shellCss, /\.app-contacts-sent-invites-row[\s\S]*border-radius:\s*8px/);
+  assert.match(shellCss, /\.app-contacts-group-row[\s\S]*border-radius:\s*0/);
+  assert.match(shellCss, /\.app-contacts-group-row[\s\S]*border-width:\s*0 0 1px/);
+  assert.match(componentSource, /app-contact-row/);
+  assert.match(shellCss, /\.app-contact-row\.app-list-item-active[\s\S]*box-shadow:\s*none/);
+  assert.match(themeOverridesCss, /\.bridge-app\.theme-light \.app-contact-row\.app-list-item-active[\s\S]*box-shadow:\s*none/);
 });
 
 test('contact detail modal removes redundant repeated metadata and unused profile action', () => {
