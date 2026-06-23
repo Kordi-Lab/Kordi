@@ -220,56 +220,57 @@
 }
 
 .bridge-app.theme-light .app-agent-shell {
-  border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
-  background: color-mix(in oklab, rgb(226 232 240) 48%, transparent);
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgb(245 245 245);
 }
 
 .bridge-app.theme-light .app-agent-sidebar {
-  background: color-mix(in oklab, rgb(248 250 252) 86%, transparent);
+  background: rgb(250 250 250);
 }
 
 .bridge-app.theme-light .app-agent-detail-pane {
-  background: color-mix(in oklab, rgb(241 245 249) 78%, transparent);
+  background: rgb(250 250 250);
 }
 
 .bridge-app.theme-light .app-agent-content-pane {
-  border-left-color: color-mix(in oklab, rgb(148 163 184) 28%, transparent);
-  background: color-mix(in oklab, rgb(238 242 247) 82%, transparent);
+  border-left-color: rgba(0, 0, 0, 0.10);
+  background: rgb(250 250 250);
 }
 
 .bridge-app.theme-light .app-agent-panel-header,
 .bridge-app.theme-light .app-agent-code-toolbar,
 .bridge-app.theme-light .app-agent-inner-list-row {
-  border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
+  border-color: rgba(0, 0, 0, 0.10);
 }
 
 .bridge-app.theme-light .app-agent-section,
 .bridge-app.theme-light .app-agent-inner-list,
 .bridge-app.theme-light .app-agent-inspector-row,
 .bridge-app.theme-light .app-agent-empty-callout {
-  border-color: color-mix(in oklab, rgb(148 163 184) 24%, transparent);
-  background: color-mix(in oklab, rgb(255 255 255) 62%, rgb(241 245 249));
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgb(255 255 255);
 }
 
 .bridge-app.theme-light .app-agent-code-panel {
-  border-color: color-mix(in oklab, rgb(148 163 184) 30%, transparent);
-  background: rgb(248 250 252);
+  border-color: rgba(0, 0, 0, 0.12);
+  background: rgb(255 255 255);
 }
 
 .bridge-app.theme-light .app-agent-code-toolbar {
-  background: color-mix(in oklab, rgb(226 232 240) 58%, transparent);
+  background: rgb(245 245 245);
 }
 
 .bridge-app.theme-light .app-agent-list-row:hover,
 .bridge-app.theme-light .app-agent-inspector-row:hover,
 .bridge-app.theme-light .app-agent-skill-chip-editable:hover {
-  background: color-mix(in oklab, rgb(226 232 240) 48%, transparent);
+  background: rgb(245 245 245);
 }
 
 .bridge-app.theme-light .app-agent-list-row-active,
 .bridge-app.theme-light .app-agent-inspector-row-active {
-  border-color: color-mix(in oklab, rgb(100 116 139) 28%, transparent);
-  background: color-mix(in oklab, rgb(219 234 254) 42%, rgb(248 250 252));
+  border-color: transparent;
+  background: rgb(238 238 238);
+  box-shadow: none;
 }
 
 .bridge-app.theme-light .app-agent-panel-title,
@@ -293,15 +294,15 @@
 
 .bridge-app.theme-light .app-agent-chip,
 .bridge-app.theme-light .app-agent-skill-chip {
-  border-color: color-mix(in oklab, rgb(148 163 184) 28%, transparent);
-  background: color-mix(in oklab, rgb(255 255 255) 70%, rgb(241 245 249));
-  color: rgb(71 85 105) !important;
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgb(255 255 255);
+  color: rgb(82 82 82) !important;
 }
 
 .bridge-app.theme-light .app-agent-skill-chip-selected {
-  border-color: color-mix(in oklab, rgb(37 99 235) 26%, transparent);
-  background: color-mix(in oklab, rgb(219 234 254) 64%, rgb(248 250 252));
-  color: rgb(30 64 175) !important;
+  border-color: rgba(0, 0, 0, 0.16);
+  background: rgb(238 238 238);
+  color: rgb(17 17 17) !important;
 }
 
 .bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section {
@@ -615,12 +616,31 @@
 }
 
 /* Provider glyph avatars carry per-provider dark gradient fills that are
- * tuned for dark mode. In light mode we replace the neutral gray disc with
- * a quiet blue-tinted surface so the auth panel aligns with the chat shell. */
+ * tuned for dark mode. In light mode, keep them neutral so the provider gate
+ * reads as one clean Vercel-style product surface instead of a color chart. */
 .bridge-app.theme-light .app-auth-provider-glyph {
-  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(219, 234, 254, 0.72) 100%) !important;
-  border-color: rgba(37, 99, 235, 0.14) !important;
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.04) !important;
+  background: rgb(245 245 245) !important;
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  color: rgb(17 17 17) !important;
+  box-shadow: none !important;
+}
+
+.bridge-app.theme-light .app-auth-gate-panel {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  background: rgb(255 255 255) !important;
+  box-shadow: var(--app-depth-2) !important;
+}
+
+.bridge-app.theme-light .app-auth-provider-gate-card {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bridge-app.theme-light .app-auth-provider-gate-card:hover,
+.bridge-app.theme-light .app-auth-provider-gate-card:focus-visible {
+  background: rgb(245 245 245) !important;
+  box-shadow: none !important;
 }
 
 .bridge-app.theme-light .bg-slate-800 {

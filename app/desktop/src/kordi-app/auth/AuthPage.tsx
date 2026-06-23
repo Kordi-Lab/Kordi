@@ -202,7 +202,7 @@ export function AuthPage({
     >
       {showHero ? (
         showDetailPage ? (
-          <div className="app-modal-panel flex h-full min-h-0 w-full justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(37,99,235,0.07),rgba(15,23,42,0.16)_48%,rgba(15,23,42,0.22))] px-5 py-5 shadow-[var(--app-shadow-float)]">
+          <div className="app-modal-panel app-auth-gate-panel flex h-full min-h-0 w-full justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(37,99,235,0.07),rgba(15,23,42,0.16)_48%,rgba(15,23,42,0.22))] px-5 py-5 shadow-[var(--app-shadow-float)]">
             <div className="flex min-h-0 w-full max-w-[780px] flex-col">
               {detailHeader}
               <ScrollArea className="min-h-0 flex-1 pr-2">
@@ -211,7 +211,7 @@ export function AuthPage({
             </div>
           </div>
         ) : (
-          <div className="app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(37,99,235,0.08),rgba(15,23,42,0.18)_48%,rgba(15,23,42,0.24))] px-8 py-8 shadow-[var(--app-shadow-float)]">
+          <div className="app-modal-panel app-auth-gate-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(37,99,235,0.08),rgba(15,23,42,0.18)_48%,rgba(15,23,42,0.24))] px-8 py-8 shadow-[var(--app-shadow-float)]">
             <div className="flex w-full max-w-[820px] flex-col gap-7">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="max-w-[34rem]">
