@@ -4,8 +4,8 @@ import { test } from 'node:test';
 
 const source = readFileSync(new URL('../src/app/useKordiLocalUiState.ts', import.meta.url), 'utf8');
 
-test('local UI state initializes theme synchronously from persisted preference', () => {
-  assert.match(source, /useState<ThemeMode>\(\(\) => readStoredThemeMode\(\)\)/);
+test('local UI state initializes theme synchronously from persisted preference unless URL preview overrides it', () => {
+  assert.match(source, /useState<ThemeMode>\(\(\) => previewState\?\.themeMode \?\? readStoredThemeMode\(\)\)/);
   assert.doesNotMatch(source, /useState<ThemeMode>\('dark'\)/);
 });
 
