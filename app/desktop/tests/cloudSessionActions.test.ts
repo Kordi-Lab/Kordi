@@ -103,6 +103,35 @@ test('canonical quoted human messages map source metadata for transcript renderi
 });
 
 
+test('hosted cloud agent responses render the selected agent name without owner possessives', () => {
+  const identityById = new Map([
+    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['human:333', { id: 'human:333', kind: 'human' as const, displayName: '333', ownerIdentityId: null, source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_333', humanId: 'acct_333', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['agent:cloud:333', { id: 'agent:cloud:333', kind: 'agent' as const, displayName: 'Kordi Project Driver', ownerIdentityId: 'human:333', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_333', humanId: null, agentId: 'cloud_agent_project', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+  ]);
+  const mapped = mapCanonicalMessage({
+    id: 'msg:cloud-agent-final',
+    sessionId: 'session:direct-person:acct_me:acct_333',
+    senderIdentityId: 'agent:cloud:333',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'Here is the plan.',
+    content: { sender: 'Kordi Project Driver', deliveryState: 'complete', requestId: 'msg:request', replyToMessageId: 'msg:request' },
+    parentMessageId: 'msg:request',
+    delegatedExchangeId: null,
+    status: 'complete',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    contentHash: null,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: 'cloud-group-agent:final',
+  }, identityById, 'human:me');
+
+  assert.equal(mapped?.sender, 'Kordi Project Driver');
+  assert.doesNotMatch(mapped?.sender ?? '', /333['’]s/);
+});
+
 test('cloud fallback runtime failures render as normal failed agent turns with concise copy', () => {
   const identityById = new Map([
     ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
