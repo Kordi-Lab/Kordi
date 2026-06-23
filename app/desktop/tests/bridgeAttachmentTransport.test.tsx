@@ -189,8 +189,8 @@ test('Cloud group send paths label optimistic canonical rows with Cloud UI trans
   assert.match(cloudMentionBranch, /prepareCanonicalUserMessage\([\s\S]*?'cloud-group-ui'/);
   assert.doesNotMatch(cloudMentionBranch, /prepareCanonicalUserMessage\([\s\S]*?'desktop-bridge-ui'/);
 
-  assert.match(cloudMentionBranch, /cloudGroupTargetIds\.length === 0/);
-  assert.match(cloudMentionBranch, /targetAccountIds: cloudGroupTargetIds/);
+  assert.match(cloudMentionBranch, /cloudAgentMentionTargetIds\.length === 0/);
+  assert.match(cloudMentionBranch, /targetAccountIds: cloudAgentMentionTargetIds/);
 });
 
 
