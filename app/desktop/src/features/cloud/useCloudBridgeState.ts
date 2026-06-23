@@ -1104,6 +1104,34 @@ export function mergeCloudMessagesByPeerSnapshot(
   return merged;
 }
 
+export function markCloudMessagesReadLocally(
+  current: Record<string, CloudMessage[]>,
+  accountId: string,
+  targets: { peerIds?: string[]; sessionIds?: string[] },
+  readAt: string = new Date().toISOString(),
+): Record<string, CloudMessage[]> {
+  const localAccountId = cleanText(accountId);
+  const peerIds = new Set((targets.peerIds ?? []).map(cleanText).filter(Boolean));
+  const sessionIds = new Set((targets.sessionIds ?? []).map(cleanText).filter(Boolean));
+  if (!localAccountId || (peerIds.size === 0 && sessionIds.size === 0)) return current;
+
+  let changed = false;
+  const next: Record<string, CloudMessage[]> = {};
+  for (const [peerId, messages] of Object.entries(current)) {
+    next[peerId] = messages.map((message) => {
+      if (message.toAccountId !== localAccountId || message.direction !== 'incoming' || message.readAt) return message;
+      const messageSessionId = cleanText(message.sessionId)
+        || cleanText(parseCloudGroupControl(message.body)?.groupId);
+      const peerMatches = peerIds.has(peerId) || peerIds.has(message.fromAccountId);
+      const sessionMatches = Boolean(messageSessionId && sessionIds.has(messageSessionId));
+      if (!peerMatches && !sessionMatches) return message;
+      changed = true;
+      return { ...message, readAt };
+    });
+  }
+  return changed ? next : current;
+}
+
 export const CLOUD_MESSAGE_DISCOVERY_MAX_PASSES = 50;
 export const CLOUD_MESSAGES_LOCAL_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
 
@@ -3794,6 +3822,7 @@ export function useCloudBridgeState({
         })
         .then((result) => {
           if (result === null) return;
+          setMessagesByPeer((current) => markCloudMessagesReadLocally(current, account.accountId, cloudGroupReadTargets));
           void refreshCloudBridgeMessages();
         })
         .catch(() => {});
@@ -3823,6 +3852,7 @@ export function useCloudBridgeState({
       })
       .then((result) => {
         if (result === null) return;
+        setMessagesByPeer((current) => markCloudMessagesReadLocally(current, account.accountId, { peerIds: [peerId] }));
         void refreshCloudBridgeMessages();
       })
       .catch(() => {
