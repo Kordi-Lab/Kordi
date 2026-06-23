@@ -214,10 +214,14 @@ export type SharedCloudAgentMentionCandidate = {
 export function sharedCloudAgentMentionCandidatesForConversation(
   agents: SharedCloudAgentSummary[],
   conversation: MentionScopeConversation | null | undefined,
+  localAccountId?: string | null,
 ): SharedCloudAgentMentionCandidate[] {
   if (!conversationHasParticipantMentionScope(conversation)) return [];
+  const localOwnerAccountId = normalizedOwnerKey(localAccountId);
+  const localViewerIsParticipant = conversationImpliesLocalViewerParticipant(conversation);
   const candidates = agents
-    .filter((agent) => conversationContainsAccountId(conversation, agent.ownerAccountId))
+    .filter((agent) => conversationContainsAccountId(conversation, agent.ownerAccountId)
+      || (localViewerIsParticipant && normalizedOwnerKey(agent.ownerAccountId) === localOwnerAccountId))
     .map((agent) => {
       const displayLabel = agent.name;
       const handle = mentionHandleForLabel(displayLabel, agent.agentId);
@@ -634,6 +638,7 @@ export function mentionTextStartsWithLabel(text: string, label: string) {
 export type ResolveMentionedBridgeTargetOptions = {
   targetKind?: BridgeMentionCandidate['targetKind'];
   sharedCloudAgents?: SharedCloudAgentSummary[];
+  localAccountId?: string | null;
 };
 
 export function resolveMentionedBridgeTarget(
@@ -648,7 +653,7 @@ export function resolveMentionedBridgeTarget(
     : scopedCandidates;
   const sharedCandidates = options.targetKind && options.targetKind !== 'bridge-agent'
     ? []
-    : sharedCloudAgentMentionCandidatesForConversation(options.sharedCloudAgents ?? [], conversation);
+    : sharedCloudAgentMentionCandidatesForConversation(options.sharedCloudAgents ?? [], conversation, options.localAccountId);
   if (candidates.length === 0 && sharedCandidates.length === 0) return null;
   const mentionMatches = Array.from(text.matchAll(/(^|\s)@/g));
   if (mentionMatches.length === 0) return null;
@@ -739,9 +744,14 @@ export async function resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefre
   refreshSharedCloudAgents?: () => Promise<SharedCloudAgentSummary[]>,
 ) {
   let mentionableCloudAgentsForSend = sharedCloudAgents;
+  const activeHost = bridgeState?.hosts.find((host) => host.id === bridgeState.activeHostId)
+    ?? bridgeState?.hosts[0]
+    ?? null;
+  const localAccountId = activeHost?.humanId ?? activeHost?.nodeId ?? null;
   let mentionedTarget = resolveMentionedBridgeTarget(text, bridgeState, conversation, {
     targetKind: 'bridge-agent',
     sharedCloudAgents: mentionableCloudAgentsForSend,
+    localAccountId,
   });
   if (!mentionedTarget && text.includes('@') && refreshSharedCloudAgents) {
     const refreshedCloudAgents = await refreshSharedCloudAgents().catch(() => []);
@@ -752,6 +762,7 @@ export async function resolveMentionedBridgeAgentTargetWithSharedCloudAgentRefre
       mentionedTarget = resolveMentionedBridgeTarget(text, bridgeState, conversation, {
         targetKind: 'bridge-agent',
         sharedCloudAgents: mentionableCloudAgentsForSend,
+        localAccountId,
       });
     }
   }

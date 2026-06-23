@@ -66,7 +66,7 @@ test('AgentCreateDialog shows private-only access menu and future sharing option
   assert.match(markup, /2 skills/);
   assert.match(markup, /read/);
   assert.match(markup, /brainstorming/);
-  assert.match(markup, /Private — only me/);
+  assert.match(markup, /Only me/);
   assert.match(markup, /Share with contacts — coming later/);
   assert.match(markup, /Workspace\/shared Cloud — coming later/);
   assert.match(markup, /MVP agents are creator-owned\/private Cloud sync only/);
@@ -119,8 +119,8 @@ function renderAgentDetail(agent: Agent, extraProps: Partial<Parameters<typeof A
 test('AgentDetailPane shows private access menu for cloud-created agents', () => {
   const markup = renderAgentDetail(cloudAgent);
 
-  assert.match(markup, /Private — only me/);
-  assert.match(markup, /Synced privately to your Cloud account/);
+  assert.match(markup, /Only me/);
+  assert.match(markup, /Only you can use this agent/);
 });
 
 test('AgentDetailPane enables Message for private cloud-created agents', () => {

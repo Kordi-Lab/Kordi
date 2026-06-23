@@ -149,7 +149,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
             <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
               <div className="app-agent-row-title font-medium">Access</div>
               <select className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]" value="private" onChange={() => undefined} aria-label="Agent access">
-                <option value="private">Private — only me</option>
+                <option value="private">Only me</option>
                 <option value="contacts" disabled>Share with contacts — coming later</option>
                 <option value="workspace" disabled>Workspace/shared Cloud — coming later</option>
               </select>

@@ -40,7 +40,13 @@ import {
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
-import { cloudDirectMessageAction, cloudDirectMessageDisplayText } from './cloudDirectMessages';
+import {
+  cloudDirectMessageAction,
+  cloudDirectMessageDisplayText,
+  cloudDirectMessageTargetCloudAgentId,
+  cloudDirectMessageTargetCloudAgentName,
+  cloudDirectMessageTargetCloudAgentOwnerAccountId,
+} from './cloudDirectMessages';
 
 const CLOUD_SERVER_LABEL = 'kordi.cloud';
 export const CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
@@ -219,16 +225,22 @@ export function cloudMessageToBridgeMessage(
   account: CloudAccount,
   message: CloudMessage,
   contact?: Contact,
-  options: { cancelledRequestIds?: Set<string>; localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot> } = {},
+  options: {
+    cancelledRequestIds?: Set<string>;
+    localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
+    targetAgentNameByRequestId?: ReadonlyMap<string, string>;
+  } = {},
 ): DesktopBridgeConversationMessage {
   const timestampMs = Date.parse(message.createdAt) || Date.now();
   const agentResponse = parseCloudAgentResponse(message.body);
   const directMessageAction = agentResponse ? null : cloudDirectMessageAction(message.body);
   const displayText = agentResponse?.text ?? cloudDirectMessageDisplayText(message.body);
   const isOwn = message.fromAccountId === account.accountId;
+  const displayBody = cloudDirectMessageDisplayText(message.body);
   const agentRequestId = !agentResponse && (
-    cloudMessageMentionsLocalAgent(message.body, account, { allowFirstPerson: isOwn })
-    || cloudMessageMentionsContactAgent(message, contact)
+    Boolean(cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body))
+    || cloudMessageMentionsLocalAgent(displayBody, account, { allowFirstPerson: isOwn })
+    || cloudMessageMentionsContactAgent({ ...message, body: displayBody }, contact)
   )
     ? message.messageId
     : null;
@@ -239,7 +251,7 @@ export function cloudMessageToBridgeMessage(
       : isOwn
         ? BRIDGE_MESSAGE_DIRECTION_OUTBOUND
         : BRIDGE_MESSAGE_DIRECTION_INBOUND,
-    sender: agentResponse ? null : isOwn ? 'Me' : null,
+    sender: agentResponse ? options.targetAgentNameByRequestId?.get(agentResponse.requestId) ?? null : isOwn ? 'Me' : null,
     text: displayText,
     timeLabel: formatCloudBridgeTime(timestampMs),
     timestampMs,
@@ -500,16 +512,33 @@ export function buildCloudBridgeConversation({
   }
   const cancelledRequestIds = new Set(cancelMessageByRequestId.keys());
   const requestTargetAccountIds = new Map<string, string>();
+  const requestTargetAgentNames = new Map<string, string>();
+  const explicitResponseAgentNames = new Map<string, string>();
   for (const message of messages) {
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
-    if (isSelfPeer && cloudMessageIsSelfAgentRequest(message, account)) {
+    const displayBody = cloudDirectMessageDisplayText(message.body);
+    const directTargetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
+    const directTargetOwnerAccountId = directTargetCloudAgentId
+      ? cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body)
+      : null;
+    if (directTargetOwnerAccountId) {
+      requestTargetAccountIds.set(message.messageId, directTargetOwnerAccountId);
+      const directTargetAgentName = cloudDirectMessageTargetCloudAgentName(message.body)
+        || (directTargetOwnerAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact));
+      requestTargetAgentNames.set(message.messageId, directTargetAgentName);
+      explicitResponseAgentNames.set(message.messageId, directTargetAgentName);
+    } else if (isSelfPeer && cloudMessageIsSelfAgentRequest({ ...message, body: displayBody }, account)) {
       requestTargetAccountIds.set(message.messageId, account.accountId);
-    } else if (cloudMessageMentionsFirstPersonAgent(message.body)) {
+      requestTargetAgentNames.set(message.messageId, 'My Kordi');
+    } else if (cloudMessageMentionsFirstPersonAgent(displayBody)) {
       requestTargetAccountIds.set(message.messageId, message.fromAccountId);
-    } else if (cloudMessageMentionsContactAgent(message, contact)) {
+      requestTargetAgentNames.set(message.messageId, message.fromAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact));
+    } else if (cloudMessageMentionsContactAgent({ ...message, body: displayBody }, contact)) {
       requestTargetAccountIds.set(message.messageId, peerAccountId);
-    } else if (cloudMessageMentionsLocalAgent(message.body, account, { allowFirstPerson: false })) {
+      requestTargetAgentNames.set(message.messageId, cloudAgentDisplayName(contact));
+    } else if (cloudMessageMentionsLocalAgent(displayBody, account, { allowFirstPerson: false })) {
       requestTargetAccountIds.set(message.messageId, account.accountId);
+      requestTargetAgentNames.set(message.messageId, 'My Kordi');
     }
   }
   const visibleCloudMessages = messages.filter((message) => {
@@ -543,7 +572,7 @@ export function buildCloudBridgeConversation({
   });
   const pendingAgentRequestIds = new Set(pendingAgentRequests.map((message) => message.messageId));
   const bridgeMessages = visibleCloudMessages.flatMap((message) => {
-    const mapped = cloudMessageToBridgeMessage(account, message, contact, { cancelledRequestIds, localAgentTurnsByRequestId });
+    const mapped = cloudMessageToBridgeMessage(account, message, contact, { cancelledRequestIds, localAgentTurnsByRequestId, targetAgentNameByRequestId: explicitResponseAgentNames });
     const targetAccountId = requestTargetAccountIds.get(message.messageId);
     if (!targetAccountId) return [mapped];
     const cancel = cancelMessageByRequestId.get(message.messageId);
@@ -559,7 +588,8 @@ export function buildCloudBridgeConversation({
       const targetOwnerName = targetAccountId === account.accountId
         ? (account.displayName || account.primaryEmail || 'Me')
         : cloudPeerDisplayName(contact);
-      const targetAgentName = targetAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact);
+      const targetAgentName = requestTargetAgentNames.get(message.messageId)
+        || (targetAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact));
       return [mapped, cloudAgentOfflineBridgeMessage({
         account,
         request: message,
@@ -594,9 +624,12 @@ export function buildCloudBridgeConversation({
   const pendingAgentOwnerName = pendingAgentTargetsLocalAgent
     ? (account.displayName || account.primaryEmail || 'Me')
     : cloudPeerDisplayName(contact);
-  const pendingAgentDisplayName = pendingAgentTargetsLocalAgent
-    ? 'My Kordi'
-    : cloudAgentDisplayName(contact);
+  const pendingAgentDisplayName = pendingAgentRequest
+    ? requestTargetAgentNames.get(pendingAgentRequest.messageId)
+      || (pendingAgentTargetsLocalAgent ? 'My Kordi' : cloudAgentDisplayName(contact))
+    : pendingAgentTargetsLocalAgent
+      ? 'My Kordi'
+      : cloudAgentDisplayName(contact);
   const pendingAgentId = pendingAgentTargetsLocalAgent
     ? 'cloud-local-agent'
     : `cloud-agent:${peerAccountId}`;
@@ -621,8 +654,8 @@ export function buildCloudBridgeConversation({
     targetDisplayName: pendingAgentDisplayName,
     targetOwnerName: pendingAgentOwnerName,
     targetRuntime: CLOUD_AGENT_RUNTIME,
-    requestText: promptTextForCloudAgentMention(pendingAgentRequest.body),
-    triggerText: pendingAgentRequest.body,
+    requestText: promptTextForCloudAgentMention(cloudDirectMessageDisplayText(pendingAgentRequest.body)),
+    triggerText: cloudDirectMessageDisplayText(pendingAgentRequest.body),
     contextText: null,
     contextPolicy: 'session-message',
     projectId: null,

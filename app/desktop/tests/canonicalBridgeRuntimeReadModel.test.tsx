@@ -1324,6 +1324,46 @@ test('canonical read model suppresses legacy cloud-group processing rows after a
   assert.equal(conversation?.messages.some((message) => message.id.startsWith('msg:cloud-agent-processing:')), false);
 });
 
+test('canonical read model suppresses cloud-group requesting rows after a terminal response', () => {
+  const sessionId = 'session:group:cloud-requesting-complete';
+  const requestId = 'msg:ui:ed83fc62-9564-4591-bbb7-eed78caf393c';
+  const responseText = 'Yes — I can see the chat history in this current conversation.';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: { id: 'profile:me', displayName: 'Me', humanIdentityId: 'human:me', activeAgentIdentityId: 'agent:me', storageRoot: '/tmp', createdAtMs: 1, updatedAtMs: 1 },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:owner', kind: 'human', displayName: '111', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_owner', humanId: 'acct_owner', avatarKey: 'owner', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:cloud:acct_owner', kind: 'agent', displayName: 'Kordi Project Driver', source: 'bridge', sourceHostId: 'cloud', ownerIdentityId: 'human:owner', avatarKey: 'agent-cloud', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{ id: sessionId, kind: 'group', title: 'Cloud group', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: null, relationshipIdentityId: null, metadata: { kind: 'chat-group' }, createdAtMs: 1, updatedAtMs: 2, lastMessageAtMs: 2 }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:owner', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:cloud:acct_owner', role: 'external-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: requestId, sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@KordiProjectDriver can you see the chat history', content: { sender: 'Me' }, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'cloud-group-ui', sourceEventId: 'cloud-request' },
+      { id: `msg:cloud-agent-offline:${requestId}:acct_owner`, sessionId, senderIdentityId: 'agent:cloud:acct_owner', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Requesting…', content: { sender: 'Kordi Project Driver', deliveryState: 'processing', requestId, replyToMessageId: requestId }, parentMessageId: requestId, status: 'processing', sequenceNum: 2, createdAtMs: 1_001, updatedAtMs: 1_001, contentHash: null, sourceTransport: 'cloud-group-agent-offline', sourceEventId: `cloud-group-agent-offline:${requestId}:acct_owner` },
+      { id: `msg:cloud-agent-processing:${requestId}:acct_owner`, sessionId, senderIdentityId: 'agent:cloud:acct_owner', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: responseText, content: { sender: 'Kordi Project Driver', deliveryState: 'complete', requestId, replyToMessageId: requestId }, parentMessageId: requestId, status: 'complete', sequenceNum: 3, createdAtMs: 8_000, updatedAtMs: 8_000, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-response' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const readModel = createCanonicalSessionReadModel(canonicalState as never);
+  const staleExistingMessages = [
+    { id: requestId, role: 'user', text: '@KordiProjectDriver can you see the chat history' },
+    { id: `msg:cloud-agent-offline:${requestId}:acct_owner`, role: 'external-agent', sender: 'Kordi Project Driver', text: '', replyToMessageId: requestId, turn: { id: 'turn:requesting', status: 'processing', message: 'Processing…', assistantText: '', thinkingText: '', tools: [], completed: false, replyToMessageId: requestId } },
+    { id: `msg:cloud-agent-processing:${requestId}:acct_owner`, role: 'owned-agent', sender: 'Kordi Project Driver', text: responseText, replyToMessageId: requestId, turn: { id: 'turn:terminal', status: 'complete', message: responseText, assistantText: responseText, thinkingText: '', tools: [], completed: true, replyToMessageId: requestId } },
+  ];
+  const conversation = readModel?.applyConversation({ id: sessionId, canonicalSessionId: sessionId, messages: staleExistingMessages } as never, (messages, fallback) => messages.at(-1)?.turn?.message ?? fallback ?? '');
+
+  assert.deepEqual(conversation?.messages.map((message) => message.id), [requestId, `msg:cloud-agent-processing:${requestId}:acct_owner`]);
+  assert.equal(conversation?.messages.some((message) => message.id.startsWith('msg:cloud-agent-offline:')), false);
+});
+
 test('canonical read model renders cloud group requesting placeholders as active processing turns', () => {
   const sessionId = 'session:group:cloud-requesting';
   const requestId = 'msg:request';

@@ -111,6 +111,12 @@ import {
   type CloudGroupControlEnvelope,
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
+import {
+  cloudDirectMessageDisplayText,
+  cloudDirectMessageTargetCloudAgentId,
+  cloudDirectMessageTargetCloudAgentOwnerAccountId,
+  cloudDirectMessageTargetsOwnedHostedCloudAgent,
+} from './cloudDirectMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
 import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
 import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgents';
@@ -810,7 +816,8 @@ export function shouldRunLocalCloudAgentForCloudMessage({
   if (peerId === account.accountId) return false;
   if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) return false;
   if (parseCloudGroupControl(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
-  if (!cloudMessageMentionsLocalAgent(message.body, account, {
+  const targetsHostedCloudAgent = cloudDirectMessageTargetsOwnedHostedCloudAgent(message.body, account.accountId);
+  if (!targetsHostedCloudAgent && !cloudMessageMentionsLocalAgent(message.body, account, {
     allowFirstPerson: message.fromAccountId === account.accountId,
   })) return false;
   if (!isRecentCloudAgentMention(message.createdAt)) return false;
@@ -976,7 +983,9 @@ export function cloudFallbackRunClaimsForMessages({
         continue;
       }
       if (groupEnvelope || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
-      if (!cloudMessageMentionsContactAgent(message, contact)) continue;
+      const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
+      const targetsHostedCloudAgent = targetCloudAgentId && cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body) === ownerAccountId;
+      if (!targetsHostedCloudAgent && !cloudMessageMentionsContactAgent(message, contact)) continue;
       const alreadyTerminal = peerMessages.some((candidate) => (
         parseCloudAgentCancel(candidate.body)?.requestId === message.messageId
         || parseCloudAgentResponse(candidate.body)?.requestId === message.messageId
@@ -987,8 +996,9 @@ export function cloudFallbackRunClaimsForMessages({
         sessionId: message.sessionId?.trim() || cloudDirectPersonSessionId(account.accountId, ownerAccountId),
         ownerAccountId,
         requesterAccountId: account.accountId,
-        prompt: cloudFallbackRunPromptForMessage({ account, contact, message, ownerAccountId, peerMessages }),
+        prompt: cloudFallbackRunPromptForMessage({ account, contact, message: { ...message, body: cloudDirectMessageDisplayText(message.body) }, ownerAccountId, peerMessages: peerMessages.map((peerMessage) => ({ ...peerMessage, body: cloudDirectMessageDisplayText(peerMessage.body) })) }),
         idempotencyKey: `cloud-agent-fallback:${message.messageId}:${ownerAccountId}`,
+        ...(targetCloudAgentId ? { targetCloudAgentId } : {}),
       });
     }
   }
@@ -2342,7 +2352,7 @@ export function useCloudBridgeState({
     const activeKeys = new Set<string>();
 
     for (const candidate of candidates) {
-      const noticeId = `msg:cloud-agent-offline:${candidate.requestMessage.id}:${candidate.targetAccountId}`;
+      const noticeId = `msg:cloud-agent-processing:${candidate.requestMessage.id}:${candidate.targetAccountId}`;
       const key = `${candidate.requestMessage.id}\u001f${candidate.targetAccountId}`;
       const existingNotice = canonicalSessionState.messages.find((message) => message.id === noticeId);
       const hasRequestingNotice = existingNotice?.sourceTransport === 'cloud-group-agent-offline' && existingNotice.status !== 'failed';
@@ -2426,7 +2436,7 @@ export function useCloudBridgeState({
         })
         .catch((error) => {
           // eslint-disable-next-line no-console
-          console.warn('[cloud-group-agent-requesting] failed to persist requesting notice', error);
+          console.warn('[cloud-group-agent-requesting] failed to persist processing notice', error);
         });
       continue;
     }
@@ -2810,7 +2820,10 @@ export function useCloudBridgeState({
 
     if (!messageAlreadyExists) {
       const stableAgentNoticeId = senderIsAgent && messageReplyToId
-        ? `msg:cloud-agent-offline:${messageReplyToId}:${envelope.message.senderAccountId}`
+        ? `msg:cloud-agent-processing:${messageReplyToId}:${envelope.message.senderAccountId}`
+        : null;
+      const terminalStableAgentNoticeId = stableAgentNoticeId && agentDeliveryState !== 'processing'
+        ? stableAgentNoticeId
         : null;
       // If the slot already holds a CANCELLED or COMPLETED row, do not let
       // a late-arriving processing envelope demote it back to "Processing…".
@@ -2826,8 +2839,17 @@ export function useCloudBridgeState({
             .map((state) => state?.messages.find((message) => message.id === stableAgentNoticeId) ?? null)
             .find((message): message is CanonicalSessionMessage => Boolean(message)) ?? null
         : null;
+      const existingStableRowContent = existingStableRow ? objectContent(existingStableRow.content) : null;
+      const existingStableRowDeliveryState = cleanText(
+        typeof existingStableRowContent?.deliveryState === 'string'
+          ? existingStableRowContent.deliveryState
+          : null,
+      ).toLowerCase();
+      const existingStableRowStatus = (existingStableRow?.status || '').trim().toLowerCase();
       const existingStableRowTerminalLocked = existingStableRow
-        ? ['cancelled', 'complete'].includes((existingStableRow.status || '').trim().toLowerCase())
+        ? ['cancelled', 'complete'].includes(existingStableRowStatus)
+          || ['cancelled', 'complete'].includes(existingStableRowDeliveryState)
+          || (existingStableRow.sourceTransport === 'cloud-group-agent' && existingStableRowDeliveryState === 'failed')
         : false;
       if (existingStableRowTerminalLocked && agentDeliveryState === 'processing') {
         setCanonicalSessionState(nextState);
@@ -2843,7 +2865,7 @@ export function useCloudBridgeState({
             ? 'cancelled'
             : envelope.message.senderAccountId === account.accountId ? 'sent' : 'received';
       const messageRequest = {
-        id: replacementAgentSlot?.id ?? envelope.message.id,
+        id: replacementAgentSlot?.id ?? terminalStableAgentNoticeId ?? envelope.message.id,
         sessionId: envelope.groupId,
         senderIdentityId,
         senderRole: senderIsAgent ? 'external-agent' : (envelope.message.senderAccountId === account.accountId ? 'user' : 'person'),
@@ -2985,7 +3007,7 @@ export function useCloudBridgeState({
         });
         const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;
         const processingCreatedAtMs = Date.now();
-        const processingState = await appendCanonicalMessage({
+        const processingState = await upsertCanonicalMessage({
           id: processingMessageId,
           sessionId: envelope.groupId,
           senderIdentityId: agentIdentityId,
@@ -3605,10 +3627,13 @@ export function useCloudBridgeState({
           ) === peerId);
           const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
           const activitySessionId = message.sessionId ?? cloudSessionIdForBridgeSend(account.accountId, peerId, `cloud:${peerId}`);
-          const prompt = promptTextForCloudAgentMention(message.body);
+          const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
+          const directDisplayMessage = { ...message, body: cloudDirectMessageDisplayText(message.body) };
+          const directDisplayMessages = messages.map((peerMessage) => ({ ...peerMessage, body: cloudDirectMessageDisplayText(peerMessage.body) }));
+          const prompt = promptTextForCloudAgentMention(directDisplayMessage.body);
           const contextMessages = cloudAgentNativeContextMessagesFromDirectCloudSession({
-            messages,
-            requestMessage: message,
+            messages: directDisplayMessages,
+            requestMessage: directDisplayMessage,
             localAccountId: account.accountId,
             localHumanName: account.displayName || account.primaryEmail || 'Me',
             peerHumanName,
@@ -3633,7 +3658,13 @@ export function useCloudBridgeState({
             runtimeSessionId,
             prompt,
             agentAttachmentPaths,
-            cloudAgentRuntimeRouteForSession(cloudAgentRuntimeRoutesBySessionId, runtimeSessionId, defaultCloudAgentRuntimeRoute),
+            cloudAgentRuntimeRouteForTargetCloudAgent({
+              targetCloudAgentId,
+              cloudAgentDefinitionsById,
+              routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
+              runtimeSessionId,
+              fallbackRoute: defaultCloudAgentRuntimeRoute,
+            }),
             contextMessages,
             visibleTaskRecords,
           );

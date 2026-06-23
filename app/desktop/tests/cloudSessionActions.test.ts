@@ -246,6 +246,30 @@ test('cloud group requesting placeholder times out to unavailable notice instead
   assert.match(source, /sourceTransport:\s*'cloud-group-agent-offline'/);
 });
 
+test('cloud group hosted-agent sends render processing in the final response slot', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /msg:cloud-agent-processing:\$\{candidate\.requestMessage\.id\}:\$\{candidate\.targetAccountId\}/);
+  assert.match(source, /setCanonicalSessionState\(\(current\) => appendCloudGroupRequestingPlaceholder\(current, candidate, noticeId\)\)/);
+});
+
+test('cloud group owner processing upserts the shared slot so a local placeholder cannot block broadcast', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const processingMessageIdIndex = source.indexOf('const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;');
+  assert.ok(processingMessageIdIndex >= 0, 'expected owner cloud group processing slot');
+  const processingBlock = source.slice(processingMessageIdIndex, processingMessageIdIndex + 3200);
+  assert.match(processingBlock, /await upsertCanonicalMessage\(\{/);
+  assert.doesNotMatch(processingBlock, /await appendCanonicalMessage\(\{/);
+  assert.match(processingBlock, /sourceTransport:\s*'cloud-group-agent'/);
+  assert.match(processingBlock, /targetAccountIds\.map\(\(targetAccountId\) => client\.sendMessage/);
+});
+
+test('cloud group terminal hosted-agent responses reserve the stable slot even when processing is not visible yet', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /terminalStableAgentNoticeId/);
+  assert.match(source, /replacementAgentSlot\?\.id \?\? terminalStableAgentNoticeId \?\? envelope\.message\.id/);
+  assert.match(source, /existingStableRowTerminalLocked[\s\S]*existingStableRowDeliveryState/);
+});
+
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
   assert.match(source, /removeCloudGroupPendingRowsForTerminalResponse/);
