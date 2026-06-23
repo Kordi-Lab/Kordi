@@ -112,6 +112,16 @@
   background: var(--app-modal-bg);
 }
 
+.app-avatar-upload-button {
+  border-color: color-mix(in oklab, var(--app-divider) 68%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 86%, var(--utility-foreground) 10%);
+  color: var(--utility-foreground);
+  box-shadow: 0 6px 14px color-mix(in oklab, #000 34%, transparent);
+}
+
+.app-avatar-upload-button:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 90%, var(--utility-foreground) 12%);
+}
 
 .app-code-panel {
   background: var(--app-code-bg);

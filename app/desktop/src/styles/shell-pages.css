@@ -336,6 +336,10 @@
   }
 }
 
+.app-agent-create-dialog {
+  border-color: color-mix(in oklab, var(--app-divider) 56%, transparent);
+}
+
 .app-agent-panel-header {
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 72%, transparent);
 }

@@ -237,6 +237,20 @@
   background: rgba(248, 251, 255, 0.52);
 }
 
+.bridge-app.theme-light .app-avatar-upload-button {
+  border-color: color-mix(in oklab, rgb(148 163 184) 32%, transparent);
+  background: color-mix(in oklab, rgb(255 255 255) 72%, rgb(226 232 240));
+  color: rgb(51 65 85);
+  box-shadow:
+    0 6px 14px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.bridge-app.theme-light .app-avatar-upload-button:hover {
+  background: color-mix(in oklab, rgb(255 255 255) 56%, rgb(226 232 240));
+  color: rgb(15 23 42);
+}
+
 .bridge-app.theme-light .app-agent-shell {
   border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
   background: color-mix(in oklab, rgb(226 232 240) 48%, transparent);
