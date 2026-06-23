@@ -499,9 +499,11 @@ export function mapCanonicalMessage(
   const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);
   const scopedAgentSender = ownerScopedAgentName(identity, identityById, profileHumanIdentityId);
   const contentSender = stringValue(content.sender)?.trim();
+  const isHostedCloudAgentTurn = isAgentTurn && message.sourceTransport?.startsWith('cloud-group-agent');
   const isOwnMessage = role === 'user' || message.senderIdentityId === profileHumanIdentityId;
   const sender = (() => {
     if (identity?.kind === 'agent') {
+      if (isHostedCloudAgentTurn) return contentSender || identity.displayName || scopedAgentSender;
       const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
       if (owner?.displayName && contentSender) {
         return possessiveScopedLabel(owner.displayName, contentSender, owner.id === profileHumanIdentityId) ?? contentSender;
@@ -548,9 +550,10 @@ export function mapCanonicalMessage(
   const sourceAgentIdentity = identity?.kind === 'agent'
     ? identity
     : [...identityById.values()].find((candidate) => candidate.kind === 'agent' && candidate.ownerIdentityId === identity?.id);
-  const sourceAgentLabel = ownerScopedAgentName(sourceAgentIdentity, identityById, profileHumanIdentityId)
-    ?? sourceAgentIdentity?.displayName
-    ?? agentLabelForHumanIdentity(sourceHumanIdentity, identityById);
+  const sourceAgentLabel = (isHostedCloudAgentTurn && (contentSender || sourceAgentIdentity?.displayName))
+    || ownerScopedAgentName(sourceAgentIdentity, identityById, profileHumanIdentityId)
+    || sourceAgentIdentity?.displayName
+    || agentLabelForHumanIdentity(sourceHumanIdentity, identityById);
   const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
 

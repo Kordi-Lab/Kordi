@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries } from '../src/app/useKordiAppModelBridgeMentions';
+import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries, sharedCloudAgentOwnerIdsForMentionScope } from '../src/app/useKordiAppModelBridgeMentions';
 import type { Conversation, DesktopBridgeState, DesktopChatState } from '../src/kordi-app/types';
 
 function bridgeState(): DesktopBridgeState {
@@ -268,6 +268,131 @@ test('buildBridgeMentionTargetsByScope includes shared hosted Cloud Agents for c
   assert.equal(projectDriver?.label, 'Kordi Project Driver');
   assert.equal(projectDriver?.value, 'KordiProjectDriver');
   assert.equal(projectDriver?.bridgeHostId, 'cloud');
+  assert.equal(projectDriver?.nodeId, 'acct_owner');
+  assert.equal(projectDriver?.ownerName, '111');
+});
+
+test('sharedCloudAgentOwnerIdsForMentionScope uses direct contact bridge targets when canonical participants are absent', () => {
+  assert.deepEqual(sharedCloudAgentOwnerIdsForMentionScope({
+    id: 'bridge:cloud:acct_owner:person',
+    canonicalSessionId: 'bridge:cloud:acct_owner:person',
+    type: 'person',
+    directness: 'Direct chat',
+    participants: ['222', '111'],
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_owner', humanId: 'acct_owner', runtime: 'person' },
+  } as Conversation, 'acct_me'), ['acct_owner']);
+});
+
+test('buildBridgeMentionTargetsByScope includes my owned shared Cloud Agent in direct contact chats', () => {
+  const state = bridgeState();
+  state.activeHostId = 'cloud';
+  state.hosts = [{
+    ...state.hosts[0],
+    id: 'cloud',
+    nodeId: 'acct_me',
+    humanId: 'acct_me',
+    ownerName: '111',
+    displayName: '111',
+    agents: [{
+      ...state.hosts[0].agents[0],
+      id: 'cloud-local-agent',
+      nodeId: 'acct_me',
+      runtime: 'kordi-desktop',
+    }],
+    visiblePeers: [],
+    visiblePeerCount: 0,
+  }];
+  const directContact = {
+    id: 'bridge:cloud:acct_222:person',
+    canonicalSessionId: 'bridge:cloud:acct_222:person',
+    name: '222',
+    type: 'person',
+    subtitle: '',
+    unread: 0,
+    bridges: ['cloud'],
+    trust: 'Cloud',
+    directness: 'Direct chat',
+    participants: ['111', '222'],
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_222', humanId: 'acct_222', ownerName: '222', runtime: 'person' },
+    messages: [],
+  } as Conversation;
+
+  const targets = buildBridgeMentionTargetsByScope({
+    isNativeShell: true,
+    desktopBridgeState: state,
+    desktopChatState: desktopChatState(),
+    activeConvMentionScope: directContact,
+    sharedCloudAgents: [{
+      agentId: 'cloud_agent_project',
+      ownerAccountId: 'acct_me',
+      ownerDisplayName: '111',
+      accessScope: 'participant_conversations',
+      name: 'Kordi Project Driver',
+      role: 'Project helper',
+      description: null,
+      updatedAt: '2026-06-20T00:00:00Z',
+    }],
+  });
+
+  const projectDriver = targets.chat.find((target) => target.agentId === 'cloud_agent_project');
+  assert.equal(projectDriver?.label, 'Kordi Project Driver');
+  assert.equal(projectDriver?.value, 'KordiProjectDriver');
+  assert.equal(projectDriver?.nodeId, 'acct_me');
+});
+
+test('buildBridgeMentionTargetsByScope includes shared hosted Cloud Agents in direct contact chats with the owner', () => {
+  const state = bridgeState();
+  state.activeHostId = 'cloud';
+  state.hosts = [{
+    ...state.hosts[0],
+    id: 'cloud',
+    nodeId: 'acct_me',
+    humanId: 'acct_me',
+    ownerName: '222',
+    displayName: '222',
+    agents: [{
+      ...state.hosts[0].agents[0],
+      id: 'cloud-local-agent',
+      nodeId: 'acct_me',
+      runtime: 'kordi-desktop',
+    }],
+    visiblePeers: [],
+    visiblePeerCount: 0,
+  }];
+  const directContact = {
+    id: 'bridge:cloud:acct_owner:person',
+    canonicalSessionId: 'bridge:cloud:acct_owner:person',
+    name: '111',
+    type: 'bridge-person',
+    subtitle: '',
+    unread: 0,
+    bridges: ['cloud'],
+    trust: 'Cloud',
+    directness: 'Direct person chat',
+    participants: ['222', '111'],
+    bridgeTarget: { hostId: 'cloud', nodeId: 'acct_owner', humanId: 'acct_owner', ownerName: '111', runtime: 'person', agentId: null },
+    messages: [],
+  } as Conversation;
+
+  const targets = buildBridgeMentionTargetsByScope({
+    isNativeShell: true,
+    desktopBridgeState: state,
+    desktopChatState: desktopChatState(),
+    activeConvMentionScope: directContact,
+    sharedCloudAgents: [{
+      agentId: 'cloud_agent_project',
+      ownerAccountId: 'acct_owner',
+      ownerDisplayName: '111',
+      accessScope: 'participant_conversations',
+      name: 'Kordi Project Driver',
+      role: 'Project helper',
+      description: null,
+      updatedAt: '2026-06-20T00:00:00Z',
+    }],
+  });
+
+  const projectDriver = targets.chat.find((target) => target.agentId === 'cloud_agent_project');
+  assert.equal(projectDriver?.label, 'Kordi Project Driver');
   assert.equal(projectDriver?.nodeId, 'acct_owner');
   assert.equal(projectDriver?.ownerName, '111');
 });

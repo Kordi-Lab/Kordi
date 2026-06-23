@@ -103,6 +103,35 @@ test('canonical quoted human messages map source metadata for transcript renderi
 });
 
 
+test('hosted cloud agent responses render the selected agent name without owner possessives', () => {
+  const identityById = new Map([
+    ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['human:333', { id: 'human:333', kind: 'human' as const, displayName: '333', ownerIdentityId: null, source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_333', humanId: 'acct_333', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+    ['agent:cloud:333', { id: 'agent:cloud:333', kind: 'agent' as const, displayName: 'Kordi Project Driver', ownerIdentityId: 'human:333', source: 'bridge', sourceHostId: 'cloud', bridgeNodeId: 'acct_333', humanId: null, agentId: 'cloud_agent_project', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
+  ]);
+  const mapped = mapCanonicalMessage({
+    id: 'msg:cloud-agent-final',
+    sessionId: 'session:direct-person:acct_me:acct_333',
+    senderIdentityId: 'agent:cloud:333',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'Here is the plan.',
+    content: { sender: 'Kordi Project Driver', deliveryState: 'complete', requestId: 'msg:request', replyToMessageId: 'msg:request' },
+    parentMessageId: 'msg:request',
+    delegatedExchangeId: null,
+    status: 'complete',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    contentHash: null,
+    sourceTransport: 'cloud-group-agent',
+    sourceEventId: 'cloud-group-agent:final',
+  }, identityById, 'human:me');
+
+  assert.equal(mapped?.sender, 'Kordi Project Driver');
+  assert.doesNotMatch(mapped?.sender ?? '', /333['’]s/);
+});
+
 test('cloud fallback runtime failures render as normal failed agent turns with concise copy', () => {
   const identityById = new Map([
     ['human:me', { id: 'human:me', kind: 'human' as const, displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 }],
@@ -244,6 +273,30 @@ test('cloud group requesting placeholder times out to unavailable notice instead
   assert.match(source, /sourceEventId: `cloud-group-agent-unavailable-timeout:/);
   assert.match(source, /status:\s*'failed'/);
   assert.match(source, /sourceTransport:\s*'cloud-group-agent-offline'/);
+});
+
+test('cloud group hosted-agent sends render processing in the final response slot', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /msg:cloud-agent-processing:\$\{candidate\.requestMessage\.id\}:\$\{candidate\.targetAccountId\}/);
+  assert.match(source, /setCanonicalSessionState\(\(current\) => appendCloudGroupRequestingPlaceholder\(current, candidate, noticeId\)\)/);
+});
+
+test('cloud group owner processing upserts the shared slot so a local placeholder cannot block broadcast', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const processingMessageIdIndex = source.indexOf('const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;');
+  assert.ok(processingMessageIdIndex >= 0, 'expected owner cloud group processing slot');
+  const processingBlock = source.slice(processingMessageIdIndex, processingMessageIdIndex + 3200);
+  assert.match(processingBlock, /await upsertCanonicalMessage\(\{/);
+  assert.doesNotMatch(processingBlock, /await appendCanonicalMessage\(\{/);
+  assert.match(processingBlock, /sourceTransport:\s*'cloud-group-agent'/);
+  assert.match(processingBlock, /targetAccountIds\.map\(\(targetAccountId\) => client\.sendMessage/);
+});
+
+test('cloud group terminal hosted-agent responses reserve the stable slot even when processing is not visible yet', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /terminalStableAgentNoticeId/);
+  assert.match(source, /replacementAgentSlot\?\.id \?\? terminalStableAgentNoticeId \?\? envelope\.message\.id/);
+  assert.match(source, /existingStableRowTerminalLocked[\s\S]*existingStableRowDeliveryState/);
 });
 
 test('cloud group terminal hosted-agent responses clear timeout placeholders and keep agent attribution', () => {

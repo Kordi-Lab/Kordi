@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import {
+  buildCloudBridgeConversation,
   buildCloudDesktopBridgeState,
   cloudBridgeConversationId,
   cloudDirectPersonSessionId,
@@ -33,6 +34,7 @@ import {
   seedCloudSelfAgentForwardSyncLedger,
   cloudMessagesByPeerEqual,
   mergeCloudMessagesByPeerSnapshot,
+  markCloudMessagesReadLocally,
   loadCloudMessagesByPeerUntilStable,
   cloudInitialMessagesSettledForPeerKey,
   cloudSessionForksByIdEqual,
@@ -111,6 +113,73 @@ test('direct Cloud forwarded envelopes survive bridge transcript mapping', () =>
   assert.equal(bridgeMessage.messageAction?.kind, 'forward');
   assert.equal(view.messages[0]?.messageAction?.kind, 'forward');
   assert.equal(view.messages[0]?.messageAction?.source.senderLabel, 'Peer Person');
+});
+
+test('direct Cloud hosted shared-agent requests and responses keep the shared agent display name', () => {
+  const requestBody = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: '@KordiProjectDriver hii',
+    targetCloudAgentId: 'cloud_agent_project',
+    targetCloudAgentName: 'Kordi Project Driver',
+    targetCloudAgentOwnerAccountId: 'acct_peer',
+    targetCloudAgentOwnerName: 'Peer Person',
+  });
+  const request: CloudMessage = {
+    messageId: 'msg_direct_project_request',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body: requestBody,
+    createdAt: '2026-06-23T01:41:34.463Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'outgoing',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  };
+  const response: CloudMessage = {
+    messageId: 'msg_direct_project_response',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'Hi! How can I help?',
+      deliveryState: 'complete',
+    }),
+    createdAt: '2026-06-23T01:41:47.467Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  };
+
+  const conversation = buildCloudBridgeConversation({
+    account,
+    contact: peer,
+    messages: [request, response],
+    runtime: 'person',
+  });
+  const responseMessage = conversation.messages.find((message) => message.id === response.messageId);
+
+  assert.equal(responseMessage?.sender, 'Kordi Project Driver');
+  assert.equal(responseMessage?.requestId, request.messageId);
+  assert.equal(conversation.outreach, null);
+
+  const pendingConversation = buildCloudBridgeConversation({
+    account,
+    contact: peer,
+    messages: [request],
+    runtime: 'person',
+  });
+
+  const pendingProcessing = pendingConversation.messages.find((message) => message.id === `cloud-agent-processing:${request.messageId}`);
+  const pendingView = mapBridgeConversationToViewModel(pendingConversation, undefined, 'Kordi');
+  const pendingViewProcessing = pendingView.messages.find((message) => message.turn?.status === 'processing');
+
+  assert.equal(pendingConversation.outreach?.targetDisplayName, 'Kordi Project Driver');
+  assert.equal(pendingProcessing?.sender, 'Kordi Project Driver');
+  assert.equal(pendingViewProcessing?.sender, 'Kordi Project Driver');
 });
 
 test('direct Cloud forwarded headers rewrite legacy Me labels to the remote human profile name', () => {
@@ -459,6 +528,49 @@ test('cloud message local cache ignores malformed cached records', () => {
   assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), { acct_peer: [message] });
 });
 
+test('cloud group read marking patches stale local unread cache rows by session id', () => {
+  const groupBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:abc',
+    groupSpaceId: 'session:group:abc',
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' },
+    participants: [],
+    message: {
+      id: 'msg:group-agent-final',
+      senderAccountId: 'acct_peer',
+      text: 'Hi 👋 How can I help?',
+      createdAtMs: Date.parse('2026-05-11T10:00:00Z'),
+      senderKind: 'agent',
+      senderDisplayName: 'Kordi Project Driver',
+    },
+  });
+  const staleGroupMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_final',
+    body: groupBody,
+    sessionId: 'session:group:abc',
+    readAt: null,
+  };
+  const directUnreadMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_unread',
+    sessionId: 'session:direct-person:acct_me:acct_peer',
+    readAt: null,
+  };
+
+  const patched = markCloudMessagesReadLocally(
+    { acct_peer: [staleGroupMessage, directUnreadMessage] },
+    'acct_me',
+    { sessionIds: ['session:group:abc'] },
+    '2026-05-11T10:01:00Z',
+  );
+
+  assert.equal(patched.acct_peer?.[0]?.readAt, '2026-05-11T10:01:00Z');
+  assert.equal(patched.acct_peer?.[1]?.readAt, null);
+});
+
 test('cloud message refresh snapshots preserve locally merged newer messages', () => {
   const greeting: CloudMessage = {
     ...message,
@@ -599,6 +711,45 @@ test('cloud group agent mention candidates include owner self-mentions for hoste
   assert.equal(candidates[0]?.targetAccountId, 'acct_me');
   assert.equal(candidates[0]?.targetCloudAgentId, 'cloud_agent_project');
   assert.equal(candidates[0]?.targetAgentDisplayName, 'Kordi Project Driver');
+});
+
+test('direct Cloud hosted shared-agent mentions stay eligible for direct fallback runs', () => {
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: '@KordiProjectDriver hi',
+    targetCloudAgentId: 'cloud_agent_project',
+    targetCloudAgentName: 'Kordi Project Driver',
+    targetCloudAgentOwnerAccountId: 'acct_peer',
+    targetCloudAgentOwnerName: 'Peer Person',
+  });
+  const message: CloudMessage = {
+    messageId: 'msg_direct_shared_agent',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body,
+    createdAt: new Date().toISOString(),
+    direction: 'outgoing',
+    readAt: null,
+    sessionId: cloudDirectPersonSessionId('acct_me', 'acct_peer'),
+    attachments: [],
+  };
+
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account: { ...account, accountId: 'acct_peer' },
+    peerId: 'acct_me',
+    message,
+    peerMessages: [message],
+  }), true);
+
+  const claims = cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [message] },
+  });
+  assert.equal(claims.length, 1);
+  assert.equal(claims[0]?.sessionId, cloudDirectPersonSessionId('acct_me', 'acct_peer'));
+  assert.equal(claims[0]?.targetCloudAgentId, 'cloud_agent_project');
 });
 
 test('direct Cloud contact agent mentions are not treated as Cloud group placeholders', () => {
@@ -1781,6 +1932,58 @@ test('active empty cloud conversations are materialized for the existing chat UI
   assert.equal(state.conversations[0].title, 'Peer Person');
 });
 
+test('direct Cloud contact conversations do not render group fanout control payloads', () => {
+  const directMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_visible',
+    body: 'direct hello',
+    sessionId: 'session:direct-person:acct_me:acct_peer',
+    createdAt: '2026-05-11T10:00:00Z',
+  };
+  const groupFanout: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_fanout_hidden',
+    body: encodeCloudGroupControl({
+      kind: 'group-message',
+      groupId: 'session:group:team',
+      groupTitle: 'Team',
+      createdByAccountId: 'acct_peer',
+      actor: { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' },
+      participants: [
+        { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'person' },
+        { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' },
+      ],
+      message: {
+        id: 'msg_group_inner',
+        senderAccountId: 'acct_peer',
+        text: '@KordiProjectDriver hi',
+        createdAtMs: Date.parse('2026-05-11T10:01:00Z'),
+        senderKind: 'human',
+      },
+    }),
+    sessionId: 'session:group:team',
+    createdAt: '2026-05-11T10:01:00Z',
+  };
+  const malformedGroupFanout: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_fanout_malformed_hidden',
+    body: 'kordi-cloud-group:stale-or-truncated-payload',
+    sessionId: 'session:group:team',
+    createdAt: '2026-05-11T10:02:00Z',
+  };
+
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [directMessage, groupFanout, malformedGroupFanout] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  assert.equal(state.conversations.length, 1);
+  assert.deepEqual(state.conversations[0].messages.map((item) => item.text), ['direct hello']);
+  assert.equal(state.conversations[0].messages.some((item) => item.text.startsWith('kordi-cloud-group:')), false);
+});
+
 test('active cloud conversations clear unread while inactive conversations keep unread', () => {
   const activeState = buildCloudDesktopBridgeState({
     account,
@@ -1981,6 +2184,54 @@ test('cloud first-person self-agent requests hide accidental duplicate peer resp
   const responses = state.conversations[0].messages.filter((candidate) => candidate.requestId === request.messageId && candidate.id !== request.messageId);
   assert.equal(responses.length, 1);
   assert.equal(responses[0].id, validResponse.messageId);
+});
+
+test('cloud direct hosted-agent requests hide duplicate owner responses for the same request', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_hosted_duplicate_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '@KordiProjectDriver who are you',
+      targetCloudAgentId: 'cloud_agent_project',
+      targetCloudAgentName: 'Kordi Project Driver',
+      targetCloudAgentOwnerAccountId: 'acct_peer',
+      targetCloudAgentOwnerName: 'Peer Person',
+    }),
+    direction: 'outgoing',
+  };
+  const firstResponse: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_hosted_duplicate_response_a',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'First response.' }),
+    direction: 'incoming',
+    createdAt: '2026-06-23T03:28:28.000Z',
+  };
+  const secondResponse: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_hosted_duplicate_response_b',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'Second duplicate response.' }),
+    direction: 'incoming',
+    createdAt: '2026-06-23T03:28:29.000Z',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request, firstResponse, secondResponse] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  const responses = state.conversations[0].messages.filter((candidate) => candidate.requestId === request.messageId && candidate.id !== request.messageId);
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].id, firstResponse.messageId);
+  assert.equal(responses[0].sender, 'Kordi Project Driver');
 });
 
 test('cloud remote-agent responses render with the remote owner agent identity', () => {

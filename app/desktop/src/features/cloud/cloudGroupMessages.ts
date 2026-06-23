@@ -90,6 +90,11 @@ export function cloudGroupForkPayloadFromSessionMetadata(
   };
 }
 
+export function isCloudGroupSessionId(value?: string | null): boolean {
+  const sessionId = cleanText(value);
+  return Boolean(sessionId) && !sessionId.startsWith('session:direct-');
+}
+
 export function cloudGroupAgentConversationId(groupId: string): string {
   return `${CLOUD_GROUP_AGENT_CONVERSATION_PREFIX}${groupId}`;
 }
@@ -356,6 +361,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
     if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update', 'session-fork'].includes(parsed.kind ?? '')) return null;
     const kind = parsed.kind as CloudGroupControlKind;
     if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;
+    if (!isCloudGroupSessionId(parsed.groupId)) return null;
     if (typeof parsed.createdByAccountId !== 'string' || !parsed.createdByAccountId.trim()) return null;
     if (!parsed.actor || typeof parsed.actor !== 'object') return null;
     if (!Array.isArray(parsed.participants)) return null;
@@ -629,12 +635,12 @@ export function cloudGroupAgentRequestingNoticeRequest(input: {
     ? input.createdAtMs
     : Date.now();
   return {
-    id: `msg:cloud-agent-offline:${requestMessageId}:${targetAccountId}`,
+    id: `msg:cloud-agent-processing:${requestMessageId}:${targetAccountId}`,
     sessionId,
     senderIdentityId: `agent:cloud:${targetAccountId}`,
     senderRole: 'external-agent',
     messageKind: 'agent-turn',
-    contentText: 'Requesting…',
+    contentText: 'processing...',
     content: {
       sender: targetAgentDisplayName,
       timestampMs: createdAtMs,
@@ -646,7 +652,7 @@ export function cloudGroupAgentRequestingNoticeRequest(input: {
     status: 'processing',
     createdAtMs,
     sourceTransport: 'cloud-group-agent-offline',
-    sourceEventId: `cloud-group-agent-offline:${requestMessageId}:${targetAccountId}`,
+    sourceEventId: `cloud-group-agent-processing:${requestMessageId}:${targetAccountId}`,
   };
 }
 
@@ -912,8 +918,11 @@ export function shouldRouteMentionThroughCloudGroup(input: {
   mentionsBridgeAgent?: boolean;
   hasCloudGroupRecipients?: boolean;
 }): boolean {
-  if (!input.activeGroupSessionIsGroup) return false;
-  if (cleanText(input.mentionedHostId) === CLOUD_HOST_SENTINEL) return true;
+  const mentionedCloudTarget = cleanText(input.mentionedHostId) === CLOUD_HOST_SENTINEL;
+  if (!input.activeGroupSessionIsGroup) {
+    return false;
+  }
+  if (mentionedCloudTarget) return true;
   if (input.hasCloudGroupRecipients === true) return true;
   if (input.mentionsLocalAgent === true) return true;
   return false;

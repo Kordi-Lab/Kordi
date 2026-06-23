@@ -308,7 +308,8 @@ function isBridgeAgentProcessingPlaceholder(message: CanonicalSessionMessage) {
 function isStaleableProcessingPlaceholder(message: CanonicalSessionMessage) {
   return (message.sourceTransport === 'desktop-bridge-session-relay'
     || message.sourceTransport === 'desktop-bridge-parent'
-    || message.sourceTransport === 'cloud-group-agent')
+    || message.sourceTransport === 'cloud-group-agent'
+    || message.sourceTransport === 'cloud-group-agent-offline')
     && isBridgeAgentProcessingPlaceholder(message);
 }
 

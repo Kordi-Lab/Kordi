@@ -7,6 +7,10 @@ export type CloudDirectMessageEnvelope = {
   kind: 'message';
   text: string;
   messageAction?: MessageActionMetadata | null;
+  targetCloudAgentId?: string | null;
+  targetCloudAgentName?: string | null;
+  targetCloudAgentOwnerAccountId?: string | null;
+  targetCloudAgentOwnerName?: string | null;
 };
 
 function encodeBase64Url(value: string) {
@@ -53,4 +57,23 @@ export function cloudDirectMessageDisplayText(body: string): string {
 
 export function cloudDirectMessageAction(body: string): MessageActionMetadata | null {
   return parseCloudDirectMessageEnvelope(body)?.messageAction ?? null;
+}
+
+export function cloudDirectMessageTargetCloudAgentId(body: string): string | null {
+  const agentId = parseCloudDirectMessageEnvelope(body)?.targetCloudAgentId?.trim() ?? '';
+  return agentId.startsWith('cloud_agent_') ? agentId : null;
+}
+
+export function cloudDirectMessageTargetCloudAgentName(body: string): string | null {
+  return parseCloudDirectMessageEnvelope(body)?.targetCloudAgentName?.trim() || null;
+}
+
+export function cloudDirectMessageTargetCloudAgentOwnerAccountId(body: string): string | null {
+  return parseCloudDirectMessageEnvelope(body)?.targetCloudAgentOwnerAccountId?.trim() || null;
+}
+
+export function cloudDirectMessageTargetsOwnedHostedCloudAgent(body: string, accountId: string): boolean {
+  const targetAgentId = cloudDirectMessageTargetCloudAgentId(body);
+  const targetOwnerAccountId = cloudDirectMessageTargetCloudAgentOwnerAccountId(body);
+  return Boolean(targetAgentId && targetOwnerAccountId && targetOwnerAccountId === accountId.trim());
 }

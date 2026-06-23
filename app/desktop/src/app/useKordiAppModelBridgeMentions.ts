@@ -30,6 +30,8 @@ export type BuildBridgeMentionTargetsParams = {
   sharedCloudAgents?: SharedCloudAgentSummary[];
 };
 
+export type SharedCloudAgentOwnerScopeConversation = MentionScopeConversation & Partial<Pick<Conversation, 'bridgeTarget'>>;
+
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
@@ -60,6 +62,26 @@ function participantNodeId(participant: NonNullable<Conversation['canonicalParti
     || cleanText(participant.bridgeNodeId)
     || cleanText(participant.id).replace(/^human:/, '');
   return id || null;
+}
+
+export function sharedCloudAgentOwnerIdsForMentionScope(
+  conversation: SharedCloudAgentOwnerScopeConversation | null | undefined,
+  localAccountId?: string | null,
+): string[] {
+  const ids = new Set<string>();
+  const local = cleanText(localAccountId);
+  const add = (value?: string | null) => {
+    const id = cleanText(value)?.replace(/^human:/, '');
+    if (id && id !== local) ids.add(id);
+  };
+  for (const participant of conversation?.canonicalParticipants ?? []) {
+    if (participant.kind !== 'human') continue;
+    add(participant.humanId || participant.bridgeNodeId || participant.id);
+  }
+  if (conversation?.bridgeTarget?.runtime === 'person' || conversation?.bridgeTarget?.agentId === null) {
+    add(conversation.bridgeTarget.humanId || conversation.bridgeTarget.nodeId);
+  }
+  return [...ids].sort();
 }
 
 function directAgentConversationSuppressesMentions(conversation: MentionScopeConversation | null | undefined) {
@@ -165,7 +187,8 @@ export function buildBridgeMentionTargetsByScope({
       });
     }
 
-    for (const candidate of sharedCloudAgentMentionCandidatesForConversation(sharedCloudAgents, conversation)) {
+    const activeHostAccountId = activeHost?.humanId?.trim() || activeHost?.nodeId?.trim() || null;
+    for (const candidate of sharedCloudAgentMentionCandidatesForConversation(sharedCloudAgents, conversation, activeHostAccountId)) {
       pushOption({
         value: candidate.handle,
         label: candidate.displayLabel,

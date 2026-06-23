@@ -87,7 +87,7 @@ import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessage
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 import { useDesktopTranscriptAdapter } from '@/features/chat/useDesktopTranscriptAdapter';
-import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries } from '@/app/useKordiAppModelBridgeMentions';
+import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries, sharedCloudAgentOwnerIdsForMentionScope } from '@/app/useKordiAppModelBridgeMentions';
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
@@ -935,17 +935,10 @@ export function useKordiAppModel({
     [activeConv, chatConversations],
   );
 
-  const sharedCloudAgentOwnerIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const participant of activeConvMentionScope?.canonicalParticipants ?? []) {
-      if (participant.kind !== 'human') continue;
-      const id = participant.humanId?.trim()
-        || participant.bridgeNodeId?.trim()
-        || participant.id?.trim().replace(/^human:/, '');
-      if (id && id !== cloudSession.account?.accountId) ids.add(id);
-    }
-    return [...ids].sort();
-  }, [activeConvMentionScope?.canonicalParticipants, cloudSession.account?.accountId]);
+  const sharedCloudAgentOwnerIds = useMemo(() => sharedCloudAgentOwnerIdsForMentionScope(
+    activeConvMentionScope,
+    cloudSession.account?.accountId,
+  ), [activeConvMentionScope, cloudSession.account?.accountId]);
 
   useEffect(() => {
     void refreshSharedCloudAgents(sharedCloudAgentOwnerIds).catch(() => undefined);

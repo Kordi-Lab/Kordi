@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
+import type { CloudAgentAccessScope, CreateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { Agent } from '../types';
 import { parseShapeResources, type ShapeAgentDraft } from './shapeAgentDraft';
 import { buildShapeAgentDraftPrompt } from './shapeAgentPrompts';
 import { draftShapeAgentWithDesktopRuntime, shapeAgentRouteFromCreatorAgent } from './shapeAgentRuntime';
+import { cloudAgentAccessDescription, cloudAgentAccessLabel } from './model';
 
 type AgentCreateDialogProps = {
   open: boolean;
@@ -39,6 +40,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
   const [identity, setIdentity] = useState('');
   const [draft, setDraft] = useState<ShapeAgentDraft | null>(null);
   const [feedback, setFeedback] = useState<{ tone: 'idle' | 'info' | 'error' | 'success'; text: string }>({ tone: 'idle', text: '' });
+  const [accessScope, setAccessScope] = useState<CloudAgentAccessScope>('private');
   const [creating, setCreating] = useState(false);
   const [shaping, setShaping] = useState(false);
 
@@ -74,10 +76,10 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
   const createAgent = async () => {
     if (!draft || !onCreateCloudAgent) return;
     setCreating(true);
-    setFeedback({ tone: 'info', text: 'Creating private Cloud agent…' });
+    setFeedback({ tone: 'info', text: `Creating Cloud agent with access: ${cloudAgentAccessLabel(accessScope)}…` });
     try {
       const agent = await onCreateCloudAgent({
-        accessScope: 'private',
+        accessScope,
         name: draft.name,
         role: draft.role,
         description: draft.description,
@@ -88,7 +90,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
         skills: skillsForPayload(draft),
         modelRouting: {},
       });
-      setFeedback({ tone: 'success', text: 'Agent created privately in Cloud.' });
+      setFeedback({ tone: 'success', text: `Agent created in Cloud: ${cloudAgentAccessLabel(accessScope)}.` });
       onCreated?.(agent);
       onClose();
     } catch (error) {
@@ -148,12 +150,16 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
             </div>
             <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
               <div className="app-agent-row-title font-medium">Access</div>
-              <select className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]" value="private" onChange={() => undefined} aria-label="Agent access">
-                <option value="private">Private — only me</option>
-                <option value="contacts" disabled>Share with contacts — coming later</option>
-                <option value="workspace" disabled>Workspace/shared Cloud — coming later</option>
+              <select
+                className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]"
+                value={accessScope}
+                onChange={(event) => setAccessScope(event.currentTarget.value === 'participant_conversations' ? 'participant_conversations' : 'private')}
+                aria-label="Agent access"
+              >
+                <option value="private">{cloudAgentAccessLabel('private')}</option>
+                <option value="participant_conversations">{cloudAgentAccessLabel('participant_conversations')}</option>
               </select>
-              <div className="app-agent-row-meta mt-2">MVP agents are creator-owned/private Cloud sync only.</div>
+              <div className="app-agent-row-meta mt-2">{cloudAgentAccessDescription(accessScope)}</div>
             </div>
           </div>
 
@@ -181,11 +187,11 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
 
         <div className="app-agent-create-actions flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--app-divider)] px-5 py-4">
           <div className="app-agent-row-meta text-[12px] leading-5">
-            Shape prepares the draft. Create saves it as your private Cloud Agent.
+            Shape prepares the draft. Create saves it with the selected Cloud access.
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => void generateDraft()} disabled={!canShape}>{shaping ? 'Shaping…' : 'Shape draft with Kordi'}</Button>
-            <Button className="rounded-xl text-[12px]" disabled={!canCreate} onClick={() => void createAgent()}>{creating ? 'Creating…' : 'Create private Agent'}</Button>
+            <Button className="rounded-xl text-[12px]" disabled={!canCreate} onClick={() => void createAgent()}>{creating ? 'Creating…' : 'Create Agent'}</Button>
           </div>
         </div>
       </div>

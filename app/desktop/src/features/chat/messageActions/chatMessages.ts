@@ -683,6 +683,48 @@ export function bridgeGroupSessionParticipants(
   return [...participants.values()];
 }
 
+function bridgeDirectSessionParticipants(
+  conversation: Pick<Conversation, 'canonicalParticipants'>,
+  activeBridgeHost: DesktopBridgeState['hosts'][number] | null | undefined,
+  activeTarget: ConversationBridgeTarget | null | undefined,
+  options: { selfPublicName?: string | null } = {},
+): DesktopBridgeSessionParticipant[] {
+  const canonicalParticipants = bridgeGroupSessionParticipants(conversation, options);
+  if (canonicalParticipants.length > 0) return canonicalParticipants;
+
+  const participants: DesktopBridgeSessionParticipant[] = [];
+  const selfDisplayName = cleanText(options.selfPublicName) || cleanText(activeBridgeHost?.ownerName) || cleanText(activeBridgeHost?.displayName) || 'Me';
+  const selfNodeId = cleanText(activeBridgeHost?.nodeId);
+  const selfHumanId = cleanText(activeBridgeHost?.humanId);
+  if (selfNodeId || selfHumanId) {
+    participants.push({
+      identityId: selfHumanId ? `human:${selfHumanId}` : null,
+      displayName: selfDisplayName,
+      kind: 'human',
+      role: 'self',
+      bridgeNodeId: selfNodeId,
+      humanId: selfHumanId,
+      runtime: 'person',
+    });
+  }
+
+  const targetNodeId = cleanText(activeTarget?.nodeId);
+  const targetHumanId = cleanText(activeTarget?.humanId);
+  const targetDisplayName = cleanText(activeTarget?.ownerName) || cleanText(activeTarget?.displayName) || targetHumanId || targetNodeId;
+  if (targetDisplayName && (targetNodeId || targetHumanId)) {
+    participants.push({
+      identityId: targetHumanId ? `human:${targetHumanId}` : null,
+      displayName: targetDisplayName,
+      kind: 'human',
+      role: 'person',
+      bridgeNodeId: targetNodeId,
+      humanId: targetHumanId,
+      runtime: 'person',
+    });
+  }
+  return participants;
+}
+
 function initiatorIdentityForBridgeHost(
   activeBridgeHost: DesktopBridgeState['hosts'][number] | null | undefined,
   canonicalHumanIdentityId: string | null | undefined,
@@ -1266,6 +1308,10 @@ export function useChatMessageActions({
       sharedCloudAgents,
       resolveSharedCloudAgentsForMention,
     );
+    const targetCloudAgentId = mentionedTarget?.peer.agentId?.startsWith('cloud_agent_') ? mentionedTarget.peer.agentId : null;
+    const mentionedCloudSharedAgentOwnerAccountId = targetCloudAgentId
+      ? cleanText(mentionedTarget?.peer.humanId) || cleanText(mentionedTarget?.peer.nodeId)
+      : null;
     const activeGroupSessionScope = {
       canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
       participantSpaceId: activeConvMentionScope?.participantSpaceId,
@@ -1303,6 +1349,16 @@ export function useChatMessageActions({
       ? bridgeGroupSessionSendTargets(activeGroupSessionScope, activeConvBridgeTarget, localBridgeNodeIds)
       : [];
     const cloudGroupTargetIds = cloudGroupTargetAccountIds(allGroupSendTargets);
+    const directCloudSharedAgentTargetIds = !activeGroupSessionIsGroup && mentionedCloudSharedAgentOwnerAccountId
+      ? [mentionedCloudSharedAgentOwnerAccountId]
+      : [];
+    const cloudAgentMentionTargetIds = activeGroupSessionIsGroup ? cloudGroupTargetIds : directCloudSharedAgentTargetIds;
+    const cloudAgentMentionParticipants = activeGroupSessionIsGroup
+      ? activeGroupSessionParticipants
+      : bridgeDirectSessionParticipants(activeGroupSessionScope, activeBridgeHost, activeConvBridgeTarget, { selfPublicName: selfPublicBridgeName });
+    const cloudAgentMentionSessionId = activeGroupSessionIsGroup
+      ? cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId })
+      : (activeConvCanonicalSessionId ?? activeConvId);
 
     if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesBridgeRouting, activeConvId, desktopLiveTurn })) {
       const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
@@ -1332,12 +1388,20 @@ export function useChatMessageActions({
         if (appendedOptimisticBridgeMessage) {
           setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
         }
-        const cloudBody = activeChatQuote?.source
+        const directHostedAgentTarget = targetCloudAgentId ? {
+          targetCloudAgentId,
+          targetCloudAgentName: mentionedTarget?.displayLabel ?? null,
+          targetCloudAgentOwnerAccountId: mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null,
+          targetCloudAgentOwnerName: mentionedTarget?.peer.ownerName ?? null,
+        } : null;
+        const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget);
+        const cloudBody = shouldEncodeDirectEnvelope
           ? encodeCloudDirectMessageEnvelope({
               schemaVersion: 1,
               kind: 'message',
               text,
-              messageAction: quoteMessageAction(activeChatQuote.source),
+              ...(activeChatQuote?.source ? { messageAction: quoteMessageAction(activeChatQuote.source) } : {}),
+              ...(directHostedAgentTarget ?? {}),
             })
           : text;
         await sendCloudBridgeMessage(activeConvId, cloudBody, chatComposerAttachments);
@@ -1361,7 +1425,7 @@ export function useChatMessageActions({
       activeGroupSessionIsGroup,
       mentionsLocalAgent: localAgentMentioned,
       mentionsBridgeAgent: mentionedTarget?.targetKind === 'bridge-agent',
-      hasCloudGroupRecipients: cloudGroupTargetIds.length > 0,
+      hasCloudGroupRecipients: cloudAgentMentionTargetIds.length > 0,
     })) {
       if (!activeConvCanonicalSessionId) {
         setDesktopChatError('Unable to open group chat.');
@@ -1371,7 +1435,7 @@ export function useChatMessageActions({
         setDesktopChatError('Group chat is still loading. Try again in a moment.');
         return;
       }
-      if (cloudGroupTargetIds.length === 0) {
+      if (cloudAgentMentionTargetIds.length === 0) {
         setDesktopChatError('Unable to resolve group recipients.');
         return;
       }
@@ -1404,14 +1468,13 @@ export function useChatMessageActions({
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         await persistCanonicalUserMessage(preparedCanonicalMessage);
         canonicalUserMessagePersisted = true;
-        const targetCloudAgentId = mentionedTarget?.peer.agentId?.startsWith('cloud_agent_') ? mentionedTarget.peer.agentId : null;
         await sendCloudGroupControl({
-          targetAccountIds: cloudGroupTargetIds,
+          targetAccountIds: cloudAgentMentionTargetIds,
           kind: 'group-message',
-          groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId }),
+          groupId: cloudAgentMentionSessionId,
           groupSpaceId: activeGroupSessionSpaceId,
           groupTitle: null,
-          bridgeParticipants: activeGroupSessionParticipants,
+          bridgeParticipants: cloudAgentMentionParticipants,
           message: {
             id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
             senderAccountId: '',

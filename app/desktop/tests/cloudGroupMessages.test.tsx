@@ -23,6 +23,7 @@ import {
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
   fulfilledCloudGroupSends,
+  isCloudGroupSessionId,
   nonCloudGroupTargets,
   parseCloudGroupControl,
   shouldApplyCloudGroupTitleUpdate,
@@ -37,6 +38,41 @@ import {
   cloudGroupAgentRequestingNoticeMessage,
 } from '../src/features/cloud/cloudGroupMessages';
 import { CLOUD_HOST_SENTINEL } from '../src/features/cloud/useCloudContacts';
+
+test('cloud group control envelopes reject direct contact session ids', () => {
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:direct-person:acct_a:acct_b',
+    groupTitle: 'Not a group',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_b', displayName: 'Bob', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_direct_leak',
+      senderAccountId: 'acct_a',
+      text: '@KordiProjectDriver hi',
+      createdAtMs: 123,
+      senderKind: 'human',
+    },
+  });
+
+  assert.equal(isCloudGroupSessionId('session:direct-person:acct_a:acct_b'), false);
+  assert.equal(parseCloudGroupControl(body), null);
+  assert.deepEqual(cloudGroupControlMessagesForAccount({ accountId: 'acct_b', messages: [{
+    messageId: 'msg_direct_leak_cloud',
+    fromAccountId: 'acct_a',
+    toAccountId: 'acct_b',
+    body,
+    createdAt: '2026-06-23T00:00:00Z',
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: 'session:direct-person:acct_a:acct_b',
+  }] }), []);
+});
 
 test('cloud group control envelopes round trip and stay identifiable', () => {
   const body = encodeCloudGroupControl({
@@ -524,7 +560,7 @@ test('cloud group detects whether an offline candidate already sent an agent res
   }), false);
 });
 
-test('cloud group requesting notice shows a temporary smooth waiting state', () => {
+test('cloud group requesting notice uses the final response slot for smooth in-place updates', () => {
   const message = cloudGroupAgentRequestingNoticeMessage({
     sessionId: 'session:group:one',
     requestMessageId: 'msg_request',
@@ -534,9 +570,9 @@ test('cloud group requesting notice shows a temporary smooth waiting state', () 
     sequenceNum: 9,
   });
 
-  assert.equal(message.id, 'msg:cloud-agent-offline:msg_request:acct_yang');
+  assert.equal(message.id, 'msg:cloud-agent-processing:msg_request:acct_yang');
   assert.equal(message.senderIdentityId, 'agent:cloud:acct_yang');
-  assert.equal(message.contentText, 'Requesting…');
+  assert.equal(message.contentText, 'processing...');
   assert.equal(message.status, 'processing');
   assert.equal(message.sourceTransport, 'cloud-group-agent-offline');
   assert.deepEqual(message.content, {
@@ -854,6 +890,7 @@ test('cloud agent mentions inside cloud groups stay on cloud group transport', (
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: true }), true);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'host-local', activeGroupSessionIsGroup: true, mentionsBridgeAgent: true, hasCloudGroupRecipients: false }), false);
   assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: false, mentionsLocalAgent: true }), false);
+  assert.equal(shouldRouteMentionThroughCloudGroup({ mentionedHostId: 'cloud', activeGroupSessionIsGroup: false, mentionsBridgeAgent: true, hasCloudGroupRecipients: true }), false);
 });
 
 test('cloud group helpers split cloud recipients from bridge recipients', () => {

@@ -280,6 +280,7 @@ export type CloudAgentRunClaimInput = {
   requesterAccountId: string;
   prompt: string;
   idempotencyKey: string;
+  targetCloudAgentId?: string | null;
 };
 
 export type CloudAgentRunStatus = 'queued' | 'leased' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
