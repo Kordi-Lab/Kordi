@@ -1883,6 +1883,58 @@ test('active empty cloud conversations are materialized for the existing chat UI
   assert.equal(state.conversations[0].title, 'Peer Person');
 });
 
+test('direct Cloud contact conversations do not render group fanout control payloads', () => {
+  const directMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_visible',
+    body: 'direct hello',
+    sessionId: 'session:direct-person:acct_me:acct_peer',
+    createdAt: '2026-05-11T10:00:00Z',
+  };
+  const groupFanout: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_fanout_hidden',
+    body: encodeCloudGroupControl({
+      kind: 'group-message',
+      groupId: 'session:group:team',
+      groupTitle: 'Team',
+      createdByAccountId: 'acct_peer',
+      actor: { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' },
+      participants: [
+        { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'person' },
+        { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' },
+      ],
+      message: {
+        id: 'msg_group_inner',
+        senderAccountId: 'acct_peer',
+        text: '@KordiProjectDriver hi',
+        createdAtMs: Date.parse('2026-05-11T10:01:00Z'),
+        senderKind: 'human',
+      },
+    }),
+    sessionId: 'session:group:team',
+    createdAt: '2026-05-11T10:01:00Z',
+  };
+  const malformedGroupFanout: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_fanout_malformed_hidden',
+    body: 'kordi-cloud-group:stale-or-truncated-payload',
+    sessionId: 'session:group:team',
+    createdAt: '2026-05-11T10:02:00Z',
+  };
+
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [directMessage, groupFanout, malformedGroupFanout] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  assert.equal(state.conversations.length, 1);
+  assert.deepEqual(state.conversations[0].messages.map((item) => item.text), ['direct hello']);
+  assert.equal(state.conversations[0].messages.some((item) => item.text.startsWith('kordi-cloud-group:')), false);
+});
+
 test('active cloud conversations clear unread while inactive conversations keep unread', () => {
   const activeState = buildCloudDesktopBridgeState({
     account,

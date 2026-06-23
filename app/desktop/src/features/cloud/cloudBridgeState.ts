@@ -371,6 +371,18 @@ function isDirectCloudContact(contact: Contact): boolean {
   return contact.bridgeContactStatus?.trim().toLowerCase() !== 'group-member';
 }
 
+function cloudDirectPersonMessagesForPeer(
+  account: CloudAccount,
+  peerAccountId: string,
+  messages: CloudMessage[],
+): CloudMessage[] {
+  const directSessionId = cloudDirectPersonSessionId(account.accountId, peerAccountId);
+  return messages.filter((message) => {
+    const sessionId = cleanCloudSessionId(message.sessionId);
+    return !sessionId || sessionId === directSessionId;
+  });
+}
+
 export function buildCloudBridgeHost(
   account: CloudAccount,
   contacts: Contact[],
@@ -781,11 +793,13 @@ export function buildCloudDesktopBridgeState({
       const isSelfPeer = peerId === account.accountId;
       if (!hasMessages && !isActivePeer) return [];
 
-      const personConversation = !isSelfPeer && (hasMessages || activeConversationId === cloudBridgeConversationId(peerId, CLOUD_PERSON_RUNTIME))
+      const directPersonMessages = isSelfPeer ? [] : cloudDirectPersonMessagesForPeer(account, peerId, messages);
+      const hasDirectPersonMessages = directPersonMessages.length > 0;
+      const personConversation = !isSelfPeer && (hasDirectPersonMessages || activeConversationId === cloudBridgeConversationId(peerId, CLOUD_PERSON_RUNTIME))
         ? [buildCloudBridgeConversation({
             account,
             contact,
-            messages,
+            messages: directPersonMessages,
             runtime: CLOUD_PERSON_RUNTIME,
             readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
             forceRead: isActivePeer,
