@@ -77,17 +77,10 @@
 }
 
 .app-left-glass {
-  background:
-    radial-gradient(164px 136px at 50% 104%, rgba(214, 158, 46, 0.24), transparent 68%),
-    radial-gradient(112px 88px at 50% 100%, rgba(255, 194, 84, 0.12), transparent 64%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 18%, rgba(0, 0, 0, 0.08) 100%),
-    var(--app-left-glass-bg);
-  box-shadow:
-    inset -1px 0 0 var(--app-left-glass-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 30px rgba(5, 8, 15, 0.12);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  background: var(--app-left-glass-bg);
+  box-shadow: var(--app-depth-1);
+  backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
+  -webkit-backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
 }
 
 .app-session-panel {
@@ -615,14 +608,8 @@
 .app-composer-shell {
   min-height: 7.25rem;
   border: 1px solid color-mix(in oklab, var(--app-divider) 86%, var(--utility-muted-text));
-  background:
-    linear-gradient(180deg,
-      color-mix(in oklab, var(--app-control-bg) 84%, transparent) 0%,
-      color-mix(in oklab, var(--app-main-bg) 82%, rgb(0 0 0 / 0.08)) 100%);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--utility-foreground) 2.5%, transparent),
-    0 16px 34px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 color-mix(in oklab, var(--utility-foreground) 5.5%, transparent);
+  background: color-mix(in oklab, var(--app-surface-float) 84%, var(--app-main-bg));
+  box-shadow: var(--app-depth-2);
   transition:
     border-color var(--app-motion-fast) var(--app-motion-ease),
     background var(--app-motion-fast) var(--app-motion-ease),
@@ -630,15 +617,11 @@
 }
 
 .app-composer-shell:focus-within {
-  border-color: color-mix(in oklab, var(--app-accent-ring) 72%, var(--utility-muted-text));
-  background:
-    linear-gradient(180deg,
-      color-mix(in oklab, var(--app-control-bg) 96%, transparent) 0%,
-      color-mix(in oklab, var(--app-main-bg) 88%, rgb(0 0 0 / 0.08)) 100%);
+  border-color: color-mix(in oklab, var(--app-border-strong) 72%, var(--app-ring-focus));
+  background: color-mix(in oklab, var(--app-surface-float) 92%, var(--app-main-bg));
   box-shadow:
-    0 0 0 2px color-mix(in oklab, var(--app-accent-ring) 72%, transparent),
-    0 18px 38px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 color-mix(in oklab, var(--utility-foreground) 7%, transparent);
+    0 0 0 2px color-mix(in oklab, var(--app-ring-focus) 74%, transparent),
+    var(--app-depth-2);
 }
 
 .app-composer-input {

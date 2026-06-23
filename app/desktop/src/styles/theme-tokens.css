@@ -1,14 +1,52 @@
 .bridge-app {
-  --utility-background: rgb(15 17 21);
-  --utility-foreground: rgba(255, 255, 255, 0.9);
-  --utility-card: rgba(255, 255, 255, 0.04);
-  --utility-muted: rgba(255, 255, 255, 0.04);
-  --utility-muted-text: rgba(255, 255, 255, 0.6);
-  --utility-meta-text: rgba(255, 255, 255, 0.35);
+  /* Semantic theme contract — dark defaults use a graphite, low-glow baseline. */
+  --app-surface-canvas: rgb(13 15 19);
+  --app-surface-shell: rgba(17, 20, 26, 0.74);
+  --app-surface-rail: rgba(18, 21, 27, 0.68);
+  --app-surface-panel: rgba(18, 21, 27, 0.76);
+  --app-surface-card: rgba(255, 255, 255, 0.045);
+  --app-surface-float: rgba(20, 23, 30, 0.92);
+  --app-text-primary: rgb(241 245 249);
+  --app-text-secondary: rgb(203 213 225);
+  --app-text-muted: rgb(148 163 184);
+  --app-text-meta: rgba(148, 163, 184, 0.72);
+  --app-border-subtle: rgba(148, 163, 184, 0.10);
+  --app-border-strong: rgba(148, 163, 184, 0.18);
+  --app-ring-focus: rgba(125, 151, 255, 0.34);
+  --app-accent-primary: oklch(72% 0.085 285);
+  --app-accent-primary-hover: oklch(78% 0.095 285);
+  --app-accent-primary-surface: rgba(132, 122, 196, 0.11);
+  --app-accent-primary-border: rgba(132, 122, 196, 0.24);
+  --app-status-info: oklch(72% 0.085 245);
+  --app-status-info-bg: oklch(72% 0.085 245 / 0.12);
+  --app-status-success: oklch(73% 0.10 155);
+  --app-status-success-bg: oklch(73% 0.10 155 / 0.12);
+  --app-status-warning: oklch(74% 0.09 78);
+  --app-status-warning-bg: oklch(74% 0.09 78 / 0.12);
+  --app-status-danger: oklch(70% 0.15 25);
+  --app-status-danger-bg: oklch(70% 0.15 25 / 0.12);
+  --app-depth-0: none;
+  --app-depth-1: 0 0 0 1px rgba(148, 163, 184, 0.08);
+  --app-depth-2:
+    0 0 0 1px rgba(148, 163, 184, 0.10),
+    0 10px 24px rgba(0, 0, 0, 0.18);
+  --app-depth-3:
+    0 0 0 1px rgba(148, 163, 184, 0.13),
+    0 18px 42px rgba(0, 0, 0, 0.30);
+  --app-depth-4:
+    0 0 0 1px rgba(148, 163, 184, 0.16),
+    0 26px 68px rgba(0, 0, 0, 0.38);
+
+  --utility-background: var(--app-surface-canvas);
+  --utility-foreground: var(--app-text-primary);
+  --utility-card: var(--app-surface-card);
+  --utility-muted: rgba(148, 163, 184, 0.10);
+  --utility-muted-text: var(--app-text-muted);
+  --utility-meta-text: var(--app-text-meta);
   --app-accent: rgba(132, 122, 196, 0.64);
-  --app-accent-ring: rgba(132, 122, 196, 0.26);
-  --app-markdown-link: oklch(72% 0.085 285);
-  --app-markdown-link-hover: oklch(78% 0.095 285);
+  --app-accent-ring: var(--app-ring-focus);
+  --app-markdown-link: var(--app-accent-primary);
+  --app-markdown-link-hover: var(--app-accent-primary-hover);
   --app-sidebar-title-text: rgb(248 250 252);
   --app-sidebar-preview-text: rgb(148 163 184);
   --app-sidebar-time-text: rgb(100 116 139);
@@ -19,69 +57,63 @@
   --app-chat-mention-peer: var(--app-sidebar-accent);
   --app-chat-meta-own: oklch(34% 0.018 70);
   --app-chat-meta-peer: oklch(74% 0.018 245);
-  --app-tool-running-fg: oklch(74% 0.07 78);
-  --app-tool-running-icon: oklch(79% 0.055 80);
-  --app-tool-running-muted: oklch(68% 0.045 78);
-  --app-tool-running-bg: oklch(70% 0.055 78 / 0.1);
+  --app-tool-running-fg: var(--app-status-warning);
+  --app-tool-running-icon: color-mix(in oklab, var(--app-status-warning) 86%, white);
+  --app-tool-running-muted: color-mix(in oklab, var(--app-status-warning) 72%, var(--app-text-muted));
+  --app-tool-running-bg: var(--app-status-warning-bg);
   --app-tool-running-border: oklch(70% 0.055 78 / 0.22);
   --app-motion-fast: 180ms;
   --app-motion-base: 220ms;
   --app-motion-slow: 300ms;
   --app-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --app-page-bg:
-    radial-gradient(circle at top left, rgba(132, 122, 196, 0.055), transparent 24%),
-    linear-gradient(180deg, #0f1115 0%, #0d0f13 52%, #090b0f 100%);
-  --app-shell-bg: rgba(15, 17, 21, 0.62);
-  --app-shell-border: rgba(255, 255, 255, 0.08);
-  --app-side-bg: rgba(15, 17, 21, 0.56);
-  --app-left-glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.018) 100%);
-  --app-left-glass-border: rgba(255, 255, 255, 0.06);
-  --app-session-bg: rgba(15, 17, 21, 0.52);
-  --app-main-bg: rgba(15, 17, 21, 0.62);
-  --app-card-bg: rgba(255, 255, 255, 0.04);
+    radial-gradient(circle at top left, rgba(132, 122, 196, 0.045), transparent 24%),
+    linear-gradient(180deg, #0d0f13 0%, #0b0d11 52%, #080a0d 100%);
+  --app-shell-bg: var(--app-surface-shell);
+  --app-shell-border: var(--app-border-subtle);
+  --app-side-bg: var(--app-surface-rail);
+  --app-left-glass-bg: linear-gradient(180deg, rgba(25, 29, 37, 0.74) 0%, rgba(14, 17, 22, 0.82) 100%);
+  --app-left-glass-border: var(--app-border-subtle);
+  --app-session-bg: var(--app-surface-rail);
+  --app-main-bg: var(--app-surface-panel);
+  --app-card-bg: var(--app-surface-card);
   --app-overlay-bg: rgba(5, 7, 10, 0.74);
-  --app-modal-bg: rgba(17, 19, 24, 0.66);
+  --app-modal-bg: var(--app-surface-float);
 
-  --app-glass-blur-frame: 12px;
+  --app-glass-blur-frame: 10px;
   --app-glass-blur-float: 8px;
-  --app-glass-saturate-frame: 1.06;
-  --app-glass-saturate-float: 1.04;
-  --app-glass-highlight: rgba(255, 255, 255, 0.05);
+  --app-glass-saturate-frame: 1.02;
+  --app-glass-saturate-float: 1.02;
+  --app-glass-highlight: rgba(255, 255, 255, 0.045);
   --app-paper-grain: transparent;
   --app-code-bg: #0b0d11;
-  --app-code-toolbar-bg: rgba(255, 255, 255, 0.035);
-  --app-divider: rgba(255, 255, 255, 0.08);
-  --app-control-bg: rgba(255, 255, 255, 0.04);
-  --app-control-hover: rgba(255, 255, 255, 0.06);
-  --app-control-active: rgba(132, 122, 196, 0.11);
-  --app-control-border: rgba(255, 255, 255, 0.08);
-  --app-chip-active-bg: rgba(132, 122, 196, 0.13);
-  --app-chip-active-border: rgba(132, 122, 196, 0.22);
-  --app-chip-active-text: rgba(255, 255, 255, 0.92);
-  --app-mode-tab-bg: rgba(255, 255, 255, 0.03);
-  --app-mode-tab-hover: rgba(255, 255, 255, 0.06);
-  --app-mode-tab-border: rgba(255, 255, 255, 0.08);
-  --app-mode-tab-text: rgba(255, 255, 255, 0.62);
-  --app-mode-tab-active-bg: rgba(132, 122, 196, 0.12);
-  --app-mode-tab-active-border: rgba(132, 122, 196, 0.22);
-  --app-mode-tab-active-text: rgba(255, 255, 255, 0.92);
-  --app-shadow-soft:
-    0 0 0 1px rgba(255, 255, 255, 0.02),
-    0 14px 30px rgba(0, 0, 0, 0.22),
-    0 -4px 10px rgba(255, 255, 255, 0.01);
-  --app-shadow-float:
-    0 0 0 1px rgba(255, 255, 255, 0.035),
-    0 22px 48px rgba(0, 0, 0, 0.32),
-    0 -6px 14px rgba(255, 255, 255, 0.012);
-  --app-button-primary-bg: rgba(255, 255, 255, 0.88);
-  --app-button-primary-hover: rgba(255, 255, 255, 0.95);
-  --app-button-primary-text: rgb(15 17 21);
-  --app-badge-primary-bg: rgba(132, 122, 196, 0.13);
-  --app-badge-primary-text: rgba(255, 255, 255, 0.92);
-  --app-chat-bubble-user-bg: rgba(255, 255, 255, 0.88);
-  --app-chat-bubble-user-text: rgb(15 17 21);
-  --app-chat-bubble-peer-bg: rgba(255, 255, 255, 0.05);
-  --app-chat-bubble-peer-border: rgba(255, 255, 255, 0.1);
+  --app-code-toolbar-bg: rgba(148, 163, 184, 0.06);
+  --app-divider: var(--app-border-subtle);
+  --app-control-bg: rgba(148, 163, 184, 0.08);
+  --app-control-hover: rgba(148, 163, 184, 0.12);
+  --app-control-active: var(--app-accent-primary-surface);
+  --app-control-border: var(--app-border-subtle);
+  --app-chip-active-bg: var(--app-accent-primary-surface);
+  --app-chip-active-border: var(--app-accent-primary-border);
+  --app-chip-active-text: var(--app-text-primary);
+  --app-mode-tab-bg: rgba(148, 163, 184, 0.06);
+  --app-mode-tab-hover: rgba(148, 163, 184, 0.10);
+  --app-mode-tab-border: var(--app-border-subtle);
+  --app-mode-tab-text: var(--app-text-muted);
+  --app-mode-tab-active-bg: var(--app-accent-primary-surface);
+  --app-mode-tab-active-border: var(--app-accent-primary-border);
+  --app-mode-tab-active-text: var(--app-text-primary);
+  --app-shadow-soft: var(--app-depth-2);
+  --app-shadow-float: var(--app-depth-3);
+  --app-button-primary-bg: rgba(241, 245, 249, 0.92);
+  --app-button-primary-hover: rgb(255 255 255);
+  --app-button-primary-text: rgb(13 15 19);
+  --app-badge-primary-bg: var(--app-accent-primary-surface);
+  --app-badge-primary-text: var(--app-text-primary);
+  --app-chat-bubble-user-bg: rgba(241, 245, 249, 0.92);
+  --app-chat-bubble-user-text: rgb(13 15 19);
+  --app-chat-bubble-peer-bg: rgba(148, 163, 184, 0.09);
+  --app-chat-bubble-peer-border: var(--app-border-subtle);
 
   --app-cloud-login-raised-bg: rgba(255, 255, 255, 0.05);
   --app-cloud-login-sunk-bg: rgba(255, 255, 255, 0.025);
@@ -104,14 +136,52 @@
 }
 
 .bridge-app.theme-light {
-  --utility-background: rgb(255 255 255);
-  --utility-foreground: rgb(31 27 25);
+  /* Light theme: neutral-cool paper/ink, with warm reserved for message identity. */
+  --app-surface-canvas: rgb(248 250 252);
+  --app-surface-shell: linear-gradient(180deg, rgba(252, 252, 253, 0.78) 0%, rgba(246, 248, 251, 0.74) 100%);
+  --app-surface-rail: rgba(248, 250, 252, 0.78);
+  --app-surface-panel: linear-gradient(180deg, rgba(252, 252, 253, 0.82) 0%, rgba(246, 248, 251, 0.76) 100%);
+  --app-surface-card: rgba(15, 23, 42, 0.045);
+  --app-surface-float: rgba(255, 255, 255, 0.94);
+  --app-text-primary: rgb(15 23 42);
+  --app-text-secondary: rgb(51 65 85);
+  --app-text-muted: rgb(71 85 105);
+  --app-text-meta: rgba(100, 116, 139, 0.76);
+  --app-border-subtle: rgba(15, 23, 42, 0.10);
+  --app-border-strong: rgba(15, 23, 42, 0.16);
+  --app-ring-focus: rgba(37, 99, 235, 0.20);
+  --app-accent-primary: oklch(45% 0.065 218);
+  --app-accent-primary-hover: oklch(38% 0.075 218);
+  --app-accent-primary-surface: rgba(37, 99, 235, 0.075);
+  --app-accent-primary-border: rgba(37, 99, 235, 0.18);
+  --app-status-info: rgb(14 116 144);
+  --app-status-info-bg: rgba(8, 145, 178, 0.11);
+  --app-status-success: rgb(6 95 70);
+  --app-status-success-bg: rgba(16, 185, 129, 0.13);
+  --app-status-warning: rgb(120 53 15);
+  --app-status-warning-bg: rgba(245, 158, 11, 0.16);
+  --app-status-danger: rgb(159 18 57);
+  --app-status-danger-bg: rgba(244, 63, 94, 0.10);
+  --app-depth-0: none;
+  --app-depth-1: 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --app-depth-2:
+    0 0 0 1px rgba(15, 23, 42, 0.065),
+    0 8px 18px rgba(15, 23, 42, 0.055);
+  --app-depth-3:
+    0 0 0 1px rgba(15, 23, 42, 0.075),
+    0 16px 36px rgba(15, 23, 42, 0.10);
+  --app-depth-4:
+    0 0 0 1px rgba(15, 23, 42, 0.09),
+    0 24px 64px rgba(15, 23, 42, 0.14);
+
+  --utility-background: var(--app-surface-canvas);
+  --utility-foreground: var(--app-text-primary);
   --utility-card: rgba(255, 255, 255, 0.9);
-  --utility-muted: rgba(225, 218, 207, 0.88);
-  --utility-muted-text: rgb(76 70 65);
-  --utility-meta-text: rgba(76, 70, 65, 0.58);
-  --app-markdown-link: oklch(45% 0.065 218);
-  --app-markdown-link-hover: oklch(38% 0.075 218);
+  --utility-muted: rgba(226, 232, 240, 0.88);
+  --utility-muted-text: var(--app-text-muted);
+  --utility-meta-text: var(--app-text-meta);
+  --app-markdown-link: var(--app-accent-primary);
+  --app-markdown-link-hover: var(--app-accent-primary-hover);
   --app-sidebar-title-text: #111827;
   --app-sidebar-preview-text: #6B7280;
   --app-sidebar-time-text: #9CA3AF;
@@ -121,68 +191,57 @@
   --app-chat-mention-own: var(--app-sidebar-accent);
   --app-chat-mention-peer: var(--app-sidebar-accent);
   --app-chat-meta-own: oklch(34% 0.015 70);
-  --app-chat-meta-peer: oklch(42% 0.018 70);
-  --app-tool-running-fg: oklch(43% 0.07 70);
-  --app-tool-running-icon: oklch(47% 0.065 70);
-  --app-tool-running-muted: oklch(50% 0.05 70);
-  --app-tool-running-bg: oklch(54% 0.055 70 / 0.09);
-  --app-tool-running-border: oklch(50% 0.055 70 / 0.2);
+  --app-chat-meta-peer: rgb(71 85 105);
+  --app-tool-running-fg: var(--app-status-warning);
+  --app-tool-running-icon: rgb(146 64 14);
+  --app-tool-running-muted: rgb(120 53 15);
+  --app-tool-running-bg: var(--app-status-warning-bg);
+  --app-tool-running-border: rgba(180, 83, 9, 0.22);
   --app-motion-fast: 200ms;
   --app-motion-base: 260ms;
   --app-motion-slow: 340ms;
   --app-motion-ease: cubic-bezier(0.2, 0.9, 0.22, 1);
   --app-page-bg:
-    radial-gradient(circle at 18% 12%, oklch(0.72 0.16 211 / 0.10), transparent 32%),
-    radial-gradient(circle at 82% 18%, oklch(0.66 0.26 355 / 0.08), transparent 28%),
-    radial-gradient(circle at 65% 88%, oklch(0.82 0.16 83 / 0.10), transparent 32%),
-    linear-gradient(180deg, #fbfbfc 0%, #f4f5f7 50%, #eceef2 100%);
-  --app-shell-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.72) 0%, rgba(246, 247, 249, 0.68) 100%);
-  --app-shell-border: rgba(15, 23, 42, 0.08);
-  --app-side-bg: rgba(250, 250, 251, 0.66);
-  --app-left-glass-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.72) 0%, rgba(244, 245, 248, 0.80) 100%);
+    radial-gradient(circle at 18% 12%, oklch(0.72 0.13 232 / 0.075), transparent 32%),
+    radial-gradient(circle at 78% 18%, oklch(0.74 0.09 190 / 0.055), transparent 28%),
+    linear-gradient(180deg, #fbfcfe 0%, #f6f8fb 50%, #edf1f6 100%);
+  --app-shell-bg: var(--app-surface-shell);
+  --app-shell-border: var(--app-border-subtle);
+  --app-side-bg: var(--app-surface-rail);
+  --app-left-glass-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.78) 0%, rgba(244, 247, 251, 0.84) 100%);
   --app-left-glass-border: rgba(15, 23, 42, 0.06);
-  --app-session-bg: rgba(250, 250, 251, 0.70);
-  --app-main-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.74) 0%, rgba(245, 246, 249, 0.70) 100%);
-  --app-card-bg: rgba(15, 23, 42, 0.045);
-  --app-overlay-bg: rgba(225, 226, 230, 0.72);
-  --app-modal-bg: rgba(255, 255, 255, 0.80);
+  --app-session-bg: var(--app-surface-rail);
+  --app-main-bg: var(--app-surface-panel);
+  --app-card-bg: var(--app-surface-card);
+  --app-overlay-bg: rgba(15, 23, 42, 0.20);
+  --app-modal-bg: var(--app-surface-float);
 
   --app-glass-highlight: rgba(255, 255, 255, 0.55);
   --app-paper-grain: transparent;
-  --app-code-bg: #ede8e1;
-  --app-code-toolbar-bg: rgba(43, 35, 32, 0.05);
-  --app-divider: rgba(43, 35, 32, 0.15);
-  --app-control-bg: rgba(43, 35, 32, 0.085);
-  --app-control-hover: rgba(43, 35, 32, 0.12);
-  --app-control-active: rgba(43, 35, 32, 0.16);
-  --app-control-border: rgba(43, 35, 32, 0.18);
-  --app-chip-active-bg: rgba(47, 41, 37, 0.88);
-  --app-chip-active-border: rgba(47, 41, 37, 0.18);
-  --app-chip-active-text: rgb(245 240 234);
-  --app-mode-tab-bg: rgba(43, 35, 32, 0.03);
-  --app-mode-tab-hover: rgba(43, 35, 32, 0.06);
-  --app-mode-tab-border: rgba(43, 35, 32, 0.1);
-  --app-mode-tab-text: rgb(67 60 56);
-  --app-mode-tab-active-bg: rgba(47, 41, 37, 0.88);
-  --app-mode-tab-active-border: rgba(47, 41, 37, 0.18);
-  --app-mode-tab-active-text: rgb(245 240 234);
-  --app-shadow-soft:
-    0 0 0 1px rgba(120, 102, 84, 0.04),
-    0 10px 22px rgba(141, 124, 106, 0.06),
-    0 -3px 8px rgba(255, 255, 255, 0.48);
-  --app-shadow-float:
-    0 0 0 1px rgba(120, 102, 84, 0.05),
-    0 18px 36px rgba(141, 124, 106, 0.1),
-    0 -6px 14px rgba(255, 255, 255, 0.54);
-  --app-button-primary-bg: rgba(44, 38, 34, 0.92);
-  --app-button-primary-hover: rgba(36, 31, 28, 0.96);
-  --app-button-primary-text: rgb(246 242 237);
-  --app-badge-primary-bg: rgba(47, 41, 37, 0.88);
-  --app-badge-primary-text: rgb(245 240 234);
-  /* Bubbles use OKLCH for perceptual uniformity. Per the impeccable rule:
-   * chroma drops as lightness approaches the extremes. Sender stays warm
-   * (gold brand hue), peer is neutral slate with a microscopic sky tint
-   * so it cohabits with the page-bg's brand-color highlights. */
+  --app-code-bg: rgb(248 250 252);
+  --app-code-toolbar-bg: rgba(15, 23, 42, 0.055);
+  --app-divider: var(--app-border-subtle);
+  --app-control-bg: rgba(15, 23, 42, 0.055);
+  --app-control-hover: rgba(15, 23, 42, 0.08);
+  --app-control-active: rgba(15, 23, 42, 0.095);
+  --app-control-border: var(--app-border-subtle);
+  --app-chip-active-bg: rgba(15, 23, 42, 0.92);
+  --app-chip-active-border: rgba(15, 23, 42, 0.16);
+  --app-chip-active-text: rgb(255 255 255);
+  --app-mode-tab-bg: rgba(15, 23, 42, 0.035);
+  --app-mode-tab-hover: rgba(15, 23, 42, 0.065);
+  --app-mode-tab-border: var(--app-border-subtle);
+  --app-mode-tab-text: rgb(71 85 105);
+  --app-mode-tab-active-bg: rgba(15, 23, 42, 0.92);
+  --app-mode-tab-active-border: rgba(15, 23, 42, 0.16);
+  --app-mode-tab-active-text: rgb(255 255 255);
+  --app-shadow-soft: var(--app-depth-2);
+  --app-shadow-float: var(--app-depth-3);
+  --app-button-primary-bg: rgba(15, 23, 42, 0.92);
+  --app-button-primary-hover: rgba(15, 23, 42, 0.98);
+  --app-button-primary-text: rgb(255 255 255);
+  --app-badge-primary-bg: rgba(15, 23, 42, 0.92);
+  --app-badge-primary-text: rgb(255 255 255);
   --app-chat-bubble-user-bg: oklch(0.90 0.07 82 / 0.45);
   --app-chat-bubble-user-text: oklch(0.34 0.07 80);
   --app-chat-bubble-peer-bg: oklch(0.93 0.008 240 / 0.88);

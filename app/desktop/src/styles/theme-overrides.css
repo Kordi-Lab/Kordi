@@ -30,23 +30,13 @@
 .bridge-app.theme-light .app-surface-card,
 .bridge-app.theme-light .app-modal-panel,
 .bridge-app.theme-light .app-code-panel {
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.035),
-    0 10px 24px rgba(15, 23, 42, 0.055),
-    0 -3px 8px rgba(255, 255, 255, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.48),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+  box-shadow: var(--app-depth-2);
 }
 
 .bridge-app.theme-light .app-left-glass,
 .bridge-app.theme-light .app-session-panel,
 .bridge-app.theme-light .app-main-panel {
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.028),
-    0 8px 20px rgba(15, 23, 42, 0.045),
-    0 -3px 8px rgba(255, 255, 255, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+  box-shadow: var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-badge-neutral {
@@ -411,28 +401,24 @@
 .bridge-app.theme-light .app-control-chip,
 .bridge-app.theme-light .app-input-shell,
 .bridge-app.theme-light .app-composer-shell {
-  color: rgb(31 27 25);
+  color: var(--app-text-primary);
 }
 
 .bridge-app.theme-light .app-input-shell {
-  border-color: rgba(73, 62, 54, 0.2);
-  background: rgba(255, 255, 255, 0.58);
-  color: rgb(31 27 25) !important;
-  box-shadow:
-    0 0 0 1px rgba(73, 62, 54, 0.035),
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    inset 0 -1px 0 rgba(73, 62, 54, 0.06);
+  border-color: var(--app-border-subtle);
+  background: var(--app-surface-float);
+  color: var(--app-text-primary) !important;
+  box-shadow: var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-input-shell:hover,
 .bridge-app.theme-light .app-input-shell:focus,
 .bridge-app.theme-light .app-input-shell:focus-within {
-  border-color: rgba(73, 62, 54, 0.32);
-  background: rgba(255, 255, 255, 0.76);
+  border-color: var(--app-border-strong);
+  background: rgba(255, 255, 255, 0.98);
   box-shadow:
-    0 0 0 2px rgba(73, 62, 54, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68),
-    inset 0 -1px 0 rgba(73, 62, 54, 0.07);
+    0 0 0 2px color-mix(in oklab, var(--app-ring-focus) 68%, transparent),
+    var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-input-shell::placeholder,
@@ -440,34 +426,27 @@
 .bridge-app.theme-light .app-input-shell textarea::placeholder,
 .bridge-app.theme-light input::placeholder,
 .bridge-app.theme-light textarea::placeholder {
-  color: rgba(83, 72, 64, 0.68) !important;
+  color: var(--app-text-meta) !important;
 }
 
 .bridge-app.theme-light .app-input-shell input,
 .bridge-app.theme-light .app-input-shell textarea,
 .bridge-app.theme-light .app-composer-input {
-  color: rgb(31 27 25) !important;
+  color: var(--app-text-primary) !important;
 }
 
 .bridge-app.theme-light .app-composer-shell {
-  border-color: rgba(37, 99, 235, 0.12);
-  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96) 0%, rgba(241, 247, 255, 0.92) 100%);
-  box-shadow:
-    0 0 0 1px rgba(37, 99, 235, 0.025),
-    0 10px 24px rgba(37, 99, 235, 0.045),
-    0 -2px 7px rgba(255, 255, 255, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.64),
-    inset 0 -1px 0 rgba(37, 99, 235, 0.035);
+  border-color: var(--app-border-subtle);
+  background: var(--app-surface-float);
+  box-shadow: var(--app-depth-2);
 }
 
 .bridge-app.theme-light .app-composer-shell:focus-within {
-  border-color: rgba(37, 99, 235, 0.22);
-  background: linear-gradient(180deg, rgba(250, 252, 255, 0.98) 0%, rgba(244, 249, 255, 0.95) 100%);
+  border-color: var(--app-border-strong);
+  background: var(--app-surface-float);
   box-shadow:
-    0 0 0 2px rgba(37, 99, 235, 0.075),
-    0 12px 26px rgba(37, 99, 235, 0.06),
-    0 -2px 7px rgba(255, 255, 255, 0.52),
-    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+    0 0 0 2px color-mix(in oklab, var(--app-ring-focus) 72%, transparent),
+    var(--app-depth-2);
 }
 
 .bridge-app.theme-light .bg-slate-800 {
