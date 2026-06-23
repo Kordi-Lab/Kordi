@@ -17,6 +17,7 @@ import { useKordiShellViewModel } from '@/app/useKordiShellViewModel';
 import { useKordiUiEffects } from '@/app/useKordiUiEffects';
 import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
+import { readKordiUrlPreviewState } from '@/app/urlPreviewState';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
 import { useDesktopAuthState } from '@/features/auth/useDesktopAuthState';
@@ -173,6 +174,8 @@ export function useKordiAppModel({
   const [cloudInitialSyncStartedAt, setCloudInitialSyncStartedAt] = useState(() => Date.now());
   const [cloudInitialSyncNow, setCloudInitialSyncNow] = useState(() => Date.now());
   const completedCloudInitialSyncAccountRef = useRef<string | null>(null);
+  const urlPreviewState = useMemo(() => readKordiUrlPreviewState(), []);
+  const enabledUrlPreviewState = urlPreviewState.enabled ? urlPreviewState : undefined;
 
   useEffect(() => {
     const now = Date.now();
@@ -185,7 +188,7 @@ export function useKordiAppModel({
   const canonicalRefreshFlightRef = useRef(createSingleFlightState());
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
 
-  const localUi = useKordiLocalUiState();
+  const localUi = useKordiLocalUiState(enabledUrlPreviewState);
   const {
     contactsUi,
     agentsUi,
@@ -261,6 +264,7 @@ export function useKordiAppModel({
     initialProjects: isNativeShell ? [] : projects,
     projectRoutingGroups,
     isNativeShell,
+    previewState: enabledUrlPreviewState,
   });
 
   const visibleSettingsSections = settingsSections;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 
 import { readStoredThemeMode, resolveThemeMode, writeStoredThemeMode } from '@/app/themePreference';
+import type { KordiUrlPreviewState } from '@/app/urlPreviewState';
 import { readStoredComposerAttachments, writeStoredComposerAttachments } from '@/features/chat/composerAttachments';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
@@ -18,9 +19,16 @@ function getSystemThemeMode(): ResolvedThemeMode {
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
-export function useKordiLocalUiState() {
-  const [activeContactGroup, setActiveContactGroup] = useState<ContactClass>('my-agents');
-  const [activeContactId, setActiveContactId] = useState('my-core-agent');
+type SettingsSectionId = (typeof settingsSections)[number]['id'];
+
+function previewSettingsSectionId(previewState?: KordiUrlPreviewState): SettingsSectionId {
+  const previewId = previewState?.activeSettingsSectionId;
+  return settingsSections.some((section) => section.id === previewId) ? previewId as SettingsSectionId : 'general';
+}
+
+export function useKordiLocalUiState(previewState?: KordiUrlPreviewState) {
+  const [activeContactGroup, setActiveContactGroup] = useState<ContactClass>(() => previewState?.activeContactGroup ?? 'my-agents');
+  const [activeContactId, setActiveContactId] = useState(() => previewState?.activeContactId ?? 'my-core-agent');
   const [isContactRequestsOpen, setIsContactRequestsOpen] = useState(false);
   const [activeContactRequestId, setActiveContactRequestId] = useState(contactRequests[0]?.id ?? '');
   const [contactOverlayMode, setContactOverlayMode] = useState<'contact' | 'request' | null>(null);
@@ -31,7 +39,7 @@ export function useKordiLocalUiState() {
     'other-users': false,
   });
 
-  const [activeAgentId, setActiveAgentId] = useState('');
+  const [activeAgentId, setActiveAgentId] = useState(() => previewState?.activeAgentId ?? '');
   const [isAgentOverlayOpen, setIsAgentOverlayOpen] = useState(false);
 
   const [projectWorkspaces, setProjectWorkspaces] = useState(projects);
@@ -40,10 +48,10 @@ export function useKordiLocalUiState() {
     [projects[0]?.id ?? '']: true,
   });
 
-  const [activeSettingsSectionId, setActiveSettingsSectionId] = useState<(typeof settingsSections)[number]['id']>('general');
+  const [activeSettingsSectionId, setActiveSettingsSectionId] = useState<SettingsSectionId>(() => previewSettingsSectionId(previewState));
   const [activeSourcePreview, setActiveSourcePreview] = useState<EditFilePreview | null>(null);
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
-  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => readStoredThemeMode());
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => previewState?.themeMode ?? readStoredThemeMode());
   const setThemeMode: Dispatch<SetStateAction<ThemeMode>> = useCallback((nextThemeModeOrUpdater) => {
     setThemeModeState((currentThemeMode) => {
       const nextThemeMode = typeof nextThemeModeOrUpdater === 'function'
