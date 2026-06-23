@@ -282,18 +282,20 @@ function cloudAgentProcessingBridgeMessage({
   account,
   request,
   targetAccountId,
+  targetAgentName,
   localAgentTurnsByRequestId = {},
 }: {
   account: CloudAccount;
   request: CloudMessage;
   targetAccountId: string;
+  targetAgentName: string | null;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
 }): DesktopBridgeConversationMessage {
   const timestampMs = (Date.parse(request.createdAt) || Date.now()) + 1;
   return {
     id: `cloud-agent-processing:${request.messageId}`,
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
-    sender: null,
+    sender: targetAgentName,
     text: 'processing...',
     timeLabel: formatCloudBridgeTime(timestampMs),
     timestampMs,
@@ -615,6 +617,7 @@ export function buildCloudBridgeConversation({
       account,
       request: message,
       targetAccountId,
+      targetAgentName: requestTargetAgentNames.get(message.messageId) ?? null,
       localAgentTurnsByRequestId,
     })];
   });

@@ -172,8 +172,13 @@ test('direct Cloud hosted shared-agent requests and responses keep the shared ag
     runtime: 'person',
   });
 
+  const pendingProcessing = pendingConversation.messages.find((message) => message.id === `cloud-agent-processing:${request.messageId}`);
+  const pendingView = mapBridgeConversationToViewModel(pendingConversation, undefined, 'Kordi');
+  const pendingViewProcessing = pendingView.messages.find((message) => message.turn?.status === 'processing');
+
   assert.equal(pendingConversation.outreach?.targetDisplayName, 'Kordi Project Driver');
-  assert.equal(pendingConversation.messages.find((message) => message.id === `cloud-agent-processing:${request.messageId}`)?.sender, null);
+  assert.equal(pendingProcessing?.sender, 'Kordi Project Driver');
+  assert.equal(pendingViewProcessing?.sender, 'Kordi Project Driver');
 });
 
 test('direct Cloud forwarded headers rewrite legacy Me labels to the remote human profile name', () => {
