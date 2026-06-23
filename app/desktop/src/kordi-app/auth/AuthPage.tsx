@@ -172,9 +172,7 @@ export function AuthPage({
   ) : null;
 
   const settingsDetailContent = showDetailPage ? (
-    <ScrollArea className="min-h-0 flex-1 pr-2">
-      <div className="min-h-0 w-full min-w-0 max-w-none" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
-    </ScrollArea>
+    <div className="min-h-0 w-full min-w-0 max-w-none pb-6" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
   ) : (
     <div className="flex min-h-0 w-full min-w-0 max-w-none flex-1 flex-col overflow-hidden" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
   );

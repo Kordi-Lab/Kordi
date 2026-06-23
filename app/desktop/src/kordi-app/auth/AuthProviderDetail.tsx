@@ -221,7 +221,7 @@ export function AuthProviderDetail({
           />
         ) : (
           <>
-            <DetailSection title="Connect">
+            <DetailSection>
               {provider.methods.map((method, index) => {
                 const raw = findRawProvider(rawProviders, method.providerId);
                 if (!raw) return null;
