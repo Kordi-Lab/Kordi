@@ -555,12 +555,18 @@ export function buildCloudBridgeConversation({
       requestTargetAgentNames.set(message.messageId, 'My Kordi');
     }
   }
+  const visibleResponseKeys = new Set<string>();
   const visibleCloudMessages = messages.filter((message) => {
     if (isCloudAgentControlMessage(message.body) || isCloudGroupControlMessage(message.body)) return false;
     const response = parseCloudAgentResponse(message.body);
     if (!response) return true;
     const expectedResponderAccountId = requestTargetAccountIds.get(response.requestId);
-    return !expectedResponderAccountId || message.fromAccountId === expectedResponderAccountId;
+    if (expectedResponderAccountId && message.fromAccountId !== expectedResponderAccountId) return false;
+    const responderAccountId = expectedResponderAccountId || message.fromAccountId;
+    const responseKey = `${response.requestId}:${responderAccountId}`;
+    if (visibleResponseKeys.has(responseKey)) return false;
+    visibleResponseKeys.add(responseKey);
+    return true;
   });
   const agentRequests = messages.filter((message) => {
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;

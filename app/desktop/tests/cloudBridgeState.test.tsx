@@ -2142,6 +2142,54 @@ test('cloud first-person self-agent requests hide accidental duplicate peer resp
   assert.equal(responses[0].id, validResponse.messageId);
 });
 
+test('cloud direct hosted-agent requests hide duplicate owner responses for the same request', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_hosted_duplicate_request',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '@KordiProjectDriver who are you',
+      targetCloudAgentId: 'cloud_agent_project',
+      targetCloudAgentName: 'Kordi Project Driver',
+      targetCloudAgentOwnerAccountId: 'acct_peer',
+      targetCloudAgentOwnerName: 'Peer Person',
+    }),
+    direction: 'outgoing',
+  };
+  const firstResponse: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_hosted_duplicate_response_a',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'First response.' }),
+    direction: 'incoming',
+    createdAt: '2026-06-23T03:28:28.000Z',
+  };
+  const secondResponse: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_hosted_duplicate_response_b',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: encodeCloudAgentResponse({ requestId: request.messageId, text: 'Second duplicate response.' }),
+    direction: 'incoming',
+    createdAt: '2026-06-23T03:28:29.000Z',
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request, firstResponse, secondResponse] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  const responses = state.conversations[0].messages.filter((candidate) => candidate.requestId === request.messageId && candidate.id !== request.messageId);
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].id, firstResponse.messageId);
+  assert.equal(responses[0].sender, 'Kordi Project Driver');
+});
+
 test('cloud remote-agent responses render with the remote owner agent identity', () => {
   const request: CloudMessage = {
     ...message,
