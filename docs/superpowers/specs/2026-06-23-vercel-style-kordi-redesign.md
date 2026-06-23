@@ -87,6 +87,30 @@ Structural panels should not use decorative radial glows or stacked glass shadow
 - Metadata should be quieter but not washed out.
 - Labels and chips should feel like product UI, not dashboard badges.
 
+### Concrete geometry and type scale
+
+These values are the target contract for this pass, inspired by Vercel's precision and restraint:
+
+- Global app font: system sans; no decorative display font.
+- Main body copy: `13px` / `20px` line-height.
+- Dense list rows: `12px` title/meta, `18px` line-height.
+- Section labels: `10px`, uppercase, `0.12em` letter spacing.
+- Conversation/page titles: `15px`–`17px`, `600` weight, `22px` line-height.
+- Nav rail width: `56px`–`64px`; icon buttons `36px` square.
+- Sidebar session rows: compact `44px` minimum for normal rows, `52px` when two-line preview is present.
+- Structural gutters: `8px` between rail/sidebar/main/right rail; internal panel padding `12px`–`16px`.
+- Composer shell: `min-height: 92px`, radius `18px`, padding `10px 12px`; textarea text `13px` / `20px`.
+- Control buttons/chips: height `28px`–`32px`, radius `8px`–`10px`, horizontal padding `8px`–`12px`.
+- Popovers/menus: radius `14px`, padding `6px`, item height `30px`–`34px`.
+- Primary radius scale: `8px` controls, `12px` rows/cards, `16px` panels, `18px` composer, `20px` modal shells.
+- Border width: `1px` hairlines only; no thick decorative outlines.
+- Light structural border: neutral black alpha around `0.10`–`0.14`.
+- Dark structural border: neutral white/slate alpha around `0.12`–`0.18`.
+- Depth 1: border only, no visible shadow.
+- Depth 2: one hairline plus `0 1px 2px` or similarly tiny shadow.
+- Depth 3: compact popover shadow, not a large glow.
+- Depth 4: modal shadow, still neutral and smaller than previous glass stacks.
+
 ### Motion and effects
 
 - No gradient text.

@@ -6,6 +6,7 @@
   position: relative;
   background: var(--app-shell-bg);
   border-color: var(--app-shell-border);
+  box-shadow: var(--app-depth-1);
   isolation: isolate;
   background-clip: padding-box;
 }
@@ -79,8 +80,8 @@
 .app-left-glass {
   background: var(--app-left-glass-bg);
   box-shadow: var(--app-depth-1);
-  backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
-  -webkit-backdrop-filter: blur(var(--app-glass-blur-frame)) saturate(var(--app-glass-saturate-frame));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .app-session-panel {
@@ -122,11 +123,10 @@
 
 .app-input-shell {
   border: 1px solid var(--app-control-border);
+  border-radius: var(--app-radius-control);
   background: var(--app-control-bg);
   color: var(--utility-foreground);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.02),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+  box-shadow: none;
   transition:
     background-color var(--app-motion-fast) var(--app-motion-ease),
     border-color var(--app-motion-fast) var(--app-motion-ease),
@@ -159,12 +159,10 @@
 
 .app-icon-button {
   border: 1px solid color-mix(in oklab, var(--app-control-border) 92%, transparent);
+  border-radius: var(--app-radius-control);
   background: color-mix(in oklab, var(--app-control-bg) 72%, transparent);
   color: var(--utility-foreground);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
-    0 1px 0 rgba(255, 255, 255, 0.015);
+  box-shadow: none;
 }
 
 .app-icon-button:hover {
@@ -603,9 +601,10 @@
 }
 
 .app-composer-shell {
-  min-height: 7.25rem;
+  min-height: 92px;
   border: 1px solid color-mix(in oklab, var(--app-divider) 86%, var(--utility-muted-text));
-  background: color-mix(in oklab, var(--app-surface-float) 84%, var(--app-main-bg));
+  border-radius: var(--app-radius-composer);
+  background: var(--app-surface-float);
   box-shadow: var(--app-depth-2);
   transition:
     border-color var(--app-motion-fast) var(--app-motion-ease),
@@ -938,14 +937,10 @@
   display: none;
 }
 
-/* --- Glassmorphism: backdrop-filter on framed surfaces (issue #386) ---
+/* --- Layer filtering hooks ---
  *
- * Two tiers: frame (12px / saturate 1.06) for major panels, float (8px /
- * saturate 1.04) for popovers and dropdown menus. The tier values come from
- * theme-tokens.css and flip per theme via the same cascade.
- *
- * Wrapped in @supports so environments without backdrop-filter still render
- * a clean (more opaque) surface from the fallback rules below.
+ * Vercel-style chrome keeps these values at 0px/1 saturation, but the hooks
+ * stay in place for portal/fallback compatibility and targeted future use.
  */
 
 @supports (backdrop-filter: blur(12px)) {
@@ -975,15 +970,15 @@
   }
 }
 
-/* Inner top highlight on framed surfaces — pairs with the existing
- * --app-shadow-* tokens. Theme-aware via --app-glass-highlight. */
+/* Vercel-style surfaces use shadow-as-border rather than glass highlights. */
 .app-shell,
-.app-modal-panel,
 .app-detail-sheet,
 .app-surface-card {
-  box-shadow:
-    inset 0 1px 0 var(--app-glass-highlight),
-    var(--app-shadow-soft);
+  box-shadow: var(--app-depth-1);
+}
+
+.app-modal-panel {
+  box-shadow: var(--app-depth-4);
 }
 
 .app-presence-light {
