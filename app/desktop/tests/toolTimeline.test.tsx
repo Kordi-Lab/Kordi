@@ -86,7 +86,8 @@ test('running tool timeline styling uses muted amber tokens without glow', () =>
   const shellCss = readDesktopShellCss();
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
-  assert.match(themeTokensCss, /--app-tool-running-fg:\s*oklch\([^)]*0\.0[0-8]/);
+  assert.match(themeTokensCss, /--app-status-warning:\s*oklch\([^)]*0\.0[0-9]/);
+  assert.match(themeTokensCss, /--app-tool-running-fg:\s*var\(--app-status-warning\);/);
   assert.match(cssBlock(shellCss, '.app-transcript-timeline-row-running .app-transcript-timeline-row-title'), /color:\s*var\(--app-tool-running-fg\)/);
   assert.match(cssBlock(shellCss, '.app-transcript-timeline-row-running .app-transcript-timeline-node'), /color:\s*var\(--app-tool-running-icon\)/);
   assert.match(cssBlock(shellCss, '.app-transcript-timeline-running-time'), /color:\s*var\(--app-tool-running-muted\)/);

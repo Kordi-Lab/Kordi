@@ -12,7 +12,7 @@
 
 .app-chat-bubble-peer {
   --app-message-bubble-fill: var(--app-chat-bubble-peer-bg);
-  --app-message-bubble-stroke: transparent;
+  --app-message-bubble-stroke: color-mix(in oklab, var(--app-chat-bubble-peer-border) 58%, transparent);
   --app-message-bubble-shadow: none;
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
@@ -83,7 +83,8 @@
 
 .app-message-mention {
   color: var(--app-message-mention);
-  font-weight: 600;
+  font-weight: 650;
+  text-decoration-line: none;
   background: transparent;
   border: 0;
   padding: 0;

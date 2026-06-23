@@ -3,7 +3,7 @@
   font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  background: #050c17;
+  background: #000;
   color: rgb(241 245 249);
   font-synthesis: none;
   font-kerning: normal;
@@ -33,17 +33,11 @@ body {
 }
 
 body.theme-dark {
-  background:
-    radial-gradient(circle at top, rgba(218, 205, 166, 0.08), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(112, 117, 74, 0.08), transparent 28%),
-    linear-gradient(180deg, #22231d 0%, #171814 44%, #10110f 100%);
+  background: #000;
 }
 
 body.theme-light {
-  background:
-    radial-gradient(circle at top, rgba(255, 251, 241, 0.72), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(146, 141, 112, 0.09), transparent 30%),
-    linear-gradient(180deg, #f4f1e7 0%, #ebe6da 48%, #dfd8ca 100%);
+  background: #fff;
 }
 
 button,

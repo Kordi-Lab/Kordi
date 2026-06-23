@@ -80,10 +80,14 @@ test('bubble path uses a small bottom-corner tail like the reference, not a side
   assert.doesNotMatch(peerPath, /\b0\s+231\b/);
 });
 
-test('human bubble styling avoids visible outline seams around the WhatsApp-style tail', () => {
+test('human bubble styling keeps transcript readable without boxing every message', () => {
   const shellCss = readDesktopShellCss();
 
   assert.match(shellCss, /\.app-chat-bubble-user\s*{[\s\S]*--app-message-bubble-stroke:\s*transparent;/);
-  assert.match(shellCss, /\.app-chat-bubble-peer\s*{[\s\S]*--app-message-bubble-stroke:\s*transparent;/);
+  assert.match(shellCss, /\.app-chat-bubble-peer\s*{[\s\S]*--app-message-bubble-stroke:\s*color-mix\(in oklab, var\(--app-chat-bubble-peer-border\) 58%, transparent\);/);
+  assert.match(shellCss, /\.app-chat-bubble-peer\s*{[\s\S]*--app-message-bubble-shadow:\s*none;/);
+  assert.match(shellCss, /\.app-message-forwarded-header\s*{[\s\S]*background:\s*transparent;/);
+  assert.match(shellCss, /\.app-message-forwarded-header\s*{[\s\S]*border:\s*0;/);
+  assert.match(shellCss, /\.app-message-mention\s*{[\s\S]*text-decoration-line:\s*none;/);
   assert.doesNotMatch(shellCss, /height:\s*calc\(100% \+ var\(--app-message-bubble-tail-depth\)\)/);
 });

@@ -57,13 +57,16 @@ test('mention participant menu uses its own solid surface instead of the shared 
   assert.doesNotMatch(menuRule, /backdrop-filter/);
 
   const lightRule = cssRule(css, '.bridge-app.theme-light .app-composer-mention-menu');
-  assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
+  assert.match(lightRule, /--app-composer-mention-menu-bg:\s*var\(--app-surface-float\);/);
 });
 
-test('mention participant menu can carry light theme after portaling outside the app shell', () => {
+test('mention participant menu can carry readable light theme values after portaling outside the app shell', () => {
   const css = readDesktopShellCss();
   const lightRule = cssRule(css, '.app-composer-mention-menu-light');
   assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
+  assert.match(lightRule, /--app-composer-mention-menu-text:\s*rgb\(17 17 17\);/);
+  assert.match(lightRule, /--app-composer-mention-menu-muted:\s*rgb\(82 82 82\);/);
+  assert.match(lightRule, /--app-composer-mention-menu-border:\s*rgba\(0, 0, 0, 0\.16\);/);
 
   const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
   assert.match(source, /setMenuThemeClass/);

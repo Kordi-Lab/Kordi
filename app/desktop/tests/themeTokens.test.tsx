@@ -4,20 +4,56 @@ import { test } from 'node:test';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
-test('dark theme uses a translucent dark-glass palette with one accent selected state', () => {
+test('dual themes expose semantic surface, text, border, ring, and depth tokens', () => {
+  const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+  const darkBlock = themeTokensCss.match(/\.bridge-app\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightBlock = themeTokensCss.match(/\.bridge-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  for (const block of [darkBlock, lightBlock]) {
+    assert.match(block, /--app-surface-canvas:/);
+    assert.match(block, /--app-surface-shell:/);
+    assert.match(block, /--app-surface-rail:/);
+    assert.match(block, /--app-surface-panel:/);
+    assert.match(block, /--app-surface-card:/);
+    assert.match(block, /--app-surface-float:/);
+    assert.match(block, /--app-text-primary:/);
+    assert.match(block, /--app-text-secondary:/);
+    assert.match(block, /--app-text-muted:/);
+    assert.match(block, /--app-text-meta:/);
+    assert.match(block, /--app-border-subtle:/);
+    assert.match(block, /--app-border-strong:/);
+    assert.match(block, /--app-ring-focus:/);
+    assert.match(block, /--app-depth-1:/);
+    assert.match(block, /--app-depth-2:/);
+    assert.match(block, /--app-depth-3:/);
+  }
+
+  assert.match(darkBlock, /--app-surface-canvas:\s*rgb\(0 0 0\);/);
+  assert.match(darkBlock, /--app-surface-shell:\s*rgb\(10 10 10\);/);
+  assert.match(darkBlock, /--app-text-primary:\s*rgb\(245 245 245\);/);
+  assert.match(darkBlock, /--app-depth-1:\s*0 0 0 1px rgba\(255, 255, 255, 0\.10\);/);
+  assert.match(lightBlock, /--app-surface-canvas:\s*rgb\(255 255 255\);/);
+  assert.match(lightBlock, /--app-surface-shell:\s*rgb\(255 255 255\);/);
+  assert.match(lightBlock, /--app-text-primary:\s*rgb\(17 17 17\);/);
+  assert.match(lightBlock, /--app-divider:\s*var\(--app-border-subtle\);/);
+  assert.doesNotMatch(lightBlock, /--app-divider:\s*rgba\(43, 35, 32/);
+  assert.doesNotMatch(lightBlock, /--app-control-bg:\s*rgba\(43, 35, 32/);
+});
+
+test('dark theme uses graphite semantic aliases with one restrained accent selected state', () => {
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-background:\s*rgb\(15 17 21\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-foreground:\s*rgba\(255,\s*255,\s*255,\s*0\.9\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-muted-text:\s*rgba\(255,\s*255,\s*255,\s*0\.6\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-meta-text:\s*rgba\(255,\s*255,\s*255,\s*0\.35\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-card-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.04\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.04\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-hover:\s*rgba\(255,\s*255,\s*255,\s*0\.06\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-divider:\s*rgba\(255,\s*255,\s*255,\s*0\.08\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-background:\s*var\(--app-surface-canvas\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-foreground:\s*var\(--app-text-primary\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-muted-text:\s*var\(--app-text-muted\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--utility-meta-text:\s*var\(--app-text-meta\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-card-bg:\s*var\(--app-surface-card\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.06\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-hover:\s*rgba\(255,\s*255,\s*255,\s*0\.10\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-divider:\s*var\(--app-border-subtle\);/);
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-accent:\s*rgba\(132,\s*122,\s*196,\s*0\.64\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-accent-ring:\s*rgba\(132,\s*122,\s*196,\s*0\.26\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-active:\s*rgba\(132,\s*122,\s*196,\s*0\.11\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-accent-ring:\s*var\(--app-ring-focus\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-control-active:\s*var\(--app-accent-primary-surface\);/);
 });
 
 test('chat sidebar timestamps use the sidebar time text token', () => {
@@ -29,33 +65,47 @@ test('chat sidebar timestamps use the sidebar time text token', () => {
   assert.match(shellCss, /\.app-session-row-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none/s);
 });
 
-test('glassmorphism tokens are declared in both themes and frame bgs are translucent', () => {
+test('Vercel-style geometry tokens define concrete type, radius, and spacing rules', () => {
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
-  // Glass intensity tokens — shared across themes (declared in the base block).
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-blur-frame:\s*12px;/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-blur-float:\s*8px;/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-saturate-frame:\s*1\.06;/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-saturate-float:\s*1\.04;/);
+  assert.match(themeTokensCss, /--app-font-size-body:\s*13px;/);
+  assert.match(themeTokensCss, /--app-line-height-body:\s*20px;/);
+  assert.match(themeTokensCss, /--app-radius-control:\s*8px;/);
+  assert.match(themeTokensCss, /--app-radius-row:\s*12px;/);
+  assert.match(themeTokensCss, /--app-radius-panel:\s*16px;/);
+  assert.match(themeTokensCss, /--app-radius-composer:\s*18px;/);
+  assert.match(themeTokensCss, /--app-radius-popover:\s*14px;/);
+  assert.match(themeTokensCss, /--app-space-panel:\s*12px;/);
+}
+);
+
+test('glassmorphism tokens are reduced for Vercel-style opaque structural chrome', () => {
+  const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+
+  // Glass intensity tokens remain declared but structural frame blur is disabled.
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-blur-frame:\s*0px;/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-blur-float:\s*0px;/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-saturate-frame:\s*1;/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-saturate-float:\s*1;/);
 
   // Inner-top highlight and paper-grain tokens — declared in both themes.
   // Light mode is intentionally neutral (transparent grain, white highlight).
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.05\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.045\);/);
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-paper-grain:\s*transparent;/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-glass-highlight:\s*rgba\(255,\s*255,\s*255,\s*0\.55\);/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-paper-grain:\s*transparent;/);
 
   // Dark frame bgs lowered so backdrop-filter reads through.
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-shell-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-side-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.56\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-session-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.52\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-main-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
-  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-modal-bg:\s*rgba\(17,\s*19,\s*24,\s*0\.66\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-shell-bg:\s*var\(--app-surface-shell\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-side-bg:\s*var\(--app-surface-rail\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-session-bg:\s*var\(--app-surface-rail\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-main-bg:\s*var\(--app-surface-panel\);/);
+  assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-modal-bg:\s*var\(--app-surface-float\);/);
 
-  // Light frame bgs are now neutral-white translucent (no paper warmth).
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-shell-bg:\s*linear-gradient\(180deg,\s*rgba\(252,\s*252,\s*253,\s*0\.72\)/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*rgba\(250,\s*250,\s*251,\s*0\.66\);/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
+  // Light frame bgs are now neutral opaque Vercel-style chrome.
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-shell-bg:\s*var\(--app-surface-shell\);/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*var\(--app-surface-rail\);/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*var\(--app-surface-float\);/);
 });
 
 test('light cloud login and loading gates use the cool main-shell palette', () => {
@@ -67,10 +117,10 @@ test('light cloud login and loading gates use the cool main-shell palette', () =
   const lightAccentsBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-login-accents \{[\s\S]*?\n\}/)?.[0] ?? '';
   const lightStartingBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-cloud-starting-screen \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(lightCloudTokenBlock, /--app-cloud-login-raised-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.72\);/);
-  assert.match(lightCloudTokenBlock, /--app-cloud-login-sunk-bg:\s*rgba\(226,\s*232,\s*240,\s*0\.52\);/);
-  assert.match(lightCloudTokenBlock, /--app-cloud-login-input-bg:\s*rgba\(248,\s*251,\s*255,\s*0\.82\);/);
-  assert.match(lightCloudTokenBlock, /--app-cloud-login-border:\s*rgba\(37,\s*99,\s*235,\s*0\.12\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-raised-bg:\s*rgb\(255 255 255\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-sunk-bg:\s*rgb\(250 250 250\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-input-bg:\s*rgb\(255 255 255\);/);
+  assert.match(lightCloudTokenBlock, /--app-cloud-login-border:\s*rgba\(0,\s*0,\s*0,\s*0\.10\);/);
   assert.match(lightCloudTokenBlock, /--app-cloud-login-divider:\s*rgba\(100,\s*116,\s*139,\s*0\.22\);/);
   assert.match(lightCloudBlock, /--app-cloud-login-page-bg:\s*linear-gradient\(180deg,\s*rgb\(248 250 252\) 0%,\s*rgb\(241 245 249\) 54%,\s*rgb\(226 232 240\) 100%\);/);
   assert.match(lightAccentsBlock, /oklch\(0\.70 0\.13 232 \/ 0\.12\)/);
@@ -80,18 +130,18 @@ test('light cloud login and loading gates use the cool main-shell palette', () =
   assert.doesNotMatch(`${lightCloudTokenBlock}\n${lightCloudBlock}\n${lightAccentsBlock}\n${lightStartingBlock}`, /oklch\([^)]*\s82(?:\s|\/|\))|rgba\(255,\s*252|rgb\(245 241 232\)|0\.955 0\.026 82/);
 });
 
-test('light agent workspace uses cool slate surfaces instead of warm beige panels', () => {
+test('light agent workspace uses neutral surfaces instead of colored panels', () => {
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
   const agentBlockStart = themeOverridesCss.indexOf('.bridge-app.theme-light .app-agent-shell');
   const agentBlockEnd = themeOverridesCss.indexOf('.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section', agentBlockStart);
   const agentLightBlock = themeOverridesCss.slice(agentBlockStart, agentBlockEnd);
 
   assert.ok(agentBlockStart >= 0 && agentBlockEnd > agentBlockStart, 'expected to find the light agent theme block');
-  assert.match(agentLightBlock, /\.app-agent-shell\s*{[^}]*border-color:\s*color-mix\(in oklab, rgb\(148 163 184\) 26%, transparent\);[^}]*background:\s*color-mix\(in oklab, rgb\(226 232 240\) 48%, transparent\)/s);
-  assert.match(agentLightBlock, /\.app-agent-sidebar\s*{[^}]*background:\s*color-mix\(in oklab, rgb\(248 250 252\) 86%, transparent\)/s);
-  assert.match(agentLightBlock, /\.app-agent-detail-pane\s*{[^}]*background:\s*color-mix\(in oklab, rgb\(241 245 249\) 78%, transparent\)/s);
-  assert.match(agentLightBlock, /\.app-agent-content-pane\s*{[^}]*border-left-color:\s*color-mix\(in oklab, rgb\(148 163 184\) 28%, transparent\);[^}]*background:\s*color-mix\(in oklab, rgb\(238 242 247\) 82%, transparent\)/s);
-  assert.doesNotMatch(agentLightBlock, /rgb\(245 241 232\)|rgba\(255, 252, 244|rgba\(247, 244, 235|rgba\(243, 239, 229|rgba\(73, 62, 54/);
+  assert.match(agentLightBlock, /\.app-agent-shell\s*{[^}]*border-color:\s*rgba\(0, 0, 0, 0\.10\);[^}]*background:\s*rgb\(245 245 245\)/s);
+  assert.match(agentLightBlock, /\.app-agent-sidebar\s*{[^}]*background:\s*rgb\(250 250 250\)/s);
+  assert.match(agentLightBlock, /\.app-agent-detail-pane\s*{[^}]*background:\s*rgb\(250 250 250\)/s);
+  assert.match(agentLightBlock, /\.app-agent-content-pane\s*{[^}]*border-left-color:\s*rgba\(0, 0, 0, 0\.10\);[^}]*background:\s*rgb\(250 250 250\)/s);
+  assert.doesNotMatch(agentLightBlock, /rgb\(245 241 232\)|rgba\(255, 252, 244|rgba\(247, 244, 235|rgba\(243, 239, 229|rgba\(73, 62, 54|rgb\(219 234 254\)|rgb\(37 99 235\)|rgb\(30 64 175\)/);
 });
 
 test('shell.css applies backdrop-filter and a paper-grain layer on the workspace shell', () => {
@@ -124,6 +174,19 @@ test('light theme utility buttons use flat navigation-chip styling instead of ra
   assert.match(activeChipBlock, /box-shadow:\s*none;/);
 });
 
+test('shell structural surfaces use semantic depth without decorative warm rail glow', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const leftGlassBlock = shellCss.match(/\.app-left-glass\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightStructuralBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-left-glass,[\s\S]*?\.app-main-panel\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(leftGlassBlock, /background:\s*var\(--app-left-glass-bg\);/);
+  assert.match(leftGlassBlock, /box-shadow:\s*var\(--app-depth-1\);/);
+  assert.doesNotMatch(leftGlassBlock, /214, 158, 46|255, 194, 84/);
+  assert.match(lightStructuralBlock, /box-shadow:\s*var\(--app-depth-1\);/);
+  assert.doesNotMatch(lightStructuralBlock, /0 8px 20px|0 -3px 8px|inset 0 -1px/);
+});
+
 test('composer send area keeps the outer surface without an inner input pop or divider', () => {
   const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
@@ -136,18 +199,33 @@ test('composer send area keeps the outer surface without an inner input pop or d
     .find((block) => /background:/.test(block)) ?? '';
   const lightComposerFocusBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-composer-shell:focus-within \{[\s\S]*?\n\}/)?.[0] ?? '';
 
+  assert.match(composerShellBlock, /min-height:\s*92px/);
+  assert.match(composerShellBlock, /border-radius:\s*var\(--app-radius-composer\)/);
   assert.match(composerShellBlock, /var\(--app-divider\) 86%/);
   assert.match(composerShellBlock, /box-shadow:/);
   assert.match(composerInputBlock, /border:\s*0/);
   assert.match(composerInputBlock, /background:\s*transparent/);
   assert.match(composerInputBlock, /box-shadow:\s*none/);
   assert.match(composerMetaBlock, /border-top:\s*0/);
-  assert.match(composerFocusBlock, /var\(--app-accent-ring\)/);
+  assert.match(composerFocusBlock, /var\(--app-ring-focus\)/);
   assert.doesNotMatch(shellCss, /\.app-composer-shell:focus-within \.app-composer-input/);
   assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-composer-input \{[^}]*background:/);
-  assert.match(lightComposerBlock, /background:\s*linear-gradient\(180deg, rgba\(248, 251, 255, 0\.96\) 0%, rgba\(241, 247, 255, 0\.92\) 100%\);/);
-  assert.match(lightComposerBlock, /border-color:\s*rgba\(37, 99, 235, 0\.12\);/);
-  assert.doesNotMatch(lightComposerBlock, /rgba\(252, 249, 243|rgba\(246, 241, 232/);
-  assert.match(lightComposerFocusBlock, /border-color:\s*rgba\(37, 99, 235, 0\.22\);/);
-  assert.match(lightComposerFocusBlock, /box-shadow:/);
+  assert.match(lightComposerBlock, /background:\s*var\(--app-surface-float\);/);
+  assert.match(lightComposerBlock, /border-color:\s*var\(--app-border-strong\);/);
+  assert.doesNotMatch(lightComposerBlock, /rgba\(37, 99, 235|rgba\(252, 249, 243|rgba\(246, 241, 232/);
+  assert.match(lightComposerFocusBlock, /border-color:\s*var\(--app-border-strong\);/);
+  assert.match(lightComposerFocusBlock, /var\(--app-ring-focus\)/);
+});
+
+test('Vercel-style shell controls use concrete radius and no structural blur', () => {
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellBlock = shellCss.match(/\.app-shell\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const leftGlassBlock = shellCss.match(/\.app-left-glass\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const iconButtonBlock = shellCss.match(/\.app-icon-button\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(shellBlock, /box-shadow:\s*var\(--app-depth-1\)/);
+  assert.match(leftGlassBlock, /backdrop-filter:\s*none/);
+  assert.match(leftGlassBlock, /-webkit-backdrop-filter:\s*none/);
+  assert.match(iconButtonBlock, /border-radius:\s*var\(--app-radius-control\)/);
+  assert.doesNotMatch(leftGlassBlock, /blur\(var\(--app-glass-blur-frame\)\)/);
 });

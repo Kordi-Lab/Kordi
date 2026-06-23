@@ -82,16 +82,17 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.doesNotMatch(markup, />Save</);
 });
 
-test('compact model route menu uses light-theme tokenized popover colors', () => {
+test('compact model route menu uses semantic dual-theme floating surface tokens', () => {
   const css = readDesktopShellCss();
 
   assert.match(css, /\.app-compact-model-menu\s*{[\s\S]*background:\s*var\(--app-compact-model-menu-bg\);/);
   assert.match(css, /\.app-compact-model-menu-save\s*{[\s\S]*background:\s*var\(--app-compact-model-menu-save-bg\);/);
   assert.match(css, /\.app-compact-model-menu details\[open\] \.app-compact-model-menu-chevron\s*{[\s\S]*transform:\s*rotate\(180deg\);/);
-  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu,\n\.app-compact-model-menu-light\s*{[\s\S]*--app-compact-model-menu-bg:\s*rgba\(255, 255, 255, 0\.96\);/);
-  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu,\n\.app-compact-model-menu-light\s*{[\s\S]*--app-compact-model-menu-save-bg:\s*rgb\(15 23 42\);/);
-  assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-foreground:\s*rgb\(15 23 42\);/);
-  assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-muted-text:\s*rgb\(71 85 105\);/);
+  assert.match(css, /\.app-compact-model-menu\s*{[\s\S]*--app-compact-model-menu-bg:\s*var\(--app-surface-float\);/);
+  assert.match(css, /\.app-compact-model-menu\s*{[\s\S]*--app-compact-model-menu-save-bg:\s*var\(--app-button-primary-bg\);/);
+  assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu,\n\.app-compact-model-menu-light\s*{[\s\S]*--app-compact-model-menu-bg:\s*var\(--app-surface-float\);/);
+  assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-foreground:\s*var\(--app-text-primary\);/);
+  assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-muted-text:\s*var\(--app-text-muted\);/);
 });
 
 test('compact model route menu sits above transcript fold controls and uses opaque dark glass', () => {
@@ -106,7 +107,7 @@ test('compact model route menu sits above transcript fold controls and uses opaq
   const css = readDesktopShellCss();
   const menuRule = css.match(/\.app-compact-model-menu\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
   const layerRule = css.match(/\.app-compact-model-menu-layer\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
-  const darkRootRule = css.match(/\.app-compact-model-menu\s*\{[\s\S]*?--app-compact-model-menu-bg:\s*rgba\(43, 43, 46, 0\.9[0-9]\);[\s\S]*?\n\}/)?.[0] ?? '';
+  const darkRootRule = css.match(/\.app-compact-model-menu\s*\{[\s\S]*?--app-compact-model-menu-bg:\s*var\(--app-surface-float\);[\s\S]*?\n\}/)?.[0] ?? '';
   const headerRule = css.match(/\.app-compact-model-menu-header\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
   const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
 
@@ -121,8 +122,9 @@ test('compact model route menu sits above transcript fold controls and uses opaq
   assert.match(source, /app-compact-model-menu-light/);
   assert.match(css, /@keyframes\s+app-compact-model-menu-enter/);
   assert.match(layerRule, /animation:\s*app-compact-model-menu-enter/);
-  assert.match(darkRootRule, /--app-compact-model-menu-bg:\s*rgba\(43, 43, 46, 0\.94\)/);
-  assert.match(darkRootRule, /--app-divider:\s*rgba\(148, 163, 184, 0\.18\)/);
+  assert.match(darkRootRule, /--app-compact-model-menu-bg:\s*var\(--app-surface-float\)/);
+  assert.match(darkRootRule, /--app-divider:\s*var\(--app-border-subtle\)/);
+  assert.doesNotMatch(darkRootRule, /rgba\(43, 43, 46|0 22px 48px/);
   assert.match(headerRule, /--app-compact-model-menu-header-bg/);
 });
 

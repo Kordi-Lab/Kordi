@@ -2,27 +2,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { resolveProjectSelection, type ProjectRoutingGroup } from '@/features/canonical/sessionResolver';
 import { isProjectDraftSessionId } from '@/features/chat/draftSessions';
+import type { KordiUrlPreviewState } from '@/app/urlPreviewState';
 import type { DetailTab, NavId, Project } from '@/kordi-app/types';
 
 type UseWorkspaceControllerArgs = {
   initialProjects: Project[];
   projectRoutingGroups?: ProjectRoutingGroup[];
   isNativeShell: boolean;
+  previewState?: KordiUrlPreviewState;
 };
 
 export function useWorkspaceController({
   initialProjects,
   projectRoutingGroups,
   isNativeShell,
+  previewState,
 }: UseWorkspaceControllerArgs) {
-  const [activeNav, setActiveNav] = useState<NavId>('chats');
-  const [activeConvId, setActiveConvId] = useState(isNativeShell ? '' : 'my-agent');
+  const [activeNav, setActiveNav] = useState<NavId>(() => previewState?.activeNav ?? 'chats');
+  const [activeConvId, setActiveConvId] = useState(() => previewState?.activeConvId ?? (isNativeShell ? '' : 'my-agent'));
   const [activeProjectId, setActiveProjectId] = useState(initialProjects[0]?.id ?? '');
   const [activeProjectSessionId, setActiveProjectSessionId] = useState(initialProjects[0]?.sessions[0]?.id ?? '');
   const [projectSelectedSessionIds, setProjectSelectedSessionIds] = useState<Record<string, string>>(() =>
     Object.fromEntries(initialProjects.map((project) => [project.id, project.sessions[0]?.id ?? ''])),
   );
-  const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>('info');
+  const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>(() => previewState?.activeDetailTab ?? 'info');
   const latestProjectSelectionRef = useRef<{ projectId: string; sessionId: string } | null>(null);
 
   const selectProject = useCallback((projectId: string, sessionId?: string) => {

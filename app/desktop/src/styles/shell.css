@@ -6,6 +6,7 @@
   position: relative;
   background: var(--app-shell-bg);
   border-color: var(--app-shell-border);
+  box-shadow: var(--app-depth-1);
   isolation: isolate;
   background-clip: padding-box;
 }
@@ -77,17 +78,10 @@
 }
 
 .app-left-glass {
-  background:
-    radial-gradient(164px 136px at 50% 104%, rgba(214, 158, 46, 0.24), transparent 68%),
-    radial-gradient(112px 88px at 50% 100%, rgba(255, 194, 84, 0.12), transparent 64%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 18%, rgba(0, 0, 0, 0.08) 100%),
-    var(--app-left-glass-bg);
-  box-shadow:
-    inset -1px 0 0 var(--app-left-glass-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 30px rgba(5, 8, 15, 0.12);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  background: var(--app-left-glass-bg);
+  box-shadow: var(--app-depth-1);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .app-session-panel {
@@ -129,11 +123,10 @@
 
 .app-input-shell {
   border: 1px solid var(--app-control-border);
+  border-radius: var(--app-radius-control);
   background: var(--app-control-bg);
   color: var(--utility-foreground);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.02),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+  box-shadow: none;
   transition:
     background-color var(--app-motion-fast) var(--app-motion-ease),
     border-color var(--app-motion-fast) var(--app-motion-ease),
@@ -166,12 +159,10 @@
 
 .app-icon-button {
   border: 1px solid color-mix(in oklab, var(--app-control-border) 92%, transparent);
+  border-radius: var(--app-radius-control);
   background: color-mix(in oklab, var(--app-control-bg) 72%, transparent);
   color: var(--utility-foreground);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
-    0 1px 0 rgba(255, 255, 255, 0.015);
+  box-shadow: none;
 }
 
 .app-icon-button:hover {
@@ -261,6 +252,17 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.03),
     inset 0 -1px 0 rgba(0, 0, 0, 0.08),
     var(--app-shadow-soft);
+}
+
+.app-contact-row-active {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-contact-row-active:hover,
+.app-contact-row:hover {
+  background: var(--app-control-bg);
 }
 
 
@@ -593,36 +595,28 @@
 }
 
 .app-participant-space-session-preview-live {
-  background: linear-gradient(90deg, currentColor 0%, color-mix(in oklab, currentColor 62%, transparent) 48%, currentColor 100%);
-  background-size: 180% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: app-session-preview-stream 2.2s var(--app-motion-ease) infinite;
+  color: var(--app-status-info);
+  animation: app-session-preview-live-pulse 2.2s var(--app-motion-ease) infinite;
 }
 
-@keyframes app-session-preview-stream {
-  from { background-position: 100% 0; }
-  to { background-position: -80% 0; }
+@keyframes app-session-preview-live-pulse {
+  0%, 100% { opacity: 0.78; }
+  50% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .app-participant-space-session-preview-live {
     animation: none;
+    opacity: 1;
   }
 }
 
 .app-composer-shell {
-  min-height: 7.25rem;
+  min-height: 92px;
   border: 1px solid color-mix(in oklab, var(--app-divider) 86%, var(--utility-muted-text));
-  background:
-    linear-gradient(180deg,
-      color-mix(in oklab, var(--app-control-bg) 84%, transparent) 0%,
-      color-mix(in oklab, var(--app-main-bg) 82%, rgb(0 0 0 / 0.08)) 100%);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--utility-foreground) 2.5%, transparent),
-    0 16px 34px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 color-mix(in oklab, var(--utility-foreground) 5.5%, transparent);
+  border-radius: var(--app-radius-composer);
+  background: var(--app-surface-float);
+  box-shadow: var(--app-depth-2);
   transition:
     border-color var(--app-motion-fast) var(--app-motion-ease),
     background var(--app-motion-fast) var(--app-motion-ease),
@@ -630,15 +624,11 @@
 }
 
 .app-composer-shell:focus-within {
-  border-color: color-mix(in oklab, var(--app-accent-ring) 72%, var(--utility-muted-text));
-  background:
-    linear-gradient(180deg,
-      color-mix(in oklab, var(--app-control-bg) 96%, transparent) 0%,
-      color-mix(in oklab, var(--app-main-bg) 88%, rgb(0 0 0 / 0.08)) 100%);
+  border-color: color-mix(in oklab, var(--app-border-strong) 72%, var(--app-ring-focus));
+  background: color-mix(in oklab, var(--app-surface-float) 92%, var(--app-main-bg));
   box-shadow:
-    0 0 0 2px color-mix(in oklab, var(--app-accent-ring) 72%, transparent),
-    0 18px 38px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 color-mix(in oklab, var(--utility-foreground) 7%, transparent);
+    0 0 0 2px color-mix(in oklab, var(--app-ring-focus) 74%, transparent),
+    var(--app-depth-2);
 }
 
 .app-composer-input {
@@ -958,14 +948,10 @@
   display: none;
 }
 
-/* --- Glassmorphism: backdrop-filter on framed surfaces (issue #386) ---
+/* --- Layer filtering hooks ---
  *
- * Two tiers: frame (12px / saturate 1.06) for major panels, float (8px /
- * saturate 1.04) for popovers and dropdown menus. The tier values come from
- * theme-tokens.css and flip per theme via the same cascade.
- *
- * Wrapped in @supports so environments without backdrop-filter still render
- * a clean (more opaque) surface from the fallback rules below.
+ * Vercel-style chrome keeps these values at 0px/1 saturation, but the hooks
+ * stay in place for portal/fallback compatibility and targeted future use.
  */
 
 @supports (backdrop-filter: blur(12px)) {
@@ -995,15 +981,15 @@
   }
 }
 
-/* Inner top highlight on framed surfaces — pairs with the existing
- * --app-shadow-* tokens. Theme-aware via --app-glass-highlight. */
+/* Vercel-style surfaces use shadow-as-border rather than glass highlights. */
 .app-shell,
-.app-modal-panel,
 .app-detail-sheet,
 .app-surface-card {
-  box-shadow:
-    inset 0 1px 0 var(--app-glass-highlight),
-    var(--app-shadow-soft);
+  box-shadow: var(--app-depth-1);
+}
+
+.app-modal-panel {
+  box-shadow: var(--app-depth-4);
 }
 
 .app-presence-light {

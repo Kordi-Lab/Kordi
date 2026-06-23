@@ -1,10 +1,11 @@
 .app-composer-popover {
   overflow: hidden;
-  border: 1px solid var(--app-divider);
-  background: var(--app-modal-bg);
-  box-shadow: var(--app-shadow-float);
-  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
-  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-popover);
+  background: var(--app-surface-float);
+  box-shadow: var(--app-depth-3);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .app-composer-popover-title {
@@ -16,7 +17,8 @@
 }
 
 .app-composer-popover-item {
-  border-radius: 12px;
+  min-height: 30px;
+  border-radius: var(--app-radius-control);
   color: var(--utility-foreground);
   transition:
     background-color var(--app-motion-fast) var(--app-motion-ease),
@@ -36,18 +38,19 @@
 }
 
 .app-compact-model-menu {
-  --app-compact-model-menu-bg: rgba(43, 43, 46, 0.94);
-  --app-compact-model-menu-header-bg: rgba(10, 10, 10, 0.58);
-  --app-compact-model-menu-save-bg: rgb(226 232 240);
-  --app-compact-model-menu-save-text: rgb(2 6 23);
-  --app-compact-model-menu-save-hover-bg: rgb(255 255 255);
-  --app-divider: rgba(148, 163, 184, 0.18);
-  border: 1px solid var(--app-divider);
+  --app-compact-model-menu-bg: var(--app-surface-float);
+  --app-compact-model-menu-header-bg: color-mix(in oklab, var(--app-surface-panel) 68%, transparent);
+  --app-compact-model-menu-save-bg: var(--app-button-primary-bg);
+  --app-compact-model-menu-save-text: var(--app-button-primary-text);
+  --app-compact-model-menu-save-hover-bg: var(--app-button-primary-hover);
+  --app-divider: var(--app-border-subtle);
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-popover);
   background: var(--app-compact-model-menu-bg);
   color: var(--utility-foreground);
-  box-shadow: var(--app-shadow-float);
-  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
-  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  box-shadow: var(--app-depth-3);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .app-compact-model-menu-layer {
@@ -60,19 +63,19 @@
 
 .bridge-app.theme-light .app-compact-model-menu,
 .app-compact-model-menu-light {
-  --app-compact-model-menu-bg: rgba(255, 255, 255, 0.96);
-  --app-compact-model-menu-header-bg: rgba(248, 250, 252, 0.9);
-  --app-compact-model-menu-save-bg: rgb(15 23 42);
-  --app-compact-model-menu-save-text: rgb(255 255 255);
-  --app-compact-model-menu-save-hover-bg: rgb(30 41 59);
+  --app-compact-model-menu-bg: var(--app-surface-float);
+  --app-compact-model-menu-header-bg: color-mix(in oklab, var(--app-surface-panel) 82%, white);
+  --app-compact-model-menu-save-bg: var(--app-button-primary-bg);
+  --app-compact-model-menu-save-text: var(--app-button-primary-text);
+  --app-compact-model-menu-save-hover-bg: var(--app-button-primary-hover);
 }
 
 .app-compact-model-menu-light {
-  --utility-foreground: rgb(15 23 42);
-  --utility-muted-text: rgb(71 85 105);
-  --app-divider: rgba(15, 23, 42, 0.1);
-  --app-control-bg: rgb(241 245 249);
-  --app-shadow-float: 0 24px 60px rgba(15, 23, 42, 0.16);
+  --utility-foreground: var(--app-text-primary);
+  --utility-muted-text: var(--app-text-muted);
+  --app-divider: var(--app-border-subtle);
+  --app-control-bg: rgba(15, 23, 42, 0.055);
+  --app-shadow-float: var(--app-depth-3);
 }
 
 .app-compact-model-menu-header {
@@ -117,15 +120,15 @@
 }
 
 .app-composer-mention-menu {
-  --app-composer-mention-menu-bg: rgb(14 16 21);
-  --app-composer-mention-menu-text: rgb(226 232 240);
-  --app-composer-mention-menu-muted: rgb(148 163 184);
-  --app-composer-mention-menu-border: rgba(148, 163, 184, 0.2);
-  --app-composer-mention-menu-item-hover-bg: rgb(26 31 40);
-  --app-composer-mention-menu-item-active-bg: rgb(35 43 57);
-  --app-composer-mention-menu-icon-bg: rgb(25 29 38);
-  --app-composer-mention-menu-kind-bg: rgb(24 29 38);
-  --app-composer-mention-menu-kind-active-bg: rgb(53 63 82);
+  --app-composer-mention-menu-bg: var(--app-surface-float);
+  --app-composer-mention-menu-text: var(--app-text-primary);
+  --app-composer-mention-menu-muted: var(--app-text-muted);
+  --app-composer-mention-menu-border: var(--app-border-subtle);
+  --app-composer-mention-menu-item-hover-bg: var(--app-control-hover);
+  --app-composer-mention-menu-item-active-bg: var(--app-control-active);
+  --app-composer-mention-menu-icon-bg: var(--app-control-bg);
+  --app-composer-mention-menu-kind-bg: var(--app-control-bg);
+  --app-composer-mention-menu-kind-active-bg: var(--app-control-active);
   border-color: var(--app-composer-mention-menu-border);
   background: var(--app-composer-mention-menu-bg);
   color: var(--app-composer-mention-menu-text);
@@ -137,26 +140,29 @@
 
 .app-composer-mention-menu-light {
   --app-composer-mention-menu-bg: rgb(255 255 255);
-  --app-composer-mention-menu-text: rgb(15 23 42);
-  --app-composer-mention-menu-muted: rgb(71 85 105);
-  --app-composer-mention-menu-border: rgba(15, 23, 42, 0.14);
-  --app-composer-mention-menu-item-hover-bg: rgb(241 245 249);
-  --app-composer-mention-menu-item-active-bg: rgb(226 232 240);
-  --app-composer-mention-menu-icon-bg: rgb(248 250 252);
-  --app-composer-mention-menu-kind-bg: rgb(241 245 249);
-  --app-composer-mention-menu-kind-active-bg: rgb(203 213 225);
+  --app-composer-mention-menu-text: rgb(17 17 17);
+  --app-composer-mention-menu-muted: rgb(82 82 82);
+  --app-composer-mention-menu-border: rgba(0, 0, 0, 0.16);
+  --app-composer-mention-menu-item-hover-bg: rgb(245 245 245);
+  --app-composer-mention-menu-item-active-bg: rgb(238 238 238);
+  --app-composer-mention-menu-icon-bg: rgba(15, 23, 42, 0.055);
+  --app-composer-mention-menu-kind-bg: rgba(15, 23, 42, 0.065);
+  --app-composer-mention-menu-kind-active-bg: rgba(15, 23, 42, 0.12);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 16px 34px rgba(0, 0, 0, 0.16);
 }
 
 .bridge-app.theme-light .app-composer-mention-menu {
-  --app-composer-mention-menu-bg: rgb(255 255 255);
-  --app-composer-mention-menu-text: rgb(15 23 42);
-  --app-composer-mention-menu-muted: rgb(71 85 105);
-  --app-composer-mention-menu-border: rgba(15, 23, 42, 0.14);
-  --app-composer-mention-menu-item-hover-bg: rgb(241 245 249);
-  --app-composer-mention-menu-item-active-bg: rgb(226 232 240);
-  --app-composer-mention-menu-icon-bg: rgb(248 250 252);
-  --app-composer-mention-menu-kind-bg: rgb(241 245 249);
-  --app-composer-mention-menu-kind-active-bg: rgb(203 213 225);
+  --app-composer-mention-menu-bg: var(--app-surface-float);
+  --app-composer-mention-menu-text: var(--app-text-primary);
+  --app-composer-mention-menu-muted: var(--app-text-muted);
+  --app-composer-mention-menu-border: var(--app-border-subtle);
+  --app-composer-mention-menu-item-hover-bg: var(--app-control-hover);
+  --app-composer-mention-menu-item-active-bg: var(--app-control-active);
+  --app-composer-mention-menu-icon-bg: rgba(15, 23, 42, 0.045);
+  --app-composer-mention-menu-kind-bg: rgba(15, 23, 42, 0.055);
+  --app-composer-mention-menu-kind-active-bg: rgba(15, 23, 42, 0.10);
 }
 
 .app-composer-mention-menu-detail,
@@ -197,14 +203,12 @@
 }
 
 .app-frosted-popover {
-  border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
-  background: color-mix(in oklab, var(--app-modal-bg) 72%, transparent);
-  box-shadow:
-    0 14px 34px rgba(2, 6, 23, 0.2),
-    0 2px 10px rgba(2, 6, 23, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.075);
-  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
-  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
+  border: 1px solid var(--app-border-strong);
+  border-radius: var(--app-radius-popover);
+  background: var(--app-surface-float);
+  box-shadow: var(--app-depth-3);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .app-chat-create-popover {

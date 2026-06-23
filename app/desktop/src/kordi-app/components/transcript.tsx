@@ -1471,7 +1471,7 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
     <button
       onClick={onSelect}
       className={`flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left transition ${
-        active ? 'app-list-item-active text-white' : 'app-list-item text-white'
+        active ? 'app-contact-row-active app-list-item text-white' : 'app-contact-row app-list-item text-white'
       }`}
     >
       <IdentityAvatar

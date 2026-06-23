@@ -30,23 +30,13 @@
 .bridge-app.theme-light .app-surface-card,
 .bridge-app.theme-light .app-modal-panel,
 .bridge-app.theme-light .app-code-panel {
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.035),
-    0 10px 24px rgba(15, 23, 42, 0.055),
-    0 -3px 8px rgba(255, 255, 255, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.48),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+  box-shadow: var(--app-depth-2);
 }
 
 .bridge-app.theme-light .app-left-glass,
 .bridge-app.theme-light .app-session-panel,
 .bridge-app.theme-light .app-main-panel {
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.028),
-    0 8px 20px rgba(15, 23, 42, 0.045),
-    0 -3px 8px rgba(255, 255, 255, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+  box-shadow: var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-badge-neutral {
@@ -156,23 +146,15 @@
 }
 
 .bridge-app.theme-light .app-detail-block {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+  box-shadow: var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-detail-note {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.05),
-    0 4px 10px rgba(147, 128, 109, 0.03);
+  box-shadow: var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-right-detail-rail .app-inspector-emphasis {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.04),
-    0 4px 10px rgba(147, 128, 109, 0.025);
+  box-shadow: var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-workspace-sidebar .app-workspace-note,
@@ -195,8 +177,8 @@
 
 .bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
 .bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section {
-  background: linear-gradient(180deg, rgba(248, 251, 255, 0.88) 0%, rgba(241, 247, 255, 0.78) 100%);
-  border-color: rgba(37, 99, 235, 0.12);
+  background: var(--app-surface-float);
+  border-color: var(--app-border-subtle);
 }
 
 .bridge-app.theme-light .app-auth-settings-page .app-auth-provider-count-chip {
@@ -238,56 +220,57 @@
 }
 
 .bridge-app.theme-light .app-agent-shell {
-  border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
-  background: color-mix(in oklab, rgb(226 232 240) 48%, transparent);
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgb(245 245 245);
 }
 
 .bridge-app.theme-light .app-agent-sidebar {
-  background: color-mix(in oklab, rgb(248 250 252) 86%, transparent);
+  background: rgb(250 250 250);
 }
 
 .bridge-app.theme-light .app-agent-detail-pane {
-  background: color-mix(in oklab, rgb(241 245 249) 78%, transparent);
+  background: rgb(250 250 250);
 }
 
 .bridge-app.theme-light .app-agent-content-pane {
-  border-left-color: color-mix(in oklab, rgb(148 163 184) 28%, transparent);
-  background: color-mix(in oklab, rgb(238 242 247) 82%, transparent);
+  border-left-color: rgba(0, 0, 0, 0.10);
+  background: rgb(250 250 250);
 }
 
 .bridge-app.theme-light .app-agent-panel-header,
 .bridge-app.theme-light .app-agent-code-toolbar,
 .bridge-app.theme-light .app-agent-inner-list-row {
-  border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
+  border-color: rgba(0, 0, 0, 0.10);
 }
 
 .bridge-app.theme-light .app-agent-section,
 .bridge-app.theme-light .app-agent-inner-list,
 .bridge-app.theme-light .app-agent-inspector-row,
 .bridge-app.theme-light .app-agent-empty-callout {
-  border-color: color-mix(in oklab, rgb(148 163 184) 24%, transparent);
-  background: color-mix(in oklab, rgb(255 255 255) 62%, rgb(241 245 249));
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgb(255 255 255);
 }
 
 .bridge-app.theme-light .app-agent-code-panel {
-  border-color: color-mix(in oklab, rgb(148 163 184) 30%, transparent);
-  background: rgb(248 250 252);
+  border-color: rgba(0, 0, 0, 0.12);
+  background: rgb(255 255 255);
 }
 
 .bridge-app.theme-light .app-agent-code-toolbar {
-  background: color-mix(in oklab, rgb(226 232 240) 58%, transparent);
+  background: rgb(245 245 245);
 }
 
 .bridge-app.theme-light .app-agent-list-row:hover,
 .bridge-app.theme-light .app-agent-inspector-row:hover,
 .bridge-app.theme-light .app-agent-skill-chip-editable:hover {
-  background: color-mix(in oklab, rgb(226 232 240) 48%, transparent);
+  background: rgb(245 245 245);
 }
 
 .bridge-app.theme-light .app-agent-list-row-active,
 .bridge-app.theme-light .app-agent-inspector-row-active {
-  border-color: color-mix(in oklab, rgb(100 116 139) 28%, transparent);
-  background: color-mix(in oklab, rgb(219 234 254) 42%, rgb(248 250 252));
+  border-color: transparent;
+  background: rgb(238 238 238);
+  box-shadow: none;
 }
 
 .bridge-app.theme-light .app-agent-panel-title,
@@ -311,15 +294,15 @@
 
 .bridge-app.theme-light .app-agent-chip,
 .bridge-app.theme-light .app-agent-skill-chip {
-  border-color: color-mix(in oklab, rgb(148 163 184) 28%, transparent);
-  background: color-mix(in oklab, rgb(255 255 255) 70%, rgb(241 245 249));
-  color: rgb(71 85 105) !important;
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgb(255 255 255);
+  color: rgb(82 82 82) !important;
 }
 
 .bridge-app.theme-light .app-agent-skill-chip-selected {
-  border-color: color-mix(in oklab, rgb(37 99 235) 26%, transparent);
-  background: color-mix(in oklab, rgb(219 234 254) 64%, rgb(248 250 252));
-  color: rgb(30 64 175) !important;
+  border-color: rgba(0, 0, 0, 0.16);
+  background: rgb(238 238 238);
+  color: rgb(17 17 17) !important;
 }
 
 .bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section {
@@ -334,19 +317,14 @@
 }
 
 .bridge-app.theme-light .app-page-header {
-  background: linear-gradient(to bottom, rgba(255,255,255,0.24), rgba(255,255,255,0.08));
+  background: var(--app-surface-panel);
 }
 
 .bridge-app.theme-light .app-input-shell,
 .bridge-app.theme-light .app-list-item:hover,
 .bridge-app.theme-light .app-composer-shell,
 .bridge-app.theme-light .app-surface-muted {
-  box-shadow:
-    0 0 0 1px rgba(131, 112, 93, 0.028),
-    0 8px 18px rgba(147, 128, 109, 0.045),
-    0 -2px 6px rgba(255, 255, 255, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.05);
+  box-shadow: var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-icon-button,
@@ -374,14 +352,20 @@
 }
 
 .bridge-app.theme-light .app-list-item-active {
-  border-color: rgba(43, 35, 32, 0.08);
-  background: rgba(43, 35, 32, 0.075);
-  box-shadow:
-    0 0 0 1px rgba(131, 112, 93, 0.025),
-    0 8px 18px rgba(147, 128, 109, 0.04),
-    0 -2px 6px rgba(255, 255, 255, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    inset 0 -1px 0 rgba(138, 118, 98, 0.045);
+  border-color: transparent;
+  background: rgb(247 247 247);
+  box-shadow: none;
+}
+
+.bridge-app.theme-light .app-contact-row-active {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bridge-app.theme-light .app-contact-row-active:hover,
+.bridge-app.theme-light .app-contact-row:hover {
+  background: rgb(247 247 247) !important;
 }
 
 .bridge-app.theme-light .app-session-row-active {
@@ -411,28 +395,24 @@
 .bridge-app.theme-light .app-control-chip,
 .bridge-app.theme-light .app-input-shell,
 .bridge-app.theme-light .app-composer-shell {
-  color: rgb(31 27 25);
+  color: var(--app-text-primary);
 }
 
 .bridge-app.theme-light .app-input-shell {
-  border-color: rgba(73, 62, 54, 0.2);
-  background: rgba(255, 255, 255, 0.58);
-  color: rgb(31 27 25) !important;
-  box-shadow:
-    0 0 0 1px rgba(73, 62, 54, 0.035),
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    inset 0 -1px 0 rgba(73, 62, 54, 0.06);
+  border-color: var(--app-border-subtle);
+  background: var(--app-surface-float);
+  color: var(--app-text-primary) !important;
+  box-shadow: none;
 }
 
 .bridge-app.theme-light .app-input-shell:hover,
 .bridge-app.theme-light .app-input-shell:focus,
 .bridge-app.theme-light .app-input-shell:focus-within {
-  border-color: rgba(73, 62, 54, 0.32);
-  background: rgba(255, 255, 255, 0.76);
+  border-color: var(--app-border-strong);
+  background: rgba(255, 255, 255, 0.98);
   box-shadow:
-    0 0 0 2px rgba(73, 62, 54, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68),
-    inset 0 -1px 0 rgba(73, 62, 54, 0.07);
+    0 0 0 2px color-mix(in oklab, var(--app-ring-focus) 68%, transparent),
+    var(--app-depth-1);
 }
 
 .bridge-app.theme-light .app-input-shell::placeholder,
@@ -440,42 +420,35 @@
 .bridge-app.theme-light .app-input-shell textarea::placeholder,
 .bridge-app.theme-light input::placeholder,
 .bridge-app.theme-light textarea::placeholder {
-  color: rgba(83, 72, 64, 0.68) !important;
+  color: var(--app-text-meta) !important;
 }
 
 .bridge-app.theme-light .app-input-shell input,
 .bridge-app.theme-light .app-input-shell textarea,
 .bridge-app.theme-light .app-composer-input {
-  color: rgb(31 27 25) !important;
+  color: var(--app-text-primary) !important;
 }
 
 .bridge-app.theme-light .app-composer-shell {
-  border-color: rgba(37, 99, 235, 0.12);
-  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96) 0%, rgba(241, 247, 255, 0.92) 100%);
-  box-shadow:
-    0 0 0 1px rgba(37, 99, 235, 0.025),
-    0 10px 24px rgba(37, 99, 235, 0.045),
-    0 -2px 7px rgba(255, 255, 255, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.64),
-    inset 0 -1px 0 rgba(37, 99, 235, 0.035);
+  border-color: var(--app-border-strong);
+  background: var(--app-surface-float);
+  box-shadow: var(--app-depth-2);
 }
 
 .bridge-app.theme-light .app-composer-shell:focus-within {
-  border-color: rgba(37, 99, 235, 0.22);
-  background: linear-gradient(180deg, rgba(250, 252, 255, 0.98) 0%, rgba(244, 249, 255, 0.95) 100%);
+  border-color: var(--app-border-strong);
+  background: var(--app-surface-float);
   box-shadow:
-    0 0 0 2px rgba(37, 99, 235, 0.075),
-    0 12px 26px rgba(37, 99, 235, 0.06),
-    0 -2px 7px rgba(255, 255, 255, 0.52),
-    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+    0 0 0 2px color-mix(in oklab, var(--app-ring-focus) 72%, transparent),
+    var(--app-depth-2);
 }
 
 .bridge-app.theme-light .bg-slate-800 {
-  background-color: rgb(222 216 207) !important;
+  background-color: rgb(245 245 245) !important;
 }
 
 .bridge-app.theme-light .bg-slate-900 {
-  background-color: rgb(235 230 223) !important;
+  background-color: rgb(250 250 250) !important;
 }
 
 .bridge-app.theme-light .bg-slate-950 {
@@ -654,12 +627,31 @@
 }
 
 /* Provider glyph avatars carry per-provider dark gradient fills that are
- * tuned for dark mode. In light mode we replace the neutral gray disc with
- * a quiet blue-tinted surface so the auth panel aligns with the chat shell. */
+ * tuned for dark mode. In light mode, keep them neutral so the provider gate
+ * reads as one clean Vercel-style product surface instead of a color chart. */
 .bridge-app.theme-light .app-auth-provider-glyph {
-  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96) 0%, rgba(219, 234, 254, 0.72) 100%) !important;
-  border-color: rgba(37, 99, 235, 0.14) !important;
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.04) !important;
+  background: rgb(245 245 245) !important;
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  color: rgb(17 17 17) !important;
+  box-shadow: none !important;
+}
+
+.bridge-app.theme-light .app-auth-gate-panel {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+  background: rgb(255 255 255) !important;
+  box-shadow: var(--app-depth-2) !important;
+}
+
+.bridge-app.theme-light .app-auth-provider-gate-card {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bridge-app.theme-light .app-auth-provider-gate-card:hover,
+.bridge-app.theme-light .app-auth-provider-gate-card:focus-visible {
+  background: rgb(245 245 245) !important;
+  box-shadow: none !important;
 }
 
 .bridge-app.theme-light .bg-slate-800 {

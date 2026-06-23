@@ -147,9 +147,11 @@ test('cloud request mapping keeps counterpart name for request avatar fallback',
   assert.equal(mapped.profileImageUrl, 'data:image/png;base64,avatar-111');
 });
 
-test('contacts page controls use flat chip styling instead of raised button chrome', () => {
+test('contacts page controls and active rows avoid raised heavy outlines', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
   const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const lightActiveRule = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-list-item-active \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(source, /app-contacts-section-button/);
   assert.match(source, /app-contacts-action-chip/);
@@ -158,6 +160,9 @@ test('contacts page controls use flat chip styling instead of raised button chro
   assert.doesNotMatch(source, /app-surface-muted flex w-full items-center justify-between gap-3 rounded-2xl/);
   assert.match(shellCss, /\.app-contacts-action-chip[\s\S]*box-shadow:\s*none/);
   assert.match(shellCss, /\.app-contacts-section-button[\s\S]*box-shadow:\s*none/);
+  assert.match(lightActiveRule, /border-color:\s*transparent;/);
+  assert.match(lightActiveRule, /box-shadow:\s*none;/);
+  assert.doesNotMatch(lightActiveRule, /var\(--app-depth-2\)/);
 });
 
 test('contact detail modal removes redundant repeated metadata and unused profile action', () => {

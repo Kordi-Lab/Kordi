@@ -26,7 +26,7 @@ export function AgentsSidebar({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="app-agent-panel-title text-[14px] font-medium">Agents</div>
-            <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">{agents.length} visible identities • choose one to inspect in the middle and edit files on the right</div>
+            <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">{agents.length} identities</div>
           </div>
           <button
             type="button"
@@ -55,7 +55,7 @@ export function AgentsSidebar({
                 type="button"
                 onClick={() => onOpenAgent(agent.id)}
                 className={cn(
-                  'app-agent-list-row block w-full rounded-[16px] px-3 py-3 text-left transition',
+                  'app-agent-list-row block w-full rounded-[12px] px-3 py-2.5 text-left transition',
                   isSelected ? 'app-agent-list-row-active' : '',
                 )}
               >
@@ -77,7 +77,7 @@ export function AgentsSidebar({
                         {agent.status}
                       </Badge>
                     </div>
-                    <div className="app-agent-row-copy mt-2 line-clamp-2 text-[12px] leading-5">{config.systemPrompt}</div>
+                    <div className="app-agent-row-copy mt-2 line-clamp-1 text-[12px] leading-5">{config.systemPrompt}</div>
                     <div className="app-agent-row-meta mt-3 flex flex-wrap items-center gap-3 text-[11px]">
                       <span>{fileSummary}</span>
                       <span>{skillSummary}</span>

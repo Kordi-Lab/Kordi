@@ -735,11 +735,11 @@ export function AgentDetailPane({
     }
   };
   const modelRoutingSection = activeAgent.isOwned ? (
-    <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned agent. These choices are private and not announced in shared chat history.">
-      <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px] leading-5">
+    <AgentInspectorSection className="app-agent-routing-section" title="Model routing" detail="Default, fallback, and thinking choices for this owned agent.">
+      <div className="app-agent-routing-note text-[12px] leading-5">
         {routingPersistsToBridge
-          ? 'Use the default model for inbound mentions and reach-outs. If it is unavailable or errors during generation, Kordi retries with the fallback model.'
-          : 'Choose the default and fallback now. Saved locally until this agent is connected to Bridge, then the connected Bridge agent inherits the same routing.'}
+          ? 'Used for inbound mentions and reach-outs. If the default route fails, Kordi retries with fallback.'
+          : 'Saved locally now; connected Bridge agents inherit the same routing later.'}
       </div>
       <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">
         <RoutingSelect
@@ -816,12 +816,11 @@ export function AgentDetailPane({
               imageUrl={activeAgent.profileImageUrl}
               label={`${activeAgent.name} avatar`}
               compact
-              className="mt-0.5 h-12 w-12 border border-white/10"
+              className="mt-0.5 h-10 w-10 border border-white/10"
             />
             <div className="min-w-0">
               <div className="app-agent-panel-subtitle text-[12px] font-medium">Agent inspector</div>
-              <div className="app-agent-hero-title mt-1 truncate text-[22px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
-              <div className="app-agent-panel-subtitle mt-1 text-[13px]">Middle panel lists each item. Click prompt or markdown files to open detail on the right.</div>
+              <div className="app-agent-hero-title mt-0.5 truncate text-[18px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
             {archiveFeedback || activeSaveFeedback ? (
               <div
                 className={cn(
@@ -848,12 +847,13 @@ export function AgentDetailPane({
               } : undefined}
             />
             {isEditable ? (
-              <Button variant="secondary" className="rounded-xl text-[12px]" onClick={() => onReset(activeAgent)}>
+              <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onReset(activeAgent)}>
                 Reset
               </Button>
             ) : null}
             <Button
-              className="rounded-xl text-[12px]"
+              variant="secondary"
+              className="app-agent-header-action h-8 rounded-[10px] px-3 text-[12px]"
               onClick={() => onMessage?.()}
               disabled={!onMessage || (!activeAgent.cloudAgentId && (!activeAgent.bridgeHostId || !activeAgent.bridgePeerNodeId))}
             >
