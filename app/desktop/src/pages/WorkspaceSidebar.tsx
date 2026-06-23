@@ -1405,7 +1405,7 @@ export function WorkspaceSidebar({
                       ) : null}
                       {item.id === 'contacts' && pendingContactRequestCount > 0 ? (
                         <span
-                          className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-emerald-300 px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]"
+                          className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-emerald-300 px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-emerald-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]"
                           aria-label={`${formatUnreadCount(pendingContactRequestCount)} pending contact request${pendingContactRequestCount === 1 ? '' : 's'}`}
                         >
                           {formatUnreadCount(pendingContactRequestCount)}

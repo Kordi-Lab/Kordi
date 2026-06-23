@@ -364,7 +364,7 @@ function BridgeInlineTimeline({
                 step.disabled ? 'cursor-not-allowed opacity-45 hover:bg-white/[0.04]' : '',
               )}
             >
-              <span className={cn('app-bridge-timeline-dot mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10px]', active ? 'border-cyan-300/40 bg-cyan-300/15 text-cyan-100' : complete ? 'border-emerald-300/30 bg-emerald-300/12 text-emerald-100' : 'border-white/10 bg-white/[0.04] text-slate-400')}>
+              <span className={cn('app-bridge-timeline-dot mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10px]', active ? 'border-cyan-300/40 bg-cyan-300/15 text-cyan-100' : complete ? 'border-emerald-300/30 bg-emerald-300/12 text-emerald-100' : 'border-white/10 bg-white/[0.04] text-[var(--app-text-muted)]')}>
                 {complete ? '✓' : index + 1}
               </span>
               <span className="min-w-0 flex-1">

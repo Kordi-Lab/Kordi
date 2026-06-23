@@ -586,22 +586,19 @@
 }
 
 .app-participant-space-session-preview-live {
-  background: linear-gradient(90deg, currentColor 0%, color-mix(in oklab, currentColor 62%, transparent) 48%, currentColor 100%);
-  background-size: 180% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: app-session-preview-stream 2.2s var(--app-motion-ease) infinite;
+  color: var(--app-status-info);
+  animation: app-session-preview-live-pulse 2.2s var(--app-motion-ease) infinite;
 }
 
-@keyframes app-session-preview-stream {
-  from { background-position: 100% 0; }
-  to { background-position: -80% 0; }
+@keyframes app-session-preview-live-pulse {
+  0%, 100% { opacity: 0.78; }
+  50% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .app-participant-space-session-preview-live {
     animation: none;
+    opacity: 1;
   }
 }
 
