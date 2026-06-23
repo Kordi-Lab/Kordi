@@ -351,9 +351,9 @@
 }
 
 .bridge-app.theme-light .app-list-item-active {
-  border-color: var(--app-border-strong);
-  background: rgb(255 255 255);
-  box-shadow: var(--app-depth-2);
+  border-color: transparent;
+  background: rgb(247 247 247);
+  box-shadow: none;
 }
 
 .bridge-app.theme-light .app-session-row-active {

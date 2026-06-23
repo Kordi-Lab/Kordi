@@ -139,15 +139,18 @@
 }
 
 .app-composer-mention-menu-light {
-  --app-composer-mention-menu-bg: var(--app-surface-float);
-  --app-composer-mention-menu-text: var(--app-text-primary);
-  --app-composer-mention-menu-muted: var(--app-text-muted);
-  --app-composer-mention-menu-border: var(--app-border-subtle);
-  --app-composer-mention-menu-item-hover-bg: var(--app-control-hover);
-  --app-composer-mention-menu-item-active-bg: var(--app-control-active);
-  --app-composer-mention-menu-icon-bg: rgba(15, 23, 42, 0.045);
-  --app-composer-mention-menu-kind-bg: rgba(15, 23, 42, 0.055);
-  --app-composer-mention-menu-kind-active-bg: rgba(15, 23, 42, 0.10);
+  --app-composer-mention-menu-bg: rgb(255 255 255);
+  --app-composer-mention-menu-text: rgb(17 17 17);
+  --app-composer-mention-menu-muted: rgb(82 82 82);
+  --app-composer-mention-menu-border: rgba(0, 0, 0, 0.16);
+  --app-composer-mention-menu-item-hover-bg: rgb(245 245 245);
+  --app-composer-mention-menu-item-active-bg: rgb(238 238 238);
+  --app-composer-mention-menu-icon-bg: rgba(15, 23, 42, 0.055);
+  --app-composer-mention-menu-kind-bg: rgba(15, 23, 42, 0.065);
+  --app-composer-mention-menu-kind-active-bg: rgba(15, 23, 42, 0.12);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 16px 34px rgba(0, 0, 0, 0.16);
 }
 
 .bridge-app.theme-light .app-composer-mention-menu {
