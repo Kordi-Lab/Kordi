@@ -209,7 +209,7 @@ export function AuthPage({
             </div>
           </div>
         ) : (
-          <div className="app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(37,99,235,0.08),rgba(15,23,42,0.18)_48%,rgba(15,23,42,0.24))] px-8 py-8 shadow-[var(--app-shadow-float)]">
+          <div className="app-auth-gate-shell flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-none border-0 bg-transparent px-8 py-8 shadow-none">
             <div className="flex w-full max-w-[820px] flex-col gap-7">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="max-w-[34rem]">
@@ -234,9 +234,8 @@ export function AuthPage({
 
               <div className="min-h-0">{content}</div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-4 text-[12px] text-slate-400">
-                <div>Shared authentication enabled</div>
-                <div>Details stay in Settings → Authentication.</div>
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/8 pt-4 text-[12px] text-slate-400">
+                <div>You can find this setting anytime in Settings → Authentication.</div>
               </div>
             </div>
           </div>

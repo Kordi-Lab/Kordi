@@ -14,7 +14,9 @@ test('provider gate is a focused single-column launch surface', () => {
   assert.doesNotMatch(authPage, /Connect one provider before your first chat\./);
   assert.doesNotMatch(authPage, /grid-cols-\[minmax\(320px,0\.86fr\)_minmax\(460px,1\.08fr\)\]/);
   assert.doesNotMatch(authPage, /Shared sign-in store/);
-  assert.match(authPage, /Shared authentication enabled/);
+  assert.doesNotMatch(authPage, /Shared authentication enabled/);
+  assert.doesNotMatch(authPage, /Details stay in Settings → Authentication\./);
+  assert.match(authPage, /You can find this setting anytime in Settings → Authentication\./);
 });
 
 test('gate provider picker uses cards without forced uppercase microcopy', () => {
@@ -25,8 +27,12 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.match(providerList, /app-auth-provider-gate-card/);
   assert.doesNotMatch(providerList, /app-auth-provider-gate-card-selected/);
   assert.doesNotMatch(providerList, /col-span-2/);
-  assert.match(providerList, /ChatGPT \+ API/);
-  assert.match(providerList, /Claude \+ API/);
+  assert.match(providerList, /ChatGPT subscription or API key/);
+  assert.match(providerList, /API key/);
+  assert.match(providerList, /Copilot subscription/);
+  assert.match(providerList, /Model router API/);
+  assert.doesNotMatch(providerList, /Fast inference/);
+  assert.doesNotMatch(providerList, /Local inference/);
   assert.doesNotMatch(providerList, /\buppercase\b/);
   assert.doesNotMatch(providerList, /saved of/);
   assert.doesNotMatch(providerList, /provider\.loginHint/);
@@ -37,6 +43,21 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.match(gateHoverRule, /box-shadow:/);
   assert.doesNotMatch(gateHoverRule, /translateY|scale\(|animation:/);
   assert.doesNotMatch(shellPages, /app-auth-provider-selected/);
+});
+
+test('provider gate uses a flat cool light surface without modal board chrome', () => {
+  const authPage = readAuthSource('AuthPage.tsx');
+  const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+
+  assert.match(authPage, /app-auth-gate-shell/);
+  assert.match(authPage, /app-auth-gate-shell flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-none border-0 bg-transparent px-8 py-8 shadow-none/);
+  assert.doesNotMatch(authPage, /app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-\[30px\] border border-white\/10/);
+
+  const gateLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.match(gateLightRule, /background:/);
+  assert.match(gateLightRule, /rgb\(248 251 255\)|rgb\(241 247 255\)|rgba\(248, 251, 255/);
+  assert.doesNotMatch(gateLightRule, /rgba\(248, 246, 242|rgba\(245, 240, 232|warm|amber|orange/);
+  assert.match(gateLightRule, /box-shadow:\s*none/);
 });
 
 test('provider detail view keeps a persistent back control without nesting settings scroll areas', () => {

@@ -193,6 +193,11 @@
   box-shadow: none;
 }
 
+.bridge-app.theme-light .app-auth-gate-shell {
+  background: linear-gradient(180deg, rgb(248 251 255) 0%, rgb(241 247 255) 100%);
+  box-shadow: none;
+}
+
 .bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
 .bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section {
   background: linear-gradient(180deg, rgba(248, 251, 255, 0.88) 0%, rgba(241, 247, 255, 0.78) 100%);
