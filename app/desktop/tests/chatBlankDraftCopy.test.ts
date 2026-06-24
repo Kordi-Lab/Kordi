@@ -21,4 +21,6 @@ test('native blank chat draft shows the local-draft hint only in the header subt
   const overviewBlock = detailPanel.slice(overviewStart, overviewEnd);
   assert.doesNotMatch(overviewBlock, /activeSessionSubtitle/);
   assert.doesNotMatch(overviewBlock, /<TypeBadge type=\{activeConv\.type\} compact \/>/);
+  assert.doesNotMatch(overviewBlock, /Local DB/);
+  assert.doesNotMatch(overviewBlock, /canonicalStoragePath/);
 });
