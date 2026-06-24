@@ -15,9 +15,9 @@ test('cloud avatar opens a small account menu before the centered settings modal
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
 
   assert.match(sidebar, /aria-label="Account menu"/);
-  assert.match(sidebar, /Open profile settings/);
+  assert.doesNotMatch(sidebar, /Open profile settings/);
   assert.match(sidebar, /Open account settings/);
-  assert.match(sidebar, /CloudProfileRowCopyButton label=\{row\.label\} value=\{row\.value\}/);
+  assert.match(sidebar, /CloudProfileRowCopyButton label="Account ID" value=\{cloudAccount\.accountId\}/);
   assert.match(sidebar, /cloudAccountDialogTab !== null/);
   assert.doesNotMatch(sidebar, /isOpen=\{isProfileCardOpen\}/);
   assert.match(slot, /cloudSettings=\{\{/);
@@ -86,6 +86,21 @@ test('profile modal is distilled to one avatar and no cloud explanation copy', (
   assert.doesNotMatch(modal, /Cloud account/);
   assert.doesNotMatch(modal, /Cloud identity/);
   assert.doesNotMatch(sidebar, />Cloud account</);
+});
+
+test('account popover keeps account id compact and removes redundant profile row', () => {
+  const sidebar = readSource('pages/WorkspaceSidebar.tsx');
+  const accountMenuStart = sidebar.indexOf('aria-label="Account menu"');
+  const accountMenuEnd = sidebar.indexOf('{!cloudSettings && isProfileCardOpen', accountMenuStart);
+  assert.ok(accountMenuStart >= 0 && accountMenuEnd > accountMenuStart, 'cloud account menu block should be present');
+  const accountMenu = sidebar.slice(accountMenuStart, accountMenuEnd);
+
+  assert.match(accountMenu, /CloudProfileRowCopyButton label="Account ID" value=\{cloudAccount\.accountId\}/);
+  assert.doesNotMatch(accountMenu, /profileRows\.map/);
+  assert.doesNotMatch(accountMenu, /Open profile settings/);
+  assert.doesNotMatch(accountMenu, />Profile</);
+  assert.match(accountMenu, /Open account settings/);
+  assert.match(accountMenu, />Settings</);
 });
 
 test('profile sign out action is styled as destructive red', () => {

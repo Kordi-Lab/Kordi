@@ -10,7 +10,6 @@ import {
   Plus,
   Search,
   Settings,
-  UserRound,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -1451,7 +1450,7 @@ export function WorkspaceSidebar({
           />
         ) : null}
 
-        {cloudSettings && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
+        {cloudSettings && cloudAccount && isProfileCardOpen && profilePopoverAnchor && typeof document !== 'undefined' ? createPortal(
           <div
             ref={profilePopoverRef}
             role="dialog"
@@ -1467,7 +1466,7 @@ export function WorkspaceSidebar({
               'w-[22rem] rounded-[18px] border px-4 py-3 text-foreground',
             )}
           >
-            <div className="mb-3 flex items-center gap-3">
+            <div className="mb-3 flex items-start gap-3">
               <IdentityAvatar
                 kind="human"
                 seed={profileAvatarSeed}
@@ -1477,35 +1476,25 @@ export function WorkspaceSidebar({
               />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-semibold text-slate-100">{profileDisplayName}</div>
-                <div className="mt-0.5 truncate text-[11px] text-slate-400">Account</div>
+                <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-slate-400">
+                  <span className="shrink-0">Account</span>
+                  <span aria-hidden="true" className="text-slate-600">•</span>
+                  <span className="min-w-0 truncate font-mono" title={cloudAccount.accountId}>{cloudAccount.accountId}</span>
+                  <CloudProfileRowCopyButton label="Account ID" value={cloudAccount.accountId} />
+                </div>
               </div>
             </div>
-            <div className="grid gap-1 text-[12px]">
-              {profileRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]"
-                >
+            {cloudAccount.primaryEmail?.trim() ? (
+              <div className="grid gap-1 text-[12px]">
+                <div className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-slate-100">{row.label}</div>
-                    <div className="mt-0.5 truncate text-[11px] text-slate-400">{row.value}</div>
+                    <div className="truncate font-medium text-slate-100">Email</div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-400">{cloudAccount.primaryEmail.trim()}</div>
                   </div>
-                  {row.copyable ? (
-                    <CloudProfileRowCopyButton label={row.label} value={row.value} />
-                  ) : null}
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : null}
             <div className="mt-3 grid gap-1 border-t border-white/10 pt-3">
-              <button
-                type="button"
-                className="app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium text-slate-100 transition hover:text-white"
-                onClick={() => openCloudAccountDialog('profile')}
-                aria-label="Open profile settings"
-              >
-                <span className="flex items-center gap-2.5"><UserRound className="h-4 w-4 text-slate-400" />Profile</span>
-                <ChevronRightIcon className="h-4 w-4 text-slate-500" />
-              </button>
               <button
                 type="button"
                 className="app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium text-slate-100 transition hover:text-white"
