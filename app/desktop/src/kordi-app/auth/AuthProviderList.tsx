@@ -17,15 +17,16 @@ type AuthProviderListProps = {
 };
 
 const GATE_PROVIDER_SUBTITLES: Record<string, string> = {
-  openai: 'ChatGPT + API',
-  anthropic: 'Claude + API',
+  openai: 'ChatGPT subscription or API key',
+  anthropic: 'API key',
   'lm-studio': 'Local models',
   ollama: 'Local models',
-  'google-gemini': 'Gemini API',
-  groq: 'Fast inference',
-  openrouter: 'Model router',
-  'github-copilot': 'Copilot account',
-  xai: 'Grok API',
+  google: 'API key',
+  'google-gemini': 'API key',
+  groq: 'API key',
+  openrouter: 'Model router API',
+  'github-copilot': 'Copilot subscription',
+  xai: 'API key',
 };
 
 function gateProviderSubtitle(provider: AuthDisplayProvider) {
