@@ -25,7 +25,7 @@ export function RightDetailRail({
     <aside className="app-main-panel app-right-detail-rail min-w-0 text-white">
       <div className="flex h-full min-h-0 flex-col px-3 py-3">
         <div className="mb-3 shrink-0">
-          <div className="app-inspector-tabs w-full">
+          <div className="app-detail-tab-list app-inspector-tabs w-fit">
             {detailTabs.map((tab) => {
               const active = activeDetailTab === tab.id;
               return (
@@ -33,7 +33,7 @@ export function RightDetailRail({
                   key={tab.id}
                   type="button"
                   onClick={() => onSelectDetailTab(tab.id)}
-                  className={cn('app-inspector-tab', active ? 'app-inspector-tab-active' : '')}
+                  className={cn('app-detail-tab-button app-inspector-tab px-4', active ? 'app-inspector-tab-active' : '')}
                   title={tab.label}
                   aria-label={tab.label}
                 >

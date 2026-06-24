@@ -841,6 +841,9 @@
 }
 
 .app-right-detail-rail .app-inspector-tabs {
+  display: inline-flex;
+  width: fit-content;
+  grid-template-columns: none;
   gap: 2px;
   padding: 2px;
   border-color: color-mix(in oklab, var(--app-divider) 58%, transparent);
@@ -849,8 +852,9 @@
 }
 
 .app-right-detail-rail .app-inspector-tab {
+  flex: 0 0 auto;
   border-radius: 10px;
-  padding: 6px 8px;
+  padding: 6px 12px;
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.01em;

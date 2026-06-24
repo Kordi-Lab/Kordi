@@ -249,7 +249,6 @@ function ChatDetailPanelView({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="app-inspector-heading">{activeConv.name}</div>
-                {activeConvHasSubtitle ? <div className="mt-1 app-inspector-subtext">{activeSessionSubtitle}</div> : null}
               </div>
               <TypeBadge type={activeConv.type} compact />
             </div>
