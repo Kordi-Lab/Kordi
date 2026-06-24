@@ -20,4 +20,5 @@ test('native blank chat draft shows the local-draft hint only in the header subt
   assert.ok(overviewStart >= 0 && overviewEnd > overviewStart, 'overview panel block should be present');
   const overviewBlock = detailPanel.slice(overviewStart, overviewEnd);
   assert.doesNotMatch(overviewBlock, /activeSessionSubtitle/);
+  assert.doesNotMatch(overviewBlock, /<TypeBadge type=\{activeConv\.type\} compact \/>/);
 });

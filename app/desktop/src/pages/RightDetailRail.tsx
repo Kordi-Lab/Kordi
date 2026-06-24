@@ -25,7 +25,7 @@ export function RightDetailRail({
     <aside className="app-main-panel app-right-detail-rail min-w-0 text-white">
       <div className="flex h-full min-h-0 flex-col px-3 py-3">
         <div className="mb-3 shrink-0">
-          <div className="app-detail-tab-list app-inspector-tabs w-fit">
+          <div className="app-detail-tab-list app-inspector-tabs w-full">
             {detailTabs.map((tab) => {
               const active = activeDetailTab === tab.id;
               return (

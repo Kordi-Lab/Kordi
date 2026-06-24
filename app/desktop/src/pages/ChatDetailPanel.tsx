@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { getLocalProfileAvatarSeed, IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import type { DesktopBridgeIdentitySnapshot, DesktopBridgeOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
-import { TypeBadge } from '@/kordi-app/components';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
@@ -246,11 +245,8 @@ function ChatDetailPanelView({
         <section className="app-detail-section">
           <div className="app-detail-kicker">Overview</div>
           <div className="space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="app-inspector-heading">{activeConv.name}</div>
-              </div>
-              <TypeBadge type={activeConv.type} compact />
+            <div className="min-w-0">
+              <div className="app-inspector-heading">{activeConv.name}</div>
             </div>
             <div className="app-inspector-meta-list">
               {activeConv.canonicalStoragePath ? <MetaRow label="Local DB" value={activeConv.canonicalStoragePath} valueClassName="max-w-[11rem] truncate" /> : null}
