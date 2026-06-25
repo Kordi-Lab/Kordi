@@ -44,7 +44,6 @@ function renderContactsPage(contactRequests: ContactRequest[]) {
     onToggleRequests: () => undefined,
     contactRequests,
     activeContactRequestId: '',
-    onReviewRequest: () => undefined,
     contactSearch: '',
     onContactSearchChange: () => undefined,
     expandedContactGroups: {
@@ -61,6 +60,17 @@ function renderContactsPage(contactRequests: ContactRequest[]) {
     getStatusBadgeClass: () => '',
   }));
 }
+
+test('contact request rows do not repeat the review-details action beside accept and reject', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  const start = source.indexOf('export function ContactRequestRow');
+  const end = source.indexOf('export function ContactRow', start + 1);
+  assert.ok(start >= 0, 'ContactRequestRow source block should be present');
+  const block = source.slice(start, end > start ? end : undefined);
+
+  assert.doesNotMatch(block, /Review details/);
+  assert.doesNotMatch(block, /onReview/);
+});
 
 test('contacts request header does not show an attention zero badge when no requests are pending', () => {
   const markup = renderContactsPage([]);

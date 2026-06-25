@@ -69,6 +69,61 @@ test('buildBridgeMentionTargetsByScope returns empty targets outside the native 
   assert.deepEqual(targets, { chat: [], project: [] });
 });
 
+test('buildBridgeMentionTargetsByScope exposes product-facing mention detail copy and avatars', () => {
+  const state = bridgeState();
+  state.hosts[0].profileImageUrl = 'https://images.test/alice.png';
+  state.hosts[0].visiblePeers = [
+    {
+      endpoint: 'https://bob.example',
+      nodeId: 'node-bob',
+      displayName: 'Bob',
+      ownerName: 'Bob',
+      runtime: 'person',
+      humanId: 'human-bob',
+      agentId: null,
+      isContact: true,
+      contactRequestStatus: 'approved',
+      sharedProjects: [],
+      profileImageUrl: 'https://images.test/bob.png',
+    },
+    {
+      endpoint: 'https://bob.example',
+      nodeId: 'node-bob-agent',
+      displayName: "Bob's Kordi",
+      ownerName: 'Bob',
+      runtime: 'kordi-desktop',
+      humanId: 'human-bob',
+      agentId: 'agent-bob',
+      isDefaultAgent: true,
+      isContact: true,
+      contactRequestStatus: 'approved',
+      sharedProjects: [],
+      profileImageUrl: 'https://images.test/bob-agent.png',
+    },
+  ];
+
+  const targets = buildBridgeMentionTargetsByScope({
+    isNativeShell: true,
+    desktopBridgeState: state,
+    desktopChatState: desktopChatState(),
+    activeConvMentionScope: null,
+  });
+
+  const localAgent = targets.chat.find((target) => target.label === 'My Kordi');
+  const person = targets.chat.find((target) => target.label === 'Bob' && target.targetKind === 'bridge-person');
+  const agent = targets.chat.find((target) => target.label === "Bob's Kordi");
+
+  assert.equal(localAgent?.detail, 'Your agent');
+  assert.equal(localAgent?.avatarImageUrl, 'https://images.test/alice.png');
+  assert.equal(person?.detail, 'Person');
+  assert.equal(person?.avatarImageUrl, 'https://images.test/bob.png');
+  assert.equal(agent?.detail, 'Agent');
+  assert.equal(agent?.avatarImageUrl, 'https://images.test/bob-agent.png');
+  for (const target of targets.chat) {
+    assert.doesNotMatch(target.detail ?? '', /Bridge|Owner:|kordi-desktop/i);
+  }
+});
+
 test('buildBridgeMentionTargetsByScope carries unread count for matching mention participants', () => {
   const state = bridgeState();
   state.hosts[0].visiblePeers = [{
@@ -242,7 +297,7 @@ test('buildBridgeMentionTargetsByScope includes shared hosted Cloud Agents for c
     participants: ['222', '111'],
     canonicalParticipants: [
       { id: 'human:acct_me', name: '222', kind: 'human', role: 'self', source: 'local', humanId: 'acct_me', bridgeNodeId: 'acct_me' },
-      { id: 'human:acct_owner', name: '111', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', humanId: 'acct_owner', bridgeNodeId: 'acct_owner' },
+      { id: 'human:acct_owner', name: '111', kind: 'human', role: 'person', source: 'bridge', bridgeHostId: 'cloud', humanId: 'acct_owner', bridgeNodeId: 'acct_owner', profileImageUrl: 'https://images.test/111.png' },
     ],
     messages: [],
   } as Conversation;
@@ -270,6 +325,8 @@ test('buildBridgeMentionTargetsByScope includes shared hosted Cloud Agents for c
   assert.equal(projectDriver?.bridgeHostId, 'cloud');
   assert.equal(projectDriver?.nodeId, 'acct_owner');
   assert.equal(projectDriver?.ownerName, '111');
+  assert.equal(projectDriver?.detail, 'Agent');
+  assert.equal(projectDriver?.avatarImageUrl, 'https://images.test/111.png');
 });
 
 test('sharedCloudAgentOwnerIdsForMentionScope uses direct contact bridge targets when canonical participants are absent', () => {

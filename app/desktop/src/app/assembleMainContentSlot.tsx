@@ -20,10 +20,6 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         onToggleRequests: () => args.setIsContactRequestsOpen((open) => !open),
         contactRequests: args.contactRequests,
         activeContactRequestId: args.activeContactRequestId,
-        onReviewRequest: (requestId) => {
-          args.setActiveContactRequestId(requestId);
-          args.setContactOverlayMode('request');
-        },
         onAcceptRequest: async (request) => {
           if (!request.bridgeHostId || !request.bridgeRequestId) return;
           await args.handleApproveBridgeContactRequest(request.bridgeHostId, request.bridgeRequestId);

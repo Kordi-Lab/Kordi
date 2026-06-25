@@ -66,6 +66,18 @@ function baseArgs(overrides: Partial<RightDetailShellArgs> = {}): RightDetailShe
   };
 }
 
+test('chat detail panel hides internal delivery metadata from normal user surfaces', () => {
+  const source = readFileSync(new URL('../src/pages/ChatDetailPanel.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /app-detail-kicker">Delivery/);
+  assert.doesNotMatch(source, /app-detail-kicker">Delivery context/);
+  assert.doesNotMatch(source, /label="Host"/);
+  assert.doesNotMatch(source, /label="Peer node"/);
+  assert.doesNotMatch(source, /label="Runtime"/);
+  assert.doesNotMatch(source, /activeBridgeConversationHostNodeId \|\| 'desktop node'/);
+  assert.doesNotMatch(source, /activeConv\.bridges\.join/);
+});
+
 test('Cloud Edition chat right rail includes the Tasks tab', () => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,

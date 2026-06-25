@@ -9,6 +9,17 @@ import { ContactRequestRow, LiveChatTurnCard, MessageBubble, MessageContextMenuC
 import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
+test('transcript human avatars are large enough to read beside message bubbles', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  const avatarStart = source.indexOf('className={cn(\n              \'mb-0.5 border border-white/10\'');
+  const avatarEnd = source.indexOf(')}\n          />', avatarStart);
+  assert.ok(avatarStart >= 0 && avatarEnd > avatarStart, 'message avatar class block should be present');
+  const avatarBlock = source.slice(avatarStart, avatarEnd);
+
+  assert.match(avatarBlock, /useHumanCompactDensity \? 'h-7 w-7' : 'h-8 w-8'/);
+  assert.doesNotMatch(avatarBlock, /h-5\.5 w-5\.5/);
+});
+
 test('renders live turn errors as raw red inline text instead of a popped bubble', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-error',
@@ -137,7 +148,6 @@ test('contact request row shows accept progress while sending the greeting', () 
   const markup = renderToStaticMarkup(createElement(ContactRequestRow, {
     request,
     active: false,
-    onReview: () => undefined,
     onAccept: () => undefined,
     onReject: () => undefined,
     actionState: 'accepting',
@@ -1010,7 +1020,7 @@ test('compact contact density hides peer sender names and uses squarer tighter h
   assert.match(markup, /app-message-bubble-contact-compact/);
   assert.match(markup, /px-3 py-1\.5/);
   assert.match(markup, /rounded-\[8px\]/);
-  assert.match(markup, /h-5\.5 w-5\.5/);
+  assert.match(markup, /h-7 w-7/);
   assert.doesNotMatch(markup, /app-message-inline-sender/);
   assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
 });

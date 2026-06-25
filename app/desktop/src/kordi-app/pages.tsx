@@ -18,7 +18,6 @@ type ContactsPageProps = {
   onToggleRequests: () => void;
   contactRequests: ContactRequest[];
   activeContactRequestId: string;
-  onReviewRequest: (requestId: string) => void;
   onAcceptRequest?: (request: ContactRequest) => Promise<void> | void;
   onRejectRequest?: (request: ContactRequest) => Promise<void> | void;
   onAddContactByNodeId?: (nodeId: string) => Promise<void> | void;
@@ -45,7 +44,6 @@ export function ContactsPage({
   onToggleRequests,
   contactRequests,
   activeContactRequestId,
-  onReviewRequest,
   onAcceptRequest,
   onRejectRequest,
   onAddContactByNodeId,
@@ -265,7 +263,6 @@ export function ContactsPage({
                       key={request.id}
                       request={request}
                       active={activeContactRequestId === request.id}
-                      onReview={() => onReviewRequest(request.id)}
                       onAccept={() => { void submitContactRequestAction(request, 'accept'); }}
                       onReject={() => { void submitContactRequestAction(request, 'reject'); }}
                       actionState={contactRequestActionState(request)}
