@@ -1278,11 +1278,11 @@ function MessageBubbleView({
             imageUrl={msg.senderProfileImageUrl}
             className={cn(
               'mb-0.5 border border-white/10',
-              useHumanCompactDensity ? 'h-5.5 w-5.5' : 'h-7 w-7',
+              useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
             )}
           />
         ) : showAvatarSlot ? (
-          <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-5.5 w-5.5' : 'h-7 w-7')} aria-hidden="true" />
+          <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
         <div
           data-message-context-menu-anchor="true"
@@ -1499,14 +1499,12 @@ export function ContactRow({ contact, active, onSelect }: { contact: Contact; ac
 export function ContactRequestRow({
   request,
   active,
-  onReview,
   onAccept,
   onReject,
   actionState = null,
 }: {
   request: ContactRequest;
   active: boolean;
-  onReview: () => void;
   onAccept?: () => void;
   onReject?: () => void;
   actionState?: 'accepting' | 'rejecting' | null;
@@ -1540,9 +1538,6 @@ export function ContactRequestRow({
           </div>
           <div className={`mt-1 text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{request.detail}</div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReview} disabled={isBusy}>
-              Review details
-            </Button>
             <Button className="h-8 rounded-xl px-3 text-[11px]" onClick={onAccept} disabled={!onAccept || isBusy}>
               {actionState === 'accepting' ? (
                 <>

@@ -64,6 +64,18 @@ function participantNodeId(participant: NonNullable<Conversation['canonicalParti
   return id || null;
 }
 
+function participantProfileImageForAccount(conversation: MentionScopeConversation | null | undefined, accountId?: string | null) {
+  const normalizedAccountId = cleanText(accountId).replace(/^human:/, '');
+  if (!normalizedAccountId) return null;
+  const participant = (conversation?.canonicalParticipants ?? []).find((candidate) => {
+    if (candidate.kind !== 'human') return false;
+    return [candidate.humanId, candidate.bridgeNodeId, candidate.id, candidate.id?.replace(/^human:/, '')]
+      .map((value) => cleanText(value).replace(/^human:/, ''))
+      .includes(normalizedAccountId);
+  });
+  return participant?.profileImageUrl ?? null;
+}
+
 export function sharedCloudAgentOwnerIdsForMentionScope(
   conversation: SharedCloudAgentOwnerScopeConversation | null | undefined,
   localAccountId?: string | null,
@@ -148,11 +160,7 @@ export function buildBridgeMentionTargetsByScope({
       pushOption({
         value: localAgentHandle,
         label: localAgentLabel,
-        detail: [
-          'My agent',
-          localAgentLabel !== localAgentHandle ? `@${localAgentHandle}` : null,
-          activeAgent?.runtime,
-        ].filter((value): value is string => Boolean(value)).join(' • '),
+        detail: 'Your agent',
         targetKind: 'bridge-agent',
         bridgeHostId: activeHost?.id ?? 'local',
         nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,
@@ -160,6 +168,8 @@ export function buildBridgeMentionTargetsByScope({
         humanId: activeHost?.humanId ?? null,
         agentId: activeAgent?.id ?? null,
         ownerName: ownerName ?? null,
+        avatarImageUrl: activeAgent?.profileImageUrl ?? activeHost?.profileImageUrl ?? null,
+        avatarSeed: activeAgent?.id ?? activeAgent?.nodeId ?? activeHost?.nodeId ?? localAgentHandle,
         unreadCount: 0,
       });
     }
@@ -178,6 +188,8 @@ export function buildBridgeMentionTargetsByScope({
         humanId: candidate.peer.humanId ?? null,
         agentId: candidate.peer.agentId ?? null,
         ownerName: candidate.peer.ownerName ?? null,
+        avatarImageUrl: candidate.peer.profileImageUrl ?? null,
+        avatarSeed: candidate.peer.agentId ?? candidate.peer.humanId ?? candidate.peer.nodeId ?? candidate.handle,
         unreadCount: unreadForTarget({
           hostId: candidate.host.id,
           nodeId: candidate.peer.nodeId,
@@ -192,7 +204,7 @@ export function buildBridgeMentionTargetsByScope({
       pushOption({
         value: candidate.handle,
         label: candidate.displayLabel,
-        detail: [candidate.detailLabel, candidate.displayLabel !== candidate.handle ? `@${candidate.handle}` : null].filter((value): value is string => Boolean(value)).join(' • '),
+        detail: candidate.detailLabel,
         targetKind: 'bridge-agent',
         bridgeHostId: 'cloud',
         nodeId: candidate.targetOwnerAccountId,
@@ -200,6 +212,8 @@ export function buildBridgeMentionTargetsByScope({
         humanId: candidate.targetOwnerAccountId,
         agentId: candidate.targetAgentId,
         ownerName: candidate.agent.ownerDisplayName ?? candidate.targetOwnerAccountId,
+        avatarImageUrl: participantProfileImageForAccount(conversation, candidate.targetOwnerAccountId),
+        avatarSeed: candidate.targetAgentId,
         unreadCount: 0,
       });
     }
@@ -215,7 +229,7 @@ export function buildBridgeMentionTargetsByScope({
         pushOption({
           value: handle,
           label,
-          detail: ['Group person', label !== handle ? `@${handle}` : null].filter((value): value is string => Boolean(value)).join(' • '),
+          detail: 'Person',
           targetKind: 'bridge-person',
           bridgeHostId: hostId,
           nodeId,
@@ -223,6 +237,8 @@ export function buildBridgeMentionTargetsByScope({
           humanId: cleanText(participant.humanId) || nodeId,
           agentId: null,
           ownerName: label,
+          avatarImageUrl: participant.profileImageUrl ?? null,
+          avatarSeed: participant.avatarKey ?? nodeId,
           unreadCount: 0,
         });
       }

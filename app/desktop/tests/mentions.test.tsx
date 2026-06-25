@@ -193,7 +193,7 @@ test('buildBridgeMentionCandidates creates unique stable handles for sanitized c
   );
 });
 
-test('bridge mention option text shows display names and pairs people with their Kordi', () => {
+test('bridge mention option text shows display names with product-facing detail labels', () => {
   const bridgeState = bridgeStateWithPeers([
     peer({
       nodeId: 'kd_remote_node_123',
@@ -211,11 +211,11 @@ test('bridge mention option text shows display names and pairs people with their
   assert.deepEqual(options, [
     {
       label: 'Alice',
-      detail: "Bridge person • @Alice • Kordi: Alice's Kordi • kordi-desktop",
+      detail: 'Person',
     },
     {
       label: "Alice's Kordi",
-      detail: 'Bridge agent • @AlicesKordi • Owner: Alice • kordi-desktop',
+      detail: 'Agent',
     },
   ]);
   assert.equal(options.some((option) => option.detail.includes('Host One')), false);

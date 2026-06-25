@@ -374,9 +374,9 @@ export default function AuthPopup({
 
   const shell = (
     <div className={embedded ? 'mx-auto w-full max-w-[440px]' : 'mx-auto w-full max-w-[520px]'}>
-      <div className={embedded ? 'app-modal-panel overflow-hidden rounded-[24px] border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.32)]' : 'app-modal-panel rounded-[28px] border border-white/10 p-4.5 shadow-[var(--app-shadow-float)]'}>
+      <div className={embedded ? 'app-auth-popup-panel app-modal-panel overflow-hidden rounded-[24px] border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.32)]' : 'app-auth-popup-panel app-modal-panel rounded-[28px] border border-white/10 p-4.5 shadow-[var(--app-shadow-float)]'}>
         {embedded ? (
-          <div className="border-b border-white/8 px-4 py-2.5 sm:px-4.5">
+          <div className="app-auth-popup-header border-b border-white/8 px-4 py-2.5 sm:px-4.5">
             <div className="flex items-start justify-between gap-3.5">
           <div>
             <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium tracking-[-0.01em] text-slate-300">
@@ -493,7 +493,7 @@ export default function AuthPopup({
                   </div>
                 )}
 
-                <div className="rounded-[20px] border border-white/8 bg-[linear-gradient(155deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-3.5 py-3">
+                <div className="app-auth-popup-info-card rounded-[20px] border border-white/8 bg-[linear-gradient(155deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-3.5 py-3">
                   <div className="text-[13px] font-medium text-white">
                     {authAttempt?.message ?? (providerId === 'anthropic'
                       ? 'Open Claude sign-in and Kordi will keep this panel updated while you finish the subscription login.'
@@ -550,7 +550,7 @@ export default function AuthPopup({
                 </div>
 
                 {!authAttempt?.succeeded && (
-                  <div className="rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3.5 py-2.5 text-[11px] leading-5 text-slate-400">
+                  <div className="app-auth-popup-note rounded-[20px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3.5 py-2.5 text-[11px] leading-5 text-slate-400">
                     This uses the same shared sign-in flow as the terminal app, including a manual callback fallback if the browser does not return automatically.
                   </div>
                 )}
@@ -589,7 +589,7 @@ export default function AuthPopup({
         )}
         </div>
         {embedded && (
-          <div className="flex items-center justify-between gap-3 border-t border-white/8 px-4 py-2.5 sm:px-4.5">
+          <div className="app-auth-popup-footer flex items-center justify-between gap-3 border-t border-white/8 px-4 py-2.5 sm:px-4.5">
             <div className="text-[11px] text-slate-500">Esc to close</div>
             <Button type="button" variant="secondary" className="app-control-chip rounded-xl border-0" onClick={() => void handleClose()}>
               {authAttempt?.succeeded ? 'Done' : authAttempt?.completed ? 'Close' : authAttempt ? 'Cancel' : 'Close'}

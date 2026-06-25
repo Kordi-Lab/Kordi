@@ -30,7 +30,7 @@ function StepDot({ state }: { state: AuthFlowStepState }) {
 
 export function AuthFlowSteps({ steps }: AuthFlowStepsProps) {
   return (
-    <div className="rounded-[22px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-4 py-4">
+    <div className="app-auth-flow-steps rounded-[22px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-4 py-4">
       <div className="space-y-3">
         {steps.map((step, index) => (
           <div key={`${step.label}-${index}`} className="flex items-start gap-3">

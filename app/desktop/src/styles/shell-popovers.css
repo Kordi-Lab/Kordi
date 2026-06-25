@@ -117,15 +117,14 @@
 }
 
 .app-composer-mention-menu {
-  --app-composer-mention-menu-bg: rgb(14 16 21);
-  --app-composer-mention-menu-text: rgb(226 232 240);
+  --app-composer-mention-menu-bg: rgb(15 18 28);
+  --app-composer-mention-menu-text: rgb(248 250 252);
   --app-composer-mention-menu-muted: rgb(148 163 184);
-  --app-composer-mention-menu-border: rgba(148, 163, 184, 0.2);
-  --app-composer-mention-menu-item-hover-bg: rgb(26 31 40);
-  --app-composer-mention-menu-item-active-bg: rgb(35 43 57);
-  --app-composer-mention-menu-icon-bg: rgb(25 29 38);
-  --app-composer-mention-menu-kind-bg: rgb(24 29 38);
-  --app-composer-mention-menu-kind-active-bg: rgb(53 63 82);
+  --app-composer-mention-menu-border: rgba(148, 163, 184, 0.18);
+  --app-composer-mention-menu-item-hover-bg: rgba(255, 255, 255, 0.075);
+  --app-composer-mention-menu-item-active-bg: rgba(255, 255, 255, 0.075);
+  --app-composer-mention-menu-icon-bg: rgb(24 29 39);
+  --app-composer-mention-menu-kind-bg: rgba(148, 163, 184, 0.12);
   border-color: var(--app-composer-mention-menu-border);
   background: var(--app-composer-mention-menu-bg);
   color: var(--app-composer-mention-menu-text);
@@ -141,27 +140,26 @@
   color-scheme: light;
   transition: none;
   --app-composer-mention-menu-muted: rgb(71 85 105);
-  --app-composer-mention-menu-border: rgba(15, 23, 42, 0.14);
-  --app-composer-mention-menu-item-hover-bg: rgb(241 245 249);
-  --app-composer-mention-menu-item-active-bg: rgb(226 232 240);
+  --app-composer-mention-menu-border: rgba(15, 23, 42, 0.12);
+  --app-composer-mention-menu-item-hover-bg: rgb(248 250 252);
+  --app-composer-mention-menu-item-active-bg: rgb(248 250 252);
   --app-composer-mention-menu-icon-bg: rgb(248 250 252);
-  --app-composer-mention-menu-kind-bg: rgb(241 245 249);
-  --app-composer-mention-menu-kind-active-bg: rgb(203 213 225);
+  --app-composer-mention-menu-kind-bg: rgb(248 250 252);
 }
 
 .bridge-app.theme-light .app-composer-mention-menu {
   --app-composer-mention-menu-bg: rgb(255 255 255);
   --app-composer-mention-menu-text: rgb(15 23 42);
   --app-composer-mention-menu-muted: rgb(71 85 105);
-  --app-composer-mention-menu-border: rgba(15, 23, 42, 0.14);
-  --app-composer-mention-menu-item-hover-bg: rgb(241 245 249);
-  --app-composer-mention-menu-item-active-bg: rgb(226 232 240);
+  --app-composer-mention-menu-border: rgba(15, 23, 42, 0.12);
+  --app-composer-mention-menu-item-hover-bg: rgb(248 250 252);
+  --app-composer-mention-menu-item-active-bg: rgb(248 250 252);
   --app-composer-mention-menu-icon-bg: rgb(248 250 252);
-  --app-composer-mention-menu-kind-bg: rgb(241 245 249);
-  --app-composer-mention-menu-kind-active-bg: rgb(203 213 225);
+  --app-composer-mention-menu-kind-bg: rgb(248 250 252);
 }
 
 .app-composer-mention-menu-detail,
+.app-composer-mention-menu-at,
 .app-composer-mention-menu-kind {
   color: var(--app-composer-mention-menu-muted);
 }
@@ -187,15 +185,6 @@
 
 .app-composer-mention-menu-icon {
   background: var(--app-composer-mention-menu-icon-bg);
-}
-
-.app-composer-mention-menu-kind-active {
-  background: var(--app-composer-mention-menu-kind-active-bg);
-  color: var(--app-composer-mention-menu-text);
-}
-
-.app-composer-mention-menu-detail-active {
-  color: var(--app-composer-mention-menu-muted);
 }
 
 .app-frosted-popover {

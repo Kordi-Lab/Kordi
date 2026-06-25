@@ -256,6 +256,33 @@
   color: rgb(15 23 42);
 }
 
+.bridge-app.theme-light .app-auth-popup-panel {
+  border-color: rgba(37, 99, 235, 0.12) !important;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96) 0%, rgba(241, 247, 255, 0.92) 100%) !important;
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.045),
+    0 18px 44px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+.bridge-app.theme-light .app-auth-popup-header,
+.bridge-app.theme-light .app-auth-popup-footer {
+  border-color: rgba(37, 99, 235, 0.10) !important;
+  background: rgba(248, 251, 255, 0.38);
+}
+
+.bridge-app.theme-light .app-auth-flow-steps,
+.bridge-app.theme-light .app-auth-popup-info-card,
+.bridge-app.theme-light .app-auth-popup-note {
+  border-color: rgba(37, 99, 235, 0.12) !important;
+  background: rgba(239, 246, 255, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.bridge-app.theme-light .app-auth-popup-info-card > div:first-child {
+  color: rgb(15 23 42) !important;
+}
+
 .bridge-app.theme-light .app-agent-shell {
   border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
   background: color-mix(in oklab, rgb(226 232 240) 48%, transparent);

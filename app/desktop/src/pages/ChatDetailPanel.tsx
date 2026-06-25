@@ -216,12 +216,6 @@ function ChatDetailPanelView({
   activeLastMessage,
   activeLiveTurn,
   activeConversationIsBridge,
-  activeBridgeConversationHostNodeId,
-  activeBridgeConversationHostUrl,
-  activeBridgeConversation,
-  activeBridgeAwaitingReply,
-  isBridgePolling,
-  lastBridgePollAtLabel,
   activeSessionProject,
   artifacts,
   activeArtifactId,
@@ -308,23 +302,6 @@ function ChatDetailPanelView({
           </div>
         </section>
 
-        {activeConversationIsBridge && activeBridgeConversation ? (
-          <section className="app-detail-section">
-            <div className="app-detail-kicker">Delivery</div>
-            <div className="app-inspector-meta-list">
-              <MetaRow label="Host" value={activeBridgeConversationHostUrl || 'Unknown'} valueClassName="max-w-[11rem] truncate" />
-              <MetaRow label="Peer node" value={activeBridgeConversation.peerNodeId} valueClassName="max-w-[11rem] truncate" />
-              <MetaRow label="Runtime" value={activeBridgeConversation.peerRuntime} />
-              <MetaRow
-                label="Project"
-                value={activeBridgeConversation.projectName || activeBridgeConversation.projectId || 'Direct chat'}
-                valueClassName="max-w-[11rem] truncate"
-              />
-              {activeBridgeConversation.peerTyping ? <MetaRow label="Typing" value={`${activeBridgeConversation.title} is typing…`} /> : null}
-            </div>
-          </section>
-        ) : null}
-
         {!activeConversationIsBridge && activeSessionProject ? (
           <>
             <section className="app-detail-section">
@@ -369,18 +346,6 @@ function ChatDetailPanelView({
           <div className="space-y-3">
             {activeConvHasSubtitle ? <EmphasisBlock title="Current focus">{activeSessionSubtitle}</EmphasisBlock> : null}
             <EmphasisBlock title="Latest update">{activeLastMessage?.text ?? 'No recent update yet.'}</EmphasisBlock>
-          </div>
-        </section>
-
-        <section className="app-detail-section">
-          <div className="app-detail-kicker">Delivery context</div>
-          <div className="app-inspector-meta-list">
-            <MetaRow label="Connections" value={activeConversationIsBridge ? 'Connected' : activeConv.bridges.join(' • ')} />
-            <MetaRow label="Source" value={activeConversationIsBridge ? (activeBridgeConversationHostNodeId || 'desktop node') : 'cc_node_01'} />
-            <MetaRow label="Transport" value={activeConversationIsBridge ? (activeBridgeConversation?.peerRuntime === 'person' ? 'Direct realtime' : 'Relay') : 'Encrypted'} />
-            {activeConversationIsBridge && activeBridgeConversation?.peerTyping ? (
-              <MetaRow label="Typing" value={`${activeBridgeConversation.title} is typing…`} />
-            ) : null}
           </div>
         </section>
       </div>

@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
-  AtSign,
   Bot,
   Check,
   ChevronDown,
@@ -15,12 +14,12 @@ import {
   Search,
   Settings2,
   Sparkles,
-  UserRound,
   Wrench,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
+import { IdentityAvatar } from './IdentityAvatar';
 import { composerModeOptions, composerModelOptions, composerThinkingOptions } from '../data';
 import type {
   ComposerScope,
@@ -68,6 +67,8 @@ export type ComposerMentionOption = {
   humanId?: string | null;
   agentId?: string | null;
   ownerName?: string | null;
+  avatarImageUrl?: string | null;
+  avatarSeed?: string | null;
   unreadCount?: number;
 };
 
@@ -188,7 +189,6 @@ export function ComposerMentionMenu({
     const rect = container.getBoundingClientRect();
     const viewportPadding = 24;
     const menuWidth = Math.min(
-      480,
       Math.max(240, rect.width),
       Math.max(240, window.innerWidth - (viewportPadding * 2)),
     );
@@ -223,12 +223,11 @@ export function ComposerMentionMenu({
   if (items.length === 0) return null;
 
   const renderMenu = () => (
-    <div className={cn('app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[18px] border px-1 py-1 shadow-[var(--app-shadow-float)]', menuThemeClass)} style={menuStyle}>
+    <div className={cn('app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[22px] border px-2 py-2 shadow-[var(--app-shadow-float)]', menuThemeClass)} style={menuStyle}>
       <div className="max-h-[inherit] overflow-y-auto pr-1">
         <div className="space-y-0.5">
           {items.map((item, index) => {
             const active = index === selectedIndex;
-            const Icon = item.targetKind === 'bridge-agent' ? Bot : UserRound;
             return (
               <button
                 key={`${item.bridgeHostId}-${item.nodeId}-${item.value}`}
@@ -238,21 +237,24 @@ export function ComposerMentionMenu({
                   onSelect(item.value);
                 }}
                 className={cn(
-                  'app-composer-mention-menu-item flex w-full items-center gap-2 rounded-[12px] px-2 py-1 text-left text-[11px] transition',
+                  'app-composer-mention-menu-item flex w-full items-center gap-2.5 rounded-[16px] px-2.5 py-2 text-left text-[13px] transition',
                   active && 'app-composer-mention-menu-item-active',
                 )}
               >
-                <div className="app-composer-mention-menu-icon grid h-5 w-5 shrink-0 place-items-center rounded-full">
-                  <Icon className={cn('h-3 w-3', item.targetKind === 'bridge-agent' ? 'text-violet-300' : 'text-sky-300')} />
-                </div>
+                <IdentityAvatar
+                  kind={item.targetKind === 'bridge-agent' ? 'agent' : 'human'}
+                  seed={item.avatarSeed ?? item.agentId ?? item.humanId ?? item.nodeId ?? item.label}
+                  name={item.label}
+                  imageUrl={item.avatarImageUrl}
+                  className="app-composer-mention-menu-icon h-7 w-7 shrink-0 border border-[color:var(--app-composer-mention-menu-border)]"
+                />
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="app-composer-mention-menu-label truncate text-[12px] leading-4"><AtSign className="mr-0.5 inline h-3 w-3 align-[-1px] text-slate-500" />{item.label}</span>
-                    <span className={cn('app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[9px]', active && 'app-composer-mention-menu-kind-active')}>
+                    <span className="app-composer-mention-menu-label truncate text-[13px] font-semibold leading-5"><span className="app-composer-mention-menu-at mr-px">@</span>{item.label}</span>
+                    <span className="app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[9px]">
                       {item.targetKind === 'bridge-agent' ? 'agent' : 'person'}
                     </span>
                   </div>
-                  {item.detail ? <div className={cn('app-composer-mention-menu-detail truncate text-[10px] leading-3.5', active && 'app-composer-mention-menu-detail-active')}>{item.detail}</div> : null}
                 </div>
               </button>
             );
