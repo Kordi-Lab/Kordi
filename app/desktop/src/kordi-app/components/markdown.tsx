@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 
 import { openDesktopExternalUrl } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -598,19 +598,20 @@ function MarkdownCodeBlock({
 
   return (
     <div className="max-w-full overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div className="flex items-center justify-between gap-3 border-b border-white/8 px-2.5 py-1.5">
-        <div className="truncate text-[10px] uppercase tracking-[0.12em] text-slate-400">{resolvedLanguage}</div>
-        <div className="flex shrink-0 items-center gap-2">
+      <div className="app-markdown-code-header flex items-center justify-between gap-1.5 border-b border-white/8 px-2 py-0.5">
+        <div className="truncate text-[8px] uppercase tracking-[0.1em] text-slate-400">{resolvedLanguage}</div>
+        <div className="flex shrink-0 items-center gap-1">
           {headerActions}
           <button
             type="button"
+            aria-label={copied ? 'Copied' : 'Copy code'}
+            title={copied ? 'Copied' : 'Copy code'}
             onClick={() => {
               void handleCopy();
             }}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white/5 px-2 py-1 text-[10px] font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="app-markdown-code-copy-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
-            {copied ? <Check className="h-3.5 w-3.5" /> : null}
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
           </button>
         </div>
       </div>

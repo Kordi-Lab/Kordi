@@ -16,6 +16,7 @@ import {
   Search,
   Square,
   TerminalSquare,
+  WrapText,
   Wrench,
 } from 'lucide-react';
 
@@ -135,10 +136,12 @@ function ToolTranscriptBlock({
         headerActions={
           <button
             type="button"
+            aria-label={isWrapped ? 'Disable line wrapping' : 'Wrap long lines'}
+            title={isWrapped ? 'Disable line wrapping' : 'Wrap long lines'}
             onClick={() => setIsWrapped((current) => !current)}
-            className="app-transcript-wrap-toggle rounded-lg bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="app-transcript-wrap-toggle inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
-            {isWrapped ? 'No wrap' : 'Wrap'}
+            <WrapText className="h-3 w-3" aria-hidden="true" />
           </button>
         }
       />
@@ -293,7 +296,7 @@ function ToolTimelineThinkingRow({ thinkingText }: { thinkingText: string }) {
             </button>
             {expandedThinking ? (
               <div className="app-transcript-timeline-details-body pr-1">
-                <MarkdownContent text={thinkingText} tone="muted" className="text-[12.5px] leading-[1.55rem]" />
+                <MarkdownContent text={thinkingText} tone="muted" className="app-transcript-thinking-markdown text-[12px] leading-[1.55rem]" />
               </div>
             ) : null}
           </div>

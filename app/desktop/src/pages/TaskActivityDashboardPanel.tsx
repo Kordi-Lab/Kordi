@@ -464,8 +464,8 @@ function scheduledTaskScheduleLabel(task: ScheduledTask, now: Date, timeZone?: s
   return friendlyScheduledInstantLabel(task.schedule.at, now, timeZone);
 }
 
-function scheduledTaskRuntimeLabel(task: ScheduledTask): string {
-  return task.targetRuntime === 'local_required' ? 'Requires Desktop' : 'Cloud';
+function scheduledTaskRuntimeLabel(task: ScheduledTask): string | null {
+  return task.targetRuntime === 'local_required' ? 'Requires Desktop' : null;
 }
 
 function scheduledTaskStatusLabel(task: ScheduledTask): string {
@@ -565,7 +565,9 @@ function scheduledTaskToDashboardItem(task: ScheduledTask, now: Date, timeZone: 
     target: null,
     writeScope: [],
     live: status === 'active',
-    timeLabel: `${scheduledTaskScheduleLabel(task, now, timeZone)} · ${scheduledTaskRuntimeLabel(task)}`,
+    timeLabel: [scheduledTaskScheduleLabel(task, now, timeZone), scheduledTaskRuntimeLabel(task)]
+      .filter((part): part is string => Boolean(part))
+      .join(' · '),
     startedAtMs: latestRun ? Date.parse(latestRun.createdAt) || null : null,
     responseMessageId: null,
     taskId: task.taskId,
