@@ -31,3 +31,11 @@ fn support_agent_contact_is_appended_and_messages_are_allowed_without_contact_ro
     assert!(auth_routes.contains("claim_support_agent_run_for_message"));
     assert!(support.contains("SupportContactSummaryFields"));
 }
+
+#[test]
+fn support_agent_runs_use_support_owner_provider_auth_not_requester_auth() {
+    let auth_routes = std::fs::read_to_string("src/auth/routes.rs").expect("read auth routes");
+    assert!(auth_routes.contains("owner_account_id: config.owner_account_id.clone()"));
+    assert!(auth_routes.contains("requester_account_id: requester_account_id.to_string()"));
+    assert!(auth_routes.contains("idempotency_key: format!(\"kordi-support:{session_id}:{message_id}\")"));
+}
