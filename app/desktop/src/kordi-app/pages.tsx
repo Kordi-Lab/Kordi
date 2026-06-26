@@ -37,6 +37,21 @@ type ContactsPageProps = {
   onRemoveContact?: (contact: Contact) => Promise<void> | void;
 };
 
+function normalizedContactText(value: string | null | undefined) {
+  return (value ?? '').trim().toLowerCase();
+}
+
+export function contactDetailBodyText(contact: Contact): string {
+  const detail = contact.detail.trim();
+  if (!detail) return '';
+  const visibleIdentifiers = new Set([
+    normalizedContactText(contact.name),
+    normalizedContactText(contact.subtitle),
+    normalizedContactText(contact.bridgePeerNodeId),
+  ].filter(Boolean));
+  return visibleIdentifiers.has(normalizedContactText(detail)) ? '' : detail;
+}
+
 export function ContactsPage({
   filteredGroupedContacts,
   addableContacts = [],
@@ -184,6 +199,7 @@ export function ContactsPage({
     ? `Waiting on ${sentInviteCount} ${sentInviteCount === 1 ? 'person' : 'people'} to approve.`
     : 'No sent invites waiting for approval.';
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
+  const activeContactDetailBody = contactDetailBodyText(activeContact);
 
   const canRemoveActiveContact = Boolean(
     onRemoveContact
@@ -516,7 +532,7 @@ export function ContactsPage({
                         </div>
                       </div>
                     </div>
-                    <div className="mb-5 text-sm text-slate-300">{activeContact.detail}</div>
+                    {activeContactDetailBody ? <div className="mb-5 text-sm text-slate-300">{activeContactDetailBody}</div> : null}
                     <div className="grid gap-2">
                       <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.bridgeHostId || !activeContact.bridgePeerNodeId}>
                         Message

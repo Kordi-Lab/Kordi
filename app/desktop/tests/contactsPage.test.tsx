@@ -36,7 +36,7 @@ function request(overrides: Partial<ContactRequest> = {}): ContactRequest {
   };
 }
 
-function renderContactsPage(contactRequests: ContactRequest[]) {
+function renderContactsPage(contactRequests: ContactRequest[], overrides: Partial<Parameters<typeof ContactsPage>[0]> = {}) {
   return renderToStaticMarkup(createElement(ContactsPage, {
     filteredGroupedContacts: [],
     addableContacts: [],
@@ -58,6 +58,7 @@ function renderContactsPage(contactRequests: ContactRequest[]) {
     activeContact: contact(),
     onCloseOverlay: () => undefined,
     getStatusBadgeClass: () => '',
+    ...overrides,
   }));
 }
 
@@ -203,6 +204,23 @@ test('contact detail modal removes redundant repeated metadata and unused profil
   assert.doesNotMatch(source, />Discoverable on</);
   assert.doesNotMatch(source, />\s*View full profile\s*</);
   assert.doesNotMatch(source, /BridgeChip key=\{bridge\}/);
+});
+
+test('contact detail modal suppresses detail text when it repeats the visible account identifier', () => {
+  const markup = renderContactsPage([], {
+    contactOverlayMode: 'contact',
+    activeContact: contact({
+      id: 'cloud:acct_peer_123',
+      name: 'Taylor',
+      entityType: 'Person',
+      subtitle: 'acct_peer_123',
+      detail: 'acct_peer_123',
+      bridgePeerNodeId: 'acct_peer_123',
+      bridgeHostId: 'cloud',
+    }),
+  });
+
+  assert.equal((markup.match(/acct_peer_123/g) ?? []).length, 1);
 });
 
 test('contacts add surface uses account search copy without bridge implementation wording', () => {
