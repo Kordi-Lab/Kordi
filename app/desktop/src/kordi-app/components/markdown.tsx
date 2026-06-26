@@ -597,7 +597,7 @@ function MarkdownCodeBlock({
   };
 
   return (
-    <div className="group relative max-w-full overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]" aria-label={`Code block language: ${resolvedLanguage}`}>
+    <div className="group relative max-w-full overflow-hidden rounded-[10px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]" aria-label={`Code block language: ${resolvedLanguage}`}>
       <span className="sr-only">{resolvedLanguage}</span>
       {headerActions ? (
         <div className="absolute right-9 top-2 z-10 flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">

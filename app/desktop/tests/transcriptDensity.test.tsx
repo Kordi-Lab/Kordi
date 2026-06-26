@@ -40,6 +40,7 @@ test('expanded thinking content is one pixel smaller than normal assistant outpu
 test('code blocks remove the header bar and reveal copy controls on hover', () => {
   const markdownSource = readFileSync(new URL('../src/kordi-app/components/markdown.tsx', import.meta.url), 'utf8');
   const liveTurnsSource = readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8');
+  const themeTokensSource = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
   const codeBlockStart = markdownSource.indexOf('function MarkdownCodeBlock');
   const codeBlockEnd = markdownSource.indexOf('function MarkdownListView', codeBlockStart);
   const transcriptBlockStart = liveTurnsSource.indexOf('function ToolTranscriptBlock');
@@ -52,10 +53,14 @@ test('code blocks remove the header bar and reveal copy controls on hover', () =
   assert.match(markdownSource, /import \{ Check, Copy \} from 'lucide-react';/);
   assert.doesNotMatch(codeBlock, /app-markdown-code-header/);
   assert.match(codeBlock, /group relative max-w-full/);
+  assert.match(codeBlock, /rounded-\[10px\]/);
+  assert.doesNotMatch(codeBlock, /rounded-\[18px\]/);
   assert.match(codeBlock, /<span className="sr-only">\{resolvedLanguage\}<\/span>/);
   assert.doesNotMatch(codeBlock, />\{resolvedLanguage\}<\/div>/);
   assert.match(codeBlock, /app-markdown-code-copy-button[^"']*absolute[^"']*opacity-0[^"']*group-hover:opacity-100[^"']*group-focus-within:opacity-100/);
   assert.doesNotMatch(codeBlock, />\{copied \? 'Copied' : 'Copy'\}</);
+  assert.match(themeTokensSource, /--app-code-bg: #eef1f5;/);
+  assert.doesNotMatch(themeTokensSource, /--app-code-bg: #ede8e1;/);
   assert.match(transcriptBlock, /WrapText/);
   assert.match(transcriptBlock, /aria-label=\{isWrapped \? 'Disable line wrapping' : 'Wrap long lines'\}/);
   assert.match(transcriptBlock, /app-transcript-wrap-toggle[^"']*h-6 w-6/);
