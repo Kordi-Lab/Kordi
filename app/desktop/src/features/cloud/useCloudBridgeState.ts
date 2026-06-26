@@ -1443,9 +1443,14 @@ type CloudSelfAgentRestoreMessage = {
   responseRequestId: string | null;
 };
 
+function isSharedCloudSessionId(sessionId: string): boolean {
+  const trimmed = cleanText(sessionId);
+  return trimmed.startsWith('session:direct-person:') || trimmed.startsWith('session:group:');
+}
+
 function normalizeCloudSelfAgentRestoreMessage(message: CloudMessage): CloudSelfAgentRestoreMessage | null {
   const sessionId = cleanText(message.sessionId);
-  if (!sessionId) return null;
+  if (!sessionId || isSharedCloudSessionId(sessionId)) return null;
   const response = parseCloudAgentResponse(message.body);
   if (!response && (parseCloudAgentCancel(message.body) || parseCloudGroupControl(message.body))) return null;
   const text = cleanText(response?.text ?? message.body);
