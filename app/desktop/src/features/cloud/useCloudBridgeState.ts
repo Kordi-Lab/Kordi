@@ -117,6 +117,7 @@ import {
   cloudDirectMessageTargetCloudAgentId,
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
   cloudDirectMessageTargetsOwnedHostedCloudAgent,
+  encodeCloudDirectMessageEnvelope,
 } from './cloudDirectMessages';
 import { uploadComposerAttachments, cloudMessageAttachmentToMessageAttachment, resolveCloudMessageAttachments } from './cloudAttachments';
 import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
@@ -142,6 +143,34 @@ export const CLOUD_AGENT_TURN_POLL_MS = 500;
 export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 45_000;
+
+export function cloudBridgeSendBodyForConversation({
+  conversationId,
+  text,
+  contacts,
+}: {
+  conversationId: string;
+  text: string;
+  contacts: Contact[];
+}): string {
+  const peerAccountId = cloudPeerAccountIdFromConversationId(conversationId);
+  const contact = contacts.find((candidate) => {
+    if (!peerAccountId) return false;
+    return candidate.bridgePeerNodeId === peerAccountId
+      && candidate.targetCloudAgentId?.trim()
+      && candidate.targetCloudAgentOwnerAccountId?.trim() === peerAccountId;
+  });
+  if (!contact) return text;
+  return encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text,
+    targetCloudAgentId: contact.targetCloudAgentId?.trim() ?? undefined,
+    targetCloudAgentName: contact.targetCloudAgentName?.trim() || contact.name,
+    targetCloudAgentOwnerAccountId: contact.targetCloudAgentOwnerAccountId?.trim() ?? undefined,
+    targetCloudAgentOwnerName: contact.targetCloudAgentOwnerName?.trim() || contact.owner || contact.name,
+  });
+}
 
 export function cloudBootstrapPeerIds(
   account: CloudAccount | null | undefined,
@@ -4045,9 +4074,14 @@ export function useCloudBridgeState({
       ? await uploadComposerAttachments({ token: session.token, client, attachments })
       : [];
     const cloudSessionId = cloudSessionIdForBridgeSend(account?.accountId, peerId, conversationId);
-    const message = await client.sendMessage(session.token, peerId, trimmed, { sessionId: cloudSessionId, attachments: uploadedAttachments });
+    const body = cloudBridgeSendBodyForConversation({
+      conversationId,
+      text: trimmed,
+      contacts: contacts.contacts,
+    });
+    const message = await client.sendMessage(session.token, peerId, body, { sessionId: cloudSessionId, attachments: uploadedAttachments });
     mergeMessage(message);
-  }, [account?.accountId, client, mergeMessage]);
+  }, [account?.accountId, client, contacts.contacts, mergeMessage]);
 
   const sendCloudGroupControl = useCallback(async (input: SendCloudGroupControlInput) => {
     if (!account) throw new Error('Not signed in.');

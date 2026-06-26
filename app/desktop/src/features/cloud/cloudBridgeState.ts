@@ -171,17 +171,22 @@ export function cloudContactsToCanonicalIdentityRequests({
 
 export function cloudContactToAgentPeer(contact: Contact): DesktopBridgePeer {
   const accountId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
-  const ownerName = cloudPeerDisplayName(contact);
+  const isSystemAgent = contact.systemContact === true && Boolean(contact.targetCloudAgentId?.trim());
+  const ownerName = isSystemAgent
+    ? contact.targetCloudAgentOwnerName?.trim() || cloudPeerDisplayName(contact)
+    : cloudPeerDisplayName(contact);
   return {
     nodeId: accountId,
-    displayName: cloudAgentDisplayName(contact),
+    displayName: isSystemAgent
+      ? contact.targetCloudAgentName?.trim() || cloudPeerDisplayName(contact)
+      : cloudAgentDisplayName(contact),
     runtime: CLOUD_AGENT_RUNTIME,
     endpoint: CLOUD_SERVER_LABEL,
     ownerName,
     createdAt: null,
     sharedProjects: [],
     humanId: accountId,
-    agentId: `cloud-agent:${accountId}`,
+    agentId: isSystemAgent ? contact.targetCloudAgentId?.trim() || `cloud-agent:${accountId}` : `cloud-agent:${accountId}`, 
     isDefaultAgent: true,
     discoveryMode: 'contacts',
     humanVisibilityPolicy: 'server-approval',
@@ -391,10 +396,15 @@ export function buildCloudBridgeHost(
   localAgentRuntimeRoute: DesktopChatMessageRoute | null = null,
 ): DesktopBridgeHost {
   const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Cloud user';
-  const peers = contacts.filter(isDirectCloudContact).flatMap((contact) => [
-    cloudContactToPersonPeer(contact),
-    cloudContactToAgentPeer(contact),
-  ]);
+  const peers = contacts.filter(isDirectCloudContact).flatMap((contact) => {
+    if (contact.systemContact === true && contact.targetCloudAgentId?.trim()) {
+      return [cloudContactToAgentPeer(contact)];
+    }
+    return [
+      cloudContactToPersonPeer(contact),
+      cloudContactToAgentPeer(contact),
+    ];
+  });
   return {
     id: CLOUD_HOST_SENTINEL,
     registered: true,
