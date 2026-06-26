@@ -61,6 +61,46 @@ function renderContactsPage(contactRequests: ContactRequest[]) {
   }));
 }
 
+test('locked system contacts can be messaged but not deleted', () => {
+  const markup = renderToStaticMarkup(createElement(ContactsPage, {
+    filteredGroupedContacts: [],
+    addableContacts: [],
+    isContactRequestsOpen: false,
+    onToggleRequests: () => undefined,
+    contactRequests: [],
+    activeContactRequestId: '',
+    contactSearch: '',
+    onContactSearchChange: () => undefined,
+    expandedContactGroups: {
+      'my-agents': false,
+      'other-users-agents': false,
+      'other-users': false,
+    },
+    onToggleGroup: () => undefined,
+    activeContactId: 'cloud-system:kordi-support',
+    onSelectContact: () => undefined,
+    contactOverlayMode: 'contact',
+    activeContact: contact({
+      id: 'cloud-system:kordi-support',
+      name: 'Kordi Support',
+      classType: 'other-users-agents',
+      entityType: 'agent',
+      bridgeHostId: 'cloud',
+      bridgePeerNodeId: 'acct_support_owner',
+      systemContact: true,
+      locked: true,
+    }),
+    onCloseOverlay: () => undefined,
+    onMessageContact: () => undefined,
+    onRemoveContact: async () => undefined,
+    getStatusBadgeClass: () => '',
+  }));
+
+  assert.match(markup, />Message</);
+  assert.doesNotMatch(markup, /Delete contact/);
+  assert.doesNotMatch(markup, /Upload kordi support avatar/i);
+});
+
 test('contact request rows do not repeat the review-details action beside accept and reject', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('export function ContactRequestRow');
