@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import { shouldAppendOptimisticBridgeMessage } from '../src/features/chat/messageActions/chatMessages';
 import { appendOptimisticBridgeMessage } from '../src/features/chat/messageActions/optimistic';
-import { cloudSessionIdForBridgeSend } from '../src/features/cloud/cloudBridgeState';
+import { cloudSessionIdForBridgeSend, mergeCloudBridgeOverrideState } from '../src/features/cloud/cloudBridgeState';
 import type { DesktopBridgeState } from '../src/kordi-app/types';
 
 test('direct Cloud contact sends use an optimistic row so attachments preview immediately', () => {
@@ -72,6 +72,56 @@ test('direct Cloud support sends create an optimistic conversation before server
   assert.equal(next?.conversations[0]?.title, 'Kordi Support');
   assert.equal(next?.conversations[0]?.awaitingReply, true);
   assert.equal(next?.conversations[0]?.messages[0]?.text, 'hihi');
+});
+
+test('confirmed Cloud direct messages replace matching optimistic sending rows', () => {
+  const generated: DesktopBridgeState = {
+    configPath: 'cloud',
+    legacyConfigPath: 'cloud',
+    conversationsPath: 'cloud',
+    activeHostId: 'cloud',
+    hosts: [],
+    localServer: { running: true },
+    conversations: [{
+      id: 'bridge:cloud:acct_support_owner',
+      canonicalSessionId: 'bridge:cloud:acct_support_owner',
+      hostId: 'cloud',
+      peerNodeId: 'acct_support_owner',
+      peerDisplayName: 'Kordi Support',
+      peerOwnerName: 'Kordi',
+      peerRuntime: 'kordi-desktop',
+      title: 'Kordi Support',
+      subtitle: 'hihi',
+      unreadCount: 0,
+      updatedAtMs: 2,
+      updatedAtLabel: '00:28',
+      awaitingReply: true,
+      peerTyping: false,
+      messages: [{
+        id: 'msg-server-confirmed',
+        direction: 'outbound',
+        sender: 'Me',
+        text: 'hihi',
+        timeLabel: '00:28',
+        timestampMs: 2,
+        deliveryState: 'delivered',
+        attachments: [],
+      }],
+    }],
+  };
+  const override = appendOptimisticBridgeMessage(
+    { ...generated, conversations: [] },
+    'bridge:cloud:acct_support_owner',
+    'hihi',
+    '00:28',
+    'cloud-pending-1',
+  );
+
+  const merged = mergeCloudBridgeOverrideState(generated, override);
+
+  assert.equal(merged.conversations[0]?.messages.length, 1);
+  assert.equal(merged.conversations[0]?.messages[0]?.id, 'msg-server-confirmed');
+  assert.equal(merged.conversations[0]?.messages[0]?.deliveryState, 'delivered');
 });
 
 test('direct Cloud sends keep optimistic bridge state until sync replaces it', () => {

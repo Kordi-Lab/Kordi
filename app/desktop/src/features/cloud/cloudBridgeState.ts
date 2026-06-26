@@ -775,6 +775,60 @@ function cloudSelfContact(account: CloudAccount): Contact {
   };
 }
 
+function isPendingOptimisticBridgeMessage(message: DesktopBridgeConversationMessage) {
+  return message.id.startsWith('cloud-pending-') && (message.deliveryState?.trim().toLowerCase() ?? '') === 'sending';
+}
+
+function generatedConversationContainsOptimisticMessage(
+  generated: DesktopBridgeConversation,
+  optimistic: DesktopBridgeConversationMessage,
+) {
+  const optimisticText = optimistic.text.trim();
+  return generated.messages.some((message) => (
+    message.direction === optimistic.direction
+    && message.text.trim() === optimisticText
+    && !isPendingOptimisticBridgeMessage(message)
+  ));
+}
+
+export function mergeCloudBridgeOverrideState(
+  generated: DesktopBridgeState,
+  override: DesktopBridgeState | null,
+): DesktopBridgeState {
+  if (!override) return generated;
+  const generatedById = new Map(generated.conversations.map((conversation) => [conversation.id, conversation]));
+  const overrideById = new Map(override.conversations.map((conversation) => [conversation.id, conversation]));
+  const conversations = generated.conversations.map((generatedConversation) => {
+    const overrideConversation = overrideById.get(generatedConversation.id);
+    if (!overrideConversation) return generatedConversation;
+    const pendingMessages = overrideConversation.messages.filter((message) => (
+      isPendingOptimisticBridgeMessage(message)
+      && !generatedConversationContainsOptimisticMessage(generatedConversation, message)
+    ));
+    if (pendingMessages.length === 0) return generatedConversation;
+    return {
+      ...generatedConversation,
+      subtitle: overrideConversation.subtitle || generatedConversation.subtitle,
+      updatedAtMs: Math.max(generatedConversation.updatedAtMs, overrideConversation.updatedAtMs),
+      updatedAtLabel: overrideConversation.updatedAtMs >= generatedConversation.updatedAtMs
+        ? overrideConversation.updatedAtLabel
+        : generatedConversation.updatedAtLabel,
+      awaitingReply: generatedConversation.awaitingReply || overrideConversation.awaitingReply,
+      messages: [...generatedConversation.messages, ...pendingMessages]
+        .sort((left, right) => left.timestampMs - right.timestampMs),
+    };
+  });
+  for (const overrideConversation of override.conversations) {
+    if (generatedById.has(overrideConversation.id)) continue;
+    conversations.push(overrideConversation);
+  }
+  conversations.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+  return {
+    ...generated,
+    conversations,
+  };
+}
+
 export function buildCloudDesktopBridgeState({
   account,
   contacts,

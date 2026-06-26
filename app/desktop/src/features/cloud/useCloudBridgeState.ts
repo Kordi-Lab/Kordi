@@ -55,6 +55,7 @@ import {
   cloudSessionIdForBridgeSend,
   cloudSessionIdFromConversationId,
   isCloudBridgeHostId,
+  mergeCloudBridgeOverrideState,
 } from './cloudBridgeState';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
@@ -4028,7 +4029,7 @@ export function useCloudBridgeState({
       hiddenCloudSessionIds,
       suppressUnscopedSelfAgentConversation,
     });
-    const generatedWithOverride = cloudBridgeOverride ?? generated;
+    const generatedWithOverride = mergeCloudBridgeOverrideState(generated, cloudBridgeOverride);
     return applyCloudAgentRuntimeRouteToState(generatedWithOverride, activeRuntimeRoute);
   }, [
     account,
