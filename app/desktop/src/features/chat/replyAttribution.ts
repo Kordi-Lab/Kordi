@@ -321,7 +321,7 @@ export function shouldSuppressAgentReplyAttribution(
     | null
     | undefined,
 ) {
-  if (!conversation || conversation.type !== 'owned-agent') return false;
+  if (!conversation || (conversation.type !== 'owned-agent' && conversation.type !== 'external-agent')) return false;
   if (conversation.participantSpaceId?.trim()) return false;
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';

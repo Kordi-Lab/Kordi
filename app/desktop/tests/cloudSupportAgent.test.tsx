@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildCloudBridgeHost, cloudBridgeConversationId } from '../src/features/cloud/cloudBridgeState';
+import { buildCloudBridgeConversation, buildCloudBridgeHost, cloudBridgeConversationId } from '../src/features/cloud/cloudBridgeState';
 import { encodeCloudDirectMessageEnvelope, parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudBridgeSendBodyForConversation } from '../src/features/cloud/useCloudBridgeState';
+import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import type { Contact } from '../src/kordi-app/types';
 
 test('cloud support contact maps to a locked hosted agent contact', () => {
@@ -58,6 +60,18 @@ test('support agent direct message envelope carries hosted target metadata', () 
   assert.equal(parsed?.targetCloudAgentOwnerAccountId, 'acct_support_owner');
 });
 
+function cloudAccountFixture(): CloudAccount {
+  return {
+    accountId: 'acct_user',
+    primaryEmail: 'user@example.com',
+    displayName: 'Me',
+    avatarUrl: null,
+    nodeId: null,
+    createdAt: '2026-06-26T00:00:00Z',
+    updatedAt: '2026-06-26T00:00:00Z',
+  };
+}
+
 function supportContactFixture(): Contact {
   return {
     id: 'cloud-system:kordi-support',
@@ -100,6 +114,55 @@ test('support contact bridge host exposes only the hosted support agent peer', (
   assert.equal(host.visiblePeers[0]?.displayName, 'Kordi Support');
   assert.equal(host.visiblePeers[0]?.agentId, 'cloud_agent_kordi_support');
   assert.equal(host.visiblePeers[0]?.runtime, 'kordi-desktop');
+});
+
+function cloudMessage(overrides: Partial<CloudMessage>): CloudMessage {
+  return {
+    messageId: 'msg-default',
+    fromAccountId: 'acct_user',
+    toAccountId: 'acct_support_owner',
+    body: 'hello',
+    direction: 'outgoing',
+    deliveredAt: '2026-06-26T23:10:00Z',
+    readAt: null,
+    createdAt: '2026-06-26T23:10:00Z',
+    sessionId: 'session:direct-person:acct_support_owner:acct_user',
+    attachments: [],
+    ...overrides,
+  };
+}
+
+test('support direct conversation keeps the user request visible before the support reply', () => {
+  const requestBody = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'hihi',
+    targetCloudAgentId: 'cloud_agent_kordi_support',
+    targetCloudAgentName: 'Kordi Support',
+    targetCloudAgentOwnerAccountId: 'acct_support_owner',
+    targetCloudAgentOwnerName: 'Kordi',
+  });
+  const conversation = buildCloudBridgeConversation({
+    account: cloudAccountFixture(),
+    contact: supportContactFixture(),
+    runtime: 'kordi-desktop',
+    messages: [
+      cloudMessage({ messageId: 'msg-user-request', body: requestBody }),
+      cloudMessage({
+        messageId: 'msg-support-response',
+        fromAccountId: 'acct_support_owner',
+        toAccountId: 'acct_user',
+        direction: 'incoming',
+        body: encodeCloudAgentResponse({ requestId: 'msg-user-request', text: 'Hi! How can I help?' }),
+        createdAt: '2026-06-26T23:10:01Z',
+        deliveredAt: '2026-06-26T23:10:01Z',
+      }),
+    ],
+  });
+
+  assert.deepEqual(conversation.messages.map((message) => message.text), ['hihi', 'Hi! How can I help?']);
+  assert.equal(conversation.messages[0]?.direction, 'outbound');
+  assert.equal(conversation.messages[1]?.direction, 'inbound-response');
 });
 
 test('support contact send body is encoded for the configured hosted support agent', () => {

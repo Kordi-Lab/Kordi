@@ -321,7 +321,44 @@ test('shouldInferLatestHumanReplyTarget does not quote new private self-agent fo
   }), false);
 });
 
-test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent conversations', () => {
+test('buildReplyAttribution suppresses source quote in direct external-agent support chats', () => {
+  const messages: Message[] = [
+    humanRequest({
+      id: 'msg:support-request',
+      text: 'hihi',
+    }),
+    {
+      id: 'msg:support-response',
+      role: 'external-agent',
+      sender: 'Kordi Support',
+      senderType: 'agent',
+      text: '',
+      time: '23:10',
+      replyToMessageId: 'msg:support-request',
+      turn: turn({
+        id: 'turn-support-response',
+        assistantText: 'Hi! How can I help?',
+        replyToMessageId: 'msg:support-request',
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, {
+    suppressAgentReplyAttribution: shouldSuppressAgentReplyAttribution({
+      id: 'bridge:cloud:acct_support_owner',
+      type: 'external-agent',
+      participantSpaceId: null,
+      canonicalParticipantCount: 2,
+    }),
+  });
+
+  assert.equal(result.messages[0]?.replySummary, undefined);
+  assert.equal(result.messages[1]?.sourceMessage, undefined);
+  assert.equal(result.messages[1]?.turn?.sourceMessage, undefined);
+  assert.equal(result.messages[1]?.turn?.replyToMessageId, undefined);
+});
+
+test('shouldSuppressAgentReplyAttribution is scoped to direct self and external-agent conversations', () => {
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:self-agent:1',
     type: 'owned-agent',
@@ -346,6 +383,13 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
     type: 'external-agent',
     participantSpaceId: null,
     canonicalParticipantCount: 2,
+  }), true);
+  assert.equal(shouldSuppressAgentReplyAttribution({
+    id: 'session:external-agent-group-fork',
+    type: 'external-agent',
+    participantSpaceId: null,
+    canonicalParticipantCount: 2,
+    forkedFromSessionId: 'session:group:1',
   }), false);
 });
 
