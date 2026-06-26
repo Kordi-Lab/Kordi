@@ -90,6 +90,18 @@ test('AgentCreateDialog keeps shape and create actions in a sticky footer', () =
   assert.notEqual(source.indexOf('Create Agent', footerStart), -1);
 });
 
+test('AgentCreateDialog uses calm auth-aligned surfaces without dashed callout chrome', () => {
+  const source = readFileSync(new URL('../src/kordi-app/agents/AgentCreateDialog.tsx', import.meta.url), 'utf8');
+  const shellPagesCss = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+
+  assert.match(source, /app-agent-create-surface/);
+  assert.match(source, /app-agent-create-panel/);
+  assert.match(source, /app-agent-create-muted/);
+  assert.doesNotMatch(source, /border-dashed/);
+  assert.match(shellPagesCss, /\.app-agent-create-surface[\s\S]*--app-cloud-login-raised-bg/);
+  assert.match(shellPagesCss, /\.app-agent-create-muted[\s\S]*--app-cloud-login-sunk-bg/);
+});
+
 test('AgentsSidebar exposes New agent action when cloud creation is available', () => {
   const markup = renderToStaticMarkup(createElement(AgentsSidebar, {
     agents: [cloudAgent],

@@ -102,7 +102,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
 
   return (
     <div className="fixed inset-0 z-[2147482500] flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="agent-create-title">
-      <div className="app-agent-create-dialog max-h-full w-full max-w-3xl overflow-hidden rounded-[24px] border bg-[var(--app-modal-bg)] shadow-[var(--app-shadow-float)]">
+      <div className="app-agent-create-dialog app-agent-create-surface max-h-full w-full max-w-3xl overflow-hidden rounded-[24px] shadow-[var(--app-shadow-float)]">
         <div className="app-agent-panel-header flex items-start justify-between gap-4 px-5 py-4">
           <div>
             <div id="agent-create-title" className="app-agent-panel-title text-[16px] font-semibold">Create Cloud Agent</div>
@@ -112,8 +112,8 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
         </div>
 
         <div className="grid max-h-[min(70vh,42rem)] gap-0 overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="space-y-4 border-r border-[color:var(--app-divider)] px-5 py-5">
-            <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
+          <div className="app-agent-create-panel space-y-4 px-5 py-5">
+            <div className="app-agent-create-muted rounded-[14px] px-4 py-3 text-[12px] leading-5">
               <div className="app-agent-row-title font-medium">Created by {creatorAgent?.name ?? 'Kordi'}</div>
               <div className="app-agent-row-meta mt-1">Uses Kordi's configured LLM provider and current tool/skill context during shaping.</div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -148,7 +148,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
                 className="app-agent-inspector-row mt-2 min-h-24 w-full resize-y rounded-[14px] border bg-transparent px-3 py-3 text-[13px] leading-5 outline-none"
               />
             </div>
-            <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
+            <div className="app-agent-create-muted rounded-[14px] px-4 py-3 text-[12px] leading-5">
               <div className="app-agent-row-title font-medium">Access</div>
               <select
                 className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]"
@@ -179,13 +179,13 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
                 <pre className="app-agent-code-panel max-h-28 overflow-auto rounded-[14px] border px-3 py-3 text-[10px] leading-4 whitespace-pre-wrap">{shapePrompt}</pre>
               </div>
             ) : (
-              <div className="app-agent-empty-state rounded-[18px] border border-dashed px-4 py-10 text-center text-[13px] leading-5">Add resources and identity, then click Shape draft.</div>
+              <div className="app-agent-create-muted rounded-[18px] px-4 py-10 text-center text-[13px] leading-5">Add resources and identity, then click Shape draft.</div>
             )}
             {feedback.text ? <div className={cn('text-[12px]', feedback.tone === 'error' ? 'text-rose-300' : feedback.tone === 'success' ? 'text-emerald-300' : 'text-slate-400')}>{feedback.text}</div> : null}
           </div>
         </div>
 
-        <div className="app-agent-create-actions flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--app-divider)] px-5 py-4">
+        <div className="app-agent-create-actions flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="app-agent-row-meta text-[12px] leading-5">
             Shape prepares the draft. Create saves it with the selected Cloud access.
           </div>
