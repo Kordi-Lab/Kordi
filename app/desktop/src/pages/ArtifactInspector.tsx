@@ -109,7 +109,7 @@ function parseDelimitedRows(source: string, delimiter: ',' | '\t') {
 
 type ArtifactPreviewMode = 'panel' | 'rail' | 'window';
 
-const ARTIFACT_MARKDOWN_PREVIEW_CLASS = 'app-artifact-markdown-preview bg-[color:var(--app-panel-bg)] text-[12px] leading-5 [&_p]:text-[12px] [&_p]:leading-5 [&_p]:text-[color:var(--utility-foreground)] [&_div]:text-[12px] [&_div]:leading-5 [&_blockquote]:text-[12px] [&_blockquote]:leading-5 [&_ul]:space-y-0.5 [&_ol]:space-y-0.5 [&_li]:space-y-0.5 [&_pre]:text-[10.5px] [&_pre]:leading-5';
+const ARTIFACT_MARKDOWN_PREVIEW_CLASS = 'app-artifact-markdown-preview app-artifact-preview-opaque-surface text-[12px] leading-5 [&_p]:text-[12px] [&_p]:leading-5 [&_p]:text-[color:var(--utility-foreground)] [&_div]:text-[12px] [&_div]:leading-5 [&_blockquote]:text-[12px] [&_blockquote]:leading-5 [&_ul]:space-y-0.5 [&_ol]:space-y-0.5 [&_li]:space-y-0.5 [&_pre]:text-[10.5px] [&_pre]:leading-5';
 
 function ArtifactDataTable({ source, delimiter, mode = 'panel' }: { source: string; delimiter: ',' | '\t'; mode?: ArtifactPreviewMode }) {
   const rows = parseDelimitedRows(source, delimiter);
@@ -182,7 +182,7 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
 
   if (previewKind === 'json') {
     return (
-      <div data-artifact-preview-mode={mode} className={cn('p-3', mode !== 'panel' && 'min-h-full')}>
+      <div data-artifact-preview-mode={mode} className={cn('app-artifact-preview-opaque-surface p-3', mode !== 'panel' && 'min-h-full')}>
         <MarkdownCodeBlock language="json" code={formattedJsonSource(source)} maxHeightClass={mode === 'panel' ? 'max-h-[32rem]' : 'max-h-none'} wrapLines />
       </div>
     );
@@ -207,7 +207,7 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
   }
 
   return (
-    <div data-artifact-preview-mode={mode} className={cn('p-3', mode !== 'panel' && 'min-h-full')}>
+    <div data-artifact-preview-mode={mode} className={cn('app-artifact-preview-opaque-surface p-3', mode !== 'panel' && 'min-h-full')}>
       <MarkdownCodeBlock
         language={languageFromPath(preview.path)}
         code={source}
@@ -339,12 +339,12 @@ export function ArtifactPreviewWindow({
   onClose: () => void;
 }) {
   return (
-    <div className="app-artifact-preview-window-backdrop fixed inset-0 z-50 bg-black/70 p-3 sm:p-6" role="presentation">
+    <div className="app-artifact-preview-window-backdrop fixed inset-0 z-50 p-3 sm:p-6" role="presentation">
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Preview window"
-        className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] bg-[color:var(--app-panel-bg)] shadow-2xl"
+        className="app-artifact-preview-window-panel mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] shadow-2xl"
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -371,7 +371,7 @@ export function ArtifactPreviewWindow({
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-[color:var(--app-panel-bg)]">
+        <div className="app-artifact-preview-window-body min-h-0 flex-1 overflow-auto">
           {renderArtifactPreview(preview, 'window')}
         </div>
       </div>
@@ -639,10 +639,10 @@ export function ArtifactInspector({
       {previewArtifact ? (
         <section data-artifact-preview-section="true" className="app-detail-section flex min-h-0 flex-1 flex-col border-t border-[color:var(--app-divider)] pt-[18px] pb-0">
           <div className="app-detail-kicker shrink-0">Preview</div>
-          <div className="app-code-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-[color:var(--app-panel-bg)] shadow-[var(--app-shadow-soft)]">
-            <div className="app-code-toolbar flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-[12px] text-slate-400">
+          <div className="app-code-panel app-artifact-preview-opaque-surface flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] shadow-[var(--app-shadow-soft)]">
+            <div className="app-code-toolbar app-artifact-preview-toolbar flex items-center justify-between gap-2 border-b border-white/10 px-3 py-1.5 text-[11px] text-slate-400">
               <div className="min-w-0">
-                <div className="truncate font-medium text-slate-200">{previewFileName}</div>
+                <div className="app-artifact-preview-title truncate text-[12px] font-medium leading-4 text-slate-200">{previewFileName}</div>
                 {previewLocation ? (
                   <div className="truncate text-[10.5px] text-slate-500">{previewLocation}</div>
                 ) : null}
@@ -652,15 +652,15 @@ export function ArtifactInspector({
                   <button
                     type="button"
                     onClick={() => setPreviewWindowOpen(true)}
-                    className="app-utility-button inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10.5px] font-medium text-slate-300 transition hover:bg-white/[0.07] hover:text-white"
+                    className="app-utility-button inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-slate-300 transition hover:bg-white/[0.07] hover:text-white"
                     aria-label="Open preview window"
                     title="Open preview window"
                   >
-                    <Maximize2 className="h-3.5 w-3.5" />
+                    <Maximize2 className="h-3 w-3" />
                     Open
                   </button>
                 ) : null}
-                <div className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-slate-400">
+                <div className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[8.5px] uppercase tracking-[0.08em] text-slate-400">
                   {previewKindLabel}
                 </div>
               </div>

@@ -131,6 +131,51 @@
   background: var(--app-code-toolbar-bg);
 }
 
+.app-artifact-preview-opaque-surface,
+.app-artifact-preview-window-panel,
+.app-artifact-preview-window-body {
+  background: #0f1117;
+}
+
+.app-artifact-preview-window-backdrop {
+  background: #07090d;
+}
+
+.app-artifact-preview-toolbar {
+  background: #151923;
+}
+
+.app-artifact-preview-opaque-surface .app-markdown-code-header {
+  background: #151923;
+}
+
+.app-artifact-preview-opaque-surface .app-markdown-code-header + pre {
+  background: #0f1117;
+}
+
+.bridge-app.theme-light .app-artifact-preview-opaque-surface,
+.bridge-app.theme-light .app-artifact-preview-window-panel,
+.bridge-app.theme-light .app-artifact-preview-window-body {
+  background: #f8fafc;
+}
+
+.bridge-app.theme-light .app-artifact-preview-window-backdrop {
+  background: #f8fafc;
+}
+
+.bridge-app.theme-light .app-artifact-preview-toolbar,
+.bridge-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header {
+  background: #eef2f7;
+}
+
+.bridge-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header + pre {
+  background: #f8fafc;
+}
+
+.bridge-app.theme-light .app-artifact-preview-title {
+  color: #334155;
+}
+
 .app-surface-muted {
   border: 1px solid var(--app-divider);
   background: color-mix(in oklab, var(--app-card-bg) 88%, transparent);

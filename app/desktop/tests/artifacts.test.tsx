@@ -321,6 +321,10 @@ test('artifact inspector gives the selected preview the flexible right-panel spa
   assert.match(markup, /data-artifact-inspector="true"/);
   assert.match(markup, /data-artifact-file-list="true"/);
   assert.match(markup, /data-artifact-preview-section="true"/);
+  assert.match(markup, /app-artifact-preview-toolbar/);
+  assert.match(markup, /app-artifact-preview-title/);
+  assert.match(markup, /text-\[12px\]/);
+  assert.match(markup, /py-1\.5/);
   assert.match(markup, /flex-1/);
   assert.match(markup, /min-h-0/);
 });
@@ -371,8 +375,11 @@ test('artifact preview exposes a larger preview window surface', () => {
   assert.match(markup, /Hello from preview/);
   assert.match(markup, /aria-label="Close preview window"/);
   assert.match(markup, /app-artifact-preview-window-backdrop/);
-  assert.match(markup, /bg-black\/70/);
-  assert.match(markup, /bg-\[color:var\(--app-panel-bg\)\]/);
+  assert.match(markup, /app-artifact-preview-window-panel/);
+  assert.match(markup, /app-artifact-preview-window-body/);
+  assert.match(markup, /app-artifact-preview-opaque-surface/);
   assert.doesNotMatch(markup, /backdrop-blur/);
   assert.doesNotMatch(markup, /bg-black\/55/);
+  assert.doesNotMatch(markup, /bg-black\/70/);
+  assert.doesNotMatch(markup, /bg-\[color:var\(--app-panel-bg\)\]/);
 });
