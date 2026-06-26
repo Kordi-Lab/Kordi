@@ -187,6 +187,8 @@ test('artifact preview renders html and markdown as previewable documents', () =
   assert.match(htmlMarkup, /sandbox=/);
   assert.doesNotMatch(htmlMarkup, />Copy</);
   assert.match(markdownMarkup, /Kordi Project Structure Report/);
+  assert.match(markdownMarkup, /app-artifact-markdown-preview/);
+  assert.match(markdownMarkup, /text-\[12px\]/);
   assert.doesNotMatch(markdownMarkup, /# Kordi Project Structure Report/);
   assert.doesNotMatch(markdownMarkup, />Copy</);
 });
@@ -319,6 +321,12 @@ test('artifact inspector gives the selected preview the flexible right-panel spa
   assert.match(markup, /data-artifact-inspector="true"/);
   assert.match(markup, /data-artifact-file-list="true"/);
   assert.match(markup, /data-artifact-preview-section="true"/);
+  assert.match(markup, /app-artifact-preview-toolbar/);
+  assert.match(markup, /app-artifact-preview-title/);
+  assert.match(markup, /text-\[11px\]/);
+  assert.match(markup, /py-1/);
+  assert.match(markup, /aria-label="Markdown preview"/);
+  assert.doesNotMatch(markup, />Markdown</);
   assert.match(markup, /flex-1/);
   assert.match(markup, /min-h-0/);
 });
@@ -364,8 +372,17 @@ test('artifact preview exposes a larger preview window surface', () => {
   }));
 
   assert.match(markup, /role="dialog"/);
-  assert.match(markup, /Preview window/);
+  assert.match(markup, /aria-label="Artifact preview window"/);
+  assert.doesNotMatch(markup, />Preview window</);
   assert.match(markup, /tmp_test_task.py/);
   assert.match(markup, /Hello from preview/);
   assert.match(markup, /aria-label="Close preview window"/);
+  assert.match(markup, /app-artifact-preview-window-backdrop/);
+  assert.match(markup, /app-artifact-preview-window-panel/);
+  assert.match(markup, /app-artifact-preview-window-body/);
+  assert.match(markup, /app-artifact-preview-opaque-surface/);
+  assert.doesNotMatch(markup, /backdrop-blur/);
+  assert.doesNotMatch(markup, /bg-black\/55/);
+  assert.doesNotMatch(markup, /bg-black\/70/);
+  assert.doesNotMatch(markup, /bg-\[color:var\(--app-panel-bg\)\]/);
 });

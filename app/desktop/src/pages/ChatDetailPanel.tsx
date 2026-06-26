@@ -19,6 +19,7 @@ type ActiveConversation = {
   canonicalDelegatedExchangeCount?: number;
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
+  localSessionCwd?: string | null;
   canonicalParticipants?: Array<{
     id: string;
     name: string;
@@ -152,6 +153,22 @@ type SessionProjectInfo = {
   sharedSources: ProjectSource[];
 };
 
+export function chatArtifactPreviewBaseRoot({
+  activeConversationIsBridge,
+  activeSessionProjectRoot,
+  activeSessionWorkspaceRoot,
+}: {
+  activeConversationIsBridge: boolean;
+  activeSessionProjectRoot?: string | null;
+  activeSessionWorkspaceRoot?: string | null;
+}) {
+  if (activeConversationIsBridge) return null;
+  const projectRoot = activeSessionProjectRoot?.trim();
+  if (projectRoot) return projectRoot;
+  const sessionRoot = activeSessionWorkspaceRoot?.trim();
+  return sessionRoot || null;
+}
+
 type BridgeConversation = {
   peerNodeId: string;
   peerRuntime: string;
@@ -227,6 +244,11 @@ function ChatDetailPanelView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed(activeConv.name);
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
+  const artifactPreviewBaseRoot = chatArtifactPreviewBaseRoot({
+    activeConversationIsBridge,
+    activeSessionProjectRoot: activeSessionProject?.root,
+    activeSessionWorkspaceRoot: activeConv.localSessionCwd,
+  });
   const scheduledTasks = useScheduledTasks({ enabled: true });
 
   useEffect(() => {
@@ -360,6 +382,7 @@ function ChatDetailPanelView({
           artifacts={artifacts}
           activeArtifactId={activeArtifactId}
           onSelectArtifact={onSelectArtifact}
+          previewBaseRoot={artifactPreviewBaseRoot}
           emptyMessage={activeConversationIsBridge ? 'No generated code or docs in this chat yet.' : 'No generated code or docs in this session yet.'}
         />
       </div>

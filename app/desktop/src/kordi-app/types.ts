@@ -141,6 +141,7 @@ export type Conversation = {
   taskActivities?: SessionTaskActivity[];
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
+  localSessionCwd?: string | null;
   name: string;
   type: ConversationType;
   subtitle: string;
@@ -1036,6 +1037,7 @@ export type DesktopChatProjectInfo = {
 
 export type DesktopChatSessionDetail = {
   id: string;
+  cwd: string;
   title: string;
   subtitle: string;
   provider: string;

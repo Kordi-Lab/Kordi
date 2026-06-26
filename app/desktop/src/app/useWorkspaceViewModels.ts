@@ -425,6 +425,7 @@ export function useWorkspaceViewModels({
       return {
         id: session.id,
         canonicalSessionId: session.id,
+        localSessionCwd: isActiveSession ? desktopChatState.activeSession.cwd : null,
         name: session.title,
         type: 'owned-agent' as const,
         subtitle: buildConversationPreview(messages, session.subtitle),

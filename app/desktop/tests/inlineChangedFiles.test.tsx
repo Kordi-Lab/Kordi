@@ -124,7 +124,9 @@ test('inline changed files render under assistant turns and hide when there are 
 
   assert.match(changedMarkup, /Changed 1 file/);
   assert.match(changedMarkup, /data-inline-changed-files="true"/);
-  assert.match(changedMarkup, /data-artifact-id="app\/desktop\/src\/features\/chat\/artifacts.ts"/);
+  assert.match(changedMarkup, /aria-expanded="false"/);
+  assert.doesNotMatch(changedMarkup, /data-inline-changed-file-row="true"/);
+  assert.doesNotMatch(changedMarkup, /app\/desktop\/src\/features\/chat\/artifacts.ts/);
   assert.doesNotMatch(unchangedMarkup, /Changed \d+ file/);
   assert.doesNotMatch(unchangedMarkup, /data-inline-changed-files="true"/);
 });
@@ -186,7 +188,7 @@ test('failed turns still show successful file writes without an incomplete badge
 
   assert.match(markup, /Changed 1 file/);
   assert.doesNotMatch(markup, /incomplete/);
-  assert.match(markup, /docs\/failure-report.md/);
+  assert.doesNotMatch(markup, /docs\/failure-report.md/);
 });
 
 test('failed file write attempts are not shown as changed files', () => {
@@ -224,11 +226,11 @@ test('failed file write attempts are not shown as changed files', () => {
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
   assert.match(markup, /Changed 1 file/);
-  assert.match(markup, /tmp_test_task.md/);
+  assert.doesNotMatch(markup, /tmp_test_task.md/);
   assert.doesNotMatch(markup, /\/root\/tmp_test_task\/README.md/);
 });
 
-test('long inline changed file lists collapse after five rows', () => {
+test('inline changed file lists are collapsed by default', () => {
   const tools = Array.from({ length: 7 }, (_, index) => ({
     id: `tool-${index}`,
     name: 'write',
@@ -241,9 +243,10 @@ test('long inline changed file lists collapse after five rows', () => {
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: turnWithTools(tools), historical: true }));
 
   assert.match(markup, /Changed 7 files/);
-  assert.match(markup, /Show 2 more/);
-  assert.match(markup, /docs\/report-4.md/);
-  assert.doesNotMatch(markup, /docs\/report-5.md/);
+  assert.match(markup, /aria-expanded="false"/);
+  assert.doesNotMatch(markup, /Show 2 more/);
+  assert.doesNotMatch(markup, /docs\/report-0.md/);
+  assert.doesNotMatch(markup, /data-inline-changed-file-row="true"/);
 });
 
 test('click handler routes the selected changed file artifact id to the Artifact Inspector opener', () => {
@@ -286,5 +289,6 @@ test('assistant message bubbles pass changed file clicks to the Artifact Inspect
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message, onOpenArtifact: () => undefined }));
 
   assert.match(markup, /Changed 1 file/);
-  assert.match(markup, /Open app\/desktop\/src\/pages\/ArtifactInspector.tsx in Artifact Inspector/);
+  assert.match(markup, /aria-expanded="false"/);
+  assert.doesNotMatch(markup, /Open app\/desktop\/src\/pages\/ArtifactInspector.tsx in Artifact Inspector/);
 });

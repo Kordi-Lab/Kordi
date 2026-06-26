@@ -597,24 +597,24 @@ function MarkdownCodeBlock({
   };
 
   return (
-    <div className="max-w-full overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div className="app-markdown-code-header flex items-center justify-between gap-1.5 border-b border-white/8 px-2 py-0.5">
-        <div className="truncate text-[8px] uppercase tracking-[0.1em] text-slate-400">{resolvedLanguage}</div>
-        <div className="flex shrink-0 items-center gap-1">
+    <div className="group relative max-w-full overflow-hidden rounded-[10px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]" aria-label={`Code block language: ${resolvedLanguage}`}>
+      <span className="sr-only">{resolvedLanguage}</span>
+      {headerActions ? (
+        <div className="absolute right-9 top-2 z-10 flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           {headerActions}
-          <button
-            type="button"
-            aria-label={copied ? 'Copied' : 'Copy code'}
-            title={copied ? 'Copied' : 'Copy code'}
-            onClick={() => {
-              void handleCopy();
-            }}
-            className="app-markdown-code-copy-button inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
-          >
-            {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
-          </button>
         </div>
-      </div>
+      ) : null}
+      <button
+        type="button"
+        aria-label={copied ? 'Copied' : 'Copy code'}
+        title={copied ? 'Copied' : 'Copy code'}
+        onClick={() => {
+          void handleCopy();
+        }}
+        className="app-markdown-code-copy-button absolute right-2 top-2 z-10 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5 text-slate-300 opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
+      </button>
       <pre className={cn('overflow-auto px-2.5 py-2.5 font-mono text-[11px] leading-5.5 text-slate-100', maxHeightClass)}>
         <code className={cn('block', wrapLines ? 'min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'min-w-max')}>
           {highlightedLines.map((line, lineIndex) => (
