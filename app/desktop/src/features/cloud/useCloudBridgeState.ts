@@ -3119,6 +3119,7 @@ export function useCloudBridgeState({
           runtimeRoute,
           contextMessages,
           visibleTaskRecords,
+          envelope.groupId,
         );
         rememberLocalTurn(startedTurn);
         cloudAgentTurnIdsByRequestIdRef.current.set(envelope.message!.id, startedTurn.id);
@@ -3702,6 +3703,7 @@ export function useCloudBridgeState({
             }),
             contextMessages,
             visibleTaskRecords,
+            activitySessionId,
           );
           rememberLocalTurn(startedTurn);
           cloudAgentTurnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
