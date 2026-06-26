@@ -323,8 +323,10 @@ test('artifact inspector gives the selected preview the flexible right-panel spa
   assert.match(markup, /data-artifact-preview-section="true"/);
   assert.match(markup, /app-artifact-preview-toolbar/);
   assert.match(markup, /app-artifact-preview-title/);
-  assert.match(markup, /text-\[12px\]/);
-  assert.match(markup, /py-1\.5/);
+  assert.match(markup, /text-\[11px\]/);
+  assert.match(markup, /py-1/);
+  assert.match(markup, /aria-label="Markdown preview"/);
+  assert.doesNotMatch(markup, />Markdown</);
   assert.match(markup, /flex-1/);
   assert.match(markup, /min-h-0/);
 });

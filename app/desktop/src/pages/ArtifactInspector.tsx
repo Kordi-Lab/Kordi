@@ -272,14 +272,13 @@ function ArtifactListSection({ title, section, description, artifacts, activeArt
     <section className="app-detail-section" data-artifact-section={section}>
       {title ? <div className="app-detail-kicker">{title}</div> : null}
       {description ? <div className="mb-2 text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{description}</div> : null}
-      <div className="overflow-hidden rounded-[18px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)]/60">
+      <div className="overflow-hidden rounded-[12px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)]/45">
         <div className="divide-y divide-[color:var(--app-divider)]">
           {artifacts.map((artifact) => {
             const displayName = artifact.name || fileNameFromPath(artifact.path);
             const Icon = artifactIcon(artifact.kind, artifact.path);
             const isActive = activeArtifact?.id === artifact.id;
             const location = compactArtifactLocation(artifact.path, displayName);
-            const typeLabel = extensionLabel(artifact.path, artifact.kind).toUpperCase();
 
             return (
               <button
@@ -288,34 +287,31 @@ function ArtifactListSection({ title, section, description, artifacts, activeArt
                 data-artifact-file-row="true"
                 onClick={() => onSelect(artifact.id)}
                 className={cn(
-                  'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-left transition',
-                  isActive ? 'bg-white/[0.055]' : 'hover:bg-white/[0.025]',
+                  'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-1.5 text-left transition',
+                  isActive ? 'bg-white/[0.05]' : 'hover:bg-white/[0.025]',
                 )}
               >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.04] text-slate-300">
-                    <Icon className="h-3.5 w-3.5" />
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/[0.035] text-slate-300">
+                    <Icon className="h-3 w-3" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <div className="min-w-0 truncate app-inspector-heading">{displayName}</div>
-                      <span className="shrink-0 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-slate-400">
-                        {typeLabel}
-                      </span>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <div className="min-w-0 truncate text-[12px] font-medium leading-4 text-[color:var(--utility-foreground)]">{displayName}</div>
                       {artifact.pinned ? (
                         <span className="shrink-0 rounded-md border border-amber-300/20 bg-amber-300/10 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-amber-100">
                           pinned
                         </span>
                       ) : null}
                     </div>
-                    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-[color:var(--utility-muted-text)]">
+                    <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] leading-3 text-[color:var(--utility-muted-text)]">
                       {location ? <span className="truncate">{location}</span> : null}
                       {location && artifact.summary ? <span className="shrink-0 text-slate-600">•</span> : null}
                       {artifact.summary ? <span className="truncate">{artifact.summary}</span> : null}
                     </div>
                   </div>
                 </div>
-                <div className="shrink-0 text-[10px] text-slate-500">
+                <div className="shrink-0 text-[9.5px] text-slate-500">
                   {artifact.live ? 'Live' : artifact.timeLabel ?? 'Ready'}
                 </div>
               </button>
@@ -640,11 +636,11 @@ export function ArtifactInspector({
         <section data-artifact-preview-section="true" className="app-detail-section flex min-h-0 flex-1 flex-col border-t border-[color:var(--app-divider)] pt-[18px] pb-0">
           <div className="app-detail-kicker shrink-0">Preview</div>
           <div className="app-code-panel app-artifact-preview-opaque-surface flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] shadow-[var(--app-shadow-soft)]">
-            <div className="app-code-toolbar app-artifact-preview-toolbar flex items-center justify-between gap-2 border-b border-white/10 px-3 py-1.5 text-[11px] text-slate-400">
+            <div className="app-code-toolbar app-artifact-preview-toolbar flex items-center justify-between gap-2 border-b border-white/10 px-2.5 py-1 text-[10.5px] text-slate-400">
               <div className="min-w-0">
-                <div className="app-artifact-preview-title truncate text-[12px] font-medium leading-4 text-slate-200">{previewFileName}</div>
+                <div className="app-artifact-preview-title truncate text-[11px] font-medium leading-3.5 text-slate-200">{previewFileName}</div>
                 {previewLocation ? (
-                  <div className="truncate text-[10.5px] text-slate-500">{previewLocation}</div>
+                  <div className="truncate text-[10px] leading-3 text-slate-500">{previewLocation}</div>
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -652,16 +648,16 @@ export function ArtifactInspector({
                   <button
                     type="button"
                     onClick={() => setPreviewWindowOpen(true)}
-                    className="app-utility-button inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-slate-300 transition hover:bg-white/[0.07] hover:text-white"
+                    className="app-utility-button inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9.5px] font-medium leading-3 text-slate-300 transition hover:bg-white/[0.07] hover:text-white"
                     aria-label="Open preview window"
                     title="Open preview window"
                   >
-                    <Maximize2 className="h-3 w-3" />
+                    <Maximize2 className="h-2.5 w-2.5" />
                     Open
                   </button>
                 ) : null}
-                <div className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[8.5px] uppercase tracking-[0.08em] text-slate-400">
-                  {previewKindLabel}
+                <div className="grid h-5 w-5 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-slate-400" aria-label={`${previewKindLabel} preview`} title={previewKindLabel}>
+                  <FileText className="h-3 w-3" aria-hidden="true" />
                 </div>
               </div>
             </div>
