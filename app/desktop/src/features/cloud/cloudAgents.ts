@@ -16,6 +16,7 @@ export type CloudAgentDefinition = {
   resources: CloudAgentResource[];
   skills: CloudAgentSkill[];
   modelRouting: Record<string, unknown>;
+  systemManaged: boolean;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
@@ -101,10 +102,15 @@ export function normalizeCloudAgentDefinition(value: unknown): CloudAgentDefinit
     resources: normalizeResources(record.resources),
     skills: normalizeSkills(record.skills),
     modelRouting: normalizeModelRouting(record.modelRouting),
+    systemManaged: record.systemManaged === true,
     createdAt,
     updatedAt,
     archivedAt: cleanNullableText(record.archivedAt),
   };
+}
+
+export function isUserVisibleCloudAgentDefinition(definition: CloudAgentDefinition): boolean {
+  return definition.systemManaged !== true;
 }
 
 function cloudAgentId(definition: CloudAgentDefinition): string {
@@ -191,7 +197,7 @@ export function cloudAgentDefinitionToSharedCloudAgentSummary(
   definition: CloudAgentDefinition,
   ownerDisplayName?: string | null,
 ): SharedCloudAgentSummary | null {
-  if (definition.status !== 'active' || definition.accessScope !== 'participant_conversations') return null;
+  if (definition.systemManaged || definition.status !== 'active' || definition.accessScope !== 'participant_conversations') return null;
   return {
     agentId: definition.agentId,
     ownerAccountId: definition.ownerAccountId,

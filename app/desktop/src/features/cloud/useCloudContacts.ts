@@ -443,26 +443,35 @@ export function isCloudContact(contact: Contact): boolean {
 }
 
 export function cloudContactToContact(row: CloudContactSummary): Contact {
+  const isSystemAgent = row.contactKind === 'system_agent' && Boolean(row.targetCloudAgentId?.trim());
   const name = row.displayName ?? row.accountId;
+  const subtitle = row.subtitle?.trim() || row.accountId;
   return {
-    id: `cloud:${row.accountId}`,
+    id: row.contactId?.trim() || `cloud:${row.accountId}`,
     name,
     initials: deriveInitials(name),
-    classType: 'other-users',
-    entityType: 'user',
-    subtitle: row.accountId,
+    classType: isSystemAgent ? 'other-users-agents' : 'other-users',
+    entityType: isSystemAgent ? 'agent' : 'user',
+    subtitle,
     bridges: [CLOUD_HOST_SENTINEL],
     status: 'online',
     discoverableOn: [CLOUD_HOST_SENTINEL],
-    detail: row.accountId,
+    detail: isSystemAgent ? subtitle : row.accountId,
     owner: name,
     bridgeHostId: CLOUD_HOST_SENTINEL,
     bridgePeerNodeId: row.accountId,
-    bridgePeerRuntime: 'person',
+    bridgePeerRuntime: isSystemAgent ? 'agent' : 'person',
     bridgeHumanId: row.accountId,
+    bridgeAgentId: row.targetCloudAgentId?.trim() || null,
     bridgeContactStatus: 'accepted',
     bridgeContactRequestDirection: 'outgoing',
-    avatarSeed: cloudAvatarSeedForAccount(row.accountId, row.avatarUrl),
+    systemContact: isSystemAgent,
+    locked: row.locked === true || isSystemAgent,
+    targetCloudAgentId: row.targetCloudAgentId?.trim() || null,
+    targetCloudAgentName: row.targetCloudAgentName?.trim() || null,
+    targetCloudAgentOwnerAccountId: row.targetCloudAgentOwnerAccountId?.trim() || null,
+    targetCloudAgentOwnerName: row.targetCloudAgentOwnerName?.trim() || null,
+    avatarSeed: cloudAvatarSeedForAccount(row.contactId?.trim() || row.accountId, row.avatarUrl),
     profileImageUrl: cloudAvatarImageUrl(row.avatarUrl),
   };
 }

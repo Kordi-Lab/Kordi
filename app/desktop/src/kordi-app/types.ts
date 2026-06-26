@@ -235,6 +235,12 @@ export type Contact = {
   bridgeAgentId?: string | null;
   bridgeContactStatus?: string | null;
   bridgeContactRequestDirection?: string | null;
+  systemContact?: boolean | null;
+  locked?: boolean | null;
+  targetCloudAgentId?: string | null;
+  targetCloudAgentName?: string | null;
+  targetCloudAgentOwnerAccountId?: string | null;
+  targetCloudAgentOwnerName?: string | null;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
   presenceStatus?: 'online' | 'offline' | string | null;

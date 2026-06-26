@@ -151,6 +151,54 @@ spec:
                   name: kordi-cloud-runner
                   key: runner-token
                   optional: true
+            - name: KORDI_SUPPORT_AGENT_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-support-agent
+                  key: enabled
+                  optional: true
+            - name: KORDI_SUPPORT_AGENT_OWNER_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-support-agent
+                  key: owner-account-id
+                  optional: true
+            - name: KORDI_SUPPORT_AGENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-support-agent
+                  key: agent-id
+                  optional: true
+            - name: KORDI_SUPPORT_AGENT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-support-agent
+                  key: name
+                  optional: true
+            - name: KORDI_SUPPORT_AGENT_DESCRIPTION
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-support-agent
+                  key: description
+                  optional: true
+            - name: KORDI_SUPPORT_AGENT_DEFAULT_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-support-agent
+                  key: default-model
+                  optional: true
+            - name: KORDI_SUPPORT_AGENT_DEFAULT_AUTH_PROVIDER
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-support-agent
+                  key: default-auth-provider
+                  optional: true
+            - name: KORDI_SUPPORT_AGENT_DEFAULT_AUTH_CHOICE
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-cloud-support-agent
+                  key: default-auth-choice
+                  optional: true
           readinessProbe:
             httpGet:
               path: /health

@@ -15,6 +15,7 @@ pub mod pg;
 pub mod presence;
 pub mod scheduled_tasks;
 pub mod server;
+pub mod support_agent;
 pub mod ws;
 
 pub use server::{router, run, ServerState};

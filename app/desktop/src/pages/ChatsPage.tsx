@@ -71,7 +71,7 @@ import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { MessageBubbleShapeBackdrop, queuedMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { chatComposerPlaceholder } from '@/features/chat/composerCopy';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
-import { buildReplyAttribution, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
+import { buildReplyAttribution, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution, shouldSuppressTranscriptReplyAttribution } from '@/features/chat/replyAttribution';
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
   focusComposerTextarea,
@@ -1255,7 +1255,7 @@ export function ChatsPage({
     suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
   );
   const inferLatestHumanReplyTarget = shouldInferLatestHumanReplyTarget(activeConv);
-  const suppressAgentReplyAttribution = shouldSuppressAgentReplyAttribution(activeConv);
+  const suppressAgentReplyAttribution = shouldSuppressTranscriptReplyAttribution(activeConv, transcriptMessages);
   const attributedTranscript = useMemo(
     () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
       inferLatestHumanRequest: inferLatestHumanReplyTarget,

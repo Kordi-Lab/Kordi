@@ -70,11 +70,19 @@ export type CloudPublicProfile = {
 };
 
 export type CloudContactSummary = {
+  contactId?: string | null;
+  contactKind?: 'user' | 'system_agent' | string | null;
   accountId: string;
   displayName: string | null;
+  subtitle?: string | null;
   avatarUrl: string | null;
   nodeId: string | null;
   createdAt: string;
+  locked?: boolean | null;
+  targetCloudAgentId?: string | null;
+  targetCloudAgentName?: string | null;
+  targetCloudAgentOwnerAccountId?: string | null;
+  targetCloudAgentOwnerName?: string | null;
 };
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';

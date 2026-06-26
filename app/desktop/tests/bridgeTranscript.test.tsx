@@ -52,6 +52,71 @@ function conversation(overrides: Partial<DesktopBridgeConversation> = {}): Deskt
   };
 }
 
+test('direct support agent processing placeholder does not quote the user request', () => {
+  const view = mapBridgeConversationToViewModel(conversation({
+    id: 'bridge:cloud:acct_support_owner',
+    canonicalSessionId: 'bridge:cloud:acct_support_owner',
+    hostId: 'cloud',
+    peerNodeId: 'acct_support_owner',
+    peerDisplayName: 'Kordi Support',
+    peerOwnerName: 'Kordi',
+    peerRuntime: 'kordi-desktop',
+    title: 'Kordi Support',
+    subtitle: 'Processing…',
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId: 'acct_user',
+      localHumanName: 'Me',
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      localAgentNodeId: 'acct_user',
+      remoteHumanId: 'acct_support_owner',
+      remoteHumanName: 'Kordi',
+      remoteHumanNodeId: 'acct_support_owner',
+      remoteAgentId: 'cloud_agent_kordi_support',
+      remoteAgentName: 'Kordi Support',
+      remoteAgentNodeId: 'acct_support_owner',
+      remoteAgentRuntime: 'kordi-desktop',
+    },
+    messages: [
+      {
+        id: 'msg-user-request',
+        direction: 'outbound',
+        sender: 'Me',
+        text: 'hihi',
+        timeLabel: '23:33',
+        timestampMs: 1,
+        requestId: 'msg-user-request',
+        deliveryState: 'delivered',
+      },
+      {
+        id: 'cloud-agent-processing:msg-user-request',
+        direction: 'inbound-response',
+        sender: 'Kordi Support',
+        text: 'processing...',
+        timeLabel: '23:33',
+        timestampMs: 2,
+        requestId: 'msg-user-request',
+        deliveryState: 'processing',
+      },
+    ],
+  }), host({
+    id: 'cloud',
+    serverUrl: 'kordi.cloud',
+    nodeId: 'acct_user',
+    humanId: 'acct_user',
+    displayName: 'Kordi Cloud',
+    ownerName: 'Me',
+  }), 'Me');
+
+  const processing = view.messages.find((message) => message.turn?.pendingBridgeAgentRequest);
+  assert.equal(processing?.role, 'external-agent');
+  assert.equal(processing?.replyToMessageId, undefined);
+  assert.equal(processing?.sourceMessage, undefined);
+  assert.equal(processing?.turn?.replyToMessageId, undefined);
+  assert.equal(processing?.turn?.sourceMessage, undefined);
+});
+
 test('cloud self-agent bridge conversations render as My agent, not external agent', () => {
   const view = mapBridgeConversationToViewModel(conversation({
     id: 'bridge:cloud:acct_me',

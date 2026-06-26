@@ -212,16 +212,41 @@ pub struct AddContactRequest {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ContactSummary {
+    #[serde(rename = "contactId", skip_serializing_if = "Option::is_none")]
+    pub contact_id: Option<String>,
+    #[serde(rename = "contactKind", skip_serializing_if = "Option::is_none")]
+    pub contact_kind: Option<String>,
     #[serde(rename = "accountId")]
     pub account_id: String,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
+    #[serde(rename = "subtitle", skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
     #[serde(rename = "nodeId")]
     pub node_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locked: Option<bool>,
+    #[serde(rename = "targetCloudAgentId", skip_serializing_if = "Option::is_none")]
+    pub target_cloud_agent_id: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentName",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub target_cloud_agent_name: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentOwnerAccountId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub target_cloud_agent_owner_account_id: Option<String>,
+    #[serde(
+        rename = "targetCloudAgentOwnerName",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub target_cloud_agent_owner_name: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1926,18 +1951,51 @@ async fn list_contacts(
         }
     };
 
-    let contacts = rows
+    let mut contacts = rows
         .into_iter()
         .map(
             |(account_id, display_name, avatar_url, created_at)| ContactSummary {
+                contact_id: None,
+                contact_kind: None,
                 account_id,
                 display_name,
+                subtitle: None,
                 avatar_url,
                 node_id: None,
                 created_at,
+                locked: None,
+                target_cloud_agent_id: None,
+                target_cloud_agent_name: None,
+                target_cloud_agent_owner_account_id: None,
+                target_cloud_agent_owner_name: None,
             },
         )
-        .collect();
+        .collect::<Vec<_>>();
+
+    if let Some(config) = crate::support_agent::SupportAgentConfig::from_env() {
+        let fields = crate::support_agent::support_agent_contact_summary(
+            &config,
+            chrono::Utc::now().to_rfc3339(),
+        );
+        contacts.insert(
+            0,
+            ContactSummary {
+                contact_id: Some(fields.contact_id),
+                contact_kind: Some("system_agent".to_string()),
+                account_id: fields.account_id,
+                display_name: Some(fields.display_name),
+                subtitle: Some("Ask questions or suggest improvements".to_string()),
+                avatar_url: fields.avatar_url,
+                node_id: None,
+                created_at: fields.created_at,
+                locked: Some(true),
+                target_cloud_agent_id: Some(fields.target_cloud_agent_id),
+                target_cloud_agent_name: Some(fields.target_cloud_agent_name),
+                target_cloud_agent_owner_account_id: Some(fields.target_cloud_agent_owner_account_id),
+                target_cloud_agent_owner_name: Some(fields.target_cloud_agent_owner_name),
+            },
+        );
+    }
 
     Json(ContactsListResponse { contacts }).into_response()
 }
@@ -2623,11 +2681,19 @@ async fn finalize_request_acceptance(
 
 fn account_to_summary(account: AccountResponse) -> ContactSummary {
     ContactSummary {
+        contact_id: None,
+        contact_kind: None,
         account_id: account.account_id,
         display_name: account.display_name,
+        subtitle: None,
         avatar_url: account.avatar_url,
         node_id: account.node_id,
         created_at: String::new(),
+        locked: None,
+        target_cloud_agent_id: None,
+        target_cloud_agent_name: None,
+        target_cloud_agent_owner_account_id: None,
+        target_cloud_agent_owner_name: None,
     }
 }
 
@@ -2640,6 +2706,35 @@ const CLOUD_GROUP_CONTROL_PREFIX: &str = "kordi-cloud-group:";
 const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_MESSAGE_CLIENT_CREATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
+
+async fn claim_support_agent_run_for_message(
+    pool: &PgPool,
+    config: &crate::support_agent::SupportAgentConfig,
+    requester_account_id: &str,
+    message_id: &str,
+    session_id: &str,
+    body: &str,
+) -> Result<(), sqlx_core::Error> {
+    let Some(envelope) = crate::support_agent::parse_support_direct_message(body) else {
+        return Ok(());
+    };
+    let prompt = envelope.text.trim();
+    if prompt.is_empty() {
+        return Ok(());
+    }
+    let claim = crate::cloud_agent_runtime::runs::ClaimRunRequest {
+        request_message_id: message_id.to_string(),
+        session_id: session_id.to_string(),
+        owner_account_id: config.owner_account_id.clone(),
+        requester_account_id: requester_account_id.to_string(),
+        prompt: prompt.to_string(),
+        idempotency_key: format!("kordi-support:{session_id}:{message_id}"),
+    };
+    if claim.is_well_formed() {
+        let _ = crate::cloud_agent_runtime::runs::claim_run(pool, &claim).await?;
+    }
+    Ok(())
+}
 
 fn cloud_direct_person_session_id(left_account_id: &str, right_account_id: &str) -> String {
     let mut account_ids = [left_account_id.trim(), right_account_id.trim()];
@@ -3195,7 +3290,16 @@ async fn send_message(
             );
         }
     };
-    if !is_self_message && mutual.is_none() && cloud_message_requires_accepted_contact(&body) {
+    let support_agent_config = crate::support_agent::SupportAgentConfig::from_env();
+    let support_target_allowed = support_agent_config
+        .as_ref()
+        .map(|config| crate::support_agent::message_targets_support_agent(&body, &peer, config))
+        .unwrap_or(false);
+    if !is_self_message
+        && mutual.is_none()
+        && !support_target_allowed
+        && cloud_message_requires_accepted_contact(&body)
+    {
         return err(
             "not_a_contact",
             "You can only message accepted contacts.",
@@ -3362,6 +3466,29 @@ async fn send_message(
                 "Could not record sync event.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
+        }
+    }
+
+    if support_target_allowed {
+        if let (Some(config), Some(session_id)) =
+            (support_agent_config.as_ref(), summary.session_id.as_deref())
+        {
+            if claim_support_agent_run_for_message(
+                pool,
+                config,
+                &session.account_id,
+                &summary.message_id,
+                session_id,
+                &summary.body,
+            )
+            .await
+            .is_err()
+            {
+                eprintln!(
+                    "[support_agent] failed to claim support run for message {}",
+                    summary.message_id
+                );
+            }
         }
     }
 

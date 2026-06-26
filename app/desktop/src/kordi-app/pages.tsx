@@ -201,10 +201,12 @@ export function ContactsPage({
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
   const activeContactDetailBody = contactDetailBodyText(activeContact);
 
+  const activeContactIsLocked = activeContact.locked === true || activeContact.systemContact === true;
   const canRemoveActiveContact = Boolean(
     onRemoveContact
       && activeContact.bridgeHostId
       && activeContact.bridgePeerNodeId
+      && !activeContactIsLocked
       && !activeContact.id.startsWith('bridge-self:')
       && activeContact.classType !== 'my-agents',
   );
@@ -514,15 +516,25 @@ export function ContactsPage({
                 {contactOverlayMode === 'contact' ? (
                   <div>
                     <div className="mb-4 flex items-center gap-3">
-                      <EditableIdentityAvatar
-                        kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
-                        seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
-                        name={activeContact.name}
-                        imageUrl={activeContact.profileImageUrl}
-                        label={`${activeContact.name} avatar`}
-                        compact
-                        className="h-12 w-12 border border-white/10"
-                      />
+                      {activeContactIsLocked ? (
+                        <IdentityAvatar
+                          kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
+                          seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
+                          name={activeContact.name}
+                          imageUrl={activeContact.profileImageUrl}
+                          className="h-12 w-12 border border-white/10"
+                        />
+                      ) : (
+                        <EditableIdentityAvatar
+                          kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
+                          seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
+                          name={activeContact.name}
+                          imageUrl={activeContact.profileImageUrl}
+                          label={`${activeContact.name} avatar`}
+                          compact
+                          className="h-12 w-12 border border-white/10"
+                        />
+                      )}
                       <div>
                         <div className="text-sm text-slate-300">
                           {activeContact.entityType} • {activeContact.subtitle}
