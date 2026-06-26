@@ -1,4 +1,4 @@
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
@@ -325,6 +325,28 @@ fn direct_person_peer_account_id(session_id: &str, owner_account_id: &str) -> Op
 
 fn is_scheduled_run_request_id(request_message_id: &str) -> bool {
     request_message_id.trim().starts_with("scheduled_run_")
+}
+
+fn cloud_group_response_recipients(
+    request_envelope: &CloudGroupEnvelope,
+) -> std::collections::BTreeSet<String> {
+    request_envelope
+        .participants
+        .iter()
+        .map(|participant| participant.account_id.trim().to_string())
+        .filter(|account_id| !account_id.is_empty())
+        .collect()
+}
+
+fn cloud_group_response_direction(
+    owner_account_id: &str,
+    recipient_account_id: &str,
+) -> &'static str {
+    if recipient_account_id == owner_account_id {
+        "outgoing"
+    } else {
+        "incoming"
+    }
 }
 
 fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
@@ -925,6 +947,51 @@ mod tests {
     }
 
     #[test]
+    fn scheduled_group_response_recipients_include_owner_and_peer_participants() {
+        let envelope = super::CloudGroupEnvelope {
+            kind: "group-message".to_string(),
+            group_id: "session:group:scheduled".to_string(),
+            group_space_id: Some("session:group:scheduled".to_string()),
+            group_title: None,
+            created_by_account_id: "acct_peer".to_string(),
+            actor: super::CloudGroupParticipant {
+                account_id: "acct_peer".to_string(),
+                display_name: "Peer".to_string(),
+                avatar_url: None,
+                role: Some("admin".to_string()),
+            },
+            participants: vec![
+                super::CloudGroupParticipant {
+                    account_id: "acct_owner".to_string(),
+                    display_name: "Owner".to_string(),
+                    avatar_url: None,
+                    role: Some("person".to_string()),
+                },
+                super::CloudGroupParticipant {
+                    account_id: "acct_peer".to_string(),
+                    display_name: "Peer".to_string(),
+                    avatar_url: None,
+                    role: Some("admin".to_string()),
+                },
+            ],
+            message: None,
+        };
+
+        let recipients = super::cloud_group_response_recipients(&envelope);
+        assert_eq!(recipients.len(), 2);
+        assert!(recipients.contains("acct_owner"));
+        assert!(recipients.contains("acct_peer"));
+        assert_eq!(
+            super::cloud_group_response_direction("acct_owner", "acct_owner"),
+            "outgoing"
+        );
+        assert_eq!(
+            super::cloud_group_response_direction("acct_owner", "acct_peer"),
+            "incoming"
+        );
+    }
+
+    #[test]
     fn claim_request_rejects_empty_required_fields() {
         let valid = ClaimRunRequest {
             request_message_id: "msg_1".to_string(),
@@ -1244,12 +1311,7 @@ async fn ensure_group_response_messages(
         delivery_state,
         now_ms,
     );
-    let recipients = request_envelope
-        .participants
-        .iter()
-        .map(|participant| participant.account_id.trim().to_string())
-        .filter(|account_id| !account_id.is_empty())
-        .collect::<std::collections::BTreeSet<_>>();
+    let recipients = cloud_group_response_recipients(&request_envelope);
     let mut first_message_id = None;
     for recipient_account_id in recipients {
         let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
@@ -1279,11 +1341,7 @@ async fn ensure_group_response_messages(
             &response_body,
             session_id,
             &now_string,
-            if recipient_account_id == owner_account_id {
-                "outgoing"
-            } else {
-                "incoming"
-            },
+            cloud_group_response_direction(owner_account_id, &recipient_account_id),
         )
         .await?;
     }
