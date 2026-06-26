@@ -39,6 +39,7 @@ pub struct CloudAgentDefinition {
     pub resources: Vec<CloudAgentResource>,
     pub skills: Vec<CloudAgentSkill>,
     pub model_routing: serde_json::Value,
+    pub system_managed: bool,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,

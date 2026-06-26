@@ -73,6 +73,11 @@ fn store_error_response(context: &str, error: CloudAgentStoreError) -> Response 
         CloudAgentStoreError::Invalid(message) => {
             error_response("invalid_cloud_agent", &message, StatusCode::BAD_REQUEST)
         }
+        CloudAgentStoreError::SystemManaged => error_response(
+            "system_managed_cloud_agent",
+            "This Cloud Agent is managed by Kordi and cannot be changed here.",
+            StatusCode::FORBIDDEN,
+        ),
         CloudAgentStoreError::Database(err) => {
             eprintln!("[cloud_agents] {context}: {err}");
             error_response(

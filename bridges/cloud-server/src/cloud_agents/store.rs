@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
+use sqlx_core::from_row::FromRow;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
-use sqlx_postgres::PgPool;
+use sqlx_core::row::Row;
+use sqlx_postgres::{PgPool, PgRow};
 use uuid::Uuid;
 
 use crate::cloud_agents::models::{
@@ -27,6 +29,7 @@ const SKILL_FIELD_MAX_LEN: usize = 240;
 #[derive(Debug)]
 pub enum CloudAgentStoreError {
     Invalid(String),
+    SystemManaged,
     Database(sqlx_core::Error),
 }
 
@@ -34,6 +37,7 @@ impl std::fmt::Display for CloudAgentStoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Invalid(message) => write!(f, "{message}"),
+            Self::SystemManaged => write!(f, "system managed Cloud Agent"),
             Self::Database(err) => write!(f, "{err}"),
         }
     }
@@ -94,43 +98,69 @@ fn json_or_array<T: serde::Serialize>(value: &T) -> Result<serde_json::Value, Cl
     serde_json::to_value(value).map_err(|err| CloudAgentStoreError::Invalid(err.to_string()))
 }
 
-type CloudAgentRow = (
-    String,
-    String,
-    String,
-    String,
-    String,
-    String,
-    Option<String>,
-    String,
-    Option<String>,
-    serde_json::Value,
-    serde_json::Value,
-    serde_json::Value,
-    serde_json::Value,
-    String,
-    String,
-    Option<String>,
-);
+struct CloudAgentRow {
+    agent_id: String,
+    owner_account_id: String,
+    access_scope: String,
+    status: String,
+    name: String,
+    role: String,
+    description: Option<String>,
+    system_prompt: String,
+    source_summary: Option<String>,
+    boundaries_json: serde_json::Value,
+    resources_json: serde_json::Value,
+    skills_json: serde_json::Value,
+    model_routing_json: serde_json::Value,
+    is_system_managed: bool,
+    created_at: String,
+    updated_at: String,
+    archived_at: Option<String>,
+}
+
+impl<'r> FromRow<'r, PgRow> for CloudAgentRow {
+    fn from_row(row: &'r PgRow) -> Result<Self, sqlx_core::Error> {
+        Ok(Self {
+            agent_id: row.try_get("agent_id")?,
+            owner_account_id: row.try_get("owner_account_id")?,
+            access_scope: row.try_get("access_scope")?,
+            status: row.try_get("status")?,
+            name: row.try_get("name")?,
+            role: row.try_get("role")?,
+            description: row.try_get("description")?,
+            system_prompt: row.try_get("system_prompt")?,
+            source_summary: row.try_get("source_summary")?,
+            boundaries_json: row.try_get("boundaries_json")?,
+            resources_json: row.try_get("resources_json")?,
+            skills_json: row.try_get("skills_json")?,
+            model_routing_json: row.try_get("model_routing_json")?,
+            is_system_managed: row.try_get("is_system_managed")?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+            archived_at: row.try_get("archived_at")?,
+        })
+    }
+}
 
 fn row_to_definition(row: CloudAgentRow) -> CloudAgentDefinition {
     CloudAgentDefinition {
-        agent_id: row.0,
-        owner_account_id: row.1,
-        access_scope: row.2,
-        status: row.3,
-        name: row.4,
-        role: row.5,
-        description: row.6,
-        system_prompt: row.7,
-        source_summary: row.8,
-        boundaries: serde_json::from_value(row.9).unwrap_or_default(),
-        resources: serde_json::from_value(row.10).unwrap_or_default(),
-        skills: serde_json::from_value(row.11).unwrap_or_default(),
-        model_routing: row.12,
-        created_at: row.13,
-        updated_at: row.14,
-        archived_at: row.15,
+        agent_id: row.agent_id,
+        owner_account_id: row.owner_account_id,
+        access_scope: row.access_scope,
+        status: row.status,
+        name: row.name,
+        role: row.role,
+        description: row.description,
+        system_prompt: row.system_prompt,
+        source_summary: row.source_summary,
+        boundaries: serde_json::from_value(row.boundaries_json).unwrap_or_default(),
+        resources: serde_json::from_value(row.resources_json).unwrap_or_default(),
+        skills: serde_json::from_value(row.skills_json).unwrap_or_default(),
+        model_routing: row.model_routing_json,
+        system_managed: row.is_system_managed,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        archived_at: row.archived_at,
     }
 }
 
@@ -182,7 +212,7 @@ pub async fn create_agent_definition(
          ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at",
+             model_routing_json, is_system_managed, created_at, updated_at, archived_at",
     )
     .bind(&agent_id)
     .bind(owner_account_id)
@@ -211,7 +241,7 @@ pub async fn list_agent_definitions(
     let rows = query_as::<_, CloudAgentRow>(
         "SELECT agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at
+             model_routing_json, is_system_managed, created_at, updated_at, archived_at
          FROM cloud_agent_definitions
          WHERE owner_account_id = $1 AND status = 'active'
          ORDER BY updated_at DESC, agent_id ASC",
@@ -268,6 +298,63 @@ pub async fn list_shared_agent_summaries(
         .collect())
 }
 
+pub async fn upsert_system_support_agent_definition(
+    pool: &PgPool,
+    config: &crate::support_agent::SupportAgentConfig,
+    now: DateTime<Utc>,
+) -> Result<CloudAgentDefinition, CloudAgentStoreError> {
+    let now_text = timestamp(now);
+    let row = query_as::<_, CloudAgentRow>(
+        "INSERT INTO cloud_agent_definitions (
+             agent_id, owner_account_id, access_scope, status, name, role, description,
+             system_prompt, source_summary, boundaries_json, resources_json, skills_json,
+             model_routing_json, is_system_managed, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, TRUE, $14, $14)
+         ON CONFLICT (agent_id) DO UPDATE SET
+             owner_account_id = EXCLUDED.owner_account_id,
+             access_scope = EXCLUDED.access_scope,
+             status = EXCLUDED.status,
+             name = EXCLUDED.name,
+             role = EXCLUDED.role,
+             description = EXCLUDED.description,
+             system_prompt = EXCLUDED.system_prompt,
+             source_summary = EXCLUDED.source_summary,
+             boundaries_json = EXCLUDED.boundaries_json,
+             resources_json = EXCLUDED.resources_json,
+             skills_json = EXCLUDED.skills_json,
+             model_routing_json = EXCLUDED.model_routing_json,
+             is_system_managed = TRUE,
+             archived_at = NULL,
+             updated_at = EXCLUDED.updated_at
+         RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
+             system_prompt, source_summary, boundaries_json, resources_json, skills_json,
+             model_routing_json, is_system_managed, created_at, updated_at, archived_at",
+    )
+    .bind(&config.agent_id)
+    .bind(&config.owner_account_id)
+    .bind(CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS)
+    .bind(CLOUD_AGENT_STATUS_ACTIVE)
+    .bind(&config.name)
+    .bind("Kordi product support")
+    .bind(&config.description)
+    .bind(crate::support_agent::support_agent_system_prompt())
+    .bind(Some("Official Kordi help and feedback agent."))
+    .bind(serde_json::json!([
+        "Do not reveal provider keys or hidden runtime metadata.",
+        "Do not claim to file tickets unless tooling confirms it.",
+        "Use only the current support conversation as user-provided context."
+    ]))
+    .bind(serde_json::json!([{ "kind": "product", "value": "kordi", "title": "Kordi product guidance" }]))
+    .bind(serde_json::json!([{ "name": "support", "description": "Answer Kordi usage questions and collect suggestions." }]))
+    .bind(config.model_routing_json())
+    .bind(&now_text)
+    .fetch_one(pool)
+    .await?;
+    let agent = row_to_definition(row);
+    insert_agent_sync_event(pool, &config.owner_account_id, "agent.definition.upserted", &agent, now).await?;
+    Ok(agent)
+}
+
 pub async fn update_agent_definition(
     pool: &PgPool,
     owner_account_id: &str,
@@ -280,6 +367,9 @@ pub async fn update_agent_definition(
     };
     if current.status == CLOUD_AGENT_STATUS_ARCHIVED {
         return Ok(None);
+    }
+    if current.system_managed {
+        return Err(CloudAgentStoreError::SystemManaged);
     }
 
     if let Some(value) = input.access_scope {
@@ -322,7 +412,7 @@ pub async fn update_agent_definition(
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = $3
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at",
+             model_routing_json, is_system_managed, created_at, updated_at, archived_at",
     )
     .bind(owner_account_id)
     .bind(agent_id)
@@ -354,6 +444,16 @@ pub async fn archive_agent_definition(
     agent_id: &str,
     now: DateTime<Utc>,
 ) -> Result<Option<CloudAgentDefinition>, CloudAgentStoreError> {
+    let Some(current) = get_agent_definition(pool, owner_account_id, agent_id).await? else {
+        return Ok(None);
+    };
+    if current.status == CLOUD_AGENT_STATUS_ARCHIVED {
+        return Ok(None);
+    }
+    if current.system_managed {
+        return Err(CloudAgentStoreError::SystemManaged);
+    }
+
     let now_text = timestamp(now);
     let row = query_as::<_, CloudAgentRow>(
         "UPDATE cloud_agent_definitions
@@ -361,7 +461,7 @@ pub async fn archive_agent_definition(
          WHERE owner_account_id = $1 AND agent_id = $2 AND status = 'active'
          RETURNING agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at",
+             model_routing_json, is_system_managed, created_at, updated_at, archived_at",
     )
     .bind(owner_account_id)
     .bind(agent_id)
@@ -385,7 +485,7 @@ async fn get_agent_definition(
     let row = query_as::<_, CloudAgentRow>(
         "SELECT agent_id, owner_account_id, access_scope, status, name, role, description,
              system_prompt, source_summary, boundaries_json, resources_json, skills_json,
-             model_routing_json, created_at, updated_at, archived_at
+             model_routing_json, is_system_managed, created_at, updated_at, archived_at
          FROM cloud_agent_definitions
          WHERE owner_account_id = $1 AND agent_id = $2",
     )

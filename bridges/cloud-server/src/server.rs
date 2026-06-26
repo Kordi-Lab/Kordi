@@ -203,6 +203,18 @@ pub async fn run(
         );
     }
     let state = Arc::new(state);
+    if let Some(config) = crate::support_agent::SupportAgentConfig::from_env() {
+        match crate::cloud_agents::store::upsert_system_support_agent_definition(
+            state.db_pool(),
+            &config,
+            chrono::Utc::now(),
+        )
+        .await
+        {
+            Ok(_) => eprintln!("[support_agent] system support agent ready"),
+            Err(err) => eprintln!("[support_agent] bootstrap failed: {err}"),
+        }
+    }
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     let sweeper_state = state.clone();
     tokio::spawn(async move {
