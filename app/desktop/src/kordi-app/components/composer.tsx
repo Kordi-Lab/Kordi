@@ -670,9 +670,28 @@ export function ComposerModelControls({
   const selectedModel = selectedModelOption?.label ?? fallbackModelLabel;
   const selectedThinkingValue = fallbackComposerThinkingValue(selectedThinkingLevels, selection.thinking);
   const selectedThinkingLabel = composerThinkingLabel(selectedThinkingValue);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!activeSelector) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const controls = controlsRef.current;
+      const target = event.target;
+      if (controls && target instanceof Node && controls.contains(target)) {
+        return;
+      }
+      onToggleSelector(scope, activeSelector);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+    };
+  }, [activeSelector, onToggleSelector, scope]);
 
   return (
-    <div className="relative flex shrink-0 items-center gap-1.5">
+    <div ref={controlsRef} className="relative flex shrink-0 items-center gap-1.5">
       <button
         type="button"
         onClick={() => onToggleSelector(scope, 'provider')}
