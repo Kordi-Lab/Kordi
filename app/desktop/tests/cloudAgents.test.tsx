@@ -6,6 +6,7 @@ import {
   applyCloudAgentSyncEvents,
   cloudAgentDefinitionToAgent,
   cloudAgentDefinitionToSharedCloudAgentSummary,
+  isUserVisibleCloudAgentDefinition,
   normalizeCloudAgentDefinition,
   normalizeSharedCloudAgentSummary,
 } from '../src/features/cloud/cloudAgents';
@@ -104,6 +105,19 @@ test('normalizeCloudAgentDefinition rejects malformed payloads', () => {
   assert.equal(normalizeCloudAgentDefinition({ ...rawAgent, role: '' }), null);
   assert.equal(normalizeCloudAgentDefinition({ ...rawAgent, systemPrompt: '' }), null);
   assert.equal(normalizeCloudAgentDefinition({ ...rawAgent, accessScope: 'public' }), null);
+});
+
+test('system-managed Kordi Support definition is not shown as a normal Agents page identity', () => {
+  const definition = normalizeCloudAgentDefinition({
+    ...rawAgent,
+    agentId: 'cloud_agent_kordi_support',
+    name: 'Kordi Support',
+    systemManaged: true,
+  });
+  assert.ok(definition);
+
+  assert.equal(definition.systemManaged, true);
+  assert.equal(isUserVisibleCloudAgentDefinition(definition), false);
 });
 
 test('cloudAgentDefinitionToAgent maps private cloud definition into Agent page identity', () => {

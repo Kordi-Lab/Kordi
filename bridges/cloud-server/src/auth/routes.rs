@@ -1973,32 +1973,28 @@ async fn list_contacts(
         .collect::<Vec<_>>();
 
     if let Some(config) = crate::support_agent::SupportAgentConfig::from_env() {
-        if config.owner_account_id != session.account_id {
-            let fields = crate::support_agent::support_agent_contact_summary(
-                &config,
-                chrono::Utc::now().to_rfc3339(),
-            );
-            contacts.insert(
-                0,
-                ContactSummary {
-                    contact_id: Some(fields.contact_id),
-                    contact_kind: Some("system_agent".to_string()),
-                    account_id: fields.account_id,
-                    display_name: Some(fields.display_name),
-                    subtitle: Some("Ask questions or suggest improvements".to_string()),
-                    avatar_url: fields.avatar_url,
-                    node_id: None,
-                    created_at: fields.created_at,
-                    locked: Some(true),
-                    target_cloud_agent_id: Some(fields.target_cloud_agent_id),
-                    target_cloud_agent_name: Some(fields.target_cloud_agent_name),
-                    target_cloud_agent_owner_account_id: Some(
-                        fields.target_cloud_agent_owner_account_id,
-                    ),
-                    target_cloud_agent_owner_name: Some(fields.target_cloud_agent_owner_name),
-                },
-            );
-        }
+        let fields = crate::support_agent::support_agent_contact_summary(
+            &config,
+            chrono::Utc::now().to_rfc3339(),
+        );
+        contacts.insert(
+            0,
+            ContactSummary {
+                contact_id: Some(fields.contact_id),
+                contact_kind: Some("system_agent".to_string()),
+                account_id: fields.account_id,
+                display_name: Some(fields.display_name),
+                subtitle: Some("Ask questions or suggest improvements".to_string()),
+                avatar_url: fields.avatar_url,
+                node_id: None,
+                created_at: fields.created_at,
+                locked: Some(true),
+                target_cloud_agent_id: Some(fields.target_cloud_agent_id),
+                target_cloud_agent_name: Some(fields.target_cloud_agent_name),
+                target_cloud_agent_owner_account_id: Some(fields.target_cloud_agent_owner_account_id),
+                target_cloud_agent_owner_name: Some(fields.target_cloud_agent_owner_name),
+            },
+        );
     }
 
     Json(ContactsListResponse { contacts }).into_response()
