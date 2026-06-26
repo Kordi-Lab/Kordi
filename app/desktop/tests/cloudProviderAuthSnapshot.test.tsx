@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { CloudAuthClient } from '../src/features/cloud/authClient';
@@ -74,6 +75,33 @@ test('cloud provider auth snapshot route signature changes only on account and a
     authProvider: null,
     authChoice: 'profile:codex',
   }), null);
+});
+
+test('provider-auth snapshot sync does not wait for message settling', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const syncStart = source.indexOf('const syncKey = cloudProviderAuthSnapshotRouteSignature');
+  const syncEnd = source.indexOf('\n\n  useEffect(() => {\n    if (!account || !initialMessagesSettled) return;\n    const claims = cloudFallbackRunClaimsForMessages', syncStart);
+  assert.ok(syncStart >= 0 && syncEnd > syncStart, 'expected provider-auth snapshot sync effect block');
+  const syncBlock = source.slice(syncStart, syncEnd);
+
+  assert.doesNotMatch(syncBlock, /initialMessagesSettled/);
+  assert.match(syncBlock, /loadSession\(\)/);
+  assert.match(syncBlock, /buildDesktopCloudProviderAuthSnapshotPayload/);
+  assert.match(syncBlock, /client\.publishProviderAuthSnapshot/);
+});
+
+test('provider-auth snapshot sync marks a route synced only after publish succeeds', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const syncStart = source.indexOf('const syncKey = cloudProviderAuthSnapshotRouteSignature');
+  const syncEnd = source.indexOf('\n\n  useEffect(() => {\n    if (!account || !initialMessagesSettled) return;\n    const claims = cloudFallbackRunClaimsForMessages', syncStart);
+  assert.ok(syncStart >= 0 && syncEnd > syncStart, 'expected provider-auth snapshot sync effect block');
+  const syncBlock = source.slice(syncStart, syncEnd);
+  const publishIndex = syncBlock.indexOf('client.publishProviderAuthSnapshot');
+  const markSyncedIndex = syncBlock.indexOf('syncedProviderAuthSnapshotKeysRef.current.add(syncKey)');
+
+  assert.match(source, /publishingProviderAuthSnapshotKeysRef/);
+  assert.ok(publishIndex >= 0, 'expected snapshot publish call');
+  assert.ok(markSyncedIndex > publishIndex, 'sync key should be marked synced only after publish succeeds');
 });
 
 test('CloudAuthClient publishes current and revokes provider auth snapshots', async () => {
