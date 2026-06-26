@@ -28,6 +28,56 @@ pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
     }
 }
 
+fn sentence_case_first(text: &str) -> String {
+    let trimmed = text.trim();
+    let mut chars = trimmed.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    first.to_uppercase().collect::<String>() + chars.as_str()
+}
+
+fn ensure_terminal_punctuation(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.ends_with('.') || trimmed.ends_with('!') || trimmed.ends_with('?') {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}.")
+    }
+}
+
+fn scheduled_reminder_response_text(prompt: &str) -> Option<String> {
+    let trimmed = prompt.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("remind ") {
+        return None;
+    }
+
+    let reminder = if let Some((_, message)) = trimmed.split_once(':') {
+        message.trim()
+    } else {
+        lower
+            .strip_prefix("remind the user to ")
+            .and_then(|_| trimmed.get("Remind the user to ".len()..))
+            .or_else(|| {
+                lower
+                    .strip_prefix("remind me to ")
+                    .and_then(|_| trimmed.get("Remind me to ".len()..))
+            })
+            .or_else(|| {
+                lower
+                    .strip_prefix("remind us to ")
+                    .and_then(|_| trimmed.get("Remind us to ".len()..))
+            })
+            .unwrap_or("")
+            .trim()
+    };
+    if reminder.is_empty() {
+        return None;
+    }
+    Some(ensure_terminal_punctuation(&sentence_case_first(reminder)))
+}
+
 pub fn sandbox_backend_for_run(
     run: &CloudAgentRun,
     local_root: PathBuf,
@@ -68,6 +118,12 @@ where
 
     if run.status == "cancelled" {
         return Ok(RunnerStepOutcome::SkippedCancelled { run_id: run.run_id });
+    }
+
+    if let Some(response_text) = scheduled_reminder_response_text(&run.prompt) {
+        client.mark_running(&run.run_id).await?;
+        client.complete_run(&run.run_id, &response_text).await?;
+        return Ok(RunnerStepOutcome::Completed { run_id: run.run_id });
     }
 
     if !run.provider_auth_available {
@@ -318,6 +374,54 @@ mod tests {
             ]
         );
         std::env::remove_var("KORDI_CLOUD_SANDBOX_BACKEND");
+    }
+
+    #[test]
+    fn scheduled_reminder_prompts_are_rendered_as_reminder_text() {
+        assert_eq!(
+            scheduled_reminder_response_text("Remind 111 and 222: dinner time for us.").as_deref(),
+            Some("Dinner time for us.")
+        );
+        assert_eq!(
+            scheduled_reminder_response_text("Remind the user to have dinner.").as_deref(),
+            Some("Have dinner.")
+        );
+        assert_eq!(
+            scheduled_reminder_response_text("Search OpenAI news and summarize it."),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn scheduled_reminder_runs_complete_without_model_or_provider_auth() {
+        let client = FakeClient::with_run(CloudAgentRun {
+            prompt: "Remind 111 and 222: dinner time for us.".to_string(),
+            provider_auth_available: false,
+            sandbox_id: None,
+            ..leased_run("car_reminder", false)
+        });
+        let provider = FakeModelProvider {
+            response: ModelProviderResponse::FinalText("wrong model answer".to_string()),
+        };
+
+        let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome,
+            RunnerStepOutcome::Completed {
+                run_id: "car_reminder".to_string()
+            }
+        );
+        assert_eq!(
+            client.calls(),
+            vec![
+                "lease",
+                "running:car_reminder",
+                "complete:car_reminder:Dinner time for us.",
+            ]
+        );
     }
 
     #[tokio::test]
