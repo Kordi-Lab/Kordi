@@ -101,7 +101,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
   };
 
   return (
-    <div className="fixed inset-0 z-[2147482500] flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="agent-create-title">
+    <div className="app-agent-create-overlay fixed inset-0 z-[2147482500] flex items-center justify-center px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="agent-create-title">
       <div className="app-agent-create-dialog app-agent-create-surface max-h-full w-full max-w-3xl overflow-hidden rounded-[24px] shadow-[var(--app-shadow-float)]">
         <div className="app-agent-panel-header flex items-start justify-between gap-4 px-5 py-4">
           <div>
