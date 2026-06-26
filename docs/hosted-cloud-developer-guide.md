@@ -309,6 +309,21 @@ kubectl -n kordi-cloud logs deployment/kordi-cloud-server --since=10m
 curl -fsS "<HOSTED_CLOUD_API_BASE>/health"
 ```
 
+Global support agent deployments must also configure the server with:
+
+```bash
+KORDI_SUPPORT_AGENT_ENABLED=true
+KORDI_SUPPORT_AGENT_OWNER_ACCOUNT_ID=acct_<admin-or-system-owner>
+KORDI_SUPPORT_AGENT_ID=cloud_agent_kordi_support
+KORDI_SUPPORT_AGENT_NAME="Kordi Support"
+KORDI_SUPPORT_AGENT_DESCRIPTION="Ask questions about Kordi or suggest improvements."
+KORDI_SUPPORT_AGENT_DEFAULT_MODEL=<hosted-runner-model-id>
+KORDI_SUPPORT_AGENT_DEFAULT_AUTH_PROVIDER=openai
+KORDI_SUPPORT_AGENT_DEFAULT_AUTH_CHOICE=<server-admin-auth-choice>
+```
+
+The support owner account is server/admin-managed. Verify that account has hosted-runner provider auth before enabling support responses; regular user provider auth must not be required for support chats.
+
 ### Path D: database schema changed
 
 A database change requires a hosted server deploy.

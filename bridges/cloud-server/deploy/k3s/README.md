@@ -68,6 +68,23 @@ KORDI_OAUTH_GITHUB_CLIENT_ID=...
 KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
 ```
 
+Optional global support-agent environment:
+
+```bash
+KORDI_SUPPORT_AGENT_ENABLED=true
+KORDI_SUPPORT_AGENT_OWNER_ACCOUNT_ID=acct_<admin-or-system-owner>
+KORDI_SUPPORT_AGENT_ID=cloud_agent_kordi_support
+KORDI_SUPPORT_AGENT_NAME="Kordi Support"
+KORDI_SUPPORT_AGENT_DESCRIPTION="Ask questions about Kordi or suggest improvements."
+KORDI_SUPPORT_AGENT_DEFAULT_MODEL=<hosted-runner-model-id>
+KORDI_SUPPORT_AGENT_DEFAULT_AUTH_PROVIDER=openai
+KORDI_SUPPORT_AGENT_DEFAULT_AUTH_CHOICE=<server-admin-auth-choice>
+```
+
+When enabled, the server bootstraps a locked system-managed Cloud Agent and exposes it as a default `Kordi Support` contact for every Cloud user. The support owner account must be an admin/system account with provider auth available for the hosted runner; end-user provider auth is not used for support responses.
+
+The k3s manifest reads these values from an optional Secret named `kordi-cloud-support-agent` with keys `enabled`, `owner-account-id`, `agent-id`, `name`, `description`, `default-model`, `default-auth-provider`, and `default-auth-choice`.
+
 For test/self-hosted Cloud servers, use that server's public HTTPS origin for `KORDI_CLOUD_PUBLIC_BASE_URL` and provider callback URLs.
 
 Production provider callback URLs:
