@@ -85,6 +85,33 @@ Boundaries:
     .to_string()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupportContactSummaryFields {
+    pub contact_id: String,
+    pub account_id: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub created_at: String,
+    pub target_cloud_agent_id: String,
+    pub target_cloud_agent_name: String,
+    pub target_cloud_agent_owner_account_id: String,
+    pub target_cloud_agent_owner_name: String,
+}
+
+pub fn support_agent_contact_summary(config: &SupportAgentConfig, created_at: String) -> SupportContactSummaryFields {
+    SupportContactSummaryFields {
+        contact_id: "cloud-system:kordi-support".to_string(),
+        account_id: config.owner_account_id.clone(),
+        display_name: config.name.clone(),
+        avatar_url: None,
+        created_at,
+        target_cloud_agent_id: config.agent_id.clone(),
+        target_cloud_agent_name: config.name.clone(),
+        target_cloud_agent_owner_account_id: config.owner_account_id.clone(),
+        target_cloud_agent_owner_name: "Kordi".to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SupportDirectMessageEnvelope {
@@ -105,6 +132,16 @@ pub fn parse_support_direct_message(body: &str) -> Option<SupportDirectMessageEn
     let encoded = body.trim().strip_prefix(CLOUD_DIRECT_MESSAGE_PREFIX)?;
     let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
     serde_json::from_slice(&bytes).ok()
+}
+
+pub fn message_targets_support_agent(body: &str, peer_account_id: &str, config: &SupportAgentConfig) -> bool {
+    let Some(envelope) = parse_support_direct_message(body) else {
+        return false;
+    };
+    envelope.kind == "message"
+        && envelope.target_cloud_agent_id.as_deref() == Some(config.agent_id.as_str())
+        && envelope.target_cloud_agent_owner_account_id.as_deref() == Some(config.owner_account_id.as_str())
+        && peer_account_id == config.owner_account_id
 }
 
 #[cfg(test)]

@@ -20,3 +20,14 @@ fn support_agent_definition_is_system_managed_and_locked_in_source() {
     assert!(store.contains("CloudAgentStoreError::SystemManaged"));
     assert!(routes.contains("system_managed_cloud_agent"));
 }
+
+#[test]
+fn support_agent_contact_is_appended_and_messages_are_allowed_without_contact_row() {
+    let auth_routes = std::fs::read_to_string("src/auth/routes.rs").expect("read auth routes");
+    let support = std::fs::read_to_string("src/support_agent.rs").expect("read support module");
+
+    assert!(auth_routes.contains("support_agent_contact_summary"));
+    assert!(auth_routes.contains("message_targets_support_agent"));
+    assert!(auth_routes.contains("claim_support_agent_run_for_message"));
+    assert!(support.contains("SupportContactSummaryFields"));
+}
