@@ -372,7 +372,8 @@ test('artifact preview exposes a larger preview window surface', () => {
   }));
 
   assert.match(markup, /role="dialog"/);
-  assert.match(markup, /Preview window/);
+  assert.match(markup, /aria-label="Artifact preview window"/);
+  assert.doesNotMatch(markup, />Preview window</);
   assert.match(markup, /tmp_test_task.py/);
   assert.match(markup, /Hello from preview/);
   assert.match(markup, /aria-label="Close preview window"/);

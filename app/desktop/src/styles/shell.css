@@ -138,9 +138,10 @@
 }
 
 .app-artifact-preview-window-backdrop {
-  background: #07090d;
+  background: #080b11;
 }
 
+.app-artifact-preview-window-header,
 .app-artifact-preview-toolbar {
   background: #151923;
 }
@@ -156,20 +157,21 @@
 .bridge-app.theme-light .app-artifact-preview-opaque-surface,
 .bridge-app.theme-light .app-artifact-preview-window-panel,
 .bridge-app.theme-light .app-artifact-preview-window-body {
-  background: #f8fafc;
+  background: #f7f9fc;
 }
 
 .bridge-app.theme-light .app-artifact-preview-window-backdrop {
-  background: #f8fafc;
+  background: #f2f5f9;
 }
 
+.bridge-app.theme-light .app-artifact-preview-window-header,
 .bridge-app.theme-light .app-artifact-preview-toolbar,
 .bridge-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header {
-  background: #eef2f7;
+  background: #e8edf5;
 }
 
 .bridge-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header + pre {
-  background: #f8fafc;
+  background: #f7f9fc;
 }
 
 .bridge-app.theme-light .app-artifact-preview-title {

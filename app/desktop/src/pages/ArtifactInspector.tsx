@@ -339,18 +339,15 @@ export function ArtifactPreviewWindow({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Preview window"
+        aria-label="Artifact preview window"
         className="app-artifact-preview-window-panel mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] shadow-2xl"
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white/[0.06] text-slate-200">
-              <Maximize2 className="h-4 w-4" />
+        <div className="app-artifact-preview-window-header flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.045] text-slate-300">
+              <Maximize2 className="h-3.5 w-3.5" />
             </div>
-            <div className="min-w-0">
-              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--utility-muted-text)]">Preview window</div>
-              <div className="truncate text-[14px] font-semibold text-[color:var(--utility-foreground)]">{title}</div>
-            </div>
+            <div className="min-w-0 truncate text-[13px] font-medium leading-5 text-[color:var(--utility-foreground)]">{title}</div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
