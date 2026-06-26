@@ -598,8 +598,8 @@ function MarkdownCodeBlock({
 
   return (
     <div className="max-w-full overflow-hidden rounded-[18px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div className="app-markdown-code-header flex items-center justify-between gap-1.5 border-b border-white/8 px-2 py-0.5">
-        <div className="truncate text-[8px] uppercase tracking-[0.1em] text-slate-400">{resolvedLanguage}</div>
+      <div className="app-markdown-code-header flex items-center justify-between gap-1.5 border-b border-white/8 px-2 py-0.5" aria-label={`Code block language: ${resolvedLanguage}`}>
+        <span className="sr-only">{resolvedLanguage}</span>
         <div className="flex shrink-0 items-center gap-1">
           {headerActions}
           <button

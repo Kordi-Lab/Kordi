@@ -51,6 +51,9 @@ test('tool code block headers are compact and use icon-only controls', () => {
 
   assert.match(markdownSource, /import \{ Check, Copy \} from 'lucide-react';/);
   assert.match(codeBlock, /app-markdown-code-header[^"']*px-2 py-0\.5/);
+  assert.match(codeBlock, /aria-label=\{`Code block language: \$\{resolvedLanguage\}`\}/);
+  assert.match(codeBlock, /<span className="sr-only">\{resolvedLanguage\}<\/span>/);
+  assert.doesNotMatch(codeBlock, />\{resolvedLanguage\}<\/div>/);
   assert.match(codeBlock, /app-markdown-code-copy-button[^"']*h-6 w-6/);
   assert.doesNotMatch(codeBlock, />\{copied \? 'Copied' : 'Copy'\}</);
   assert.match(transcriptBlock, /WrapText/);
