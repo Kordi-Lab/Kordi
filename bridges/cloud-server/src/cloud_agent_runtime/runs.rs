@@ -1,4 +1,4 @@
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx_core::query::query;
@@ -111,11 +111,20 @@ struct CloudGroupMessage {
     message_action: Option<serde_json::Value>,
     #[serde(rename = "targetCloudAgentId", skip_serializing_if = "Option::is_none")]
     target_cloud_agent_id: Option<String>,
-    #[serde(rename = "targetCloudAgentName", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "targetCloudAgentName",
+        skip_serializing_if = "Option::is_none"
+    )]
     target_cloud_agent_name: Option<String>,
-    #[serde(rename = "targetCloudAgentOwnerAccountId", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "targetCloudAgentOwnerAccountId",
+        skip_serializing_if = "Option::is_none"
+    )]
     target_cloud_agent_owner_account_id: Option<String>,
-    #[serde(rename = "targetCloudAgentOwnerName", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "targetCloudAgentOwnerName",
+        skip_serializing_if = "Option::is_none"
+    )]
     target_cloud_agent_owner_name: Option<String>,
 }
 
@@ -297,6 +306,49 @@ fn direct_message_envelope(body: &str) -> Option<serde_json::Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
+fn direct_person_peer_account_id(session_id: &str, owner_account_id: &str) -> Option<String> {
+    let suffix = session_id.trim().strip_prefix("session:direct-person:")?;
+    let mut ids = suffix
+        .split(':')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.len() != 2 || !ids.iter().any(|id| *id == owner_account_id) {
+        return None;
+    }
+    ids.into_iter()
+        .find(|id| *id != owner_account_id)
+        .map(ToString::to_string)
+}
+
+fn is_scheduled_run_request_id(request_message_id: &str) -> bool {
+    request_message_id.trim().starts_with("scheduled_run_")
+}
+
+fn cloud_group_response_recipients(
+    request_envelope: &CloudGroupEnvelope,
+) -> std::collections::BTreeSet<String> {
+    request_envelope
+        .participants
+        .iter()
+        .map(|participant| participant.account_id.trim().to_string())
+        .filter(|account_id| !account_id.is_empty())
+        .collect()
+}
+
+fn cloud_group_response_direction(
+    owner_account_id: &str,
+    recipient_account_id: &str,
+) -> &'static str {
+    if recipient_account_id == owner_account_id {
+        "outgoing"
+    } else {
+        "incoming"
+    }
+}
+
 fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
     let Some(action) = action else {
         return String::new();
@@ -424,7 +476,10 @@ async fn shared_cloud_agent_target_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> Result<Option<SharedCloudAgentTarget>, sqlx_core::Error> {
-    let Some(envelope) = cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id).await? else {
+    let Some(envelope) =
+        cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
+            .await?
+    else {
         return Ok(None);
     };
     let Some(message) = envelope.message else {
@@ -462,7 +517,9 @@ pub async fn claim_has_shared_cloud_agent_target(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> Result<bool, sqlx_core::Error> {
-    Ok(shared_cloud_agent_target_for_claim(pool, input).await?.is_some())
+    Ok(shared_cloud_agent_target_for_claim(pool, input)
+        .await?
+        .is_some())
 }
 
 pub async fn validate_shared_cloud_agent_claim(
@@ -475,8 +532,11 @@ pub async fn validate_shared_cloud_agent_claim(
     if target.owner_account_id != input.owner_account_id {
         return Ok(false);
     }
-    let participants = crate::auth::routes::cloud_session_participants(pool, &input.session_id).await?;
-    if !participants.iter().any(|id| id == &input.requester_account_id)
+    let participants =
+        crate::auth::routes::cloud_session_participants(pool, &input.session_id).await?;
+    if !participants
+        .iter()
+        .any(|id| id == &input.requester_account_id)
         || !participants.iter().any(|id| id == &input.owner_account_id)
     {
         return Ok(false);
@@ -488,7 +548,9 @@ pub async fn validate_shared_cloud_agent_claim(
     .bind(&target.owner_account_id)
     .fetch_optional(pool)
     .await?;
-    Ok(matches!(row, Some((access_scope, status)) if access_scope == "participant_conversations" && status == "active"))
+    Ok(
+        matches!(row, Some((access_scope, status)) if access_scope == "participant_conversations" && status == "active"),
+    )
 }
 
 async fn shared_cloud_agent_prompt_prefix(
@@ -518,18 +580,29 @@ async fn shared_cloud_agent_prompt_prefix(
         "Answer as this shared Cloud Agent, not as the default Kordi agent.".to_string(),
         format!("Cloud Agent system prompt:\n{system_prompt}"),
     ];
-    if let Some(summary) = source_summary.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) {
+    if let Some(summary) = source_summary
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
         sections.push(format!("Source summary:\n{summary}"));
     }
     if !boundaries.is_empty() {
-        sections.push(format!("Boundaries:\n{}", boundaries.into_iter().map(|value| format!("- {value}")).collect::<Vec<_>>().join("\n")));
+        sections.push(format!(
+            "Boundaries:\n{}",
+            boundaries
+                .into_iter()
+                .map(|value| format!("- {value}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ));
     }
     let skill_lines = skills
         .into_iter()
         .filter_map(|skill| {
             let name = skill.get("name")?.as_str()?.trim();
             let description = skill.get("description")?.as_str()?.trim();
-            (!name.is_empty() && !description.is_empty()).then(|| format!("- {name}: {description}"))
+            (!name.is_empty() && !description.is_empty())
+                .then(|| format!("- {name}: {description}"))
         })
         .collect::<Vec<_>>();
     if !skill_lines.is_empty() {
@@ -850,6 +923,75 @@ mod tests {
     }
 
     #[test]
+    fn scheduled_direct_person_peer_routes_to_the_contact_peer() {
+        assert_eq!(
+            super::direct_person_peer_account_id("session:direct-person:acct_a:acct_b", "acct_a")
+                .as_deref(),
+            Some("acct_b")
+        );
+        assert_eq!(
+            super::direct_person_peer_account_id("session:direct-person:acct_a:acct_b", "acct_b")
+                .as_deref(),
+            Some("acct_a")
+        );
+        assert_eq!(
+            super::direct_person_peer_account_id("session:direct-person:acct_a:acct_b", "acct_c"),
+            None
+        );
+    }
+
+    #[test]
+    fn scheduled_run_request_ids_are_identified() {
+        assert!(super::is_scheduled_run_request_id("scheduled_run_123"));
+        assert!(!super::is_scheduled_run_request_id("msg_123"));
+    }
+
+    #[test]
+    fn scheduled_group_response_recipients_include_owner_and_peer_participants() {
+        let envelope = super::CloudGroupEnvelope {
+            kind: "group-message".to_string(),
+            group_id: "session:group:scheduled".to_string(),
+            group_space_id: Some("session:group:scheduled".to_string()),
+            group_title: None,
+            created_by_account_id: "acct_peer".to_string(),
+            actor: super::CloudGroupParticipant {
+                account_id: "acct_peer".to_string(),
+                display_name: "Peer".to_string(),
+                avatar_url: None,
+                role: Some("admin".to_string()),
+            },
+            participants: vec![
+                super::CloudGroupParticipant {
+                    account_id: "acct_owner".to_string(),
+                    display_name: "Owner".to_string(),
+                    avatar_url: None,
+                    role: Some("person".to_string()),
+                },
+                super::CloudGroupParticipant {
+                    account_id: "acct_peer".to_string(),
+                    display_name: "Peer".to_string(),
+                    avatar_url: None,
+                    role: Some("admin".to_string()),
+                },
+            ],
+            message: None,
+        };
+
+        let recipients = super::cloud_group_response_recipients(&envelope);
+        assert_eq!(recipients.len(), 2);
+        assert!(recipients.contains("acct_owner"));
+        assert!(recipients.contains("acct_peer"));
+        assert_eq!(
+            super::cloud_group_response_direction("acct_owner", "acct_owner"),
+            "outgoing"
+        );
+        assert_eq!(
+            super::cloud_group_response_direction("acct_owner", "acct_peer"),
+            "incoming"
+        );
+    }
+
+    #[test]
     fn claim_request_rejects_empty_required_fields() {
         let valid = ClaimRunRequest {
             request_message_id: "msg_1".to_string(),
@@ -1119,6 +1261,25 @@ async fn cloud_group_request_envelope_for_run(
     }))
 }
 
+async fn latest_cloud_group_envelope_for_session(
+    pool: &PgPool,
+    session_id: &str,
+) -> Result<Option<CloudGroupEnvelope>, sqlx_core::Error> {
+    if !session_id.trim().starts_with("session:group:") {
+        return Ok(None);
+    }
+    let rows = query_as::<_, (String,)>(
+        "SELECT body FROM cloud_messages WHERE session_id = $1 ORDER BY created_at DESC",
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().find_map(|(body,)| {
+        let envelope = parse_cloud_group_envelope(&body)?;
+        (envelope.kind == "group-message" && !envelope.participants.is_empty()).then_some(envelope)
+    }))
+}
+
 async fn ensure_group_response_messages(
     pool: &PgPool,
     run_id: &str,
@@ -1129,9 +1290,12 @@ async fn ensure_group_response_messages(
     response_text: &str,
     delivery_state: &str,
 ) -> Result<Option<String>, sqlx_core::Error> {
-    let Some(request_envelope) =
+    let request_envelope = if is_scheduled_run_request_id(request_message_id) {
+        latest_cloud_group_envelope_for_session(pool, session_id).await?
+    } else {
         cloud_group_request_envelope_for_run(pool, session_id, request_message_id).await?
-    else {
+    };
+    let Some(request_envelope) = request_envelope else {
         return Ok(None);
     };
     let response_group_message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
@@ -1147,12 +1311,7 @@ async fn ensure_group_response_messages(
         delivery_state,
         now_ms,
     );
-    let recipients = request_envelope
-        .participants
-        .iter()
-        .map(|participant| participant.account_id.trim().to_string())
-        .filter(|account_id| !account_id.is_empty() && account_id != owner_account_id)
-        .collect::<std::collections::BTreeSet<_>>();
+    let recipients = cloud_group_response_recipients(&request_envelope);
     let mut first_message_id = None;
     for recipient_account_id in recipients {
         let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
@@ -1182,7 +1341,7 @@ async fn ensure_group_response_messages(
             &response_body,
             session_id,
             &now_string,
-            "incoming",
+            cloud_group_response_direction(owner_account_id, &recipient_account_id),
         )
         .await?;
     }
@@ -1195,6 +1354,66 @@ async fn ensure_group_response_messages(
             .await?;
     }
     Ok(first_message_id)
+}
+
+async fn ensure_scheduled_direct_person_response_message(
+    pool: &PgPool,
+    run_id: &str,
+    owner_account_id: &str,
+    session_id: &str,
+    response_body: &str,
+) -> Result<Option<String>, sqlx_core::Error> {
+    let Some(peer_account_id) = direct_person_peer_account_id(session_id, owner_account_id) else {
+        return Ok(None);
+    };
+    let message_id = format!("cloudrunmsg_{}", Uuid::new_v4().simple());
+    let now = Utc::now().to_rfc3339();
+    query(
+        "INSERT INTO cloud_messages (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
+         VALUES ($1, $2, $3, $4, $5, $5, $6) \
+         ON CONFLICT (message_id) DO NOTHING",
+    )
+    .bind(&message_id)
+    .bind(owner_account_id)
+    .bind(&peer_account_id)
+    .bind(response_body)
+    .bind(&now)
+    .bind(session_id)
+    .execute(pool)
+    .await?;
+    append_cloud_agent_response_sync_event(
+        pool,
+        owner_account_id,
+        &peer_account_id,
+        &message_id,
+        owner_account_id,
+        &peer_account_id,
+        response_body,
+        session_id,
+        &now,
+        "outgoing",
+    )
+    .await?;
+    append_cloud_agent_response_sync_event(
+        pool,
+        &peer_account_id,
+        owner_account_id,
+        &message_id,
+        owner_account_id,
+        &peer_account_id,
+        response_body,
+        session_id,
+        &now,
+        "incoming",
+    )
+    .await?;
+    query("UPDATE cloud_agent_fallback_runs SET response_message_id = $2, updated_at = $3 WHERE run_id = $1")
+        .bind(run_id)
+        .bind(&message_id)
+        .bind(&now)
+        .execute(pool)
+        .await?;
+    Ok(Some(message_id))
 }
 
 pub async fn complete_run(
@@ -1229,7 +1448,50 @@ pub async fn complete_run(
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
     let mut direct_response_sync_event: Option<String> = None;
-    let response_message_id = if let Some(message_id) = ensure_group_response_messages(
+    let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
+        if let Some(message_id) = ensure_scheduled_direct_person_response_message(
+            pool,
+            run_id,
+            &owner_account_id,
+            &session_id,
+            &response_body,
+        )
+        .await?
+        {
+            message_id
+        } else if let Some(message_id) = ensure_group_response_messages(
+            pool,
+            run_id,
+            &owner_account_id,
+            &requester_account_id,
+            &session_id,
+            &request_message_id,
+            trimmed,
+            "complete",
+        )
+        .await?
+        {
+            message_id
+        } else {
+            let message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
+                pool,
+                run_id,
+                &owner_account_id,
+                &requester_account_id,
+                &session_id,
+                &response_body,
+            )
+            .await?;
+            crate::cloud_agent_runtime::artifacts::update_response_message_body(
+                pool,
+                &message_id,
+                &response_body,
+            )
+            .await?;
+            direct_response_sync_event = Some(message_id.clone());
+            message_id
+        }
+    } else if let Some(message_id) = ensure_group_response_messages(
         pool,
         run_id,
         &owner_account_id,
@@ -1325,7 +1587,50 @@ pub async fn fail_run(
     let failure_text = cloud_agent_failure_response_text(error_code);
     let response_body = encode_failed_cloud_agent_response_body(&request_message_id, error_code);
     let mut direct_response_sync_event: Option<String> = None;
-    let response_message_id = if let Some(message_id) = ensure_group_response_messages(
+    let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
+        if let Some(message_id) = ensure_scheduled_direct_person_response_message(
+            pool,
+            run_id,
+            &owner_account_id,
+            &session_id,
+            &response_body,
+        )
+        .await?
+        {
+            message_id
+        } else if let Some(message_id) = ensure_group_response_messages(
+            pool,
+            run_id,
+            &owner_account_id,
+            &requester_account_id,
+            &session_id,
+            &request_message_id,
+            failure_text,
+            "failed",
+        )
+        .await?
+        {
+            message_id
+        } else {
+            let message_id = crate::cloud_agent_runtime::artifacts::ensure_response_message(
+                pool,
+                run_id,
+                &owner_account_id,
+                &requester_account_id,
+                &session_id,
+                &response_body,
+            )
+            .await?;
+            crate::cloud_agent_runtime::artifacts::update_response_message_body(
+                pool,
+                &message_id,
+                &response_body,
+            )
+            .await?;
+            direct_response_sync_event = Some(message_id.clone());
+            message_id
+        }
+    } else if let Some(message_id) = ensure_group_response_messages(
         pool,
         run_id,
         &owner_account_id,

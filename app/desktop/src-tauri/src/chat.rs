@@ -38,9 +38,25 @@ pub(super) fn now_millis() -> i64 {
 }
 
 fn attach_cloud_scheduled_task_runtime(runtime: &mut DesktopRuntimeSession) {
+    attach_cloud_scheduled_task_runtime_for_session(runtime, None);
+}
+
+fn attach_cloud_scheduled_task_runtime_for_session(
+    runtime: &mut DesktopRuntimeSession,
+    session_id: Option<&str>,
+) {
     match crate::cloud_session::cloud_session_load() {
         Ok(Some(session)) if !session.token.trim().is_empty() => {
-            runtime.set_scheduled_tasks_cloud_runtime(crate::cloud_api_base_url_from_env(), session.token);
+            let api_base = crate::cloud_api_base_url_from_env();
+            if let Some(session_id) = session_id.map(str::trim).filter(|value| !value.is_empty()) {
+                runtime.set_scheduled_tasks_cloud_runtime_for_session(
+                    api_base,
+                    session.token,
+                    session_id.to_string(),
+                );
+            } else {
+                runtime.set_scheduled_tasks_cloud_runtime(api_base, session.token);
+            }
         }
         Ok(_) => {}
         Err(err) => eprintln!("Unable to load Cloud session for scheduled task runtime: {err}"),
@@ -922,6 +938,7 @@ pub async fn desktop_chat_start_message(
     route: Option<DesktopChatMessageRoute>,
     context_messages: Option<Vec<DesktopChatContextMessage>>,
     visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
+    scheduled_task_session_id: Option<String>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -994,6 +1011,10 @@ pub async fn desktop_chat_start_message(
                 });
                 return;
             }
+            attach_cloud_scheduled_task_runtime_for_session(
+                &mut session,
+                scheduled_task_session_id.as_deref(),
+            );
             if let Err(error) =
                 session.sync_visible_task_records(&visible_task_records.unwrap_or_default())
             {

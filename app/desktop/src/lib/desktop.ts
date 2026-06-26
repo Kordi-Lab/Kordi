@@ -770,6 +770,7 @@ export async function startDesktopChatMessage(
   route?: DesktopChatMessageRoute | null,
   contextMessages: DesktopChatContextMessage[] = [],
   visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
+  scheduledTaskSessionId: string | null = null,
 ) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', {
     sessionId,
@@ -778,6 +779,7 @@ export async function startDesktopChatMessage(
     route: route ?? null,
     contextMessages,
     visibleTaskRecords,
+    scheduledTaskSessionId,
   });
 }
 

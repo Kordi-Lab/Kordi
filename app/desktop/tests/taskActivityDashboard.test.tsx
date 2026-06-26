@@ -1812,6 +1812,41 @@ test('scheduled task rows only include tasks for the active session', () => {
   assert.doesNotMatch(markup, /Summarize latest OpenAI news/);
 });
 
+test('scheduled task rows keep distinct tasks that share the same title', () => {
+  const sharedTask = {
+    sessionId: 'session-dinner',
+    title: 'Dinner reminder',
+    prompt: 'Remind us about dinner.',
+    schedule: { kind: 'once' as const, at: '2026-06-09T12:20:00Z' },
+    targetRuntime: 'cloud' as const,
+    enabled: true,
+    status: 'active',
+    nextRunAt: null,
+    lastRunAt: null,
+    lastRunStatus: null,
+    lastRunError: null,
+    createdAt: '2026-06-09T12:19:00Z',
+  };
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [],
+    liveTurn: null,
+    emptyMessage: 'No tasks',
+    currentSessionId: 'session-dinner',
+    scheduledTasks: [{
+      ...sharedTask,
+      taskId: 'scheduled_task_first',
+      updatedAt: '2026-06-09T12:19:00Z',
+    }, {
+      ...sharedTask,
+      taskId: 'scheduled_task_second',
+      updatedAt: '2026-06-09T12:21:00Z',
+    }],
+    now: new Date('2026-06-09T12:22:00Z'),
+  }));
+
+  assert.equal((markup.match(/Dinner reminder/g) ?? []).length, 2);
+});
+
 test('scheduled task rows expand one row per run with status and response previews', () => {
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [{
