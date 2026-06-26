@@ -187,6 +187,8 @@ test('artifact preview renders html and markdown as previewable documents', () =
   assert.match(htmlMarkup, /sandbox=/);
   assert.doesNotMatch(htmlMarkup, />Copy</);
   assert.match(markdownMarkup, /Kordi Project Structure Report/);
+  assert.match(markdownMarkup, /app-artifact-markdown-preview/);
+  assert.match(markdownMarkup, /text-\[12px\]/);
   assert.doesNotMatch(markdownMarkup, /# Kordi Project Structure Report/);
   assert.doesNotMatch(markdownMarkup, />Copy</);
 });
@@ -368,4 +370,9 @@ test('artifact preview exposes a larger preview window surface', () => {
   assert.match(markup, /tmp_test_task.py/);
   assert.match(markup, /Hello from preview/);
   assert.match(markup, /aria-label="Close preview window"/);
+  assert.match(markup, /app-artifact-preview-window-backdrop/);
+  assert.match(markup, /bg-black\/70/);
+  assert.match(markup, /bg-\[color:var\(--app-panel-bg\)\]/);
+  assert.doesNotMatch(markup, /backdrop-blur/);
+  assert.doesNotMatch(markup, /bg-black\/55/);
 });

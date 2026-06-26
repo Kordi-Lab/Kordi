@@ -109,6 +109,8 @@ function parseDelimitedRows(source: string, delimiter: ',' | '\t') {
 
 type ArtifactPreviewMode = 'panel' | 'rail' | 'window';
 
+const ARTIFACT_MARKDOWN_PREVIEW_CLASS = 'app-artifact-markdown-preview bg-[color:var(--app-panel-bg)] text-[12px] leading-5 [&_p]:text-[12px] [&_p]:leading-5 [&_p]:text-[color:var(--utility-foreground)] [&_div]:text-[12px] [&_div]:leading-5 [&_blockquote]:text-[12px] [&_blockquote]:leading-5 [&_ul]:space-y-0.5 [&_ol]:space-y-0.5 [&_li]:space-y-0.5 [&_pre]:text-[10.5px] [&_pre]:leading-5';
+
 function ArtifactDataTable({ source, delimiter, mode = 'panel' }: { source: string; delimiter: ',' | '\t'; mode?: ArtifactPreviewMode }) {
   const rows = parseDelimitedRows(source, delimiter);
   if (rows.length === 0) return <div className="px-4 py-4 text-[12px] text-slate-400">This table is empty.</div>;
@@ -192,8 +194,14 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
 
   if (previewKind === 'markdown') {
     return (
-      <div data-artifact-preview-mode={mode} className={cn('overflow-auto px-4 py-4', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
-        <MarkdownContent text={source} className={mode !== 'panel' ? 'min-h-full' : undefined} />
+      <div data-artifact-preview-mode={mode} className={cn('overflow-auto px-3 py-3', mode === 'panel' ? 'max-h-[32rem]' : 'min-h-full')}>
+        <MarkdownContent
+          text={source}
+          className={cn(
+            ARTIFACT_MARKDOWN_PREVIEW_CLASS,
+            mode === 'panel' ? 'rounded-[14px] px-3 py-3' : 'min-h-full px-4 py-4',
+          )}
+        />
       </div>
     );
   }
@@ -331,12 +339,12 @@ export function ArtifactPreviewWindow({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/55 p-3 backdrop-blur-sm sm:p-6" role="presentation">
+    <div className="app-artifact-preview-window-backdrop fixed inset-0 z-50 bg-black/70 p-3 sm:p-6" role="presentation">
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Preview window"
-        className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-white/12 bg-[color:var(--app-panel-bg)] shadow-2xl"
+        className="mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] bg-[color:var(--app-panel-bg)] shadow-2xl"
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -363,7 +371,7 @@ export function ArtifactPreviewWindow({
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-[color:var(--app-transcript-bg)]">
+        <div className="min-h-0 flex-1 overflow-auto bg-[color:var(--app-panel-bg)]">
           {renderArtifactPreview(preview, 'window')}
         </div>
       </div>
@@ -631,7 +639,7 @@ export function ArtifactInspector({
       {previewArtifact ? (
         <section data-artifact-preview-section="true" className="app-detail-section flex min-h-0 flex-1 flex-col border-t border-[color:var(--app-divider)] pt-[18px] pb-0">
           <div className="app-detail-kicker shrink-0">Preview</div>
-          <div className="app-code-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] shadow-[var(--app-shadow-soft)]">
+          <div className="app-code-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-[color:var(--app-panel-bg)] shadow-[var(--app-shadow-soft)]">
             <div className="app-code-toolbar flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-[12px] text-slate-400">
               <div className="min-w-0">
                 <div className="truncate font-medium text-slate-200">{previewFileName}</div>
