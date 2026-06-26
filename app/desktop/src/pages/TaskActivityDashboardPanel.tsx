@@ -663,6 +663,18 @@ function dedupeTaskRowsByKeys<T extends Pick<TaskDashboardItem, 'id' | 'taskId' 
   return rows;
 }
 
+function dedupeScheduledTaskRows<T extends Pick<TaskDashboardItem, 'taskId'>>(tasks: T[]): T[] {
+  const seen = new Set<string>();
+  const rows: T[] = [];
+  for (const task of tasks) {
+    const key = task.taskId?.trim().toLowerCase();
+    if (key && seen.has(key)) continue;
+    rows.push(task);
+    if (key) seen.add(key);
+  }
+  return rows;
+}
+
 function participantDedupeKey(participant: TaskTargetParticipant) {
   const accountAlias = participantAliasValues(participant).find((alias) => /^acct_[a-z0-9]+$/i.test(alias));
   if (accountAlias) return `account:${accountAlias.toLowerCase()}`;
@@ -716,7 +728,7 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, a
   const sessionScheduledTasks = normalizedCurrentSessionId
     ? scheduledTasks.filter((task) => task.sessionId?.trim() === normalizedCurrentSessionId)
     : scheduledTasks;
-  const scheduledRows = dedupeTaskRowsByKeys(sessionScheduledTasks.map((task) => scheduledTaskToDashboardItem(task, now, timeZone, scheduledRunsByTaskId[task.taskId] ?? [], messages)));
+  const scheduledRows = dedupeScheduledTaskRows(sessionScheduledTasks.map((task) => scheduledTaskToDashboardItem(task, now, timeZone, scheduledRunsByTaskId[task.taskId] ?? [], messages)));
   const taskActivityRows = dedupeTaskRowsByKeys(taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants)));
   const existingTaskKeys = new Set([...scheduledRows, ...taskActivityRows].flatMap(taskDedupeKeys));
   const localRows = dashboard.tasks.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)));
