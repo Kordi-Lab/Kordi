@@ -248,6 +248,7 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
         projects: Vec::new(),
         active_session: kordi_cli::desktop_runtime::DesktopChatSessionDetail {
             id: "session:local".to_string(),
+            cwd: "/tmp/workspace".to_string(),
             title: "Plan backend refactor".to_string(),
             subtitle: "Plan backend refactor".to_string(),
             provider: "openai".to_string(),
@@ -329,6 +330,7 @@ fn blank_desktop_drafts_do_not_sync_into_canonical_sessions() {
     };
     let blank_detail = kordi_cli::desktop_runtime::DesktopChatSessionDetail {
         id: "draft:local-chat".to_string(),
+        cwd: "/tmp/workspace".to_string(),
         title: "New session".to_string(),
         subtitle: String::new(),
         provider: "openai".to_string(),

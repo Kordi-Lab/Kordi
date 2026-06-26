@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ChatDetailPanel } from '../src/pages/ChatDetailPanel';
+import { ChatDetailPanel, chatArtifactPreviewBaseRoot } from '../src/pages/ChatDetailPanel';
 
 const baseOutreach = {
   targetKind: 'bridge-person',
@@ -20,6 +20,27 @@ const baseOutreach = {
   createdAtMs: 1_000,
   updatedAtMs: 2_000,
 };
+
+test('chat artifact previews use the active local session cwd when no project root is available', () => {
+  assert.equal(chatArtifactPreviewBaseRoot({
+    activeConversationIsBridge: false,
+    activeSessionProjectRoot: null,
+    activeSessionWorkspaceRoot: '/tmp/session-cwd',
+  }), '/tmp/session-cwd');
+});
+
+test('chat artifact previews prefer the project root and avoid local roots for bridge conversations', () => {
+  assert.equal(chatArtifactPreviewBaseRoot({
+    activeConversationIsBridge: false,
+    activeSessionProjectRoot: '/tmp/project-root',
+    activeSessionWorkspaceRoot: '/tmp/session-cwd',
+  }), '/tmp/project-root');
+  assert.equal(chatArtifactPreviewBaseRoot({
+    activeConversationIsBridge: true,
+    activeSessionProjectRoot: '/tmp/project-root',
+    activeSessionWorkspaceRoot: '/tmp/session-cwd',
+  }), null);
+});
 
 function renderInfoPanel(overrides = {}) {
   return renderToStaticMarkup(createElement(ChatDetailPanel, {

@@ -131,6 +131,7 @@ mod tests {
             projects: Vec::new(),
             active_session: DesktopChatSessionDetail {
                 id: "session:local".to_string(),
+                cwd: "/tmp/workspace".to_string(),
                 title: "Check disk".to_string(),
                 subtitle: "Check disk".to_string(),
                 provider: "openai".to_string(),
@@ -226,6 +227,7 @@ mod tests {
     fn completed_desktop_session_sync_state_preserves_agent_runtime_details() {
         let detail = DesktopChatSessionDetail {
             id: "session:bridge:humans:test".to_string(),
+            cwd: "/tmp/workspace".to_string(),
             title: "Check repo".to_string(),
             subtitle: "Check repo".to_string(),
             provider: "openai".to_string(),

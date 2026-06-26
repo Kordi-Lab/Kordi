@@ -250,6 +250,7 @@ pub struct DesktopChatAgentProfile {
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatSessionDetail {
     pub id: String,
+    pub cwd: String,
     pub title: String,
     pub subtitle: String,
     pub provider: String,

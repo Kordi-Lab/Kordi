@@ -255,6 +255,7 @@ pub(super) fn build_detail_from_setup(
 
     Ok(DesktopChatSessionDetail {
         id: setup.session_id.clone(),
+        cwd: setup.tool_ctx.cwd.display().to_string(),
         title,
         subtitle,
         provider: setup.model.provider.clone(),
