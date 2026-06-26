@@ -142,7 +142,7 @@ import { CLOUD_CONTACT_ACCEPTED_SYNC_EVENT, CLOUD_HOST_SENTINEL, useCloudContact
 export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 export const CLOUD_AGENT_TURN_POLL_MS = 500;
 export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
-export const CLOUD_MESSAGES_REFRESH_MS = 500;
+export const CLOUD_MESSAGES_REFRESH_MS = 2_000;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 45_000;
 
 export function cloudBridgeSendBodyForConversation({
