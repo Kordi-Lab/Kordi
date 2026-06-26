@@ -345,6 +345,10 @@ export function mapBridgeConversationToViewModel(
     && isActiveOutreachStatus(conversation.outreach.status)
     && !isTerminalAgentRequestState(conversation.outreach.deliveryState)
     && hasSentBridgeRequest;
+  const suppressDirectAgentReplyAttribution = isAgent
+    && !isPersonChat
+    && !conversation.outreach?.parentGroupSpaceId?.trim()
+    && !conversation.outreach?.parentSessionId?.trim().startsWith('session:group:');
   const outreachAgentLabel = conversation.outreach?.targetDisplayName || remoteAgentLabel;
   const outreachAgentAvatarSeed = conversation.outreach?.targetAgentId || remoteAgentAvatarSeed;
   const outreachPrefix = conversation.outreach && !isPersonChat
@@ -356,9 +360,11 @@ export function mapBridgeConversationToViewModel(
     if (isPersonChat && isGroupScopedBridgeMessage(message)) return [];
     if (staleProcessingPlaceholderIds.has(message.id)) return [];
     const messageId = bridgeViewMessageId(message);
-    const replyToMessageId = message.requestId?.trim()
-      ? requestMessageIdByRequestId.get(message.requestId.trim()) ?? null
-      : null;
+    const replyToMessageId = suppressDirectAgentReplyAttribution
+      ? undefined
+      : message.requestId?.trim()
+        ? requestMessageIdByRequestId.get(message.requestId.trim()) ?? undefined
+        : undefined;
     const rawDisplayText = bridgeMessageDisplayText(conversation, message);
     const mentions = bridgeMessageMentions(conversation, message);
     const attachments = bridgeMessageAttachments(message);
