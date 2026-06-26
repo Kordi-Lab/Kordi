@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_SUPPORT_AGENT_ID: &str = "cloud_agent_kordi_support";
 pub const DEFAULT_SUPPORT_AGENT_NAME: &str = "Kordi Support";
-pub const DEFAULT_SUPPORT_AGENT_DESCRIPTION: &str = "Ask questions about Kordi or suggest improvements.";
+pub const DEFAULT_SUPPORT_AGENT_DESCRIPTION: &str =
+    "Ask questions about Kordi or suggest improvements.";
 const CLOUD_DIRECT_MESSAGE_PREFIX: &str = "kordi-cloud-message:";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,12 +22,20 @@ pub struct SupportAgentConfig {
 impl SupportAgentConfig {
     pub fn from_env() -> Option<Self> {
         let enabled = std::env::var("KORDI_SUPPORT_AGENT_ENABLED")
-            .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes"
+                )
+            })
             .unwrap_or(false);
         if !enabled {
             return None;
         }
-        let owner_account_id = std::env::var("KORDI_SUPPORT_AGENT_OWNER_ACCOUNT_ID").ok()?.trim().to_string();
+        let owner_account_id = std::env::var("KORDI_SUPPORT_AGENT_OWNER_ACCOUNT_ID")
+            .ok()?
+            .trim()
+            .to_string();
         if owner_account_id.is_empty() {
             return None;
         }
@@ -98,7 +107,10 @@ pub struct SupportContactSummaryFields {
     pub target_cloud_agent_owner_name: String,
 }
 
-pub fn support_agent_contact_summary(config: &SupportAgentConfig, created_at: String) -> SupportContactSummaryFields {
+pub fn support_agent_contact_summary(
+    config: &SupportAgentConfig,
+    created_at: String,
+) -> SupportContactSummaryFields {
     SupportContactSummaryFields {
         contact_id: "cloud-system:kordi-support".to_string(),
         account_id: config.owner_account_id.clone(),
@@ -134,13 +146,18 @@ pub fn parse_support_direct_message(body: &str) -> Option<SupportDirectMessageEn
     serde_json::from_slice(&bytes).ok()
 }
 
-pub fn message_targets_support_agent(body: &str, peer_account_id: &str, config: &SupportAgentConfig) -> bool {
+pub fn message_targets_support_agent(
+    body: &str,
+    peer_account_id: &str,
+    config: &SupportAgentConfig,
+) -> bool {
     let Some(envelope) = parse_support_direct_message(body) else {
         return false;
     };
     envelope.kind == "message"
         && envelope.target_cloud_agent_id.as_deref() == Some(config.agent_id.as_str())
-        && envelope.target_cloud_agent_owner_account_id.as_deref() == Some(config.owner_account_id.as_str())
+        && envelope.target_cloud_agent_owner_account_id.as_deref()
+            == Some(config.owner_account_id.as_str())
         && peer_account_id == config.owner_account_id
 }
 
@@ -159,5 +176,9 @@ pub fn encode_support_direct_message_for_tests(
         "targetCloudAgentName": DEFAULT_SUPPORT_AGENT_NAME,
         "targetCloudAgentOwnerName": "Kordi",
     });
-    format!("{}{}", CLOUD_DIRECT_MESSAGE_PREFIX, URL_SAFE_NO_PAD.encode(body.to_string()))
+    format!(
+        "{}{}",
+        CLOUD_DIRECT_MESSAGE_PREFIX,
+        URL_SAFE_NO_PAD.encode(body.to_string())
+    )
 }

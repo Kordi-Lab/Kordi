@@ -167,7 +167,10 @@ mod tests {
             "accessScope": "participant_conversations"
         }))
         .expect("deserialize update request");
-        assert_eq!(input.access_scope.as_deref(), Some("participant_conversations"));
+        assert_eq!(
+            input.access_scope.as_deref(),
+            Some("participant_conversations")
+        );
     }
 
     #[test]
@@ -178,7 +181,10 @@ mod tests {
 
     #[test]
     fn required_text_trims_and_limits() {
-        assert_eq!(clean_required_text("  Docs Bot  ", "name", 32).unwrap(), "Docs Bot");
+        assert_eq!(
+            clean_required_text("  Docs Bot  ", "name", 32).unwrap(),
+            "Docs Bot"
+        );
         assert!(clean_required_text("   ", "name", 32).is_err());
         assert!(clean_required_text("abcdef", "name", 3).is_err());
     }
@@ -186,9 +192,16 @@ mod tests {
     #[test]
     fn string_list_cleans_dedupes_and_caps() {
         assert_eq!(
-            clean_string_list(vec![" one ".into(), "".into(), "one".into(), "two".into()], 4, 8),
+            clean_string_list(
+                vec![" one ".into(), "".into(), "one".into(), "two".into()],
+                4,
+                8
+            ),
             vec!["one".to_string(), "two".to_string()],
         );
-        assert_eq!(clean_string_list(vec!["abcdef".into(), "two".into()], 1, 3), vec!["abc".to_string()]);
+        assert_eq!(
+            clean_string_list(vec!["abcdef".into(), "two".into()], 1, 3),
+            vec!["abc".to_string()]
+        );
     }
 }

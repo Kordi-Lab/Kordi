@@ -232,11 +232,20 @@ pub struct ContactSummary {
     pub locked: Option<bool>,
     #[serde(rename = "targetCloudAgentId", skip_serializing_if = "Option::is_none")]
     pub target_cloud_agent_id: Option<String>,
-    #[serde(rename = "targetCloudAgentName", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "targetCloudAgentName",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub target_cloud_agent_name: Option<String>,
-    #[serde(rename = "targetCloudAgentOwnerAccountId", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "targetCloudAgentOwnerAccountId",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub target_cloud_agent_owner_account_id: Option<String>,
-    #[serde(rename = "targetCloudAgentOwnerName", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "targetCloudAgentOwnerName",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub target_cloud_agent_owner_name: Option<String>,
 }
 
@@ -1969,21 +1978,26 @@ async fn list_contacts(
                 &config,
                 chrono::Utc::now().to_rfc3339(),
             );
-            contacts.insert(0, ContactSummary {
-                contact_id: Some(fields.contact_id),
-                contact_kind: Some("system_agent".to_string()),
-                account_id: fields.account_id,
-                display_name: Some(fields.display_name),
-                subtitle: Some("Ask questions or suggest improvements".to_string()),
-                avatar_url: fields.avatar_url,
-                node_id: None,
-                created_at: fields.created_at,
-                locked: Some(true),
-                target_cloud_agent_id: Some(fields.target_cloud_agent_id),
-                target_cloud_agent_name: Some(fields.target_cloud_agent_name),
-                target_cloud_agent_owner_account_id: Some(fields.target_cloud_agent_owner_account_id),
-                target_cloud_agent_owner_name: Some(fields.target_cloud_agent_owner_name),
-            });
+            contacts.insert(
+                0,
+                ContactSummary {
+                    contact_id: Some(fields.contact_id),
+                    contact_kind: Some("system_agent".to_string()),
+                    account_id: fields.account_id,
+                    display_name: Some(fields.display_name),
+                    subtitle: Some("Ask questions or suggest improvements".to_string()),
+                    avatar_url: fields.avatar_url,
+                    node_id: None,
+                    created_at: fields.created_at,
+                    locked: Some(true),
+                    target_cloud_agent_id: Some(fields.target_cloud_agent_id),
+                    target_cloud_agent_name: Some(fields.target_cloud_agent_name),
+                    target_cloud_agent_owner_account_id: Some(
+                        fields.target_cloud_agent_owner_account_id,
+                    ),
+                    target_cloud_agent_owner_name: Some(fields.target_cloud_agent_owner_name),
+                },
+            );
         }
     }
 
@@ -3460,7 +3474,9 @@ async fn send_message(
     }
 
     if support_target_allowed {
-        if let (Some(config), Some(session_id)) = (support_agent_config.as_ref(), summary.session_id.as_deref()) {
+        if let (Some(config), Some(session_id)) =
+            (support_agent_config.as_ref(), summary.session_id.as_deref())
+        {
             if claim_support_agent_run_for_message(
                 pool,
                 config,
@@ -3472,7 +3488,10 @@ async fn send_message(
             .await
             .is_err()
             {
-                eprintln!("[support_agent] failed to claim support run for message {}", summary.message_id);
+                eprintln!(
+                    "[support_agent] failed to claim support run for message {}",
+                    summary.message_id
+                );
             }
         }
     }
