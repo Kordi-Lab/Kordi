@@ -20,6 +20,45 @@ test('transcript human avatars are large enough to read beside message bubbles',
   assert.doesNotMatch(avatarBlock, /h-5\.5 w-5\.5/);
 });
 
+test('expanded thinking content is one pixel smaller than normal assistant output', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8');
+  const answerStart = source.indexOf('function FoldableAssistantAnswer');
+  const answerEnd = source.indexOf('function LiveChatTurnCardView', answerStart);
+  const thinkingStart = source.indexOf('function ToolTimelineThinkingRow');
+  const thinkingEnd = source.indexOf('function useRunningElapsedLabel', thinkingStart);
+  assert.ok(answerStart >= 0 && answerEnd > answerStart, 'expected FoldableAssistantAnswer source block');
+  assert.ok(thinkingStart >= 0 && thinkingEnd > thinkingStart, 'expected ToolTimelineThinkingRow source block');
+  const answerBlock = source.slice(answerStart, answerEnd);
+  const thinkingBlock = source.slice(thinkingStart, thinkingEnd);
+
+  assert.match(answerBlock, /app-live-assistant-answer w-full text-\[13px\]/);
+  assert.match(thinkingBlock, /app-transcript-thinking-markdown/);
+  assert.match(thinkingBlock, /app-transcript-thinking-markdown[^']*text-\[12px\]/);
+  assert.doesNotMatch(thinkingBlock, /text-\[12\.5px\]|text-\[13px\]/);
+});
+
+test('tool code block headers are compact and use icon-only controls', () => {
+  const markdownSource = readFileSync(new URL('../src/kordi-app/components/markdown.tsx', import.meta.url), 'utf8');
+  const liveTurnsSource = readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8');
+  const codeBlockStart = markdownSource.indexOf('function MarkdownCodeBlock');
+  const codeBlockEnd = markdownSource.indexOf('function MarkdownListView', codeBlockStart);
+  const transcriptBlockStart = liveTurnsSource.indexOf('function ToolTranscriptBlock');
+  const transcriptBlockEnd = liveTurnsSource.indexOf('function ProcessingStatusCircle', transcriptBlockStart);
+  assert.ok(codeBlockStart >= 0 && codeBlockEnd > codeBlockStart, 'expected MarkdownCodeBlock source block');
+  assert.ok(transcriptBlockStart >= 0 && transcriptBlockEnd > transcriptBlockStart, 'expected ToolTranscriptBlock source block');
+  const codeBlock = markdownSource.slice(codeBlockStart, codeBlockEnd);
+  const transcriptBlock = liveTurnsSource.slice(transcriptBlockStart, transcriptBlockEnd);
+
+  assert.match(markdownSource, /import \{ Check, Copy \} from 'lucide-react';/);
+  assert.match(codeBlock, /app-markdown-code-header[^"']*px-2 py-0\.5/);
+  assert.match(codeBlock, /app-markdown-code-copy-button[^"']*h-6 w-6/);
+  assert.doesNotMatch(codeBlock, />\{copied \? 'Copied' : 'Copy'\}</);
+  assert.match(transcriptBlock, /WrapText/);
+  assert.match(transcriptBlock, /aria-label=\{isWrapped \? 'Disable line wrapping' : 'Wrap long lines'\}/);
+  assert.match(transcriptBlock, /app-transcript-wrap-toggle[^"']*h-6 w-6/);
+  assert.doesNotMatch(transcriptBlock, />\{isWrapped \? 'No wrap' : 'Wrap'\}</);
+});
+
 test('renders live turn errors as raw red inline text instead of a popped bubble', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-error',

@@ -58,6 +58,34 @@ test('right-panel task dashboard renders scheduled jobs as normal task rows', ()
   assert.doesNotMatch(markup, /Scheduled tools/);
 });
 
+test('right-panel scheduled cloud task rows hide the Cloud runtime label', () => {
+  const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
+    messages: [],
+    emptyMessage: 'No tasks',
+    now: new Date('2026-06-09T08:00:00Z'),
+    timeZone: 'UTC',
+    scheduledTasks: [{
+      taskId: 'scheduled_task_brief',
+      title: 'Prepare morning brief',
+      prompt: 'Summarize overnight updates.',
+      schedule: { kind: 'once', at: '2026-06-09T09:00:00Z' },
+      targetRuntime: 'cloud',
+      enabled: true,
+      status: 'active',
+      nextRunAt: '2026-06-09T09:00:00Z',
+      lastRunAt: null,
+      lastRunStatus: null,
+      lastRunError: null,
+      createdAt: '2026-06-09T08:00:00Z',
+      updatedAt: '2026-06-09T08:00:00Z',
+    }],
+  }));
+
+  assert.match(markup, /Prepare morning brief/);
+  assert.match(markup, /Today 09:00/);
+  assert.doesNotMatch(markup, /Today 09:00 · Cloud/);
+});
+
 test('right-panel Cloud task rows show stable task id instead of repeating the title', () => {
   const markup = renderToStaticMarkup(createElement(TaskActivityDashboardPanel, {
     messages: [],
