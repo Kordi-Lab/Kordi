@@ -330,6 +330,45 @@ export function shouldSuppressAgentReplyAttribution(
   return participantCount <= 2;
 }
 
+function isDirectAgentTranscript(messages: readonly Message[]) {
+  let hasAgentResponse = false;
+  for (const message of messages) {
+    if (isAgentResponse(message)) {
+      hasAgentResponse = true;
+      continue;
+    }
+    if (!isHumanRequest(message)) continue;
+    const isOwnHuman = message.isOwnMessage ?? message.role === 'user';
+    if (!isOwnHuman) return false;
+  }
+  return hasAgentResponse;
+}
+
+export function shouldSuppressTranscriptReplyAttribution(
+  conversation:
+    | Pick<
+        Conversation,
+        | 'id'
+        | 'canonicalSessionId'
+        | 'type'
+        | 'participantSpaceId'
+        | 'canonicalParticipantCount'
+        | 'canonicalParticipants'
+        | 'forkedFromSessionId'
+      >
+    | null
+    | undefined,
+  messages: readonly Message[],
+) {
+  if (shouldSuppressAgentReplyAttribution(conversation)) return true;
+  if (!conversation) return false;
+  if (conversation.participantSpaceId?.trim()) return false;
+  const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
+  const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
+  if (sessionId.startsWith('session:group:') || forkParentId.startsWith('session:group:')) return false;
+  return isDirectAgentTranscript(messages);
+}
+
 export function buildReplyAttribution(
   inputMessages: readonly Message[],
   liveTurn?: DesktopChatTurnSnapshot | null,

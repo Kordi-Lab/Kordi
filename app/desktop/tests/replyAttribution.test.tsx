@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildReplyAttribution, replyStatusText, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
+import { buildReplyAttribution, replyStatusText, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution, shouldSuppressTranscriptReplyAttribution } from '../src/features/chat/replyAttribution';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
 function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {
@@ -356,6 +356,57 @@ test('buildReplyAttribution suppresses source quote in direct external-agent sup
   assert.equal(result.messages[1]?.sourceMessage, undefined);
   assert.equal(result.messages[1]?.turn?.sourceMessage, undefined);
   assert.equal(result.messages[1]?.turn?.replyToMessageId, undefined);
+});
+
+test('buildReplyAttribution suppresses reply chrome for direct support transcripts even when wrapped as a contact chat', () => {
+  const sourceMessage = {
+    messageId: 'msg:request',
+    senderLabel: 'Me',
+    text: 'hihi',
+    attachmentCount: 0,
+    time: '23:10',
+  };
+  const messages: Message[] = [
+    humanRequest({ id: 'msg:request', text: 'hihi', time: '23:10' }),
+    {
+      id: 'msg:support-response',
+      role: 'external-agent',
+      sender: 'Kordi Support',
+      senderType: 'agent',
+      text: '',
+      time: '23:10',
+      sourceMessage,
+      turn: turn({
+        id: 'turn:support-response',
+        sessionId: 'session:direct-person:acct_support_owner:acct_user',
+        status: 'succeeded',
+        message: 'Response complete',
+        assistantText: 'Hi! How can I help?',
+        completed: true,
+        succeeded: true,
+        sourceMessage,
+      }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, {
+    inferLatestHumanRequest: true,
+    suppressAgentReplyAttribution: shouldSuppressTranscriptReplyAttribution({
+      id: 'session:direct-person:acct_support_owner:acct_user',
+      canonicalSessionId: 'session:direct-person:acct_support_owner:acct_user',
+      type: 'person',
+      participantSpaceId: null,
+      canonicalParticipantCount: 2,
+      canonicalParticipants: [],
+      forkedFromSessionId: null,
+    }, messages),
+  });
+
+  assert.equal(result.messages[0]?.replySummary, undefined);
+  assert.equal(result.messages[1]?.replyToMessageId, undefined);
+  assert.equal(result.messages[1]?.sourceMessage, undefined);
+  assert.equal(result.messages[1]?.turn?.replyToMessageId, undefined);
+  assert.equal(result.messages[1]?.turn?.sourceMessage, undefined);
 });
 
 test('shouldSuppressAgentReplyAttribution is scoped to direct self and external-agent conversations', () => {
