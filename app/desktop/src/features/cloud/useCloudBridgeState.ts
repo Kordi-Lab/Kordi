@@ -1912,6 +1912,7 @@ export function useCloudBridgeState({
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const claimedCloudFallbackRunKeysRef = useRef<Set<string>>(new Set());
   const syncedProviderAuthSnapshotKeysRef = useRef<Set<string>>(new Set());
+  const publishingProviderAuthSnapshotKeysRef = useRef<Set<string>>(new Set());
   const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
@@ -3524,10 +3525,14 @@ export function useCloudBridgeState({
   }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
-    if (!account || !initialMessagesSettled) return;
+    if (!account) return;
     const syncKey = cloudProviderAuthSnapshotRouteSignature(account.accountId, defaultCloudAgentRuntimeRoute);
-    if (!syncKey || syncedProviderAuthSnapshotKeysRef.current.has(syncKey)) return;
-    syncedProviderAuthSnapshotKeysRef.current.add(syncKey);
+    if (
+      !syncKey
+      || syncedProviderAuthSnapshotKeysRef.current.has(syncKey)
+      || publishingProviderAuthSnapshotKeysRef.current.has(syncKey)
+    ) return;
+    publishingProviderAuthSnapshotKeysRef.current.add(syncKey);
     let cancelled = false;
     void (async () => {
       const session = await loadSession();
@@ -3539,15 +3544,17 @@ export function useCloudBridgeState({
       });
       if (!input || cancelled) return;
       await client.publishProviderAuthSnapshot(session.token, input);
+      if (!cancelled) syncedProviderAuthSnapshotKeysRef.current.add(syncKey);
     })().catch((error) => {
-      syncedProviderAuthSnapshotKeysRef.current.delete(syncKey);
       // eslint-disable-next-line no-console
       console.warn('[cloud-provider-auth-sync] publish failed', error);
+    }).finally(() => {
+      publishingProviderAuthSnapshotKeysRef.current.delete(syncKey);
     });
     return () => {
       cancelled = true;
     };
-  }, [account, client, defaultCloudAgentRuntimeRoute, initialMessagesSettled]);
+  }, [account, client, defaultCloudAgentRuntimeRoute]);
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;
