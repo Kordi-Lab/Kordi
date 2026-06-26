@@ -113,7 +113,12 @@ export function cloudPeerDisplayName(contact: Contact): string {
   return contact.name?.trim() || contact.bridgePeerNodeId?.trim() || contact.id.replace(/^cloud:/, '');
 }
 
+function isSystemCloudAgentContact(contact: Contact): boolean {
+  return contact.systemContact === true && Boolean(contact.targetCloudAgentId?.trim());
+}
+
 export function cloudAgentDisplayName(contact: Contact): string {
+  if (isSystemCloudAgentContact(contact)) return contact.targetCloudAgentName?.trim() || cloudPeerDisplayName(contact);
   const owner = cloudPeerDisplayName(contact);
   return `${owner}'s Kordi`;
 }
@@ -171,7 +176,7 @@ export function cloudContactsToCanonicalIdentityRequests({
 
 export function cloudContactToAgentPeer(contact: Contact): DesktopBridgePeer {
   const accountId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
-  const isSystemAgent = contact.systemContact === true && Boolean(contact.targetCloudAgentId?.trim());
+  const isSystemAgent = isSystemCloudAgentContact(contact);
   const ownerName = isSystemAgent
     ? contact.targetCloudAgentOwnerName?.trim() || cloudPeerDisplayName(contact)
     : cloudPeerDisplayName(contact);
@@ -663,7 +668,7 @@ export function buildCloudBridgeConversation({
       : cloudAgentDisplayName(contact);
   const pendingAgentId = pendingAgentTargetsLocalAgent
     ? 'cloud-local-agent'
-    : `cloud-agent:${peerAccountId}`;
+    : contact.targetCloudAgentId?.trim() || `cloud-agent:${peerAccountId}`;
   const pendingAgentOutreach: DesktopBridgeOutreachMetadata | null = pendingAgentRequest ? {
     targetKind: 'bridge-agent',
     parentSessionId: null,
@@ -735,7 +740,7 @@ export function buildCloudBridgeConversation({
       remoteHumanId: peerAccountId,
       remoteHumanName: isSelfPeer ? (account.displayName || account.primaryEmail || 'Me') : cloudPeerDisplayName(contact),
       remoteHumanNodeId: peerAccountId,
-      remoteAgentId: isSelfPeer ? 'cloud-local-agent' : `cloud-agent:${peerAccountId}`,
+      remoteAgentId: isSelfPeer ? 'cloud-local-agent' : contact.targetCloudAgentId?.trim() || `cloud-agent:${peerAccountId}`,
       remoteAgentName: isSelfPeer ? 'My Kordi' : cloudAgentDisplayName(contact),
       remoteAgentNodeId: peerAccountId,
       remoteAgentRuntime: CLOUD_AGENT_RUNTIME,
@@ -812,9 +817,10 @@ export function buildCloudDesktopBridgeState({
       const isSelfPeer = peerId === account.accountId;
       if (!hasMessages && !isActivePeer) return [];
 
+      const systemAgentContact = isSystemCloudAgentContact(contact);
       const directPersonMessages = isSelfPeer ? [] : cloudDirectPersonMessagesForPeer(account, peerId, messages);
       const hasDirectPersonMessages = directPersonMessages.length > 0;
-      const personConversation = !isSelfPeer && (hasDirectPersonMessages || activeConversationId === cloudBridgeConversationId(peerId, CLOUD_PERSON_RUNTIME))
+      const personConversation = !isSelfPeer && !systemAgentContact && (hasDirectPersonMessages || activeConversationId === cloudBridgeConversationId(peerId, CLOUD_PERSON_RUNTIME))
         ? [buildCloudBridgeConversation({
             account,
             contact,
@@ -827,6 +833,17 @@ export function buildCloudDesktopBridgeState({
         : [];
       const activeCloudSessionId = activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null;
       const agentConversation = (() => {
+        if (systemAgentContact && !isSelfPeer && (hasDirectPersonMessages || activeConversationId === cloudBridgeConversationId(peerId, CLOUD_AGENT_RUNTIME))) {
+          return [buildCloudBridgeConversation({
+            account,
+            contact,
+            messages: directPersonMessages,
+            runtime: CLOUD_AGENT_RUNTIME,
+            readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
+            forceRead: isActivePeer,
+            localAgentTurnsByRequestId,
+          })];
+        }
         if (isSelfPeer && hasMessages) {
           const bySession = new Map<string | null, CloudMessage[]>();
           const hasSessionScopedMessages = messages.some((cloudMessage) => Boolean(cleanCloudSessionId(cloudMessage.sessionId)));

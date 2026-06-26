@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildCloudBridgeConversation, buildCloudBridgeHost, cloudBridgeConversationId } from '../src/features/cloud/cloudBridgeState';
+import { buildCloudBridgeConversation, buildCloudBridgeHost, buildCloudDesktopBridgeState, cloudBridgeConversationId } from '../src/features/cloud/cloudBridgeState';
 import { encodeCloudDirectMessageEnvelope, parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudBridgeSendBodyForConversation } from '../src/features/cloud/useCloudBridgeState';
@@ -163,6 +163,41 @@ test('support direct conversation keeps the user request visible before the supp
   assert.deepEqual(conversation.messages.map((message) => message.text), ['hihi', 'Hi! How can I help?']);
   assert.equal(conversation.messages[0]?.direction, 'outbound');
   assert.equal(conversation.messages[1]?.direction, 'inbound-response');
+});
+
+test('support direct messages materialize as the hosted agent conversation, not a duplicate person thread', () => {
+  const requestBody = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: 'hihi',
+    targetCloudAgentId: 'cloud_agent_kordi_support',
+    targetCloudAgentName: 'Kordi Support',
+    targetCloudAgentOwnerAccountId: 'acct_support_owner',
+    targetCloudAgentOwnerName: 'Kordi',
+  });
+  const state = buildCloudDesktopBridgeState({
+    account: cloudAccountFixture(),
+    contacts: [supportContactFixture()],
+    messagesByPeer: {
+      acct_support_owner: [
+        cloudMessage({ messageId: 'msg-user-request', body: requestBody }),
+        cloudMessage({
+          messageId: 'msg-support-response',
+          fromAccountId: 'acct_support_owner',
+          toAccountId: 'acct_user',
+          direction: 'incoming',
+          body: encodeCloudAgentResponse({ requestId: 'msg-user-request', text: 'Hi! How can I help?' }),
+          createdAt: '2026-06-26T23:10:01Z',
+          deliveredAt: '2026-06-26T23:10:01Z',
+        }),
+      ],
+    },
+  });
+
+  assert.deepEqual(state.conversations.map((conversation) => conversation.id), ['bridge:cloud:acct_support_owner']);
+  assert.equal(state.conversations[0]?.peerRuntime, 'kordi-desktop');
+  assert.equal(state.conversations[0]?.title, 'Kordi Support');
+  assert.deepEqual(state.conversations[0]?.messages.map((message) => message.text), ['hihi', 'Hi! How can I help?']);
 });
 
 test('support contact send body is encoded for the configured hosted support agent', () => {
