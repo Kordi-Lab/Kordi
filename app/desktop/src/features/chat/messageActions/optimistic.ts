@@ -1,5 +1,6 @@
 import { BRIDGE_MESSAGE_DIRECTION_OUTBOUND } from '@/features/bridge/messages';
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
+import { cloudPeerAccountIdFromConversationId, cloudSessionIdFromConversationId, isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionMessage,
@@ -155,6 +156,62 @@ export function appendOptimisticOutboundMessage(
   };
 }
 
+function optimisticCloudBridgeConversation(
+  current: DesktopBridgeState,
+  conversationId: string,
+  subtitleText: string,
+  sentAt: string,
+  timestampMs: number,
+): DesktopBridgeConversation | null {
+  if (!isCloudBridgeConversationId(conversationId)) return null;
+  const peerAccountId = cloudPeerAccountIdFromConversationId(conversationId);
+  if (!peerAccountId) return null;
+  const host = current.hosts.find((candidate) => candidate.id === 'cloud') ?? current.hosts.find((candidate) => candidate.id === current.activeHostId) ?? current.hosts[0] ?? null;
+  const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === peerAccountId) ?? null;
+  const isPerson = conversationId.endsWith(':person');
+  const peerRuntime = isPerson ? 'person' : (peer?.runtime?.trim() || 'kordi-desktop');
+  const title = peer?.displayName?.trim() || peerAccountId;
+  const ownerName = peer?.ownerName?.trim() || title;
+  const localHumanName = host?.ownerName?.trim() || host?.displayName?.trim() || 'Me';
+  const localHumanId = host?.humanId?.trim() || host?.nodeId?.trim() || 'local';
+  return {
+    id: conversationId,
+    canonicalSessionId: cloudSessionIdFromConversationId(conversationId) ?? conversationId,
+    hostId: 'cloud',
+    peerNodeId: peerAccountId,
+    peerDisplayName: title,
+    peerOwnerName: ownerName,
+    peerRuntime,
+    projectId: null,
+    projectName: null,
+    title,
+    subtitle: subtitleText,
+    unreadCount: 0,
+    updatedAtMs: timestampMs,
+    updatedAtLabel: sentAt,
+    awaitingReply: isBridgeAgentRuntime(peerRuntime),
+    peerTyping: false,
+    peerLastHeartbeatLabel: null,
+    outreach: null,
+    identity: {
+      bridgeHostId: 'cloud',
+      localHumanId,
+      localHumanName,
+      localAgentId: 'cloud-local-agent',
+      localAgentName: 'My Kordi',
+      localAgentNodeId: host?.nodeId?.trim() || localHumanId,
+      remoteHumanId: peer?.humanId?.trim() || peerAccountId,
+      remoteHumanName: ownerName,
+      remoteHumanNodeId: peerAccountId,
+      remoteAgentId: peer?.agentId?.trim() || (isPerson ? null : `cloud-agent:${peerAccountId}`),
+      remoteAgentName: title,
+      remoteAgentNodeId: peerAccountId,
+      remoteAgentRuntime: peerRuntime,
+    },
+    messages: [],
+  };
+}
+
 export function appendOptimisticBridgeMessage(
   current: DesktopBridgeState | null,
   conversationId: string,
@@ -169,8 +226,21 @@ export function appendOptimisticBridgeMessage(
 
   const timestampMs = Date.now();
   const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
+  const optimisticMessage = {
+    id: optimisticMessageId,
+    direction: BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
+    sender: 'Me',
+    text,
+    timeLabel: sentAt,
+    timestampMs,
+    deliveryState: 'sending',
+    attachments: toOptimisticAttachments(attachments),
+    messageAction: quoteAction,
+  };
+  let foundConversation = false;
   const nextConversations = current.conversations.map((conversation) => {
     if (conversation.id !== conversationId) return conversation;
+    foundConversation = true;
     return {
       ...conversation,
       subtitle: subtitleText,
@@ -179,20 +249,20 @@ export function appendOptimisticBridgeMessage(
       awaitingReply: isBridgeAgentRuntime(conversation.peerRuntime),
       messages: [
         ...conversation.messages,
-        {
-          id: optimisticMessageId,
-          direction: BRIDGE_MESSAGE_DIRECTION_OUTBOUND,
-          sender: 'Me',
-          text,
-          timeLabel: sentAt,
-          timestampMs,
-          deliveryState: 'sending',
-          attachments: toOptimisticAttachments(attachments),
-          messageAction: quoteAction,
-        },
+        optimisticMessage,
       ],
     };
-  }).sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+  });
+  if (!foundConversation) {
+    const optimisticConversation = optimisticCloudBridgeConversation(current, conversationId, subtitleText, sentAt, timestampMs);
+    if (optimisticConversation) {
+      nextConversations.push({
+        ...optimisticConversation,
+        messages: [optimisticMessage],
+      });
+    }
+  }
+  nextConversations.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
 
   return {
     ...current,

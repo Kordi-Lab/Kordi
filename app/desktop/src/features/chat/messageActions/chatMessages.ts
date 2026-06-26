@@ -1405,9 +1405,6 @@ export function useChatMessageActions({
             })
           : text;
         await sendCloudBridgeMessage(activeConvId, cloudBody, chatComposerAttachments);
-        if (appendedOptimisticBridgeMessage && isCloudBridgeConversationId(activeConvId)) {
-          setCloudBridgeState(null);
-        }
       } catch (error) {
         const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
         if (appendedOptimisticBridgeMessage) {
