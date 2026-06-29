@@ -377,6 +377,7 @@ export function CompactComposerModelMenu({
   ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
 
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const [menuThemeClass, setMenuThemeClass] = useState('');
@@ -471,9 +472,35 @@ export function CompactComposerModelMenu({
     setIsOpen(false);
   };
 
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return undefined;
+    const closeWithoutSaving = () => {
+      setStagedProviderValue(selectedProviderOption?.value ?? '');
+      setStagedModel(selection.model);
+      setStagedThinking(selection.thinking);
+      setIsOpen(false);
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      closeWithoutSaving();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      closeWithoutSaving();
+    };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [isOpen, selectedProviderOption?.value, selection.model, selection.thinking]);
 
   const renderMenu = () => (
     <div
+      ref={menuRef}
       className={cn('app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] text-[12px] leading-[1.38]', menuThemeClass)}
       style={menuStyle}
     >
@@ -632,6 +659,7 @@ export function ComposerModelControls({
 }) {
   const activeSelector = openSelector?.scope === scope ? openSelector.type : null;
   const selectorTriggerRefs = useRef<Partial<Record<ComposerSelectorType, HTMLButtonElement | null>>>({});
+  const selectorMenuRef = useRef<HTMLDivElement | null>(null);
   const [selectorMenuStyle, setSelectorMenuStyle] = useState<CSSProperties>({});
   const [selectorMenuThemeClass, setSelectorMenuThemeClass] = useState('');
   const selectedModelOption = modelOptions.find((option) => option.value === selection.model);
@@ -714,8 +742,29 @@ export function ComposerModelControls({
     };
   }, [activeSelector, updateSelectorMenuPosition]);
 
+  useEffect(() => {
+    if (!activeSelector || activeSelector === 'mode' || typeof document === 'undefined') return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const clickedTrigger = Object.values(selectorTriggerRefs.current).some((trigger) => trigger?.contains(target));
+      if (selectorMenuRef.current?.contains(target) || clickedTrigger) return;
+      onToggleSelector(scope, activeSelector);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      onToggleSelector(scope, activeSelector);
+    };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [activeSelector, onToggleSelector, scope]);
+
   const renderSelectorMenu = () => (
-    <div className={cn('app-composer-model-menu-layer fixed z-[2147483000] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-4 py-3 text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl', selectorMenuThemeClass)} style={selectorMenuStyle}>
+    <div ref={selectorMenuRef} className={cn('app-composer-model-menu-layer fixed z-[2147483000] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-4 py-3 text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl', selectorMenuThemeClass)} style={selectorMenuStyle}>
       <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">
         {activeSelector === 'provider'
           ? 'Provider'
@@ -990,9 +1039,30 @@ export function ComposerModeControl({
 }) {
   const activeSelector = openSelector?.scope === scope ? openSelector.type : null;
   const activeOptions = composerModeOptions[scope];
+  const modeMenuRootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (activeSelector !== 'mode' || typeof document === 'undefined') return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (modeMenuRootRef.current?.contains(target)) return;
+      onToggleSelector(scope, 'mode');
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      onToggleSelector(scope, 'mode');
+    };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [activeSelector, onToggleSelector, scope]);
 
   return (
-    <div className="relative">
+    <div ref={modeMenuRootRef} className="relative">
       <button
         type="button"
         onClick={() => onToggleSelector(scope, 'mode')}

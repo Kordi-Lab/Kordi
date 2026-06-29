@@ -135,6 +135,10 @@ test('split-pane Agent model selection menu escapes the right panel clipping bou
   assert.match(controlsSource, /getBoundingClientRect\(\)/, 'model selector should measure its trigger for viewport-aware placement');
   assert.match(controlsSource, /app-composer-model-menu-layer fixed/, 'model selector menu should be fixed-positioned so overflow-hidden panes do not clip it');
   assert.match(controlsSource, /createPortal\(renderSelectorMenu\(\), document\.body\)/, 'model selector menu should render through a body portal');
+  assert.match(controlsSource, /const selectorMenuRef = useRef<HTMLDivElement \| null>\(null\)/, 'body-portaled selector should keep a ref for outside-click detection');
+  assert.match(controlsSource, /document\.addEventListener\('pointerdown', handlePointerDown, true\)/, 'body-portaled selector should close when users click outside');
+  assert.match(controlsSource, /document\.addEventListener\('keydown', handleKeyDown, true\)/, 'body-portaled selector should close when users press Escape');
+  assert.match(controlsSource, /selectorMenuRef\.current\?\.contains\(target\)/, 'clicking inside the body-portaled selector should not close it');
   assert.match(popoversSource, /\.app-composer-model-menu-layer \{[\s\S]*--app-modal-bg:/, 'body-portaled selector should define its own dark theme variables');
   assert.match(popoversSource, /\.app-composer-model-menu-layer\.app-compact-model-menu-light \{[\s\S]*--app-modal-bg:/, 'body-portaled selector should define its own light theme variables');
   assert.doesNotMatch(controlsSource, /absolute bottom-full right-0 z-30 mb-2 max-h-\[min\(28rem,60vh\)\] w-\[340px\]/, 'model selector menu must not stay absolute inside the right-panel composer');
