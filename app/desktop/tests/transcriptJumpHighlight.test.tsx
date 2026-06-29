@@ -5,7 +5,7 @@ import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function cssRule(css: string, selector: string) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = css.match(new RegExp(`${escapedSelector}\\s*\\{[^}]*\\}`));
+  const match = css.match(new RegExp(`${escapedSelector}(?:\\s*,[\\s\\S]*?)?\\s*\\{[^}]*\\}`));
   assert.ok(match, `Missing CSS rule for ${selector}`);
   return match[0];
 }
@@ -36,26 +36,24 @@ test('jump-to-message highlight overrides the whole assistant response surface, 
   assert.match(highlightSurfaceRule, /border-color:/);
 });
 
-test('folded bottom overlays use progressive diffusion without a solid mask or pill chrome', () => {
+test('folded content uses compact fades and inline reveal controls instead of overlay chrome', () => {
   const shellCss = readDesktopShellCss();
   const quoteFadeRule = cssRule(shellCss, '.app-source-message-quote-folded::after');
   const answerFadeRule = cssRule(shellCss, '.app-live-assistant-answer-folded::after');
-  const quoteToggleRule = cssRule(shellCss, '.app-source-message-quote-toggle-overlay');
-  const answerToggleRule = cssRule(shellCss, '.app-live-assistant-answer-toggle-overlay');
+  const revealRowRule = cssRule(shellCss, '.app-fold-reveal-row');
+  const revealToggleRule = cssRule(shellCss, '.app-inline-expand-toggle');
 
   for (const rule of [quoteFadeRule, answerFadeRule]) {
+    assert.match(rule, /height:\s*1\.05rem/);
     assert.match(rule, /linear-gradient\(\s*180deg,\s*transparent/);
-    assert.match(rule, /backdrop-filter:\s*blur\(/);
-    assert.match(rule, /mask-image:\s*linear-gradient/);
-    assert.doesNotMatch(rule, /border-radius:/);
+    assert.doesNotMatch(rule, /backdrop-filter:\s*blur\(/);
+    assert.doesNotMatch(rule, /mask-image:/);
     assert.doesNotMatch(rule, /box-shadow:/);
   }
 
-  for (const rule of [quoteToggleRule, answerToggleRule]) {
-    assert.match(rule, /background:\s*transparent/);
-    assert.match(rule, /border:\s*0/);
-    assert.match(rule, /backdrop-filter:\s*none/);
-    assert.doesNotMatch(rule, /border-radius:\s*999px/);
-    assert.doesNotMatch(rule, /box-shadow:/);
-  }
+  assert.match(revealRowRule, /display:\s*flex/);
+  assert.match(revealToggleRule, /min-height:\s*30px/);
+  assert.match(revealToggleRule, /border-radius:\s*9px/);
+  assert.doesNotMatch(shellCss, /\.app-source-message-quote-toggle-overlay/);
+  assert.doesNotMatch(shellCss, /\.app-live-assistant-answer-toggle-overlay/);
 });

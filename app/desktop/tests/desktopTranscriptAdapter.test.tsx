@@ -85,7 +85,10 @@ test('desktop transcript maps plain completed assistant replies to foldable sour
 
   assert.match(markup, /app-source-message-quote/);
   assert.match(markup, /app-live-assistant-answer-folded/);
-  assert.match(markup, /— 3 more lines\. Click to show all —/);
+  assert.match(markup, /app-fold-reveal-row app-live-assistant-answer-reveal-row/);
+  assert.match(markup, /Show 3 more lines/);
+  assert.doesNotMatch(markup, /Click to show all/);
+  assert.doesNotMatch(markup, /app-live-assistant-answer-toggle-overlay/);
 });
 
 test('private cloud agent transcript labels assistant turns with the selected cloud agent name', () => {

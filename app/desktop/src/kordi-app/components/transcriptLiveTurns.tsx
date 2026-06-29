@@ -3,7 +3,9 @@ import {
   ArrowRightLeft,
   Braces,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleAlert,
   Clock3,
   FileText,
@@ -686,9 +688,9 @@ function assistantAnswerFoldInfo(text: string) {
 
 function foldedAssistantAnswerToggleLabel(hiddenLineCount: number) {
   if (hiddenLineCount > 0) {
-    return `— ${hiddenLineCount} more line${hiddenLineCount === 1 ? '' : 's'}. Click to show all —`;
+    return `Show ${hiddenLineCount} more line${hiddenLineCount === 1 ? '' : 's'}`;
   }
-  return '— Click to show full response —';
+  return 'Show full response';
 }
 
 function FoldableAssistantAnswer({
@@ -719,26 +721,20 @@ function FoldableAssistantAnswer({
             cancelled && '[&_p]:!text-rose-300 [&_li]:!text-rose-300 [&_blockquote]:!text-rose-300',
           )}
         />
-        {shouldFold && folded ? (
+      </div>
+      {shouldFold ? (
+        <div className="app-fold-reveal-row app-live-assistant-answer-reveal-row">
           <button
             type="button"
-            className="app-inline-expand-toggle app-live-assistant-answer-toggle app-live-assistant-answer-toggle-overlay mx-auto flex w-fit items-center px-3 text-[10px] font-medium"
-            onClick={() => setExpanded(true)}
+            className="app-inline-expand-toggle app-live-assistant-answer-toggle"
+            onClick={() => setExpanded((current) => !current)}
             aria-expanded={expanded}
           >
-            {foldedAssistantAnswerToggleLabel(foldInfo.hiddenLineCount)}
+            <span>{folded ? foldedAssistantAnswerToggleLabel(foldInfo.hiddenLineCount) : 'Hide response'}</span>
+            {folded ? <ChevronDown className="app-inline-expand-toggle-icon" aria-hidden="true" /> : <ChevronUp className="app-inline-expand-toggle-icon" aria-hidden="true" />}
           </button>
-        ) : null}
-      </div>
-      {shouldFold && !folded ? (
-        <button
-          type="button"
-          className="app-inline-expand-toggle app-live-assistant-answer-toggle mx-auto mt-1.5 flex w-fit items-center px-3 text-[10px] font-medium"
-          onClick={() => setExpanded(false)}
-          aria-expanded={expanded}
-        >
-          — Click to hide response —
-        </button>
+          <span className="app-fold-reveal-line" aria-hidden="true" />
+        </div>
       ) : null}
     </div>
   );

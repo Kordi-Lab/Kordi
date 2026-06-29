@@ -1,5 +1,5 @@
 import { useState, type RefObject } from 'react';
-import { CornerDownLeft } from 'lucide-react';
+import { ChevronDown, ChevronUp, CornerDownLeft } from 'lucide-react';
 
 import { replyStatusText } from '@/features/chat/replyAttribution';
 import { cn } from '@/lib/utils';
@@ -107,19 +107,18 @@ export function SourceMessageQuote({
         </span>
       </button>
       {canFold ? (
-        <button
-          type="button"
-          className={cn(
-            'app-inline-expand-toggle app-source-message-quote-toggle',
-            !expanded && 'app-source-message-quote-toggle-overlay',
-            'flex w-fit items-center px-2 text-[9px] font-medium',
-            expanded && 'mx-auto mt-1',
-          )}
-          onClick={() => setExpanded((current) => !current)}
-          aria-expanded={expanded}
-        >
-          {expanded ? '— Click to hide request —' : '— Click to show full request —'}
-        </button>
+        <div className="app-fold-reveal-row app-source-message-quote-reveal-row">
+          <button
+            type="button"
+            className="app-inline-expand-toggle app-source-message-quote-toggle"
+            onClick={() => setExpanded((current) => !current)}
+            aria-expanded={expanded}
+          >
+            <span>{expanded ? 'Hide request' : 'Show full request'}</span>
+            {expanded ? <ChevronUp className="app-inline-expand-toggle-icon" aria-hidden="true" /> : <ChevronDown className="app-inline-expand-toggle-icon" aria-hidden="true" />}
+          </button>
+          <span className="app-fold-reveal-line" aria-hidden="true" />
+        </div>
       ) : null}
     </div>
   );

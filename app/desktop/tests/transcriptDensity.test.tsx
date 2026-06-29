@@ -1300,29 +1300,29 @@ test('folds long source quotes after three lines while keeping the full request 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
   assert.match(markup, /app-source-message-quote-text-frame app-source-message-quote-folded/);
-  assert.match(markup, /app-source-message-quote-toggle app-source-message-quote-toggle-overlay/);
-  assert.match(markup, /text-\[9px\]/);
-  assert.match(markup, /— Click to show full request —/);
-  assert.doesNotMatch(markup, /— Show full request —/);
+  assert.match(markup, /app-fold-reveal-row app-source-message-quote-reveal-row/);
+  assert.match(markup, /app-source-message-quote-toggle/);
+  assert.match(markup, /Show full request/);
+  assert.doesNotMatch(markup, /app-source-message-quote-toggle-overlay/);
+  assert.doesNotMatch(markup, /— Click to show full request —/);
   assert.match(markup, /Final acceptance detail should remain available when folded/);
   assert.doesNotMatch(markup, /Final acceptance detail should remain available when folded…/);
 });
 
-test('styles folded source quote expand control as muted overlay on the fade', () => {
+test('styles folded source quote reveal as a compact inline control', () => {
   const shellCss = readDesktopShellCss();
   const sourceToggleBlock = shellCss.match(/\.app-source-message-quote-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const sourceOverlayBlock = shellCss.match(/\.app-source-message-quote-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const sharedToggleBlock = shellCss.match(/\.app-inline-expand-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const revealRowBlock = shellCss.match(/\.app-fold-reveal-row \{[\s\S]*?\n\}/)?.[0] ?? '';
   const sourceFoldedAfterBlock = shellCss.match(/\.app-source-message-quote-folded::after \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 84%, var\(--app-source-message-quote-muted\)\)/);
-  assert.doesNotMatch(sourceToggleBlock, /rgb\(147 197 253\)/);
-  assert.match(sourceOverlayBlock, /position:\s*absolute/);
-  assert.match(sourceOverlayBlock, /bottom:\s*0\.1rem/);
-  assert.match(sourceOverlayBlock, /background:\s*transparent/);
-  assert.match(sourceOverlayBlock, /border:\s*0/);
-  assert.match(sourceOverlayBlock, /backdrop-filter:\s*none/);
-  assert.match(sourceFoldedAfterBlock, /mask-image:\s*linear-gradient/);
-  assert.match(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(/);
+  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 88%, var\(--app-source-message-quote-muted\)\)/);
+  assert.match(sharedToggleBlock, /min-height:\s*30px/);
+  assert.match(sharedToggleBlock, /border-radius:\s*9px/);
+  assert.match(revealRowBlock, /display:\s*flex/);
+  assert.doesNotMatch(shellCss, /\.app-source-message-quote-toggle-overlay/);
+  assert.match(sourceFoldedAfterBlock, /height:\s*1\.05rem/);
+  assert.doesNotMatch(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(/);
 });
 
 test('styles reply attribution surfaces with stronger dark-mode contrast', () => {
@@ -1399,11 +1399,12 @@ test('folds only substantially long completed agent responses by default', () =>
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
 
   assert.match(markup, /app-live-assistant-answer-content app-live-assistant-answer-folded/);
+  assert.match(markup, /app-fold-reveal-row app-live-assistant-answer-reveal-row/);
   assert.match(markup, /app-inline-expand-toggle/);
-  assert.match(markup, /app-live-assistant-answer-toggle app-live-assistant-answer-toggle-overlay/);
-  assert.match(markup, /text-\[10px\]/);
-  assert.match(markup, /— 1 more line\. Click to show all —/);
-  assert.doesNotMatch(markup, /— Show full response —/);
+  assert.match(markup, /app-live-assistant-answer-toggle/);
+  assert.match(markup, /Show 1 more line/);
+  assert.doesNotMatch(markup, /app-live-assistant-answer-toggle-overlay/);
+  assert.doesNotMatch(markup, /— 1 more line\. Click to show all —/);
 });
 
 test('expanded fold controls use click-to-hide copy consistently', () => {
@@ -1412,23 +1413,26 @@ test('expanded fold controls use click-to-hide copy consistently', () => {
     readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8'),
   ].join('\n');
 
-  assert.match(transcriptSource, /— Click to hide request —/);
-  assert.match(transcriptSource, /— Click to hide response —/);
-  assert.doesNotMatch(transcriptSource, /— Hide request —/);
-  assert.doesNotMatch(transcriptSource, /— Collapse response —/);
+  assert.match(transcriptSource, /Hide request/);
+  assert.match(transcriptSource, /Hide response/);
+  assert.doesNotMatch(transcriptSource, /— Click to hide request —/);
+  assert.doesNotMatch(transcriptSource, /— Click to hide response —/);
 });
 
-test('styles folded answer expand control as muted overlay on the fade', () => {
+test('styles folded answer reveal as a compact inline control', () => {
   const shellCss = readDesktopShellCss();
   const answerToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const overlayToggleBlock = shellCss.match(/\.app-live-assistant-answer-toggle-overlay \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const sharedToggleBlock = shellCss.match(/\.app-inline-expand-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const answerFoldedAfterBlock = shellCss.match(/\.app-live-assistant-answer-folded::after \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const revealLineBlock = shellCss.match(/\.app-fold-reveal-line \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(answerToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 78%, var\(--utility-muted-text\)\)/);
-  assert.doesNotMatch(answerToggleBlock, /rgb\(147 197 253\)/);
-  assert.match(overlayToggleBlock, /position:\s*absolute/);
-  assert.match(overlayToggleBlock, /bottom:\s*0\.18rem/);
-  assert.match(overlayToggleBlock, /z-index:\s*1/);
-  assert.doesNotMatch(overlayToggleBlock, /z-index:\s*2/);
+  assert.match(answerToggleBlock, /color:\s*color-mix\(in oklab, var\(--utility-foreground\) 86%, var\(--utility-muted-text\)\)/);
+  assert.match(sharedToggleBlock, /min-height:\s*30px/);
+  assert.match(sharedToggleBlock, /border-radius:\s*9px/);
+  assert.match(revealLineBlock, /linear-gradient\(90deg/);
+  assert.doesNotMatch(shellCss, /\.app-live-assistant-answer-toggle-overlay/);
+  assert.match(answerFoldedAfterBlock, /height:\s*1\.05rem/);
+  assert.doesNotMatch(answerFoldedAfterBlock, /backdrop-filter:\s*blur\(/);
 });
 
 const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-source-message-quote[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer/;
@@ -1507,5 +1511,6 @@ test('folds very long active streaming agent responses with remaining line count
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
   assert.match(markup, /app-live-assistant-answer-content app-live-assistant-answer-folded/);
-  assert.match(markup, /— 2 more lines\. Click to show all —/);
+  assert.match(markup, /Show 2 more lines/);
+  assert.doesNotMatch(markup, /— 2 more lines\. Click to show all —/);
 });
