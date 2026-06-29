@@ -5,6 +5,7 @@ import { test } from 'node:test';
 const chatsPageSource = () => readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
+const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
 
 function blockBetween(source: string, startNeedle: string, endNeedle: string): string {
   const start = source.indexOf(startNeedle);
@@ -73,8 +74,74 @@ test('side-panel Agent composer exposes the same visible attachment trigger and 
   assert.match(side, /aria-label="Add attachment"/, 'side-panel attachment control should use the same accessible label as main composer');
   assert.match(side, /data-companion-attachment-control="true"/, 'side-panel attachment control should be identifiable for parity regression coverage');
   assert.match(side, /data-companion-composer-frame="true"[\s\S]*shrink-0 px-5 pb-4 pt-3/, 'side-panel composer should use the same outer frame spacing as the main composer so input blocks align');
-  assert.match(side, /data-companion-send-row="true"[\s\S]*items-center justify-between gap-4 pt-2\.5/, 'side-panel composer controls should use the same baseline row spacing as main composer');
+  assert.match(side, /data-companion-send-row="true"[\s\S]*items-center justify-between gap-3 pt-2\.5/, 'side-panel composer controls should keep the same baseline rhythm while fitting narrow split panes');
   assert.doesNotMatch(side, /<span className="h-9 w-9 shrink-0" aria-hidden="true" \/>/, 'side-panel composer should not use a blank spacer instead of the real attachment controls');
+});
+
+test('side-panel Agent model controls use independent menu state and target the side session', () => {
+  const source = chatsPageSource();
+  const side = sidePanelBlock(source);
+
+  assert.match(source, /const \[companionOpenComposerSelector, setCompanionOpenComposerSelector\]/, 'side-panel model selector should not share the main composer open state');
+  assert.match(source, /toggleCompanionComposerSelector/, 'side-panel model selector should have its own toggle handler');
+  assert.match(side, /openSelector=\{companionOpenComposerSelector\}/, 'side-panel model controls should read side-panel selector state');
+  assert.match(side, /onToggleSelector=\{toggleCompanionComposerSelector\}/, 'side-panel model controls should toggle side-panel selector state');
+  assert.match(side, /selectComposerValue\(scope, type, value, companionConversation\.id\)/, 'side-panel model changes should target the side-panel session id');
+  assert.match(side, /selectComposerProviderChoice\(scope, option, companionConversation\.id\)/, 'side-panel provider changes should target the side-panel session id');
+  assert.doesNotMatch(side, /openSelector=\{openComposerSelector\}/, 'side-panel model controls must not share the main composer popover state');
+});
+
+test('side-panel cloud Agent model controls clone main bridge-routing menu behavior', () => {
+  const source = chatsPageSource();
+  const side = sidePanelBlock(source);
+  const appModel = appModelSource();
+
+  assert.match(source, /const \[selectedCompanionBridgeAgentId, setSelectedCompanionBridgeAgentId\]/, 'side-panel bridge agent menu should not share main bridge routing selection');
+  assert.match(source, /const companionBridgeRoutingAgents = useMemo/, 'side-panel bridge agent menu should derive routing agents for the companion session');
+  assert.match(side, /companionConversationIsBridgeAgent[\s\S]*selectedCompanionBridgeRoutingAgent/, 'side-panel cloud agents should render a bridge-routing model branch');
+  assert.match(side, /selection=\{companionBridgeRoutingSelection\}/, 'side-panel cloud agent model controls should use bridge routing selection');
+  assert.match(side, /updateCompanionBridgeAgentRouting\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing');
+  assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*updateCompanionBridgeAgentRouting/, 'side-panel cloud agent provider changes should update bridge routing');
+  assert.match(source, /const companionBridgeRoutingTargetSessionId = companionConversation\?\.canonicalSessionId \?\? companionConversation\?\.id \?\? null/, 'side-panel bridge routing should resolve the companion session id, not the active main session');
+  assert.match(source, /onUpdateBridgeAgentModelRouting\([\s\S]*nextFallbackAuthChoice,\s*companionBridgeRoutingTargetSessionId,\s*\)/, 'side-panel cloud route changes should pass the companion session id through the bridge routing callback');
+  assert.match(appModel, /targetSessionIdOverride\?: string \| null/, 'cloud bridge route updater should accept an explicit target session override');
+  assert.match(appModel, /targetSessionIdOverride\?\.trim\(\)\s*\|\|\s*activeConv\.canonicalSessionId/, 'cloud bridge route updater should prefer the explicit side-panel session id before falling back to activeConv');
+  assert.doesNotMatch(side, /companionPaneKind === 'agent' && !companionConversationHasBridgeTransport[\s\S]*<ComposerModelControls/, 'side-panel model menu must not disappear for bridge-backed agent sessions');
+});
+
+test('split-pane Agent bottom controls stay compact without changing composer height during resize', () => {
+  const source = chatsPageSource();
+  const side = sidePanelBlock(source);
+  const main = blockBetween(source, '<ChatSessionPane\n        messages={attributedTranscriptMessages}', '{showCompanionPane && companionSide === \'right\' ? splitDivider : null}');
+  const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+
+  assert.match(composerSource, /compact\?: boolean/, 'ComposerModelControls should expose a compact density for narrow panes');
+  assert.match(side, /scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"/, 'side-panel transcript should flex like the main pane while preserving overflow containment so composer bottoms stay aligned during resize');
+  assert.match(side, /data-companion-send-row="true"[\s\S]*flex-nowrap/, 'side-panel send row should stay single-line so resizing does not change composer height');
+  assert.match(side, /data-companion-model-controls="true"[\s\S]*flex-nowrap/, 'side-panel model controls should stay single-line instead of wrapping under the input');
+  assert.match(side, /<ComposerModelControls[\s\S]*compact=\{true\}/, 'side-panel model controls should use compact button widths');
+  assert.match(main, /className=\{cn\('flex min-w-0 items-center overflow-visible'[\s\S]*showCompanionPane \? 'shrink gap-2' : 'shrink-0 gap-3'\)\}/, 'main split-pane composer controls should be allowed to shrink when a companion pane is open');
+  assert.match(main, /<ComposerModelControls[\s\S]*compact=\{showCompanionPane\}/, 'main split-pane model controls should also use compact widths');
+  assert.match(composerSource, /compact \? 'w-\[5\.75rem\]' : 'w-\[8\.75rem\]'/, 'compact provider button width should be narrow enough for split panes');
+});
+
+test('split-pane Agent model selection menu escapes the right panel clipping boundary', () => {
+  const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  const popoversSource = readFileSync(new URL('../src/styles/shell-popovers.css', import.meta.url), 'utf8');
+  const controlsStart = composerSource.indexOf('export function ComposerModelControls');
+  assert.notEqual(controlsStart, -1, 'ComposerModelControls should exist');
+  const controlsSource = composerSource.slice(controlsStart);
+
+  assert.match(controlsSource, /getBoundingClientRect\(\)/, 'model selector should measure its trigger for viewport-aware placement');
+  assert.match(controlsSource, /app-composer-model-menu-layer fixed/, 'model selector menu should be fixed-positioned so overflow-hidden panes do not clip it');
+  assert.match(controlsSource, /createPortal\(renderSelectorMenu\(\), document\.body\)/, 'model selector menu should render through a body portal');
+  assert.match(controlsSource, /const selectorMenuRef = useRef<HTMLDivElement \| null>\(null\)/, 'body-portaled selector should keep a ref for outside-click detection');
+  assert.match(controlsSource, /document\.addEventListener\('pointerdown', handlePointerDown, true\)/, 'body-portaled selector should close when users click outside');
+  assert.match(controlsSource, /document\.addEventListener\('keydown', handleKeyDown, true\)/, 'body-portaled selector should close when users press Escape');
+  assert.match(controlsSource, /selectorMenuRef\.current\?\.contains\(target\)/, 'clicking inside the body-portaled selector should not close it');
+  assert.match(popoversSource, /\.app-composer-model-menu-layer \{[\s\S]*--app-modal-bg:/, 'body-portaled selector should define its own dark theme variables');
+  assert.match(popoversSource, /\.app-composer-model-menu-layer\.app-compact-model-menu-light \{[\s\S]*--app-modal-bg:/, 'body-portaled selector should define its own light theme variables');
+  assert.doesNotMatch(controlsSource, /absolute bottom-full right-0 z-30 mb-2 max-h-\[min\(28rem,60vh\)\] w-\[340px\]/, 'model selector menu must not stay absolute inside the right-panel composer');
 });
 
 test('side-panel Agent session omits the header session Details button', () => {

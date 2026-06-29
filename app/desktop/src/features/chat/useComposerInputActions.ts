@@ -220,7 +220,7 @@ export function useComposerInputActions({
     setOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
   }, [setOpenComposerSelector]);
 
-  const selectComposerValue = useCallback(async (scope: ComposerScope, type: ComposerSelectorType, value: string) => {
+  const selectComposerValue = useCallback(async (scope: ComposerScope, type: ComposerSelectorType, value: string, targetSessionIdOverride?: string | null) => {
     const resolvedModelValue = type === 'provider'
       ? preferredModelValueForProvider(value)
       : type === 'model'
@@ -256,7 +256,7 @@ export function useComposerInputActions({
       focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
     }
 
-    const targetSessionId = composerConfigTargetSessionId({
+    const targetSessionId = targetSessionIdOverride?.trim() || composerConfigTargetSessionId({
       scope,
       activeConvId,
       activeConvCanonicalSessionId,
@@ -309,7 +309,7 @@ export function useComposerInputActions({
     shouldAutoFollowChatRef,
   ]);
 
-  const selectComposerAuthChoice = useCallback(async (scope: ComposerScope, providerId: string, choice: string) => {
+  const selectComposerAuthChoice = useCallback(async (scope: ComposerScope, providerId: string, choice: string, targetSessionIdOverride?: string | null) => {
     await handleSelectAuthChoice(providerId, choice);
 
     const currentProviderId = resolveComposerProviderId(scope, composerSelections[scope].model);
@@ -320,14 +320,14 @@ export function useComposerInputActions({
       || providerId === 'openai-codex'
       || (providerId === 'openai' && currentProviderId === 'openai' && currentModelValue.includes('gpt-5.5'));
     if (shouldSwitchModelForAuth && nextModelValue && nextModelValue !== composerSelections[scope].model) {
-      await selectComposerValue(scope, 'model', nextModelValue);
+      await selectComposerValue(scope, 'model', nextModelValue, targetSessionIdOverride);
       return;
     }
 
     setOpenComposerSelector((current: ComposerSelectorState) => (current?.scope === scope && current.type === 'auth' ? null : current));
   }, [composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, resolveComposerProviderId, selectComposerValue, setOpenComposerSelector]);
 
-  const selectComposerProviderChoice = useCallback(async (scope: ComposerScope, option: MinimalProviderOption) => {
+  const selectComposerProviderChoice = useCallback(async (scope: ComposerScope, option: MinimalProviderOption, targetSessionIdOverride?: string | null) => {
     const normalizedProviderId = normalizeSelectedProviderId(option.providerId) ?? option.providerId;
     const choice = option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
 
@@ -337,7 +337,7 @@ export function useComposerInputActions({
 
     const nextModelValue = preferredModelValueForProvider(option.providerId) ?? preferredModelValueForProvider(normalizedProviderId);
     if (nextModelValue) {
-      await selectComposerValue(scope, 'model', nextModelValue);
+      await selectComposerValue(scope, 'model', nextModelValue, targetSessionIdOverride);
       return;
     }
 
@@ -347,7 +347,7 @@ export function useComposerInputActions({
       return;
     }
 
-    await selectComposerValue(scope, 'provider', normalizedProviderId);
+    await selectComposerValue(scope, 'provider', normalizedProviderId, targetSessionIdOverride);
   }, [handleSelectAuthChoice, preferredModelValueForProvider, selectComposerValue, setDesktopChatError, setOpenComposerSelector]);
 
   const updateComposerDraft = useCallback((scope: ComposerScope, value: string, target: HTMLTextAreaElement) => {

@@ -144,6 +144,22 @@ test('compact menu stages changes until explicit save', () => {
   assert.doesNotMatch(source, /chooseModel = [\s\S]{0,220}onSave/);
 });
 
+test('compact model route menu dismisses when users click outside or press escape', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  const compactStart = source.indexOf('export function CompactComposerModelMenu');
+  const controlsStart = source.indexOf('export function ComposerModelControls', compactStart);
+  assert.notEqual(compactStart, -1, 'CompactComposerModelMenu should exist');
+  assert.notEqual(controlsStart, -1, 'ComposerModelControls should follow CompactComposerModelMenu');
+  const compactSource = source.slice(compactStart, controlsStart);
+
+  assert.match(compactSource, /const menuRef = useRef<HTMLDivElement \| null>\(null\)/, 'compact route popout should keep a ref to its portaled menu');
+  assert.match(compactSource, /document\.addEventListener\('pointerdown', handlePointerDown, true\)/, 'compact route popout should listen for outside pointer down in capture phase');
+  assert.match(compactSource, /document\.addEventListener\('keydown', handleKeyDown, true\)/, 'compact route popout should support Escape dismissal');
+  assert.match(compactSource, /menuRef\.current\?\.contains\(target\)/, 'clicking inside the portaled menu should not close it');
+  assert.match(compactSource, /triggerRef\.current\?\.contains\(target\)/, 'clicking the trigger should not be treated as an outside click');
+  assert.match(compactSource, /setIsOpen\(false\)/, 'outside interactions should close the compact route popout');
+});
+
 test('ChatsPage places compact model route control before attachment and keeps explicit agent controls', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   assert.match(source, /<CompactComposerModelMenu[\s\S]*<Button[\s\S]*title="Add attachment"/);

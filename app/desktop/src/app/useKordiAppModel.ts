@@ -1146,11 +1146,13 @@ export function useKordiAppModel({
     defaultAuthChoice?: string | null,
     fallbackAuthProvider?: string | null,
     fallbackAuthChoice?: string | null,
+    targetSessionIdOverride?: string | null,
   ) => {
     if (isCloudBridgeHostId(hostId)) {
+      const routeTargetSessionId = targetSessionIdOverride?.trim() || activeConv.canonicalSessionId || activeConv.id || activeConvId;
       const runtimeSessionId = cloudAgentRuntimeSessionId(
         cloudSession.account?.accountId,
-        activeConv.canonicalSessionId ?? activeConv.id ?? activeConvId,
+        routeTargetSessionId,
       );
       if (!runtimeSessionId) {
         setDesktopChatError('Account is still loading. Try again in a moment.');

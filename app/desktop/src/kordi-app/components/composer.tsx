@@ -377,6 +377,7 @@ export function CompactComposerModelMenu({
   ) ?? providerOptions.find((option) => normalizeComposerProviderId(option.providerId) === selectedProviderValue) ?? null;
 
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const [menuThemeClass, setMenuThemeClass] = useState('');
@@ -471,9 +472,35 @@ export function CompactComposerModelMenu({
     setIsOpen(false);
   };
 
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return undefined;
+    const closeWithoutSaving = () => {
+      setStagedProviderValue(selectedProviderOption?.value ?? '');
+      setStagedModel(selection.model);
+      setStagedThinking(selection.thinking);
+      setIsOpen(false);
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      closeWithoutSaving();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      closeWithoutSaving();
+    };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [isOpen, selectedProviderOption?.value, selection.model, selection.thinking]);
 
   const renderMenu = () => (
     <div
+      ref={menuRef}
       className={cn('app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] text-[12px] leading-[1.38]', menuThemeClass)}
       style={menuStyle}
     >
@@ -615,6 +642,7 @@ export function ComposerModelControls({
   onSelectProviderChoice,
   providerOptions = [],
   modelOptions = composerModelOptions.map((option) => ({ value: option, label: option })),
+  compact = false,
 }: {
   scope: ComposerScope;
   selection: { mode: string; model: string; thinking: string; authProvider?: string | null; authChoice?: string | null };
@@ -627,8 +655,13 @@ export function ComposerModelControls({
   onSelectProviderChoice: (scope: ComposerScope, option: ComposerProviderOption) => void;
   providerOptions?: ComposerProviderOption[];
   modelOptions?: ComposerModelOption[];
+  compact?: boolean;
 }) {
   const activeSelector = openSelector?.scope === scope ? openSelector.type : null;
+  const selectorTriggerRefs = useRef<Partial<Record<ComposerSelectorType, HTMLButtonElement | null>>>({});
+  const selectorMenuRef = useRef<HTMLDivElement | null>(null);
+  const [selectorMenuStyle, setSelectorMenuStyle] = useState<CSSProperties>({});
+  const [selectorMenuThemeClass, setSelectorMenuThemeClass] = useState('');
   const selectedModelOption = modelOptions.find((option) => option.value === selection.model);
   const parsedSelection = selection.model.split('/');
   const fallbackProviderValue = normalizeComposerProviderId(parsedSelection[0] ?? '');
@@ -671,134 +704,213 @@ export function ComposerModelControls({
   const selectedThinkingValue = fallbackComposerThinkingValue(selectedThinkingLevels, selection.thinking);
   const selectedThinkingLabel = composerThinkingLabel(selectedThinkingValue);
 
+  const updateSelectorMenuPosition = useCallback((selectorType: ComposerSelectorType | null = activeSelector) => {
+    if (typeof window === 'undefined' || !selectorType || selectorType === 'mode') return;
+    const trigger = selectorTriggerRefs.current[selectorType]
+      ?? selectorTriggerRefs.current.model
+      ?? selectorTriggerRefs.current.provider
+      ?? selectorTriggerRefs.current.thinking;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewportPadding = 16;
+    const menuWidth = Math.min(340, Math.max(240, window.innerWidth - (viewportPadding * 2)));
+    const left = Math.min(
+      Math.max(viewportPadding, rect.right - menuWidth),
+      Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+    );
+    const availableAbove = Math.max(160, rect.top - viewportPadding);
+    const appShell = trigger.closest('.bridge-app');
+    setSelectorMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-compact-model-menu-light' : '');
+    setSelectorMenuStyle({
+      left: `${left}px`,
+      top: `${Math.max(viewportPadding, rect.top)}px`,
+      width: `${menuWidth}px`,
+      maxHeight: `min(28rem, ${availableAbove}px)`,
+      transform: 'translateY(calc(-100% - 0.5rem))',
+    });
+  }, [activeSelector]);
+
+  useEffect(() => {
+    if (!activeSelector || activeSelector === 'mode') return undefined;
+    updateSelectorMenuPosition(activeSelector);
+    const handleUpdate = () => updateSelectorMenuPosition(activeSelector);
+    window.addEventListener('resize', handleUpdate);
+    window.addEventListener('scroll', handleUpdate, true);
+    return () => {
+      window.removeEventListener('resize', handleUpdate);
+      window.removeEventListener('scroll', handleUpdate, true);
+    };
+  }, [activeSelector, updateSelectorMenuPosition]);
+
+  useEffect(() => {
+    if (!activeSelector || activeSelector === 'mode' || typeof document === 'undefined') return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const clickedTrigger = Object.values(selectorTriggerRefs.current).some((trigger) => trigger?.contains(target));
+      if (selectorMenuRef.current?.contains(target) || clickedTrigger) return;
+      onToggleSelector(scope, activeSelector);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      onToggleSelector(scope, activeSelector);
+    };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [activeSelector, onToggleSelector, scope]);
+
+  const renderSelectorMenu = () => (
+    <div ref={selectorMenuRef} className={cn('app-composer-model-menu-layer fixed z-[2147483000] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-4 py-3 text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl', selectorMenuThemeClass)} style={selectorMenuStyle}>
+      <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">
+        {activeSelector === 'provider'
+          ? 'Provider'
+          : activeSelector === 'model'
+            ? 'Model'
+            : activeSelector === 'thinking'
+              ? 'Thinking level'
+              : 'Auth profile / API'}
+      </div>
+      <div className="space-y-1">
+        {activeSelector === 'auth' ? (
+          authOptions.length > 0 ? (
+            authOptions.map((option, index) => {
+              const showProviderHeader = index === 0 || authOptions[index - 1]?.providerId !== option.providerId;
+
+              return (
+                <Fragment key={`${option.providerId}-${option.value}`}>
+                  {showProviderHeader ? (
+                    <div className="pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--utility-muted-text)] first:pt-0">
+                      {option.providerLabel}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onSelectAuthChoice(scope, option.providerId, option.value)}
+                    className={cn(
+                      'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                      option.active ? 'app-composer-popover-item-active' : '',
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate">{option.label}</div>
+                      <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">
+                        {[option.methodLabel, option.detail].filter(Boolean).join(' • ')}
+                      </div>
+                    </div>
+                    <span className={cn('shrink-0 text-[11px] font-medium', option.active ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
+                      Current
+                    </span>
+                  </button>
+                </Fragment>
+              );
+            })
+          ) : (
+            <div className="rounded-[18px] py-2 text-[12px] text-[color:var(--utility-muted-text)]">
+              No saved auth options yet.
+            </div>
+          )
+        ) : activeSelector === 'provider' ? (
+          providerOptions.map((option) => {
+            const isSelected = selectedProviderOption?.value === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onSelectProviderChoice(scope, option)}
+                className={cn(
+                  'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                  isSelected ? 'app-composer-popover-item-active' : '',
+                )}
+              >
+                <div className="min-w-0">
+                  <div className="truncate">{option.label}</div>
+                  {option.detail ? <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">{option.detail}</div> : null}
+                </div>
+                <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
+                  Selected
+                </span>
+              </button>
+            );
+          })
+        ) : (
+          activeOptions.map((option) => {
+            const isSelected = selection.model === option.value || selectedThinkingValue === option.value;
+            return (
+              <Fragment key={option.value}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeSelector === 'model' || activeSelector === 'thinking') {
+                      onSelectValue(scope, activeSelector, option.value);
+                    }
+                  }}
+                  className={cn(
+                    'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    isSelected ? 'app-composer-popover-item-active' : '',
+                  )}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate">{option.label}</div>
+                    {option.detail ? <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">{option.detail}</div> : null}
+                  </div>
+                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
+                    Selected
+                  </span>
+                </button>
+              </Fragment>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="relative flex shrink-0 items-center gap-1.5">
+    <div className={cn('relative flex items-center gap-1.5', compact ? 'min-w-0 max-w-full flex-nowrap justify-end' : 'shrink-0')}>
       <button
+        ref={(node) => { selectorTriggerRefs.current.provider = node; }}
         type="button"
-        onClick={() => onToggleSelector(scope, 'provider')}
-        className="inline-flex w-[8.75rem] min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+        onClick={() => {
+          updateSelectorMenuPosition('provider');
+          onToggleSelector(scope, 'provider');
+        }}
+        className={cn('inline-flex min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white', compact ? 'w-[5.75rem]' : 'w-[8.75rem]')}
       >
         <span className="truncate text-left">{selectedProviderLabel || 'Provider'}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'provider' ? 'rotate-180 text-slate-300' : '')} />
       </button>
       <button
+        ref={(node) => { selectorTriggerRefs.current.model = node; }}
         type="button"
-        onClick={() => onToggleSelector(scope, 'model')}
-        className="inline-flex w-[8.5rem] min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+        onClick={() => {
+          updateSelectorMenuPosition('model');
+          onToggleSelector(scope, 'model');
+        }}
+        className={cn('inline-flex min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white', compact ? 'w-[5.75rem]' : 'w-[8.5rem]')}
       >
         <span className="truncate text-left">{selectedModel}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} />
       </button>
       <button
+        ref={(node) => { selectorTriggerRefs.current.thinking = node; }}
         type="button"
-        onClick={() => onToggleSelector(scope, 'thinking')}
-        className="inline-flex w-[6.5rem] min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+        onClick={() => {
+          updateSelectorMenuPosition('thinking');
+          onToggleSelector(scope, 'thinking');
+        }}
+        className={cn('inline-flex min-w-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white', compact ? 'w-[4.75rem]' : 'w-[6.5rem]')}
       >
         <span className="truncate text-left">{selectedThinkingLabel}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} />
       </button>
-      {activeSelector && activeSelector !== 'mode' && (
-        <div className="absolute bottom-full right-0 z-30 mb-2 max-h-[min(28rem,60vh)] w-[340px] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-4 py-3 text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl">
-          <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">
-            {activeSelector === 'provider'
-              ? 'Provider'
-              : activeSelector === 'model'
-                ? 'Model'
-                : activeSelector === 'thinking'
-                  ? 'Thinking level'
-                  : 'Auth profile / API'}
-          </div>
-          <div className="space-y-1">
-            {activeSelector === 'auth' ? (
-              authOptions.length > 0 ? (
-                authOptions.map((option, index) => {
-                  const showProviderHeader = index === 0 || authOptions[index - 1]?.providerId !== option.providerId;
-
-                  return (
-                    <Fragment key={`${option.providerId}-${option.value}`}>
-                      {showProviderHeader ? (
-                        <div className="pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--utility-muted-text)] first:pt-0">
-                          {option.providerLabel}
-                        </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => onSelectAuthChoice(scope, option.providerId, option.value)}
-                        className={cn(
-                          'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                          option.active ? 'app-composer-popover-item-active' : '',
-                        )}
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate">{option.label}</div>
-                          <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">
-                            {[option.methodLabel, option.detail].filter(Boolean).join(' • ')}
-                          </div>
-                        </div>
-                        <span className={cn('shrink-0 text-[11px] font-medium', option.active ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
-                          Current
-                        </span>
-                      </button>
-                    </Fragment>
-                  );
-                })
-              ) : (
-                <div className="rounded-[18px] py-2 text-[12px] text-[color:var(--utility-muted-text)]">
-                  No saved auth options yet.
-                </div>
-              )
-            ) : activeSelector === 'provider' ? (
-              providerOptions.map((option) => {
-                const isSelected = selectedProviderOption?.value === option.value;
-
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => onSelectProviderChoice(scope, option)}
-                    className={cn(
-                      'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                      isSelected ? 'app-composer-popover-item-active' : '',
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate">{option.label}</div>
-                      {option.detail ? <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">{option.detail}</div> : null}
-                    </div>
-                    <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
-                      Selected
-                    </span>
-                  </button>
-                );
-              })
-            ) : (
-              activeOptions.map((option, index) => {
-                const isSelected = selection.model === option.value || selectedThinkingValue === option.value;
-                return (
-                  <Fragment key={option.value}>
-                    <button
-                      type="button"
-                      onClick={() => onSelectValue(scope, activeSelector, option.value)}
-                      className={cn(
-                        'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
-                        isSelected ? 'app-composer-popover-item-active' : '',
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate">{option.label}</div>
-                        {option.detail ? <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">{option.detail}</div> : null}
-                      </div>
-                      <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-[color:var(--utility-foreground)]' : 'text-transparent')}>
-                        Selected
-                      </span>
-                    </button>
-                  </Fragment>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
+      {activeSelector && activeSelector !== 'mode'
+        ? (typeof document !== 'undefined' ? createPortal(renderSelectorMenu(), document.body) : renderSelectorMenu())
+        : null}
     </div>
   );
 }
@@ -927,9 +1039,30 @@ export function ComposerModeControl({
 }) {
   const activeSelector = openSelector?.scope === scope ? openSelector.type : null;
   const activeOptions = composerModeOptions[scope];
+  const modeMenuRootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (activeSelector !== 'mode' || typeof document === 'undefined') return undefined;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (modeMenuRootRef.current?.contains(target)) return;
+      onToggleSelector(scope, 'mode');
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      onToggleSelector(scope, 'mode');
+    };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [activeSelector, onToggleSelector, scope]);
 
   return (
-    <div className="relative">
+    <div ref={modeMenuRootRef} className="relative">
       <button
         type="button"
         onClick={() => onToggleSelector(scope, 'mode')}
