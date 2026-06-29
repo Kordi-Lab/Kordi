@@ -879,76 +879,95 @@
   bottom: 0;
   left: 0;
   z-index: 1;
-  height: 1.9rem;
+  height: 1.05rem;
   content: '';
   pointer-events: none;
   background: linear-gradient(
     180deg,
     transparent 0%,
-    color-mix(in oklab, var(--app-source-message-quote-fade-bg) 34%, transparent) 48%,
-    color-mix(in oklab, var(--app-source-message-quote-fade-bg) 68%, transparent) 100%
+    color-mix(in oklab, var(--app-source-message-quote-fade-bg) 62%, transparent) 100%
   );
-  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
-  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.28) 34%, black 100%);
-  mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.28) 34%, black 100%);
 }
 
 .app-source-message-quote-icon {
   color: color-mix(in oklab, var(--app-source-message-quote-accent) 76%, var(--app-source-message-quote-muted));
 }
 
-.app-source-message-quote-link:hover .app-source-message-quote-text,
-.app-source-message-quote-toggle:hover {
+.app-source-message-quote-link:hover .app-source-message-quote-text {
   color: color-mix(in oklab, var(--app-source-message-quote-foreground) 90%, var(--app-source-message-quote-muted));
 }
 
-.app-live-assistant-answer-toggle:hover {
-  color: color-mix(in oklab, var(--utility-foreground) 84%, var(--utility-muted-text));
+.app-fold-reveal-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  min-width: 0;
+}
+
+.app-fold-reveal-line {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 1rem;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--utility-foreground) 10%, transparent), transparent);
 }
 
 .app-inline-expand-toggle {
+  display: inline-flex;
+  min-height: 30px;
+  width: fit-content;
+  align-items: center;
+  gap: 0.32rem;
   border: 0;
+  border-radius: 9px;
   background: transparent;
-  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+  padding: 0 0.48rem;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  transition:
+    background-color var(--app-motion-fast) var(--app-motion-ease),
+    color var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-inline-expand-toggle:hover,
+.app-inline-expand-toggle:focus-visible {
+  background: color-mix(in oklab, var(--utility-foreground) 6%, transparent);
+  outline: none;
+}
+
+.app-inline-expand-toggle-icon {
+  width: 0.78rem;
+  height: 0.78rem;
+  flex: 0 0 auto;
 }
 
 .app-source-message-quote-toggle {
-  color: color-mix(in oklab, var(--app-source-message-quote-foreground) 84%, var(--app-source-message-quote-muted));
+  color: color-mix(in oklab, var(--app-source-message-quote-foreground) 88%, var(--app-source-message-quote-muted));
+}
+
+.app-source-message-quote-toggle:hover,
+.app-source-message-quote-toggle:focus-visible {
+  color: color-mix(in oklab, var(--app-source-message-quote-foreground) 96%, var(--app-source-message-quote-muted));
+}
+
+.app-source-message-quote-reveal-row {
+  padding-left: calc(3px + 0.625rem);
+}
+
+.app-source-message-quote-reveal-row .app-fold-reveal-line {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--app-source-message-quote-foreground) 12%, transparent), transparent);
 }
 
 .app-live-assistant-answer-toggle {
-  color: color-mix(in oklab, var(--utility-foreground) 78%, var(--utility-muted-text));
+  color: color-mix(in oklab, var(--utility-foreground) 86%, var(--utility-muted-text));
 }
 
-.app-source-message-quote-toggle-overlay {
-  position: absolute;
-  bottom: 0.1rem;
-  left: 50%;
-  z-index: 2;
-  border: 0;
-  background: transparent;
-  transform: translateX(-50%);
-  text-shadow:
-    0 1px 2px rgba(2, 6, 23, 0.52),
-    0 0 14px color-mix(in oklab, var(--app-source-message-quote-fade-bg) 82%, transparent);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
-.app-live-assistant-answer-toggle-overlay {
-  position: absolute;
-  bottom: 0.18rem;
-  left: 50%;
-  z-index: 1;
-  border: 0;
-  background: transparent;
-  transform: translateX(-50%);
-  text-shadow:
-    0 1px 2px rgba(2, 6, 23, 0.72),
-    0 0 16px color-mix(in oklab, var(--app-live-assistant-answer-bg) 80%, transparent);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+.app-live-assistant-answer-toggle:hover,
+.app-live-assistant-answer-toggle:focus-visible {
+  color: color-mix(in oklab, var(--utility-foreground) 96%, var(--utility-muted-text));
 }
 
 .app-transcript-message-highlight,
@@ -1058,7 +1077,7 @@
 
 .app-live-assistant-answer-folded {
   position: relative;
-  max-height: calc(1.58em * 6 + 1.5rem);
+  max-height: calc(1.58em * 6 + 0.55rem);
   overflow: hidden;
 }
 
@@ -1068,19 +1087,14 @@
   bottom: 0;
   left: 0;
   z-index: 1;
-  height: 2.65rem;
+  height: 1.05rem;
   content: '';
   pointer-events: none;
   background: linear-gradient(
     180deg,
     transparent 0%,
-    color-mix(in oklab, var(--app-live-assistant-answer-bg) 32%, transparent) 42%,
-    color-mix(in oklab, var(--app-live-assistant-answer-bg) 70%, transparent) 100%
+    color-mix(in oklab, var(--app-live-assistant-answer-bg) 64%, transparent) 100%
   );
-  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
-  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.24) 30%, black 100%);
-  mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.24) 30%, black 100%);
 }
 
 .app-transcript-message-highlight .app-live-assistant-answer-surface {
