@@ -58,6 +58,28 @@
   animation: app-compact-model-menu-enter 150ms var(--app-motion-ease) both;
 }
 
+.app-composer-model-menu-layer {
+  --utility-foreground: rgba(255, 255, 255, 0.9);
+  --utility-muted-text: rgba(255, 255, 255, 0.6);
+  --app-divider: rgba(255, 255, 255, 0.08);
+  --app-control-bg: rgba(255, 255, 255, 0.04);
+  --app-modal-bg: rgba(17, 19, 24, 0.92);
+  --app-shadow-float: 0 24px 72px rgba(0, 0, 0, 0.36);
+  --app-glass-blur-float: 8px;
+  --app-glass-saturate-float: 1.04;
+  color-scheme: dark;
+}
+
+.app-composer-model-menu-layer.app-compact-model-menu-light {
+  --utility-foreground: rgb(15 23 42);
+  --utility-muted-text: rgb(71 85 105);
+  --app-divider: rgba(15, 23, 42, 0.1);
+  --app-control-bg: rgb(241 245 249);
+  --app-modal-bg: rgba(255, 255, 255, 0.96);
+  --app-shadow-float: 0 24px 60px rgba(15, 23, 42, 0.16);
+  color-scheme: light;
+}
+
 .bridge-app.theme-light .app-compact-model-menu,
 .app-compact-model-menu-light {
   --app-compact-model-menu-bg: rgba(255, 255, 255, 0.96);

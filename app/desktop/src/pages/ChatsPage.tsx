@@ -912,11 +912,11 @@ type ChatsPageProps = {
   composerSelection: { mode: string; model: string; thinking: string };
   openComposerSelector: { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
-  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => void;
+  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, targetSessionIdOverride?: string | null) => void;
   composerAuthLabel: string;
   composerAuthOptions: ComposerAuthOption[];
-  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string) => void;
-  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption) => void;
+  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, targetSessionIdOverride?: string | null) => void;
+  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, targetSessionIdOverride?: string | null) => void;
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
@@ -1042,13 +1042,25 @@ export function ChatsPage({
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
   const [selectedBridgeAgentId, setSelectedBridgeAgentId] = useState<string | null>(null);
+  const [selectedCompanionBridgeAgentId, setSelectedCompanionBridgeAgentId] = useState<string | null>(null);
   const [bridgeRoutingNotice, setBridgeRoutingNotice] = useState<string | null>(null);
+  const [companionBridgeRoutingNotice, setCompanionBridgeRoutingNotice] = useState<string | null>(null);
+  const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
+    defaultModel?: string | null;
+    defaultAuthProvider?: string | null;
+    defaultAuthChoice?: string | null;
+    fallbackModel?: string | null;
+    fallbackAuthProvider?: string | null;
+    fallbackAuthChoice?: string | null;
+    thinking?: string | null;
+  }>>({});
   const [humanPaneSide, setHumanPaneSide] = useState<CompanionSide>('left');
   const [selectedCompanionConversationId, setSelectedCompanionConversationId] = useState<string | null>(null);
   const [openSideAgentConversationId, setOpenSideAgentConversationId] = useState<string | null>(null);
   const [sideAgentReferenceContext, setSideAgentReferenceContext] = useState<string | null>(null);
   const [isSideAgentActionsOpen, setIsSideAgentActionsOpen] = useState(false);
   const [isSideAgentSessionListOpen, setIsSideAgentSessionListOpen] = useState(false);
+  const [companionOpenComposerSelector, setCompanionOpenComposerSelector] = useState<{ scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null>(null);
   const [companionDrafts, setCompanionDrafts] = useState<Record<string, string>>({});
   const [companionDropPreviewSide, setCompanionDropPreviewSide] = useState<CompanionSide | null>(null);
   const [isDraggingCompanion, setIsDraggingCompanion] = useState(false);
@@ -1136,7 +1148,11 @@ export function ChatsPage({
   const companionPaneKind = companionConversation ? conversationPaneKind(companionConversation) : null;
   const companionSide = chatCompanionSideForPaneKinds(activePaneKind, humanPaneSide);
   const companionConversationHasBridgeTransport = companionConversation?.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local') ?? false;
-  const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationHasBridgeTransport;
+  const companionConversationIsBridgeAgent = Boolean(companionPaneKind === 'agent' && companionConversationHasBridgeTransport);
+  const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationIsBridgeAgent;
+  const toggleCompanionComposerSelector = (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => {
+    setCompanionOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
+  };
   const companionSuppressAgentReplyAttribution = companionConversation
     ? shouldSuppressAgentReplyAttribution(companionConversation)
     : false;
@@ -1147,6 +1163,36 @@ export function ChatsPage({
   const companionLiveTurnSender = companionConversation ? localOwnedAgentSenderLabel(companionConversation) : 'Kordi';
   const companionRuntimeContextStatus = companionConversation?.contextWindowStatus ?? null;
   const companionRuntimeCacheText = companionConversation?.cacheMonitorText ?? null;
+  const companionBridgeModelHost = useMemo(() => {
+    if (!companionConversationIsBridgeAgent) return null;
+    const companionHostId = companionConversation?.bridgeTarget?.hostId?.trim() || null;
+    if (companionHostId && activeBridgeModelHost?.id === companionHostId) return activeBridgeModelHost;
+    if (!companionHostId && activeBridgeModelHost) return activeBridgeModelHost;
+    return activeBridgeModelHost;
+  }, [activeBridgeModelHost, companionConversation?.bridgeTarget?.hostId, companionConversationIsBridgeAgent]);
+  const companionBridgeRoutingAgents = useMemo(
+    () => localOwnedBridgeAgentsForModelRouting(companionBridgeModelHost ? [companionBridgeModelHost] : [], desktopChatState),
+    [companionBridgeModelHost, desktopChatState],
+  );
+  const selectedCompanionBridgeRoutingAgentBase = companionBridgeRoutingAgents.find((agent) => agent.id === selectedCompanionBridgeAgentId)
+    ?? companionBridgeRoutingAgents.find((agent) => agent.isActive)
+    ?? companionBridgeRoutingAgents.find((agent) => agent.isDefault)
+    ?? companionBridgeRoutingAgents[0]
+    ?? null;
+  const selectedCompanionBridgeRoutingKey = selectedCompanionBridgeRoutingAgentBase && companionConversation
+    ? isCloudBridgeHostId(selectedCompanionBridgeRoutingAgentBase.hostId)
+      ? `${selectedCompanionBridgeRoutingAgentBase.hostId}:${companionConversation.canonicalSessionId ?? companionConversation.id}:${selectedCompanionBridgeRoutingAgentBase.id}`
+      : `${selectedCompanionBridgeRoutingAgentBase.hostId}:${selectedCompanionBridgeRoutingAgentBase.id}`
+    : null;
+  const selectedCompanionBridgeRoutingAgent = selectedCompanionBridgeRoutingAgentBase
+    ? {
+      ...selectedCompanionBridgeRoutingAgentBase,
+      ...(selectedCompanionBridgeRoutingKey ? optimisticBridgeAgentRouting[selectedCompanionBridgeRoutingKey] : null),
+    }
+    : null;
+  const companionBridgeRoutingSelection = routingSelectionForBridgeAgent(selectedCompanionBridgeRoutingAgent);
+  const companionBridgeRoutingControlVisibility = bridgeChatRoutingControlVisibility(companionBridgeRoutingAgents.length);
+  const companionBridgeAgentSelectorOpen = companionOpenComposerSelector?.scope === 'chat' && companionOpenComposerSelector.type === 'mode';
 
   useEffect(() => {
     setOpenSideAgentConversationId(null);
@@ -1219,15 +1265,6 @@ export function ChatsPage({
     }
     return result;
   }, [activeConv.id, activeConversationIsGroupSession, desktopChatState?.sessions]);
-  const [optimisticBridgeAgentRouting, setOptimisticBridgeAgentRouting] = useState<Record<string, {
-    defaultModel?: string | null;
-    defaultAuthProvider?: string | null;
-    defaultAuthChoice?: string | null;
-    fallbackModel?: string | null;
-    fallbackAuthProvider?: string | null;
-    fallbackAuthChoice?: string | null;
-    thinking?: string | null;
-  }>>({});
   const bridgeRoutingAgents = useMemo(
     () => localOwnedBridgeAgentsForModelRouting(activeBridgeModelHost ? [activeBridgeModelHost] : [], desktopChatState),
     [activeBridgeModelHost, desktopChatState],
@@ -1382,6 +1419,7 @@ export function ChatsPage({
   }, [companionTranscriptMessages]);
   const attributedCompanionTranscriptLiveTurn = companionTranscript.liveTurn ?? companionTranscriptLiveTurn;
   const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
+  const companionLiveTurnIsRunning = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const updateCompanionDropPreview = (event: DragEvent<HTMLElement>) => {
     if (!companionConversation || isCompanionFolded) return null;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1437,6 +1475,99 @@ export function ChatsPage({
       const next = { ...current };
       delete next[conversation.id];
       return next;
+    });
+  };
+  const closeCompanionBridgeRoutingSelector = (type: 'provider' | 'model' | 'thinking') => {
+    if (companionOpenComposerSelector?.scope === 'chat' && companionOpenComposerSelector.type === type) {
+      setCompanionOpenComposerSelector(null);
+    }
+  };
+  const companionDefaultThinkingForBridgeModel = (modelValue: string | null | undefined, currentThinking: string | null | undefined) => {
+    const thinkingLevels = chatModelOptions?.find((option) => option.value === modelValue)?.thinkingLevels ?? [];
+    return fallbackComposerThinkingValue(thinkingLevels, currentThinking ?? 'default');
+  };
+  const updateCompanionBridgeAgentRouting = ({
+    defaultModel,
+    defaultAuthProvider,
+    defaultAuthChoice,
+    fallbackModel,
+    fallbackAuthProvider,
+    fallbackAuthChoice,
+    thinking,
+    selectorType,
+  }: {
+    defaultModel?: string | null;
+    defaultAuthProvider?: string | null;
+    defaultAuthChoice?: string | null;
+    fallbackModel?: string | null;
+    fallbackAuthProvider?: string | null;
+    fallbackAuthChoice?: string | null;
+    thinking?: string | null;
+    selectorType?: 'provider' | 'model' | 'thinking';
+  }) => {
+    if (selectorType) closeCompanionBridgeRoutingSelector(selectorType);
+    if (!selectedCompanionBridgeRoutingAgent || !selectedCompanionBridgeRoutingKey) return;
+    if (isDesktopChatSending || companionLiveTurnIsRunning) {
+      setCompanionBridgeRoutingNotice("Stop the running task before changing this session's model or thinking level.");
+      return;
+    }
+
+    const currentModel = selectedCompanionBridgeRoutingAgent.defaultModel ?? null;
+    const currentDefaultAuthProvider = selectedCompanionBridgeRoutingAgent.defaultAuthProvider ?? null;
+    const currentDefaultAuthChoice = selectedCompanionBridgeRoutingAgent.defaultAuthChoice ?? null;
+    const currentFallback = selectedCompanionBridgeRoutingAgent.fallbackModel ?? null;
+    const currentFallbackAuthProvider = selectedCompanionBridgeRoutingAgent.fallbackAuthProvider ?? null;
+    const currentFallbackAuthChoice = selectedCompanionBridgeRoutingAgent.fallbackAuthChoice ?? null;
+    const currentThinking = selectedCompanionBridgeRoutingAgent.thinking ?? null;
+    const nextModel = defaultModel !== undefined ? defaultModel : currentModel;
+    const nextDefaultAuthProvider = defaultAuthProvider !== undefined ? defaultAuthProvider : currentDefaultAuthProvider;
+    const nextDefaultAuthChoice = defaultAuthChoice !== undefined ? defaultAuthChoice : currentDefaultAuthChoice;
+    const nextFallback = fallbackModel !== undefined ? fallbackModel : currentFallback;
+    const nextFallbackAuthProvider = fallbackAuthProvider !== undefined ? fallbackAuthProvider : currentFallbackAuthProvider;
+    const nextFallbackAuthChoice = fallbackAuthChoice !== undefined ? fallbackAuthChoice : currentFallbackAuthChoice;
+    const nextThinking = thinking !== undefined ? thinking : currentThinking;
+    const defaultAuthChanged = (defaultAuthProvider !== undefined && nextDefaultAuthProvider !== currentDefaultAuthProvider)
+      || (defaultAuthChoice !== undefined && nextDefaultAuthChoice !== currentDefaultAuthChoice);
+    const fallbackAuthChanged = (fallbackAuthProvider !== undefined && nextFallbackAuthProvider !== currentFallbackAuthProvider)
+      || (fallbackAuthChoice !== undefined && nextFallbackAuthChoice !== currentFallbackAuthChoice);
+    const noticeText = bridgeAgentRoutingChangeNotice({
+      agentLabel: selectedCompanionBridgeRoutingAgent.label,
+      currentModel,
+      nextModel: defaultModel,
+      currentThinking,
+      nextThinking: thinking,
+      modelLabel: bridgeRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions),
+      thinkingLabel: bridgeThinkingDisplayName(nextThinking),
+    }) ?? ((defaultAuthChanged || fallbackAuthChanged)
+      ? `${selectedCompanionBridgeRoutingAgent.label} model route changed to ${bridgeRouteDisplayName(nextModel, nextDefaultAuthProvider, nextDefaultAuthChoice, chatModelOptions, composerProviderOptions)}. Only you can see this.`
+      : null);
+    if (!noticeText) return;
+
+    setOptimisticBridgeAgentRouting((current) => ({
+      ...current,
+      [selectedCompanionBridgeRoutingKey]: {
+        defaultModel: nextModel,
+        defaultAuthProvider: nextDefaultAuthProvider,
+        defaultAuthChoice: nextDefaultAuthChoice,
+        fallbackModel: nextFallback,
+        fallbackAuthProvider: nextFallbackAuthProvider,
+        fallbackAuthChoice: nextFallbackAuthChoice,
+        thinking: nextThinking,
+      },
+    }));
+    setCompanionBridgeRoutingNotice(noticeText);
+    void onUpdateBridgeAgentModelRouting(
+      selectedCompanionBridgeRoutingAgent.hostId,
+      selectedCompanionBridgeRoutingAgent.id,
+      nextModel,
+      nextFallback,
+      nextThinking,
+      nextDefaultAuthProvider,
+      nextDefaultAuthChoice,
+      nextFallbackAuthProvider,
+      nextFallbackAuthChoice,
+    ).catch((error) => {
+      setCompanionBridgeRoutingNotice(error instanceof Error ? error.message : 'Unable to update bridge agent model routing');
     });
   };
   const createSideAgentSession = async (initialPrompt = '') => {
@@ -1575,6 +1706,7 @@ export function ChatsPage({
                         setOpenSideAgentConversationId(conversation.id);
                         setIsSideAgentActionsOpen(false);
                         setIsSideAgentSessionListOpen(false);
+                        setCompanionOpenComposerSelector(null);
                       }}
                     >
                       <span className="truncate">{conversation.name}</span>
@@ -1622,6 +1754,7 @@ export function ChatsPage({
               setSideAgentReferenceContext(null);
               setIsSideAgentActionsOpen(false);
               setIsSideAgentSessionListOpen(false);
+              setCompanionOpenComposerSelector(null);
             }}
             className="grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 text-[color:var(--utility-muted-text)] opacity-70 transition hover:bg-[color:var(--app-control-hover)] hover:text-[color:var(--utility-foreground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
             title="Close side chat"
@@ -1637,7 +1770,7 @@ export function ChatsPage({
         liveTurnSender={companionLiveTurnSender}
         shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
         scrollRef={companionTranscriptScrollRef}
-        scrollClassName="h-full min-h-0 overflow-x-hidden overscroll-contain px-3 py-5"
+        scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"
         densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
         emptyState={(
@@ -1751,7 +1884,25 @@ export function ChatsPage({
                   />
                 </div>
               </div>
-              <div data-companion-send-row="true" className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
+              <AnimatePresence initial={false}>
+                {companionConversationIsBridgeAgent && companionBridgeRoutingNotice ? (
+                  <motion.div
+                    key={companionBridgeRoutingNotice}
+                    className="mb-2 flex justify-center"
+                    role="status"
+                    aria-live="polite"
+                    initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
+                    transition={{ duration: prefersReducedMotion ? 0.01 : BRIDGE_ROUTING_NOTICE_EXIT_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <div className="max-w-[min(100%,38rem)] truncate rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-center text-[11px] text-slate-300">
+                      Private · {companionBridgeRoutingNotice}
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+              <div data-companion-send-row="true" className="app-composer-meta mt-2 flex flex-nowrap items-center justify-between gap-3 pt-2.5">
                 <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
                   <Button
                     size="icon"
@@ -1765,36 +1916,129 @@ export function ChatsPage({
                     <Paperclip className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden">
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-visible">
                   {companionShowsLocalAgentControls ? (
-                    <div className="flex min-w-0 items-center justify-end gap-2 overflow-hidden" data-companion-model-controls="true">
+                    <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true">
                       {isNativeShell || companionRuntimeContextStatus ? (
                         <ComposerRuntimeStatus
                           contextStatus={companionRuntimeContextStatus}
                           cacheText={companionRuntimeCacheText}
                         />
                       ) : null}
-                      <div className="min-w-0 max-w-full overflow-hidden">
+                      <div className="min-w-0 max-w-full overflow-visible">
                         <ComposerModelControls
                           scope="chat"
                           selection={composerSelection}
-                          openSelector={openComposerSelector}
-                          onToggleSelector={toggleComposerSelector}
+                          openSelector={companionOpenComposerSelector}
+                          onToggleSelector={toggleCompanionComposerSelector}
                           onSelectValue={(scope, type, value) => {
-                            void selectComposerValue(scope, type, value);
+                            setCompanionOpenComposerSelector(null);
+                            void selectComposerValue(scope, type, value, companionConversation.id);
                           }}
                           authLabel={composerAuthLabel}
                           authOptions={composerAuthOptions}
                           onSelectAuthChoice={(scope, providerId, choice) => {
-                            void selectComposerAuthChoice(scope, providerId, choice);
+                            setCompanionOpenComposerSelector(null);
+                            void selectComposerAuthChoice(scope, providerId, choice, companionConversation.id);
                           }}
                           onSelectProviderChoice={(scope, option) => {
-                            void selectComposerProviderChoice(scope, option);
+                            setCompanionOpenComposerSelector(null);
+                            void selectComposerProviderChoice(scope, option, companionConversation.id);
                           }}
                           providerOptions={composerProviderOptions}
                           modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                          compact={true}
                         />
                       </div>
+                    </div>
+                  ) : companionConversationIsBridgeAgent && selectedCompanionBridgeRoutingAgent ? (
+                    <div className="relative flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true" data-companion-bridge-model-controls="true">
+                      {companionBridgeRoutingControlVisibility.showAgentSelector ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleCompanionComposerSelector('chat', 'mode')}
+                          className="inline-flex max-w-[10rem] items-center gap-1.5 rounded-full px-1 py-0.5 text-[12px] font-medium text-slate-300 transition hover:text-white"
+                          title="Choose which owned agent these session settings apply to"
+                        >
+                          <span className="truncate">{selectedCompanionBridgeRoutingAgent.label}</span>
+                          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', companionBridgeAgentSelectorOpen ? 'rotate-180 text-slate-300' : '')} />
+                        </button>
+                      ) : null}
+                      {companionBridgeAgentSelectorOpen ? (
+                        <div className="absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-3 py-3 text-[12px] shadow-[var(--app-shadow-float)] backdrop-blur-xl">
+                          <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
+                          <div className="space-y-1">
+                            {companionBridgeRoutingAgents.map((agent) => (
+                              <button
+                                key={`${agent.hostId}:${agent.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCompanionBridgeAgentId(agent.id);
+                                  setCompanionOpenComposerSelector(null);
+                                }}
+                                className={cn(
+                                  'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                                  selectedCompanionBridgeRoutingAgent.id === agent.id ? 'app-composer-popover-item-active' : '',
+                                )}
+                              >
+                                <span className="truncate">{agent.label}</span>
+                                <span className="shrink-0 text-[11px] text-[color:var(--utility-muted-text)]">{agent.isDefault ? 'Default' : 'Owned'}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      <ComposerModelControls
+                        scope="chat"
+                        selection={companionBridgeRoutingSelection}
+                        openSelector={companionOpenComposerSelector}
+                        onToggleSelector={toggleCompanionComposerSelector}
+                        onSelectValue={(_scope, type, value) => {
+                          if (type === 'model') {
+                            updateCompanionBridgeAgentRouting({
+                              defaultModel: value,
+                              defaultAuthProvider: selectedCompanionBridgeRoutingAgent.defaultAuthProvider ?? null,
+                              defaultAuthChoice: selectedCompanionBridgeRoutingAgent.defaultAuthChoice ?? null,
+                              fallbackModel: selectedCompanionBridgeRoutingAgent.fallbackModel ?? null,
+                              fallbackAuthProvider: selectedCompanionBridgeRoutingAgent.fallbackAuthProvider ?? null,
+                              fallbackAuthChoice: selectedCompanionBridgeRoutingAgent.fallbackAuthChoice ?? null,
+                              thinking: companionDefaultThinkingForBridgeModel(value, selectedCompanionBridgeRoutingAgent.thinking),
+                              selectorType: 'model',
+                            });
+                          } else if (type === 'thinking') {
+                            updateCompanionBridgeAgentRouting({
+                              defaultModel: selectedCompanionBridgeRoutingAgent.defaultModel ?? null,
+                              defaultAuthProvider: selectedCompanionBridgeRoutingAgent.defaultAuthProvider ?? null,
+                              defaultAuthChoice: selectedCompanionBridgeRoutingAgent.defaultAuthChoice ?? null,
+                              fallbackModel: selectedCompanionBridgeRoutingAgent.fallbackModel ?? null,
+                              fallbackAuthProvider: selectedCompanionBridgeRoutingAgent.fallbackAuthProvider ?? null,
+                              fallbackAuthChoice: selectedCompanionBridgeRoutingAgent.fallbackAuthChoice ?? null,
+                              thinking: value,
+                              selectorType: 'thinking',
+                            });
+                          }
+                        }}
+                        authLabel={composerAuthLabel}
+                        authOptions={composerAuthOptions}
+                        onSelectAuthChoice={() => {}}
+                        onSelectProviderChoice={(_scope, option) => {
+                          const nextModel = firstModelForProvider(option.providerId, chatModelOptions);
+                          if (!nextModel) return;
+                          updateCompanionBridgeAgentRouting({
+                            defaultModel: nextModel,
+                            defaultAuthProvider: option.providerId,
+                            defaultAuthChoice: authChoiceFromProviderOption(option),
+                            fallbackModel: selectedCompanionBridgeRoutingAgent.fallbackModel ?? null,
+                            fallbackAuthProvider: selectedCompanionBridgeRoutingAgent.fallbackAuthProvider ?? null,
+                            fallbackAuthChoice: selectedCompanionBridgeRoutingAgent.fallbackAuthChoice ?? null,
+                            thinking: companionDefaultThinkingForBridgeModel(nextModel, selectedCompanionBridgeRoutingAgent.thinking),
+                            selectorType: 'provider',
+                          });
+                        }}
+                        providerOptions={composerProviderOptions}
+                        modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                        compact={true}
+                      />
                     </div>
                   ) : null}
                   <Button
@@ -2517,7 +2761,7 @@ export function ChatsPage({
                 <Paperclip className="h-4 w-4" />
               </Button>
             </div>
-            <div className="flex min-w-0 shrink-0 items-center gap-3 overflow-visible">
+            <div className={cn('flex min-w-0 items-center overflow-visible', showCompanionPane ? 'shrink gap-2' : 'shrink-0 gap-3')}>
               {activePaneKind === 'agent' && !activeConversationIsBridge && (isNativeShell || activeRuntimeContextStatus) ? (
                 <ComposerRuntimeStatus
                   contextStatus={activeRuntimeContextStatus}
@@ -2543,9 +2787,10 @@ export function ChatsPage({
                   }}
                   providerOptions={composerProviderOptions}
                   modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                  compact={showCompanionPane}
                 />
               ) : activePaneKind === 'agent' && activeConversationIsBridge && !shouldUseCompactModelRouteMenu(activeConv) && selectedBridgeRoutingAgent ? (
-                <div className="relative flex min-w-0 items-center gap-2">
+                <div className="relative flex min-w-0 items-center gap-2 overflow-visible">
                   {bridgeRoutingControlVisibility.showAgentSelector ? (
                     <button
                       type="button"
@@ -2630,6 +2875,7 @@ export function ChatsPage({
                     }}
                     providerOptions={composerProviderOptions}
                     modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
+                    compact={showCompanionPane}
                   />
                 </div>
               ) : null}

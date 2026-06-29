@@ -308,7 +308,7 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
   assert.doesNotMatch(source, /data-chat-side-detail-rail/);
   assert.doesNotMatch(source, /setIsCompanionDetailOpen/);
   assert.doesNotMatch(source, /CHAT_SIDE_DETAIL_TABS/);
-  assert.match(source, /data-companion-send-row="true" className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2\.5"/);
+  assert.match(source, /data-companion-send-row="true" className="app-composer-meta mt-2 flex flex-nowrap items-center justify-between gap-3 pt-2\.5"/);
   assert.doesNotMatch(sidePanelHeader, /data-side-chat-session-detail-toggle="true"/);
   assert.match(source, /data-companion-attachment-control="true"/);
   assert.doesNotMatch(source, /shrink-0 border-t border-white\/\[0\.06\] px-5 pb-4 pt-3/);
@@ -390,7 +390,9 @@ test('human panes do not show agent model controls while agent side panes use ag
   assert.match(source, /activePaneKind === 'agent' && !activeConversationIsBridge/);
   assert.match(source, /companionPaneKind === 'agent' \? 'Ask the agent…'/);
   assert.match(source, /companionShowsLocalAgentControls/);
-  assert.match(source, /companionPaneKind === 'agent' && !companionConversationHasBridgeTransport/);
+  assert.match(source, /companionConversationIsBridgeAgent/);
+  assert.match(source, /companionPaneKind === 'agent' && !companionConversationIsBridgeAgent/);
+  assert.match(source, /data-companion-bridge-model-controls="true"/);
   assert.match(source, /contextStatus=\{companionRuntimeContextStatus\}/);
 });
 

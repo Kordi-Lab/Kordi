@@ -316,13 +316,13 @@ export type AssembleKordiShellSlotsArgs = {
   composerSelectionChat: ComposerSelection;
   openComposerSelector: ComposerSelectorState;
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
-  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string) => void | Promise<void>;
+  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, targetSessionIdOverride?: string | null) => void | Promise<void>;
   composerAuthLabelProject: string;
   composerAuthLabelChat: string;
   composerAuthOptionsProject: ComposerAuthOption[];
   composerAuthOptionsChat: ComposerAuthOption[];
-  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string) => void;
-  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption) => void;
+  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, targetSessionIdOverride?: string | null) => void;
+  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, targetSessionIdOverride?: string | null) => void;
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions: ComposerModelOption[] | undefined;
   isDesktopChatSending: boolean;
