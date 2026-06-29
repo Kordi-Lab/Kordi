@@ -5,6 +5,7 @@ import { test } from 'node:test';
 const chatsPageSource = () => readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
+const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
 
 function blockBetween(source: string, startNeedle: string, endNeedle: string): string {
   const start = source.indexOf(startNeedle);
@@ -93,6 +94,7 @@ test('side-panel Agent model controls use independent menu state and target the 
 test('side-panel cloud Agent model controls clone main bridge-routing menu behavior', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
+  const appModel = appModelSource();
 
   assert.match(source, /const \[selectedCompanionBridgeAgentId, setSelectedCompanionBridgeAgentId\]/, 'side-panel bridge agent menu should not share main bridge routing selection');
   assert.match(source, /const companionBridgeRoutingAgents = useMemo/, 'side-panel bridge agent menu should derive routing agents for the companion session');
@@ -100,6 +102,10 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
   assert.match(side, /selection=\{companionBridgeRoutingSelection\}/, 'side-panel cloud agent model controls should use bridge routing selection');
   assert.match(side, /updateCompanionBridgeAgentRouting\(\{[\s\S]*defaultModel: value/, 'side-panel cloud agent model changes should update bridge routing');
   assert.match(side, /onSelectProviderChoice=\{\(_scope, option\) => \{[\s\S]*updateCompanionBridgeAgentRouting/, 'side-panel cloud agent provider changes should update bridge routing');
+  assert.match(source, /const companionBridgeRoutingTargetSessionId = companionConversation\?\.canonicalSessionId \?\? companionConversation\?\.id \?\? null/, 'side-panel bridge routing should resolve the companion session id, not the active main session');
+  assert.match(source, /onUpdateBridgeAgentModelRouting\([\s\S]*nextFallbackAuthChoice,\s*companionBridgeRoutingTargetSessionId,\s*\)/, 'side-panel cloud route changes should pass the companion session id through the bridge routing callback');
+  assert.match(appModel, /targetSessionIdOverride\?: string \| null/, 'cloud bridge route updater should accept an explicit target session override');
+  assert.match(appModel, /targetSessionIdOverride\?\.trim\(\)\s*\|\|\s*activeConv\.canonicalSessionId/, 'cloud bridge route updater should prefer the explicit side-panel session id before falling back to activeConv');
   assert.doesNotMatch(side, /companionPaneKind === 'agent' && !companionConversationHasBridgeTransport[\s\S]*<ComposerModelControls/, 'side-panel model menu must not disappear for bridge-backed agent sessions');
 });
 

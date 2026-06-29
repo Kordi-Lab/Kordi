@@ -212,6 +212,7 @@ export type AssembleKordiShellSlotsArgs = {
     defaultAuthChoice?: string | null,
     fallbackAuthProvider?: string | null,
     fallbackAuthChoice?: string | null,
+    targetSessionIdOverride?: string | null,
   ) => Promise<void>;
   handleUpdateLocalAgentModelRouting: (
     defaultModel?: string | null,

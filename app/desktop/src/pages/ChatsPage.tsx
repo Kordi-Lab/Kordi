@@ -862,6 +862,7 @@ type ChatsPageProps = {
     defaultAuthChoice?: string | null,
     fallbackAuthProvider?: string | null,
     fallbackAuthChoice?: string | null,
+    targetSessionIdOverride?: string | null,
   ) => Promise<void>;
   isEditingDesktopSessionTitle: boolean;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
@@ -1193,6 +1194,7 @@ export function ChatsPage({
   const companionBridgeRoutingSelection = routingSelectionForBridgeAgent(selectedCompanionBridgeRoutingAgent);
   const companionBridgeRoutingControlVisibility = bridgeChatRoutingControlVisibility(companionBridgeRoutingAgents.length);
   const companionBridgeAgentSelectorOpen = companionOpenComposerSelector?.scope === 'chat' && companionOpenComposerSelector.type === 'mode';
+  const companionBridgeRoutingTargetSessionId = companionConversation?.canonicalSessionId ?? companionConversation?.id ?? null;
 
   useEffect(() => {
     setOpenSideAgentConversationId(null);
@@ -1566,6 +1568,7 @@ export function ChatsPage({
       nextDefaultAuthChoice,
       nextFallbackAuthProvider,
       nextFallbackAuthChoice,
+      companionBridgeRoutingTargetSessionId,
     ).catch((error) => {
       setCompanionBridgeRoutingNotice(error instanceof Error ? error.message : 'Unable to update bridge agent model routing');
     });
