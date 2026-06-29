@@ -373,8 +373,8 @@ export default function AuthPopup({
   };
 
   const shell = (
-    <div className={embedded ? 'mx-auto w-full max-w-[440px]' : 'mx-auto w-full max-w-[520px]'}>
-      <div className={embedded ? 'app-auth-popup-panel app-modal-panel overflow-hidden rounded-[24px] border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.32)]' : 'app-auth-popup-panel app-modal-panel rounded-[28px] border border-white/10 p-4.5 shadow-[var(--app-shadow-float)]'}>
+    <div className={embedded ? 'mx-auto w-full max-w-[440px]' : 'mx-auto flex h-full min-h-0 w-full max-w-[520px] items-start'}>
+      <div className={embedded ? 'app-auth-popup-panel app-modal-panel overflow-hidden rounded-[24px] border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.32)]' : 'app-auth-popup-panel app-modal-panel flex max-h-[calc(100dvh-4rem)] w-full flex-col overflow-hidden rounded-[28px] border border-white/10 shadow-[var(--app-shadow-float)]'}>
         {embedded ? (
           <div className="app-auth-popup-header border-b border-white/8 px-4 py-2.5 sm:px-4.5">
             <div className="flex items-start justify-between gap-3.5">
@@ -397,7 +397,7 @@ export default function AuthPopup({
           </div>
         ) : null}
 
-        <div className={embedded ? 'max-h-[min(72vh,640px)] overflow-y-auto overscroll-contain px-4 py-3.5 sm:px-4.5' : ''}>
+        <div className={embedded ? 'max-h-[min(72vh,640px)] overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-3.5 sm:px-4.5' : 'max-h-[calc(100dvh-4rem)] overflow-y-auto overflow-x-hidden overscroll-contain p-4.5'}>
         {!embedded && (
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
@@ -617,7 +617,7 @@ export default function AuthPopup({
   }
 
   return (
-    <div className="bridge-app theme-dark min-h-screen bg-[radial-gradient(circle_at_top,rgba(58,56,46,0.28),rgba(17,17,15,0.96)_45%,rgba(10,10,11,1))] px-6 py-8 text-white">
+    <div className="bridge-app theme-dark flex h-[100dvh] w-full overflow-hidden bg-[radial-gradient(circle_at_top,rgba(58,56,46,0.28),rgba(17,17,15,0.96)_45%,rgba(10,10,11,1))] px-6 py-8 text-white">
       {shell}
     </div>
   );

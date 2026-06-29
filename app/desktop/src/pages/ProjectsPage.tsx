@@ -336,7 +336,7 @@ export function ProjectsPage({
       <div className="min-h-0 flex-1 overflow-hidden">
         <ScrollArea
           ref={chatTranscriptScrollRef}
-          className="h-full min-h-0 px-3.5 py-3 sm:px-4 sm:py-3.5"
+          className="h-full min-h-0 overflow-x-hidden overscroll-contain px-3.5 py-3 sm:px-4 sm:py-3.5"
           onScroll={onTranscriptScroll}
         >
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">

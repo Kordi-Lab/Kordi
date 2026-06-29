@@ -1637,7 +1637,7 @@ export function ChatsPage({
         liveTurnSender={companionLiveTurnSender}
         shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
         scrollRef={companionTranscriptScrollRef}
-        scrollClassName="h-full min-h-0 px-3 py-5"
+        scrollClassName="h-full min-h-0 overflow-x-hidden overscroll-contain px-3 py-5"
         densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
         emptyState={(
@@ -2229,7 +2229,7 @@ export function ChatsPage({
         liveTurnSender={liveTurnSender}
         shouldRenderLiveTurn={shouldRenderLiveTurn}
         scrollRef={chatTranscriptScrollRef}
-        scrollClassName="min-h-0 flex-1 px-3.5 py-5 sm:px-4"
+        scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3.5 py-5 sm:px-4"
         densityMode={chatTranscriptDensityMode(activeConv)}
         onTranscriptScroll={onTranscriptScroll}
         queuedMessages={queuedDesktopMessages}

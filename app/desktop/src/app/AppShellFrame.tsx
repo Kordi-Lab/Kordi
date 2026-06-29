@@ -69,14 +69,14 @@ export function AppShellFrame({
   return (
     <div
       className={cn(
-        'bridge-app app-page-bg text-[13px] text-foreground',
+        'bridge-app app-page-bg w-full min-w-0 max-w-full text-[13px] text-foreground',
         rootThemeClass,
         isNativeShell ? 'h-[100dvh] overflow-hidden p-0' : 'min-h-screen p-4 md:p-6',
       )}
     >
       <div
         className={cn(
-          'app-shell relative flex flex-col overflow-hidden',
+          'app-shell relative flex min-w-0 max-w-full flex-col overflow-hidden',
           isLayoutResizing ? 'backdrop-blur-none' : 'backdrop-blur-2xl',
           isNativeShell
             ? 'h-full w-full rounded-none border-0 shadow-none'
@@ -114,7 +114,7 @@ export function AppShellFrame({
         ) : null}
         <div
           className={cn(
-            'relative grid h-full flex-1 gap-0 overflow-hidden box-border',
+            'relative grid h-full min-w-0 flex-1 gap-0 overflow-hidden box-border',
             isLayoutResizing ? 'transition-none' : 'transition-[grid-template-columns]',
           )}
           style={{
@@ -136,14 +136,14 @@ export function AppShellFrame({
 
           <section
             className={cn(
-              'relative min-h-0 overflow-hidden',
+              'relative min-h-0 min-w-0 overflow-hidden',
               isSingleWorkspacePage ? 'app-main-panel rounded-none border-0' : 'app-main-panel rounded-br-[22px] rounded-l-none border-l border-white/10',
             )}
             style={{ WebkitAppRegion: 'no-drag' as const }}
           >
             <div
               className={cn(
-                'grid h-full min-h-0',
+                'grid h-full min-h-0 min-w-0',
                 isLayoutResizing ? 'transition-none' : 'transition-[grid-template-columns] duration-300',
               )}
               style={{
