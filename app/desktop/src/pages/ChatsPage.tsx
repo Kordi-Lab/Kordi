@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
+import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction, UIEvent as ReactUIEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
@@ -78,6 +78,12 @@ import {
   focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
+import {
+  TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
+  TRANSCRIPT_WINDOW_OVERSCAN,
+  TRANSCRIPT_WINDOW_THRESHOLD,
+  transcriptWindowRange,
+} from '@/features/chat/transcriptWindowing';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
@@ -337,6 +343,21 @@ function ChatComposerShell({ children }: ChatComposerShellProps) {
   return <>{children}</>;
 }
 
+function transcriptWindowMessageIdentity(message: Message | undefined, fallbackIndex: number) {
+  if (!message) return 'none';
+  return message.id ?? message.entryId ?? message.turn?.id ?? `${fallbackIndex}:${message.role}:${message.sender}:${message.time}`;
+}
+
+function transcriptWindowMessageMatchesId(message: Message | undefined, messageId: string) {
+  if (!message || !messageId) return false;
+  return message.id === messageId || message.entryId === messageId || message.turn?.id === messageId;
+}
+
+type TranscriptNavigationRequest = {
+  id: string;
+  nonce: number;
+};
+
 type ChatSessionPaneProps = {
   messages: Message[];
   liveTurn?: DesktopChatTurnSnapshot | null;
@@ -345,6 +366,7 @@ type ChatSessionPaneProps = {
   scrollRef: RefObject<HTMLDivElement | null>;
   scrollClassName: string;
   onTranscriptScroll?: () => void;
+  navigationRequest?: TranscriptNavigationRequest | null;
   emptyState?: ReactNode;
   composer: ReactNode;
   queuedMessages?: QueuedDesktopChatMessage[];
@@ -396,6 +418,7 @@ function ChatSessionPane({
   scrollRef,
   scrollClassName,
   onTranscriptScroll,
+  navigationRequest,
   emptyState,
   composer,
   queuedMessages = [],
@@ -436,64 +459,116 @@ function ChatSessionPane({
   messageSelectionMode = false,
   densityMode = 'default',
 }: ChatSessionPaneProps) {
+  const [transcriptWindowAnchorIndex, setTranscriptWindowAnchorIndex] = useState(() => Math.max(0, messages.length - 1));
+  const transcriptWindowResetKey = useMemo(() => {
+    const firstMessage = messages[0];
+    const lastMessage = messages[messages.length - 1];
+    return [
+      messages.length,
+      transcriptWindowMessageIdentity(firstMessage, 0),
+      transcriptWindowMessageIdentity(lastMessage, messages.length - 1),
+    ].join(':');
+  }, [messages]);
+
+  useEffect(() => {
+    setTranscriptWindowAnchorIndex(Math.max(0, messages.length - 1));
+  }, [messages.length, transcriptWindowResetKey]);
+
+  const navigationTargetIndex = useMemo(() => {
+    if (!navigationRequest?.id) return -1;
+    return messages.findIndex((message) => transcriptWindowMessageMatchesId(message, navigationRequest.id));
+  }, [messages, navigationRequest]);
+
+  useEffect(() => {
+    if (!navigationRequest || navigationTargetIndex < 0) return;
+    setTranscriptWindowAnchorIndex(navigationTargetIndex);
+  }, [navigationRequest, navigationTargetIndex]);
+
+  const handleTranscriptScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
+    onTranscriptScroll?.();
+    if (messages.length <= TRANSCRIPT_WINDOW_THRESHOLD) return;
+    const nextAnchorIndex = Math.max(0, Math.floor(event.currentTarget.scrollTop / TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT));
+    setTranscriptWindowAnchorIndex((current) => (
+      Math.abs(current - nextAnchorIndex) >= TRANSCRIPT_WINDOW_OVERSCAN ? nextAnchorIndex : current
+    ));
+  }, [messages.length, onTranscriptScroll]);
+
+  const transcriptWindow = transcriptWindowRange(messages.length, transcriptWindowAnchorIndex);
+  const visibleTranscriptMessages = messages.slice(transcriptWindow.start, transcriptWindow.end);
+  const topSpacerHeight = transcriptWindow.windowed ? transcriptWindow.start * TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT : 0;
+  const bottomSpacerHeight = transcriptWindow.windowed ? Math.max(0, messages.length - transcriptWindow.end) * TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT : 0;
+
+  useEffect(() => {
+    if (!navigationRequest || navigationTargetIndex < transcriptWindow.start || navigationTargetIndex >= transcriptWindow.end) return;
+    const frameId = window.requestAnimationFrame(() => {
+      navigateToTranscriptMessage(navigationRequest.id, scrollRef);
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [navigationRequest, navigationTargetIndex, scrollRef, transcriptWindow.end, transcriptWindow.start]);
+
   return (
     <>
       <ScrollArea
         ref={scrollRef}
         className={scrollClassName}
-        onScroll={onTranscriptScroll}
+        onScroll={handleTranscriptScroll}
       >
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-          {messages.length > 0 ? messages.map((msg, idx) => (
-            <Fragment key={transcriptMessageRenderKey(msg, idx)}>
-              <MessageBubble
-                msg={msg}
-                onOpenSource={onOpenSource}
-                onOpenArtifact={onOpenArtifact}
-                onOpenAuthSettings={onOpenAuthSettings}
-                onNavigateToMessage={onNavigateToMessage}
-                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-                onRequestBridgeContact={onRequestBridgeContact}
-                onForkMessage={onForkMessage}
-                messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
-                onOpenForkSession={onOpenForkSession}
-                onReplyMessage={onReplyMessage}
-                onForwardMessage={onForwardMessage}
-                onOpenMessageDetail={onOpenMessageDetail}
-                onSelectMessage={onSelectMessage}
-                onRequestPinMessage={onRequestPinMessage}
-                onRequestUnpinMessage={onRequestUnpinMessage}
-                pinnedMessageId={pinnedMessageId}
-                selectionMode={selectionMode}
-                selectedMessageIds={selectedMessageIds}
-                isMessageSelectable={isMessageSelectable}
-                densityMode={densityMode}
-                onToggleSelectedMessage={onToggleSelectedMessage}
-                onSelectionDragStart={onSelectionDragStart}
-                onSelectionDragEnter={onSelectionDragEnter}
-                onSelectionDragEnd={onSelectionDragEnd}
-                plainAgentResponse={plainAgentResponse}
-                isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(messages, idx, -1)}
-                isGroupedWithNext={isGroupedWithAdjacentHumanMessage(messages, idx, 1)}
-              />
-              {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
-                <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
-                  <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                  <button
-                    type="button"
-                    onClick={() => onSelectSession?.(activeForkSourceSessionId)}
-                    disabled={!onSelectSession}
-                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
-                    title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
-                  >
-                    <Split className="h-3 w-3" />
-                    <span>Forked from conversation</span>
-                  </button>
-                  <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                </div>
-              ) : null}
-            </Fragment>
-          )) : !shouldRenderLiveTurn ? emptyState : null}
+          {topSpacerHeight > 0 ? <div data-transcript-window-spacer="top" style={{ height: topSpacerHeight }} aria-hidden="true" /> : null}
+          {messages.length > 0 ? visibleTranscriptMessages.map((msg, visibleIdx) => {
+            const idx = transcriptWindow.start + visibleIdx;
+            return (
+              <Fragment key={transcriptMessageRenderKey(msg, idx)}>
+                <MessageBubble
+                  msg={msg}
+                  onOpenSource={onOpenSource}
+                  onOpenArtifact={onOpenArtifact}
+                  onOpenAuthSettings={onOpenAuthSettings}
+                  onNavigateToMessage={onNavigateToMessage}
+                  onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                  onRequestBridgeContact={onRequestBridgeContact}
+                  onForkMessage={onForkMessage}
+                  messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
+                  onOpenForkSession={onOpenForkSession}
+                  onReplyMessage={onReplyMessage}
+                  onForwardMessage={onForwardMessage}
+                  onOpenMessageDetail={onOpenMessageDetail}
+                  onSelectMessage={onSelectMessage}
+                  onRequestPinMessage={onRequestPinMessage}
+                  onRequestUnpinMessage={onRequestUnpinMessage}
+                  pinnedMessageId={pinnedMessageId}
+                  selectionMode={selectionMode}
+                  selectedMessageIds={selectedMessageIds}
+                  isMessageSelectable={isMessageSelectable}
+                  densityMode={densityMode}
+                  onToggleSelectedMessage={onToggleSelectedMessage}
+                  onSelectionDragStart={onSelectionDragStart}
+                  onSelectionDragEnter={onSelectionDragEnter}
+                  onSelectionDragEnd={onSelectionDragEnd}
+                  plainAgentResponse={plainAgentResponse}
+                  isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(messages, idx, -1)}
+                  isGroupedWithNext={isGroupedWithAdjacentHumanMessage(messages, idx, 1)}
+                />
+                {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
+                  <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
+                    <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                    <button
+                      type="button"
+                      onClick={() => onSelectSession?.(activeForkSourceSessionId)}
+                      disabled={!onSelectSession}
+                      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
+                    >
+                      <Split className="h-3 w-3" />
+                      <span>Forked from conversation</span>
+                    </button>
+                    <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                  </div>
+                ) : null}
+              </Fragment>
+            );
+          }) : !shouldRenderLiveTurn ? emptyState : null}
+          {bottomSpacerHeight > 0 ? <div data-transcript-window-spacer="bottom" style={{ height: bottomSpacerHeight }} aria-hidden="true" /> : null}
           {shouldRenderLiveTurn && liveTurn ? (
             <LiveChatTurnMessage
               turn={liveTurn}
@@ -1071,6 +1146,9 @@ export function ChatsPage({
   const [optimisticCloudPinBySessionId, setOptimisticCloudPinBySessionId] = useState<Record<string, CloudSessionPin>>({});
   const [pinDialog, setPinDialog] = useState<{ mode: 'pin' | 'unpin'; message: Message } | null>(null);
   const [pinForEveryone, setPinForEveryone] = useState(false);
+  const [mainTranscriptNavigationRequest, setMainTranscriptNavigationRequest] = useState<TranscriptNavigationRequest | null>(null);
+  const [companionTranscriptNavigationRequest, setCompanionTranscriptNavigationRequest] = useState<TranscriptNavigationRequest | null>(null);
+  const transcriptNavigationNonceRef = useRef(0);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const companionTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const companionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -1329,7 +1407,10 @@ export function ChatsPage({
     const targetMessageId = sourceMessage
       ? resolveTranscriptMessageIdForSource(sourceMessage, attributedTranscriptMessages)
       : messageId;
-    navigateToTranscriptMessage(targetMessageId || messageId, chatTranscriptScrollRef);
+    const resolvedMessageId = targetMessageId || messageId;
+    transcriptNavigationNonceRef.current += 1;
+    setMainTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
+    navigateToTranscriptMessage(resolvedMessageId, chatTranscriptScrollRef);
   }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
   const handleOpenPinnedMessage = useCallback(() => {
     if (!pinnedMessageId) return;
@@ -1417,7 +1498,10 @@ export function ChatsPage({
     const targetMessageId = sourceMessage
       ? resolveTranscriptMessageIdForSource(sourceMessage, companionTranscriptMessages)
       : messageId;
-    navigateToTranscriptMessage(targetMessageId || messageId, companionTranscriptScrollRef);
+    const resolvedMessageId = targetMessageId || messageId;
+    transcriptNavigationNonceRef.current += 1;
+    setCompanionTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
+    navigateToTranscriptMessage(resolvedMessageId, companionTranscriptScrollRef);
   }, [companionTranscriptMessages]);
   const attributedCompanionTranscriptLiveTurn = companionTranscript.liveTurn ?? companionTranscriptLiveTurn;
   const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
@@ -1774,6 +1858,7 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
         scrollRef={companionTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"
+        navigationRequest={companionTranscriptNavigationRequest}
         densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
         emptyState={(
@@ -2477,6 +2562,7 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderLiveTurn}
         scrollRef={chatTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3.5 py-5 sm:px-4"
+        navigationRequest={mainTranscriptNavigationRequest}
         densityMode={chatTranscriptDensityMode(activeConv)}
         onTranscriptScroll={onTranscriptScroll}
         queuedMessages={queuedDesktopMessages}

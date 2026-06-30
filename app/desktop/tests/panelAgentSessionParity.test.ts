@@ -144,6 +144,52 @@ test('split-pane Agent model selection menu escapes the right panel clipping bou
   assert.doesNotMatch(controlsSource, /absolute bottom-full right-0 z-30 mb-2 max-h-\[min\(28rem,60vh\)\] w-\[340px\]/, 'model selector menu must not stay absolute inside the right-panel composer');
 });
 
+test('chat transcripts window long histories instead of rendering every message during session switches', () => {
+  const source = chatsPageSource();
+  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
+  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
+  const pane = source.slice(paneStart, paneStart + 12000);
+
+  assert.match(source, /TRANSCRIPT_WINDOW_THRESHOLD/, 'ChatSessionPane should define a threshold for long transcript windowing');
+  assert.match(pane, /visibleTranscriptMessages/, 'ChatSessionPane should render a bounded visible message slice');
+  assert.match(pane, /data-transcript-window-spacer="top"/, 'windowed transcripts should preserve approximate scroll height above visible messages');
+  assert.match(pane, /data-transcript-window-spacer="bottom"/, 'windowed transcripts should preserve approximate scroll height below visible messages');
+  assert.doesNotMatch(pane, /messages\.length > 0 \? messages\.map\(\(msg, idx\)/, 'ChatSessionPane must not render every message directly for long histories');
+});
+
+test('windowed chat transcripts update the rendered slice while scrolling through long history', () => {
+  const source = chatsPageSource();
+  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
+  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
+  const pane = source.slice(paneStart, paneStart + 14000);
+
+  assert.match(pane, /transcriptWindowAnchorIndex/, 'windowed transcripts should track a scroll-derived anchor index');
+  assert.match(pane, /handleTranscriptScroll/, 'windowed transcripts should wrap the external scroll handler');
+  assert.match(pane, /scrollTop\s*\/\s*TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT/, 'scroll position should determine which message range is mounted');
+});
+
+test('windowed chat transcripts reset their anchor when switching between equal-length sessions', () => {
+  const source = chatsPageSource();
+  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
+  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
+  const pane = source.slice(paneStart, paneStart + 15000);
+
+  assert.match(pane, /transcriptWindowResetKey/, 'windowed transcripts should derive a reset key from message identity');
+  assert.doesNotMatch(pane, /\[messages\.length\]\);/, 'windowed transcript reset must not depend only on message count');
+});
+
+test('windowed chat transcripts keep jump-to-message working for messages outside the mounted slice', () => {
+  const source = chatsPageSource();
+  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
+  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
+  const pane = source.slice(paneStart, paneStart + 18000);
+
+  assert.match(source, /type TranscriptNavigationRequest/, 'jumps into windowed transcripts should use an explicit navigation request');
+  assert.match(pane, /navigationTargetIndex/, 'ChatSessionPane should resolve jump targets against the full message list');
+  assert.match(pane, /setTranscriptWindowAnchorIndex\(navigationTargetIndex\)/, 'jumping to an off-window message should move the mounted window first');
+  assert.match(pane, /navigateToTranscriptMessage\(navigationRequest\.id, scrollRef\)/, 'ChatSessionPane should retry the DOM scroll once the target is mounted');
+});
+
 test('side-panel Agent session omits the header session Details button', () => {
   const source = chatsPageSource();
   const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
