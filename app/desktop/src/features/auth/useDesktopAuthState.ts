@@ -90,12 +90,6 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
   }, [isNativeShell]);
 
   useEffect(() => {
-    if (!desktopAuthState?.providers.length) return;
-    if (activeLoginProviderId) return;
-    setActiveLoginProviderId(desktopAuthState.providers[0].id);
-  }, [desktopAuthState?.providers, activeLoginProviderId]);
-
-  useEffect(() => {
     const channel = new BroadcastChannel('kordi-auth');
     const refresh = () => {
       void refreshDesktopAuth();

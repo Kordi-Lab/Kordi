@@ -135,6 +135,14 @@ test('auth pages avoid all-caps styling and use sentence-case detail chrome', ()
   assert.doesNotMatch(providerDetail, /<DetailSection title="Connect">/);
 });
 
+test('auth provider list does not highlight a provider before explicit selection', () => {
+  const authState = readFileSync(new URL('../src/features/auth/useDesktopAuthState.ts', import.meta.url), 'utf8');
+  const authPage = readAuthSource('AuthPage.tsx');
+
+  assert.doesNotMatch(authState, /setActiveLoginProviderId\(desktopAuthState\.providers\[0\]\.id\)/);
+  assert.match(authPage, /selectedProviderId=\{selectedProviderId \? provider\?\.id \?\? null : null\}/);
+});
+
 test('login from the first-run gate opens the auth page without routing into settings', () => {
   const uiState = readFileSync(new URL('../src/features/auth/useDesktopAuthUiState.ts', import.meta.url), 'utf8');
 
