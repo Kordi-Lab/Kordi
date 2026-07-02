@@ -2,6 +2,7 @@ import type {
   AddCanonicalSessionParticipantsRequest,
   AdoptCloudProfileIdentityRequest,
   AppendCanonicalMessageRequest,
+  CanonicalIdentity,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
   DesktopArtifactDirectory,
@@ -16,6 +17,7 @@ import type {
   DesktopChatTurnSnapshot,
   MessageAttachment,
   DesktopProjectSettings,
+  OpenCanonicalSessionFastResult,
   OpenCanonicalSessionRequest,
   RemoveCanonicalSessionParticipantRequest,
   RenameCanonicalSessionRequest,
@@ -595,6 +597,14 @@ export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRe
 
 export async function adoptCloudProfileIdentity(request: AdoptCloudProfileIdentityRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_adopt_cloud_profile_identity', { request });
+}
+
+export async function upsertCanonicalIdentityFast(request: UpsertCanonicalIdentityRequest) {
+  return invokeDesktop<CanonicalIdentity>('desktop_canonical_upsert_identity_fast', { request });
+}
+
+export async function openOrCreateCanonicalSessionFast(request: OpenCanonicalSessionRequest) {
+  return invokeDesktop<OpenCanonicalSessionFastResult>('desktop_canonical_open_or_create_session_fast', { request });
 }
 
 export async function openOrCreateCanonicalSession(request: OpenCanonicalSessionRequest) {
