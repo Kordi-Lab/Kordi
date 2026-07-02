@@ -1509,6 +1509,81 @@ export function useChatMessageActions({
       return;
     }
 
+    if (activeConversationUsesBridgeRouting && activeGroupSessionIsGroup && cloudGroupTargetIds.length > 0) {
+      if (!activeConvCanonicalSessionId) {
+        setDesktopChatError('Unable to open group chat.');
+        return;
+      }
+      if (!sendCloudGroupControl) {
+        setDesktopChatError('Group chat is still loading. Try again in a moment.');
+        return;
+      }
+      const sentAt = formatDesktopEventTime();
+      const preparedCanonicalMessage = prepareCanonicalUserMessage(
+        activeConvCanonicalSessionId,
+        canonicalHumanIdentityId,
+        text,
+        chatComposerAttachments,
+        sentAt,
+        'cloud-group-ui',
+        'sent',
+        undefined,
+        activeChatQuote,
+      );
+      if (preparedCanonicalMessage) {
+        preparedCanonicalMessage.request.content = {
+          ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
+          deliveryState: 'delivered',
+        };
+      }
+      let canonicalUserMessagePersisted = false;
+      try {
+        shouldAutoFollowChatRef.current = true;
+        setIsDesktopChatSending(true);
+        setDesktopChatError(null);
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
+        setChatComposerAttachments([]);
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+        setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
+        await persistCanonicalUserMessage(preparedCanonicalMessage);
+        canonicalUserMessagePersisted = true;
+        await sendCloudGroupControl({
+          targetAccountIds: cloudGroupTargetIds,
+          kind: 'group-message',
+          groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId }),
+          groupSpaceId: activeGroupSessionSpaceId,
+          groupTitle: null,
+          bridgeParticipants: activeGroupSessionParticipants,
+          message: {
+            id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
+            senderAccountId: '',
+            text,
+            createdAtMs: Date.now(),
+            messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
+          },
+          attachments: chatComposerAttachments,
+        });
+      } catch (error) {
+        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send group message');
+        setDesktopChatError(failureDetail);
+        setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+          current,
+          activeConvCanonicalSessionId,
+          preparedCanonicalMessage?.messageId ?? null,
+          failureDetail,
+        ));
+        if (!canonicalUserMessagePersisted) {
+          void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
+            .catch((saveError: unknown) => {
+              setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+            });
+        }
+      } finally {
+        setIsDesktopChatSending(false);
+      }
+      return;
+    }
+
     if (mentionedTarget && activeConversationUsesBridgeRouting) {
       setDesktopChatError('This chat is unavailable. Try again from the chat list.');
       return;
