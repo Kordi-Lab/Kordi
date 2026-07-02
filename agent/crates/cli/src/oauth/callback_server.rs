@@ -151,6 +151,8 @@ mod tests {
 
         assert!(html.contains("Signed in"));
         assert!(html.contains("return to the app"));
+        assert!(!html.contains("Close window"));
+        assert!(!html.contains("<button"));
         assert!(!html.contains("Kordi Authentication"));
         assert!(!html.contains("KORDI AUTHENTICATION"));
         assert!(!html.contains("text-transform:uppercase"));
@@ -265,25 +267,6 @@ fn render_auth_response_page(title: &str, body: &str) -> String {
       font-size: 15px;
       line-height: 1.62;
     }}
-    .actions {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 28px;
-    }}
-    button {{
-      appearance: none;
-      border: 1px solid color-mix(in oklab, white 13%, transparent);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .055);
-      color: #f7f8fb;
-      min-height: 36px;
-      padding: 0 14px;
-      font: inherit;
-      font-size: 13px;
-      font-weight: 650;
-      cursor: pointer;
-    }}
     @media (prefers-color-scheme: light) {{
       body {{
         background:
@@ -298,7 +281,6 @@ fn render_auth_response_page(title: &str, body: &str) -> String {
       }}
       h1 {{ color: #15181d; }}
       p {{ color: #5b6472; }}
-      button {{ border-color: rgba(31, 41, 55, .14); background: rgba(31, 41, 55, .04); color: #15181d; }}
     }}
   </style>
 </head>
@@ -306,9 +288,6 @@ fn render_auth_response_page(title: &str, body: &str) -> String {
   <main>
     <h1>{title}</h1>
     <p>{body}</p>
-    <div class="actions">
-      <button type="button" onclick="window.close()">Close window</button>
-    </div>
   </main>
 </body>
 </html>"#,
