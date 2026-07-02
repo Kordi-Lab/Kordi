@@ -118,19 +118,60 @@ async fn handle_connection(
         } else {
             format!("{error}: {desc}")
         };
-        send_response(&mut stream, 400, "Authentication Failed", &msg).await;
+        let friendly_body = if error.is_empty() {
+            "The provider did not return a valid code. Try again from the app."
+        } else {
+            "The provider stopped the sign-in flow. Try again from the app."
+        };
+        send_response(&mut stream, 400, "Couldn’t sign in", friendly_body).await;
         anyhow::bail!("OAuth callback error: {msg}");
     }
 
     send_response(
         &mut stream,
         200,
-        "Authentication Successful",
-        "You can close this tab and return to Kordi.",
+        "Signed in",
+        "Your account is connected. You can close this window and return to the app.",
     )
     .await;
 
     Ok(CallbackParams { code, state })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_success_page_is_compact_and_has_no_brand_label_box() {
+        let html = render_auth_response_page(
+            "Signed in",
+            "Your account is connected. You can close this window and return to the app.",
+        );
+
+        assert!(html.contains("Signed in"));
+        assert!(html.contains("return to the app"));
+        assert!(!html.contains("Close window"));
+        assert!(!html.contains("<button"));
+        assert!(!html.contains("Kordi Authentication"));
+        assert!(!html.contains("KORDI AUTHENTICATION"));
+        assert!(!html.contains("text-transform:uppercase"));
+        assert!(!html.contains("Authentication Successful"));
+    }
+
+    #[test]
+    fn auth_error_page_uses_clear_retry_copy_without_internal_details() {
+        let html = render_auth_response_page(
+            "Couldn’t sign in",
+            "The provider did not return a valid code. Try again from the app.",
+        );
+
+        assert!(html.contains("Couldn’t sign in"));
+        assert!(html.contains("Try again from the app"));
+        assert!(!html.contains("Kordi Authentication"));
+        assert!(!html.contains("Missing 'code' parameter"));
+        assert!(!html.contains("OAuth callback"));
+    }
 }
 
 fn parse_query(query: &str) -> HashMap<String, String> {
@@ -170,26 +211,99 @@ fn url_decode(s: &str) -> String {
     result
 }
 
-async fn send_response(stream: &mut tokio::net::TcpStream, status: u16, title: &str, body: &str) {
-    let html = format!(
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn render_auth_response_page(title: &str, body: &str) -> String {
+    let title = html_escape(title);
+    let body = html_escape(body);
+    format!(
         r#"<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title}</title>
+  <style>
+    :root {{ color-scheme: dark light; }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at 50% -18%, color-mix(in oklab, #f5f7fb 16%, transparent), transparent 34rem),
+        linear-gradient(180deg, #222427 0%, #111316 62%, #0c0d0f 100%);
+      color: #f7f8fb;
+    }}
+    main {{
+      width: min(100%, 470px);
+      border: 1px solid color-mix(in oklab, white 13%, transparent);
+      border-radius: 30px;
+      background: linear-gradient(180deg, rgba(35, 37, 41, .88), rgba(18, 19, 22, .96));
+      box-shadow: 0 28px 88px rgba(0, 0, 0, .32), inset 0 1px 0 rgba(255, 255, 255, .035);
+      padding: 36px 32px;
+    }}
+    h1 {{
+      margin: 0 0 12px;
+      font-size: clamp(34px, 8vw, 46px);
+      line-height: .96;
+      letter-spacing: -.055em;
+      color: #ffffff;
+    }}
+    p {{
+      margin: 0;
+      max-width: 34ch;
+      color: #c4cbd6;
+      font-size: 15px;
+      line-height: 1.62;
+    }}
+    @media (prefers-color-scheme: light) {{
+      body {{
+        background:
+          radial-gradient(circle at 50% -18%, rgba(120, 133, 155, .18), transparent 34rem),
+          linear-gradient(180deg, #f6f7f9, #eceff3);
+        color: #15181d;
+      }}
+      main {{
+        border-color: rgba(31, 41, 55, .10);
+        background: rgba(255, 255, 255, .94);
+        box-shadow: 0 24px 72px rgba(31, 41, 55, .13), inset 0 1px 0 rgba(255, 255, 255, .8);
+      }}
+      h1 {{ color: #15181d; }}
+      p {{ color: #5b6472; }}
+    }}
+  </style>
 </head>
-<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',system-ui,sans-serif;background:radial-gradient(circle at top,rgba(76,72,58,.18),rgba(19,19,17,.96) 48%,rgba(11,11,12,1));color:#f8fafc;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:24px;box-sizing:border-box;">
-  <div style="width:min(100%,460px);border:1px solid rgba(255,255,255,.10);background:linear-gradient(180deg,rgba(29,29,26,.95),rgba(17,17,18,.98));border-radius:28px;padding:28px 24px;box-shadow:0 24px 80px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.04);text-align:center;">
-    <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#cbd5e1;">Kordi Authentication</div>
-    <h1 style="margin:18px 0 10px;font-size:28px;line-height:1.08;letter-spacing:-0.03em;color:white;">{title}</h1>
-    <p style="margin:0 auto;max-width:30ch;font-size:14px;line-height:1.7;color:#cbd5e1;">{body}</p>
-  </div>
+<body>
+  <main>
+    <h1>{title}</h1>
+    <p>{body}</p>
+  </main>
 </body>
 </html>"#,
-    );
+    )
+}
+
+async fn send_response(stream: &mut tokio::net::TcpStream, status: u16, title: &str, body: &str) {
+    let html = render_auth_response_page(title, body);
+    let reason = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        _ => "OK",
+    };
     let response = format!(
-        "HTTP/1.1 {status} {title}\r\n\
+        "HTTP/1.1 {status} {reason}\r\n\
          Content-Type: text/html; charset=utf-8\r\n\
          Content-Length: {}\r\n\
          Connection: close\r\n\
