@@ -60,6 +60,17 @@ test('provider gate uses a flat cool light surface without modal board chrome', 
   assert.match(gateLightRule, /box-shadow:\s*none/);
 });
 
+test('inline auth popup uses direct handoff copy without authentication status chips', () => {
+  const authPopup = readFileSync(new URL('../src/AuthPopup.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(authPopup, /Authentication window/);
+  assert.doesNotMatch(authPopup, />Authentication</);
+  assert.doesNotMatch(authPopup, /Authentication successful/);
+  assert.match(authPopup, /Signed in/);
+  assert.match(authPopup, /This account is connected and ready to use\./);
+  assert.match(authPopup, /Finish sign-in/);
+});
+
 test('inline auth popup uses cool chat-aligned light cards instead of warm gray', () => {
   const authPopup = readFileSync(new URL('../src/AuthPopup.tsx', import.meta.url), 'utf8');
   const authFlowSteps = readAuthSource('AuthFlowSteps.tsx');
