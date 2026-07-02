@@ -98,6 +98,14 @@ fn open_db() -> Result<Connection, String> {
         std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     let conn = Connection::open(path).map_err(|err| err.to_string())?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|err| err.to_string())?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;",
+    )
+    .map_err(|err| err.to_string())?;
     initialize_schema(&conn)?;
     Ok(conn)
 }
@@ -1538,10 +1546,17 @@ pub async fn desktop_canonical_upsert_message(
 }
 
 #[tauri::command]
-pub fn desktop_canonical_append_message_fast(
+pub async fn desktop_canonical_upsert_message_fast(
+    request: AppendCanonicalMessageRequest,
+) -> Result<CanonicalSessionMessage, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_upsert_message_fast(request)).await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_append_message_fast(
     request: AppendCanonicalMessageRequest,
 ) -> Result<String, String> {
-    commands::desktop_canonical_append_message_fast(request)
+    run_canonical_blocking(move || commands::desktop_canonical_append_message_fast(request)).await
 }
 
 #[tauri::command]

@@ -246,6 +246,13 @@ pub(super) fn desktop_canonical_upsert_message(
     load_state_from_db(&conn)
 }
 
+pub(super) fn desktop_canonical_upsert_message_fast(
+    request: AppendCanonicalMessageRequest,
+) -> Result<CanonicalSessionMessage, String> {
+    let conn = open_db()?;
+    upsert_message_in_db(&conn, request)
+}
+
 pub(super) fn desktop_canonical_append_message_fast(
     request: AppendCanonicalMessageRequest,
 ) -> Result<String, String> {
