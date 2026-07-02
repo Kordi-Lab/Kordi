@@ -111,7 +111,7 @@ export function AuthPage({
       return (
         <AuthProviderList
           providers={visibleProviders}
-          selectedProviderId={provider?.id ?? null}
+          selectedProviderId={selectedProviderId ? provider?.id ?? null : null}
           configuredCount={configuredCount}
           onSelectProvider={openProviderDetail}
           onRefresh={onRefresh}
