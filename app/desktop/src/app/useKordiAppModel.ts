@@ -1420,6 +1420,16 @@ export function useKordiAppModel({
     setActiveConvId,
   });
 
+  const handleEditQueuedMessage = useCallback((sessionId: string, queuedMessageId: string) => {
+    const queuedMessage = (queuedDesktopMessagesBySession[sessionId] ?? [])
+      .find((message) => message.id === queuedMessageId);
+    if (!queuedMessage) return;
+
+    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', queuedMessage.sessionId, queuedMessage.text));
+    setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessageById(current, sessionId, queuedMessageId));
+    focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell);
+  }, [composerUi.setComposerDrafts, isNativeShell, queuedDesktopMessagesBySession, setQueuedDesktopMessagesBySession]);
+
   const handleCancelQueuedMessage = useCallback((sessionId: string, queuedMessageId: string) => {
     setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessageById(current, sessionId, queuedMessageId));
   }, [setQueuedDesktopMessagesBySession]);
@@ -2665,6 +2675,7 @@ export function useKordiAppModel({
     activeSessionProject,
     activeQueuedDesktopMessages,
     queuedDesktopMessagesBySession,
+    handleEditQueuedMessage,
     handleCancelQueuedMessage,
     showAuthGate,
     dismissAuthGate,
