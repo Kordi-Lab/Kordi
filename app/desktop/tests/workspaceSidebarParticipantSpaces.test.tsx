@@ -818,8 +818,12 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.match(shellCss, /\.app-participant-space-row-shell\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) max-content[^}]*border:\s*0;[^}]*border-radius:\s*0;/s);
   assert.match(shellCss, /\.app-participant-space-row-actions\s*{[^}]*position:\s*static/s);
   assert.match(shellCss, /\.app-participant-space-row-actions\s*{[^}]*grid-template-columns:\s*repeat\(3, 1\.5rem\)/s);
-  assert.match(shellCss, /\.app-participant-space-row-side\s*{[^}]*grid-template-rows:\s*max-content 1fr/s);
-  assert.match(shellCss, /\.app-participant-space-row-meta\s*{[^}]*align-self:\s*end/s);
+  assert.match(shellCss, /\.app-participant-space-row-side\s*{[^}]*grid-template-rows:\s*max-content;/s);
+  assert.doesNotMatch(shellCss, /\.app-participant-space-row-side\s*{[^}]*grid-template-rows:\s*max-content 1fr/s);
+  assert.match(shellCss, /\.app-participant-space-row-side\s*{[^}]*min-height:\s*3\.125rem/s);
+  assert.doesNotMatch(shellCss, /\.app-participant-space-row-side\s*{[^}]*min-height:\s*4\.05rem/s);
+  assert.match(shellCss, /\.app-participant-space-row-meta\s*{[^}]*align-self:\s*start/s);
+  assert.doesNotMatch(shellCss, /\.app-participant-space-row-meta\s*{[^}]*align-self:\s*end/s);
   assert.match(shellCss, /\.app-participant-space-inline-group\s*{[^}]*border-radius:\s*0;[^}]*box-shadow:\s*none/s);
   assert.match(shellCss, /\.app-participant-space-inline-group-expanded\s*{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none/s);
   assert.match(shellCss, /\.app-participant-space-row-shell-expanded\s*{[^}]*background:\s*color-mix\(in oklab, var\(--app-sidebar-selected-bg\) 38%, transparent\);[^}]*box-shadow:\s*none/s);

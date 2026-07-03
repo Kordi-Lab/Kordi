@@ -602,14 +602,15 @@
 
 .app-participant-space-row-side {
   display: grid;
-  grid-template-rows: max-content 1fr;
+  grid-template-rows: max-content;
+  align-content: start;
   justify-items: end;
-  min-height: 4.05rem;
+  min-height: 3.125rem;
 }
 
 .app-participant-space-row-meta {
-  align-self: end;
-  padding: 0 0.35rem 0.45rem 0;
+  align-self: start;
+  padding: 0.375rem 0.35rem 0 0;
 }
 
 .app-participant-space-row-actions {
@@ -618,7 +619,7 @@
   grid-template-columns: repeat(3, 1.5rem);
   align-items: center;
   gap: 0.125rem;
-  padding: 0.375rem 0.25rem 0 0;
+  padding: 0.25rem 0.25rem 0 0;
   opacity: 0.9;
 }
 
