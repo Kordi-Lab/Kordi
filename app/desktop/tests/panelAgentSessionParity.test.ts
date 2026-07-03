@@ -183,7 +183,7 @@ test('sending from main or side-panel chat schedules a jump to the sent message'
   assert.match(sideSendBlock, /scheduleTranscriptScrollToBottom\(companionTranscriptScrollRef\)/, 'side-panel send should jump its own transcript to the new message');
 });
 
-test('queued Ask Agent bubbles expose cancel wiring before queued drafts flush', () => {
+test('queued Ask Agent bubbles expose icon-only edit and cancel actions before queued drafts flush', () => {
   const chatsSource = chatsPageSource();
   const queueSource = readFileSync(new URL('../src/features/chat/queuedDesktopMessages.ts', import.meta.url), 'utf8');
   const appModel = appModelSource();
@@ -192,11 +192,24 @@ test('queued Ask Agent bubbles expose cancel wiring before queued drafts flush',
 
   assert.match(queueSource, /removeQueuedDesktopMessageById/);
   assert.match(appModel, /handleCancelQueuedMessage/);
+  assert.match(appModel, /handleEditQueuedMessage/);
+  assert.match(appModel, /updateScopeDraft\(current, 'chat', queuedMessage\.sessionId, queuedMessage\.text\)/);
   assert.match(appModel, /removeQueuedDesktopMessageById\(current, sessionId, queuedMessageId\)/);
+  const queuedBubble = blockBetween(chatsSource, 'function QueuedMessageBubble', 'function chatMessageActionId');
   assert.match(chatsSource, /onCancelQueuedMessage/);
-  assert.match(chatsSource, /aria-label=\{`Cancel queued message/);
+  assert.match(chatsSource, /onEditQueuedMessage/);
+  assert.match(queuedBubble, /className="mt-0\.5 flex items-center gap-2"/);
+  assert.match(queuedBubble, /app-queued-message-text[\s\S]*app-queued-message-actions/, 'queued action icons should align in the same row as the queued text');
+  assert.match(queuedBubble, /aria-label=\{`Edit queued message/);
+  assert.match(queuedBubble, /aria-label=\{`Cancel queued message/);
+  assert.match(queuedBubble, /<SquarePen className="h-3\.5 w-3\.5" aria-hidden="true" \/>/);
+  assert.match(queuedBubble, /<X className="h-3\.5 w-3\.5" aria-hidden="true" \/>/);
+  assert.doesNotMatch(queuedBubble, />\s*(Edit|Cancel)\s*<\/button>/, 'queued actions should be icon-only, not visible text buttons');
   assert.match(shellTypes, /handleCancelQueuedMessage/);
+  assert.match(shellTypes, /handleEditQueuedMessage/);
   assert.match(shellBuilder, /onCancelQueuedMessage: args\.handleCancelQueuedMessage/);
+  assert.match(shellBuilder, /onEditQueuedMessage: args\.handleEditQueuedMessage/);
+  assert.match(chatsSource, /onClick=\{\(\) => onEdit\?\.\(message\.sessionId, message\.id\)\}/);
   assert.match(chatsSource, /onClick=\{\(\) => onCancel\?\.\(message\.sessionId, message\.id\)\}/);
 });
 
