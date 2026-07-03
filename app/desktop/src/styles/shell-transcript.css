@@ -833,12 +833,14 @@
 
 .app-source-message-quote-link {
   width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   border: 0;
-  border-radius: 10px;
+  border-radius: 7px;
   background: var(--app-source-message-quote-bg);
   color: inherit;
   cursor: pointer;
-  padding: 0.12rem 0.18rem;
+  padding: 0.34rem 0.62rem;
   transition: background-color var(--app-motion-fast) var(--app-motion-ease);
 }
 
@@ -846,24 +848,7 @@
   background: var(--app-source-message-quote-bg-hover);
 }
 
-:where(.app-chat-bubble-user, .app-chat-bubble-peer) .app-source-message-quote-link {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-  border-radius: 7px;
-  padding: 0.34rem 0.62rem;
-}
-
 .app-source-message-quote-rail {
-  display: block;
-  align-self: stretch;
-  width: 3px;
-  min-height: 2.05rem;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--app-source-message-quote-accent) 82%, var(--app-source-message-quote-foreground));
-}
-
-.app-chat-bubble-user .app-source-message-quote-rail,
-.app-chat-bubble-peer .app-source-message-quote-rail {
   display: none;
 }
 

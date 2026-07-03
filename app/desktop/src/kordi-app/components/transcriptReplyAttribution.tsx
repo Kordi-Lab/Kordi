@@ -97,11 +97,10 @@ export function SourceMessageQuote({
     <div className="app-source-message-quote w-full">
       <button
         type="button"
-        className="app-source-message-quote-link grid max-w-full grid-cols-[3px_minmax(0,1fr)] items-start gap-2.5 text-left"
+        className="app-source-message-quote-link grid max-w-full grid-cols-[minmax(0,1fr)] items-start text-left"
         onClick={navigate}
         title="Jump to original request"
       >
-        <span className="app-source-message-quote-rail" aria-hidden="true" />
         <span className="min-w-0">
           <span className={cn('app-source-message-quote-text-frame', canFold && !expanded && 'app-source-message-quote-folded', 'block')}>
             <span className="app-source-message-quote-text block whitespace-pre-wrap text-[12px] leading-5">

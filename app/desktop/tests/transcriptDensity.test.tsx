@@ -1260,7 +1260,7 @@ test('renders agent source quote and processing status without an output block b
 
   assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
   assert.match(markup, /app-source-message-quote/);
-  assert.match(markup, /app-source-message-quote-rail/);
+  assert.doesNotMatch(markup, /app-source-message-quote-rail/);
   assert.doesNotMatch(markup, /app-source-message-quote-icon/);
   assert.match(markup, />You: <\/span>@AliceKordi review the copy/);
   assert.doesNotMatch(markup, /app-source-message-quote-label block truncate/);
@@ -1298,10 +1298,8 @@ test('human reply preview is an inset replying-to rectangle without the quote ra
     },
   }));
   const shellCss = readDesktopShellCss();
-  const humanQuoteLinkBlock = shellCss.match(/:where\(\.app-chat-bubble-user, \.app-chat-bubble-peer\) \.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const ownQuoteRailBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote-rail,\n\.app-chat-bubble-peer \.app-source-message-quote-rail \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const baseRailIndex = shellCss.indexOf('.app-source-message-quote-rail {');
-  const humanRailIndex = shellCss.indexOf('.app-chat-bubble-user .app-source-message-quote-rail,');
+  const quoteLinkBlock = shellCss.match(/\.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const railRule = shellCss.match(/\.app-source-message-quote-rail \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(ownMarkup, /app-chat-bubble-user/);
   assert.match(peerMarkup, /app-chat-bubble-peer/);
@@ -1309,11 +1307,10 @@ test('human reply preview is an inset replying-to rectangle without the quote ra
   assert.match(peerMarkup, />Replying to: <\/span>keep it concise/);
   assert.doesNotMatch(ownMarkup, />Jiaxin: <\/span>keep it concise/);
   assert.doesNotMatch(peerMarkup, />Jiaxin: <\/span>keep it concise/);
-  assert.match(humanQuoteLinkBlock, /grid-template-columns:\s*minmax\(0, 1fr\);/);
-  assert.match(humanQuoteLinkBlock, /border-radius:\s*7px;/);
-  assert.match(humanQuoteLinkBlock, /padding:\s*0\.34rem 0\.62rem;/);
-  assert.match(ownQuoteRailBlock, /display:\s*none;/);
-  assert.ok(humanRailIndex > baseRailIndex, 'human quote rail override must come after the base rail display rule');
+  assert.match(quoteLinkBlock, /grid-template-columns:\s*minmax\(0, 1fr\);/);
+  assert.match(quoteLinkBlock, /border-radius:\s*7px;/);
+  assert.match(quoteLinkBlock, /padding:\s*0\.34rem 0\.62rem;/);
+  assert.match(railRule, /display:\s*none;/);
 });
 
 test('folds long source quotes after three lines while keeping the full request text in the DOM', () => {
