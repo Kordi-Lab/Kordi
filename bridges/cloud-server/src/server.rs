@@ -95,6 +95,10 @@ struct UpdateReleaseVersionResponse {
     version: String,
     changelog_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    download_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     install_command: Option<String>,
 }
 
@@ -107,7 +111,13 @@ async fn update_release_version() -> Json<UpdateReleaseVersionResponse> {
         changelog_url: std::env::var("KORDI_RELEASE_CHANGELOG_URL")
             .ok()
             .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "https://github.com/Kordi-AI/Kordi/releases".to_string()),
+            .unwrap_or_else(|| "https://coordinar.io/updates/releases/version".to_string()),
+        download_url: std::env::var("KORDI_RELEASE_DOWNLOAD_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty()),
+        signature: std::env::var("KORDI_RELEASE_SIGNATURE")
+            .ok()
+            .filter(|value| !value.trim().is_empty()),
         install_command: std::env::var("KORDI_RELEASE_INSTALL_COMMAND")
             .ok()
             .filter(|value| !value.trim().is_empty()),
@@ -203,6 +213,13 @@ mod tests {
                 "Download Kordi from coordinar.io",
             )
         };
+        unsafe {
+            std::env::set_var(
+                "KORDI_RELEASE_DOWNLOAD_URL",
+                "https://coordinar.io/releases/Kordi.dmg",
+            )
+        };
+        unsafe { std::env::set_var("KORDI_RELEASE_SIGNATURE", "release-signature") };
 
         let response = updates_routes()
             .oneshot(
@@ -220,10 +237,17 @@ mod tests {
         assert_eq!(json["version"], "0.0.1-beta.6");
         assert_eq!(json["changelogUrl"], "https://coordinar.io/releases");
         assert_eq!(json["installCommand"], "Download Kordi from coordinar.io");
+        assert_eq!(
+            json["downloadUrl"],
+            "https://coordinar.io/releases/Kordi.dmg"
+        );
+        assert_eq!(json["signature"], "release-signature");
 
         unsafe { std::env::remove_var("KORDI_RELEASE_VERSION") };
         unsafe { std::env::remove_var("KORDI_RELEASE_CHANGELOG_URL") };
         unsafe { std::env::remove_var("KORDI_RELEASE_INSTALL_COMMAND") };
+        unsafe { std::env::remove_var("KORDI_RELEASE_DOWNLOAD_URL") };
+        unsafe { std::env::remove_var("KORDI_RELEASE_SIGNATURE") };
     }
 
     #[test]

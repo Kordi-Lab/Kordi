@@ -190,7 +190,16 @@ type DesktopUpdateCheckResult = {
   currentVersion: string;
   latestVersion?: string | null;
   changelogUrl?: string | null;
+  downloadUrl?: string | null;
+  signature?: string | null;
   installCommand?: string | null;
+  message: string;
+};
+
+type DesktopUpdateInstallResult = {
+  status: 'installing';
+  version?: string | null;
+  downloadedPath: string;
   message: string;
 };
 
@@ -205,6 +214,7 @@ type WorkspaceSidebarProps = {
   chatConversations: ConversationItem[];
   onCreateChatSession: () => void;
   onCheckForUpdates?: () => Promise<DesktopUpdateCheckResult>;
+  onInstallUpdate?: (input: { downloadUrl: string; version?: string | null }) => Promise<DesktopUpdateInstallResult>;
   onOpenUpdateUrl?: (url: string) => Promise<void> | void;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
@@ -510,6 +520,7 @@ export function WorkspaceSidebar({
   chatConversations,
   onCreateChatSession,
   onCheckForUpdates,
+  onInstallUpdate,
   onOpenUpdateUrl,
   chatSearch,
   setChatSearch,
@@ -650,6 +661,7 @@ export function WorkspaceSidebar({
   const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
   const [updateConfirmAnchor, setUpdateConfirmAnchor] = useState<{ left: number; top: number } | null>(null);
   const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(false);
+  const [updateInstallState, setUpdateInstallState] = useState<{ status: 'idle' | 'installing' | 'error'; message?: string }>({ status: 'idle' });
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
@@ -729,11 +741,20 @@ export function WorkspaceSidebar({
   }, [isUpdateConfirmOpen]);
 
   const handleConfirmUpdate = async () => {
-    const url = updateCheckResult?.changelogUrl?.trim();
-    if (url) {
-      await onOpenUpdateUrl?.(url);
+    const downloadUrl = updateCheckResult?.downloadUrl?.trim();
+    if (!downloadUrl || !onInstallUpdate) {
+      const fallbackUrl = updateCheckResult?.changelogUrl?.trim();
+      if (fallbackUrl) await onOpenUpdateUrl?.(fallbackUrl);
+      return;
     }
-    setIsUpdateConfirmOpen(false);
+    setUpdateInstallState({ status: 'installing', message: 'Installing update…' });
+    try {
+      const result = await onInstallUpdate({ downloadUrl, version: updateCheckResult?.latestVersion ?? null });
+      setUpdateInstallState({ status: 'installing', message: result.message || 'Installing update…' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to install update';
+      setUpdateInstallState({ status: 'error', message });
+    }
   };
 
   useEffect(() => {
@@ -1987,9 +2008,20 @@ export function WorkspaceSidebar({
           <div className="mt-1 text-[11px] leading-5 text-slate-400">
             {updateCheckResult?.message || `Kordi ${updateCheckResult?.latestVersion} is available.`}
           </div>
-          {updateCheckResult?.installCommand ? (
-            <div className="mt-2 rounded-[12px] bg-white/[0.05] px-2.5 py-2 text-[10.5px] leading-4 text-slate-300">
-              {updateCheckResult.installCommand}
+          <div className="mt-2 rounded-[12px] bg-white/[0.05] px-2.5 py-2 text-[10.5px] leading-4 text-slate-300">
+            {updateCheckResult?.downloadUrl
+              ? 'Click Update now to download, install, and relaunch Kordi automatically.'
+              : (updateCheckResult?.installCommand || 'No automatic installer is available for this release.')}
+          </div>
+          {updateInstallState.message ? (
+            <div
+              role="status"
+              className={cn(
+                'mt-2 rounded-[12px] px-2.5 py-2 text-[10.5px] leading-4',
+                updateInstallState.status === 'error' ? 'bg-rose-500/10 text-rose-200' : 'bg-blue-500/10 text-blue-200',
+              )}
+            >
+              {updateInstallState.message}
             </div>
           ) : null}
           <div className="mt-3 flex justify-end gap-2">
@@ -2003,10 +2035,10 @@ export function WorkspaceSidebar({
             <button
               type="button"
               className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!updateCheckResult?.changelogUrl}
+              disabled={updateInstallState.status === 'installing' || (!updateCheckResult?.downloadUrl && !updateCheckResult?.changelogUrl)}
               onClick={() => { void handleConfirmUpdate(); }}
             >
-              Update now
+              {updateInstallState.status === 'installing' ? 'Installing…' : 'Update now'}
             </button>
           </div>
         </div>,

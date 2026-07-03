@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 const DEFAULT_RELEASE_VERSION_URL: &str = "https://coordinar.io/updates/releases/version";
 const DEFAULT_NPM_PACKAGE: Option<&str> = None;
-const DEFAULT_CHANGELOG_URL: Option<&str> = Some("https://github.com/Kordi-AI/Kordi/releases");
+const DEFAULT_CHANGELOG_URL: Option<&str> = Some(DEFAULT_RELEASE_VERSION_URL);
 const DEFAULT_INSTALL_COMMAND: Option<&str> = None;
 const REQUEST_TIMEOUT: Duration = Duration::from_millis(1500);
 
@@ -120,7 +120,7 @@ fn explicit_install_command_override() -> Option<String> {
 
 fn detect_hosted_install_command() -> String {
     explicit_install_command_override().unwrap_or_else(|| {
-        "Download the latest Kordi release from https://github.com/Kordi-AI/Kordi/releases"
+        "Install the latest Kordi release from https://coordinar.io/updates/releases/version"
             .to_string()
     })
 }
@@ -478,7 +478,7 @@ mod tests {
 
         assert_eq!(
             config.install_command,
-            "Download the latest Kordi release from https://github.com/Kordi-AI/Kordi/releases"
+            "Install the latest Kordi release from https://coordinar.io/updates/releases/version"
         );
     }
 

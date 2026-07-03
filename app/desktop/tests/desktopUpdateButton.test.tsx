@@ -91,7 +91,7 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
 
 test('WorkspaceSidebar hides the update button until an available release is detected', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
-    onCheckForUpdates: async () => ({ status: 'updateAvailable', latestVersion: '99.0.0', installCommand: 'Install fake release' }),
+    onCheckForUpdates: async () => ({ status: 'updateAvailable', latestVersion: '99.0.0', downloadUrl: 'https://coordinar.io/releases/Kordi.dmg', installCommand: 'Install fake release' }),
   }) as never));
 
   assert.doesNotMatch(markup, /app-update-logo-button/);
@@ -108,6 +108,9 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /Update available/);
   assert.match(source, /Update now/);
   assert.match(source, /Not now/);
+  assert.match(source, /onInstallUpdate/);
+  assert.match(source, /downloadUrl/);
+  assert.match(source, /Installing/);
   assert.match(source, /updateConfirmAnchor/);
   assert.match(source, /position: 'fixed'/);
   assert.match(source, /isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' \? createPortal/);
@@ -120,6 +123,9 @@ test('desktop update button is wired through the Tauri command surface', () => {
   const sidebarSource = readFileSync(new URL('../src/app/assembleSidebarSlot.tsx', import.meta.url), 'utf8');
 
   assert.match(desktopSource, /desktop_check_for_updates/);
+  assert.match(desktopSource, /desktop_install_update/);
   assert.match(tauriSource, /desktop_check_for_updates/);
+  assert.match(tauriSource, /desktop_install_update/);
   assert.match(sidebarSource, /checkDesktopForUpdates/);
+  assert.match(sidebarSource, /installDesktopUpdate/);
 });
