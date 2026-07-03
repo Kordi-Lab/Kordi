@@ -108,6 +108,9 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /Update available/);
   assert.match(source, /Update now/);
   assert.match(source, /Not now/);
+  assert.match(source, /updateConfirmAnchor/);
+  assert.match(source, /position: 'fixed'/);
+  assert.match(source, /isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' \? createPortal/);
   assert.doesNotMatch(source, /src="\/favicon\.svg"/);
 });
 

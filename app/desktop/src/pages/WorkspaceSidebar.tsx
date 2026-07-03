@@ -599,6 +599,7 @@ export function WorkspaceSidebar({
     : localCloudAccountDialogTab;
   const setCloudAccountDialogTab = setControlledCloudAccountDialogTab ?? setLocalCloudAccountDialogTab;
   const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const updateButtonRef = useRef<HTMLButtonElement | null>(null);
   const profilePopoverRef = useRef<HTMLDivElement | null>(null);
   // Computed each time the popover opens, so the surface anchors to the avatar's
   // actual on-screen position (not just a fixed bottom-left offset).
@@ -647,6 +648,7 @@ export function WorkspaceSidebar({
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [updateCheckResult, setUpdateCheckResult] = useState<DesktopUpdateCheckResult | null>(null);
   const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
+  const [updateConfirmAnchor, setUpdateConfirmAnchor] = useState<{ left: number; top: number } | null>(null);
   const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(false);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
@@ -702,6 +704,29 @@ export function WorkspaceSidebar({
       cancelled = true;
     };
   }, [onCheckForUpdates]);
+
+  const measureUpdateConfirmAnchor = () => {
+    const trigger = updateButtonRef.current;
+    if (!trigger || typeof window === 'undefined') return;
+    const rect = trigger.getBoundingClientRect();
+    const popoverWidth = 288;
+    setUpdateConfirmAnchor({
+      left: Math.max(12, Math.min(rect.right - popoverWidth, window.innerWidth - popoverWidth - 12)),
+      top: rect.bottom + 8,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!isUpdateConfirmOpen) {
+      setUpdateConfirmAnchor(null);
+      return;
+    }
+    measureUpdateConfirmAnchor();
+    window.addEventListener('resize', measureUpdateConfirmAnchor);
+    return () => {
+      window.removeEventListener('resize', measureUpdateConfirmAnchor);
+    };
+  }, [isUpdateConfirmOpen]);
 
   const handleConfirmUpdate = async () => {
     const url = updateCheckResult?.changelogUrl?.trim();
@@ -1638,55 +1663,23 @@ export function WorkspaceSidebar({
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
                       {updateCheckResult?.status === 'updateAvailable' ? (
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setIsUpdateConfirmOpen((open) => !open)}
-                            className={cn(
-                              'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-full p-0 transition',
-                              'border border-slate-300/70 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.12)] hover:bg-slate-50',
-                            )}
-                            title={`Kordi ${updateCheckResult.latestVersion ?? 'update'} is available`}
-                            aria-label="Check for Kordi updates"
-                            aria-expanded={isUpdateConfirmOpen}
-                          >
-                            <RefreshCw className="h-[18px] w-[18px] stroke-[3]" aria-hidden="true" />
-                          </button>
-                          {isUpdateConfirmOpen ? (
-                            <div
-                              role="dialog"
-                              aria-label="Confirm Kordi update"
-                              className="app-popover absolute right-0 top-10 z-[180] w-[18rem] rounded-[18px] border px-3 py-3 text-foreground shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
-                            >
-                              <div className="text-[13px] font-semibold text-slate-100">Update available</div>
-                              <div className="mt-1 text-[11px] leading-5 text-slate-400">
-                                {updateCheckResult.message || `Kordi ${updateCheckResult.latestVersion} is available.`}
-                              </div>
-                              {updateCheckResult.installCommand ? (
-                                <div className="mt-2 rounded-[12px] bg-white/[0.05] px-2.5 py-2 text-[10.5px] leading-4 text-slate-300">
-                                  {updateCheckResult.installCommand}
-                                </div>
-                              ) : null}
-                              <div className="mt-3 flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
-                                  onClick={() => setIsUpdateConfirmOpen(false)}
-                                >
-                                  Not now
-                                </button>
-                                <button
-                                  type="button"
-                                  className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                                  disabled={!updateCheckResult.changelogUrl}
-                                  onClick={() => { void handleConfirmUpdate(); }}
-                                >
-                                  Update now
-                                </button>
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
+                        <button
+                          ref={updateButtonRef}
+                          type="button"
+                          onClick={() => {
+                            measureUpdateConfirmAnchor();
+                            setIsUpdateConfirmOpen((open) => !open);
+                          }}
+                          className={cn(
+                            'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-full p-0 transition',
+                            'border border-slate-300/70 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.12)] hover:bg-slate-50',
+                          )}
+                          title={`Kordi ${updateCheckResult.latestVersion ?? 'update'} is available`}
+                          aria-label="Check for Kordi updates"
+                          aria-expanded={isUpdateConfirmOpen}
+                        >
+                          <RefreshCw className="h-[18px] w-[18px] stroke-[3]" aria-hidden="true" />
+                        </button>
                       ) : isUpdateCheckPending ? (
                         <span className="sr-only" role="status">Checking for Kordi updates</span>
                       ) : null}
@@ -1977,6 +1970,48 @@ export function WorkspaceSidebar({
         )}
       </div>
       </aside>
+
+      {isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' ? createPortal(
+        <div
+          role="dialog"
+          aria-label="Confirm Kordi update"
+          style={{
+            position: 'fixed',
+            left: updateConfirmAnchor.left,
+            top: updateConfirmAnchor.top,
+            zIndex: 180,
+          }}
+          className="app-popover w-[18rem] rounded-[18px] border px-3 py-3 text-foreground shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+        >
+          <div className="text-[13px] font-semibold text-slate-100">Update available</div>
+          <div className="mt-1 text-[11px] leading-5 text-slate-400">
+            {updateCheckResult?.message || `Kordi ${updateCheckResult?.latestVersion} is available.`}
+          </div>
+          {updateCheckResult?.installCommand ? (
+            <div className="mt-2 rounded-[12px] bg-white/[0.05] px-2.5 py-2 text-[10.5px] leading-4 text-slate-300">
+              {updateCheckResult.installCommand}
+            </div>
+          ) : null}
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+              onClick={() => setIsUpdateConfirmOpen(false)}
+            >
+              Not now
+            </button>
+            <button
+              type="button"
+              className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!updateCheckResult?.changelogUrl}
+              onClick={() => { void handleConfirmUpdate(); }}
+            >
+              Update now
+            </button>
+          </div>
+        </div>,
+        document.querySelector('.bridge-app') ?? document.body,
+      ) : null}
 
       {sessionContextMenu ? (
         <SessionContextMenu
