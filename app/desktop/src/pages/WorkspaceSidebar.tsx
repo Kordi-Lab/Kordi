@@ -185,6 +185,15 @@ type BridgeHostSummary = {
   visiblePeerCount: number;
 };
 
+type DesktopUpdateCheckResult = {
+  status: 'updateAvailable' | 'upToDate' | 'unavailable';
+  currentVersion: string;
+  latestVersion?: string | null;
+  changelogUrl?: string | null;
+  installCommand?: string | null;
+  message: string;
+};
+
 type WorkspaceSidebarProps = {
   isNativeShell: boolean;
   isSingleWorkspacePage: boolean;
@@ -195,6 +204,7 @@ type WorkspaceSidebarProps = {
   setActiveNav: Dispatch<SetStateAction<NavId>>;
   chatConversations: ConversationItem[];
   onCreateChatSession: () => void;
+  onCheckForUpdates?: () => Promise<DesktopUpdateCheckResult>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
   isDesktopChatLoading: boolean;
@@ -498,6 +508,7 @@ export function WorkspaceSidebar({
   setActiveNav,
   chatConversations,
   onCreateChatSession,
+  onCheckForUpdates,
   chatSearch,
   setChatSearch,
   desktopChatError,
@@ -632,6 +643,10 @@ export function WorkspaceSidebar({
     };
   }, [isProfileCardOpen]);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
+  const [updateCheckState, setUpdateCheckState] = useState<{
+    status: 'idle' | 'checking' | 'available' | 'upToDate' | 'error';
+    label: string;
+  }>({ status: 'idle', label: 'Update' });
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
@@ -665,6 +680,26 @@ export function WorkspaceSidebar({
   const openCloudAccountDialog = (tab: CloudAccountSettingsTabId) => {
     setIsProfileCardOpen(false);
     setCloudAccountDialogTab(tab);
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (!onCheckForUpdates || updateCheckState.status === 'checking') return;
+    setUpdateCheckState({ status: 'checking', label: 'Checking…' });
+    try {
+      const result = await onCheckForUpdates();
+      if (result.status === 'updateAvailable' && result.latestVersion) {
+        setUpdateCheckState({ status: 'available', label: `Update ${result.latestVersion}` });
+        return;
+      }
+      if (result.status === 'upToDate') {
+        setUpdateCheckState({ status: 'upToDate', label: 'Up to date' });
+        return;
+      }
+      setUpdateCheckState({ status: 'error', label: result.message || 'Update unavailable' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Update failed';
+      setUpdateCheckState({ status: 'error', label: message });
+    }
   };
 
   useEffect(() => {
@@ -1592,15 +1627,35 @@ export function WorkspaceSidebar({
                         </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={openChatCreateDialog}
-                      className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
-                      title="Start a chat"
-                      aria-label="Start a chat"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {onCheckForUpdates ? (
+                        <button
+                          type="button"
+                          onClick={() => { void handleCheckForUpdates(); }}
+                          disabled={updateCheckState.status === 'checking'}
+                          className={cn(
+                            'app-utility-button inline-flex h-8 items-center gap-1.5 rounded-[12px] px-2.5 text-[11px] font-semibold text-slate-200 transition disabled:cursor-wait disabled:opacity-70',
+                            updateCheckState.status === 'available' ? 'text-emerald-100' : '',
+                            updateCheckState.status === 'error' ? 'text-rose-100' : '',
+                          )}
+                          title={updateCheckState.label}
+                          aria-label="Check for Kordi updates"
+                          aria-live="polite"
+                        >
+                          <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>{updateCheckState.label}</span>
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={openChatCreateDialog}
+                        className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
+                        title="Start a chat"
+                        aria-label="Start a chat"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">

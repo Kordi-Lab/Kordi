@@ -12,6 +12,9 @@ mod test_support;
 mod workspace;
 
 use std::process::Command;
+use std::time::Duration;
+
+use serde::Serialize;
 
 fn is_cloud_edition_context(
     kordi_edition: Option<&str>,
@@ -89,6 +92,9 @@ fn should_publish_presence_offline_on_exit() -> bool {
 }
 
 const DEFAULT_CLOUD_API_BASE_URL: &str = "https://coordinar.io";
+const DEFAULT_RELEASE_VERSION_URL: &str = "https://coordinar.io/updates/releases/version";
+const DEFAULT_RELEASE_CHANGELOG_URL: &str = "https://github.com/Kordi-AI/Kordi/releases";
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_millis(1500);
 
 fn cloud_api_base_url_from_env() -> String {
     std::env::var("VITE_KORDI_CLOUD_API_BASE")
@@ -121,6 +127,127 @@ fn publish_cloud_presence_offline(token: &str, base_url: &str) -> Result<(), Str
     } else {
         Err(format!("presence_offline_failed: {}", response.status()))
     }
+}
+
+fn release_version_url_from_env() -> String {
+    std::env::var("KORDI_UPDATE_CHECK_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_RELEASE_VERSION_URL.to_string())
+}
+
+fn update_install_command_from_env() -> String {
+    std::env::var("KORDI_UPDATE_CHECK_INSTALL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            format!("Download the latest Kordi release from {DEFAULT_RELEASE_CHANGELOG_URL}")
+        })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdateCheckResult {
+    status: String,
+    current_version: String,
+    latest_version: Option<String>,
+    changelog_url: Option<String>,
+    install_command: Option<String>,
+    message: String,
+}
+
+fn update_response_text_field(value: &serde_json::Value, names: &[&str]) -> Option<String> {
+    names
+        .iter()
+        .find_map(|name| value.get(name)?.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn parse_update_latest_version_response(
+    body: &str,
+) -> Result<(String, Option<String>, Option<String>), String> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return Err("Update endpoint returned an empty response".to_string());
+    }
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(version) =
+            update_response_text_field(&json, &["version", "latestVersion", "latest_version"])
+        {
+            let changelog_url = update_response_text_field(
+                &json,
+                &["changelogUrl", "changelog_url", "releaseNotesUrl"],
+            );
+            let install_command =
+                update_response_text_field(&json, &["installCommand", "install_command"]);
+            return Ok((version, changelog_url, install_command));
+        }
+    }
+    let version = trimmed.trim_matches('"').trim().to_string();
+    if version.is_empty() {
+        Err("Update endpoint did not include a version".to_string())
+    } else {
+        Ok((version, None, None))
+    }
+}
+
+fn check_for_updates_blocking() -> Result<DesktopUpdateCheckResult, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let url = release_version_url_from_env();
+    let response = reqwest::blocking::Client::builder()
+        .timeout(UPDATE_CHECK_TIMEOUT)
+        .build()
+        .map_err(|err| err.to_string())?
+        .get(url)
+        .send()
+        .map_err(|err| err.to_string())?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(DesktopUpdateCheckResult {
+            status: "unavailable".to_string(),
+            current_version,
+            latest_version: None,
+            changelog_url: Some(DEFAULT_RELEASE_CHANGELOG_URL.to_string()),
+            install_command: None,
+            message: "No Kordi release metadata is available yet.".to_string(),
+        });
+    }
+    let body = response
+        .error_for_status()
+        .map_err(|err| err.to_string())?
+        .text()
+        .map_err(|err| err.to_string())?;
+    let (latest_version, changelog_url, install_command) =
+        parse_update_latest_version_response(&body)?;
+    if latest_version == current_version {
+        return Ok(DesktopUpdateCheckResult {
+            status: "upToDate".to_string(),
+            current_version,
+            latest_version: Some(latest_version.clone()),
+            changelog_url: changelog_url
+                .or_else(|| Some(DEFAULT_RELEASE_CHANGELOG_URL.to_string())),
+            install_command: None,
+            message: format!("Kordi {latest_version} is up to date."),
+        });
+    }
+    Ok(DesktopUpdateCheckResult {
+        status: "updateAvailable".to_string(),
+        current_version,
+        latest_version: Some(latest_version.clone()),
+        changelog_url: changelog_url.or_else(|| Some(DEFAULT_RELEASE_CHANGELOG_URL.to_string())),
+        install_command: install_command.or_else(|| Some(update_install_command_from_env())),
+        message: format!("Kordi {latest_version} is available."),
+    })
+}
+
+#[tauri::command]
+async fn desktop_check_for_updates() -> Result<DesktopUpdateCheckResult, String> {
+    tauri::async_runtime::spawn_blocking(check_for_updates_blocking)
+        .await
+        .map_err(|err| err.to_string())?
 }
 
 fn publish_stored_cloud_presence_offline_on_exit() {
@@ -275,6 +402,7 @@ pub fn run() {
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,
             desktop_open_external_url,
+            desktop_check_for_updates,
             project::desktop_project_settings,
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,
