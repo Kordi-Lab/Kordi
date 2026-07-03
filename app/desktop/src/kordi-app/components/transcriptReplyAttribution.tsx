@@ -72,15 +72,19 @@ function sourceQuoteNeedsFold(sourceMessage: MessageSourceReference) {
 export function SourceMessageQuote({
   sourceMessage,
   onNavigateToMessage,
+  compactReplyPreview = false,
 }: {
   sourceMessage?: MessageSourceReference | null;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
+  compactReplyPreview?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (!sourceMessage) return null;
   const canFold = sourceQuoteNeedsFold(sourceMessage);
-  const senderLabel = sourceMessage.senderLabel?.trim() || 'message';
-  const attachmentText = sourceMessage.attachmentCount ? ` · ${sourceMessage.attachmentCount} attachment${sourceMessage.attachmentCount === 1 ? '' : 's'}` : '';
+  const senderLabel = compactReplyPreview ? 'Replying to' : (sourceMessage.senderLabel?.trim() || 'message');
+  const attachmentText = compactReplyPreview
+    ? ''
+    : (sourceMessage.attachmentCount ? ` · ${sourceMessage.attachmentCount} attachment${sourceMessage.attachmentCount === 1 ? '' : 's'}` : '');
   const navigate = () => {
     if (onNavigateToMessage) {
       onNavigateToMessage(sourceMessage.messageId, sourceMessage);
