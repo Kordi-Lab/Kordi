@@ -98,6 +98,14 @@ fn open_db() -> Result<Connection, String> {
         std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     let conn = Connection::open(path).map_err(|err| err.to_string())?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|err| err.to_string())?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;",
+    )
+    .map_err(|err| err.to_string())?;
     initialize_schema(&conn)?;
     Ok(conn)
 }
@@ -1460,37 +1468,52 @@ pub(crate) fn canonical_session_is_group_chat(session_id: &str) -> Result<bool, 
     Ok(select_session(&conn, trimmed)?.is_some_and(|session| session.kind == "group"))
 }
 
-#[tauri::command]
-pub fn desktop_canonical_session_state() -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_session_state()
+async fn run_canonical_blocking<T>(
+    task: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
-pub fn desktop_canonical_upsert_identity(
+pub async fn desktop_canonical_session_state() -> Result<CanonicalSessionState, String> {
+    run_canonical_blocking(commands::desktop_canonical_session_state).await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_upsert_identity(
     request: UpsertCanonicalIdentityRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_upsert_identity(request)
+    run_canonical_blocking(move || commands::desktop_canonical_upsert_identity(request)).await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_adopt_cloud_profile_identity(
+pub async fn desktop_canonical_adopt_cloud_profile_identity(
     request: AdoptCloudProfileIdentityRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_adopt_cloud_profile_identity(request)
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_adopt_cloud_profile_identity(request)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_open_or_create_session(
+pub async fn desktop_canonical_open_or_create_session(
     request: OpenCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_open_or_create_session(request)
+    run_canonical_blocking(move || commands::desktop_canonical_open_or_create_session(request))
+        .await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_append_message(
+pub async fn desktop_canonical_append_message(
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_append_message(request)
+    run_canonical_blocking(move || commands::desktop_canonical_append_message(request)).await
 }
 
 /// Trust boundary: this command writes (or overwrites, when the supplied id
@@ -1501,64 +1524,69 @@ pub fn desktop_canonical_append_message(
 /// untrusted message id could therefore replace an unrelated message. Do not
 /// expose this command to callers outside the renderer process.
 #[tauri::command]
-pub fn desktop_canonical_upsert_message(
+pub async fn desktop_canonical_upsert_message(
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_upsert_message(request)
+    run_canonical_blocking(move || commands::desktop_canonical_upsert_message(request)).await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_append_message_fast(
+pub async fn desktop_canonical_append_message_fast(
     request: AppendCanonicalMessageRequest,
 ) -> Result<String, String> {
-    commands::desktop_canonical_append_message_fast(request)
+    run_canonical_blocking(move || commands::desktop_canonical_append_message_fast(request)).await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_create_delegated_exchange(
+pub async fn desktop_canonical_create_delegated_exchange(
     request: CreateCanonicalDelegatedExchangeRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_create_delegated_exchange(request)
+    run_canonical_blocking(move || commands::desktop_canonical_create_delegated_exchange(request))
+        .await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_update_presence(
+pub async fn desktop_canonical_update_presence(
     request: UpdateCanonicalPresenceRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_update_presence(request)
+    run_canonical_blocking(move || commands::desktop_canonical_update_presence(request)).await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_rename_session(
+pub async fn desktop_canonical_rename_session(
     request: RenameCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_rename_session(request)
+    run_canonical_blocking(move || commands::desktop_canonical_rename_session(request)).await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_update_session_metadata(
+pub async fn desktop_canonical_update_session_metadata(
     request: UpdateCanonicalSessionMetadataRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_update_session_metadata(request)
+    run_canonical_blocking(move || commands::desktop_canonical_update_session_metadata(request))
+        .await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_add_session_participants(
+pub async fn desktop_canonical_add_session_participants(
     request: AddCanonicalSessionParticipantsRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_add_session_participants(request)
+    run_canonical_blocking(move || commands::desktop_canonical_add_session_participants(request))
+        .await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_remove_session_participant(
+pub async fn desktop_canonical_remove_session_participant(
     request: RemoveCanonicalSessionParticipantRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_remove_session_participant(request)
+    run_canonical_blocking(move || commands::desktop_canonical_remove_session_participant(request))
+        .await
 }
 
 #[tauri::command]
-pub fn desktop_canonical_set_session_participant_role(
+pub async fn desktop_canonical_set_session_participant_role(
     request: SetCanonicalSessionParticipantRoleRequest,
 ) -> Result<CanonicalSessionState, String> {
-    commands::desktop_canonical_set_session_participant_role(request)
+    run_canonical_blocking(move || commands::desktop_canonical_set_session_participant_role(request))
+        .await
 }

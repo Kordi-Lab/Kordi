@@ -78,10 +78,18 @@ class MemoryBackend implements SessionStorageBackend {
 
 let backendOverride: SessionStorageBackend | null = null;
 let cachedBackend: SessionStorageBackend | null = null;
+let cachedSessionValue: StoredSession | null | undefined;
+let cachedSessionLoadPromise: Promise<StoredSession | null> | null = null;
+
+function resetSessionLoadCache(): void {
+  cachedSessionValue = undefined;
+  cachedSessionLoadPromise = null;
+}
 
 export function __setSessionBackendForTests(backend: SessionStorageBackend | null): void {
   backendOverride = backend;
   cachedBackend = null;
+  resetSessionLoadCache();
 }
 
 function backend(): SessionStorageBackend {
@@ -92,15 +100,34 @@ function backend(): SessionStorageBackend {
 }
 
 export async function loadSession(): Promise<StoredSession | null> {
-  return backend().load();
+  if (cachedSessionValue !== undefined) return cachedSessionValue;
+  if (!cachedSessionLoadPromise) {
+    cachedSessionLoadPromise = backend().load()
+      .then((session) => {
+        cachedSessionValue = session ?? null;
+        return cachedSessionValue;
+      })
+      .catch((error) => {
+        resetSessionLoadCache();
+        throw error;
+      })
+      .finally(() => {
+        cachedSessionLoadPromise = null;
+      });
+  }
+  return cachedSessionLoadPromise;
 }
 
 export async function saveSession(session: StoredSession): Promise<void> {
   await backend().save(session);
+  cachedSessionValue = { ...session };
+  cachedSessionLoadPromise = null;
 }
 
 export async function clearSession(): Promise<void> {
   await backend().clear();
+  cachedSessionValue = null;
+  cachedSessionLoadPromise = null;
 }
 
 export function notifyCloudSessionSignedOut(): void {

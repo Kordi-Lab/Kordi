@@ -18,7 +18,8 @@ use super::outreach::mark_outreach_status;
 use super::realtime::send_realtime_or_relay;
 use super::{
     add_serve_contact, append_conversation_message_to_storage_with_timestamp,
-    build_conversation_only_bridge_state, current_local_server_status,
+    build_conversation_only_bridge_state, build_mailbox_poll_metadata_only_bridge_state,
+    current_local_server_status,
     default_contact_request_message, default_display_name, fetch_serve_contact_requests,
     fetch_serve_contacts, fetch_serve_discovery, load_bridge_store, load_conversation_store,
     mark_bridge_conversation_read_in_storage, now_ms, relay_plaintext_message,
@@ -214,12 +215,16 @@ pub(super) async fn rebuild_state_after_mailbox_poll(
         mark_bridge_agent_session_message_timeouts_in_storage(&conversations, sync_now_ms)?;
     let timeout_storage_changed = timed_out_conversations.is_some();
     let conversations = timed_out_conversations.unwrap_or(conversations);
-    let should_sync_canonical = storage_changed || timeout_storage_changed;
+    let should_return_conversations = storage_changed || timeout_storage_changed;
+    let local_server = current_local_server_status(manager).await;
+    if !should_return_conversations {
+        return Ok(build_mailbox_poll_metadata_only_bridge_state(store, local_server));
+    }
     Ok(rebuild_conversation_state(
         store,
         conversations,
-        current_local_server_status(manager).await,
-        should_sync_canonical,
+        local_server,
+        true,
     ))
 }
 

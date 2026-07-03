@@ -34,6 +34,31 @@ function humanRequest(overrides: Partial<Message> = {}): Message {
   };
 }
 
+test('buildReplyAttribution keeps fallback ids stable for transcript windows', () => {
+  const messages: Message[] = [
+    humanRequest({ id: '', text: 'Windowed request' }),
+    {
+      id: '',
+      role: 'owned-agent',
+      sender: 'Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '10:01',
+      turn: turn({ id: 'turn-windowed', assistantText: 'Windowed response.' }),
+    },
+  ];
+
+  const result = buildReplyAttribution(messages, null, {
+    inferLatestHumanRequest: true,
+    messageIndexOffset: 860,
+  });
+
+  assert.equal(result.messages[0].id, 'transcript-message:860');
+  assert.equal(result.messages[1].id, 'transcript-message:861');
+  assert.equal(result.messages[1].replyToMessageId, 'transcript-message:860');
+  assert.equal(result.messages[1].turn?.sourceMessage?.messageId, 'transcript-message:860');
+});
+
 test('buildReplyAttribution adds generic reply count and source quote without responder names', () => {
   const messages: Message[] = [
     humanRequest(),

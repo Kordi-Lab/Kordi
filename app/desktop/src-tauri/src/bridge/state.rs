@@ -228,6 +228,28 @@ pub(super) async fn build_bridge_state(
     }
 }
 
+pub(super) fn build_mailbox_poll_metadata_only_bridge_state(
+    store: DesktopBridgeStore,
+    local_server: DesktopBridgeLocalServerStatus,
+) -> DesktopBridgeState {
+    DesktopBridgeState {
+        config_path: desktop_bridge_config_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| DESKTOP_BRIDGE_CONFIG_FALLBACK_PATH.to_string()),
+        legacy_config_path: legacy_bridge_config_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| LEGACY_BRIDGE_CONFIG_FALLBACK_PATH.to_string()),
+        conversations_path: desktop_bridge_conversations_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| DESKTOP_BRIDGE_CONVERSATIONS_FALLBACK_PATH.to_string()),
+        active_host_id: store.active_host_id,
+        hosts: Vec::new(),
+        conversations: Vec::new(),
+        local_server,
+        local_agent_routing: store.local_agent_routing,
+    }
+}
+
 pub(super) fn build_conversation_only_bridge_state(
     store: DesktopBridgeStore,
     conversation_store: DesktopBridgeConversationStore,
@@ -291,6 +313,25 @@ mod tests {
             identity: None,
             messages: Vec::new(),
         }
+    }
+
+    #[test]
+    fn mailbox_poll_metadata_only_state_omits_heavy_conversation_payloads() {
+        let state = build_mailbox_poll_metadata_only_bridge_state(
+            DesktopBridgeStore {
+                active_host_id: Some("host-1".to_string()),
+                ..DesktopBridgeStore::default()
+            },
+            DesktopBridgeLocalServerStatus {
+                running: true,
+                ..DesktopBridgeLocalServerStatus::default()
+            },
+        );
+
+        assert_eq!(state.active_host_id.as_deref(), Some("host-1"));
+        assert!(state.hosts.is_empty());
+        assert!(state.conversations.is_empty());
+        assert!(state.local_server.running);
     }
 
     #[test]

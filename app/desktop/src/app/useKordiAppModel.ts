@@ -571,15 +571,13 @@ export function useKordiAppModel({
 
   const desktopCanonicalRefreshKey = useMemo(
     () => [
-      desktopChatState?.activeSessionId ?? '',
-      desktopChatState?.activeSession.messages.length ?? 0,
       ...(desktopChatState?.sessions ?? []).map((session) => `${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
       ...(desktopChatState?.projects ?? []).flatMap((project) => [
         `${project.id}:${project.root}:${project.name}:${project.sessions.length}`,
         ...project.sessions.map((session) => `${project.id}:${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
       ]),
     ].join('|'),
-    [desktopChatState],
+    [desktopChatState?.projects, desktopChatState?.sessions],
   );
 
   const bridgeCanonicalRefreshKey = useMemo(

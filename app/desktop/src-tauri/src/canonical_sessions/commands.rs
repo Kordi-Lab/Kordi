@@ -3,7 +3,8 @@ use rusqlite::Connection;
 use super::{
     AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
     AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
-    CanonicalSessionParticipant, CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest,
+    CanonicalSessionMessage, CanonicalSessionParticipant, CanonicalSessionState,
+    CreateCanonicalDelegatedExchangeRequest,
     OpenCanonicalSessionRequest, RemoveCanonicalSessionParticipantRequest,
     RenameCanonicalSessionRequest, SetCanonicalSessionParticipantRoleRequest,
     UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
@@ -11,7 +12,7 @@ use super::{
     adopt_cloud_profile_identity_in_db, append_message_in_db, create_delegated_exchange_in_db,
     json_from_db, open_db, open_or_create_session_in_db, remove_session_participant_in_db,
     rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
-    select_delegated_exchange, select_identity, select_message, select_session,
+    select_delegated_exchange, select_identity, select_session,
     set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
     upsert_identity_in_db, upsert_message_in_db,
 };
@@ -66,12 +67,31 @@ pub(super) fn load_state_from_db(conn: &Connection) -> Result<CanonicalSessionSt
     )?;
     let messages = query_all(
         conn,
-        "SELECT id FROM session_messages ORDER BY session_id ASC, sequence_num ASC",
-        |row| row.get::<_, String>(0),
-    )?
-    .into_iter()
-    .filter_map(|id| select_message(conn, &id).ok().flatten())
-    .collect();
+        "SELECT id, session_id, sender_identity_id, sender_role, message_kind, content_text, content_json,
+                parent_message_id, delegated_exchange_id, status, sequence_num, created_at_ms, updated_at_ms,
+                content_hash, source_transport, source_event_id
+         FROM session_messages ORDER BY session_id ASC, sequence_num ASC",
+        |row| {
+            Ok(CanonicalSessionMessage {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                sender_identity_id: row.get(2)?,
+                sender_role: row.get(3)?,
+                message_kind: row.get(4)?,
+                content_text: row.get(5)?,
+                content: json_from_db(row.get(6)?),
+                parent_message_id: row.get(7)?,
+                delegated_exchange_id: row.get(8)?,
+                status: row.get(9)?,
+                sequence_num: row.get(10)?,
+                created_at_ms: row.get(11)?,
+                updated_at_ms: row.get(12)?,
+                content_hash: row.get(13)?,
+                source_transport: row.get(14)?,
+                source_event_id: row.get(15)?,
+            })
+        },
+    )?;
     let delegated_exchanges = query_all(
         conn,
         "SELECT id FROM delegated_exchanges ORDER BY updated_at_ms DESC, id ASC",
