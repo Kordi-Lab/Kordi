@@ -853,10 +853,6 @@
   padding: 0.34rem 0.62rem;
 }
 
-:where(.app-chat-bubble-user, .app-chat-bubble-peer) .app-source-message-quote-rail {
-  display: none;
-}
-
 .app-source-message-quote-rail {
   display: block;
   align-self: stretch;
@@ -864,6 +860,11 @@
   min-height: 2.05rem;
   border-radius: 999px;
   background: color-mix(in oklab, var(--app-source-message-quote-accent) 82%, var(--app-source-message-quote-foreground));
+}
+
+.app-chat-bubble-user .app-source-message-quote-rail,
+.app-chat-bubble-peer .app-source-message-quote-rail {
+  display: none;
 }
 
 .app-source-message-quote-label {
