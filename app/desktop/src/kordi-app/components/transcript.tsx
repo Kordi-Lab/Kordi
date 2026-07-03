@@ -1328,7 +1328,7 @@ function MessageBubbleView({
         {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
         {msg.sourceMessage && !isForwardedMessage ? (
           <div className={cn(hasText || hasAttachments ? 'mb-2' : '')}>
-            <SourceMessageQuote sourceMessage={msg.sourceMessage} compactReplyPreview={isOwnHumanMessage} onNavigateToMessage={onNavigateToMessage} />
+            <SourceMessageQuote sourceMessage={msg.sourceMessage} compactReplyPreview={isOwnHumanMessage || isPeerHumanMessage} onNavigateToMessage={onNavigateToMessage} />
           </div>
         ) : null}
         {showCompactFooter ? (

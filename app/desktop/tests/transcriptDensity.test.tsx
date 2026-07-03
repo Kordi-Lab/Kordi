@@ -1271,8 +1271,8 @@ test('renders agent source quote and processing status without an output block b
   assert.doesNotMatch(markup, /checking auth screenshots/);
 });
 
-test('outgoing human reply preview is an inset replying-to rectangle without the quote rail', () => {
-  const message: Message = {
+test('human reply preview is an inset replying-to rectangle without the quote rail', () => {
+  const baseMessage: Message = {
     id: 'msg-reply-own',
     role: 'user',
     senderType: 'human',
@@ -1286,19 +1286,31 @@ test('outgoing human reply preview is an inset replying-to rectangle without the
       attachmentCount: 0,
     },
   };
-
-  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+  const ownMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: baseMessage }));
+  const peerMarkup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: {
+      ...baseMessage,
+      id: 'msg-reply-peer',
+      role: 'person',
+      senderType: 'human',
+      isOwnMessage: false,
+      sender: 'Jiaxin',
+    },
+  }));
   const shellCss = readDesktopShellCss();
-  const ownQuoteLinkBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const ownQuoteRailBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote-rail \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const humanQuoteLinkBlock = shellCss.match(/:where\(\.app-chat-bubble-user, \.app-chat-bubble-peer\) \.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const humanQuoteRailBlock = shellCss.match(/:where\(\.app-chat-bubble-user, \.app-chat-bubble-peer\) \.app-source-message-quote-rail \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(markup, /app-chat-bubble-user/);
-  assert.match(markup, />Replying to: <\/span>keep it concise/);
-  assert.doesNotMatch(markup, />Jiaxin: <\/span>keep it concise/);
-  assert.match(ownQuoteLinkBlock, /grid-template-columns:\s*minmax\(0, 1fr\);/);
-  assert.match(ownQuoteLinkBlock, /border-radius:\s*7px;/);
-  assert.match(ownQuoteLinkBlock, /padding:\s*0\.34rem 0\.62rem;/);
-  assert.match(ownQuoteRailBlock, /display:\s*none;/);
+  assert.match(ownMarkup, /app-chat-bubble-user/);
+  assert.match(peerMarkup, /app-chat-bubble-peer/);
+  assert.match(ownMarkup, />Replying to: <\/span>keep it concise/);
+  assert.match(peerMarkup, />Replying to: <\/span>keep it concise/);
+  assert.doesNotMatch(ownMarkup, />Jiaxin: <\/span>keep it concise/);
+  assert.doesNotMatch(peerMarkup, />Jiaxin: <\/span>keep it concise/);
+  assert.match(humanQuoteLinkBlock, /grid-template-columns:\s*minmax\(0, 1fr\);/);
+  assert.match(humanQuoteLinkBlock, /border-radius:\s*7px;/);
+  assert.match(humanQuoteLinkBlock, /padding:\s*0\.34rem 0\.62rem;/);
+  assert.match(humanQuoteRailBlock, /display:\s*none;/);
 });
 
 test('folds long source quotes after three lines while keeping the full request text in the DOM', () => {

@@ -846,14 +846,14 @@
   background: var(--app-source-message-quote-bg-hover);
 }
 
-.app-chat-bubble-user .app-source-message-quote-link {
+:where(.app-chat-bubble-user, .app-chat-bubble-peer) .app-source-message-quote-link {
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
   border-radius: 7px;
   padding: 0.34rem 0.62rem;
 }
 
-.app-chat-bubble-user .app-source-message-quote-rail {
+:where(.app-chat-bubble-user, .app-chat-bubble-peer) .app-source-message-quote-rail {
   display: none;
 }
 
