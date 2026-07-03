@@ -4,6 +4,7 @@ import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 're
 import {
   Check,
   ChevronDown,
+  RefreshCw,
   Copy,
   MoreHorizontal,
   Plus,
@@ -204,6 +205,7 @@ type WorkspaceSidebarProps = {
   chatConversations: ConversationItem[];
   onCreateChatSession: () => void;
   onCheckForUpdates?: () => Promise<DesktopUpdateCheckResult>;
+  onOpenUpdateUrl?: (url: string) => Promise<void> | void;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
   isDesktopChatLoading: boolean;
@@ -508,6 +510,7 @@ export function WorkspaceSidebar({
   chatConversations,
   onCreateChatSession,
   onCheckForUpdates,
+  onOpenUpdateUrl,
   chatSearch,
   setChatSearch,
   desktopChatError,
@@ -642,10 +645,9 @@ export function WorkspaceSidebar({
     };
   }, [isProfileCardOpen]);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
-  const [updateCheckState, setUpdateCheckState] = useState<{
-    status: 'idle' | 'checking' | 'available' | 'upToDate' | 'error';
-    label: string;
-  }>({ status: 'idle', label: 'Update' });
+  const [updateCheckResult, setUpdateCheckResult] = useState<DesktopUpdateCheckResult | null>(null);
+  const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
+  const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(false);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
@@ -681,24 +683,32 @@ export function WorkspaceSidebar({
     setCloudAccountDialogTab(tab);
   };
 
-  const handleCheckForUpdates = async () => {
-    if (!onCheckForUpdates || updateCheckState.status === 'checking') return;
-    setUpdateCheckState({ status: 'checking', label: 'Checking…' });
-    try {
-      const result = await onCheckForUpdates();
-      if (result.status === 'updateAvailable' && result.latestVersion) {
-        setUpdateCheckState({ status: 'available', label: `Update ${result.latestVersion}` });
-        return;
-      }
-      if (result.status === 'upToDate') {
-        setUpdateCheckState({ status: 'upToDate', label: 'Up to date' });
-        return;
-      }
-      setUpdateCheckState({ status: 'error', label: result.message || 'Update unavailable' });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Update failed';
-      setUpdateCheckState({ status: 'error', label: message });
+  useEffect(() => {
+    if (!onCheckForUpdates) return;
+    let cancelled = false;
+    setIsUpdateCheckPending(true);
+    void onCheckForUpdates()
+      .then((result) => {
+        if (cancelled) return;
+        setUpdateCheckResult(result.status === 'updateAvailable' ? result : null);
+      })
+      .catch(() => {
+        if (!cancelled) setUpdateCheckResult(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsUpdateCheckPending(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onCheckForUpdates]);
+
+  const handleConfirmUpdate = async () => {
+    const url = updateCheckResult?.changelogUrl?.trim();
+    if (url) {
+      await onOpenUpdateUrl?.(url);
     }
+    setIsUpdateConfirmOpen(false);
   };
 
   useEffect(() => {
@@ -1627,23 +1637,58 @@ export function WorkspaceSidebar({
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      {onCheckForUpdates ? (
-                        <button
-                          type="button"
-                          onClick={() => { void handleCheckForUpdates(); }}
-                          disabled={updateCheckState.status === 'checking'}
-                          className={cn(
-                            'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-[14px] p-0 transition disabled:cursor-wait disabled:opacity-70',
-                            'border border-sky-300/35 bg-sky-500/15 shadow-[0_8px_20px_rgba(37,99,235,0.16)] hover:bg-sky-500/22',
-                            updateCheckState.status === 'available' ? 'ring-2 ring-blue-400/45' : '',
-                            updateCheckState.status === 'error' ? 'border-rose-300/40 bg-rose-500/10' : '',
-                          )}
-                          title={updateCheckState.label}
-                          aria-label="Check for Kordi updates"
-                        >
-                          <img src="/favicon.svg" alt="" aria-hidden="true" className="h-[18px] w-[18px]" />
-                          <span className="sr-only" aria-live="polite">{updateCheckState.label}</span>
-                        </button>
+                      {updateCheckResult?.status === 'updateAvailable' ? (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setIsUpdateConfirmOpen((open) => !open)}
+                            className={cn(
+                              'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-full p-0 transition',
+                              'border border-slate-300/70 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.12)] hover:bg-slate-50',
+                            )}
+                            title={`Kordi ${updateCheckResult.latestVersion ?? 'update'} is available`}
+                            aria-label="Check for Kordi updates"
+                            aria-expanded={isUpdateConfirmOpen}
+                          >
+                            <RefreshCw className="h-[18px] w-[18px] stroke-[3]" aria-hidden="true" />
+                          </button>
+                          {isUpdateConfirmOpen ? (
+                            <div
+                              role="dialog"
+                              aria-label="Confirm Kordi update"
+                              className="app-popover absolute right-0 top-10 z-[180] w-[18rem] rounded-[18px] border px-3 py-3 text-foreground shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+                            >
+                              <div className="text-[13px] font-semibold text-slate-100">Update available</div>
+                              <div className="mt-1 text-[11px] leading-5 text-slate-400">
+                                {updateCheckResult.message || `Kordi ${updateCheckResult.latestVersion} is available.`}
+                              </div>
+                              {updateCheckResult.installCommand ? (
+                                <div className="mt-2 rounded-[12px] bg-white/[0.05] px-2.5 py-2 text-[10.5px] leading-4 text-slate-300">
+                                  {updateCheckResult.installCommand}
+                                </div>
+                              ) : null}
+                              <div className="mt-3 flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                                  onClick={() => setIsUpdateConfirmOpen(false)}
+                                >
+                                  Not now
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                                  disabled={!updateCheckResult.changelogUrl}
+                                  onClick={() => { void handleConfirmUpdate(); }}
+                                >
+                                  Update now
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : isUpdateCheckPending ? (
+                        <span className="sr-only" role="status">Checking for Kordi updates</span>
                       ) : null}
                       <button
                         type="button"

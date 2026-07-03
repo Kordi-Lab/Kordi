@@ -89,15 +89,26 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('WorkspaceSidebar renders an icon-only blue Kordi logo update button in the Chats header', () => {
+test('WorkspaceSidebar hides the update button until an available release is detected', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
     onCheckForUpdates: async () => ({ status: 'updateAvailable', latestVersion: '99.0.0', installCommand: 'Install fake release' }),
   }) as never));
 
-  assert.match(markup, /aria-label="Check for Kordi updates"/);
-  assert.match(markup, /app-update-logo-button/);
-  assert.match(markup, /src="\/favicon\.svg"/);
+  assert.doesNotMatch(markup, /app-update-logo-button/);
+  assert.doesNotMatch(markup, /src="\/favicon\.svg"/);
   assert.doesNotMatch(markup, /<span>Update<\/span>/);
+});
+
+test('WorkspaceSidebar update affordance uses a refresh logo and confirmation popover', () => {
+  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /RefreshCw/);
+  assert.match(source, /app-update-logo-button/);
+  assert.match(source, /updateCheckResult\?\.status === 'updateAvailable'/);
+  assert.match(source, /Update available/);
+  assert.match(source, /Update now/);
+  assert.match(source, /Not now/);
+  assert.doesNotMatch(source, /src="\/favicon\.svg"/);
 });
 
 test('desktop update button is wired through the Tauri command surface', () => {
