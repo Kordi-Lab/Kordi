@@ -179,17 +179,17 @@ function QueuedMessageBubble({ message, isCompressionActive, onEdit, onCancel }:
     <div className="flex justify-end py-0.5">
       <div className={cn('app-queued-message max-w-[min(72%,34rem)] px-3 py-2 text-right', queuedMessageBubbleShapeClass)}>
         <MessageBubbleShapeBackdrop side="own" />
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0 flex-1 text-left">
-            <div className="app-queued-message-label mb-0.5 inline-flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
-              <Clock3 className="h-2.5 w-2.5" />
-              <span>{isCompressionActive ? 'Queued during compression' : 'Queued next'}</span>
+        <div className="min-w-0 text-left">
+          <div className="mb-0.5 flex items-center justify-between gap-3">
+            <div className="app-queued-message-label inline-flex min-w-0 items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
+              <Clock3 className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{isCompressionActive ? 'Queued during compression' : 'Queued next'}</span>
             </div>
-            <div className="app-queued-message-text whitespace-pre-wrap break-words text-[13px] leading-5">{message.text}</div>
+            <div className="app-queued-message-meta shrink-0 text-[10px] leading-none">{message.time}</div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1 pb-0.5">
-            <div className="app-queued-message-meta text-[10px] leading-none">{message.time}</div>
-            <div className="flex items-center gap-1" aria-label="Queued message actions">
+          <div className="mt-0.5 flex items-center gap-2">
+            <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5">{message.text}</div>
+            <div className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center" aria-label="Queued message actions">
               <button
                 type="button"
                 className="app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70"

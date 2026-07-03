@@ -198,6 +198,8 @@ test('queued Ask Agent bubbles expose icon-only edit and cancel actions before q
   const queuedBubble = blockBetween(chatsSource, 'function QueuedMessageBubble', 'function chatMessageActionId');
   assert.match(chatsSource, /onCancelQueuedMessage/);
   assert.match(chatsSource, /onEditQueuedMessage/);
+  assert.match(queuedBubble, /className="mt-0\.5 flex items-center gap-2"/);
+  assert.match(queuedBubble, /app-queued-message-text[\s\S]*app-queued-message-actions/, 'queued action icons should align in the same row as the queued text');
   assert.match(queuedBubble, /aria-label=\{`Edit queued message/);
   assert.match(queuedBubble, /aria-label=\{`Cancel queued message/);
   assert.match(queuedBubble, /<SquarePen className="h-3\.5 w-3\.5" aria-hidden="true" \/>/);
