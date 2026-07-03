@@ -147,7 +147,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
         {/* Composer */}
         <div className="shrink-0 border-t border-white/10 bg-slate-950/80 px-3 py-3">
           {conversation.error ? (
-            <div className="mb-2 rounded-[10px] border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200">
+            <div className="app-error-text mb-2 rounded-[10px] border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200">
               {conversation.error}
             </div>
           ) : null}

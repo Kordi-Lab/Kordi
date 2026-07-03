@@ -181,7 +181,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
             ) : (
               <div className="app-agent-create-muted rounded-[18px] px-4 py-10 text-center text-[13px] leading-5">Add resources and identity, then click Shape draft.</div>
             )}
-            {feedback.text ? <div className={cn('text-[12px]', feedback.tone === 'error' ? 'text-rose-300' : feedback.tone === 'success' ? 'text-emerald-300' : 'text-slate-400')}>{feedback.text}</div> : null}
+            {feedback.text ? <div className={cn('app-error-text text-[12px]', feedback.tone === 'error' ? 'text-rose-300' : feedback.tone === 'success' ? 'text-emerald-300' : 'text-slate-400')}>{feedback.text}</div> : null}
           </div>
         </div>
 

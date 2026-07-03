@@ -95,7 +95,7 @@ export function AgentDeleteConfirmDialog({
           It is kept as an archived Cloud record, not hard-deleted forever.
         </div>
         {error ? (
-          <div className="mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100">
+          <div className="app-error-text mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100">
             {error}
           </div>
         ) : null}

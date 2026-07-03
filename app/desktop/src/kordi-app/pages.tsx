@@ -285,7 +285,7 @@ export function ContactsPage({
                     />
                   )) : null}
                   {contactRequestActionError ? (
-                    <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
+                    <div className="app-error-text rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
                       {contactRequestActionError}
                     </div>
                   ) : null}
@@ -550,7 +550,7 @@ export function ContactsPage({
                       ) : null}
                     </div>
                     {canRemoveActiveContact ? (
-                      <div className={cn('mt-3 text-[11px] leading-4', removeContactState === 'error' ? 'text-rose-200' : 'text-slate-400')} aria-live="polite">
+                      <div className={cn('app-error-text mt-3 text-[11px] leading-4', removeContactState === 'error' ? 'text-rose-200' : 'text-slate-400')} aria-live="polite">
                         {removeContactState === 'error'
                           ? removeContactError || 'Unable to delete contact.'
                           : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
@@ -589,7 +589,7 @@ export function ContactsPage({
                     ) : contactRequestActionState(activeContactRequest) === 'rejecting' ? (
                       <div className="mt-3 text-[11px] leading-4 text-slate-400" aria-live="polite">Rejecting request…</div>
                     ) : contactRequestActionError ? (
-                      <div className="mt-3 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
+                      <div className="app-error-text mt-3 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
                         {contactRequestActionError}
                       </div>
                     ) : null}

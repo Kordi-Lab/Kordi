@@ -537,7 +537,7 @@ export function ArtifactInspector({
               <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Loading folder…
             </div>
           ) : browserError ? (
-            <div className="mt-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{browserError}</div>
+            <div className="app-error-text mt-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{browserError}</div>
           ) : browserDirectory ? (
             <div className="app-inspector-list mt-2">
               {browserDirectory.parentPath ? (
@@ -666,7 +666,7 @@ export function ArtifactInspector({
             ) : previewErrorDetails ? (
               <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
                 <div className="text-[13px] font-medium text-[color:var(--utility-foreground)]">{previewErrorDetails.title}</div>
-                <div className="mt-1 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">{previewErrorDetails.description}</div>
+                <div className="app-error-text mt-1 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">{previewErrorDetails.description}</div>
               </div>
             ) : cachedPreview ? (
               <>

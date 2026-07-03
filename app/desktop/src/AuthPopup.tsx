@@ -416,7 +416,7 @@ export default function AuthPopup({
             Loading auth state…
           </div>
         ) : !provider ? (
-          <div className="rounded-[24px] border border-rose-400/30 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
+          <div className="app-error-text rounded-[24px] border border-rose-400/30 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
             Unknown provider.
           </div>
         ) : (
@@ -428,7 +428,7 @@ export default function AuthPopup({
             )}
 
             {visibleError && (
-              <div className="rounded-[20px] border border-rose-400/30 bg-rose-500/10 px-3.5 py-2.5 text-[13px] leading-5 text-rose-100">
+              <div className="app-error-text rounded-[20px] border border-rose-400/30 bg-rose-500/10 px-3.5 py-2.5 text-[13px] leading-5 text-rose-100">
                 {visibleError}
               </div>
             )}

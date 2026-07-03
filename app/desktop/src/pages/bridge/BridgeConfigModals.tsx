@@ -40,7 +40,7 @@ export function BridgeRemoveHostModal({
           <div className="mt-1 text-[18px] font-semibold">Remove this host from this Mac?</div>
           <div className="mt-2 break-all text-[12px] leading-5 text-slate-400">{pendingRemoveHost.serverUrl}</div>
         </div>
-        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5 text-[12px] leading-5 text-rose-100">
+        <div className="app-error-text rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5 text-[12px] leading-5 text-rose-100">
           This removes the host from this desktop and clears the local bridge conversations saved for it.
         </div>
         <div className="mt-4 flex items-center justify-end gap-2">
