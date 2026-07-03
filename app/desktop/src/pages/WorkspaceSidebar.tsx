@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
-  Activity,
   Check,
   ChevronDown,
   Copy,
@@ -1634,16 +1633,16 @@ export function WorkspaceSidebar({
                           onClick={() => { void handleCheckForUpdates(); }}
                           disabled={updateCheckState.status === 'checking'}
                           className={cn(
-                            'app-utility-button inline-flex h-8 items-center gap-1.5 rounded-[12px] px-2.5 text-[11px] font-semibold text-slate-200 transition disabled:cursor-wait disabled:opacity-70',
-                            updateCheckState.status === 'available' ? 'text-emerald-100' : '',
-                            updateCheckState.status === 'error' ? 'text-rose-100' : '',
+                            'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-[14px] p-0 transition disabled:cursor-wait disabled:opacity-70',
+                            'border border-sky-300/35 bg-sky-500/15 shadow-[0_8px_20px_rgba(37,99,235,0.16)] hover:bg-sky-500/22',
+                            updateCheckState.status === 'available' ? 'ring-2 ring-blue-400/45' : '',
+                            updateCheckState.status === 'error' ? 'border-rose-300/40 bg-rose-500/10' : '',
                           )}
                           title={updateCheckState.label}
                           aria-label="Check for Kordi updates"
-                          aria-live="polite"
                         >
-                          <Activity className="h-3.5 w-3.5" aria-hidden="true" />
-                          <span>{updateCheckState.label}</span>
+                          <img src="/favicon.svg" alt="" aria-hidden="true" className="h-[18px] w-[18px]" />
+                          <span className="sr-only" aria-live="polite">{updateCheckState.label}</span>
                         </button>
                       ) : null}
                       <button

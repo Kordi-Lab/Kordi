@@ -89,13 +89,15 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('WorkspaceSidebar renders a visible desktop update button in the Chats header', () => {
+test('WorkspaceSidebar renders an icon-only blue Kordi logo update button in the Chats header', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
     onCheckForUpdates: async () => ({ status: 'updateAvailable', latestVersion: '99.0.0', installCommand: 'Install fake release' }),
   }) as never));
 
   assert.match(markup, /aria-label="Check for Kordi updates"/);
-  assert.match(markup, />Update</);
+  assert.match(markup, /app-update-logo-button/);
+  assert.match(markup, /src="\/favicon\.svg"/);
+  assert.doesNotMatch(markup, /<span>Update<\/span>/);
 });
 
 test('desktop update button is wired through the Tauri command surface', () => {
