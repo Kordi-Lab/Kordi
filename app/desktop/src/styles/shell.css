@@ -570,9 +570,18 @@
   background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);
 }
 
-.app-participant-space-row-shell-active {
+.app-participant-space-row-shell-expanded {
+  background: color-mix(in oklab, var(--app-sidebar-selected-bg) 38%, transparent);
+  box-shadow: none;
+}
+
+.app-participant-space-row-shell-selected {
   background: var(--app-sidebar-selected-bg);
   box-shadow: none;
+}
+
+.app-participant-space-row-shell-selected:hover {
+  background: var(--app-sidebar-selected-bg);
 }
 
 .app-participant-space-row-button {

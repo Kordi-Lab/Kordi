@@ -742,6 +742,74 @@ test('WorkspaceSidebar moves participant-space running light from expanded paren
   assert.equal(countMatches(expandedMarkup, /app-session-status-light-running/g), 1);
 });
 
+test('direct participant-space rows still highlight when their session is active', () => {
+  const chatConversations = [
+    conversation({
+      id: 'session:bob:active',
+      canonicalSessionId: 'session:bob:active',
+      name: 'Bob',
+      subtitle: 'Active direct chat',
+      participants: ['Me', 'Bob'],
+      _updatedAtMs: 2,
+    }),
+  ];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    filteredConversations: chatConversations,
+    activeConvId: 'session:bob:active',
+  }) as never));
+
+  assert.match(
+    markup,
+    /app-participant-space-row-shell[^"&]*app-session-row-active|app-session-row-active[^"&]*app-participant-space-row-shell/,
+    'active direct sessions should apply the active highlight to the full row shell, including the timestamp column',
+  );
+  assert.match(markup, /app-participant-space-row-shell-selected/, 'active direct session shell should use the selected participant-row style');
+  assert.doesNotMatch(
+    markup,
+    /app-participant-space-row-button[^"&]*app-session-row-active|app-session-row-active[^"&]*app-participant-space-row-button/,
+    'active direct session highlight must not be limited to the inner button column',
+  );
+  assert.equal(countMatches(markup, /app-session-row-active/g), 1, 'only the visible active direct session row should be highlighted');
+});
+
+test('participant-space parent rows are not styled as the active session row', () => {
+  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+  const renderStart = source.indexOf('const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {');
+  const renderEnd = source.indexOf('const renderParticipantSpaceList =', renderStart);
+  assert.notEqual(renderStart, -1, 'expected participant-space renderer');
+  assert.notEqual(renderEnd, -1, 'expected end of participant-space renderer');
+  const renderer = source.slice(renderStart, renderEnd);
+
+  assert.doesNotMatch(
+    renderer,
+    /app-participant-space-row-shell-active/,
+    'participant-space parent shells should not reuse active-session styling',
+  );
+  assert.match(
+    renderer,
+    /isExpanded[\s\S]*app-participant-space-row-shell-expanded/,
+    'expanded parent rows should use a separate expanded state',
+  );
+});
+
+test('participant-space parent row primary click selects a session while chevron toggles expansion', () => {
+  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+  const selectHelperStart = source.indexOf('const selectParticipantSpacePrimarySession = (space: ParticipantSpaceItem) => {');
+  assert.notEqual(selectHelperStart, -1, 'expected primary parent-row selection helper');
+  const selectHelper = source.slice(selectHelperStart, source.indexOf('\n    };', selectHelperStart));
+  assert.match(selectHelper, /onSelectChatSession\(latestSession\.id\)/, 'primary parent click should select the latest session in one click');
+
+  const renderStart = source.indexOf('const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {');
+  const renderEnd = source.indexOf('const renderParticipantSpaceList =', renderStart);
+  const renderer = source.slice(renderStart, renderEnd);
+  assert.match(renderer, /onClick=\{\(\) => selectParticipantSpacePrimarySession\(space\)\}/, 'parent row button should select, not toggle');
+  assert.match(renderer, /data-participant-space-toggle-button="true"[\s\S]*toggleSpace\(\)/, 'chevron remains the explicit expand-collapse control');
+});
+
 test('participant-space row CSS separates the timestamp and actions while adding dense dividers', () => {
   const shellCss = readDesktopShellCss();
   const themeOverrideCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
@@ -754,8 +822,9 @@ test('participant-space row CSS separates the timestamp and actions while adding
   assert.match(shellCss, /\.app-participant-space-row-meta\s*{[^}]*align-self:\s*end/s);
   assert.match(shellCss, /\.app-participant-space-inline-group\s*{[^}]*border-radius:\s*0;[^}]*box-shadow:\s*none/s);
   assert.match(shellCss, /\.app-participant-space-inline-group-expanded\s*{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none/s);
-  assert.match(shellCss, /\.app-participant-space-row-shell-active\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\);[^}]*box-shadow:\s*none/s);
-  assert.doesNotMatch(shellCss, /\.app-participant-space-row-shell-active\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-accent-ring\)/s);
+  assert.match(shellCss, /\.app-participant-space-row-shell-expanded\s*{[^}]*background:\s*color-mix\(in oklab, var\(--app-sidebar-selected-bg\) 38%, transparent\);[^}]*box-shadow:\s*none/s);
+  assert.match(shellCss, /\.app-participant-space-row-shell-selected\s*{[^}]*background:\s*var\(--app-sidebar-selected-bg\)/s);
+  assert.doesNotMatch(shellCss, /\.app-participant-space-row-shell-expanded\s*{[^}]*border-color:\s*color-mix\(in oklab, var\(--app-accent-ring\)/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\)/s);
   assert.match(shellCss, /\.app-participant-space-row-button\s*{[^}]*padding:/s);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-participant-space-row-button\s*{[^}]*display:\s*grid/s);

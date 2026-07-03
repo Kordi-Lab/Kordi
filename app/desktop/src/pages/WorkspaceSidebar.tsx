@@ -853,6 +853,9 @@ export function WorkspaceSidebar({
     const latestSession = space.sessions[0];
     const isDirectHuman = space.kind === 'direct-human';
     const isActiveSpace = activeParticipantSpaceId === space.id;
+    const isPrimarySessionActive = Boolean(latestSession && (
+      activeConvId === latestSession.id || activeConvId === latestSession.canonicalSessionId
+    ));
     const isSelectedSpace = !isDirectHuman && selectedParticipantSpaceId === space.id;
     const isExpanded = !isDirectHuman && (isSelectedSpace || isActiveSpace);
     const isAutoExpanded = isExpanded && isActiveSpace && !isSelectedSpace;
@@ -862,11 +865,14 @@ export function WorkspaceSidebar({
     const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
     const spaceUnreadCount = unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread;
     const participantSpaceDetail = participantSpaceDetailText(space);
+    const selectParticipantSpacePrimarySession = (space: ParticipantSpaceItem) => {
+      const latestSession = space.sessions[0];
+      if (!latestSession) return;
+      if (!isDirectHuman) setSelectedParticipantSpaceId(space.id);
+      onSelectChatSession(latestSession.id);
+    };
     const toggleSpace = () => {
-      if (isDirectHuman) {
-        if (latestSession) onSelectChatSession(latestSession.id);
-        return;
-      }
+      if (isDirectHuman) return;
       setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
     };
     return (
@@ -876,7 +882,11 @@ export function WorkspaceSidebar({
         data-participant-space-auto-expanded={isAutoExpanded ? 'true' : undefined}
       >
         <div
-          className={cn('app-participant-space-row-shell', (isActiveSpace || isExpanded) && 'app-participant-space-row-shell-active')}
+          className={cn(
+            'app-participant-space-row-shell',
+            isExpanded && 'app-participant-space-row-shell-expanded',
+            isDirectHuman && isPrimarySessionActive && 'app-session-row-active app-participant-space-row-shell-selected',
+          )}
           data-participant-space-row-shell="true"
         >
           <button
@@ -884,13 +894,13 @@ export function WorkspaceSidebar({
             data-testid="participant-space-row"
             data-participant-space-toggle={isDirectHuman ? undefined : 'true'}
             aria-expanded={isDirectHuman ? undefined : isExpanded}
-            onClick={toggleSpace}
+            onClick={() => selectParticipantSpacePrimarySession(space)}
             className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
           >
             <ParticipantSpaceAvatarStack space={space} />
             <div className="min-w-0">
               <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
-              <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isActiveSpace || isExpanded) && 'app-participant-space-row-preview-active')} title={space.preview}>
+              <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isExpanded || (isDirectHuman && isPrimarySessionActive)) && 'app-participant-space-row-preview-active')} title={space.preview}>
                 {space.preview || `${participantSpaceKindText(space)} space`}
               </div>
               {participantSpaceDetail ? (
@@ -958,7 +968,7 @@ export function WorkspaceSidebar({
                 unreadCount={isExpanded ? 0 : spaceUnreadCount}
                 unreadScope="participant-space"
                 indicator={isExpanded ? undefined : latestSession?.statusIndicator}
-                active={isActiveSpace || isExpanded}
+                active={isDirectHuman && isPrimarySessionActive}
                 reserveStatusSpace={false}
               />
             </div>

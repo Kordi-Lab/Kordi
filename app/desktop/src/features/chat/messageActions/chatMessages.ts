@@ -1133,35 +1133,6 @@ export function useChatMessageActions({
       setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', targetConversation.id, ''));
     };
 
-    if (isCloudBridgeConversationId(targetConversation.id)) {
-      if (!sendCloudBridgeMessage || !setCloudBridgeState) {
-        setDesktopChatError('Chat is still loading. Try again in a moment.');
-        return;
-      }
-      const optimisticMessageId = `cloud-pending-${Date.now()}`;
-      try {
-        shouldAutoFollowChatRef.current = true;
-        setDesktopChatError(null);
-        setCloudBridgeState((current) => appendOptimisticBridgeMessage(
-          current,
-          targetConversation.id,
-          text,
-          sentAt,
-          optimisticMessageId,
-          [],
-          attachmentSummaryText(text),
-        ));
-        clearTargetDraft();
-        await sendCloudBridgeMessage(targetConversation.id, text, []);
-        setCloudBridgeState(null);
-      } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
-        setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversation.id, optimisticMessageId, failureDetail));
-        setDesktopChatError(failureDetail);
-      }
-      return;
-    }
-
     const targetGroupScope = {
       canonicalSessionId: targetConversation.canonicalSessionId ?? targetConversation.id,
       participantSpaceId: targetConversation.participantSpaceId,
@@ -1239,6 +1210,35 @@ export function useChatMessageActions({
           .catch((saveError: unknown) => {
             setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
           });
+      }
+      return;
+    }
+
+    if (isCloudBridgeConversationId(targetConversation.id)) {
+      if (!sendCloudBridgeMessage || !setCloudBridgeState) {
+        setDesktopChatError('Chat is still loading. Try again in a moment.');
+        return;
+      }
+      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      try {
+        shouldAutoFollowChatRef.current = true;
+        setDesktopChatError(null);
+        setCloudBridgeState((current) => appendOptimisticBridgeMessage(
+          current,
+          targetConversation.id,
+          text,
+          sentAt,
+          optimisticMessageId,
+          [],
+          attachmentSummaryText(text),
+        ));
+        clearTargetDraft();
+        await sendCloudBridgeMessage(targetConversation.id, text, []);
+        setCloudBridgeState(null);
+      } catch (error) {
+        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
+        setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, targetConversation.id, optimisticMessageId, failureDetail));
+        setDesktopChatError(failureDetail);
       }
       return;
     }
@@ -1370,56 +1370,6 @@ export function useChatMessageActions({
       return;
     }
 
-    if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId)) {
-      if (!sendCloudBridgeMessage || !setCloudBridgeState) {
-        setDesktopChatError('Chat is still loading. Try again in a moment.');
-        return;
-      }
-      const sentAt = formatDesktopEventTime();
-      const optimisticMessageId = `cloud-pending-${Date.now()}`;
-      const appendedOptimisticBridgeMessage = shouldAppendOptimisticBridgeMessage(activeConvId);
-      try {
-        shouldAutoFollowChatRef.current = true;
-        setIsDesktopChatSending(true);
-        setDesktopChatError(null);
-        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
-        setChatComposerAttachments([]);
-        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-        if (appendedOptimisticBridgeMessage) {
-          setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
-        }
-        const directHostedAgentTarget = targetCloudAgentId ? {
-          targetCloudAgentId,
-          targetCloudAgentName: mentionedTarget?.displayLabel ?? null,
-          targetCloudAgentOwnerAccountId: mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null,
-          targetCloudAgentOwnerName: mentionedTarget?.peer.ownerName ?? null,
-        } : null;
-        const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget);
-        const cloudBody = shouldEncodeDirectEnvelope
-          ? encodeCloudDirectMessageEnvelope({
-              schemaVersion: 1,
-              kind: 'message',
-              text,
-              ...(activeChatQuote?.source ? { messageAction: quoteMessageAction(activeChatQuote.source) } : {}),
-              ...(directHostedAgentTarget ?? {}),
-            })
-          : text;
-        await sendCloudBridgeMessage(activeConvId, cloudBody, chatComposerAttachments);
-        if (appendedOptimisticBridgeMessage && isCloudBridgeConversationId(activeConvId)) {
-          setCloudBridgeState(null);
-        }
-      } catch (error) {
-        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
-        if (appendedOptimisticBridgeMessage) {
-          setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
-        }
-        setDesktopChatError(failureDetail);
-      } finally {
-        setIsDesktopChatSending(false);
-      }
-      return;
-    }
-
     if (activeConversationUsesBridgeRouting && shouldRouteMentionThroughCloudGroup({
       mentionedHostId: mentionedTarget?.host.id,
       activeGroupSessionIsGroup,
@@ -1503,6 +1453,131 @@ export function useChatMessageActions({
               setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
             });
         }
+      } finally {
+        setIsDesktopChatSending(false);
+      }
+      return;
+    }
+
+    if (activeConversationUsesBridgeRouting && activeGroupSessionIsGroup && cloudGroupTargetIds.length > 0) {
+      if (!activeConvCanonicalSessionId) {
+        setDesktopChatError('Unable to open group chat.');
+        return;
+      }
+      if (!sendCloudGroupControl) {
+        setDesktopChatError('Group chat is still loading. Try again in a moment.');
+        return;
+      }
+      const sentAt = formatDesktopEventTime();
+      const preparedCanonicalMessage = prepareCanonicalUserMessage(
+        activeConvCanonicalSessionId,
+        canonicalHumanIdentityId,
+        text,
+        chatComposerAttachments,
+        sentAt,
+        'cloud-group-ui',
+        'sent',
+        undefined,
+        activeChatQuote,
+      );
+      if (preparedCanonicalMessage) {
+        preparedCanonicalMessage.request.content = {
+          ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
+          deliveryState: 'delivered',
+        };
+      }
+      let canonicalUserMessagePersisted = false;
+      try {
+        shouldAutoFollowChatRef.current = true;
+        setIsDesktopChatSending(true);
+        setDesktopChatError(null);
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
+        setChatComposerAttachments([]);
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+        setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
+        await persistCanonicalUserMessage(preparedCanonicalMessage);
+        canonicalUserMessagePersisted = true;
+        await sendCloudGroupControl({
+          targetAccountIds: cloudGroupTargetIds,
+          kind: 'group-message',
+          groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId }),
+          groupSpaceId: activeGroupSessionSpaceId,
+          groupTitle: null,
+          bridgeParticipants: activeGroupSessionParticipants,
+          message: {
+            id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
+            senderAccountId: '',
+            text,
+            createdAtMs: Date.now(),
+            messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
+          },
+          attachments: chatComposerAttachments,
+        });
+      } catch (error) {
+        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send group message');
+        setDesktopChatError(failureDetail);
+        setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
+          current,
+          activeConvCanonicalSessionId,
+          preparedCanonicalMessage?.messageId ?? null,
+          failureDetail,
+        ));
+        if (!canonicalUserMessagePersisted) {
+          void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
+            .catch((saveError: unknown) => {
+              setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+            });
+        }
+      } finally {
+        setIsDesktopChatSending(false);
+      }
+      return;
+    }
+
+    if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId)) {
+      if (!sendCloudBridgeMessage || !setCloudBridgeState) {
+        setDesktopChatError('Chat is still loading. Try again in a moment.');
+        return;
+      }
+      const sentAt = formatDesktopEventTime();
+      const optimisticMessageId = `cloud-pending-${Date.now()}`;
+      const appendedOptimisticBridgeMessage = shouldAppendOptimisticBridgeMessage(activeConvId);
+      try {
+        shouldAutoFollowChatRef.current = true;
+        setIsDesktopChatSending(true);
+        setDesktopChatError(null);
+        setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', activeConvId, ''));
+        setChatComposerAttachments([]);
+        resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+        if (appendedOptimisticBridgeMessage) {
+          setCloudBridgeState((current) => appendOptimisticBridgeMessage(current, activeConvId, text, sentAt, optimisticMessageId, chatComposerAttachments, attachmentSummaryText(text), activeChatQuote));
+        }
+        const directHostedAgentTarget = targetCloudAgentId ? {
+          targetCloudAgentId,
+          targetCloudAgentName: mentionedTarget?.displayLabel ?? null,
+          targetCloudAgentOwnerAccountId: mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null,
+          targetCloudAgentOwnerName: mentionedTarget?.peer.ownerName ?? null,
+        } : null;
+        const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget);
+        const cloudBody = shouldEncodeDirectEnvelope
+          ? encodeCloudDirectMessageEnvelope({
+              schemaVersion: 1,
+              kind: 'message',
+              text,
+              ...(activeChatQuote?.source ? { messageAction: quoteMessageAction(activeChatQuote.source) } : {}),
+              ...(directHostedAgentTarget ?? {}),
+            })
+          : text;
+        await sendCloudBridgeMessage(activeConvId, cloudBody, chatComposerAttachments);
+        if (appendedOptimisticBridgeMessage && isCloudBridgeConversationId(activeConvId)) {
+          setCloudBridgeState(null);
+        }
+      } catch (error) {
+        const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
+        if (appendedOptimisticBridgeMessage) {
+          setCloudBridgeState((current) => markOptimisticBridgeMessageFailed(current, activeConvId, optimisticMessageId, failureDetail));
+        }
+        setDesktopChatError(failureDetail);
       } finally {
         setIsDesktopChatSending(false);
       }

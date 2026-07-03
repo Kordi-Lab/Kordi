@@ -58,6 +58,7 @@ use self::realtime::{send_realtime_payload, sync_realtime_connections, BRIDGE_ST
 #[allow(unused_imports)]
 use self::state::{
     build_bridge_state, build_conversation_only_bridge_state, build_current_bridge_state,
+    build_mailbox_poll_metadata_only_bridge_state,
 };
 #[allow(unused_imports)]
 use self::storage::{

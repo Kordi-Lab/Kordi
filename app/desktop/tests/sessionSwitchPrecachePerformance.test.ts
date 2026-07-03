@@ -1,0 +1,60 @@
+import { readFileSync } from 'node:fs';
+import { strict as assert } from 'node:assert';
+import test from 'node:test';
+
+const workspaceViewModelSource = () => readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
+const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+
+test('canonical full-state refresh key ignores active session selection-only changes', () => {
+  const source = appModelSource();
+  const keyStart = source.indexOf('const desktopCanonicalRefreshKey = useMemo(');
+  const keyEnd = source.indexOf('\n\n  const bridgeCanonicalRefreshKey = useMemo(', keyStart);
+  assert.notEqual(keyStart, -1, 'expected desktop canonical refresh key');
+  assert.notEqual(keyEnd, -1, 'expected end of desktop canonical refresh key');
+  const keyBlock = source.slice(keyStart, keyEnd);
+
+  assert.doesNotMatch(
+    keyBlock,
+    /desktopChatState\?\.activeSession(?:Id|\.)/,
+    'switching the selected session must not fetch and decode the full canonical state payload',
+  );
+  assert.match(keyBlock, /messageCount/, 'message count changes should still refresh canonical state');
+  assert.match(keyBlock, /updatedAtLabel/, 'session content updates should still refresh canonical state');
+});
+
+test('canonical Cloud chat selection does not invoke native desktop chat reload', () => {
+  const source = readFileSync(new URL('../src/features/chat/useDesktopSessionController.ts', import.meta.url), 'utf8');
+  const handlerStart = source.indexOf('const handleSelectChatSession = useCallback(async (sessionId: string) => {');
+  const handlerEnd = source.indexOf('  const handleCreateChatSession = useCallback', handlerStart);
+  assert.notEqual(handlerStart, -1, 'expected chat selection handler');
+  assert.notEqual(handlerEnd, -1, 'expected end of chat selection handler');
+  const handler = source.slice(handlerStart, handlerEnd);
+  const cloudGuardIndex = handler.indexOf('isCanonicalCloudSessionId(sessionId)');
+  const refreshIndex = handler.indexOf('await refreshDesktopChat(sessionId)');
+
+  assert.notEqual(cloudGuardIndex, -1, 'canonical Cloud session ids need a local-only selection fast path');
+  assert.notEqual(refreshIndex, -1, 'local runtime session ids should still refresh native desktop chat');
+  assert.ok(
+    cloudGuardIndex < refreshIndex,
+    'canonical Cloud session selection must return before native desktop_chat_state reload',
+  );
+});
+
+test('canonical chat hydration is cached independently from active session selection', () => {
+  const source = workspaceViewModelSource();
+  const warmedStart = source.indexOf('const hydratedChatConversations = useMemo(() => {');
+  const visibleStart = source.indexOf('const chatConversations = useMemo(() => {', warmedStart);
+  assert.notEqual(warmedStart, -1, 'expected warmed canonical chat conversation cache');
+  assert.notEqual(visibleStart, -1, 'expected cheap selected-session visibility memo after warmed cache');
+
+  const warmedEnd = source.indexOf('\n\n  const chatConversations = useMemo', warmedStart);
+  const warmedMemo = source.slice(warmedStart, warmedEnd);
+  const warmedDeps = warmedMemo.slice(warmedMemo.lastIndexOf('}, ['));
+
+  assert.match(warmedMemo, /canonicalReadModel\.buildChatConversations/, 'warmed cache should do expensive canonical hydration');
+  assert.doesNotMatch(warmedDeps, /activeConvId/, 'switching sessions must not rebuild expensive canonical hydration');
+
+  const visibleMemo = source.slice(visibleStart, source.indexOf('\n\n  const activeConv', visibleStart));
+  assert.match(visibleMemo, /hydratedChatConversations/, 'visible conversations should reuse warmed canonical hydration');
+  assert.match(visibleMemo, /activeConvId/, 'only the cheap visibility layer should depend on active selection');
+});
