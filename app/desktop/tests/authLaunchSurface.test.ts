@@ -38,10 +38,14 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.doesNotMatch(providerList, /provider\.loginHint/);
 
   const shellPages = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
-  const gateHoverRule = shellPages.match(/\.app-auth-provider-gate-card:hover,[\s\S]*?\n}\n/)?.[0] ?? '';
+  const gateHoverRule = shellPages.match(/\.app-auth-provider-gate-card:hover \{[\s\S]*?\n}\n/)?.[0] ?? '';
+  const gateFocusRule = shellPages.match(/\.app-auth-provider-gate-card:focus-visible \{[\s\S]*?\n}\n/)?.[0] ?? '';
   assert.match(gateHoverRule, /background:/);
   assert.match(gateHoverRule, /box-shadow:/);
   assert.doesNotMatch(gateHoverRule, /translateY|scale\(|animation:/);
+  assert.match(gateFocusRule, /outline:/);
+  assert.doesNotMatch(gateFocusRule, /background:/);
+  assert.doesNotMatch(gateFocusRule, /app-control-active/);
   assert.doesNotMatch(shellPages, /app-auth-provider-selected/);
 });
 
