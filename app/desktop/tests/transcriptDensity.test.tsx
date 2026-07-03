@@ -1354,9 +1354,10 @@ test('styles source quote colors contextually inside own message bubbles for dar
   assert.match(quoteRootBlock, /--app-source-message-quote-text:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 82%, var\(--app-source-message-quote-muted\)\)/);
   assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*var\(--app-chat-bubble-user-text\)/);
   assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-muted:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 72%, transparent\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*rgb\(255 255 255\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-label:\s*rgba\(255, 255, 255, 0\.88\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-text:\s*rgba\(255, 255, 255, 0\.76\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*rgb\(18 48 77\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-label:\s*rgba\(18, 48, 77, 0\.88\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-text:\s*rgba\(18, 48, 77, 0\.76\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-fade-bg:\s*rgb\(216 236 255\)/);
   assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 8%, transparent\)/);
 });
 

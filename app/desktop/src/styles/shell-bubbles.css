@@ -11,11 +11,11 @@
 }
 
 .bridge-app.theme-light .app-chat-bubble-user {
-  --app-message-bubble-fill: rgb(17 17 17);
-  --app-message-bubble-stroke: transparent;
-  --app-message-mention: rgb(255 255 255);
-  --app-message-meta: rgba(255, 255, 255, 0.62);
-  color: rgb(255 255 255);
+  --app-message-bubble-fill: rgb(216 236 255);
+  --app-message-bubble-stroke: rgb(183 220 255);
+  --app-message-mention: rgb(29 78 216);
+  --app-message-meta: rgba(18, 48, 77, 0.62);
+  color: rgb(18 48 77);
 }
 
 .app-chat-bubble-peer {
