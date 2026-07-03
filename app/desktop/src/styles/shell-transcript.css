@@ -815,14 +815,14 @@
 }
 
 .bridge-app.theme-light .app-chat-bubble-user .app-source-message-quote {
-  --app-source-message-quote-foreground: rgb(18 48 77);
-  --app-source-message-quote-muted: rgba(18, 48, 77, 0.64);
-  --app-source-message-quote-accent: rgb(29 78 216);
-  --app-source-message-quote-bg: rgba(18, 48, 77, 0.06);
-  --app-source-message-quote-bg-hover: rgba(18, 48, 77, 0.09);
-  --app-source-message-quote-label: rgba(18, 48, 77, 0.88);
-  --app-source-message-quote-text: rgba(18, 48, 77, 0.76);
-  --app-source-message-quote-fade-bg: rgb(216 236 255);
+  --app-source-message-quote-foreground: rgb(31 49 69);
+  --app-source-message-quote-muted: rgba(31, 49, 69, 0.62);
+  --app-source-message-quote-accent: rgb(59 99 148);
+  --app-source-message-quote-bg: rgba(31, 49, 69, 0.05);
+  --app-source-message-quote-bg-hover: rgba(31, 49, 69, 0.08);
+  --app-source-message-quote-label: rgba(31, 49, 69, 0.86);
+  --app-source-message-quote-text: rgba(31, 49, 69, 0.74);
+  --app-source-message-quote-fade-bg: rgb(226 235 245);
 }
 
 .app-chat-bubble-peer .app-source-message-quote {

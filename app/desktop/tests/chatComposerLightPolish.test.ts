@@ -11,16 +11,16 @@ function cssRule(css: string, selector: string) {
   return match[0];
 }
 
-test('light outgoing human bubble is soft blue and cannot fall back to black or warm yellow', () => {
+test('light outgoing human bubble is quiet blue-gray with no visible outline', () => {
   const css = readDesktopShellCss();
   const rule = cssRule(css, '.bridge-app.theme-light .app-chat-bubble-user');
 
-  assert.match(rule, /--app-message-bubble-fill:\s*rgb\(216 236 255\);/);
-  assert.match(rule, /--app-message-bubble-stroke:\s*rgb\(183 220 255\);/);
-  assert.match(rule, /--app-message-mention:\s*rgb\(29 78 216\);/);
-  assert.match(rule, /--app-message-meta:\s*rgba\(18, 48, 77, 0\.62\);/);
-  assert.match(rule, /color:\s*rgb\(18 48 77\);/);
-  assert.doesNotMatch(rule, /rgb\(17 17 17\)|255 255 255|245 241|255 251 235|251,\s*191,\s*36|oklch\([^)]*70|yellow|amber/i);
+  assert.match(rule, /--app-message-bubble-fill:\s*rgb\(226 235 245\);/);
+  assert.match(rule, /--app-message-bubble-stroke:\s*transparent;/);
+  assert.match(rule, /--app-message-mention:\s*rgb\(59 99 148\);/);
+  assert.match(rule, /--app-message-meta:\s*rgba\(31, 49, 69, 0\.58\);/);
+  assert.match(rule, /color:\s*rgb\(31 49 69\);/);
+  assert.doesNotMatch(rule, /rgb\(17 17 17\)|rgb\(183 220 255\)|255 255 255|245 241|255 251 235|251,\s*191,\s*36|oklch\([^)]*70|yellow|amber/i);
 });
 
 test('compact reply indicator is inline icon plus count so it does not expand message spacing', () => {
