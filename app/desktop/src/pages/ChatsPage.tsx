@@ -170,9 +170,10 @@ function isGroupedWithAdjacentHumanMessage(messages: readonly Message[], index: 
 type QueuedMessageBubbleProps = {
   message: QueuedDesktopChatMessage;
   isCompressionActive: boolean;
+  onCancel?: (sessionId: string, queuedMessageId: string) => void;
 };
 
-function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubbleProps) {
+function QueuedMessageBubble({ message, isCompressionActive, onCancel }: QueuedMessageBubbleProps) {
   return (
     <div className="flex justify-end py-0.5">
       <div className={cn('app-queued-message max-w-[min(72%,34rem)] px-3 py-2 text-right', queuedMessageBubbleShapeClass)}>
@@ -185,7 +186,19 @@ function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubb
             </div>
             <div className="app-queued-message-text whitespace-pre-wrap break-words text-[13px] leading-5">{message.text}</div>
           </div>
-          <div className="app-queued-message-meta shrink-0 pb-0.5 text-[10px] leading-none">{message.time}</div>
+          <div className="flex shrink-0 flex-col items-end gap-1 pb-0.5">
+            <div className="app-queued-message-meta text-[10px] leading-none">{message.time}</div>
+            <button
+              type="button"
+              className="app-queued-message-cancel inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium leading-none transition hover:bg-white/10 hover:text-white"
+              aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
+              title="Cancel queued message"
+              onClick={() => onCancel?.(message.sessionId, message.id)}
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+              Cancel
+            </button>
+          </div>
         </div>
         {message.attachments.length > 0 ? (
           <div className="app-queued-message-meta mt-1 text-[10px] leading-none">
@@ -348,6 +361,7 @@ type ChatSessionPaneProps = {
   emptyState?: ReactNode;
   composer: ReactNode;
   queuedMessages?: QueuedDesktopChatMessage[];
+  onCancelQueuedMessage?: (sessionId: string, queuedMessageId: string) => void;
   isCompressionActive?: boolean;
   plainAgentResponse?: boolean;
   forkSnapshotBoundaryIndex?: number;
@@ -399,6 +413,7 @@ function ChatSessionPane({
   emptyState,
   composer,
   queuedMessages = [],
+  onCancelQueuedMessage,
   isCompressionActive = false,
   plainAgentResponse = false,
   forkSnapshotBoundaryIndex = -1,
@@ -507,7 +522,12 @@ function ChatSessionPane({
             />
           ) : null}
           {queuedMessages.map((message) => (
-            <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
+            <QueuedMessageBubble
+              key={message.id}
+              message={message}
+              isCompressionActive={isCompressionActive}
+              onCancel={onCancelQueuedMessage}
+            />
           ))}
         </motion.div>
       </ScrollArea>
@@ -876,6 +896,7 @@ type ChatsPageProps = {
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   queuedDesktopMessages: QueuedDesktopChatMessage[];
   queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
+  onCancelQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
   filteredChatSlashCommands: DesktopChatSlashCommand[];
   filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
@@ -969,6 +990,7 @@ export function ChatsPage({
   desktopLiveTurn,
   queuedDesktopMessages,
   queuedDesktopMessagesBySession,
+  onCancelQueuedMessage,
   filteredChatSlashCommands,
   filteredChatMentionTargets,
   chatSlashMenuIndex,
@@ -1776,6 +1798,7 @@ export function ChatsPage({
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"
         densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
+        onCancelQueuedMessage={onCancelQueuedMessage}
         emptyState={(
           <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
             No messages in this side chat yet.
@@ -2480,6 +2503,7 @@ export function ChatsPage({
         densityMode={chatTranscriptDensityMode(activeConv)}
         onTranscriptScroll={onTranscriptScroll}
         queuedMessages={queuedDesktopMessages}
+        onCancelQueuedMessage={onCancelQueuedMessage}
         isCompressionActive={isCompressionActive}
         plainAgentResponse={suppressAgentReplyAttribution}
         forkSnapshotBoundaryIndex={forkSnapshotBoundaryIndex}

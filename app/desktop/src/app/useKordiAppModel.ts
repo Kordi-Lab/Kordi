@@ -82,6 +82,7 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/featu
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
+import { removeQueuedDesktopMessageById } from '@/features/chat/queuedDesktopMessages';
 import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
 import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '@/features/chat/messageSelection';
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
@@ -1419,6 +1420,10 @@ export function useKordiAppModel({
     setActiveConvId,
   });
 
+  const handleCancelQueuedMessage = useCallback((sessionId: string, queuedMessageId: string) => {
+    setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessageById(current, sessionId, queuedMessageId));
+  }, [setQueuedDesktopMessagesBySession]);
+
   const handleSendChatMessageWithQuoteClear = useCallback((draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => (
     sendChatMessageWithImmediateQuoteClear({
       draftOverride,
@@ -2660,6 +2665,7 @@ export function useKordiAppModel({
     activeSessionProject,
     activeQueuedDesktopMessages,
     queuedDesktopMessagesBySession,
+    handleCancelQueuedMessage,
     showAuthGate,
     dismissAuthGate,
     inlineAuthDialog,

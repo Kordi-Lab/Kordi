@@ -5,6 +5,24 @@ export const QUEUED_DESKTOP_MESSAGES_STORAGE_KEY = 'kordi.desktop.queuedDesktopM
 export type QueuedDesktopMessagesBySession = Record<string, QueuedDesktopChatMessage[]>;
 export type QueuedDesktopMessagesStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
+export function removeQueuedDesktopMessageById(
+  current: QueuedDesktopMessagesBySession,
+  sessionId: string,
+  queuedMessageId: string,
+): QueuedDesktopMessagesBySession {
+  const existing = current[sessionId] ?? [];
+  const remaining = existing.filter((message) => message.id !== queuedMessageId);
+  if (remaining.length === existing.length) return current;
+
+  const next = { ...current };
+  if (remaining.length > 0) {
+    next[sessionId] = remaining;
+  } else {
+    delete next[sessionId];
+  }
+  return next;
+}
+
 function browserQueuedDesktopMessagesStorage(): QueuedDesktopMessagesStorage | null {
   if (typeof window === 'undefined') return null;
   return window.localStorage;
