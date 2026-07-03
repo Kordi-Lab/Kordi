@@ -183,6 +183,23 @@ test('sending from main or side-panel chat schedules a jump to the sent message'
   assert.match(sideSendBlock, /scheduleTranscriptScrollToBottom\(companionTranscriptScrollRef\)/, 'side-panel send should jump its own transcript to the new message');
 });
 
+test('queued Ask Agent bubbles expose cancel wiring before queued drafts flush', () => {
+  const chatsSource = chatsPageSource();
+  const queueSource = readFileSync(new URL('../src/features/chat/queuedDesktopMessages.ts', import.meta.url), 'utf8');
+  const appModel = appModelSource();
+  const shellTypes = readFileSync(new URL('../src/app/kordiShellSlots.types.ts', import.meta.url), 'utf8');
+  const shellBuilder = readFileSync(new URL('../src/app/mainContentShellBuilders.ts', import.meta.url), 'utf8');
+
+  assert.match(queueSource, /removeQueuedDesktopMessageById/);
+  assert.match(appModel, /handleCancelQueuedMessage/);
+  assert.match(appModel, /removeQueuedDesktopMessageById\(current, sessionId, queuedMessageId\)/);
+  assert.match(chatsSource, /onCancelQueuedMessage/);
+  assert.match(chatsSource, /aria-label=\{`Cancel queued message/);
+  assert.match(shellTypes, /handleCancelQueuedMessage/);
+  assert.match(shellBuilder, /onCancelQueuedMessage: args\.handleCancelQueuedMessage/);
+  assert.match(chatsSource, /onClick=\{\(\) => onCancel\?\.\(message\.sessionId, message\.id\)\}/);
+});
+
 test('side-panel queued local-agent sends preserve draft visibility and reference context while a turn is running', () => {
   const chatsSource = chatsPageSource();
   const actionsSource = chatMessagesSource();

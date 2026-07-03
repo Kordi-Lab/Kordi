@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   QUEUED_DESKTOP_MESSAGES_STORAGE_KEY,
   loadQueuedDesktopMessagesBySession,
+  removeQueuedDesktopMessageById,
   saveQueuedDesktopMessagesBySession,
 } from '../src/features/chat/queuedDesktopMessages';
 
@@ -81,6 +82,39 @@ test('queued desktop message storage treats unavailable browser storage as best-
       Reflect.deleteProperty(globalThis, 'window');
     }
   }
+});
+
+test('removeQueuedDesktopMessageById removes only the targeted queued message', () => {
+  const current = {
+    'session-a': [
+      { id: 'queued-1', sessionId: 'session-a', scope: 'chat' as const, text: 'first', time: '12:34', attachments: [] },
+      { id: 'queued-2', sessionId: 'session-a', scope: 'chat' as const, text: 'second', time: '12:35', attachments: [] },
+      { id: 'queued-3', sessionId: 'session-a', scope: 'chat' as const, text: 'third', time: '12:36', attachments: [] },
+    ],
+    'session-b': [
+      { id: 'queued-b', sessionId: 'session-b', scope: 'chat' as const, text: 'other session', time: '12:37', attachments: [] },
+    ],
+  };
+
+  assert.deepEqual(removeQueuedDesktopMessageById(current, 'session-a', 'queued-2'), {
+    'session-a': [current['session-a'][0], current['session-a'][2]],
+    'session-b': current['session-b'],
+  });
+});
+
+test('removeQueuedDesktopMessageById drops the session key after removing the final queued message', () => {
+  const current = {
+    'session-a': [
+      { id: 'queued-1', sessionId: 'session-a', scope: 'chat' as const, text: 'first', time: '12:34', attachments: [] },
+    ],
+    'session-b': [
+      { id: 'queued-b', sessionId: 'session-b', scope: 'chat' as const, text: 'other session', time: '12:37', attachments: [] },
+    ],
+  };
+
+  assert.deepEqual(removeQueuedDesktopMessageById(current, 'session-a', 'queued-1'), {
+    'session-b': current['session-b'],
+  });
 });
 
 test('queued desktop message storage writes non-empty queues and removes empty queues', () => {
