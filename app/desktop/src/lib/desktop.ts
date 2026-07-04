@@ -16,6 +16,7 @@ import type {
   DesktopChatTurnSnapshot,
   MessageAttachment,
   DesktopProjectSettings,
+  MarkCanonicalSessionReadRequest,
   OpenCanonicalSessionRequest,
   RemoveCanonicalSessionParticipantRequest,
   RenameCanonicalSessionRequest,
@@ -680,6 +681,10 @@ export async function removeCanonicalSessionParticipant(request: RemoveCanonical
 
 export async function setCanonicalSessionParticipantRole(request: SetCanonicalSessionParticipantRoleRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_set_session_participant_role', { request });
+}
+
+export async function markCanonicalSessionRead(request: MarkCanonicalSessionReadRequest) {
+  return invokeDesktop<CanonicalSessionState>('desktop_canonical_mark_session_read', { request });
 }
 
 export async function fetchDesktopProjectSettings(projectRoot?: string) {

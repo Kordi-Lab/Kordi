@@ -6,6 +6,53 @@ import { test } from 'node:test';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { cloudGroupAgentConversationId } from '../src/features/cloud/cloudGroupMessages';
 
+test('canonical group unread honors persisted self read marker at latest message', () => {
+  const sessionId = 'session:group:read-room';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'cloud', sourceHostId: 'cloud', bridgeNodeId: 'acct_bob', humanId: 'acct_bob', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'main',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { cloudUnreadCount: 7, groupId: 'group:read-room' },
+      createdAtMs: 1,
+      updatedAtMs: 3,
+      lastMessageAtMs: 3,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1, lastSeenAtMs: 3, lastReadMessageId: 'msg:latest' },
+      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:first', sessionId, senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'old', content: { sender: 'Bob', timeLabel: '13:10' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-group:1' },
+      { id: 'msg:latest', sessionId, senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'latest', content: { sender: 'Bob', timeLabel: '13:11' }, status: 'sent', sequenceNum: 2, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-group:2' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  } as never);
+
+  const conversation = readModel.buildChatConversations([], (messages, fallback) => messages.at(-1)?.text ?? fallback ?? '')[0];
+  assert.equal(conversation?.unread, 0);
+});
+
 test('canonical group conversation title stays on first message when synced cloud group name changes', () => {
   const sessionId = 'session:group:cloud-room';
   const readModel = createCanonicalSessionReadModel({

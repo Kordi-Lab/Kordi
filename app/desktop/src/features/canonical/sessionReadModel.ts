@@ -13,6 +13,7 @@ import { formatDesktopLastActiveLabel } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
+  canonicalMessageCountsForLastActive,
   sessionChatActivityAtMs,
   sessionConversationDisplayTitle,
   sessionHasActiveProcessing,
@@ -275,6 +276,13 @@ function withMergedUnreadForSession<T extends Conversation>(conversation: T, ses
   };
 }
 
+function latestReadableRawMessage(messages: CanonicalSessionState['messages']) {
+  const readableMessages = [...messages]
+    .filter(canonicalMessageCountsForLastActive)
+    .sort((left, right) => left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs);
+  return readableMessages[readableMessages.length - 1] ?? null;
+}
+
 export type CanonicalSessionReadModel = {
   sessionTitle: (sessionId: string, fallback: string) => string;
   participantNames: (sessionId: string, fallback: string[]) => string[];
@@ -296,6 +304,21 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
   const chatSessions = canonicalState.sessions
     .filter((session) => session.kind !== 'project' && session.status !== 'archived' && !isCloudAgentRuntimeSessionId(session.id))
     .sort((left, right) => sessionChatActivityAtMs(right) - sessionChatActivityAtMs(left));
+
+  const hasSelfReadLatestMessage = (sessionId: string) => {
+    const latestMessage = latestReadableRawMessage(indexes.rawMessagesBySessionId.get(sessionId) ?? []);
+    if (!latestMessage) return false;
+    const participants = indexes.participantsBySessionId.get(sessionId) ?? [];
+    const selfParticipant = participants.find((participant) => (
+      participant.role === 'self'
+      && (!indexes.profileHumanIdentityId || participant.identityId === indexes.profileHumanIdentityId)
+    )) ?? participants.find((participant) => participant.role === 'self');
+    return selfParticipant?.lastReadMessageId === latestMessage.id;
+  };
+
+  const unreadCountForSession = (session: CanonicalSessionState['sessions'][number]) => (
+    hasSelfReadLatestMessage(session.id) ? 0 : sessionUnreadCount(session)
+  );
 
   return {
     sessionTitle(sessionId, fallback) {
@@ -347,7 +370,8 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
       const scopedUnread = conversation.bridgeUnreadByParentSessionId
         ? conversation.bridgeUnreadByParentSessionId[sessionId] ?? 0
         : conversation.unread ?? 0;
-      const unread = Math.max(scopedUnread, sessionUnreadCount(session));
+      const canonicalUnread = unreadCountForSession(session);
+      const unread = canonicalUnread === 0 && hasSelfReadLatestMessage(sessionId) ? 0 : Math.max(scopedUnread, canonicalUnread);
       const taskActivities = this.taskActivities(sessionId);
 
       // Surface fork lineage stored in canonical metadata so cloned
