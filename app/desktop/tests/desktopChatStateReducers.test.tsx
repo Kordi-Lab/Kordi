@@ -127,6 +127,34 @@ function queuedMessage(overrides: Partial<QueuedDesktopChatMessage> = {}): Queue
   };
 }
 
+test('mergeLatestDesktopChatState preserves inactive session rows during transient partial refresh', () => {
+  const current = desktopState({
+    sessions: [
+      session({ id: 'session-a', title: 'Session A', updatedAtLabel: '10:05', messageCount: 3 }),
+      session({ id: 'session-b', title: 'Session B', updatedAtLabel: '10:03', messageCount: 8 }),
+      session({ id: 'session-c', title: 'Session C', updatedAtLabel: '10:01', messageCount: 5 }),
+    ],
+  });
+  const refreshed = desktopState({
+    sessions: [
+      session({ id: 'session-a', title: 'Session A refreshed', updatedAtLabel: '10:06', messageCount: 4 }),
+    ],
+    activeSession: activeSession({
+      id: 'session-a',
+      title: 'Session A refreshed',
+      updatedAtLabel: '10:06',
+      messageCount: 4,
+      messages: [desktopMessage('one'), desktopMessage('two'), desktopMessage('three'), desktopMessage('four')],
+    }),
+  });
+
+  const merged = mergeLatestDesktopChatState(current, refreshed, false);
+
+  assert.deepEqual(merged.sessions.map((item) => item.id), ['session-a', 'session-b', 'session-c']);
+  assert.equal(merged.sessions[0].title, 'Session A refreshed');
+  assert.equal(merged.sessions[1].title, 'Session B');
+});
+
 test('mergeLatestDesktopChatState preserves richer active transcript during live-turn refresh', () => {
   const current = desktopState({
     activeSession: activeSession({
