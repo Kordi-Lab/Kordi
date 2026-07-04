@@ -895,6 +895,8 @@ function cloudFallbackRunPromptForMessage({
   return cloudAgentVerifiedSenderRequestPrompt({
     senderLabel: cloudAccountPromptSenderLabel(account),
     senderAccountId: message.fromAccountId || account.accountId,
+    requesterKind: 'human',
+    requestMessageId: message.messageId,
     currentPrompt,
     historyTitle: 'Conversation history',
     historyLines: history,
@@ -930,6 +932,7 @@ function cloudGroupFallbackRunPromptForMessage({
   requestMessageId,
   requestSenderAccountId,
   requestSenderLabel,
+  requestSenderKind,
   requestCreatedAtMs,
   requestText,
 }: {
@@ -938,6 +941,7 @@ function cloudGroupFallbackRunPromptForMessage({
   requestMessageId: string;
   requestSenderAccountId: string;
   requestSenderLabel: string;
+  requestSenderKind: 'human' | 'agent';
   requestCreatedAtMs: number;
   requestText: string;
 }): string {
@@ -959,6 +963,8 @@ function cloudGroupFallbackRunPromptForMessage({
   return cloudAgentVerifiedSenderRequestPrompt({
     senderLabel: requestSenderLabel,
     senderAccountId: requestSenderAccountId,
+    requesterKind: requestSenderKind,
+    requestMessageId,
     currentPrompt,
     historyTitle: 'Group chat history',
     historyLines: history,
@@ -999,6 +1005,10 @@ export function cloudFallbackRunClaimsForMessages({
             && envelope.message.deliveryState !== 'processing';
         });
         if (alreadyTerminal) continue;
+        const requestSenderAccountId = message.fromAccountId || groupMessage.senderAccountId;
+        const requestSenderKind = requestSenderAccountId === groupMessage.senderAccountId && groupMessage.senderKind === 'agent'
+          ? 'agent'
+          : 'human';
         claims.push({
           requestMessageId: groupMessage.id,
           sessionId: groupEnvelope.groupId,
@@ -1008,8 +1018,9 @@ export function cloudFallbackRunClaimsForMessages({
             cloudMessages: allCloudMessages,
             groupId: groupEnvelope.groupId,
             requestMessageId: groupMessage.id,
-            requestSenderAccountId: message.fromAccountId || groupMessage.senderAccountId,
-            requestSenderLabel: cloudGroupVerifiedSenderLabel(groupEnvelope, message.fromAccountId || groupMessage.senderAccountId),
+            requestSenderAccountId,
+            requestSenderLabel: cloudGroupVerifiedSenderLabel(groupEnvelope, requestSenderAccountId),
+            requestSenderKind,
             requestCreatedAtMs: groupMessage.createdAtMs,
             requestText: groupMessage.text,
           }),
@@ -3160,9 +3171,14 @@ export function useCloudBridgeState({
         });
         const requestSenderAccountId = cloudMessage.fromAccountId || envelope.message!.senderAccountId;
         const requestSenderLabel = cloudGroupVerifiedSenderLabel(envelope, requestSenderAccountId);
+        const requestSenderKind = requestSenderAccountId === envelope.message!.senderAccountId && envelope.message!.senderKind === 'agent'
+          ? 'agent'
+          : 'human';
         const prompt = cloudAgentVerifiedSenderRequestPrompt({
           senderLabel: requestSenderLabel,
           senderAccountId: requestSenderAccountId,
+          requesterKind: requestSenderKind,
+          requestMessageId: envelope.message!.id,
           currentPrompt: promptTextForCloudAgentMention(envelope.message!.text),
         });
         const contextMessages = [
@@ -3743,6 +3759,8 @@ export function useCloudBridgeState({
           const prompt = cloudAgentVerifiedSenderRequestPrompt({
             senderLabel: peerHumanName,
             senderAccountId: directDisplayMessage.fromAccountId,
+            requesterKind: 'human',
+            requestMessageId: directDisplayMessage.messageId,
             currentPrompt: promptTextForCloudAgentMention(directDisplayMessage.body),
           });
           const contextMessages = [
