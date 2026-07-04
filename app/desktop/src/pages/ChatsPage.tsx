@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction, UIEvent as ReactUIEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -79,10 +79,11 @@ import {
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import {
-  TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
   TRANSCRIPT_WINDOW_OVERSCAN,
   TRANSCRIPT_WINDOW_THRESHOLD,
   transcriptWindowRange,
+  transcriptWindowScrollAnchorIndex,
+  transcriptWindowSpacerHeight,
 } from '@/features/chat/transcriptWindowing';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
@@ -493,6 +494,10 @@ function ChatSessionPane({
   densityMode = 'default',
 }: ChatSessionPaneProps) {
   const [transcriptWindowAnchorIndex, setTranscriptWindowAnchorIndex] = useState(() => Math.max(0, messages.length - 1));
+  const measuredTranscriptMessageHeightsRef = useRef(new Map<string, number>());
+  const transcriptMessageResizeObserversRef = useRef(new Map<string, ResizeObserver>());
+  const transcriptWindowItemRefCallbacksRef = useRef(new Map<string, (node: HTMLDivElement | null) => void>());
+  const [measuredTranscriptHeightVersion, setMeasuredTranscriptHeightVersion] = useState(0);
   const transcriptWindowResetKey = useMemo(() => {
     const firstMessage = messages[0];
     const lastMessage = messages[messages.length - 1];
@@ -517,14 +522,66 @@ function ChatSessionPane({
     setTranscriptWindowAnchorIndex(navigationTargetIndex);
   }, [navigationRequest, navigationTargetIndex]);
 
+  const transcriptMessageHeights = useMemo(() => messages.map((message, index) => (
+    measuredTranscriptMessageHeightsRef.current.get(transcriptWindowMessageIdentity(message, index))
+  )), [measuredTranscriptHeightVersion, messages]);
+
+  useEffect(() => {
+    const liveKeys = new Set(messages.map((message, index) => transcriptWindowMessageIdentity(message, index)));
+    for (const key of measuredTranscriptMessageHeightsRef.current.keys()) {
+      if (!liveKeys.has(key)) measuredTranscriptMessageHeightsRef.current.delete(key);
+    }
+    for (const key of transcriptWindowItemRefCallbacksRef.current.keys()) {
+      if (!liveKeys.has(key)) transcriptWindowItemRefCallbacksRef.current.delete(key);
+    }
+  }, [messages]);
+
+  useEffect(() => () => {
+    for (const observer of transcriptMessageResizeObserversRef.current.values()) {
+      observer.disconnect();
+    }
+    transcriptMessageResizeObserversRef.current.clear();
+  }, []);
+
+  const measureTranscriptWindowItem = useCallback((key: string, node: HTMLDivElement | null) => {
+    transcriptMessageResizeObserversRef.current.get(key)?.disconnect();
+    transcriptMessageResizeObserversRef.current.delete(key);
+
+    if (!node || typeof window === 'undefined') return;
+
+    const updateMeasuredHeight = () => {
+      const nextHeight = node.getBoundingClientRect().height;
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+      const previousHeight = measuredTranscriptMessageHeightsRef.current.get(key);
+      if (previousHeight !== undefined && Math.abs(previousHeight - nextHeight) < 1) return;
+      measuredTranscriptMessageHeightsRef.current.set(key, nextHeight);
+      setMeasuredTranscriptHeightVersion((version) => version + 1);
+    };
+
+    updateMeasuredHeight();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(updateMeasuredHeight);
+    observer.observe(node);
+    transcriptMessageResizeObserversRef.current.set(key, observer);
+  }, []);
+
+  const transcriptWindowItemRef = useCallback((key: string) => {
+    const existing = transcriptWindowItemRefCallbacksRef.current.get(key);
+    if (existing) return existing;
+    const ref = (node: HTMLDivElement | null) => measureTranscriptWindowItem(key, node);
+    transcriptWindowItemRefCallbacksRef.current.set(key, ref);
+    return ref;
+  }, [measureTranscriptWindowItem]);
+
   const handleTranscriptScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
     onTranscriptScroll?.();
     if (messages.length <= TRANSCRIPT_WINDOW_THRESHOLD) return;
-    const nextAnchorIndex = Math.max(0, Math.floor(event.currentTarget.scrollTop / TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT));
+    const nextAnchorIndex = transcriptWindowScrollAnchorIndex(event.currentTarget.scrollTop, transcriptMessageHeights);
     setTranscriptWindowAnchorIndex((current) => (
       Math.abs(current - nextAnchorIndex) >= TRANSCRIPT_WINDOW_OVERSCAN ? nextAnchorIndex : current
     ));
-  }, [messages.length, onTranscriptScroll]);
+  }, [messages.length, onTranscriptScroll, transcriptMessageHeights]);
 
   const transcriptWindow = transcriptWindowRange(messages.length, transcriptWindowAnchorIndex);
   const visibleRawTranscriptMessages = messages.slice(transcriptWindow.start, transcriptWindow.end);
@@ -538,8 +595,8 @@ function ChatSessionPane({
   );
   const visibleTranscriptMessages = attributedTranscript.messages;
   const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
-  const topSpacerHeight = transcriptWindow.windowed ? transcriptWindow.start * TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT : 0;
-  const bottomSpacerHeight = transcriptWindow.windowed ? Math.max(0, messages.length - transcriptWindow.end) * TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT : 0;
+  const topSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, 0, transcriptWindow.start) : 0;
+  const bottomSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, transcriptWindow.end, messages.length) : 0;
 
   useEffect(() => {
     if (!navigationRequest || navigationTargetIndex < transcriptWindow.start || navigationTargetIndex >= transcriptWindow.end) return;
@@ -560,8 +617,13 @@ function ChatSessionPane({
           {topSpacerHeight > 0 ? <div data-transcript-window-spacer="top" style={{ height: topSpacerHeight }} aria-hidden="true" /> : null}
           {messages.length > 0 ? visibleTranscriptMessages.map((msg, visibleIdx) => {
             const idx = transcriptWindow.start + visibleIdx;
+            const windowItemKey = transcriptWindowMessageIdentity(msg, idx);
             return (
-            <Fragment key={transcriptMessageRenderKey(msg, idx)}>
+            <div
+              key={transcriptMessageRenderKey(msg, idx)}
+              ref={transcriptWindowItemRef(windowItemKey)}
+              data-transcript-window-item="true"
+            >
               <MessageBubble
                 msg={msg}
                 onOpenSource={onOpenSource}
@@ -608,7 +670,7 @@ function ChatSessionPane({
                   <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
                 </div>
               ) : null}
-            </Fragment>
+            </div>
             );
           }) : !shouldRenderLiveTurn ? emptyState : null}
           {bottomSpacerHeight > 0 ? <div data-transcript-window-spacer="bottom" style={{ height: bottomSpacerHeight }} aria-hidden="true" /> : null}

@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const workspaceViewModelSource = () => readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
 const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+const uiEffectsSource = () => readFileSync(new URL('../src/app/useKordiUiEffects.ts', import.meta.url), 'utf8');
 
 test('canonical full-state refresh key ignores active session selection-only changes', () => {
   const source = appModelSource();
@@ -37,6 +38,16 @@ test('canonical Cloud chat selection does not invoke native desktop chat reload'
   assert.ok(
     cloudGuardIndex < refreshIndex,
     'canonical Cloud session selection must return before native desktop_chat_state reload',
+  );
+});
+
+test('chat session changes reset transcript auto-follow before message hydration', () => {
+  const source = uiEffectsSource();
+  assert.match(source, /shouldAutoFollowChatRef\.current\s*=\s*true/, 'session changes should re-enable follow-to-bottom');
+  assert.match(
+    source,
+    /\[activeConvId, activeNav, activeProjectSessionId,[^\]]*shouldAutoFollowChatRef\]/,
+    'auto-follow reset should depend on selected chat/project identity',
   );
 });
 

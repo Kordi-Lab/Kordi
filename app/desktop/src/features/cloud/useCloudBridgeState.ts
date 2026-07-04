@@ -10,6 +10,7 @@ import {
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   fetchCanonicalSessionState,
+  markCanonicalSessionRead,
   openOrCreateCanonicalSession,
   renameCanonicalSession,
   startDesktopChatMessage,
@@ -1914,6 +1915,7 @@ export function useCloudBridgeState({
   const [cloudSelfAgentSyncStatusBySessionId, setCloudSelfAgentSyncStatusBySessionId] = useState<Record<string, CloudSelfAgentSyncStatus>>({});
   const cloudBridgeStateRef = useRef<DesktopBridgeState | null>(null);
   const readReceiptRequestRef = useRef<string | null>(null);
+  const persistedActiveReadSignatureRef = useRef<string | null>(null);
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const claimedCloudFallbackRunKeysRef = useRef<Set<string>>(new Set());
   const syncedProviderAuthSnapshotKeysRef = useRef<Set<string>>(new Set());
@@ -2018,6 +2020,37 @@ export function useCloudBridgeState({
   useEffect(() => {
     canonicalSessionStateRef.current = canonicalSessionState ?? null;
   }, [canonicalSessionState]);
+
+  useEffect(() => {
+    const sessionId = activeConversationId?.trim() ?? '';
+    if (!account || !sessionId || !isSharedCloudSessionId(sessionId) || !canonicalSessionState) return;
+    const latestMessages = canonicalSessionState.messages
+      .filter((message) => (
+        message.sessionId === sessionId
+        && !['canonical-fork-snapshot', 'cloud-group-fork-snapshot'].includes(message.sourceTransport ?? '')
+        && !['sending', 'processing'].includes(message.status.trim().toLowerCase())
+      ))
+      .sort((left, right) => left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs);
+    const latestMessage = latestMessages[latestMessages.length - 1];
+    if (!latestMessage) return;
+    const selfParticipant = canonicalSessionState.participants.find((participant) => (
+      participant.sessionId === sessionId
+      && participant.role === 'self'
+      && (!canonicalSessionState.profile.humanIdentityId || participant.identityId === canonicalSessionState.profile.humanIdentityId)
+    )) ?? canonicalSessionState.participants.find((participant) => participant.sessionId === sessionId && participant.role === 'self');
+    if (selfParticipant?.lastReadMessageId === latestMessage.id) return;
+
+    const signature = `${account.accountId}:${sessionId}:${latestMessage.id}`;
+    if (persistedActiveReadSignatureRef.current === signature) return;
+    persistedActiveReadSignatureRef.current = signature;
+    void markCanonicalSessionRead({ sessionId, messageId: latestMessage.id })
+      .then((nextState) => {
+        if (nextState) setCanonicalSessionState?.(nextState);
+      })
+      .catch(() => {
+        persistedActiveReadSignatureRef.current = null;
+      });
+  }, [account, activeConversationId, canonicalSessionState, setCanonicalSessionState]);
 
   useEffect(() => () => {
     for (const timerId of cloudGroupOfflineTimersRef.current.values()) window.clearTimeout(timerId);
@@ -3819,6 +3852,20 @@ export function useCloudBridgeState({
       messages: Object.values(messagesByPeer).flat(),
     });
     if (cloudGroupReadTargets.peerIds.length > 0 || cloudGroupReadTargets.sessionIds.length > 0) {
+      setMessagesByPeer((current) => markCloudMessagesReadLocally(current, account.accountId, cloudGroupReadTargets));
+
+      const canonicalReadSessionIds = [...new Set(activeConversationIds.filter((sessionId): sessionId is string => (
+        typeof sessionId === 'string' && isSharedCloudSessionId(sessionId)
+      )))];
+      if (canonicalReadSessionIds.length > 0) {
+        void Promise.all(canonicalReadSessionIds.map((sessionId) => markCanonicalSessionRead({ sessionId })))
+          .then((states) => {
+            const nextState = states[states.length - 1];
+            if (nextState) setCanonicalSessionState?.(nextState);
+          })
+          .catch(() => {});
+      }
+
       void loadSession()
         .then((session) => {
           if (!session?.token) return null;
@@ -3829,7 +3876,6 @@ export function useCloudBridgeState({
         })
         .then((result) => {
           if (result === null) return;
-          setMessagesByPeer((current) => markCloudMessagesReadLocally(current, account.accountId, cloudGroupReadTargets));
           void refreshCloudBridgeMessages();
         })
         .catch(() => {});
@@ -3865,7 +3911,7 @@ export function useCloudBridgeState({
       .catch(() => {
         readReceiptRequestRef.current = null;
       });
-  }, [account, activeConversationId, client, messagesByPeer, refreshCloudBridgeMessages]);
+  }, [account, activeConversationId, client, messagesByPeer, refreshCloudBridgeMessages, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;

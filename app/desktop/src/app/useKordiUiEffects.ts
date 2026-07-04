@@ -195,6 +195,18 @@ export function useKordiUiEffects({
   useLayoutEffect(() => {
     if (activeNav !== 'chats' && activeNav !== 'projects') return;
 
+    shouldAutoFollowChatRef.current = true;
+    transcriptScrollMetricsRef.current = null;
+
+    const container = chatTranscriptScrollRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [activeConvId, activeNav, activeProjectSessionId, chatTranscriptScrollRef, shouldAutoFollowChatRef]);
+
+  useLayoutEffect(() => {
+    if (activeNav !== 'chats' && activeNav !== 'projects') return;
+
     const container = chatTranscriptScrollRef.current;
     if (!container) return;
 
@@ -202,6 +214,11 @@ export function useKordiUiEffects({
     const previousDistanceFromBottom = previousMetrics
       ? previousMetrics.scrollHeight - previousMetrics.scrollTop - previousMetrics.clientHeight
       : 0;
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    if (container.scrollTop > maxScrollTop) {
+      container.scrollTop = maxScrollTop;
+    }
+
     const currentDistanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     const wasNearBottomBeforeUpdate = previousDistanceFromBottom < 180;
     const isNearBottomNow = currentDistanceFromBottom < 240;

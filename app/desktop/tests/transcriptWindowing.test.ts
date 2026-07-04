@@ -2,9 +2,11 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import {
+  TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
   TRANSCRIPT_WINDOW_TAIL_COUNT,
   TRANSCRIPT_WINDOW_THRESHOLD,
   transcriptWindowRange,
+  transcriptWindowScrollAnchorIndex,
 } from '../src/features/chat/transcriptWindowing';
 
 test('short transcripts render the full history without window spacers', () => {
@@ -44,4 +46,17 @@ test('long transcript windows clamp at the start and end of history', () => {
     end: 1000,
     windowed: true,
   });
+});
+
+test('scroll anchor resists variable-height transcript content', () => {
+  const messageHeights = Array.from({ length: 260 }, () => TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT);
+  messageHeights[0] = TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT * 18;
+
+  const scrollTopInsideSecondMessage = messageHeights[0] + Math.floor(TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT / 2);
+
+  assert.equal(
+    transcriptWindowScrollAnchorIndex(scrollTopInsideSecondMessage, messageHeights),
+    1,
+    'a tall first message should not make the scroll anchor skip many transcript items',
+  );
 });

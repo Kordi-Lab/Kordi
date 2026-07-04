@@ -633,6 +633,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_add_session_participants,
             canonical_sessions::desktop_canonical_remove_session_participant,
             canonical_sessions::desktop_canonical_set_session_participant_role,
+            canonical_sessions::desktop_canonical_mark_session_read,
             auth::desktop_auth_state,
             auth::desktop_cloud_provider_auth_snapshot_payload,
             auth::desktop_save_api_key,
