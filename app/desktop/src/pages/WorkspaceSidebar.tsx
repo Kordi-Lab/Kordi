@@ -2,9 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
-  Activity,
   Check,
   ChevronDown,
+  RefreshCw,
   Copy,
   MoreHorizontal,
   Plus,
@@ -185,6 +185,24 @@ type BridgeHostSummary = {
   visiblePeerCount: number;
 };
 
+type DesktopUpdateCheckResult = {
+  status: 'updateAvailable' | 'upToDate' | 'unavailable';
+  currentVersion: string;
+  latestVersion?: string | null;
+  changelogUrl?: string | null;
+  downloadUrl?: string | null;
+  signature?: string | null;
+  installCommand?: string | null;
+  message: string;
+};
+
+type DesktopUpdateInstallResult = {
+  status: 'installing';
+  version?: string | null;
+  downloadedPath: string;
+  message: string;
+};
+
 type WorkspaceSidebarProps = {
   isNativeShell: boolean;
   isSingleWorkspacePage: boolean;
@@ -195,6 +213,9 @@ type WorkspaceSidebarProps = {
   setActiveNav: Dispatch<SetStateAction<NavId>>;
   chatConversations: ConversationItem[];
   onCreateChatSession: () => void;
+  onCheckForUpdates?: () => Promise<DesktopUpdateCheckResult>;
+  onInstallUpdate?: (input: { downloadUrl: string; version?: string | null }) => Promise<DesktopUpdateInstallResult>;
+  onOpenUpdateUrl?: (url: string) => Promise<void> | void;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
   isDesktopChatLoading: boolean;
@@ -498,6 +519,9 @@ export function WorkspaceSidebar({
   setActiveNav,
   chatConversations,
   onCreateChatSession,
+  onCheckForUpdates,
+  onInstallUpdate,
+  onOpenUpdateUrl,
   chatSearch,
   setChatSearch,
   desktopChatError,
@@ -586,6 +610,7 @@ export function WorkspaceSidebar({
     : localCloudAccountDialogTab;
   const setCloudAccountDialogTab = setControlledCloudAccountDialogTab ?? setLocalCloudAccountDialogTab;
   const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const updateButtonRef = useRef<HTMLButtonElement | null>(null);
   const profilePopoverRef = useRef<HTMLDivElement | null>(null);
   // Computed each time the popover opens, so the surface anchors to the avatar's
   // actual on-screen position (not just a fixed bottom-left offset).
@@ -632,6 +657,11 @@ export function WorkspaceSidebar({
     };
   }, [isProfileCardOpen]);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
+  const [updateCheckResult, setUpdateCheckResult] = useState<DesktopUpdateCheckResult | null>(null);
+  const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
+  const [updateConfirmAnchor, setUpdateConfirmAnchor] = useState<{ left: number; top: number } | null>(null);
+  const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(false);
+  const [updateInstallState, setUpdateInstallState] = useState<{ status: 'idle' | 'installing' | 'error'; message?: string }>({ status: 'idle' });
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
@@ -665,6 +695,66 @@ export function WorkspaceSidebar({
   const openCloudAccountDialog = (tab: CloudAccountSettingsTabId) => {
     setIsProfileCardOpen(false);
     setCloudAccountDialogTab(tab);
+  };
+
+  useEffect(() => {
+    if (!onCheckForUpdates) return;
+    let cancelled = false;
+    setIsUpdateCheckPending(true);
+    void onCheckForUpdates()
+      .then((result) => {
+        if (cancelled) return;
+        setUpdateCheckResult(result.status === 'updateAvailable' ? result : null);
+      })
+      .catch(() => {
+        if (!cancelled) setUpdateCheckResult(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsUpdateCheckPending(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onCheckForUpdates]);
+
+  const measureUpdateConfirmAnchor = () => {
+    const trigger = updateButtonRef.current;
+    if (!trigger || typeof window === 'undefined') return;
+    const rect = trigger.getBoundingClientRect();
+    const popoverWidth = 288;
+    setUpdateConfirmAnchor({
+      left: Math.max(12, Math.min(rect.right - popoverWidth, window.innerWidth - popoverWidth - 12)),
+      top: rect.bottom + 8,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!isUpdateConfirmOpen) {
+      setUpdateConfirmAnchor(null);
+      return;
+    }
+    measureUpdateConfirmAnchor();
+    window.addEventListener('resize', measureUpdateConfirmAnchor);
+    return () => {
+      window.removeEventListener('resize', measureUpdateConfirmAnchor);
+    };
+  }, [isUpdateConfirmOpen]);
+
+  const handleConfirmUpdate = async () => {
+    const downloadUrl = updateCheckResult?.downloadUrl?.trim();
+    if (!downloadUrl || !onInstallUpdate) {
+      const fallbackUrl = updateCheckResult?.changelogUrl?.trim();
+      if (fallbackUrl) await onOpenUpdateUrl?.(fallbackUrl);
+      return;
+    }
+    setUpdateInstallState({ status: 'installing', message: 'Installing update…' });
+    try {
+      const result = await onInstallUpdate({ downloadUrl, version: updateCheckResult?.latestVersion ?? null });
+      setUpdateInstallState({ status: 'installing', message: result.message || 'Installing update…' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to install update';
+      setUpdateInstallState({ status: 'error', message });
+    }
   };
 
   useEffect(() => {
@@ -853,6 +943,9 @@ export function WorkspaceSidebar({
     const latestSession = space.sessions[0];
     const isDirectHuman = space.kind === 'direct-human';
     const isActiveSpace = activeParticipantSpaceId === space.id;
+    const isPrimarySessionActive = Boolean(latestSession && (
+      activeConvId === latestSession.id || activeConvId === latestSession.canonicalSessionId
+    ));
     const isSelectedSpace = !isDirectHuman && selectedParticipantSpaceId === space.id;
     const isExpanded = !isDirectHuman && (isSelectedSpace || isActiveSpace);
     const isAutoExpanded = isExpanded && isActiveSpace && !isSelectedSpace;
@@ -862,11 +955,14 @@ export function WorkspaceSidebar({
     const rowTimeLabel = space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
     const spaceUnreadCount = unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread;
     const participantSpaceDetail = participantSpaceDetailText(space);
+    const selectParticipantSpacePrimarySession = (space: ParticipantSpaceItem) => {
+      const latestSession = space.sessions[0];
+      if (!latestSession) return;
+      if (!isDirectHuman) setSelectedParticipantSpaceId(space.id);
+      onSelectChatSession(latestSession.id);
+    };
     const toggleSpace = () => {
-      if (isDirectHuman) {
-        if (latestSession) onSelectChatSession(latestSession.id);
-        return;
-      }
+      if (isDirectHuman) return;
       setSelectedParticipantSpaceId((current) => current === space.id ? null : space.id);
     };
     return (
@@ -876,7 +972,11 @@ export function WorkspaceSidebar({
         data-participant-space-auto-expanded={isAutoExpanded ? 'true' : undefined}
       >
         <div
-          className={cn('app-participant-space-row-shell', (isActiveSpace || isExpanded) && 'app-participant-space-row-shell-active')}
+          className={cn(
+            'app-participant-space-row-shell',
+            isExpanded && 'app-participant-space-row-shell-expanded',
+            isDirectHuman && isPrimarySessionActive && 'app-session-row-active app-participant-space-row-shell-selected',
+          )}
           data-participant-space-row-shell="true"
         >
           <button
@@ -884,13 +984,13 @@ export function WorkspaceSidebar({
             data-testid="participant-space-row"
             data-participant-space-toggle={isDirectHuman ? undefined : 'true'}
             aria-expanded={isDirectHuman ? undefined : isExpanded}
-            onClick={toggleSpace}
+            onClick={() => selectParticipantSpacePrimarySession(space)}
             className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
           >
             <ParticipantSpaceAvatarStack space={space} />
             <div className="min-w-0">
               <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
-              <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isActiveSpace || isExpanded) && 'app-participant-space-row-preview-active')} title={space.preview}>
+              <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isExpanded || (isDirectHuman && isPrimarySessionActive)) && 'app-participant-space-row-preview-active')} title={space.preview}>
                 {space.preview || `${participantSpaceKindText(space)} space`}
               </div>
               {participantSpaceDetail ? (
@@ -958,7 +1058,7 @@ export function WorkspaceSidebar({
                 unreadCount={isExpanded ? 0 : spaceUnreadCount}
                 unreadScope="participant-space"
                 indicator={isExpanded ? undefined : latestSession?.statusIndicator}
-                active={isActiveSpace || isExpanded}
+                active={isDirectHuman && isPrimarySessionActive}
                 reserveStatusSpace={false}
               />
             </div>
@@ -1582,15 +1682,38 @@ export function WorkspaceSidebar({
                         </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={openChatCreateDialog}
-                      className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
-                      title="Start a chat"
-                      aria-label="Start a chat"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {updateCheckResult?.status === 'updateAvailable' ? (
+                        <button
+                          ref={updateButtonRef}
+                          type="button"
+                          onClick={() => {
+                            measureUpdateConfirmAnchor();
+                            setIsUpdateConfirmOpen((open) => !open);
+                          }}
+                          className={cn(
+                            'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-full p-0 transition',
+                            'border border-slate-300/70 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.12)] hover:bg-slate-50',
+                          )}
+                          title={`Kordi ${updateCheckResult.latestVersion ?? 'update'} is available`}
+                          aria-label="Check for Kordi updates"
+                          aria-expanded={isUpdateConfirmOpen}
+                        >
+                          <RefreshCw className="h-[18px] w-[18px] stroke-[3]" aria-hidden="true" />
+                        </button>
+                      ) : isUpdateCheckPending ? (
+                        <span className="sr-only" role="status">Checking for Kordi updates</span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={openChatCreateDialog}
+                        className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
+                        title="Start a chat"
+                        aria-label="Start a chat"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mb-2 px-1 text-[11px] leading-5 text-slate-500">
@@ -1868,6 +1991,59 @@ export function WorkspaceSidebar({
         )}
       </div>
       </aside>
+
+      {isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' ? createPortal(
+        <div
+          role="dialog"
+          aria-label="Confirm Kordi update"
+          style={{
+            position: 'fixed',
+            left: updateConfirmAnchor.left,
+            top: updateConfirmAnchor.top,
+            zIndex: 180,
+          }}
+          className="app-popover w-[18rem] rounded-[18px] border px-3 py-3 text-foreground shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+        >
+          <div className="text-[13px] font-semibold text-slate-100">Update available</div>
+          <div className="mt-1 text-[11px] leading-5 text-slate-400">
+            {updateCheckResult?.message || `Kordi ${updateCheckResult?.latestVersion} is available.`}
+          </div>
+          <div className="mt-2 rounded-[12px] bg-white/[0.05] px-2.5 py-2 text-[10.5px] leading-4 text-slate-300">
+            {updateCheckResult?.downloadUrl
+              ? 'Click Update now to download, install, and relaunch Kordi automatically.'
+              : (updateCheckResult?.installCommand || 'No automatic installer is available for this release.')}
+          </div>
+          {updateInstallState.message ? (
+            <div
+              role="status"
+              className={cn(
+                'mt-2 rounded-[12px] px-2.5 py-2 text-[10.5px] leading-4',
+                updateInstallState.status === 'error' ? 'bg-rose-500/10 text-rose-200' : 'bg-blue-500/10 text-blue-200',
+              )}
+            >
+              {updateInstallState.message}
+            </div>
+          ) : null}
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+              onClick={() => setIsUpdateConfirmOpen(false)}
+            >
+              Not now
+            </button>
+            <button
+              type="button"
+              className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={updateInstallState.status === 'installing' || (!updateCheckResult?.downloadUrl && !updateCheckResult?.changelogUrl)}
+              onClick={() => { void handleConfirmUpdate(); }}
+            >
+              {updateInstallState.status === 'installing' ? 'Installing…' : 'Update now'}
+            </button>
+          </div>
+        </div>,
+        document.querySelector('.bridge-app') ?? document.body,
+      ) : null}
 
       {sessionContextMenu ? (
         <SessionContextMenu

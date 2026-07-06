@@ -7,6 +7,7 @@ import type { SidebarShellArgs } from '@/app/kordiShellSlots.types';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
+import { checkDesktopForUpdates, installDesktopUpdate, openDesktopExternalUrl } from '@/lib/desktop';
 import { isPendingIncomingCloudContactRequest, useCloudContacts } from '@/features/cloud/useCloudContacts';
 
 type SidebarSlotProps = { args: SidebarShellArgs } & Partial<ComponentProps<typeof WorkspaceSidebar>>;
@@ -103,6 +104,9 @@ function SidebarSlot({ args }: SidebarSlotProps) {
         onCreateChatSession={() => {
           void args.handleCreateChatSession();
         }}
+        onCheckForUpdates={checkDesktopForUpdates}
+        onInstallUpdate={installDesktopUpdate}
+        onOpenUpdateUrl={async (url) => { await openDesktopExternalUrl(url); }}
         chatSearch={args.chatSearch}
         setChatSearch={args.setChatSearch}
         isDesktopChatLoading={args.isDesktopChatLoading}

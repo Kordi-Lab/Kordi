@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction, UIEvent as ReactUIEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
@@ -78,6 +78,13 @@ import {
   focusComposerTextareaForNativeInput,
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
+import {
+  TRANSCRIPT_WINDOW_OVERSCAN,
+  TRANSCRIPT_WINDOW_THRESHOLD,
+  transcriptWindowRange,
+  transcriptWindowScrollAnchorIndex,
+  transcriptWindowSpacerHeight,
+} from '@/features/chat/transcriptWindowing';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
@@ -361,14 +368,33 @@ function ChatComposerShell({ children }: ChatComposerShellProps) {
   return <>{children}</>;
 }
 
+function transcriptWindowMessageIdentity(message: Message | undefined, fallbackIndex: number) {
+  if (!message) return 'none';
+  return message.id ?? message.entryId ?? message.turn?.id ?? `${fallbackIndex}:${message.role}:${message.sender}:${message.time}`;
+}
+
+function transcriptWindowMessageMatchesId(message: Message | undefined, messageId: string, fallbackIndex: number) {
+  if (!message || !messageId) return false;
+  return message.id === messageId
+    || message.entryId === messageId
+    || message.turn?.id === messageId
+    || `transcript-message:${fallbackIndex}` === messageId;
+}
+
+type TranscriptNavigationRequest = {
+  id: string;
+  nonce: number;
+};
+
 type ChatSessionPaneProps = {
-  messages: Message[];
+  messages: readonly Message[];
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnSender: string;
   shouldRenderLiveTurn: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
   scrollClassName: string;
   onTranscriptScroll?: () => void;
+  navigationRequest?: TranscriptNavigationRequest | null;
   emptyState?: ReactNode;
   composer: ReactNode;
   queuedMessages?: QueuedDesktopChatMessage[];
@@ -376,6 +402,7 @@ type ChatSessionPaneProps = {
   onCancelQueuedMessage?: (sessionId: string, queuedMessageId: string) => void;
   isCompressionActive?: boolean;
   plainAgentResponse?: boolean;
+  inferLatestHumanReplyTarget?: boolean;
   forkSnapshotBoundaryIndex?: number;
   activeForkSourceSessionId?: string | null;
   activeForkSourceTitle?: string | null;
@@ -422,6 +449,7 @@ function ChatSessionPane({
   scrollRef,
   scrollClassName,
   onTranscriptScroll,
+  navigationRequest,
   emptyState,
   composer,
   queuedMessages = [],
@@ -429,6 +457,7 @@ function ChatSessionPane({
   onCancelQueuedMessage,
   isCompressionActive = false,
   plainAgentResponse = false,
+  inferLatestHumanReplyTarget = false,
   forkSnapshotBoundaryIndex = -1,
   activeForkSourceSessionId = null,
   activeForkSourceTitle = null,
@@ -464,16 +493,137 @@ function ChatSessionPane({
   messageSelectionMode = false,
   densityMode = 'default',
 }: ChatSessionPaneProps) {
+  const [transcriptWindowAnchorIndex, setTranscriptWindowAnchorIndex] = useState(() => Math.max(0, messages.length - 1));
+  const measuredTranscriptMessageHeightsRef = useRef(new Map<string, number>());
+  const transcriptMessageResizeObserversRef = useRef(new Map<string, ResizeObserver>());
+  const transcriptWindowItemRefCallbacksRef = useRef(new Map<string, (node: HTMLDivElement | null) => void>());
+  const [measuredTranscriptHeightVersion, setMeasuredTranscriptHeightVersion] = useState(0);
+  const transcriptWindowResetKey = useMemo(() => {
+    const firstMessage = messages[0];
+    const lastMessage = messages[messages.length - 1];
+    return [
+      messages.length,
+      transcriptWindowMessageIdentity(firstMessage, 0),
+      transcriptWindowMessageIdentity(lastMessage, messages.length - 1),
+    ].join(':');
+  }, [messages]);
+
+  useEffect(() => {
+    setTranscriptWindowAnchorIndex(Math.max(0, messages.length - 1));
+  }, [messages.length, transcriptWindowResetKey]);
+
+  const navigationTargetIndex = useMemo(() => {
+    if (!navigationRequest?.id) return -1;
+    return messages.findIndex((message, index) => transcriptWindowMessageMatchesId(message, navigationRequest.id, index));
+  }, [messages, navigationRequest]);
+
+  useEffect(() => {
+    if (!navigationRequest || navigationTargetIndex < 0) return;
+    setTranscriptWindowAnchorIndex(navigationTargetIndex);
+  }, [navigationRequest, navigationTargetIndex]);
+
+  const transcriptMessageHeights = useMemo(() => messages.map((message, index) => (
+    measuredTranscriptMessageHeightsRef.current.get(transcriptWindowMessageIdentity(message, index))
+  )), [measuredTranscriptHeightVersion, messages]);
+
+  useEffect(() => {
+    const liveKeys = new Set(messages.map((message, index) => transcriptWindowMessageIdentity(message, index)));
+    for (const key of measuredTranscriptMessageHeightsRef.current.keys()) {
+      if (!liveKeys.has(key)) measuredTranscriptMessageHeightsRef.current.delete(key);
+    }
+    for (const key of transcriptWindowItemRefCallbacksRef.current.keys()) {
+      if (!liveKeys.has(key)) transcriptWindowItemRefCallbacksRef.current.delete(key);
+    }
+  }, [messages]);
+
+  useEffect(() => () => {
+    for (const observer of transcriptMessageResizeObserversRef.current.values()) {
+      observer.disconnect();
+    }
+    transcriptMessageResizeObserversRef.current.clear();
+  }, []);
+
+  const measureTranscriptWindowItem = useCallback((key: string, node: HTMLDivElement | null) => {
+    transcriptMessageResizeObserversRef.current.get(key)?.disconnect();
+    transcriptMessageResizeObserversRef.current.delete(key);
+
+    if (!node || typeof window === 'undefined') return;
+
+    const updateMeasuredHeight = () => {
+      const nextHeight = node.getBoundingClientRect().height;
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+      const previousHeight = measuredTranscriptMessageHeightsRef.current.get(key);
+      if (previousHeight !== undefined && Math.abs(previousHeight - nextHeight) < 1) return;
+      measuredTranscriptMessageHeightsRef.current.set(key, nextHeight);
+      setMeasuredTranscriptHeightVersion((version) => version + 1);
+    };
+
+    updateMeasuredHeight();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(updateMeasuredHeight);
+    observer.observe(node);
+    transcriptMessageResizeObserversRef.current.set(key, observer);
+  }, []);
+
+  const transcriptWindowItemRef = useCallback((key: string) => {
+    const existing = transcriptWindowItemRefCallbacksRef.current.get(key);
+    if (existing) return existing;
+    const ref = (node: HTMLDivElement | null) => measureTranscriptWindowItem(key, node);
+    transcriptWindowItemRefCallbacksRef.current.set(key, ref);
+    return ref;
+  }, [measureTranscriptWindowItem]);
+
+  const handleTranscriptScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
+    onTranscriptScroll?.();
+    if (messages.length <= TRANSCRIPT_WINDOW_THRESHOLD) return;
+    const nextAnchorIndex = transcriptWindowScrollAnchorIndex(event.currentTarget.scrollTop, transcriptMessageHeights);
+    setTranscriptWindowAnchorIndex((current) => (
+      Math.abs(current - nextAnchorIndex) >= TRANSCRIPT_WINDOW_OVERSCAN ? nextAnchorIndex : current
+    ));
+  }, [messages.length, onTranscriptScroll, transcriptMessageHeights]);
+
+  const transcriptWindow = transcriptWindowRange(messages.length, transcriptWindowAnchorIndex);
+  const visibleRawTranscriptMessages = messages.slice(transcriptWindow.start, transcriptWindow.end);
+  const attributedTranscript = useMemo(
+    () => buildReplyAttribution(visibleRawTranscriptMessages, shouldRenderLiveTurn ? liveTurn : null, {
+      inferLatestHumanRequest: inferLatestHumanReplyTarget,
+      suppressAgentReplyAttribution: plainAgentResponse,
+      messageIndexOffset: transcriptWindow.start,
+    }),
+    [inferLatestHumanReplyTarget, liveTurn, plainAgentResponse, shouldRenderLiveTurn, transcriptWindow.start, visibleRawTranscriptMessages],
+  );
+  const visibleTranscriptMessages = attributedTranscript.messages;
+  const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
+  const topSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, 0, transcriptWindow.start) : 0;
+  const bottomSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, transcriptWindow.end, messages.length) : 0;
+
+  useEffect(() => {
+    if (!navigationRequest || navigationTargetIndex < transcriptWindow.start || navigationTargetIndex >= transcriptWindow.end) return;
+    const frameId = window.requestAnimationFrame(() => {
+      navigateToTranscriptMessage(navigationRequest.id, scrollRef);
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [navigationRequest, navigationTargetIndex, scrollRef, transcriptWindow.end, transcriptWindow.start]);
+
   return (
     <>
       <ScrollArea
         ref={scrollRef}
         className={scrollClassName}
-        onScroll={onTranscriptScroll}
+        onScroll={handleTranscriptScroll}
       >
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-          {messages.length > 0 ? messages.map((msg, idx) => (
-            <Fragment key={transcriptMessageRenderKey(msg, idx)}>
+          {topSpacerHeight > 0 ? <div data-transcript-window-spacer="top" style={{ height: topSpacerHeight }} aria-hidden="true" /> : null}
+          {messages.length > 0 ? visibleTranscriptMessages.map((msg, visibleIdx) => {
+            const idx = transcriptWindow.start + visibleIdx;
+            const windowItemKey = transcriptWindowMessageIdentity(msg, idx);
+            return (
+            <div
+              key={transcriptMessageRenderKey(msg, idx)}
+              ref={transcriptWindowItemRef(windowItemKey)}
+              data-transcript-window-item="true"
+            >
               <MessageBubble
                 msg={msg}
                 onOpenSource={onOpenSource}
@@ -520,11 +670,13 @@ function ChatSessionPane({
                   <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
                 </div>
               ) : null}
-            </Fragment>
-          )) : !shouldRenderLiveTurn ? emptyState : null}
-          {shouldRenderLiveTurn && liveTurn ? (
+            </div>
+            );
+          }) : !shouldRenderLiveTurn ? emptyState : null}
+          {bottomSpacerHeight > 0 ? <div data-transcript-window-spacer="bottom" style={{ height: bottomSpacerHeight }} aria-hidden="true" /> : null}
+          {shouldRenderLiveTurn && attributedLiveTurn ? (
             <LiveChatTurnMessage
-              turn={liveTurn}
+              turn={attributedLiveTurn}
               sender={liveTurnSender}
               onStopBridgeAgentRequest={onStopBridgeAgentRequest}
               onStopActiveTurn={onStopActiveTurn}
@@ -1109,6 +1261,9 @@ export function ChatsPage({
   const [optimisticCloudPinBySessionId, setOptimisticCloudPinBySessionId] = useState<Record<string, CloudSessionPin>>({});
   const [pinDialog, setPinDialog] = useState<{ mode: 'pin' | 'unpin'; message: Message } | null>(null);
   const [pinForEveryone, setPinForEveryone] = useState(false);
+  const [mainTranscriptNavigationRequest, setMainTranscriptNavigationRequest] = useState<TranscriptNavigationRequest | null>(null);
+  const [companionTranscriptNavigationRequest, setCompanionTranscriptNavigationRequest] = useState<TranscriptNavigationRequest | null>(null);
+  const transcriptNavigationNonceRef = useRef(0);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const companionTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const companionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -1333,14 +1488,7 @@ export function ChatsPage({
   );
   const inferLatestHumanReplyTarget = shouldInferLatestHumanReplyTarget(activeConv);
   const suppressAgentReplyAttribution = shouldSuppressAgentReplyAttribution(activeConv);
-  const attributedTranscript = useMemo(
-    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
-      inferLatestHumanRequest: inferLatestHumanReplyTarget,
-      suppressAgentReplyAttribution,
-    }),
-    [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
-  );
-  const attributedTranscriptMessages = attributedTranscript.messages;
+  const attributedTranscriptMessages = transcriptMessages;
   const pinnedMessageId = activeConversationUsesCloudPins
     ? activeCloudSessionPin?.effectiveMessageId ?? null
     : pinnedMessageIdsByConversationId[activeConv.id] ?? null;
@@ -1367,7 +1515,10 @@ export function ChatsPage({
     const targetMessageId = sourceMessage
       ? resolveTranscriptMessageIdForSource(sourceMessage, attributedTranscriptMessages)
       : messageId;
-    navigateToTranscriptMessage(targetMessageId || messageId, chatTranscriptScrollRef);
+    const resolvedMessageId = targetMessageId || messageId;
+    transcriptNavigationNonceRef.current += 1;
+    setMainTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
+    navigateToTranscriptMessage(resolvedMessageId, chatTranscriptScrollRef);
   }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
   const handleOpenPinnedMessage = useCallback(() => {
     if (!pinnedMessageId) return;
@@ -1436,28 +1587,24 @@ export function ChatsPage({
     }
     return lastSnapshotIdx;
   }, [activeForkSourceSessionId, activeForkSourceMessageId, attributedTranscriptMessages]);
-  const attributedActiveTranscriptLiveTurn = attributedTranscript.liveTurn ?? activeTranscriptLiveTurn;
+  const attributedActiveTranscriptLiveTurn = activeTranscriptLiveTurn;
   const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
-  const companionTranscript = useMemo(() => {
-    if (!companionConversation) {
-      return { messages: [] as Message[], liveTurn: undefined as DesktopChatTurnSnapshot | undefined };
-    }
-    const messages = collapseAdjacentSessionConfigNotices(
+  const companionTranscriptMessages = useMemo(() => {
+    if (!companionConversation) return [] as Message[];
+    return collapseAdjacentSessionConfigNotices(
       suppressLiveTurnEchoMessages(companionConversation.messages, companionTranscriptLiveTurn),
     );
-    return buildReplyAttribution(messages, companionTranscriptLiveTurn, {
-      inferLatestHumanRequest: shouldInferLatestHumanReplyTarget(companionConversation),
-      suppressAgentReplyAttribution: companionSuppressAgentReplyAttribution,
-    });
-  }, [companionConversation, companionSuppressAgentReplyAttribution, companionTranscriptLiveTurn]);
-  const companionTranscriptMessages = companionTranscript.messages;
+  }, [companionConversation, companionTranscriptLiveTurn]);
   const handleNavigateToCompanionTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
     const targetMessageId = sourceMessage
       ? resolveTranscriptMessageIdForSource(sourceMessage, companionTranscriptMessages)
       : messageId;
-    navigateToTranscriptMessage(targetMessageId || messageId, companionTranscriptScrollRef);
+    const resolvedMessageId = targetMessageId || messageId;
+    transcriptNavigationNonceRef.current += 1;
+    setCompanionTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
+    navigateToTranscriptMessage(resolvedMessageId, companionTranscriptScrollRef);
   }, [companionTranscriptMessages]);
-  const attributedCompanionTranscriptLiveTurn = companionTranscript.liveTurn ?? companionTranscriptLiveTurn;
+  const attributedCompanionTranscriptLiveTurn = companionTranscriptLiveTurn;
   const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const companionLiveTurnIsRunning = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const updateCompanionDropPreview = (event: DragEvent<HTMLElement>) => {
@@ -1812,10 +1959,12 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
         scrollRef={companionTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"
+        navigationRequest={companionTranscriptNavigationRequest}
         densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
         onEditQueuedMessage={onEditQueuedMessage}
         onCancelQueuedMessage={onCancelQueuedMessage}
+        inferLatestHumanReplyTarget={shouldInferLatestHumanReplyTarget(companionConversation)}
         emptyState={(
           <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
             No messages in this side chat yet.
@@ -2517,6 +2666,7 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderLiveTurn}
         scrollRef={chatTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3.5 py-5 sm:px-4"
+        navigationRequest={mainTranscriptNavigationRequest}
         densityMode={chatTranscriptDensityMode(activeConv)}
         onTranscriptScroll={onTranscriptScroll}
         queuedMessages={queuedDesktopMessages}
@@ -2524,6 +2674,7 @@ export function ChatsPage({
         onCancelQueuedMessage={onCancelQueuedMessage}
         isCompressionActive={isCompressionActive}
         plainAgentResponse={suppressAgentReplyAttribution}
+        inferLatestHumanReplyTarget={inferLatestHumanReplyTarget}
         forkSnapshotBoundaryIndex={forkSnapshotBoundaryIndex}
         activeForkSourceSessionId={activeForkSourceSessionId}
         activeForkSourceTitle={activeForkSourceTitle}

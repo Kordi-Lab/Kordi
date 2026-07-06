@@ -570,9 +570,18 @@
   background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);
 }
 
-.app-participant-space-row-shell-active {
+.app-participant-space-row-shell-expanded {
+  background: color-mix(in oklab, var(--app-sidebar-selected-bg) 38%, transparent);
+  box-shadow: none;
+}
+
+.app-participant-space-row-shell-selected {
   background: var(--app-sidebar-selected-bg);
   box-shadow: none;
+}
+
+.app-participant-space-row-shell-selected:hover {
+  background: var(--app-sidebar-selected-bg);
 }
 
 .app-participant-space-row-button {
@@ -593,14 +602,15 @@
 
 .app-participant-space-row-side {
   display: grid;
-  grid-template-rows: max-content 1fr;
+  grid-template-rows: max-content;
+  align-content: start;
   justify-items: end;
-  min-height: 4.05rem;
+  min-height: 3.125rem;
 }
 
 .app-participant-space-row-meta {
-  align-self: end;
-  padding: 0 0.35rem 0.45rem 0;
+  align-self: start;
+  padding: 0.375rem 0.35rem 0 0;
 }
 
 .app-participant-space-row-actions {
@@ -609,7 +619,7 @@
   grid-template-columns: repeat(3, 1.5rem);
   align-items: center;
   gap: 0.125rem;
-  padding: 0.375rem 0.25rem 0 0;
+  padding: 0.25rem 0.25rem 0 0;
   opacity: 0.9;
 }
 

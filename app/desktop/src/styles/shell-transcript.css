@@ -815,14 +815,14 @@
 }
 
 .bridge-app.theme-light .app-chat-bubble-user .app-source-message-quote {
-  --app-source-message-quote-foreground: rgb(255 255 255);
-  --app-source-message-quote-muted: rgba(255, 255, 255, 0.64);
-  --app-source-message-quote-accent: rgb(96 165 250);
-  --app-source-message-quote-bg: rgba(255, 255, 255, 0.07);
-  --app-source-message-quote-bg-hover: rgba(255, 255, 255, 0.1);
-  --app-source-message-quote-label: rgba(255, 255, 255, 0.88);
-  --app-source-message-quote-text: rgba(255, 255, 255, 0.76);
-  --app-source-message-quote-fade-bg: rgb(17 17 17);
+  --app-source-message-quote-foreground: rgb(31 49 69);
+  --app-source-message-quote-muted: rgba(31, 49, 69, 0.62);
+  --app-source-message-quote-accent: rgb(59 99 148);
+  --app-source-message-quote-bg: rgba(31, 49, 69, 0.05);
+  --app-source-message-quote-bg-hover: rgba(31, 49, 69, 0.08);
+  --app-source-message-quote-label: rgba(31, 49, 69, 0.86);
+  --app-source-message-quote-text: rgba(31, 49, 69, 0.74);
+  --app-source-message-quote-fade-bg: rgb(226 235 245);
 }
 
 .app-chat-bubble-peer .app-source-message-quote {
@@ -833,12 +833,14 @@
 
 .app-source-message-quote-link {
   width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   border: 0;
-  border-radius: 10px;
+  border-radius: 7px;
   background: var(--app-source-message-quote-bg);
   color: inherit;
   cursor: pointer;
-  padding: 0.12rem 0.18rem;
+  padding: 0.34rem 0.62rem;
   transition: background-color var(--app-motion-fast) var(--app-motion-ease);
 }
 
@@ -847,12 +849,7 @@
 }
 
 .app-source-message-quote-rail {
-  display: block;
-  align-self: stretch;
-  width: 3px;
-  min-height: 2.05rem;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--app-source-message-quote-accent) 82%, var(--app-source-message-quote-foreground));
+  display: none;
 }
 
 .app-source-message-quote-label {

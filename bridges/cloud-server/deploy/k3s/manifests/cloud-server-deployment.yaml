@@ -62,6 +62,12 @@ spec:
               containerPort: 17081
               protocol: TCP
           env:
+            - name: KORDI_RELEASE_VERSION
+              value: "0.0.1-beta.5"
+            - name: KORDI_RELEASE_CHANGELOG_URL
+              value: "https://coordinar.io/updates/releases/version"
+            - name: KORDI_RELEASE_INSTALL_COMMAND
+              value: "Install the latest Kordi release from https://coordinar.io/updates/releases/version"
             - name: PG_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -60,6 +60,16 @@ test('bubble CSS uses the seamless shape layer with natural motion and no stitch
   assert.doesNotMatch(shellCss, /\.app-message-bubble-peer::after/);
 });
 
+test('bubble path uses very square corners instead of rounded pill corners', () => {
+  const ownPath = messageBubbleShapePath('own', { width: 220, height: 64 });
+  const peerPath = messageBubbleShapePath('peer', { width: 220, height: 64 });
+
+  assert.match(ownPath, /^M 8 0 H 204 C 208 0 212 4 212 8/);
+  assert.match(peerPath, /^M 212 0 H 16 C 12 0 8 4 8 8/);
+  assert.doesNotMatch(ownPath, /^M 17 0/);
+  assert.doesNotMatch(peerPath, /^M 220 0 H 25/);
+});
+
 test('bubble path keeps the tail compact at the lower side for tall messages', () => {
   const ownTallPath = messageBubbleShapePath('own', { width: 220, height: 240 });
   const peerTallPath = messageBubbleShapePath('peer', { width: 220, height: 240 });

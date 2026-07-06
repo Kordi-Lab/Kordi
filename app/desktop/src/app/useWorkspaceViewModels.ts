@@ -487,7 +487,7 @@ export function useWorkspaceViewModels({
     localAgentBridgeReachoutConversations.flatMap((conversation) => [conversation.id, conversation.canonicalSessionId].filter((value): value is string => Boolean(value))),
   ), [localAgentBridgeReachoutConversations]);
 
-  const chatConversations = useMemo(() => {
+  const hydratedChatConversations = useMemo(() => {
     if (!isNativeShell) {
       return conversations;
     }
@@ -495,14 +495,16 @@ export function useWorkspaceViewModels({
     const merged = [...bridgeSourceConversations, ...localChatConversations];
     merged.sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0));
     const sourceConversations = merged.map(({ _updatedAtMs, ...conversation }) => conversation);
-    const hydratedConversations = canonicalReadModel
+    return canonicalReadModel
       ? canonicalReadModel.buildChatConversations(sourceConversations, buildConversationPreview)
       : sourceConversations;
+  }, [bridgeChatConversations, canonicalReadModel, conversations, isNativeShell, localChatConversations, visibleBridgeChatConversations]);
 
+  const chatConversations = useMemo(() => {
     const hiddenIds = new Set([...hiddenSessionIds, ...localAgentBridgeReachoutSessionIds]);
     const visibleConversations = hiddenIds.size === 0
-      ? hydratedConversations
-      : hydratedConversations.filter((conversation) => {
+      ? hydratedChatConversations
+      : hydratedChatConversations.filter((conversation) => {
           const canonicalId = conversation.canonicalSessionId ?? conversation.id;
           if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
           return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
@@ -525,7 +527,7 @@ export function useWorkspaceViewModels({
       };
     });
     return hideRawConversationIds(withCloudActivity);
-  }, [activeConvId, bridgeChatConversations, canonicalReadModel, cloudPresence, cloudSessionActivity, hiddenSessionIds, isNativeShell, localAgentBridgeReachoutSessionIds, localChatConversations, visibleBridgeChatConversations]);
+  }, [activeConvId, cloudPresence, cloudSessionActivity, hiddenSessionIds, hydratedChatConversations, localAgentBridgeReachoutSessionIds]);
 
   const nativeChatPlaceholder = useMemo(
     () => {

@@ -90,6 +90,24 @@ function bridgeState(conversations: DesktopBridgeConversation[]): DesktopBridgeS
   };
 }
 
+test('mergeDesktopBridgeState preserves conversations when mailbox polling returns metadata only', () => {
+  const existingConversation = conversation([message({ id: 'request', text: 'cached message' })]);
+  const current = bridgeState([existingConversation]);
+  const metadataOnly: DesktopBridgeState = {
+    ...bridgeState([]),
+    hosts: [],
+    conversations: [],
+    localServer: { running: true, serverUrl: 'http://127.0.0.1:1234' },
+  };
+
+  const merged = mergeDesktopBridgeState(current, metadataOnly);
+
+  assert.equal(merged?.localServer.running, true);
+  assert.equal(merged?.conversations.length, 1);
+  assert.equal(merged?.conversations[0].id, existingConversation.id);
+  assert.equal(merged?.conversations[0].messages[0].text, 'cached message');
+});
+
 test('mergeDesktopBridgeState keeps a bridge request before its agent response even when an update arrives reversed', () => {
   const request = message({
     id: 'request',
