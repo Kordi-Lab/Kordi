@@ -745,6 +745,73 @@ test('cloud group unread helper counts only hidden sessions', () => {
   assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:other', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), true);
 });
 
+test('cloud group unread count helper ignores messages at or before local read cursor', () => {
+  const readMessage = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:child',
+    groupSpaceId: 'session:group:space',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg:read',
+      senderAccountId: 'acct_peer',
+      senderDisplayName: 'Peer',
+      senderKind: 'human',
+      text: 'Already read but stale cache says unread',
+      createdAtMs: 10,
+    },
+  });
+  const unreadMessage = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:child',
+    groupSpaceId: 'session:group:space',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_peer',
+    actor: { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_me', displayName: 'Me', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_peer', displayName: 'Peer', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg:unread',
+      senderAccountId: 'acct_peer',
+      senderDisplayName: 'Peer',
+      senderKind: 'human',
+      text: 'New unread after cursor',
+      createdAtMs: 11,
+    },
+  });
+
+  assert.deepEqual(cloudGroupUnreadCountsBySessionId({
+    accountId: 'acct_me',
+    activeConversationId: 'session:outside',
+    readCursorsBySessionId: {
+      'session:group:child': { lastReadMessageId: 'msg:read', lastReadCreatedAtMs: 10 },
+    },
+    messages: [
+      { messageId: 'cloud_read_stale', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: readMessage, createdAt: '2026-05-11T00:00:10Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+      { messageId: 'cloud_unread_new', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: unreadMessage, createdAt: '2026-05-11T00:00:11Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), { 'session:group:child': 1 });
+
+  assert.deepEqual(cloudGroupUnreadCountsBySessionId({
+    accountId: 'acct_me',
+    activeConversationId: 'session:outside',
+    readCursorsBySessionId: {
+      'session:group:child': { lastReadMessageId: 'msg:unread', lastReadCreatedAtMs: 11 },
+    },
+    messages: [
+      { messageId: 'cloud_read_stale', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: readMessage, createdAt: '2026-05-11T00:00:10Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+      { messageId: 'cloud_unread_new', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: unreadMessage, createdAt: '2026-05-11T00:00:11Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), {});
+});
+
 test('cloud group unread count helper deduplicates inbound unread controls per hidden session', () => {
   const groupMessage = encodeCloudGroupControl({
     kind: 'group-message',

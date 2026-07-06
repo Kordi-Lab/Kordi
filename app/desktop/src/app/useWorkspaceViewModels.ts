@@ -144,7 +144,28 @@ export function activeConversationForSelection(
   if (selectedConversation) return selectedConversation;
   const pendingCloudConversation = pendingCloudBridgeConversationForActiveId(activeConvId);
   if (pendingCloudConversation) return pendingCloudConversation;
+  const pendingCanonicalCloudConversation = pendingCanonicalCloudConversationForActiveId(activeConvId);
+  if (pendingCanonicalCloudConversation) return pendingCanonicalCloudConversation;
   return chatConversations[0] ?? (options.isNativeShell ? options.nativeChatPlaceholder : options.fallbackConversation ?? options.nativeChatPlaceholder);
+}
+
+export function pendingCanonicalCloudConversationForActiveId(activeConvId: string): Conversation | null {
+  const sessionId = activeConvId.trim();
+  if (!isCanonicalCloudSessionId(sessionId)) return null;
+  const isGroup = sessionId.startsWith('session:group:');
+  return {
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    name: isGroup ? 'Opening group chat…' : 'Opening Cloud chat…',
+    type: isGroup ? 'owned-agent' : 'person',
+    subtitle: 'Loading chat history…',
+    unread: 0,
+    bridges: ['Cloud'],
+    trust: 'Bridge',
+    directness: isGroup ? 'Group chat' : 'Direct person chat',
+    participants: ['Me'],
+    messages: [{ role: 'system', text: 'Loading chat history…', time: '--:--' }],
+  };
 }
 
 export function pendingCloudBridgeConversationForActiveId(activeConvId: string): Conversation | null {

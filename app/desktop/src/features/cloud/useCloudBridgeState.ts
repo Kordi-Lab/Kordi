@@ -99,6 +99,7 @@ import {
   cloudGroupTitleForOutgoingControl,
   cloudGroupTitleUpdateNoticeRequest,
   cloudGroupUnreadCountsBySessionId,
+  type CloudGroupReadCursor,
   cloudSessionTitleUpdateNoticeRequest,
   cloudSessionTitleUpdateTitle,
   cloudGroupUniqueParticipants,
@@ -1447,6 +1448,24 @@ type CloudSelfAgentRestoreMessage = {
 function isSharedCloudSessionId(sessionId: string): boolean {
   const trimmed = cleanText(sessionId);
   return trimmed.startsWith('session:direct-person:') || trimmed.startsWith('session:group:');
+}
+
+function cloudGroupReadCursorsBySessionId(canonicalState?: CanonicalSessionState | null): Record<string, CloudGroupReadCursor> {
+  if (!canonicalState) return {};
+  const rawMessageById = new Map(canonicalState.messages.map((message) => [message.id, message]));
+  const cursors: Record<string, CloudGroupReadCursor> = {};
+  for (const participant of canonicalState.participants) {
+    if (participant.role !== 'self') continue;
+    if (canonicalState.profile.humanIdentityId && participant.identityId !== canonicalState.profile.humanIdentityId) continue;
+    const lastReadMessageId = cleanText(participant.lastReadMessageId);
+    if (!lastReadMessageId) continue;
+    const lastReadMessage = rawMessageById.get(lastReadMessageId);
+    cursors[participant.sessionId] = {
+      lastReadMessageId,
+      lastReadCreatedAtMs: lastReadMessage?.createdAtMs ?? participant.lastSeenAtMs ?? null,
+    };
+  }
+  return cursors;
 }
 
 function normalizeCloudSelfAgentRestoreMessage(message: CloudMessage): CloudSelfAgentRestoreMessage | null {
@@ -3509,6 +3528,7 @@ export function useCloudBridgeState({
     const unreadBySessionId = cloudGroupUnreadCountsBySessionId({
       accountId: account.accountId,
       activeConversationIds,
+      readCursorsBySessionId: cloudGroupReadCursorsBySessionId(canonicalSessionState),
       messages: Object.values(messagesByPeer).flat(),
     });
     setCanonicalSessionState((current) => {
@@ -3540,7 +3560,7 @@ export function useCloudBridgeState({
       });
       return changed ? { ...current, sessions } : current;
     });
-  }, [account, activeConversationId, canonicalSessionState?.sessions, messagesByPeer, setCanonicalSessionState]);
+  }, [account, activeConversationId, canonicalSessionState, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
