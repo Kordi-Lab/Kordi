@@ -10,11 +10,8 @@
 }
 
 .app-auth-provider-gate-card:hover {
-  background: color-mix(in oklab, var(--app-control-active) 38%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--app-control-active) 40%, transparent),
-    inset 0 1px 0 color-mix(in oklab, white 18%, transparent),
-    inset 0 -1px 0 color-mix(in oklab, black 6%, transparent);
+  background: color-mix(in oklab, var(--app-control-bg) 14%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 10%, transparent);
 }
 
 .app-auth-provider-gate-card:focus-visible {

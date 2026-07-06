@@ -42,6 +42,8 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   const gateFocusRule = shellPages.match(/\.app-auth-provider-gate-card:focus-visible \{[\s\S]*?\n}\n/)?.[0] ?? '';
   assert.match(gateHoverRule, /background:/);
   assert.match(gateHoverRule, /box-shadow:/);
+  assert.doesNotMatch(gateHoverRule, /app-control-active/, 'unselected gate hover must not look like active/selected state');
+  assert.doesNotMatch(gateHoverRule, /0 0 0 1px/, 'unselected gate hover should not draw an active outer selection ring');
   assert.doesNotMatch(gateHoverRule, /translateY|scale\(|animation:/);
   assert.match(gateFocusRule, /outline:/);
   assert.doesNotMatch(gateFocusRule, /background:/);
