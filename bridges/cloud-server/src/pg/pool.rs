@@ -162,6 +162,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud agent participant sharing",
         sql: include_str!("../../migrations/0026_cloud_agent_participant_sharing.sql"),
     },
+    EmbeddedMigration {
+        version: 28,
+        description: "cloud read cursors",
+        sql: include_str!("../../migrations/0028_cloud_read_cursors.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

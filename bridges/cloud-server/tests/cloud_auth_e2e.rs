@@ -63,7 +63,10 @@ fn cloud_message_listing_uses_newest_window_before_oldest_first_display_order() 
 #[test]
 fn cloud_message_listing_applies_durable_read_cursors() {
     let routes_source = std::fs::read_to_string("src/auth/routes.rs").expect("read auth routes source");
+    let pool_source = std::fs::read_to_string("src/pg/pool.rs").expect("read pool source");
     assert!(routes_source.contains("cloud_read_cursors"));
+    assert!(pool_source.contains("version: 28"));
+    assert!(pool_source.contains("0028_cloud_read_cursors.sql"));
     assert!(routes_source.contains("peer_read_cursor"));
     assert!(routes_source.contains("session_read_cursor"));
     assert!(routes_source.contains("COALESCE(read_at"));
