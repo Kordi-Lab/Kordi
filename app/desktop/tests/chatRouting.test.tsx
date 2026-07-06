@@ -46,6 +46,35 @@ test('workspace active conversation resolves Cloud self-agent bridge session ids
   assert.equal(selected.messages[0]?.text, '家人们谁懂啊');
 });
 
+test('workspace active conversation keeps selected canonical Cloud session in loading state while hydration catches up', () => {
+  const localConversation = {
+    id: 'local-newer',
+    canonicalSessionId: 'local-newer',
+    name: 'Local newer',
+    type: 'owned-agent' as const,
+    subtitle: 'Local fallback should not win',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'owned-agent' as const, text: 'wrong local fallback', time: '10:02' }],
+  };
+
+  const selected = activeConversationForSelection(
+    'session:group:clicked-before-hydration',
+    [localConversation],
+    { isNativeShell: true, nativeChatPlaceholder: localConversation },
+  );
+
+  assert.equal(selected.id, 'session:group:clicked-before-hydration');
+  assert.equal(selected.canonicalSessionId, 'session:group:clicked-before-hydration');
+  assert.equal(selected.unread, 0);
+  assert.equal(selected.messages.length > 0, true);
+  assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
+  assert.notEqual(selected.messages[0]?.text, 'wrong local fallback');
+});
+
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
   const localConversation = {
     id: 'local-newer',

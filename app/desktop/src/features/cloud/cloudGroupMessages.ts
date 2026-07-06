@@ -820,10 +820,38 @@ export function cloudGroupMessageReadPeerIds(input: {
   return cloudGroupMessageReadTargets(input).peerIds;
 }
 
+export type CloudGroupReadCursor = {
+  lastReadMessageId?: string | null;
+  lastReadCreatedAtMs?: number | null;
+};
+
+function cloudGroupMessageCreatedAtMs(message: CloudMessage, envelope: CloudGroupControlEnvelope) {
+  const explicitCreatedAtMs = typeof envelope.message?.createdAtMs === 'number' && Number.isFinite(envelope.message.createdAtMs)
+    ? envelope.message.createdAtMs
+    : null;
+  if (explicitCreatedAtMs !== null) return explicitCreatedAtMs;
+  const parsedCloudCreatedAt = Date.parse(message.createdAt);
+  return Number.isFinite(parsedCloudCreatedAt) ? parsedCloudCreatedAt : null;
+}
+
+function cloudGroupMessageIsAtOrBeforeReadCursor(message: CloudMessage, envelope: CloudGroupControlEnvelope, cursor?: CloudGroupReadCursor | null) {
+  if (!cursor) return false;
+  const groupMessageId = cleanText(envelope.message?.id) || cleanText(message.messageId);
+  const lastReadMessageId = cleanText(cursor.lastReadMessageId);
+  if (groupMessageId && lastReadMessageId && groupMessageId === lastReadMessageId) return true;
+  const lastReadCreatedAtMs = typeof cursor.lastReadCreatedAtMs === 'number' && Number.isFinite(cursor.lastReadCreatedAtMs)
+    ? cursor.lastReadCreatedAtMs
+    : null;
+  if (lastReadCreatedAtMs === null) return false;
+  const createdAtMs = cloudGroupMessageCreatedAtMs(message, envelope);
+  return createdAtMs !== null && createdAtMs <= lastReadCreatedAtMs;
+}
+
 export function cloudGroupUnreadCountsBySessionId(input: {
   accountId: string;
   activeConversationId?: string | null;
   activeConversationIds?: Array<string | null | undefined>;
+  readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
   messages: CloudMessage[];
 }): Record<string, number> {
   const accountId = cleanText(input.accountId);
@@ -843,6 +871,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
     })) continue;
     const sessionId = cleanText(envelope.groupId);
     if (!sessionId) continue;
+    if (cloudGroupMessageIsAtOrBeforeReadCursor(message, envelope, input.readCursorsBySessionId?.[sessionId])) continue;
     const groupMessageId = cleanText(envelope.message?.id) || cleanText(message.messageId);
     const unreadKey = `${sessionId}:${groupMessageId}`;
     if (seenGroupMessageIds.has(unreadKey)) continue;

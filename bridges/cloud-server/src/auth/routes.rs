@@ -2986,6 +2986,33 @@ async fn append_cloud_sync_event(
     Ok(())
 }
 
+async fn upsert_cloud_read_cursor(
+    pool: &PgPool,
+    account_id: &str,
+    scope_kind: &str,
+    scope_id: &str,
+    read_at: &str,
+) -> Result<(), sqlx_core::error::Error> {
+    query(
+        "INSERT INTO cloud_read_cursors \
+         (account_id, scope_kind, scope_id, read_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $4) \
+         ON CONFLICT (account_id, scope_kind, scope_id) DO UPDATE SET \
+             read_at = CASE \
+                 WHEN cloud_read_cursors.read_at < EXCLUDED.read_at THEN EXCLUDED.read_at \
+                 ELSE cloud_read_cursors.read_at \
+             END, \
+             updated_at = EXCLUDED.updated_at",
+    )
+    .bind(account_id)
+    .bind(scope_kind)
+    .bind(scope_id)
+    .bind(read_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// `GET /v1/cloud/sync?cursor=...&limit=...` — return account-scoped
 /// ordered Cloud changes after the caller's last successfully applied cursor.
 async fn sync_cloud_events(
@@ -3394,6 +3421,16 @@ async fn mark_messages_read(
 
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();
+    if upsert_cloud_read_cursor(pool, &session.account_id, "peer", &peer, &now)
+        .await
+        .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record read cursor.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
     let read_rows: Result<Vec<(String,)>, _> = query_as(
         "UPDATE cloud_messages \
          SET read_at = COALESCE(read_at, $1), \
@@ -3473,6 +3510,16 @@ async fn mark_session_messages_read(
 
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();
+    if upsert_cloud_read_cursor(pool, &session.account_id, "session", &source_session_id, &now)
+        .await
+        .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record read cursor.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
     let read_rows: Result<Vec<(String, String)>, _> = query_as(
         "UPDATE cloud_messages \
          SET read_at = COALESCE(read_at, $1), \
@@ -3573,14 +3620,39 @@ async fn list_messages(
         Option<String>,
     )> = match query_as(
         "SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, \
-                delivered_at, read_at \
+                delivered_at, \
+                COALESCE(read_at, \
+                    CASE \
+                        WHEN to_account_id = $1 \
+                         AND from_account_id = $2 \
+                         AND peer_read_cursor IS NOT NULL \
+                         AND created_at <= peer_read_cursor \
+                        THEN peer_read_cursor \
+                    END, \
+                    CASE \
+                        WHEN to_account_id = $1 \
+                         AND session_read_cursor IS NOT NULL \
+                         AND created_at <= session_read_cursor \
+                        THEN session_read_cursor \
+                    END \
+                ) AS read_at \
          FROM ( \
-             SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, \
-                    delivered_at, read_at \
-             FROM cloud_messages \
-             WHERE (from_account_id = $1 AND to_account_id = $2) \
-                OR (from_account_id = $2 AND to_account_id = $1) \
-             ORDER BY created_at DESC \
+             SELECT cm.message_id, cm.from_account_id, cm.to_account_id, cm.body, cm.session_id, cm.created_at, \
+                    cm.delivered_at, cm.read_at, \
+                    peer_read_cursor.read_at AS peer_read_cursor, \
+                    session_read_cursor.read_at AS session_read_cursor \
+             FROM cloud_messages cm \
+             LEFT JOIN cloud_read_cursors peer_read_cursor \
+                ON peer_read_cursor.account_id = $1 \
+               AND peer_read_cursor.scope_kind = 'peer' \
+               AND peer_read_cursor.scope_id = $2 \
+             LEFT JOIN cloud_read_cursors session_read_cursor \
+                ON session_read_cursor.account_id = $1 \
+               AND session_read_cursor.scope_kind = 'session' \
+               AND session_read_cursor.scope_id = cm.session_id \
+             WHERE (cm.from_account_id = $1 AND cm.to_account_id = $2) \
+                OR (cm.from_account_id = $2 AND cm.to_account_id = $1) \
+             ORDER BY cm.created_at DESC \
              LIMIT $3 \
          ) recent_messages \
          ORDER BY created_at ASC",
