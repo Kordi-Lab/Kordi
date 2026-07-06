@@ -206,7 +206,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
         </form>
 
         {lookup.kind === 'error' ? (
-          <div role="alert" className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-200">
+          <div role="alert" className="app-error-text mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-200">
             {lookup.message}
           </div>
         ) : null}
@@ -259,7 +259,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
           </div>
           <div className="mt-2 grid gap-2">
             {loadError ? (
-              <div role="alert" className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-200">
+              <div role="alert" className="app-error-text rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-200">
                 {loadError}
               </div>
             ) : null}

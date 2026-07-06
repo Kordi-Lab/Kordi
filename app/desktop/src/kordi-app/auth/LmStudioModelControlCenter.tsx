@@ -761,7 +761,7 @@ export function LmStudioModelControlCenter({
             </div>
             {(actionMessage || actionError) ? (
               <div className={cn(
-                'mt-2 rounded-[16px] border px-3 py-2 text-[11px] leading-5',
+                'app-error-text mt-2 rounded-[16px] border px-3 py-2 text-[11px] leading-5',
                 actionError
                   ? 'border-rose-300/20 bg-rose-400/[0.08] text-rose-100'
                   : 'border-white/10 bg-white/[0.045] text-slate-200',
@@ -932,13 +932,13 @@ export function LmStudioModelControlCenter({
         ) : null}
 
         {setupNeedsInstallRefresh ? (
-          <div className="mt-3 rounded-[16px] border border-rose-300/20 bg-rose-400/[0.08] px-3 py-2 text-[11px] leading-5 text-rose-50/90">
+          <div className="app-error-text mt-3 rounded-[16px] border border-rose-300/20 bg-rose-400/[0.08] px-3 py-2 text-[11px] leading-5 text-rose-50/90">
             Invalid lms passkey detected. Use Repair lms install to quit LM Studio, clean only stale CLI passkey files, reinstall/update the official helper, and reopen LM Studio. Downloaded models are preserved.
           </div>
         ) : null}
 
         {(setupError || environment?.notes.length) ? (
-          <div className="mt-3 rounded-[16px] border border-amber-300/18 bg-amber-300/[0.07] px-3 py-2 text-[11px] leading-5 text-amber-50/90">
+          <div className="app-error-text mt-3 rounded-[16px] border border-amber-300/18 bg-amber-300/[0.07] px-3 py-2 text-[11px] leading-5 text-amber-50/90">
             {setupError ?? environment?.notes.join(' ')}
           </div>
         ) : null}
@@ -976,7 +976,7 @@ export function LmStudioModelControlCenter({
         </div>
 
         {isInstalledSectionExpanded && installedError ? (
-          <div className="mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
+          <div className="app-error-text mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
             <div>{installedError}</div>
             {setupNeedsInstallRefresh ? (
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1081,7 +1081,7 @@ export function LmStudioModelControlCenter({
         </div>
 
         {catalogError ? (
-          <div className="mt-3 rounded-[18px] border border-rose-300/20 bg-rose-400/[0.08] px-4 py-3 text-[12px] leading-5 text-rose-100">
+          <div className="app-error-text mt-3 rounded-[18px] border border-rose-300/20 bg-rose-400/[0.08] px-4 py-3 text-[12px] leading-5 text-rose-100">
             {catalogError}
           </div>
         ) : null}

@@ -185,7 +185,7 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
           It will show again when there is a new update in this chat.
         </div>
         {error ? (
-          <div className="mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100">
+          <div className="app-error-text mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100">
             {error}
           </div>
         ) : null}
@@ -393,7 +393,7 @@ export function ProjectCreateDialog({
           </div>
         )}
 
-        {error ? <div className="mt-4 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{error}</div> : null}
+        {error ? <div className="app-error-text mt-4 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{error}</div> : null}
 
         <div className="mt-5 flex justify-end gap-3">
           <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>

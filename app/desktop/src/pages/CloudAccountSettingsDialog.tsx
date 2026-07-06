@@ -256,7 +256,7 @@ export function CloudAccountSettingsDialog({
           }}
         />
       </div>
-      {profileError ? <div className="mt-3 text-[12px] text-rose-200">{profileError}</div> : null}
+      {profileError ? <div className="app-error-text mt-3 text-[12px] text-rose-200">{profileError}</div> : null}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
         <div className="grid gap-1 text-[11px] text-slate-500">
           {cloudProfileRows(account).map((row) => (

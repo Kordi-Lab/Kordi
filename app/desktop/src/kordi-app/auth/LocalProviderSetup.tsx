@@ -230,7 +230,7 @@ export function LocalProviderSetup({
         detail={
           <div className="space-y-1">
             <div>Kordi will connect to this local provider at <span className="font-mono text-slate-300">http://localhost:{localPortDraft || localServer.port}/v1</span>.</div>
-            {localPortError ? <div className="text-rose-200">{localPortError}</div> : null}
+            {localPortError ? <div className="app-error-text text-rose-200">{localPortError}</div> : null}
           </div>
         }
         trailing={
