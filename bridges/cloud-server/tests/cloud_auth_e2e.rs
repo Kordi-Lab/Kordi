@@ -67,6 +67,8 @@ fn cloud_message_listing_applies_durable_read_cursors() {
     assert!(routes_source.contains("cloud_read_cursors"));
     assert!(pool_source.contains("version: 28"));
     assert!(pool_source.contains("0028_cloud_read_cursors.sql"));
+    assert!(pool_source.contains("version: 29"));
+    assert!(pool_source.contains("0029_backfill_cloud_read_cursors.sql"));
     assert!(routes_source.contains("peer_read_cursor"));
     assert!(routes_source.contains("session_read_cursor"));
     assert!(routes_source.contains("COALESCE(read_at"));

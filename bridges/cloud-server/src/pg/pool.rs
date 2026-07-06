@@ -167,6 +167,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud read cursors",
         sql: include_str!("../../migrations/0028_cloud_read_cursors.sql"),
     },
+    EmbeddedMigration {
+        version: 29,
+        description: "backfill cloud read cursors",
+        sql: include_str!("../../migrations/0029_backfill_cloud_read_cursors.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
