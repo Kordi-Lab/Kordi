@@ -862,7 +862,6 @@ export function WorkspaceSidebar({
                 isActive ? 'text-slate-300' : 'text-slate-500',
                 session.statusIndicator?.live && 'app-participant-space-session-preview-live',
               )}
-              title={sessionPreviewLine}
             >
               {sessionPreviewLine}
             </div>
@@ -990,7 +989,7 @@ export function WorkspaceSidebar({
             <ParticipantSpaceAvatarStack space={space} />
             <div className="min-w-0">
               <div className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100" title={space.title}>{space.title}</div>
-              <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isExpanded || (isDirectHuman && isPrimarySessionActive)) && 'app-participant-space-row-preview-active')} title={space.preview}>
+              <div className={cn('app-participant-space-row-preview mt-px truncate text-[10.5px] leading-[0.98rem]', (isExpanded || (isDirectHuman && isPrimarySessionActive)) && 'app-participant-space-row-preview-active')}>
                 {space.preview || `${participantSpaceKindText(space)} space`}
               </div>
               {participantSpaceDetail ? (
@@ -1315,7 +1314,6 @@ export function WorkspaceSidebar({
               isActive ? 'text-slate-300' : 'text-slate-500',
               session.statusIndicator?.live && 'app-participant-space-session-preview-live',
             )}
-            title={subtitleLine}
           >
             {subtitleLine}
           </div>

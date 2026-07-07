@@ -92,7 +92,7 @@ import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries, share
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, Message, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalIdentity, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, Message, OpenCanonicalSessionFastResult, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import type { BridgeSettingsDraft, BridgeWizardDraft } from '@/app/kordiShellSlots.types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
@@ -105,13 +105,13 @@ import {
   createDesktopProjectFromFolder,
   fetchCanonicalSessionState,
   moveDesktopChatSessionToProject,
-  openOrCreateCanonicalSession,
+  openOrCreateCanonicalSessionFast,
   removeCanonicalSessionParticipant,
   renameCanonicalSession,
   renameDesktopChatSession,
   setCanonicalSessionParticipantRole,
   updateCanonicalSessionMetadata,
-  upsertCanonicalIdentity,
+  upsertCanonicalIdentityFast,
 } from '@/lib/desktop';
 
 import {
@@ -143,6 +143,33 @@ import {
   stripDerivedCloudUnreadCounts,
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
+
+function mergeCanonicalIdentity(state: CanonicalSessionState, identity: CanonicalIdentity): CanonicalSessionState {
+  return {
+    ...state,
+    identities: [
+      ...state.identities.filter((current) => current.id !== identity.id),
+      identity,
+    ],
+  };
+}
+
+function mergeOpenCanonicalSessionResult(
+  state: CanonicalSessionState,
+  result: OpenCanonicalSessionFastResult,
+): CanonicalSessionState {
+  return {
+    ...state,
+    sessions: [
+      result.session,
+      ...state.sessions.filter((session) => session.id !== result.session.id),
+    ],
+    participants: [
+      ...state.participants.filter((participant) => participant.sessionId !== result.session.id),
+      ...result.participants,
+    ],
+  };
+}
 
 export function useKordiAppModel({
   cloudSessionOverride,
@@ -1811,10 +1838,10 @@ export function useKordiAppModel({
     if (!targetIdentityId) {
       throw new Error('Unable to resolve contact identity.');
     }
-    const identityState = await upsertCanonicalIdentity(identityRequest);
-    setCanonicalSessionState(identityState);
+    const identity = await upsertCanonicalIdentityFast(identityRequest);
+    setCanonicalSessionState((current) => current ? mergeCanonicalIdentity(current, identity) : current);
     const sessionId = chatSessionIdForPersonStart(crypto.randomUUID());
-    const nextState = await openOrCreateCanonicalSession({
+    const openResult = await openOrCreateCanonicalSessionFast({
       id: sessionId,
       kind: 'direct-person',
       title: 'New session',
@@ -1825,7 +1852,7 @@ export function useKordiAppModel({
       participantIdentityIds: [targetIdentityId],
       metadata: { createdFrom: 'chat-create-flow', contactId: contact.id, participantSpaceKind: 'direct-human' },
     });
-    setCanonicalSessionState(nextState);
+    setCanonicalSessionState((current) => current ? mergeOpenCanonicalSessionResult(current, openResult) : current);
     selectNewChatSession(sessionId);
   }, [
     canonicalSessionState?.profile.humanIdentityId,
@@ -1862,10 +1889,10 @@ export function useKordiAppModel({
       if (!targetIdentityId) {
         throw new Error('Unable to resolve agent identity.');
       }
-      const identityState = await upsertCanonicalIdentity(identityRequest);
-      setCanonicalSessionState(identityState);
+      const identity = await upsertCanonicalIdentityFast(identityRequest);
+      setCanonicalSessionState((current) => current ? mergeCanonicalIdentity(current, identity) : current);
       const sessionId = chatSessionIdForAgentStart(agent, crypto.randomUUID());
-      const nextState = await openOrCreateCanonicalSession({
+      const openResult = await openOrCreateCanonicalSessionFast({
         id: sessionId,
         kind: buildChatAgentSessionKind(agent),
         title: agent.name || 'New session',
@@ -1876,7 +1903,7 @@ export function useKordiAppModel({
         participantIdentityIds: [targetIdentityId],
         metadata: buildChatAgentSessionMetadata(agent),
       });
-      setCanonicalSessionState(nextState);
+      setCanonicalSessionState((current) => current ? mergeOpenCanonicalSessionResult(current, openResult) : current);
       selectNewChatSession(sessionId);
       return;
     }
@@ -1896,10 +1923,10 @@ export function useKordiAppModel({
     if (!targetIdentityId) {
       throw new Error('Unable to resolve agent identity.');
     }
-    const identityState = await upsertCanonicalIdentity(identityRequest);
-    setCanonicalSessionState(identityState);
+    const identity = await upsertCanonicalIdentityFast(identityRequest);
+    setCanonicalSessionState((current) => current ? mergeCanonicalIdentity(current, identity) : current);
     const sessionId = chatSessionIdForAgentStart(agent, crypto.randomUUID());
-    const nextState = await openOrCreateCanonicalSession({
+    const openResult = await openOrCreateCanonicalSessionFast({
       id: sessionId,
       kind: buildChatAgentSessionKind(agent),
       title: agent.name || 'New session',
@@ -1910,7 +1937,7 @@ export function useKordiAppModel({
       participantIdentityIds: [targetIdentityId],
       metadata: buildChatAgentSessionMetadata(agent),
     });
-    setCanonicalSessionState(nextState);
+    setCanonicalSessionState((current) => current ? mergeOpenCanonicalSessionResult(current, openResult) : current);
     selectNewChatSession(sessionId);
   }, [
     canonicalSessionState?.profile.humanIdentityId,
@@ -1931,13 +1958,15 @@ export function useKordiAppModel({
     if (!creatorIdentityId || !currentCanonicalState) {
       throw new Error('Local profile identity is not ready yet.');
     }
+    let nextCanonicalState = currentCanonicalState;
     if (cloudSession.account) {
-      const identityState = await upsertCanonicalIdentity(cloudGroupIdentityRequest(
+      const identity = await upsertCanonicalIdentityFast(cloudGroupIdentityRequest(
         cloudGroupSelfParticipant(cloudSession.account, 'admin'),
         cloudSession.account,
         creatorIdentityId,
       ));
-      setCanonicalSessionState(identityState);
+      nextCanonicalState = mergeCanonicalIdentity(nextCanonicalState, identity);
+      setCanonicalSessionState(nextCanonicalState);
     }
     const contacts = uniqueStrings(request.contactIds)
       .map((contactId) => peopleContactById.get(contactId))
@@ -1955,8 +1984,9 @@ export function useKordiAppModel({
       const identityRequest = contactCanonicalIdentityRequest(contact);
       const identityId = identityRequest.id?.trim();
       if (!identityId) continue;
-      const identityState = await upsertCanonicalIdentity(identityRequest);
-      setCanonicalSessionState(identityState);
+      const identity = await upsertCanonicalIdentityFast(identityRequest);
+      nextCanonicalState = mergeCanonicalIdentity(nextCanonicalState, identity);
+      setCanonicalSessionState(nextCanonicalState);
       identityIds.push(identityId);
     }
 
@@ -1967,7 +1997,7 @@ export function useKordiAppModel({
     const selectedNames = contacts.map((contact) => contact.name);
     const groupDisplayName = request.name?.trim() || groupDefaultName(selectedNames);
     const sessionId = `session:group:${crypto.randomUUID()}`;
-    const nextState = await openOrCreateCanonicalSession({
+    const openResult = await openOrCreateCanonicalSessionFast({
       id: sessionId,
       kind: 'group',
       title: 'New session',
@@ -1984,7 +2014,8 @@ export function useKordiAppModel({
         groupSpaceId: sessionId,
       }),
     });
-    setCanonicalSessionState(nextState);
+    nextCanonicalState = mergeOpenCanonicalSessionResult(nextCanonicalState, openResult);
+    setCanonicalSessionState(nextCanonicalState);
 
     const inviteTargets = buildChatCreateGroupBridgeInviteTargets(contacts);
     const cloudInviteTargetAccountIds = cloudGroupTargetAccountIds(inviteTargets);
@@ -2029,14 +2060,15 @@ export function useKordiAppModel({
     if (!isNativeShell) return;
     setDesktopChatError(null);
 
-    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-    if (!creatorIdentityId) {
+    const currentCanonicalState = canonicalSessionState;
+    const creatorIdentityId = currentCanonicalState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId || !currentCanonicalState) {
       throw new Error('Local profile identity is not ready yet.');
     }
 
     const sourceSession = space.sessions[0] ?? null;
     const sourceSessionId = sourceSession?.canonicalSessionId ?? sourceSession?.id ?? null;
-    const sourceMetadata = sourceSessionId ? sessionMetadataRecord(canonicalSessionState, sourceSessionId) : {};
+    const sourceMetadata = sourceSessionId ? sessionMetadataRecord(currentCanonicalState, sourceSessionId) : {};
     const sessionId = chatSessionIdForParticipantSpaceContinuation(space, crypto.randomUUID());
     const createKey = participantSpaceCreateKey(space);
     const pendingSessionId = pendingParticipantSpaceCreateRef.current.get(createKey);
@@ -2061,7 +2093,7 @@ export function useKordiAppModel({
         delete groupSourceMetadata.cloudUnreadCount;
         const participantNames = members.map((member) => member.name);
         const groupSpaceId = metadataGroupSpaceId(sourceMetadata) || normalizeStoredGroupSpaceId(space.id) || sourceSessionId;
-        const nextState = await openOrCreateCanonicalSession({
+        const openResult = await openOrCreateCanonicalSessionFast({
           id: sessionId,
           kind: 'group',
           title: 'New session',
@@ -2089,6 +2121,7 @@ export function useKordiAppModel({
             continuedFromSpaceId: space.id,
           },
         });
+        const nextState = mergeOpenCanonicalSessionResult(currentCanonicalState, openResult);
         setCanonicalSessionState(nextState);
         selectNewChatSession(sessionId);
 
@@ -2123,7 +2156,7 @@ export function useKordiAppModel({
       }
 
       const kind = receiver.kind === 'agent' ? 'direct-agent' : 'direct-person';
-      const nextState = await openOrCreateCanonicalSession({
+      const openResult = await openOrCreateCanonicalSessionFast({
         id: sessionId,
         kind,
         title: 'New session',
@@ -2139,6 +2172,7 @@ export function useKordiAppModel({
           participantSpaceKind: space.kind,
         }),
       });
+      const nextState = mergeOpenCanonicalSessionResult(currentCanonicalState, openResult);
       setCanonicalSessionState(nextState);
       selectNewChatSession(sessionId);
     } catch (error) {
@@ -2216,8 +2250,9 @@ export function useKordiAppModel({
     const groupSessionIds = uniqueStrings(sessionIds);
     if (groupSessionIds.length === 0) return;
     setDesktopChatError(null);
-    const creatorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
-    if (!creatorIdentityId) {
+    const currentCanonicalState = canonicalSessionState;
+    const creatorIdentityId = currentCanonicalState?.profile.humanIdentityId?.trim();
+    if (!creatorIdentityId || !currentCanonicalState) {
       throw new Error('Local profile identity is not ready yet.');
     }
     const contacts = uniqueStrings(contactIds)
@@ -2228,12 +2263,13 @@ export function useKordiAppModel({
       throw new Error('Approve people as contacts before adding them to a group.');
     }
     const identityIds: string[] = [];
-    let nextState = canonicalSessionState;
+    let nextState = currentCanonicalState;
     for (const contact of contacts) {
       const identityRequest = contactCanonicalIdentityRequest(contact);
       const identityId = identityRequest.id?.trim();
       if (!identityId) continue;
-      nextState = await upsertCanonicalIdentity(identityRequest);
+      const identity = await upsertCanonicalIdentityFast(identityRequest);
+      nextState = mergeCanonicalIdentity(nextState, identity);
       identityIds.push(identityId);
     }
     const participantIdentityIds = uniqueStrings(identityIds);

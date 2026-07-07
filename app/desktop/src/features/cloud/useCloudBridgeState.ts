@@ -6,16 +6,20 @@ import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCre
 import {
   adoptCloudProfileIdentity,
   appendCanonicalMessage,
+  appendCanonicalMessageFast,
   buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   fetchCanonicalSessionState,
   markCanonicalSessionRead,
   openOrCreateCanonicalSession,
+  openOrCreateCanonicalSessionFast,
   renameCanonicalSession,
   startDesktopChatMessage,
   upsertCanonicalIdentity,
+  upsertCanonicalIdentityFast,
   upsertCanonicalMessage,
+  upsertCanonicalMessageFast,
   type DesktopChatContextMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
@@ -24,6 +28,7 @@ import type {
   CanonicalIdentity,
   CanonicalSessionMessage,
   CanonicalSessionState,
+  OpenCanonicalSessionFastResult,
   OpenCanonicalSessionRequest,
   UpsertCanonicalIdentityRequest,
   Contact,
@@ -548,6 +553,38 @@ function upsertCanonicalRequestIntoLocalState(
     ? current.messages.map((message, index) => (index === existingIndex ? nextMessage : message))
     : [...current.messages, nextMessage];
   return { ...current, messages };
+}
+
+function upsertCanonicalIdentityIntoLocalState(
+  current: CanonicalSessionState | null,
+  identity: CanonicalIdentity,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  return {
+    ...current,
+    identities: [
+      ...current.identities.filter((candidate) => candidate.id !== identity.id),
+      identity,
+    ],
+  };
+}
+
+function mergeOpenCanonicalSessionFastResultIntoLocalState(
+  current: CanonicalSessionState | null,
+  result: OpenCanonicalSessionFastResult,
+): CanonicalSessionState | null {
+  if (!current) return current;
+  return {
+    ...current,
+    sessions: [
+      result.session,
+      ...current.sessions.filter((session) => session.id !== result.session.id),
+    ],
+    participants: [
+      ...current.participants.filter((participant) => participant.sessionId !== result.session.id),
+      ...result.participants,
+    ],
+  };
 }
 
 export const CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE = 'Cloud Agent did not reply yet. The owner device may be offline or still starting.';
@@ -1140,6 +1177,20 @@ export function markCloudMessagesReadLocally(
 
 export const CLOUD_MESSAGE_DISCOVERY_MAX_PASSES = 50;
 export const CLOUD_MESSAGES_LOCAL_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
+export const CLOUD_FOCUS_REFRESH_THROTTLE_MS = 5000;
+export const CLOUD_FOCUS_REFRESH_DELAY_MS = 500;
+
+export function shouldRefreshCloudForVisibility(visibilityState: DocumentVisibilityState) {
+  return visibilityState === 'visible';
+}
+
+export function shouldRunCloudFocusRefresh(
+  nowMs: number,
+  lastRefreshAtMs: number,
+  throttleMs = CLOUD_FOCUS_REFRESH_THROTTLE_MS,
+) {
+  return lastRefreshAtMs <= 0 || nowMs - lastRefreshAtMs >= throttleMs;
+}
 
 export function cloudSessionForksByIdEqual(
   left: Record<string, CloudSessionForkSummary>,
@@ -1952,6 +2003,8 @@ export function useCloudBridgeState({
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
   const syncingCloudDiffRef = useRef(false);
+  const lastCloudFocusRefreshAtRef = useRef(0);
+  const cloudFocusRefreshTimerRef = useRef<number | null>(null);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
 
@@ -2223,8 +2276,8 @@ export function useCloudBridgeState({
         localHumanIdentityId,
       })) {
         if (cancelled) return;
-        const nextState = await upsertCanonicalIdentity(request);
-        if (!cancelled) setCanonicalSessionState(nextState);
+        const identity = await upsertCanonicalIdentityFast(request);
+        if (!cancelled) setCanonicalSessionState((current) => upsertCanonicalIdentityIntoLocalState(current, identity));
       }
     })().catch(() => {
       syncedContactIdentitySignatureRef.current = null;
@@ -2497,11 +2550,7 @@ export function useCloudBridgeState({
             createdAtMs: Date.now(),
           });
           setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, failedNoticeRequest));
-          await upsertCanonicalMessage(failedNoticeRequest)
-            .then((nextState) => {
-              canonicalSessionStateRef.current = nextState;
-              setCanonicalSessionState(nextState);
-            });
+          await upsertCanonicalMessageFast(failedNoticeRequest);
         })().catch((error) => {
           // eslint-disable-next-line no-console
           console.warn('[cloud-group-agent-requesting] failed to persist no-provider fallback', error);
@@ -2517,18 +2566,18 @@ export function useCloudBridgeState({
         continue;
       }
 
-      setCanonicalSessionState((current) => appendCloudGroupRequestingPlaceholder(current, candidate, noticeId));
-      void upsertCanonicalMessage(cloudGroupAgentRequestingNoticeRequest({
+      const requestingNoticeRequest = cloudGroupAgentRequestingNoticeRequest({
         sessionId: candidate.requestMessage.sessionId,
         requestMessageId: candidate.requestMessage.id,
         targetAccountId: candidate.targetAccountId,
         targetAgentDisplayName: candidate.targetAgentDisplayName,
         createdAtMs: Date.now(),
-      }))
-        .then((nextState) => {
-          canonicalSessionStateRef.current = nextState;
-          setCanonicalSessionState(nextState);
-        })
+      });
+      setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(
+        appendCloudGroupRequestingPlaceholder(current, candidate, noticeId),
+        requestingNoticeRequest,
+      ));
+      void upsertCanonicalMessageFast(requestingNoticeRequest)
         .catch((error) => {
           // eslint-disable-next-line no-console
           console.warn('[cloud-group-agent-requesting] failed to persist processing notice', error);
@@ -2710,7 +2759,8 @@ export function useCloudBridgeState({
     for (const participant of participantByAccount.values()) {
       const request = cloudGroupIdentityRequest(participant, account, localHumanIdentityId);
       identityIdByAccount.set(participant.accountId, request.id ?? '');
-      nextState = await upsertCanonicalIdentity(request);
+      const identity = await upsertCanonicalIdentityFast(request);
+      nextState = upsertCanonicalIdentityIntoLocalState(nextState, identity);
     }
 
     const createdByIdentityId = identityIdByAccount.get(envelope.createdByAccountId)
@@ -2748,7 +2798,7 @@ export function useCloudBridgeState({
     };
     const parsedControlCreatedAtMs = Date.parse(cloudMessage.createdAt);
     const controlCreatedAtMs = Number.isFinite(parsedControlCreatedAtMs) ? parsedControlCreatedAtMs : Date.now();
-    nextState = await openOrCreateCanonicalSession({
+    const openResult = await openOrCreateCanonicalSessionFast({
       id: envelope.groupId,
       kind: 'group',
       title: 'New session',
@@ -2759,6 +2809,8 @@ export function useCloudBridgeState({
       participantIdentityIds,
       metadata: groupMetadata,
     });
+    nextState = mergeOpenCanonicalSessionFastResultIntoLocalState(nextState, openResult);
+    if (!nextState) return;
 
     if (sessionTitleUpdateTitle) {
       const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
@@ -2842,7 +2894,7 @@ export function useCloudBridgeState({
       : null;
     if (senderIsAgent) {
       const owner = participantByAccount.get(envelope.message.senderAccountId);
-      nextState = await upsertCanonicalIdentity({
+      const senderIdentity = await upsertCanonicalIdentityFast({
         id: senderIdentityId,
         kind: 'agent',
         displayName: envelope.message.senderDisplayName?.trim() || `${owner?.displayName || 'Cloud user'}'s Kordi`,
@@ -2856,6 +2908,7 @@ export function useCloudBridgeState({
         profileImageUrl: null,
         metadata: { accountId: envelope.message.senderAccountId, cloudGroupAgent: true },
       });
+      nextState = upsertCanonicalIdentityIntoLocalState(nextState, senderIdentity);
     }
     const cloudAttachments = cloudMessage.attachments?.length ? cloudMessage.attachments : envelope.message.attachments ?? [];
     const currentSession = cloudAttachments.length > 0 ? await loadSession() : null;
@@ -2879,7 +2932,7 @@ export function useCloudBridgeState({
           const cached = attachmentId ? mappedAttachments.find((mapped) => mapped.attachmentId === attachmentId && mapped.localPath) : null;
           return cached ? { ...record, localPath: cached.localPath } : attachment;
         });
-        nextState = await upsertCanonicalMessage({
+        const attachmentUpdateRequest = {
           id: existingCloudGroupMessage.id,
           sessionId: existingCloudGroupMessage.sessionId,
           senderIdentityId: existingCloudGroupMessage.senderIdentityId,
@@ -2892,7 +2945,9 @@ export function useCloudBridgeState({
           status: existingCloudGroupMessage.status,
           sourceTransport: existingCloudGroupMessage.sourceTransport,
           sourceEventId: existingCloudGroupMessage.sourceEventId,
-        });
+        } satisfies AppendCanonicalMessageRequest;
+        await upsertCanonicalMessageFast(attachmentUpdateRequest);
+        nextState = upsertCanonicalRequestIntoLocalState(nextState, attachmentUpdateRequest);
         setCanonicalSessionState(nextState);
       }
     }
@@ -2991,9 +3046,12 @@ export function useCloudBridgeState({
           : senderIsAgent ? 'cloud-group-agent' : 'cloud-group',
         sourceEventId: `${envelope.message.forkSnapshot ? 'cloud-group-fork-snapshot' : senderIsAgent ? 'cloud-group-agent' : 'cloud-group'}:${cloudMessage.messageId}`,
       };
-      nextState = shouldUpdateStableAgentSlot
-        ? await upsertCanonicalMessage(messageRequest)
-        : await appendCanonicalMessage(messageRequest);
+      if (shouldUpdateStableAgentSlot) {
+        await upsertCanonicalMessageFast(messageRequest);
+      } else {
+        await appendCanonicalMessageFast(messageRequest);
+      }
+      nextState = upsertCanonicalRequestIntoLocalState(nextState, messageRequest) ?? nextState;
       // Race guard: if the local offline-timer effect added the offline-tier
       // placeholder AFTER we captured canonicalSessionState above (which can
       // happen when the response arrives in the same cloud-poll batch as the
@@ -3086,7 +3144,7 @@ export function useCloudBridgeState({
           || 'Cloud user';
         const agentIdentityId = `agent:cloud:${account.accountId}`;
         const agentDisplayName = hostedAgentName || `${hostedAgentOwnerName}'s Kordi`;
-        await upsertCanonicalIdentity({
+        const agentIdentity = await upsertCanonicalIdentityFast({
           id: agentIdentityId,
           kind: 'agent',
           displayName: agentDisplayName,
@@ -3100,9 +3158,10 @@ export function useCloudBridgeState({
           profileImageUrl: null,
           metadata: { accountId: account.accountId, cloudGroupAgent: true },
         });
+        setCanonicalSessionState((current) => upsertCanonicalIdentityIntoLocalState(current, agentIdentity));
         const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;
         const processingCreatedAtMs = Date.now();
-        const processingState = await upsertCanonicalMessage({
+        const processingRequest = {
           id: processingMessageId,
           sessionId: envelope.groupId,
           senderIdentityId: agentIdentityId,
@@ -3122,8 +3181,9 @@ export function useCloudBridgeState({
           status: 'processing',
           sourceTransport: 'cloud-group-agent',
           sourceEventId: `cloud-group-agent:${processingMessageId}`,
-        });
-        setCanonicalSessionState(processingState);
+        } satisfies AppendCanonicalMessageRequest;
+        await upsertCanonicalMessageFast(processingRequest);
+        setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, processingRequest));
         const processingBody = encodeCloudGroupControl({
           kind: 'group-message',
           groupId: envelope.groupId,
@@ -3249,7 +3309,7 @@ export function useCloudBridgeState({
         // dedup separately from the intermediate processing envelope; the
         // own-round-trip guard in the receive-side handler suppresses
         // duplicate writes when this envelope comes back via cloud polling.
-        const responseStateBeforeCleanup = await upsertCanonicalMessage({
+        const responseRequest = {
           id: processingMessageId,
           sessionId: envelope.groupId,
           senderIdentityId: agentIdentityId,
@@ -3270,12 +3330,16 @@ export function useCloudBridgeState({
           status: responseDeliveryState,
           sourceTransport: 'cloud-group-agent',
           sourceEventId: `cloud-group-agent:${responseMessageId}`,
-        });
+        } satisfies AppendCanonicalMessageRequest;
+        await upsertCanonicalMessageFast(responseRequest);
         const offlinePlaceholderId = `msg:cloud-agent-offline:${envelope.message!.id}:${account.accountId}`;
-        const responseState = removeCloudGroupPendingRowsForTerminalResponse(responseStateBeforeCleanup, envelope.message!.id, account.accountId)
-          ?? removeCloudGroupTimeoutPlaceholderForTerminalResponse(responseStateBeforeCleanup, offlinePlaceholderId)
-          ?? responseStateBeforeCleanup;
-        setCanonicalSessionState(responseState);
+        setCanonicalSessionState((current) => {
+          const responseStateBeforeCleanup = upsertCanonicalRequestIntoLocalState(current, responseRequest);
+          if (!responseStateBeforeCleanup) return responseStateBeforeCleanup;
+          return removeCloudGroupPendingRowsForTerminalResponse(responseStateBeforeCleanup, envelope.message!.id, account.accountId)
+            ?? removeCloudGroupTimeoutPlaceholderForTerminalResponse(responseStateBeforeCleanup, offlinePlaceholderId)
+            ?? responseStateBeforeCleanup;
+        });
         const responseBody = encodeCloudGroupControl({
           kind: 'group-message',
           groupId: envelope.groupId,
@@ -3319,7 +3383,7 @@ export function useCloudBridgeState({
             || 'Cloud user';
           const agentDisplayName = hostedAgentName || `${hostedAgentOwnerName}'s Kordi`;
           void (async () => {
-            const nextState = await upsertCanonicalMessage({
+            const failedResponseRequest = {
               id: processingMessageId,
               sessionId: envelope.groupId,
               senderIdentityId: `agent:cloud:${account.accountId}`,
@@ -3340,8 +3404,9 @@ export function useCloudBridgeState({
               status: 'failed',
               sourceTransport: 'cloud-group-agent',
               sourceEventId: `cloud-group-agent-no-provider:${envelope.message!.id}:${account.accountId}`,
-            });
-            setCanonicalSessionState(nextState);
+            } satisfies AppendCanonicalMessageRequest;
+            await upsertCanonicalMessageFast(failedResponseRequest);
+            setCanonicalSessionState((current) => upsertCanonicalRequestIntoLocalState(current, failedResponseRequest));
             const session = await loadSession();
             if (!session?.token) return;
             const targetAccountIds = cloudGroupAgentResponseTargetAccountIds({
@@ -3529,7 +3594,7 @@ export function useCloudBridgeState({
   }, [account, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
-    if (!account || !setCanonicalSessionState) return;
+    if (!account || !setCanonicalSessionState || !initialMessagesSettled) return;
     const activeConversationIds = [
       activeConversationId,
       activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null,
@@ -3569,7 +3634,7 @@ export function useCloudBridgeState({
       });
       return changed ? { ...current, sessions } : current;
     });
-  }, [account, activeConversationId, canonicalSessionState, messagesByPeer, setCanonicalSessionState]);
+  }, [account, activeConversationId, canonicalSessionState, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
@@ -3678,7 +3743,7 @@ export function useCloudBridgeState({
         })) continue;
         const cancelCreatedAtMs = Date.parse(message.createdAt);
         const cancelDeliveredAtMs = Date.parse(message.deliveredAt ?? '');
-        void upsertCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
+        const cancelNoticeRequest = cloudGroupAgentCancelledNoticeRequest({
           processingMessage,
           requestId: cancel.requestId,
           conversationId: cloudGroupAgentConversationId(processingMessage.sessionId),
@@ -3694,19 +3759,19 @@ export function useCloudBridgeState({
             : Number.isFinite(cancelDeliveredAtMs)
               ? cancelDeliveredAtMs
               : undefined,
-        }))
-          .then((nextState) => {
-            // See sender-side cancel handler for rationale: collapse the
-            // cancel write and the offline-placeholder removal so the cancel
-            // notice replaces the "Processing…" bubble in one render.
-            const collapsedState = collapseCloudAgentOfflinePlaceholderForRequest(
-              nextState,
-              processingMessage,
-              cancel.requestId,
-            );
-            canonicalSessionStateRef.current = collapsedState;
-            setCanonicalSessionState(collapsedState);
-          })
+        });
+        setCanonicalSessionState((current) => {
+          const nextState = upsertCanonicalRequestIntoLocalState(current, cancelNoticeRequest);
+          if (!nextState) return nextState;
+          const collapsedState = collapseCloudAgentOfflinePlaceholderForRequest(
+            nextState,
+            processingMessage,
+            cancel.requestId,
+          );
+          canonicalSessionStateRef.current = collapsedState;
+          return collapsedState;
+        });
+        void upsertCanonicalMessageFast(cancelNoticeRequest)
           .catch((error) => {
             // eslint-disable-next-line no-console
             console.warn('[cloud-agent-mention] group cancel notice failed', error);
@@ -4009,14 +4074,18 @@ export function useCloudBridgeState({
     if (plan.sessionRequests.length === 0 && plan.messageRequests.length === 0) return;
     let cancelled = false;
     void (async () => {
-      let nextState = await upsertCanonicalIdentity(plan.agentIdentityRequest);
+      let nextState: CanonicalSessionState | null = canonicalSessionState;
+      const agentIdentity = await upsertCanonicalIdentityFast(plan.agentIdentityRequest);
+      nextState = upsertCanonicalIdentityIntoLocalState(nextState, agentIdentity);
       for (const sessionRequest of plan.sessionRequests) {
         if (cancelled) return;
-        nextState = await openOrCreateCanonicalSession(sessionRequest);
+        const openResult = await openOrCreateCanonicalSessionFast(sessionRequest);
+        nextState = mergeOpenCanonicalSessionFastResultIntoLocalState(nextState, openResult);
       }
       for (const messageRequest of plan.messageRequests) {
         if (cancelled) return;
-        nextState = await upsertCanonicalMessage(messageRequest);
+        await upsertCanonicalMessageFast(messageRequest);
+        nextState = upsertCanonicalRequestIntoLocalState(nextState, messageRequest);
       }
       if (!cancelled) setCanonicalSessionState(nextState);
     })().catch((error) => {
@@ -4030,14 +4099,30 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account) return;
-    const refresh = () => void refreshCloudBridgeMessages();
+    const runRefresh = () => {
+      cloudFocusRefreshTimerRef.current = null;
+      const now = Date.now();
+      if (!shouldRunCloudFocusRefresh(now, lastCloudFocusRefreshAtRef.current)) return;
+      lastCloudFocusRefreshAtRef.current = now;
+      void refreshCloudBridgeMessages();
+    };
+    const refresh = () => {
+      if (cloudFocusRefreshTimerRef.current !== null) window.clearTimeout(cloudFocusRefreshTimerRef.current);
+      cloudFocusRefreshTimerRef.current = window.setTimeout(runRefresh, CLOUD_FOCUS_REFRESH_DELAY_MS);
+    };
     const refreshWhenVisible = () => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') refresh();
+      if (typeof document === 'undefined' || shouldRefreshCloudForVisibility(document.visibilityState)) refresh();
     };
     window.addEventListener('focus', refresh);
+    window.addEventListener('pageshow', refreshWhenVisible);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
+      if (cloudFocusRefreshTimerRef.current !== null) {
+        window.clearTimeout(cloudFocusRefreshTimerRef.current);
+        cloudFocusRefreshTimerRef.current = null;
+      }
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('pageshow', refreshWhenVisible);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [account, refreshCloudBridgeMessages]);
@@ -4348,7 +4433,7 @@ export function useCloudBridgeState({
         ? cloudGroupAgentProcessingMessageForRequest(canonicalSessionState.messages, groupId, trimmedRequestId)
         : null;
       if (processingMessage && setCanonicalSessionState && account && canonicalSessionState) {
-        const cancelledState = await upsertCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
+        const cancelNoticeRequest = cloudGroupAgentCancelledNoticeRequest({
           processingMessage,
           requestId: trimmedRequestId,
           conversationId,
@@ -4360,19 +4445,22 @@ export function useCloudBridgeState({
             cancelledByAccountId: account.accountId,
           }),
           now: Date.now(),
-        }));
+        });
+        await upsertCanonicalMessageFast(cancelNoticeRequest);
         // Collapse the cancel write and the offline-placeholder removal into a
         // single render so the cancel notice replaces the "Processing…" bubble
         // atomically. Without this, the offline-timer effect removes the
         // offline-tier placeholder on the next tick, which visually shifts the
         // cancel notice up and reads as a flicker (appear → disappear → appear).
-        const collapsedState = collapseCloudAgentOfflinePlaceholderForRequest(
-          cancelledState,
-          processingMessage,
-          trimmedRequestId,
-        );
-        canonicalSessionStateRef.current = collapsedState;
-        setCanonicalSessionState(collapsedState);
+        setCanonicalSessionState((current) => {
+          const cancelledState = upsertCanonicalRequestIntoLocalState(current, cancelNoticeRequest);
+          if (!cancelledState) return cancelledState;
+          return collapseCloudAgentOfflinePlaceholderForRequest(
+            cancelledState,
+            processingMessage,
+            trimmedRequestId,
+          );
+        });
       }
       const cancelBody = encodeCloudAgentCancel({ requestId: trimmedRequestId });
       const groupEnvelope = Object.values(messagesByPeer)

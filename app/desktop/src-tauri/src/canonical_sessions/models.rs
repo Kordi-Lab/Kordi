@@ -15,6 +15,13 @@ pub struct CanonicalSessionState {
     pub context_snapshots: Vec<CanonicalContextSnapshot>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenCanonicalSessionFastResult {
+    pub session: CanonicalSession,
+    pub participants: Vec<CanonicalSessionParticipant>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CanonicalLocalProfile {

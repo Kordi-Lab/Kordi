@@ -2,6 +2,8 @@ import type {
   AddCanonicalSessionParticipantsRequest,
   AdoptCloudProfileIdentityRequest,
   AppendCanonicalMessageRequest,
+  CanonicalIdentity,
+  CanonicalSessionMessage,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
   DesktopArtifactDirectory,
@@ -17,6 +19,7 @@ import type {
   MessageAttachment,
   DesktopProjectSettings,
   MarkCanonicalSessionReadRequest,
+  OpenCanonicalSessionFastResult,
   OpenCanonicalSessionRequest,
   RemoveCanonicalSessionParticipantRequest,
   RenameCanonicalSessionRequest,
@@ -639,6 +642,14 @@ export async function adoptCloudProfileIdentity(request: AdoptCloudProfileIdenti
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_adopt_cloud_profile_identity', { request });
 }
 
+export async function upsertCanonicalIdentityFast(request: UpsertCanonicalIdentityRequest) {
+  return invokeDesktop<CanonicalIdentity>('desktop_canonical_upsert_identity_fast', { request });
+}
+
+export async function openOrCreateCanonicalSessionFast(request: OpenCanonicalSessionRequest) {
+  return invokeDesktop<OpenCanonicalSessionFastResult>('desktop_canonical_open_or_create_session_fast', { request });
+}
+
 export async function openOrCreateCanonicalSession(request: OpenCanonicalSessionRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_open_or_create_session', { request });
 }
@@ -649,6 +660,10 @@ export async function appendCanonicalMessage(request: AppendCanonicalMessageRequ
 
 export async function upsertCanonicalMessage(request: AppendCanonicalMessageRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_upsert_message', { request });
+}
+
+export async function upsertCanonicalMessageFast(request: AppendCanonicalMessageRequest) {
+  return invokeDesktop<CanonicalSessionMessage>('desktop_canonical_upsert_message_fast', { request });
 }
 
 export async function appendCanonicalMessageFast(request: AppendCanonicalMessageRequest) {

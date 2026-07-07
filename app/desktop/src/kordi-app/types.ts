@@ -529,6 +529,11 @@ export type CanonicalSessionState = {
   contextSnapshots: CanonicalContextSnapshot[];
 };
 
+export type OpenCanonicalSessionFastResult = {
+  session: CanonicalSession;
+  participants: CanonicalSessionParticipant[];
+};
+
 export type UpsertCanonicalIdentityRequest = {
   id?: string | null;
   kind: 'human' | 'agent';

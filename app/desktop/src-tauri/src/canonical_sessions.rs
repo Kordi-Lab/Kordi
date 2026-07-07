@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -63,8 +63,8 @@ pub(crate) use self::group_participants::{
     session_has_participant, set_session_metadata_in_db, set_session_participant_role_in_db,
 };
 pub(crate) use self::identity_context::{
-    render_multi_participant_identity_context, IdentityContextParticipant,
-    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
+    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
+    IdentityContextRole, render_multi_participant_identity_context,
 };
 use self::identity_helpers::{
     canonical_avatar_key, canonical_identity_id, default_session_title, stable_session_id,
@@ -489,7 +489,10 @@ fn select_session(conn: &Connection, id: &str) -> Result<Option<CanonicalSession
     .map_err(|err| err.to_string())
 }
 
-fn latest_readable_session_message_id(conn: &Connection, session_id: &str) -> Result<Option<String>, String> {
+fn latest_readable_session_message_id(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<String>, String> {
     conn.query_row(
         "SELECT id
          FROM session_messages
@@ -510,7 +513,10 @@ fn self_participant_identity_id(
     session_id: &str,
     preferred_identity_id: Option<&str>,
 ) -> Result<Option<String>, String> {
-    if let Some(identity_id) = preferred_identity_id.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(identity_id) = preferred_identity_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         let exists = conn
             .query_row(
                 "SELECT EXISTS(
@@ -520,7 +526,8 @@ fn self_participant_identity_id(
                 params![session_id, identity_id],
                 |row| row.get::<_, i64>(0),
             )
-            .map_err(|err| err.to_string())? != 0;
+            .map_err(|err| err.to_string())?
+            != 0;
         if exists {
             return Ok(Some(identity_id.to_string()));
         }
@@ -558,7 +565,8 @@ pub(super) fn mark_session_read_in_db(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .or(profile.human_identity_id.as_deref());
-    let Some(identity_id) = self_participant_identity_id(conn, session_id, preferred_identity_id)? else {
+    let Some(identity_id) = self_participant_identity_id(conn, session_id, preferred_identity_id)?
+    else {
         return Ok(());
     };
 
@@ -1594,6 +1602,21 @@ pub async fn desktop_canonical_adopt_cloud_profile_identity(
 }
 
 #[tauri::command]
+pub async fn desktop_canonical_upsert_identity_fast(
+    request: UpsertCanonicalIdentityRequest,
+) -> Result<CanonicalIdentity, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_upsert_identity_fast(request)).await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_open_or_create_session_fast(
+    request: OpenCanonicalSessionRequest,
+) -> Result<OpenCanonicalSessionFastResult, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_open_or_create_session_fast(request))
+        .await
+}
+
+#[tauri::command]
 pub async fn desktop_canonical_open_or_create_session(
     request: OpenCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
@@ -1620,6 +1643,13 @@ pub async fn desktop_canonical_upsert_message(
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionState, String> {
     run_canonical_blocking(move || commands::desktop_canonical_upsert_message(request)).await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_upsert_message_fast(
+    request: AppendCanonicalMessageRequest,
+) -> Result<CanonicalSessionMessage, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_upsert_message_fast(request)).await
 }
 
 #[tauri::command]
@@ -1679,8 +1709,10 @@ pub async fn desktop_canonical_remove_session_participant(
 pub async fn desktop_canonical_set_session_participant_role(
     request: SetCanonicalSessionParticipantRoleRequest,
 ) -> Result<CanonicalSessionState, String> {
-    run_canonical_blocking(move || commands::desktop_canonical_set_session_participant_role(request))
-        .await
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_set_session_participant_role(request)
+    })
+    .await
 }
 
 #[tauri::command]

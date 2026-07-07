@@ -597,7 +597,6 @@ function ChatSessionPane({
   const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
   const topSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, 0, transcriptWindow.start) : 0;
   const bottomSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, transcriptWindow.end, messages.length) : 0;
-
   useEffect(() => {
     if (!navigationRequest || navigationTargetIndex < transcriptWindow.start || navigationTargetIndex >= transcriptWindow.end) return;
     const frameId = window.requestAnimationFrame(() => {

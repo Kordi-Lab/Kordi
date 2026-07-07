@@ -2,20 +2,19 @@ use rusqlite::Connection;
 
 use super::{
     AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
-    AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalPresence,
+    AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalIdentity, CanonicalPresence,
     CanonicalSessionMessage, CanonicalSessionParticipant, CanonicalSessionState,
-    CreateCanonicalDelegatedExchangeRequest,
-    MarkCanonicalSessionReadRequest,
-    OpenCanonicalSessionRequest, RemoveCanonicalSessionParticipantRequest,
-    RenameCanonicalSessionRequest, SetCanonicalSessionParticipantRoleRequest,
-    UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
-    UpsertCanonicalIdentityRequest, add_session_participants_in_db,
-    adopt_cloud_profile_identity_in_db, append_message_in_db, create_delegated_exchange_in_db,
-    json_from_db, mark_session_read_in_db, open_db, open_or_create_session_in_db, remove_session_participant_in_db,
-    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
-    select_delegated_exchange, select_identity, select_session,
-    set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
-    upsert_identity_in_db, upsert_message_in_db,
+    CreateCanonicalDelegatedExchangeRequest, MarkCanonicalSessionReadRequest,
+    OpenCanonicalSessionFastResult, OpenCanonicalSessionRequest,
+    RemoveCanonicalSessionParticipantRequest, RenameCanonicalSessionRequest,
+    SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalPresenceRequest,
+    UpdateCanonicalSessionMetadataRequest, UpsertCanonicalIdentityRequest,
+    add_session_participants_in_db, adopt_cloud_profile_identity_in_db, append_message_in_db,
+    create_delegated_exchange_in_db, json_from_db, mark_session_read_in_db, open_db,
+    open_or_create_session_in_db, remove_session_participant_in_db, rename_any_session_title_in_db,
+    rename_session_in_db, require_group_admin, select_delegated_exchange, select_identity,
+    select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
+    update_presence_in_db, upsert_identity_in_db, upsert_message_in_db,
 };
 
 fn query_all<T>(
@@ -176,6 +175,54 @@ pub(super) fn desktop_canonical_adopt_cloud_profile_identity(
     load_state_from_db(&conn)
 }
 
+pub(super) fn desktop_canonical_upsert_identity_fast(
+    request: UpsertCanonicalIdentityRequest,
+) -> Result<CanonicalIdentity, String> {
+    let conn = open_db()?;
+    upsert_identity_in_db(&conn, request)
+}
+
+fn select_session_participants(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Vec<CanonicalSessionParticipant>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT session_id, identity_id, role, state, added_by_identity_id, added_at_ms, last_seen_at_ms, last_read_message_id, metadata_json
+             FROM session_participants WHERE session_id = ?1 ORDER BY added_at_ms ASC, identity_id ASC",
+        )
+        .map_err(|err| err.to_string())?;
+    let rows = stmt
+        .query_map([session_id], |row| {
+            Ok(CanonicalSessionParticipant {
+                session_id: row.get(0)?,
+                identity_id: row.get(1)?,
+                role: row.get(2)?,
+                state: row.get(3)?,
+                added_by_identity_id: row.get(4)?,
+                added_at_ms: row.get(5)?,
+                last_seen_at_ms: row.get(6)?,
+                last_read_message_id: row.get(7)?,
+                metadata: json_from_db(row.get(8)?),
+            })
+        })
+        .map_err(|err| err.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())
+}
+
+pub(super) fn desktop_canonical_open_or_create_session_fast(
+    request: OpenCanonicalSessionRequest,
+) -> Result<OpenCanonicalSessionFastResult, String> {
+    let conn = open_db()?;
+    let session = open_or_create_session_in_db(&conn, request)?;
+    let participants = select_session_participants(&conn, &session.id)?;
+    Ok(OpenCanonicalSessionFastResult {
+        session,
+        participants,
+    })
+}
+
 pub(super) fn desktop_canonical_open_or_create_session(
     request: OpenCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
@@ -198,6 +245,13 @@ pub(super) fn desktop_canonical_upsert_message(
     let conn = open_db()?;
     upsert_message_in_db(&conn, request)?;
     load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_upsert_message_fast(
+    request: AppendCanonicalMessageRequest,
+) -> Result<CanonicalSessionMessage, String> {
+    let conn = open_db()?;
+    upsert_message_in_db(&conn, request)
 }
 
 pub(super) fn desktop_canonical_append_message_fast(
