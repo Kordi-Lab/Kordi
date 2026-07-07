@@ -31,3 +31,18 @@ test('cloud group replay prepares identities and sessions with compact canonical
   assert.doesNotMatch(replaySetupBlock, /await upsertCanonicalIdentity\(request\)/, 'participant identity sync must not reload full canonical state per participant');
   assert.doesNotMatch(replaySetupBlock, /await openOrCreateCanonicalSession\(/, 'group replay must not reload full canonical state when opening existing group sessions');
 });
+
+test('cloud compact session merge replaces the native participant list for that group', () => {
+  const source = cloudBridgeStateSource();
+  const mergeStart = source.indexOf('function mergeOpenCanonicalSessionFastResultIntoLocalState');
+  const mergeEnd = source.indexOf('export const CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE', mergeStart);
+  assert.notEqual(mergeStart, -1, 'expected Cloud compact session merge helper');
+  assert.notEqual(mergeEnd, -1, 'expected Cloud compact session merge helper end');
+  const mergeBlock = source.slice(mergeStart, mergeEnd);
+
+  assert.match(
+    mergeBlock,
+    /participant\.sessionId !== result\.session\.id/,
+    'Cloud compact session merge must replace all stale local participants for the native group session',
+  );
+});

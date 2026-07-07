@@ -574,7 +574,6 @@ function mergeOpenCanonicalSessionFastResultIntoLocalState(
   result: OpenCanonicalSessionFastResult,
 ): CanonicalSessionState | null {
   if (!current) return current;
-  const participantKeys = new Set(result.participants.map((participant) => `${participant.sessionId}:${participant.identityId}`));
   return {
     ...current,
     sessions: [
@@ -582,7 +581,7 @@ function mergeOpenCanonicalSessionFastResultIntoLocalState(
       ...current.sessions.filter((session) => session.id !== result.session.id),
     ],
     participants: [
-      ...current.participants.filter((participant) => !participantKeys.has(`${participant.sessionId}:${participant.identityId}`)),
+      ...current.participants.filter((participant) => participant.sessionId !== result.session.id),
       ...result.participants,
     ],
   };

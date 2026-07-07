@@ -158,7 +158,6 @@ function mergeOpenCanonicalSessionResult(
   state: CanonicalSessionState,
   result: OpenCanonicalSessionFastResult,
 ): CanonicalSessionState {
-  const participantIds = new Set(result.participants.map((participant) => `${participant.sessionId}:${participant.identityId}`));
   return {
     ...state,
     sessions: [
@@ -166,7 +165,7 @@ function mergeOpenCanonicalSessionResult(
       ...state.sessions.filter((session) => session.id !== result.session.id),
     ],
     participants: [
-      ...state.participants.filter((participant) => !participantIds.has(`${participant.sessionId}:${participant.identityId}`)),
+      ...state.participants.filter((participant) => participant.sessionId !== result.session.id),
       ...result.participants,
     ],
   };

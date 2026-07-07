@@ -25,3 +25,18 @@ test('chat create flows use compact canonical writes instead of full-state reloa
   assert.doesNotMatch(source, /await upsertCanonicalIdentity\(/, 'chat create flows must not use full-state identity upsert');
   assert.doesNotMatch(source, /await openOrCreateCanonicalSession\(/, 'chat create flows must not use full-state session open');
 });
+
+test('compact session merge replaces the native participant list for that session', () => {
+  const source = appModelSource();
+  const mergeStart = source.indexOf('function mergeOpenCanonicalSessionResult');
+  const mergeEnd = source.indexOf('export function useKordiAppModel', mergeStart);
+  assert.notEqual(mergeStart, -1, 'expected compact session merge helper');
+  assert.notEqual(mergeEnd, -1, 'expected compact session merge helper end');
+  const mergeBlock = source.slice(mergeStart, mergeEnd);
+
+  assert.match(
+    mergeBlock,
+    /participant\.sessionId !== result\.session\.id/,
+    'compact session merge must replace all stale local participants for the native session',
+  );
+});
