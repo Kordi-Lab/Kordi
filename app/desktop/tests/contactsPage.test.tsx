@@ -215,6 +215,25 @@ test('contacts page controls use a Vercel-style aligned rail with reduced shape'
   assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-contact-row\.app-list-item-active/);
 });
 
+test('contact detail modal shows other users with a read-only avatar', () => {
+  const markup = renderContactsPage([], {
+    contactOverlayMode: 'contact',
+    activeContact: contact({
+      id: 'cloud:acct_peer',
+      name: 'Jiaxin Pei',
+      subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
+      bridgeHostId: 'cloud',
+      bridgePeerNodeId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
+    }),
+  });
+
+  assert.match(markup, /Contact detail/);
+  assert.match(markup, /Jiaxin Pei/);
+  assert.doesNotMatch(markup, /app-avatar-upload-button/);
+  assert.doesNotMatch(markup, /Upload jiaxin pei avatar/i);
+  assert.doesNotMatch(markup, /type="file"/);
+});
+
 test('contact detail modal removes redundant repeated metadata and unused profile action', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
 

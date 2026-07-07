@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { ContactRequestRow, ContactRow } from './components';
-import { EditableIdentityAvatar } from './components/EditableIdentityAvatar';
 import { IdentityAvatar } from './components/IdentityAvatar';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
@@ -514,13 +513,11 @@ export function ContactsPage({
                 {contactOverlayMode === 'contact' ? (
                   <div>
                     <div className="mb-4 flex items-center gap-3">
-                      <EditableIdentityAvatar
+                      <IdentityAvatar
                         kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
                         seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
                         name={activeContact.name}
                         imageUrl={activeContact.profileImageUrl}
-                        label={`${activeContact.name} avatar`}
-                        compact
                         className="h-12 w-12 border border-white/10"
                       />
                       <div>
