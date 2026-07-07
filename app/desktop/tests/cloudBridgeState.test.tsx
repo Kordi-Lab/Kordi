@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
+import * as cloudBridgeStateModule from '../src/features/cloud/useCloudBridgeState';
 import {
   buildCloudBridgeConversation,
   buildCloudDesktopBridgeState,
@@ -441,6 +442,42 @@ test('cloud bridge state does not replay stale localStorage messages before serv
   assert.match(source, /if \(!account \|\| messagesCacheAccountRef\.current !== account\.accountId\) return;[\s\S]*saveCloudSessionVisibility/);
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
   assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*cloudGroupControlMessagesForAccount/);
+});
+
+test('cloud unread badge reconciliation waits for authoritative startup message sync', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const unreadEffectStart = source.indexOf('const unreadBySessionId = cloudGroupUnreadCountsBySessionId({');
+  assert.notEqual(unreadEffectStart, -1, 'expected Cloud group unread reconciliation effect');
+  const effectGuardStart = source.lastIndexOf('if (', unreadEffectStart);
+  assert.notEqual(effectGuardStart, -1, 'expected Cloud group unread effect guard');
+  const effectGuard = source.slice(effectGuardStart, unreadEffectStart);
+
+  assert.match(
+    effectGuard,
+    /!initialMessagesSettled/,
+    'cached Cloud messages must not persist unread badges until the first authoritative server sync settles',
+  );
+});
+
+test('Cloud focus refresh is throttled across focus, visibility, and pageshow bursts', () => {
+  const shouldRefreshCloudForVisibility = (cloudBridgeStateModule as Record<string, unknown>).shouldRefreshCloudForVisibility;
+  const shouldRunCloudFocusRefresh = (cloudBridgeStateModule as Record<string, unknown>).shouldRunCloudFocusRefresh;
+  assert.equal(typeof shouldRefreshCloudForVisibility, 'function', 'expected a Cloud visibility-refresh helper');
+  assert.equal(typeof shouldRunCloudFocusRefresh, 'function', 'expected a Cloud focus-refresh throttle helper');
+
+  assert.equal((shouldRefreshCloudForVisibility as (state: DocumentVisibilityState) => boolean)('visible'), true);
+  assert.equal((shouldRefreshCloudForVisibility as (state: DocumentVisibilityState) => boolean)('hidden'), false);
+  assert.equal((shouldRunCloudFocusRefresh as (now: number, last: number) => boolean)(20_000, 0), true);
+  assert.equal((shouldRunCloudFocusRefresh as (now: number, last: number) => boolean)(20_100, 20_000), false);
+  assert.equal((shouldRunCloudFocusRefresh as (now: number, last: number) => boolean)(25_000, 20_000), true);
+});
+
+test('Cloud reactivation keeps hot cache interactive before running background refresh', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /CLOUD_FOCUS_REFRESH_DELAY_MS/, 'expected a short Cloud reactivation refresh delay constant');
+  assert.match(source, /cloudFocusRefreshTimerRef/, 'expected Cloud focus refreshes to coalesce into one delayed timer');
+  assert.match(source, /window\.setTimeout\(runRefresh, CLOUD_FOCUS_REFRESH_DELAY_MS\)/, 'focus refresh should be scheduled after the hot-cache frame');
+  assert.match(source, /window\.clearTimeout\(cloudFocusRefreshTimerRef\.current\)/, 'bursts should cancel the previous delayed refresh timer');
 });
 
 const message: CloudMessage = {

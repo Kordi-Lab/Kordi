@@ -1178,6 +1178,20 @@ export function markCloudMessagesReadLocally(
 
 export const CLOUD_MESSAGE_DISCOVERY_MAX_PASSES = 50;
 export const CLOUD_MESSAGES_LOCAL_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
+export const CLOUD_FOCUS_REFRESH_THROTTLE_MS = 5000;
+export const CLOUD_FOCUS_REFRESH_DELAY_MS = 500;
+
+export function shouldRefreshCloudForVisibility(visibilityState: DocumentVisibilityState) {
+  return visibilityState === 'visible';
+}
+
+export function shouldRunCloudFocusRefresh(
+  nowMs: number,
+  lastRefreshAtMs: number,
+  throttleMs = CLOUD_FOCUS_REFRESH_THROTTLE_MS,
+) {
+  return lastRefreshAtMs <= 0 || nowMs - lastRefreshAtMs >= throttleMs;
+}
 
 export function cloudSessionForksByIdEqual(
   left: Record<string, CloudSessionForkSummary>,
@@ -1990,6 +2004,8 @@ export function useCloudBridgeState({
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
   const syncingCloudDiffRef = useRef(false);
+  const lastCloudFocusRefreshAtRef = useRef(0);
+  const cloudFocusRefreshTimerRef = useRef<number | null>(null);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
 
@@ -3579,7 +3595,7 @@ export function useCloudBridgeState({
   }, [account, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
-    if (!account || !setCanonicalSessionState) return;
+    if (!account || !setCanonicalSessionState || !initialMessagesSettled) return;
     const activeConversationIds = [
       activeConversationId,
       activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null,
@@ -3619,7 +3635,7 @@ export function useCloudBridgeState({
       });
       return changed ? { ...current, sessions } : current;
     });
-  }, [account, activeConversationId, canonicalSessionState, messagesByPeer, setCanonicalSessionState]);
+  }, [account, activeConversationId, canonicalSessionState, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
@@ -4084,14 +4100,30 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account) return;
-    const refresh = () => void refreshCloudBridgeMessages();
+    const runRefresh = () => {
+      cloudFocusRefreshTimerRef.current = null;
+      const now = Date.now();
+      if (!shouldRunCloudFocusRefresh(now, lastCloudFocusRefreshAtRef.current)) return;
+      lastCloudFocusRefreshAtRef.current = now;
+      void refreshCloudBridgeMessages();
+    };
+    const refresh = () => {
+      if (cloudFocusRefreshTimerRef.current !== null) window.clearTimeout(cloudFocusRefreshTimerRef.current);
+      cloudFocusRefreshTimerRef.current = window.setTimeout(runRefresh, CLOUD_FOCUS_REFRESH_DELAY_MS);
+    };
     const refreshWhenVisible = () => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') refresh();
+      if (typeof document === 'undefined' || shouldRefreshCloudForVisibility(document.visibilityState)) refresh();
     };
     window.addEventListener('focus', refresh);
+    window.addEventListener('pageshow', refreshWhenVisible);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
+      if (cloudFocusRefreshTimerRef.current !== null) {
+        window.clearTimeout(cloudFocusRefreshTimerRef.current);
+        cloudFocusRefreshTimerRef.current = null;
+      }
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('pageshow', refreshWhenVisible);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [account, refreshCloudBridgeMessages]);
