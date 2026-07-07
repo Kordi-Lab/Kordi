@@ -1913,6 +1913,7 @@ export type UseCloudBridgeStateResult = {
   publishCloudTaskActivity(input: UpsertCloudTaskActivityInput): Promise<void>;
   publishCloudArtifactActivity(input: UpsertCloudArtifactActivityInput): Promise<void>;
   refreshCloudContacts(): Promise<void>;
+  cloudContacts: Contact[];
   initialContactsSettled: boolean;
   initialMessagesSettled: boolean;
   cachedMessagesReady: boolean;
@@ -4523,6 +4524,7 @@ export function useCloudBridgeState({
     publishCloudTaskActivity,
     publishCloudArtifactActivity,
     refreshCloudContacts: contacts.refresh,
+    cloudContacts: contacts.contacts,
     initialContactsSettled: contacts.initialLoadSettled,
     initialMessagesSettled,
     cachedMessagesReady: Object.values(messagesByPeer).some((messages) => messages.length > 0),

@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, LoaderCircle, Plus, Search, Trash2, UserPlus, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { ContactRequestRow, ContactRow } from './components';
-import { EditableIdentityAvatar } from './components/EditableIdentityAvatar';
 import { IdentityAvatar } from './components/IdentityAvatar';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
@@ -41,6 +39,13 @@ function normalizedContactText(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase();
 }
 
+export function contactPresenceStatus(contact: Contact): string | null {
+  const directPresence = contact.presenceStatus?.trim().toLowerCase();
+  if (directPresence === 'online') return 'online';
+  if (directPresence) return 'offline';
+  return null;
+}
+
 export function contactDetailBodyText(contact: Contact): string {
   const detail = contact.detail.trim();
   if (!detail) return '';
@@ -73,7 +78,6 @@ export function ContactsPage({
   activeContact,
   activeContactRequest,
   onCloseOverlay,
-  getStatusBadgeClass,
   onMessageContact,
   onRemoveContact,
 }: ContactsPageProps) {
@@ -200,6 +204,7 @@ export function ContactsPage({
     : 'No sent invites waiting for approval.';
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
   const activeContactDetailBody = contactDetailBodyText(activeContact);
+  const activeContactPresenceStatus = contactPresenceStatus(activeContact);
 
   const canRemoveActiveContact = Boolean(
     onRemoveContact
@@ -496,10 +501,12 @@ export function ContactsPage({
               <div className="app-modal-panel w-full max-w-[420px] rounded-[28px] border border-white/10 p-4 text-white shadow-[var(--app-shadow-float)]">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
-                      {contactOverlayMode === 'contact' ? 'Contact detail' : 'Request review'}
-                    </div>
-                    <div className="mt-1 text-lg font-semibold">
+                    {contactOverlayMode === 'request' ? (
+                      <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
+                        Request review
+                      </div>
+                    ) : null}
+                    <div className={cn('text-lg font-semibold', contactOverlayMode === 'request' ? 'mt-1' : '')}>
                       {contactOverlayMode === 'contact' ? activeContact.name : activeContactRequest?.title}
                     </div>
                   </div>
@@ -514,21 +521,18 @@ export function ContactsPage({
                 {contactOverlayMode === 'contact' ? (
                   <div>
                     <div className="mb-4 flex items-center gap-3">
-                      <EditableIdentityAvatar
+                      <IdentityAvatar
                         kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
                         seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
                         name={activeContact.name}
                         imageUrl={activeContact.profileImageUrl}
-                        label={`${activeContact.name} avatar`}
-                        compact
+                        presenceStatus={activeContactPresenceStatus}
+                        presenceLabel={activeContactPresenceStatus ? `${activeContact.name} is ${activeContactPresenceStatus}` : undefined}
                         className="h-12 w-12 border border-white/10"
                       />
                       <div>
                         <div className="text-sm text-slate-300">
                           {activeContact.entityType} • {activeContact.subtitle}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <Badge className={cn('rounded-full px-2.5 py-1', getStatusBadgeClass(activeContact.status))}>{activeContact.status}</Badge>
                         </div>
                       </div>
                     </div>
