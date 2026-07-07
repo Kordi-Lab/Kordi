@@ -642,6 +642,12 @@ export type SetCanonicalSessionParticipantRoleRequest = {
   requestedByIdentityId?: string | null;
 };
 
+export type MarkCanonicalSessionReadRequest = {
+  sessionId: string;
+  identityId?: string | null;
+  messageId?: string | null;
+};
+
 export type DesktopAuthState = {
   authPath: string;
   hasAnyAuth: boolean;

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction, UIEvent as ReactUIEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -79,10 +79,11 @@ import {
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import {
-  TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
   TRANSCRIPT_WINDOW_OVERSCAN,
   TRANSCRIPT_WINDOW_THRESHOLD,
   transcriptWindowRange,
+  transcriptWindowScrollAnchorIndex,
+  transcriptWindowSpacerHeight,
 } from '@/features/chat/transcriptWindowing';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
@@ -176,22 +177,46 @@ function isGroupedWithAdjacentHumanMessage(messages: readonly Message[], index: 
 type QueuedMessageBubbleProps = {
   message: QueuedDesktopChatMessage;
   isCompressionActive: boolean;
+  onEdit?: (sessionId: string, queuedMessageId: string) => void;
+  onCancel?: (sessionId: string, queuedMessageId: string) => void;
 };
 
-function QueuedMessageBubble({ message, isCompressionActive }: QueuedMessageBubbleProps) {
+function QueuedMessageBubble({ message, isCompressionActive, onEdit, onCancel }: QueuedMessageBubbleProps) {
   return (
     <div className="flex justify-end py-0.5">
       <div className={cn('app-queued-message max-w-[min(72%,34rem)] px-3 py-2 text-right', queuedMessageBubbleShapeClass)}>
         <MessageBubbleShapeBackdrop side="own" />
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0 flex-1 text-left">
-            <div className="app-queued-message-label mb-0.5 inline-flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
-              <Clock3 className="h-2.5 w-2.5" />
-              <span>{isCompressionActive ? 'Queued during compression' : 'Queued next'}</span>
+        <div className="min-w-0 text-left">
+          <div className="mb-0.5 flex items-center justify-between gap-3">
+            <div className="app-queued-message-label inline-flex min-w-0 items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
+              <Clock3 className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{isCompressionActive ? 'Queued during compression' : 'Queued next'}</span>
             </div>
-            <div className="app-queued-message-text whitespace-pre-wrap break-words text-[13px] leading-5">{message.text}</div>
+            <div className="app-queued-message-meta shrink-0 text-[10px] leading-none">{message.time}</div>
           </div>
-          <div className="app-queued-message-meta shrink-0 pb-0.5 text-[10px] leading-none">{message.time}</div>
+          <div className="mt-0.5 flex items-center gap-2">
+            <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5">{message.text}</div>
+            <div className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center" aria-label="Queued message actions">
+              <button
+                type="button"
+                className="app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70"
+                aria-label={`Edit queued message: ${message.text.slice(0, 48)}`}
+                title="Edit queued message"
+                onClick={() => onEdit?.(message.sessionId, message.id)}
+              >
+                <SquarePen className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="app-queued-message-cancel inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70"
+                aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
+                title="Cancel queued message"
+                onClick={() => onCancel?.(message.sessionId, message.id)}
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
         </div>
         {message.attachments.length > 0 ? (
           <div className="app-queued-message-meta mt-1 text-[10px] leading-none">
@@ -348,9 +373,12 @@ function transcriptWindowMessageIdentity(message: Message | undefined, fallbackI
   return message.id ?? message.entryId ?? message.turn?.id ?? `${fallbackIndex}:${message.role}:${message.sender}:${message.time}`;
 }
 
-function transcriptWindowMessageMatchesId(message: Message | undefined, messageId: string) {
+function transcriptWindowMessageMatchesId(message: Message | undefined, messageId: string, fallbackIndex: number) {
   if (!message || !messageId) return false;
-  return message.id === messageId || message.entryId === messageId || message.turn?.id === messageId;
+  return message.id === messageId
+    || message.entryId === messageId
+    || message.turn?.id === messageId
+    || `transcript-message:${fallbackIndex}` === messageId;
 }
 
 type TranscriptNavigationRequest = {
@@ -359,7 +387,7 @@ type TranscriptNavigationRequest = {
 };
 
 type ChatSessionPaneProps = {
-  messages: Message[];
+  messages: readonly Message[];
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnSender: string;
   shouldRenderLiveTurn: boolean;
@@ -370,8 +398,11 @@ type ChatSessionPaneProps = {
   emptyState?: ReactNode;
   composer: ReactNode;
   queuedMessages?: QueuedDesktopChatMessage[];
+  onEditQueuedMessage?: (sessionId: string, queuedMessageId: string) => void;
+  onCancelQueuedMessage?: (sessionId: string, queuedMessageId: string) => void;
   isCompressionActive?: boolean;
   plainAgentResponse?: boolean;
+  inferLatestHumanReplyTarget?: boolean;
   forkSnapshotBoundaryIndex?: number;
   activeForkSourceSessionId?: string | null;
   activeForkSourceTitle?: string | null;
@@ -422,8 +453,11 @@ function ChatSessionPane({
   emptyState,
   composer,
   queuedMessages = [],
+  onEditQueuedMessage,
+  onCancelQueuedMessage,
   isCompressionActive = false,
   plainAgentResponse = false,
+  inferLatestHumanReplyTarget = false,
   forkSnapshotBoundaryIndex = -1,
   activeForkSourceSessionId = null,
   activeForkSourceTitle = null,
@@ -460,6 +494,10 @@ function ChatSessionPane({
   densityMode = 'default',
 }: ChatSessionPaneProps) {
   const [transcriptWindowAnchorIndex, setTranscriptWindowAnchorIndex] = useState(() => Math.max(0, messages.length - 1));
+  const measuredTranscriptMessageHeightsRef = useRef(new Map<string, number>());
+  const transcriptMessageResizeObserversRef = useRef(new Map<string, ResizeObserver>());
+  const transcriptWindowItemRefCallbacksRef = useRef(new Map<string, (node: HTMLDivElement | null) => void>());
+  const [measuredTranscriptHeightVersion, setMeasuredTranscriptHeightVersion] = useState(0);
   const transcriptWindowResetKey = useMemo(() => {
     const firstMessage = messages[0];
     const lastMessage = messages[messages.length - 1];
@@ -476,7 +514,7 @@ function ChatSessionPane({
 
   const navigationTargetIndex = useMemo(() => {
     if (!navigationRequest?.id) return -1;
-    return messages.findIndex((message) => transcriptWindowMessageMatchesId(message, navigationRequest.id));
+    return messages.findIndex((message, index) => transcriptWindowMessageMatchesId(message, navigationRequest.id, index));
   }, [messages, navigationRequest]);
 
   useEffect(() => {
@@ -484,20 +522,81 @@ function ChatSessionPane({
     setTranscriptWindowAnchorIndex(navigationTargetIndex);
   }, [navigationRequest, navigationTargetIndex]);
 
+  const transcriptMessageHeights = useMemo(() => messages.map((message, index) => (
+    measuredTranscriptMessageHeightsRef.current.get(transcriptWindowMessageIdentity(message, index))
+  )), [measuredTranscriptHeightVersion, messages]);
+
+  useEffect(() => {
+    const liveKeys = new Set(messages.map((message, index) => transcriptWindowMessageIdentity(message, index)));
+    for (const key of measuredTranscriptMessageHeightsRef.current.keys()) {
+      if (!liveKeys.has(key)) measuredTranscriptMessageHeightsRef.current.delete(key);
+    }
+    for (const key of transcriptWindowItemRefCallbacksRef.current.keys()) {
+      if (!liveKeys.has(key)) transcriptWindowItemRefCallbacksRef.current.delete(key);
+    }
+  }, [messages]);
+
+  useEffect(() => () => {
+    for (const observer of transcriptMessageResizeObserversRef.current.values()) {
+      observer.disconnect();
+    }
+    transcriptMessageResizeObserversRef.current.clear();
+  }, []);
+
+  const measureTranscriptWindowItem = useCallback((key: string, node: HTMLDivElement | null) => {
+    transcriptMessageResizeObserversRef.current.get(key)?.disconnect();
+    transcriptMessageResizeObserversRef.current.delete(key);
+
+    if (!node || typeof window === 'undefined') return;
+
+    const updateMeasuredHeight = () => {
+      const nextHeight = node.getBoundingClientRect().height;
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+      const previousHeight = measuredTranscriptMessageHeightsRef.current.get(key);
+      if (previousHeight !== undefined && Math.abs(previousHeight - nextHeight) < 1) return;
+      measuredTranscriptMessageHeightsRef.current.set(key, nextHeight);
+      setMeasuredTranscriptHeightVersion((version) => version + 1);
+    };
+
+    updateMeasuredHeight();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(updateMeasuredHeight);
+    observer.observe(node);
+    transcriptMessageResizeObserversRef.current.set(key, observer);
+  }, []);
+
+  const transcriptWindowItemRef = useCallback((key: string) => {
+    const existing = transcriptWindowItemRefCallbacksRef.current.get(key);
+    if (existing) return existing;
+    const ref = (node: HTMLDivElement | null) => measureTranscriptWindowItem(key, node);
+    transcriptWindowItemRefCallbacksRef.current.set(key, ref);
+    return ref;
+  }, [measureTranscriptWindowItem]);
+
   const handleTranscriptScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
     onTranscriptScroll?.();
     if (messages.length <= TRANSCRIPT_WINDOW_THRESHOLD) return;
-    const nextAnchorIndex = Math.max(0, Math.floor(event.currentTarget.scrollTop / TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT));
+    const nextAnchorIndex = transcriptWindowScrollAnchorIndex(event.currentTarget.scrollTop, transcriptMessageHeights);
     setTranscriptWindowAnchorIndex((current) => (
       Math.abs(current - nextAnchorIndex) >= TRANSCRIPT_WINDOW_OVERSCAN ? nextAnchorIndex : current
     ));
-  }, [messages.length, onTranscriptScroll]);
+  }, [messages.length, onTranscriptScroll, transcriptMessageHeights]);
 
   const transcriptWindow = transcriptWindowRange(messages.length, transcriptWindowAnchorIndex);
-  const visibleTranscriptMessages = messages.slice(transcriptWindow.start, transcriptWindow.end);
-  const topSpacerHeight = transcriptWindow.windowed ? transcriptWindow.start * TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT : 0;
-  const bottomSpacerHeight = transcriptWindow.windowed ? Math.max(0, messages.length - transcriptWindow.end) * TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT : 0;
-
+  const visibleRawTranscriptMessages = messages.slice(transcriptWindow.start, transcriptWindow.end);
+  const attributedTranscript = useMemo(
+    () => buildReplyAttribution(visibleRawTranscriptMessages, shouldRenderLiveTurn ? liveTurn : null, {
+      inferLatestHumanRequest: inferLatestHumanReplyTarget,
+      suppressAgentReplyAttribution: plainAgentResponse,
+      messageIndexOffset: transcriptWindow.start,
+    }),
+    [inferLatestHumanReplyTarget, liveTurn, plainAgentResponse, shouldRenderLiveTurn, transcriptWindow.start, visibleRawTranscriptMessages],
+  );
+  const visibleTranscriptMessages = attributedTranscript.messages;
+  const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
+  const topSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, 0, transcriptWindow.start) : 0;
+  const bottomSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, transcriptWindow.end, messages.length) : 0;
   useEffect(() => {
     if (!navigationRequest || navigationTargetIndex < transcriptWindow.start || navigationTargetIndex >= transcriptWindow.end) return;
     const frameId = window.requestAnimationFrame(() => {
@@ -517,61 +616,66 @@ function ChatSessionPane({
           {topSpacerHeight > 0 ? <div data-transcript-window-spacer="top" style={{ height: topSpacerHeight }} aria-hidden="true" /> : null}
           {messages.length > 0 ? visibleTranscriptMessages.map((msg, visibleIdx) => {
             const idx = transcriptWindow.start + visibleIdx;
+            const windowItemKey = transcriptWindowMessageIdentity(msg, idx);
             return (
-              <Fragment key={transcriptMessageRenderKey(msg, idx)}>
-                <MessageBubble
-                  msg={msg}
-                  onOpenSource={onOpenSource}
-                  onOpenArtifact={onOpenArtifact}
-                  onOpenAuthSettings={onOpenAuthSettings}
-                  onNavigateToMessage={onNavigateToMessage}
-                  onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-                  onRequestBridgeContact={onRequestBridgeContact}
-                  onForkMessage={onForkMessage}
-                  messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
-                  onOpenForkSession={onOpenForkSession}
-                  onReplyMessage={onReplyMessage}
-                  onForwardMessage={onForwardMessage}
-                  onOpenMessageDetail={onOpenMessageDetail}
-                  onSelectMessage={onSelectMessage}
-                  onRequestPinMessage={onRequestPinMessage}
-                  onRequestUnpinMessage={onRequestUnpinMessage}
-                  pinnedMessageId={pinnedMessageId}
-                  selectionMode={selectionMode}
-                  selectedMessageIds={selectedMessageIds}
-                  isMessageSelectable={isMessageSelectable}
-                  densityMode={densityMode}
-                  onToggleSelectedMessage={onToggleSelectedMessage}
-                  onSelectionDragStart={onSelectionDragStart}
-                  onSelectionDragEnter={onSelectionDragEnter}
-                  onSelectionDragEnd={onSelectionDragEnd}
-                  plainAgentResponse={plainAgentResponse}
-                  isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(messages, idx, -1)}
-                  isGroupedWithNext={isGroupedWithAdjacentHumanMessage(messages, idx, 1)}
-                />
-                {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
-                  <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
-                    <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                    <button
-                      type="button"
-                      onClick={() => onSelectSession?.(activeForkSourceSessionId)}
-                      disabled={!onSelectSession}
-                      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
-                      title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
-                    >
-                      <Split className="h-3 w-3" />
-                      <span>Forked from conversation</span>
-                    </button>
-                    <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                  </div>
-                ) : null}
-              </Fragment>
+            <div
+              key={transcriptMessageRenderKey(msg, idx)}
+              ref={transcriptWindowItemRef(windowItemKey)}
+              data-transcript-window-item="true"
+            >
+              <MessageBubble
+                msg={msg}
+                onOpenSource={onOpenSource}
+                onOpenArtifact={onOpenArtifact}
+                onOpenAuthSettings={onOpenAuthSettings}
+                onNavigateToMessage={onNavigateToMessage}
+                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                onRequestBridgeContact={onRequestBridgeContact}
+                onForkMessage={onForkMessage}
+                messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
+                onOpenForkSession={onOpenForkSession}
+                onReplyMessage={onReplyMessage}
+                onForwardMessage={onForwardMessage}
+                onOpenMessageDetail={onOpenMessageDetail}
+                onSelectMessage={onSelectMessage}
+                onRequestPinMessage={onRequestPinMessage}
+                onRequestUnpinMessage={onRequestUnpinMessage}
+                pinnedMessageId={pinnedMessageId}
+                selectionMode={selectionMode}
+                selectedMessageIds={selectedMessageIds}
+                isMessageSelectable={isMessageSelectable}
+                densityMode={densityMode}
+                onToggleSelectedMessage={onToggleSelectedMessage}
+                onSelectionDragStart={onSelectionDragStart}
+                onSelectionDragEnter={onSelectionDragEnter}
+                onSelectionDragEnd={onSelectionDragEnd}
+                plainAgentResponse={plainAgentResponse}
+                isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(messages, idx, -1)}
+                isGroupedWithNext={isGroupedWithAdjacentHumanMessage(messages, idx, 1)}
+              />
+              {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
+                <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
+                  <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => onSelectSession?.(activeForkSourceSessionId)}
+                    disabled={!onSelectSession}
+                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
+                  >
+                    <Split className="h-3 w-3" />
+                    <span>Forked from conversation</span>
+                  </button>
+                  <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                </div>
+              ) : null}
+            </div>
             );
           }) : !shouldRenderLiveTurn ? emptyState : null}
           {bottomSpacerHeight > 0 ? <div data-transcript-window-spacer="bottom" style={{ height: bottomSpacerHeight }} aria-hidden="true" /> : null}
-          {shouldRenderLiveTurn && liveTurn ? (
+          {shouldRenderLiveTurn && attributedLiveTurn ? (
             <LiveChatTurnMessage
-              turn={liveTurn}
+              turn={attributedLiveTurn}
               sender={liveTurnSender}
               onStopBridgeAgentRequest={onStopBridgeAgentRequest}
               onStopActiveTurn={onStopActiveTurn}
@@ -582,7 +686,13 @@ function ChatSessionPane({
             />
           ) : null}
           {queuedMessages.map((message) => (
-            <QueuedMessageBubble key={message.id} message={message} isCompressionActive={isCompressionActive} />
+            <QueuedMessageBubble
+              key={message.id}
+              message={message}
+              isCompressionActive={isCompressionActive}
+              onEdit={onEditQueuedMessage}
+              onCancel={onCancelQueuedMessage}
+            />
           ))}
         </motion.div>
       </ScrollArea>
@@ -951,6 +1061,8 @@ type ChatsPageProps = {
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   queuedDesktopMessages: QueuedDesktopChatMessage[];
   queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
+  onEditQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
+  onCancelQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
   filteredChatSlashCommands: DesktopChatSlashCommand[];
   filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
@@ -1044,6 +1156,8 @@ export function ChatsPage({
   desktopLiveTurn,
   queuedDesktopMessages,
   queuedDesktopMessagesBySession,
+  onEditQueuedMessage,
+  onCancelQueuedMessage,
   filteredChatSlashCommands,
   filteredChatMentionTargets,
   chatSlashMenuIndex,
@@ -1373,14 +1487,7 @@ export function ChatsPage({
   );
   const inferLatestHumanReplyTarget = shouldInferLatestHumanReplyTarget(activeConv);
   const suppressAgentReplyAttribution = shouldSuppressAgentReplyAttribution(activeConv);
-  const attributedTranscript = useMemo(
-    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
-      inferLatestHumanRequest: inferLatestHumanReplyTarget,
-      suppressAgentReplyAttribution,
-    }),
-    [activeTranscriptLiveTurn, inferLatestHumanReplyTarget, suppressAgentReplyAttribution, transcriptMessages],
-  );
-  const attributedTranscriptMessages = attributedTranscript.messages;
+  const attributedTranscriptMessages = transcriptMessages;
   const pinnedMessageId = activeConversationUsesCloudPins
     ? activeCloudSessionPin?.effectiveMessageId ?? null
     : pinnedMessageIdsByConversationId[activeConv.id] ?? null;
@@ -1479,21 +1586,14 @@ export function ChatsPage({
     }
     return lastSnapshotIdx;
   }, [activeForkSourceSessionId, activeForkSourceMessageId, attributedTranscriptMessages]);
-  const attributedActiveTranscriptLiveTurn = attributedTranscript.liveTurn ?? activeTranscriptLiveTurn;
+  const attributedActiveTranscriptLiveTurn = activeTranscriptLiveTurn;
   const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
-  const companionTranscript = useMemo(() => {
-    if (!companionConversation) {
-      return { messages: [] as Message[], liveTurn: undefined as DesktopChatTurnSnapshot | undefined };
-    }
-    const messages = collapseAdjacentSessionConfigNotices(
+  const companionTranscriptMessages = useMemo(() => {
+    if (!companionConversation) return [] as Message[];
+    return collapseAdjacentSessionConfigNotices(
       suppressLiveTurnEchoMessages(companionConversation.messages, companionTranscriptLiveTurn),
     );
-    return buildReplyAttribution(messages, companionTranscriptLiveTurn, {
-      inferLatestHumanRequest: shouldInferLatestHumanReplyTarget(companionConversation),
-      suppressAgentReplyAttribution: companionSuppressAgentReplyAttribution,
-    });
-  }, [companionConversation, companionSuppressAgentReplyAttribution, companionTranscriptLiveTurn]);
-  const companionTranscriptMessages = companionTranscript.messages;
+  }, [companionConversation, companionTranscriptLiveTurn]);
   const handleNavigateToCompanionTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
     const targetMessageId = sourceMessage
       ? resolveTranscriptMessageIdForSource(sourceMessage, companionTranscriptMessages)
@@ -1503,7 +1603,7 @@ export function ChatsPage({
     setCompanionTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
     navigateToTranscriptMessage(resolvedMessageId, companionTranscriptScrollRef);
   }, [companionTranscriptMessages]);
-  const attributedCompanionTranscriptLiveTurn = companionTranscript.liveTurn ?? companionTranscriptLiveTurn;
+  const attributedCompanionTranscriptLiveTurn = companionTranscriptLiveTurn;
   const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const companionLiveTurnIsRunning = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const updateCompanionDropPreview = (event: DragEvent<HTMLElement>) => {
@@ -1861,6 +1961,9 @@ export function ChatsPage({
         navigationRequest={companionTranscriptNavigationRequest}
         densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
+        onEditQueuedMessage={onEditQueuedMessage}
+        onCancelQueuedMessage={onCancelQueuedMessage}
+        inferLatestHumanReplyTarget={shouldInferLatestHumanReplyTarget(companionConversation)}
         emptyState={(
           <div className="flex h-full min-h-[12rem] items-center justify-center px-4 text-center text-[12px] text-slate-500">
             No messages in this side chat yet.
@@ -2566,8 +2669,11 @@ export function ChatsPage({
         densityMode={chatTranscriptDensityMode(activeConv)}
         onTranscriptScroll={onTranscriptScroll}
         queuedMessages={queuedDesktopMessages}
+        onEditQueuedMessage={onEditQueuedMessage}
+        onCancelQueuedMessage={onCancelQueuedMessage}
         isCompressionActive={isCompressionActive}
         plainAgentResponse={suppressAgentReplyAttribution}
+        inferLatestHumanReplyTarget={inferLatestHumanReplyTarget}
         forkSnapshotBoundaryIndex={forkSnapshotBoundaryIndex}
         activeForkSourceSessionId={activeForkSourceSessionId}
         activeForkSourceTitle={activeForkSourceTitle}

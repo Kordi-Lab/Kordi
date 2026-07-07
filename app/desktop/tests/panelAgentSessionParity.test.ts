@@ -19,6 +19,10 @@ function sidePanelBlock(source: string): string {
   return blockBetween(source, 'data-chat-side-agent-panel="true"', 'const splitDivider = showCompanionPane');
 }
 
+function chatSessionPaneBlock(source: string): string {
+  return blockBetween(source, 'function ChatSessionPane', '\ntype CompanionSide');
+}
+
 test('side-panel Agent chat renders the same reusable session pane as the main Agent chat', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
@@ -36,9 +40,7 @@ test('side-panel Agent chat renders the same reusable session pane as the main A
 
 test('shared Agent session pane and composer include transcript, attachments, forwarding, details, and right expansion hooks', () => {
   const source = chatsPageSource();
-  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
-  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
-  const pane = source.slice(paneStart, paneStart + 10000);
+  const pane = chatSessionPaneBlock(source);
 
   for (const required of [
     'MessageBubble',
@@ -146,9 +148,7 @@ test('split-pane Agent model selection menu escapes the right panel clipping bou
 
 test('chat transcripts window long histories instead of rendering every message during session switches', () => {
   const source = chatsPageSource();
-  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
-  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
-  const pane = source.slice(paneStart, paneStart + 12000);
+  const pane = chatSessionPaneBlock(source);
 
   assert.match(source, /TRANSCRIPT_WINDOW_THRESHOLD/, 'ChatSessionPane should define a threshold for long transcript windowing');
   assert.match(pane, /visibleTranscriptMessages/, 'ChatSessionPane should render a bounded visible message slice');
@@ -159,20 +159,16 @@ test('chat transcripts window long histories instead of rendering every message 
 
 test('windowed chat transcripts update the rendered slice while scrolling through long history', () => {
   const source = chatsPageSource();
-  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
-  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
-  const pane = source.slice(paneStart, paneStart + 14000);
+  const pane = chatSessionPaneBlock(source);
 
   assert.match(pane, /transcriptWindowAnchorIndex/, 'windowed transcripts should track a scroll-derived anchor index');
   assert.match(pane, /handleTranscriptScroll/, 'windowed transcripts should wrap the external scroll handler');
-  assert.match(pane, /scrollTop\s*\/\s*TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT/, 'scroll position should determine which message range is mounted');
+  assert.match(pane, /transcriptWindowScrollAnchorIndex\(event\.currentTarget\.scrollTop,\s*transcriptMessageHeights\)/, 'scroll position should determine which message range is mounted');
 });
 
 test('windowed chat transcripts reset their anchor when switching between equal-length sessions', () => {
   const source = chatsPageSource();
-  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
-  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
-  const pane = source.slice(paneStart, paneStart + 15000);
+  const pane = chatSessionPaneBlock(source);
 
   assert.match(pane, /transcriptWindowResetKey/, 'windowed transcripts should derive a reset key from message identity');
   assert.doesNotMatch(pane, /\[messages\.length\]\);/, 'windowed transcript reset must not depend only on message count');
@@ -180,9 +176,7 @@ test('windowed chat transcripts reset their anchor when switching between equal-
 
 test('windowed chat transcripts keep jump-to-message working for messages outside the mounted slice', () => {
   const source = chatsPageSource();
-  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
-  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
-  const pane = source.slice(paneStart, paneStart + 18000);
+  const pane = chatSessionPaneBlock(source);
 
   assert.match(source, /type TranscriptNavigationRequest/, 'jumps into windowed transcripts should use an explicit navigation request');
   assert.match(pane, /navigationTargetIndex/, 'ChatSessionPane should resolve jump targets against the full message list');
@@ -192,9 +186,7 @@ test('windowed chat transcripts keep jump-to-message working for messages outsid
 
 test('side-panel Agent session omits the header session Details button', () => {
   const source = chatsPageSource();
-  const paneStart = source.search(/function ChatSessionPane\b|const ChatSessionPane\b/);
-  assert.notEqual(paneStart, -1, 'expected a shared ChatSessionPane implementation');
-  const pane = source.slice(paneStart, paneStart + 10000);
+  const pane = chatSessionPaneBlock(source);
   const side = sidePanelBlock(source);
 
   assert.match(pane, /onOpenMessageDetail,/, 'ChatSessionPane should destructure onOpenMessageDetail');
@@ -227,6 +219,36 @@ test('sending from main or side-panel chat schedules a jump to the sent message'
   assert.notEqual(createSideStart, -1, 'side-panel send block should have an end boundary');
   const sideSendBlock = source.slice(sideSendStart, createSideStart);
   assert.match(sideSendBlock, /scheduleTranscriptScrollToBottom\(companionTranscriptScrollRef\)/, 'side-panel send should jump its own transcript to the new message');
+});
+
+test('queued Ask Agent bubbles expose icon-only edit and cancel actions before queued drafts flush', () => {
+  const chatsSource = chatsPageSource();
+  const queueSource = readFileSync(new URL('../src/features/chat/queuedDesktopMessages.ts', import.meta.url), 'utf8');
+  const appModel = appModelSource();
+  const shellTypes = readFileSync(new URL('../src/app/kordiShellSlots.types.ts', import.meta.url), 'utf8');
+  const shellBuilder = readFileSync(new URL('../src/app/mainContentShellBuilders.ts', import.meta.url), 'utf8');
+
+  assert.match(queueSource, /removeQueuedDesktopMessageById/);
+  assert.match(appModel, /handleCancelQueuedMessage/);
+  assert.match(appModel, /handleEditQueuedMessage/);
+  assert.match(appModel, /updateScopeDraft\(current, 'chat', queuedMessage\.sessionId, queuedMessage\.text\)/);
+  assert.match(appModel, /removeQueuedDesktopMessageById\(current, sessionId, queuedMessageId\)/);
+  const queuedBubble = blockBetween(chatsSource, 'function QueuedMessageBubble', 'function chatMessageActionId');
+  assert.match(chatsSource, /onCancelQueuedMessage/);
+  assert.match(chatsSource, /onEditQueuedMessage/);
+  assert.match(queuedBubble, /className="mt-0\.5 flex items-center gap-2"/);
+  assert.match(queuedBubble, /app-queued-message-text[\s\S]*app-queued-message-actions/, 'queued action icons should align in the same row as the queued text');
+  assert.match(queuedBubble, /aria-label=\{`Edit queued message/);
+  assert.match(queuedBubble, /aria-label=\{`Cancel queued message/);
+  assert.match(queuedBubble, /<SquarePen className="h-3\.5 w-3\.5" aria-hidden="true" \/>/);
+  assert.match(queuedBubble, /<X className="h-3\.5 w-3\.5" aria-hidden="true" \/>/);
+  assert.doesNotMatch(queuedBubble, />\s*(Edit|Cancel)\s*<\/button>/, 'queued actions should be icon-only, not visible text buttons');
+  assert.match(shellTypes, /handleCancelQueuedMessage/);
+  assert.match(shellTypes, /handleEditQueuedMessage/);
+  assert.match(shellBuilder, /onCancelQueuedMessage: args\.handleCancelQueuedMessage/);
+  assert.match(shellBuilder, /onEditQueuedMessage: args\.handleEditQueuedMessage/);
+  assert.match(chatsSource, /onClick=\{\(\) => onEdit\?\.\(message\.sessionId, message\.id\)\}/);
+  assert.match(chatsSource, /onClick=\{\(\) => onCancel\?\.\(message\.sessionId, message\.id\)\}/);
 });
 
 test('side-panel queued local-agent sends preserve draft visibility and reference context while a turn is running', () => {

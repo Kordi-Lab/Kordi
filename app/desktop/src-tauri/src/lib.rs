@@ -11,7 +11,13 @@ mod project;
 mod test_support;
 mod workspace;
 
-use std::process::Command;
+use std::fs::{self, File};
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::Duration;
+
+use serde::Serialize;
 
 fn is_cloud_edition_context(
     kordi_edition: Option<&str>,
@@ -89,6 +95,10 @@ fn should_publish_presence_offline_on_exit() -> bool {
 }
 
 const DEFAULT_CLOUD_API_BASE_URL: &str = "https://coordinar.io";
+const DEFAULT_RELEASE_VERSION_URL: &str = "https://coordinar.io/updates/releases/version";
+const DEFAULT_RELEASE_CHANGELOG_URL: &str = DEFAULT_RELEASE_VERSION_URL;
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_millis(1500);
+const UPDATE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 fn cloud_api_base_url_from_env() -> String {
     std::env::var("VITE_KORDI_CLOUD_API_BASE")
@@ -121,6 +131,308 @@ fn publish_cloud_presence_offline(token: &str, base_url: &str) -> Result<(), Str
     } else {
         Err(format!("presence_offline_failed: {}", response.status()))
     }
+}
+
+fn release_version_url_from_env() -> String {
+    std::env::var("KORDI_UPDATE_CHECK_URL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_RELEASE_VERSION_URL.to_string())
+}
+
+fn update_install_command_from_env() -> String {
+    std::env::var("KORDI_UPDATE_CHECK_INSTALL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            format!("Install the latest Kordi release from {DEFAULT_RELEASE_VERSION_URL}")
+        })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdateCheckResult {
+    status: String,
+    current_version: String,
+    latest_version: Option<String>,
+    changelog_url: Option<String>,
+    download_url: Option<String>,
+    signature: Option<String>,
+    install_command: Option<String>,
+    message: String,
+}
+
+fn update_response_text_field(value: &serde_json::Value, names: &[&str]) -> Option<String> {
+    names
+        .iter()
+        .find_map(|name| value.get(name)?.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+#[derive(Debug, Clone)]
+struct ParsedUpdateRelease {
+    version: String,
+    changelog_url: Option<String>,
+    download_url: Option<String>,
+    signature: Option<String>,
+    install_command: Option<String>,
+}
+
+fn parse_update_latest_version_response(body: &str) -> Result<ParsedUpdateRelease, String> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return Err("Update endpoint returned an empty response".to_string());
+    }
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(version) =
+            update_response_text_field(&json, &["version", "latestVersion", "latest_version"])
+        {
+            let changelog_url = update_response_text_field(
+                &json,
+                &["changelogUrl", "changelog_url", "releaseNotesUrl"],
+            );
+            let install_command =
+                update_response_text_field(&json, &["installCommand", "install_command"]);
+            let download_url = update_response_text_field(&json, &["downloadUrl", "download_url"]);
+            let signature = update_response_text_field(&json, &["signature", "updateSignature"]);
+            return Ok(ParsedUpdateRelease {
+                version,
+                changelog_url,
+                download_url,
+                signature,
+                install_command,
+            });
+        }
+    }
+    let version = trimmed.trim_matches('"').trim().to_string();
+    if version.is_empty() {
+        Err("Update endpoint did not include a version".to_string())
+    } else {
+        Ok(ParsedUpdateRelease {
+            version,
+            changelog_url: None,
+            download_url: None,
+            signature: None,
+            install_command: None,
+        })
+    }
+}
+
+fn check_for_updates_blocking() -> Result<DesktopUpdateCheckResult, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let url = release_version_url_from_env();
+    let response = reqwest::blocking::Client::builder()
+        .timeout(UPDATE_CHECK_TIMEOUT)
+        .build()
+        .map_err(|err| err.to_string())?
+        .get(url)
+        .send()
+        .map_err(|err| err.to_string())?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(DesktopUpdateCheckResult {
+            status: "unavailable".to_string(),
+            current_version,
+            latest_version: None,
+            changelog_url: Some(DEFAULT_RELEASE_CHANGELOG_URL.to_string()),
+            download_url: None,
+            signature: None,
+            install_command: None,
+            message: "No Kordi release metadata is available yet.".to_string(),
+        });
+    }
+    let body = response
+        .error_for_status()
+        .map_err(|err| err.to_string())?
+        .text()
+        .map_err(|err| err.to_string())?;
+    let latest = parse_update_latest_version_response(&body)?;
+    if latest.version == current_version {
+        return Ok(DesktopUpdateCheckResult {
+            status: "upToDate".to_string(),
+            current_version,
+            latest_version: Some(latest.version.clone()),
+            changelog_url: latest
+                .changelog_url
+                .or_else(|| Some(DEFAULT_RELEASE_CHANGELOG_URL.to_string())),
+            download_url: latest.download_url,
+            signature: latest.signature,
+            install_command: None,
+            message: format!("Kordi {} is up to date.", latest.version),
+        });
+    }
+    Ok(DesktopUpdateCheckResult {
+        status: "updateAvailable".to_string(),
+        current_version,
+        latest_version: Some(latest.version.clone()),
+        changelog_url: latest
+            .changelog_url
+            .or_else(|| Some(DEFAULT_RELEASE_CHANGELOG_URL.to_string())),
+        download_url: latest.download_url,
+        signature: latest.signature,
+        install_command: latest
+            .install_command
+            .or_else(|| Some(update_install_command_from_env())),
+        message: format!("Kordi {} is available.", latest.version),
+    })
+}
+
+#[tauri::command]
+async fn desktop_check_for_updates() -> Result<DesktopUpdateCheckResult, String> {
+    tauri::async_runtime::spawn_blocking(check_for_updates_blocking)
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdateInstallResult {
+    status: String,
+    version: Option<String>,
+    downloaded_path: String,
+    message: String,
+}
+
+fn update_download_dir() -> PathBuf {
+    std::env::var("KORDI_UPDATE_DOWNLOAD_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("kordi-updates"))
+}
+
+fn update_download_file_name(url: &reqwest::Url, version: Option<&str>) -> String {
+    let candidate = url
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Kordi.dmg");
+    let sanitized = candidate
+        .chars()
+        .map(|ch| match ch {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '.' | '-' | '_' => ch,
+            _ => '-',
+        })
+        .collect::<String>();
+    if sanitized == "Kordi.dmg" {
+        version
+            .map(|value| format!("Kordi-{value}.dmg"))
+            .unwrap_or(sanitized)
+    } else {
+        sanitized
+    }
+}
+
+fn download_update_package(download_url: &str, version: Option<&str>) -> Result<PathBuf, String> {
+    let url = reqwest::Url::parse(download_url).map_err(|err| err.to_string())?;
+    match url.scheme() {
+        "https" | "http" => {}
+        _ => return Err("Update download URL must be http or https".to_string()),
+    }
+    let download_dir = update_download_dir();
+    fs::create_dir_all(&download_dir).map_err(|err| err.to_string())?;
+    let target = download_dir.join(update_download_file_name(&url, version));
+    let mut response = reqwest::blocking::Client::builder()
+        .timeout(UPDATE_DOWNLOAD_TIMEOUT)
+        .build()
+        .map_err(|err| err.to_string())?
+        .get(url)
+        .send()
+        .map_err(|err| err.to_string())?
+        .error_for_status()
+        .map_err(|err| err.to_string())?;
+    let mut file = File::create(&target).map_err(|err| err.to_string())?;
+    io::copy(&mut response, &mut file).map_err(|err| err.to_string())?;
+    Ok(target)
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn write_macos_update_installer_script(dmg_path: &Path) -> Result<PathBuf, String> {
+    let script_path = update_download_dir().join("install-kordi-update.sh");
+    let dmg = shell_quote(&dmg_path.to_string_lossy());
+    let script = format!(
+        r#"#!/bin/sh
+set -eu
+DMG={dmg}
+APP_NAME="Kordi.app"
+MOUNT_DIR="$(mktemp -d /tmp/kordi-update-mount.XXXXXX)"
+cleanup() {{
+  hdiutil detach "$MOUNT_DIR" -quiet >/dev/null 2>&1 || true
+}}
+trap cleanup EXIT
+hdiutil attach "$DMG" -mountpoint "$MOUNT_DIR" -nobrowse -readonly -quiet
+APP_SOURCE="$(find "$MOUNT_DIR" -maxdepth 2 -name "$APP_NAME" -type d | head -n 1)"
+if [ -z "$APP_SOURCE" ]; then
+  echo "Kordi.app not found in update image" >&2
+  exit 1
+fi
+osascript -e 'tell application "Kordi" to quit' >/dev/null 2>&1 || true
+sleep 2
+rm -rf "/Applications/$APP_NAME"
+ditto "$APP_SOURCE" "/Applications/$APP_NAME"
+open "/Applications/$APP_NAME"
+"#
+    );
+    fs::write(&script_path, script).map_err(|err| err.to_string())?;
+    Ok(script_path)
+}
+
+fn spawn_update_installer(package_path: &Path) -> Result<(), String> {
+    if cfg!(target_os = "macos") {
+        let extension = package_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if extension != "dmg" {
+            return Err("Automatic install currently expects a macOS .dmg release.".to_string());
+        }
+        let script = write_macos_update_installer_script(package_path)?;
+        Command::new("/bin/sh")
+            .arg(script)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    } else {
+        Err("Automatic update install is currently supported on macOS only.".to_string())
+    }
+}
+
+fn install_update_blocking(
+    download_url: String,
+    version: Option<String>,
+) -> Result<DesktopUpdateInstallResult, String> {
+    let trimmed_url = download_url.trim();
+    if trimmed_url.is_empty() {
+        return Err("Update download URL is required".to_string());
+    }
+    let package_path = download_update_package(trimmed_url, version.as_deref())?;
+    spawn_update_installer(&package_path)?;
+    Ok(DesktopUpdateInstallResult {
+        status: "installing".to_string(),
+        version,
+        downloaded_path: package_path.to_string_lossy().to_string(),
+        message: "Kordi update downloaded. Installing and relaunching…".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn desktop_install_update(
+    download_url: String,
+    version: Option<String>,
+) -> Result<DesktopUpdateInstallResult, String> {
+    tauri::async_runtime::spawn_blocking(move || install_update_blocking(download_url, version))
+        .await
+        .map_err(|err| err.to_string())?
 }
 
 fn publish_stored_cloud_presence_offline_on_exit() {
@@ -275,6 +587,8 @@ pub fn run() {
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,
             desktop_open_external_url,
+            desktop_check_for_updates,
+            desktop_install_update,
             project::desktop_project_settings,
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,
@@ -322,6 +636,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_add_session_participants,
             canonical_sessions::desktop_canonical_remove_session_participant,
             canonical_sessions::desktop_canonical_set_session_participant_role,
+            canonical_sessions::desktop_canonical_mark_session_read,
             auth::desktop_auth_state,
             auth::desktop_cloud_provider_auth_snapshot_payload,
             auth::desktop_save_api_key,

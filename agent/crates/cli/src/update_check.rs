@@ -9,14 +9,16 @@ use kordi_tui::tui::{TuiCommand, TuiNoteLevel};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
+const DEFAULT_RELEASE_VERSION_URL: &str = "https://coordinar.io/updates/releases/version";
 const DEFAULT_NPM_PACKAGE: Option<&str> = None;
-const DEFAULT_CHANGELOG_URL: Option<&str> = Some("https://github.com/Kordi-AI/Kordi/releases");
+const DEFAULT_CHANGELOG_URL: Option<&str> = Some(DEFAULT_RELEASE_VERSION_URL);
 const DEFAULT_INSTALL_COMMAND: Option<&str> = None;
 const REQUEST_TIMEOUT: Duration = Duration::from_millis(1500);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct UpdateCheckConfig {
     package_name: String,
+    release_version_url: Option<String>,
     current_version: String,
     install_command: String,
     changelog_url: Option<String>,
@@ -33,6 +35,28 @@ pub(crate) struct UpdateNotice {
 #[derive(Debug, Deserialize)]
 struct NpmLatestResponse {
     version: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct HostedReleaseVersionResponse {
+    #[serde(default, alias = "latestVersion", alias = "latest_version")]
+    version: String,
+    #[serde(default, alias = "installCommand", alias = "install_command")]
+    install_command: Option<String>,
+    #[serde(
+        default,
+        alias = "changelogUrl",
+        alias = "changelog_url",
+        alias = "releaseNotesUrl"
+    )]
+    changelog_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct HostedReleaseVersion {
+    latest_version: String,
+    install_command: Option<String>,
+    changelog_url: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,10 +112,21 @@ pub(crate) async fn check_for_updates(
     })
 }
 
+fn explicit_install_command_override() -> Option<String> {
+    std::env::var("KORDI_UPDATE_CHECK_INSTALL")
+        .ok()
+        .filter(|cmd| !cmd.trim().is_empty())
+}
+
+fn detect_hosted_install_command() -> String {
+    explicit_install_command_override().unwrap_or_else(|| {
+        "Install the latest Kordi release from https://coordinar.io/updates/releases/version"
+            .to_string()
+    })
+}
+
 fn detect_install_command(package_name: &str) -> String {
-    if let Ok(cmd) = std::env::var("KORDI_UPDATE_CHECK_INSTALL")
-        && !cmd.trim().is_empty()
-    {
+    if let Some(cmd) = explicit_install_command_override() {
         return cmd;
     }
     if std::env::var("KORDI_NPM_WRAPPER_ACTIVE").ok().as_deref() == Some("1") {
@@ -118,10 +153,21 @@ fn load_config(cwd: &Path) -> Option<UpdateCheckConfig> {
         return None;
     }
 
-    let package_name = std::env::var("KORDI_UPDATE_CHECK_PACKAGE")
+    let explicit_package_name = std::env::var("KORDI_UPDATE_CHECK_PACKAGE")
         .ok()
-        .or_else(|| DEFAULT_NPM_PACKAGE.map(ToString::to_string))?;
-    let install_command = detect_install_command(&package_name);
+        .or_else(|| DEFAULT_NPM_PACKAGE.map(ToString::to_string));
+    let release_version_url = explicit_package_name.is_none().then(|| {
+        std::env::var("KORDI_UPDATE_CHECK_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_RELEASE_VERSION_URL.to_string())
+    });
+    let package_name = explicit_package_name.or_else(|| release_version_url.clone())?;
+    let install_command = if release_version_url.is_some() {
+        detect_hosted_install_command()
+    } else {
+        detect_install_command(&package_name)
+    };
     let changelog_url = std::env::var("KORDI_UPDATE_CHECK_CHANGELOG")
         .ok()
         .or_else(|| DEFAULT_CHANGELOG_URL.map(ToString::to_string));
@@ -133,6 +179,7 @@ fn load_config(cwd: &Path) -> Option<UpdateCheckConfig> {
 
     Some(UpdateCheckConfig {
         package_name,
+        release_version_url,
         current_version: env!("CARGO_PKG_VERSION").to_string(),
         install_command,
         changelog_url,
@@ -210,6 +257,10 @@ fn cache_file_path() -> PathBuf {
 }
 
 async fn fetch_update_notice(config: &UpdateCheckConfig) -> anyhow::Result<Option<UpdateNotice>> {
+    if let Some(url) = &config.release_version_url {
+        return fetch_hosted_update_notice(config, url).await;
+    }
+
     let encoded_package = encode_registry_package_name(&config.package_name);
     let url = format!("https://registry.npmjs.org/{encoded_package}/latest");
     let client = reqwest::Client::builder()
@@ -223,15 +274,76 @@ async fn fetch_update_notice(config: &UpdateCheckConfig) -> anyhow::Result<Optio
 
     let response = response.error_for_status()?;
     let latest: NpmLatestResponse = response.json().await?;
-    if is_newer_version(&latest.version, &config.current_version) {
+    update_notice_from_latest_version(config, latest.version, None, None)
+}
+
+async fn fetch_hosted_update_notice(
+    config: &UpdateCheckConfig,
+    url: &str,
+) -> anyhow::Result<Option<UpdateNotice>> {
+    let client = reqwest::Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()?;
+    let response = client.get(url).send().await?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+
+    let body = response.error_for_status()?.text().await?;
+    let latest = parse_release_version_response(&body)?;
+    update_notice_from_latest_version(
+        config,
+        latest.latest_version,
+        latest.install_command,
+        latest.changelog_url,
+    )
+}
+
+fn update_notice_from_latest_version(
+    config: &UpdateCheckConfig,
+    latest_version: String,
+    install_command: Option<String>,
+    changelog_url: Option<String>,
+) -> anyhow::Result<Option<UpdateNotice>> {
+    if is_newer_version(&latest_version, &config.current_version) {
         Ok(Some(UpdateNotice {
-            latest_version: latest.version,
-            install_command: config.install_command.clone(),
-            changelog_url: config.changelog_url.clone(),
+            latest_version,
+            install_command: install_command.unwrap_or_else(|| config.install_command.clone()),
+            changelog_url: changelog_url.or_else(|| config.changelog_url.clone()),
         }))
     } else {
         Ok(None)
     }
+}
+
+fn parse_release_version_response(body: &str) -> anyhow::Result<HostedReleaseVersion> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("empty update version response");
+    }
+
+    if let Ok(response) = serde_json::from_str::<HostedReleaseVersionResponse>(trimmed) {
+        let latest_version = response.version.trim().to_string();
+        if latest_version.is_empty() {
+            anyhow::bail!("update version response did not include a version");
+        }
+        return Ok(HostedReleaseVersion {
+            latest_version,
+            install_command: response.install_command,
+            changelog_url: response.changelog_url,
+        });
+    }
+
+    let latest_version = trimmed.trim_matches('"').trim().to_string();
+    if latest_version.is_empty() {
+        anyhow::bail!("update version response did not include a version");
+    }
+    Ok(HostedReleaseVersion {
+        latest_version,
+        install_command: None,
+        changelog_url: None,
+    })
 }
 
 fn encode_registry_package_name(package_name: &str) -> String {
@@ -286,8 +398,9 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        UpdateCheckConfig, UpdateCheckOutcome, UpdateNotice, build_update_available_note,
-        detect_install_command, is_newer_version, load_cached_outcome_from_path, load_config,
+        DEFAULT_RELEASE_VERSION_URL, UpdateCheckConfig, UpdateCheckOutcome, UpdateNotice,
+        build_update_available_note, detect_install_command, is_newer_version,
+        load_cached_outcome_from_path, load_config, parse_release_version_response,
         store_cached_outcome_to_path,
     };
 
@@ -326,6 +439,69 @@ mod tests {
     }
 
     #[test]
+    fn load_config_uses_hosted_coordinar_release_endpoint_by_default() {
+        let _guard = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _package = EnvGuard::remove("KORDI_UPDATE_CHECK_PACKAGE");
+        let _endpoint = EnvGuard::remove("KORDI_UPDATE_CHECK_URL");
+        let _changelog = EnvGuard::remove("KORDI_UPDATE_CHECK_CHANGELOG");
+        let _ttl = EnvGuard::remove("KORDI_UPDATE_CHECK_TTL_HOURS");
+        let _cache = EnvGuard::remove("KORDI_UPDATE_CHECK_CACHE_PATH");
+        let _install = EnvGuard::remove("KORDI_UPDATE_CHECK_INSTALL");
+        let _wrapper = EnvGuard::remove("KORDI_NPM_WRAPPER_ACTIVE");
+
+        let config =
+            load_config(cwd.path()).expect("hosted update check should be configured by default");
+
+        assert_eq!(
+            config.release_version_url.as_deref(),
+            Some(DEFAULT_RELEASE_VERSION_URL)
+        );
+        assert_eq!(config.package_name, DEFAULT_RELEASE_VERSION_URL);
+    }
+
+    #[test]
+    fn hosted_update_config_uses_release_download_install_text() {
+        let _guard = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _package = EnvGuard::remove("KORDI_UPDATE_CHECK_PACKAGE");
+        let _endpoint = EnvGuard::remove("KORDI_UPDATE_CHECK_URL");
+        let _install = EnvGuard::remove("KORDI_UPDATE_CHECK_INSTALL");
+        let _wrapper = EnvGuard::remove("KORDI_NPM_WRAPPER_ACTIVE");
+
+        let config =
+            load_config(cwd.path()).expect("hosted update check should be configured by default");
+
+        assert_eq!(
+            config.install_command,
+            "Install the latest Kordi release from https://coordinar.io/updates/releases/version"
+        );
+    }
+
+    #[test]
+    fn parses_hosted_release_version_response_shapes() {
+        let object = parse_release_version_response(r#"{ "version": "0.0.1-beta.6" }"#).unwrap();
+        assert_eq!(object.latest_version, "0.0.1-beta.6");
+
+        let camel = parse_release_version_response(
+            r#"{ "latestVersion": "0.0.1-beta.7", "changelogUrl": "https://coordinar.io/releases" }"#,
+        )
+        .unwrap();
+        assert_eq!(camel.latest_version, "0.0.1-beta.7");
+        assert_eq!(
+            camel.changelog_url.as_deref(),
+            Some("https://coordinar.io/releases")
+        );
+
+        let plain = parse_release_version_response("0.0.1-beta.8").unwrap();
+        assert_eq!(plain.latest_version, "0.0.1-beta.8");
+    }
+
+    #[test]
     fn compares_semver_like_versions() {
         assert!(is_newer_version("0.65.0", "0.64.9"));
         assert!(is_newer_version("1.0.0", "0.99.0"));
@@ -357,6 +533,7 @@ mod tests {
         let cache_path = dir.path().join("update-check.json");
         let config = UpdateCheckConfig {
             package_name: "npm:demo".to_string(),
+            release_version_url: None,
             current_version: "0.1.0".to_string(),
             install_command: "npm install -g demo".to_string(),
             changelog_url: None,
@@ -379,6 +556,7 @@ mod tests {
         let cache_path = dir.path().join("update-check.json");
         let config = UpdateCheckConfig {
             package_name: "npm:demo".to_string(),
+            release_version_url: None,
             current_version: "0.1.0".to_string(),
             install_command: "npm install -g demo".to_string(),
             changelog_url: None,
@@ -406,6 +584,7 @@ mod tests {
         let cache_path = dir.path().join("update-check.json");
         let written_config = UpdateCheckConfig {
             package_name: "npm:demo".to_string(),
+            release_version_url: None,
             current_version: "0.1.0".to_string(),
             install_command: "npm install -g demo".to_string(),
             changelog_url: None,
@@ -427,6 +606,7 @@ mod tests {
         let cache_path = dir.path().join("update-check.json");
         let written_config = UpdateCheckConfig {
             package_name: "npm:demo".to_string(),
+            release_version_url: None,
             current_version: "0.1.0".to_string(),
             install_command: "npm install -g demo".to_string(),
             changelog_url: None,

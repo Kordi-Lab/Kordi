@@ -645,7 +645,7 @@ export function OllamaModelControlCenter({
 
       {(actionError || actionMessage) ? (
         <div className={cn(
-          'rounded-[18px] border px-4 py-3 text-[12px] leading-5',
+          'app-error-text rounded-[18px] border px-4 py-3 text-[12px] leading-5',
           actionError
             ? 'border-rose-300/20 bg-rose-300/[0.075] text-rose-50'
             : 'border-emerald-300/18 bg-emerald-300/[0.075] text-emerald-50',
@@ -695,7 +695,7 @@ export function OllamaModelControlCenter({
         ) : null}
 
         {(setupError || serverStatusError || environment?.notes.length) ? (
-          <div className="mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
+          <div className="app-error-text mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
             {setupError ? <div>{setupError}</div> : null}
             {serverStatusError ? <div>{serverStatusError}</div> : null}
             {environment?.notes.map((note) => <div key={note}>{note}</div>)}
@@ -723,7 +723,7 @@ export function OllamaModelControlCenter({
         </div>
 
         {isInstalledSectionExpanded && installedError ? (
-          <div className="mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
+          <div className="app-error-text mt-3 rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
             {installedError}
           </div>
         ) : null}
@@ -845,7 +845,7 @@ export function OllamaModelControlCenter({
             </div>
 
             {catalogError ? (
-              <div className="rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
+              <div className="app-error-text rounded-[18px] border border-amber-300/18 bg-amber-300/[0.075] px-4 py-3 text-[12px] leading-5 text-amber-50">
                 {catalogError}
               </div>
             ) : null}

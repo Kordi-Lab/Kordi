@@ -16,7 +16,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
@@ -54,10 +54,38 @@ fn unique_email(prefix: &str) -> String {
 
 #[test]
 fn cloud_message_listing_uses_newest_window_before_oldest_first_display_order() {
-    let routes_source = std::fs::read_to_string("src/auth/routes.rs").expect("read auth routes source");
-    assert!(routes_source.contains("ORDER BY created_at DESC"));
+    let routes_source =
+        std::fs::read_to_string("src/auth/routes.rs").expect("read auth routes source");
+    assert!(routes_source.contains("ORDER BY cm.created_at DESC"));
     assert!(routes_source.contains("ORDER BY created_at ASC"));
     assert!(routes_source.contains("FROM ("));
+}
+
+#[test]
+fn cloud_message_listing_applies_durable_read_cursors() {
+    let routes_source =
+        std::fs::read_to_string("src/auth/routes.rs").expect("read auth routes source");
+    let pool_source = std::fs::read_to_string("src/pg/pool.rs").expect("read pool source");
+    assert!(routes_source.contains("cloud_read_cursors"));
+    assert!(pool_source.contains("version: 28"));
+    assert!(pool_source.contains("0028_cloud_read_cursors.sql"));
+    assert!(pool_source.contains("version: 29"));
+    assert!(pool_source.contains("0029_backfill_cloud_read_cursors.sql"));
+    assert!(routes_source.contains("peer_read_cursor"));
+    assert!(routes_source.contains("session_read_cursor"));
+    assert!(routes_source.contains("COALESCE(read_at"));
+}
+
+#[test]
+fn cloud_self_addressed_messages_are_read_by_definition() {
+    let routes_source =
+        std::fs::read_to_string("src/auth/routes.rs").expect("read auth routes source");
+    let pool_source = std::fs::read_to_string("src/pg/pool.rs").expect("read pool source");
+    assert!(routes_source.contains("let read_at = if is_self_message"));
+    assert!(routes_source.contains("(message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id)"));
+    assert!(routes_source.contains("WHEN from_account_id = $1 AND to_account_id = $1"));
+    assert!(pool_source.contains("version: 30"));
+    assert!(pool_source.contains("0030_mark_self_cloud_messages_read.sql"));
 }
 
 fn signup_body(email: &str, password: &str) -> Body {
@@ -170,10 +198,12 @@ async fn signup_happy_path_returns_session_and_persists_account() {
     let status = response.status();
     let body = read_json(response).await;
     assert_eq!(status, StatusCode::CREATED, "got body {body}");
-    assert!(body["session"]["token"]
-        .as_str()
-        .unwrap()
-        .starts_with("kordi_cs_"));
+    assert!(
+        body["session"]["token"]
+            .as_str()
+            .unwrap()
+            .starts_with("kordi_cs_")
+    );
     assert_eq!(body["account"]["primaryEmail"], email);
     assert_eq!(body["account"]["passwordSet"], true);
 
@@ -921,8 +951,14 @@ async fn session_read_marks_all_inbound_rows_for_that_session() {
         .await
         .unwrap();
     let reader_body = read_json(reader_signup).await;
-    let reader_token = reader_body["session"]["token"].as_str().unwrap().to_string();
-    let reader_account_id = reader_body["account"]["accountId"].as_str().unwrap().to_string();
+    let reader_token = reader_body["session"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let reader_account_id = reader_body["account"]["accountId"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let peer_one_signup = router
         .clone()
@@ -933,8 +969,14 @@ async fn session_read_marks_all_inbound_rows_for_that_session() {
         .await
         .unwrap();
     let peer_one_body = read_json(peer_one_signup).await;
-    let peer_one_token = peer_one_body["session"]["token"].as_str().unwrap().to_string();
-    let peer_one_account_id = peer_one_body["account"]["accountId"].as_str().unwrap().to_string();
+    let peer_one_token = peer_one_body["session"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let peer_one_account_id = peer_one_body["account"]["accountId"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let peer_two_signup = router
         .clone()
@@ -945,8 +987,14 @@ async fn session_read_marks_all_inbound_rows_for_that_session() {
         .await
         .unwrap();
     let peer_two_body = read_json(peer_two_signup).await;
-    let peer_two_token = peer_two_body["session"]["token"].as_str().unwrap().to_string();
-    let peer_two_account_id = peer_two_body["account"]["accountId"].as_str().unwrap().to_string();
+    let peer_two_token = peer_two_body["session"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let peer_two_account_id = peer_two_body["account"]["accountId"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     sqlx_core::query::query(
         "INSERT INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES \
@@ -1025,6 +1073,179 @@ async fn session_read_marks_all_inbound_rows_for_that_session() {
 }
 
 #[tokio::test]
+async fn session_read_cursor_marks_legacy_unread_rows_read_for_fresh_listing() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+
+    let reader_signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&unique_email("session-cursor-reader"), "correct horse"),
+        ))
+        .await
+        .unwrap();
+    let reader_body = read_json(reader_signup).await;
+    let reader_token = reader_body["session"]["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let reader_account_id = reader_body["account"]["accountId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let peer_signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&unique_email("session-cursor-peer"), "correct horse"),
+        ))
+        .await
+        .unwrap();
+    let peer_body = read_json(peer_signup).await;
+    let peer_token = peer_body["session"]["token"].as_str().unwrap().to_string();
+    let peer_account_id = peer_body["account"]["accountId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    sqlx_core::query::query(
+        "INSERT INTO cloud_contacts (account_id, peer_account_id, created_at) VALUES ($1, $2, $3), ($2, $1, $3)",
+    )
+    .bind(&reader_account_id)
+    .bind(&peer_account_id)
+    .bind("2026-05-13T00:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let session_id = format!("session:group:{}", uuid::Uuid::new_v4().simple());
+    let other_session_id = format!("session:group:{}", uuid::Uuid::new_v4().simple());
+    let session_message = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &peer_token,
+            json!({ "peerAccountId": reader_account_id.clone(), "body": "legacy unread", "sessionId": session_id.clone() }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(session_message.status(), StatusCode::CREATED);
+    let session_message_id = read_json(session_message).await["message"]["messageId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let other_message = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &peer_token,
+            json!({ "peerAccountId": reader_account_id.clone(), "body": "other unread", "sessionId": other_session_id.clone() }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(other_message.status(), StatusCode::CREATED);
+    let other_message_id = read_json(other_message).await["message"]["messageId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let read_resp = router
+        .clone()
+        .oneshot(post_with_token(
+            &format!("/v1/cloud/sessions/{session_id}/read"),
+            &reader_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(read_resp.status(), StatusCode::NO_CONTENT);
+
+    sqlx_core::query::query("UPDATE cloud_messages SET read_at = NULL WHERE message_id = $1")
+        .bind(&session_message_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let list_resp = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={peer_account_id}"),
+            &reader_token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let list = read_json(list_resp).await;
+    let messages = list["messages"].as_array().unwrap();
+    let session_row = messages
+        .iter()
+        .find(|message| message["messageId"] == session_message_id)
+        .unwrap();
+    assert!(session_row["readAt"].as_str().is_some());
+    let other_row = messages
+        .iter()
+        .find(|message| message["messageId"] == other_message_id)
+        .unwrap();
+    assert!(other_row["readAt"].is_null());
+}
+
+#[tokio::test]
+async fn self_addressed_messages_are_returned_outgoing_and_read() {
+    let Some(pool) = try_pool().await else {
+        return;
+    };
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+
+    let signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&unique_email("self-read"), "correct horse"),
+        ))
+        .await
+        .unwrap();
+    let body = read_json(signup).await;
+    let token = body["session"]["token"].as_str().unwrap().to_string();
+    let account_id = body["account"]["accountId"].as_str().unwrap().to_string();
+
+    let send = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &token,
+            json!({
+                "peerAccountId": account_id,
+                "body": "private self row",
+                "sessionId": "session:self-agent:test"
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(send.status(), StatusCode::CREATED);
+    let sent = read_json(send).await;
+    assert_eq!(sent["message"]["direction"], "outgoing");
+    assert!(sent["message"]["readAt"].as_str().is_some());
+
+    let list = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={account_id}"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let listed = read_json(list).await;
+    let message = listed["messages"].as_array().unwrap().last().unwrap();
+    assert_eq!(message["direction"], "outgoing");
+    assert!(message["readAt"].as_str().is_some());
+}
+
+#[tokio::test]
 async fn logout_invalidates_session_token() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("logout");
@@ -1058,7 +1279,6 @@ async fn logout_invalidates_session_token() {
     assert_eq!(me_after.status(), StatusCode::UNAUTHORIZED);
 }
 
-
 #[tokio::test]
 async fn presence_contacts_returns_self_and_accepted_contacts_only() {
     let Some(pool) = try_pool().await else { return };
@@ -1069,28 +1289,88 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
     let b_email = unique_email("presence-b");
     let c_email = unique_email("presence-c");
 
-    let a = read_json(router.clone().oneshot(post("/v1/cloud/auth/signup", signup_body(&a_email, "correct horse"))).await.unwrap()).await;
-    let b = read_json(router.clone().oneshot(post("/v1/cloud/auth/signup", signup_body(&b_email, "correct horse"))).await.unwrap()).await;
-    let c = read_json(router.clone().oneshot(post("/v1/cloud/auth/signup", signup_body(&c_email, "correct horse"))).await.unwrap()).await;
+    let a = read_json(
+        router
+            .clone()
+            .oneshot(post(
+                "/v1/cloud/auth/signup",
+                signup_body(&a_email, "correct horse"),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let b = read_json(
+        router
+            .clone()
+            .oneshot(post(
+                "/v1/cloud/auth/signup",
+                signup_body(&b_email, "correct horse"),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let c = read_json(
+        router
+            .clone()
+            .oneshot(post(
+                "/v1/cloud/auth/signup",
+                signup_body(&c_email, "correct horse"),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
     let a_token = a["session"]["token"].as_str().unwrap();
     let b_id = b["account"]["accountId"].as_str().unwrap();
     let c_id = c["account"]["accountId"].as_str().unwrap();
 
     let request_body = json!({ "peerAccountId": b_id });
-    let request = read_json(router.clone().oneshot(post_json_with_token("/v1/cloud/contacts/requests", a_token, request_body)).await.unwrap()).await;
+    let request = read_json(
+        router
+            .clone()
+            .oneshot(post_json_with_token(
+                "/v1/cloud/contacts/requests",
+                a_token,
+                request_body,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
     let request_id = request["request"]["requestId"].as_str().unwrap();
     let b_token = b["session"]["token"].as_str().unwrap();
     let accept_path = format!("/v1/cloud/contacts/requests/{request_id}/accept");
-    let accept_status = router.clone().oneshot(post_with_token(&accept_path, b_token)).await.unwrap().status();
+    let accept_status = router
+        .clone()
+        .oneshot(post_with_token(&accept_path, b_token))
+        .await
+        .unwrap()
+        .status();
     assert_eq!(accept_status, StatusCode::OK);
 
-    let online_status = router.clone().oneshot(post_with_token("/v1/cloud/presence/online", a_token)).await.unwrap().status();
+    let online_status = router
+        .clone()
+        .oneshot(post_with_token("/v1/cloud/presence/online", a_token))
+        .await
+        .unwrap()
+        .status();
     assert_eq!(online_status, StatusCode::OK);
 
-    let response = router.clone().oneshot(get_with_token("/v1/cloud/presence/contacts", a_token)).await.unwrap();
+    let response = router
+        .clone()
+        .oneshot(get_with_token("/v1/cloud/presence/contacts", a_token))
+        .await
+        .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let body = read_json(response).await;
-    let ids: Vec<String> = body["accounts"].as_array().unwrap().iter().map(|row| row["accountId"].as_str().unwrap().to_string()).collect();
+    let ids: Vec<String> = body["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["accountId"].as_str().unwrap().to_string())
+        .collect();
     assert!(ids.contains(&a["account"]["accountId"].as_str().unwrap().to_string()));
     assert!(ids.contains(&b_id.to_string()));
     assert!(!ids.contains(&c_id.to_string()));
@@ -1102,14 +1382,54 @@ async fn presence_rollup_stays_online_until_all_devices_offline() {
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = fast_router(state);
     let email = unique_email("presence-rollup");
-    let signup = read_json(router.clone().oneshot(post("/v1/cloud/auth/signup", signup_body(&email, "correct horse"))).await.unwrap()).await;
+    let signup = read_json(
+        router
+            .clone()
+            .oneshot(post(
+                "/v1/cloud/auth/signup",
+                signup_body(&email, "correct horse"),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
     let token = signup["session"]["token"].as_str().unwrap();
 
-    assert_eq!(router.clone().oneshot(post_with_token("/v1/cloud/presence/online", token)).await.unwrap().status(), StatusCode::OK);
-    let online = read_json(router.clone().oneshot(get_with_token("/v1/cloud/presence/contacts", token)).await.unwrap()).await;
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(post_with_token("/v1/cloud/presence/online", token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let online = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/presence/contacts", token))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(online["accounts"][0]["status"], "online");
 
-    assert_eq!(router.clone().oneshot(post_with_token("/v1/cloud/presence/offline", token)).await.unwrap().status(), StatusCode::OK);
-    let offline = read_json(router.clone().oneshot(get_with_token("/v1/cloud/presence/contacts", token)).await.unwrap()).await;
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(post_with_token("/v1/cloud/presence/offline", token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let offline = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/presence/contacts", token))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(offline["accounts"][0]["status"], "offline");
 }

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { stripDerivedCloudUnreadCounts } from '../src/app/useKordiAppModelHelpers';
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { activeConversationForSelection, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
@@ -10,6 +11,44 @@ import { restoredCloudSelfAgentContextMessages } from '../src/features/chat/mess
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
+import type { CanonicalSessionState } from '../src/kordi-app/types';
+
+test('canonical hydration strips persisted derived cloud unread counts', () => {
+  const state: CanonicalSessionState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:test',
+      displayName: 'Me',
+      humanIdentityId: 'human:test',
+      activeAgentIdentityId: 'agent:test',
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [],
+    sessions: [{
+      id: 'session:self-agent:test',
+      kind: 'self-agent',
+      title: 'Self chat',
+      status: 'active',
+      createdByIdentityId: 'human:test',
+      metadata: { cloudUnreadCount: 82, keep: 'value' },
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      lastMessageAtMs: 1,
+    }],
+    participants: [],
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const scrubbed = stripDerivedCloudUnreadCounts(state);
+  const metadata = scrubbed?.sessions[0]?.metadata as Record<string, unknown> | undefined;
+  assert.equal(metadata?.cloudUnreadCount, undefined);
+  assert.equal(metadata?.keep, 'value');
+});
 
 test('pending Cloud contact selection keeps active conversation on Cloud instead of falling back to local session', () => {
   const conversation = pendingCloudBridgeConversationForActiveId('bridge:cloud:acct_peer:person');
@@ -44,6 +83,35 @@ test('workspace active conversation resolves Cloud self-agent bridge session ids
 
   assert.equal(selected.id, localConversation.id);
   assert.equal(selected.messages[0]?.text, '家人们谁懂啊');
+});
+
+test('workspace active conversation keeps selected canonical Cloud session in loading state while hydration catches up', () => {
+  const localConversation = {
+    id: 'local-newer',
+    canonicalSessionId: 'local-newer',
+    name: 'Local newer',
+    type: 'owned-agent' as const,
+    subtitle: 'Local fallback should not win',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'owned-agent' as const, text: 'wrong local fallback', time: '10:02' }],
+  };
+
+  const selected = activeConversationForSelection(
+    'session:group:clicked-before-hydration',
+    [localConversation],
+    { isNativeShell: true, nativeChatPlaceholder: localConversation },
+  );
+
+  assert.equal(selected.id, 'session:group:clicked-before-hydration');
+  assert.equal(selected.canonicalSessionId, 'session:group:clicked-before-hydration');
+  assert.equal(selected.unread, 0);
+  assert.equal(selected.messages.length > 0, true);
+  assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
+  assert.notEqual(selected.messages[0]?.text, 'wrong local fallback');
 });
 
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {

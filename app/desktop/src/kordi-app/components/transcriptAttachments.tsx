@@ -155,7 +155,7 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
         ) : null}
         {isDownloading ? <span className="px-3 pb-1 text-[10px] text-slate-400">Downloading…</span> : null}
         {downloadedPath && !isDownloading ? <span className="px-3 pb-1 text-[10px] text-slate-400">Downloaded</span> : null}
-        {error ? <span className="max-w-[190px] px-3 pb-1 text-[10px] text-rose-300">{error}</span> : null}
+        {error ? <span className="app-error-text max-w-[190px] px-3 pb-1 text-[10px] text-rose-300">{error}</span> : null}
       </div>
     );
   }
@@ -193,7 +193,7 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
       </div>
       {isDownloading ? <span className="text-[10px] text-slate-400">Downloading…</span> : null}
       {downloadedPath && !isDownloading ? <span className="text-[10px] text-slate-400">Downloaded</span> : null}
-      {error ? <span className="max-w-[160px] text-right text-[10px] text-rose-300">{error}</span> : null}
+      {error ? <span className="app-error-text max-w-[160px] text-right text-[10px] text-rose-300">{error}</span> : null}
     </div>
   );
 }

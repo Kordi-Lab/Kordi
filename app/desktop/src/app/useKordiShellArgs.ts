@@ -280,6 +280,8 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeBridgeAwaitingReply: args.activeBridgeAwaitingReply,
       activeQueuedDesktopMessages: args.activeQueuedDesktopMessages,
       queuedDesktopMessagesBySession: args.queuedDesktopMessagesBySession,
+      handleEditQueuedMessage: args.handleEditQueuedMessage,
+      handleCancelQueuedMessage: args.handleCancelQueuedMessage,
       lastBridgePollAtLabel: args.lastBridgePollAtLabel,
       isBridgePolling: args.isBridgePolling,
     },

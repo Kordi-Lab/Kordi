@@ -379,7 +379,7 @@ test('ask agent side transcript renders the same live turn and tool UI as My age
   assert.match(source, /const rawCompanionTranscriptLiveTurn = companionConversation\?\.previewLiveTurn \?\? undefined/);
   assert.match(source, /const companionTranscriptLiveTurn = rawCompanionTranscriptLiveTurn && companionConversation/);
   assert.match(source, /suppressLiveTurnEchoMessages\(\s*companionConversation\.messages, companionTranscriptLiveTurn/s);
-  assert.match(source, /buildReplyAttribution\(messages, companionTranscriptLiveTurn/);
+  assert.match(source, /buildReplyAttribution\(visibleRawTranscriptMessages, shouldRenderLiveTurn \? liveTurn : null/);
   assert.match(source, /attributedCompanionTranscriptLiveTurn/);
   assert.match(source, /<ChatSessionPane[\s\S]*liveTurn=\{attributedCompanionTranscriptLiveTurn\}/);
 });

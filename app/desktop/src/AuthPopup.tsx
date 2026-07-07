@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, ExternalLink, LoaderCircle, LogIn, Shield, X } from 'lucide-react';
+import { Copy, ExternalLink, LoaderCircle, LogIn, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AuthFlowSteps, type AuthFlowStep } from '@/kordi-app/auth/AuthFlowSteps';
 import type { DesktopAuthAttemptSnapshot, DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
@@ -379,10 +379,6 @@ export default function AuthPopup({
           <div className="app-auth-popup-header border-b border-white/8 px-4 py-2.5 sm:px-4.5">
             <div className="flex items-start justify-between gap-3.5">
           <div>
-            <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium tracking-[-0.01em] text-slate-300">
-              <Shield className="h-3.5 w-3.5" />
-              {embedded ? 'Authentication' : 'Authentication window'}
-            </div>
             <div className={embedded ? 'text-[20px] font-semibold tracking-[-0.025em] text-white' : 'text-[24px] font-semibold tracking-[-0.03em] text-white'}>
               {authPopupTitle(provider, providerId, mode)}
             </div>
@@ -401,10 +397,6 @@ export default function AuthPopup({
         {!embedded && (
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
-              <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium tracking-[-0.01em] text-slate-300">
-                <Shield className="h-3.5 w-3.5" />
-                {embedded ? 'Authentication' : 'Authentication window'}
-              </div>
               <div className={embedded ? 'text-[20px] font-semibold tracking-[-0.025em] text-white' : 'text-[24px] font-semibold tracking-[-0.03em] text-white'}>
                 {authPopupTitle(provider, providerId, mode)}
               </div>
@@ -424,19 +416,19 @@ export default function AuthPopup({
             Loading auth state…
           </div>
         ) : !provider ? (
-          <div className="rounded-[24px] border border-rose-400/30 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
+          <div className="app-error-text rounded-[24px] border border-rose-400/30 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
             Unknown provider.
           </div>
         ) : (
           <div className="space-y-3.5">
             {authAttempt?.succeeded && (
               <div className="rounded-[20px] border border-emerald-400/25 bg-emerald-500/10 px-3.5 py-2.5 text-[13px] leading-5 text-emerald-100">
-                Authentication successful. This account is now saved in Kordi and ready to use.
+                <strong className="font-semibold text-emerald-50">Signed in.</strong> This account is connected and ready to use.
               </div>
             )}
 
             {visibleError && (
-              <div className="rounded-[20px] border border-rose-400/30 bg-rose-500/10 px-3.5 py-2.5 text-[13px] leading-5 text-rose-100">
+              <div className="app-error-text rounded-[20px] border border-rose-400/30 bg-rose-500/10 px-3.5 py-2.5 text-[13px] leading-5 text-rose-100">
                 {visibleError}
               </div>
             )}

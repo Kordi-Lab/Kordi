@@ -38,10 +38,16 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.doesNotMatch(providerList, /provider\.loginHint/);
 
   const shellPages = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
-  const gateHoverRule = shellPages.match(/\.app-auth-provider-gate-card:hover,[\s\S]*?\n}\n/)?.[0] ?? '';
+  const gateHoverRule = shellPages.match(/\.app-auth-provider-gate-card:hover \{[\s\S]*?\n}\n/)?.[0] ?? '';
+  const gateFocusRule = shellPages.match(/\.app-auth-provider-gate-card:focus-visible \{[\s\S]*?\n}\n/)?.[0] ?? '';
   assert.match(gateHoverRule, /background:/);
   assert.match(gateHoverRule, /box-shadow:/);
+  assert.doesNotMatch(gateHoverRule, /app-control-active/, 'unselected gate hover must not look like active/selected state');
+  assert.doesNotMatch(gateHoverRule, /0 0 0 1px/, 'unselected gate hover should not draw an active outer selection ring');
   assert.doesNotMatch(gateHoverRule, /translateY|scale\(|animation:/);
+  assert.match(gateFocusRule, /outline:/);
+  assert.doesNotMatch(gateFocusRule, /background:/);
+  assert.doesNotMatch(gateFocusRule, /app-control-active/);
   assert.doesNotMatch(shellPages, /app-auth-provider-selected/);
 });
 
@@ -58,6 +64,17 @@ test('provider gate uses a flat cool light surface without modal board chrome', 
   assert.match(gateLightRule, /rgb\(248 251 255\)|rgb\(241 247 255\)|rgba\(248, 251, 255/);
   assert.doesNotMatch(gateLightRule, /rgba\(248, 246, 242|rgba\(245, 240, 232|warm|amber|orange/);
   assert.match(gateLightRule, /box-shadow:\s*none/);
+});
+
+test('inline auth popup uses direct handoff copy without authentication status chips', () => {
+  const authPopup = readFileSync(new URL('../src/AuthPopup.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(authPopup, /Authentication window/);
+  assert.doesNotMatch(authPopup, />Authentication</);
+  assert.doesNotMatch(authPopup, /Authentication successful/);
+  assert.match(authPopup, /Signed in/);
+  assert.match(authPopup, /This account is connected and ready to use\./);
+  assert.match(authPopup, /Finish sign-in/);
 });
 
 test('inline auth popup uses cool chat-aligned light cards instead of warm gray', () => {
@@ -122,6 +139,14 @@ test('auth pages avoid all-caps styling and use sentence-case detail chrome', ()
   assert.doesNotMatch(providerDetail, /What this provider is for/);
   assert.doesNotMatch(providerDetail, /Storage and cleanup/);
   assert.doesNotMatch(providerDetail, /<DetailSection title="Connect">/);
+});
+
+test('auth provider list does not highlight a provider before explicit selection', () => {
+  const authState = readFileSync(new URL('../src/features/auth/useDesktopAuthState.ts', import.meta.url), 'utf8');
+  const authPage = readAuthSource('AuthPage.tsx');
+
+  assert.doesNotMatch(authState, /setActiveLoginProviderId\(desktopAuthState\.providers\[0\]\.id\)/);
+  assert.match(authPage, /selectedProviderId=\{selectedProviderId \? provider\?\.id \?\? null : null\}/);
 });
 
 test('login from the first-run gate opens the auth page without routing into settings', () => {

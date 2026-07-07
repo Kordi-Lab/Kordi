@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -63,8 +63,8 @@ pub(crate) use self::group_participants::{
     session_has_participant, set_session_metadata_in_db, set_session_participant_role_in_db,
 };
 pub(crate) use self::identity_context::{
-    render_multi_participant_identity_context, IdentityContextParticipant,
-    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
+    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
+    IdentityContextRole, render_multi_participant_identity_context,
 };
 use self::identity_helpers::{
     canonical_avatar_key, canonical_identity_id, default_session_title, stable_session_id,
@@ -487,6 +487,106 @@ fn select_session(conn: &Connection, id: &str) -> Result<Option<CanonicalSession
     )
     .optional()
     .map_err(|err| err.to_string())
+}
+
+fn latest_readable_session_message_id(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT id
+         FROM session_messages
+         WHERE session_id = ?1
+           AND COALESCE(source_transport, '') NOT IN ('canonical-fork-snapshot', 'cloud-group-fork-snapshot')
+           AND LOWER(TRIM(status)) NOT IN ('sending', 'processing')
+         ORDER BY sequence_num DESC, created_at_ms DESC
+         LIMIT 1",
+        params![session_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+fn self_participant_identity_id(
+    conn: &Connection,
+    session_id: &str,
+    preferred_identity_id: Option<&str>,
+) -> Result<Option<String>, String> {
+    if let Some(identity_id) = preferred_identity_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let exists = conn
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM session_participants
+                    WHERE session_id = ?1 AND identity_id = ?2 AND role = 'self'
+                 )",
+                params![session_id, identity_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|err| err.to_string())?
+            != 0;
+        if exists {
+            return Ok(Some(identity_id.to_string()));
+        }
+    }
+
+    conn.query_row(
+        "SELECT identity_id
+         FROM session_participants
+         WHERE session_id = ?1 AND role = 'self'
+         ORDER BY added_at_ms DESC
+         LIMIT 1",
+        params![session_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+pub(super) fn mark_session_read_in_db(
+    conn: &Connection,
+    request: MarkCanonicalSessionReadRequest,
+) -> Result<(), String> {
+    let session_id = request.session_id.trim();
+    if session_id.is_empty() {
+        return Err("Session id is required".to_string());
+    }
+    if select_session(conn, session_id)?.is_none() {
+        return Err("Session not found".to_string());
+    }
+
+    let profile = ensure_local_profile(conn)?;
+    let preferred_identity_id = request
+        .identity_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or(profile.human_identity_id.as_deref());
+    let Some(identity_id) = self_participant_identity_id(conn, session_id, preferred_identity_id)?
+    else {
+        return Ok(());
+    };
+
+    let message_id = request
+        .message_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or(latest_readable_session_message_id(conn, session_id)?);
+    let now = now_ms();
+    conn.execute(
+        "UPDATE session_participants
+         SET last_seen_at_ms = ?1,
+             last_read_message_id = COALESCE(?2, last_read_message_id)
+         WHERE session_id = ?3 AND identity_id = ?4 AND role = 'self'",
+        params![now, message_id, session_id, identity_id],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 /// Trust boundary: this helper does not authorize the (session_id, message_id)
@@ -1613,4 +1713,11 @@ pub async fn desktop_canonical_set_session_participant_role(
         commands::desktop_canonical_set_session_participant_role(request)
     })
     .await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_mark_session_read(
+    request: MarkCanonicalSessionReadRequest,
+) -> Result<CanonicalSessionState, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_mark_session_read(request)).await
 }

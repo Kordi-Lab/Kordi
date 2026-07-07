@@ -59,7 +59,7 @@ export function EditableIdentityAvatar({ label = 'Avatar', compact = false, cont
           />
           {isSaving ? <div className="text-[11px] leading-4 text-slate-400">Saving…</div> : null}
         </div>
-        {error ? <div className="max-w-[18rem] text-[11px] leading-4 text-rose-300">{error}</div> : null}
+        {error ? <div className="app-error-text max-w-[18rem] text-[11px] leading-4 text-rose-300">{error}</div> : null}
       </div>
     </div>
   );

@@ -178,20 +178,18 @@ fn completion_page_html(request_id: &str) -> String {
   <div class="page" aria-hidden="false">
     <div class="page-grain" aria-hidden="true"></div>
     <main class="card" role="status" aria-live="polite">
-      <div class="auth-label">kordi</div>
-
       <span class="state-marker" data-status-loading aria-hidden="true"></span>
       <span class="state-marker" data-status-success aria-hidden="true"></span>
       <span class="state-marker" data-status-error aria-hidden="true"></span>
 
       <div class="copy">
-        <h1 class="title" data-title-loading>Completing Login</h1>
-        <h1 class="title" data-title-success>Login Successful</h1>
-        <h1 class="title" data-title-error>Login Failed</h1>
+        <h1 class="title" data-title-loading>Completing sign-in</h1>
+        <h1 class="title" data-title-success>Signed in</h1>
+        <h1 class="title" data-title-error>Couldn’t sign in</h1>
 
-        <p class="subtitle" data-sub-loading>Finishing the browser handoff with Kordi.</p>
-        <p class="subtitle" data-sub-success>You can close this tab and return to Kordi.</p>
-        <p class="subtitle" data-sub-error>Return to Kordi and try signing in again.</p>
+        <p class="subtitle" data-sub-loading>Finishing the browser handoff.</p>
+        <p class="subtitle" data-sub-success>Your account is connected. You can close this window and return to the app.</p>
+        <p class="subtitle" data-sub-error>Return to the app and try signing in again.</p>
       </div>
     </main>
   </div>
@@ -218,8 +216,6 @@ fn completion_page_css() -> &'static str {
       --surface: oklch(0.165 0.006 250 / 0.78);
       --surface-top: oklch(0.22 0.006 250 / 0.22);
       --border: oklch(0.50 0.006 250 / 0.26);
-      --label-border: oklch(0.72 0.010 250 / 0.22);
-      --label-bg: oklch(0.28 0.006 250 / 0.22);
       --ink-strong: oklch(0.985 0.004 250);
       --ink-soft: oklch(0.82 0.010 250);
       --ink-muted: oklch(0.70 0.010 250);
@@ -285,20 +281,20 @@ fn completion_page_css() -> &'static str {
 
     .card {
       position: relative;
-      width: min(740px, calc(100vw - 64px));
-      min-height: 250px;
-      padding: 50px 64px 48px;
+      width: min(470px, calc(100vw - 64px));
+      min-height: 0;
+      padding: 36px 32px;
       overflow: hidden;
       display: grid;
-      justify-items: center;
+      justify-items: start;
       align-content: center;
-      gap: 26px;
-      text-align: center;
+      gap: 0;
+      text-align: left;
       background:
         linear-gradient(180deg, var(--surface-top), transparent 42%),
         var(--surface);
       border: 1px solid var(--border);
-      border-radius: 42px;
+      border-radius: 30px;
       box-shadow:
         inset 0 1px 0 oklch(1 0 0 / 0.045),
         0 30px 86px -44px var(--shadow),
@@ -310,34 +306,18 @@ fn completion_page_css() -> &'static str {
       to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
     }
 
-    .auth-label {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 36px;
-      padding: 7px 18px 6px;
-      border: 1px solid var(--label-border);
-      border-radius: 999px;
-      background: var(--label-bg);
-      color: var(--ink-soft);
-      font-size: 14px;
-      line-height: 1;
-      font-weight: 640;
-      letter-spacing: -0.03em;
-    }
-
     .state-marker { display: none; }
     .copy {
       display: grid;
-      justify-items: center;
-      gap: 20px;
+      justify-items: start;
+      gap: 12px;
     }
     .title {
       display: none;
       margin: 0;
       color: var(--ink-strong);
-      font-size: 40px;
-      line-height: 1.04;
+      font-size: clamp(34px, 8vw, 46px);
+      line-height: .96;
       font-weight: 780;
       letter-spacing: -0.055em;
       animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 90ms;
@@ -345,11 +325,11 @@ fn completion_page_css() -> &'static str {
     .subtitle {
       display: none;
       margin: 0;
-      max-width: 26ch;
+      max-width: 34ch;
       color: var(--ink-soft);
-      font-size: 22px;
-      line-height: 1.55;
-      font-weight: 570;
+      font-size: 15px;
+      line-height: 1.62;
+      font-weight: 500;
       letter-spacing: -0.018em;
       text-wrap: balance;
       animation: text-fade 300ms cubic-bezier(0.22, 1, 0.36, 1) both 140ms;
@@ -370,11 +350,10 @@ fn completion_page_css() -> &'static str {
       .page { padding: 20px; }
       .card {
         width: 100%;
-        min-height: 230px;
-        padding: 38px 28px 36px;
-        border-radius: 34px;
+        min-height: 0;
+        padding: 34px 26px 32px;
+        border-radius: 28px;
       }
-      .auth-label { font-size: 12px; letter-spacing: -0.025em; }
     }
     @media (prefers-reduced-motion: reduce) {
       .card, .title, .subtitle { animation: none; }
@@ -420,8 +399,8 @@ mod completion_page_tests {
             "page should boot in loading state"
         );
         assert!(
-            html.contains(">kordi</div>"),
-            "page should render only the lowercase kordi label"
+            !html.contains("auth-label"),
+            "page should not render a visible label chip"
         );
 
         // All three state blocks must be present so the swap between them is
@@ -449,18 +428,19 @@ mod completion_page_tests {
     fn copy_matches_brand_voice_for_each_state() {
         let html = completion_page_html("cloud_oauth_abc123");
 
-        assert!(html.contains(">kordi</div>"));
+        assert!(!html.contains(">kordi</div>"));
+        assert!(!html.contains("KORDI LOGIN"));
+        assert!(html.contains("Completing sign-in"));
+        assert!(html.contains("Signed in"));
+        assert!(html.contains("Couldn’t sign in"));
+        assert!(html.contains(
+            "Your account is connected. You can close this window and return to the app."
+        ));
+        assert!(!html.contains("Close window"));
+        assert!(!html.contains("<button"));
         assert!(
-            !html.contains("KORDI LOGIN"),
-            "callback eyebrow should only say lowercase kordi"
-        );
-        assert!(html.contains("Completing Login"));
-        assert!(html.contains("Login Successful"));
-        assert!(html.contains("Login Failed"));
-        assert!(html.contains("You can close this tab and return to Kordi."));
-        assert!(
-            !html.contains("Authentication Successful"),
-            "cloud login callback should say login, not authentication"
+            !html.contains("Authentication Successful") && !html.contains("Login Successful"),
+            "cloud login callback should use direct signed-in copy"
         );
         assert!(
             !html.contains("READY"),
@@ -523,12 +503,12 @@ mod completion_page_tests {
             "callback label should not force the kordi wordmark into capitals"
         );
         assert!(
-            html.contains("font-size: 40px;"),
-            "callback title should use the same fixed title size as the provider-style confirmation page"
+            html.contains("font-size: clamp(34px, 8vw, 46px);"),
+            "callback title should use the shared compact callback scale"
         );
         assert!(
-            html.contains("font-size: 22px;"),
-            "callback subtitle should use the same fixed subtitle size as the provider-style confirmation page"
+            html.contains("font-size: 15px;"),
+            "callback subtitle should use the shared compact callback scale"
         );
         assert!(
             !html.contains("Avenir Next"),

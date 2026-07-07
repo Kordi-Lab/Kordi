@@ -1260,7 +1260,7 @@ test('renders agent source quote and processing status without an output block b
 
   assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
   assert.match(markup, /app-source-message-quote/);
-  assert.match(markup, /app-source-message-quote-rail/);
+  assert.doesNotMatch(markup, /app-source-message-quote-rail/);
   assert.doesNotMatch(markup, /app-source-message-quote-icon/);
   assert.match(markup, />You: <\/span>@AliceKordi review the copy/);
   assert.doesNotMatch(markup, /app-source-message-quote-label block truncate/);
@@ -1269,6 +1269,48 @@ test('renders agent source quote and processing status without an output block b
   assert.match(markup, /Processing/);
   assert.doesNotMatch(markup, /app-live-assistant-answer-markdown/);
   assert.doesNotMatch(markup, /checking auth screenshots/);
+});
+
+test('human reply preview is an inset replying-to rectangle without the quote rail', () => {
+  const baseMessage: Message = {
+    id: 'msg-reply-own',
+    role: 'user',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'Updated. The patch is small and covered by tests.',
+    time: '10:44',
+    sourceMessage: {
+      messageId: 'msg-source',
+      senderLabel: 'Jiaxin',
+      text: 'keep it concise',
+      attachmentCount: 0,
+    },
+  };
+  const ownMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: baseMessage }));
+  const peerMarkup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: {
+      ...baseMessage,
+      id: 'msg-reply-peer',
+      role: 'person',
+      senderType: 'human',
+      isOwnMessage: false,
+      sender: 'Jiaxin',
+    },
+  }));
+  const shellCss = readDesktopShellCss();
+  const quoteLinkBlock = shellCss.match(/\.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const railRule = shellCss.match(/\.app-source-message-quote-rail \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(ownMarkup, /app-chat-bubble-user/);
+  assert.match(peerMarkup, /app-chat-bubble-peer/);
+  assert.match(ownMarkup, />Replying to: <\/span>keep it concise/);
+  assert.match(peerMarkup, />Replying to: <\/span>keep it concise/);
+  assert.doesNotMatch(ownMarkup, />Jiaxin: <\/span>keep it concise/);
+  assert.doesNotMatch(peerMarkup, />Jiaxin: <\/span>keep it concise/);
+  assert.match(quoteLinkBlock, /grid-template-columns:\s*minmax\(0, 1fr\);/);
+  assert.match(quoteLinkBlock, /border-radius:\s*7px;/);
+  assert.match(quoteLinkBlock, /padding:\s*0\.34rem 0\.62rem;/);
+  assert.match(railRule, /display:\s*none;/);
 });
 
 test('folds long source quotes after three lines while keeping the full request text in the DOM', () => {
@@ -1354,9 +1396,10 @@ test('styles source quote colors contextually inside own message bubbles for dar
   assert.match(quoteRootBlock, /--app-source-message-quote-text:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 82%, var\(--app-source-message-quote-muted\)\)/);
   assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*var\(--app-chat-bubble-user-text\)/);
   assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-muted:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 72%, transparent\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*rgb\(255 255 255\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-label:\s*rgba\(255, 255, 255, 0\.88\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-text:\s*rgba\(255, 255, 255, 0\.76\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*rgb\(31 49 69\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-label:\s*rgba\(31, 49, 69, 0\.86\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-text:\s*rgba\(31, 49, 69, 0\.74\)/);
+  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-fade-bg:\s*rgb\(226 235 245\)/);
   assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 8%, transparent\)/);
 });
 

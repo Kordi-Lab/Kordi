@@ -82,6 +82,7 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, projectDraftSessionId } from '@/featu
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
+import { removeQueuedDesktopMessageById } from '@/features/chat/queuedDesktopMessages';
 import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
 import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '@/features/chat/messageSelection';
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
@@ -139,6 +140,7 @@ import {
   sessionMetadataRecord,
   sessionRenameNoticeText,
   shouldUseCloudSessionAction,
+  stripDerivedCloudUnreadCounts,
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
 
@@ -598,15 +600,13 @@ export function useKordiAppModel({
 
   const desktopCanonicalRefreshKey = useMemo(
     () => [
-      desktopChatState?.activeSessionId ?? '',
-      desktopChatState?.activeSession.messages.length ?? 0,
       ...(desktopChatState?.sessions ?? []).map((session) => `${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
       ...(desktopChatState?.projects ?? []).flatMap((project) => [
         `${project.id}:${project.root}:${project.name}:${project.sessions.length}`,
         ...project.sessions.map((session) => `${project.id}:${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
       ]),
     ].join('|'),
-    [desktopChatState],
+    [desktopChatState?.projects, desktopChatState?.sessions],
   );
 
   const bridgeCanonicalRefreshKey = useMemo(
@@ -622,7 +622,7 @@ export function useKordiAppModel({
     const flight = canonicalRefreshFlightRef.current;
     const run = requestSingleFlightRun(flight, async () => {
       try {
-        const fetchedCanonicalState = await fetchCanonicalSessionState();
+        const fetchedCanonicalState = stripDerivedCloudUnreadCounts(await fetchCanonicalSessionState());
         setCanonicalSessionState((current) => mergeCanonicalStatePreservingBridgeUiMessages(fetchedCanonicalState, current));
         setCanonicalInitialRefreshError(false);
       } catch {
@@ -1446,6 +1446,20 @@ export function useKordiAppModel({
     shouldAutoFollowChatRef,
     setActiveConvId,
   });
+
+  const handleEditQueuedMessage = useCallback((sessionId: string, queuedMessageId: string) => {
+    const queuedMessage = (queuedDesktopMessagesBySession[sessionId] ?? [])
+      .find((message) => message.id === queuedMessageId);
+    if (!queuedMessage) return;
+
+    composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', queuedMessage.sessionId, queuedMessage.text));
+    setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessageById(current, sessionId, queuedMessageId));
+    focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell);
+  }, [composerUi.setComposerDrafts, isNativeShell, queuedDesktopMessagesBySession, setQueuedDesktopMessagesBySession]);
+
+  const handleCancelQueuedMessage = useCallback((sessionId: string, queuedMessageId: string) => {
+    setQueuedDesktopMessagesBySession((current) => removeQueuedDesktopMessageById(current, sessionId, queuedMessageId));
+  }, [setQueuedDesktopMessagesBySession]);
 
   const handleSendChatMessageWithQuoteClear = useCallback((draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => (
     sendChatMessageWithImmediateQuoteClear({
@@ -2697,6 +2711,8 @@ export function useKordiAppModel({
     activeSessionProject,
     activeQueuedDesktopMessages,
     queuedDesktopMessagesBySession,
+    handleEditQueuedMessage,
+    handleCancelQueuedMessage,
     showAuthGate,
     dismissAuthGate,
     inlineAuthDialog,

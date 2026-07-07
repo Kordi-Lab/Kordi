@@ -288,3 +288,11 @@ pub struct SetCanonicalSessionParticipantRoleRequest {
     pub role: String,
     pub requested_by_identity_id: Option<String>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkCanonicalSessionReadRequest {
+    pub session_id: String,
+    pub identity_id: Option<String>,
+    pub message_id: Option<String>,
+}

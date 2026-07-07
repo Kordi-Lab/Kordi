@@ -528,6 +528,27 @@ test('cloud message local cache ignores malformed cached records', () => {
   assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), { acct_peer: [message] });
 });
 
+test('cloud message cache normalizes self-addressed rows as outgoing and preserves session ids', () => {
+  const storage = memoryStorage();
+  storage.setItem('kordi.cloud.messagesByPeer.v1:acct_self', JSON.stringify({
+    acct_self: [{
+      messageId: 'msg_self_1',
+      fromAccountId: 'acct_self',
+      toAccountId: 'acct_self',
+      body: 'cached self row',
+      createdAt: '2026-07-07T18:00:00Z',
+      deliveredAt: '2026-07-07T18:00:00Z',
+      readAt: null,
+      direction: 'incoming',
+      sessionId: 'session:self-agent:test',
+    }],
+  }));
+
+  const loaded = loadCachedCloudMessagesByPeer('acct_self', storage);
+  assert.equal(loaded.acct_self?.[0]?.direction, 'outgoing');
+  assert.equal(loaded.acct_self?.[0]?.sessionId, 'session:self-agent:test');
+});
+
 test('cloud group read marking patches stale local unread cache rows by session id', () => {
   const groupBody = encodeCloudGroupControl({
     kind: 'group-message',
@@ -2885,6 +2906,34 @@ test('cloud group cancel notices record sender or agent owner role', () => {
     cancelledByAccountId: 'acct_me',
     cancelledByRole: 'sender',
   });
+});
+
+test('cloud group cancel notices default to the stable processing timestamp', () => {
+  const notice = cloudGroupAgentCancelledNoticeRequest({
+    processingMessage: {
+      id: 'msg:processing',
+      sessionId: 'session:group',
+      senderIdentityId: 'agent:peer',
+      senderRole: 'external-agent',
+      messageKind: 'agent-turn',
+      contentText: 'Requesting…',
+      content: { sender: "Peer's Kordi", timestampMs: 55_000, deliveryState: 'processing', requestId: 'msg_request' },
+      status: 'processing',
+      sequenceNum: 1,
+      createdAtMs: 44_000,
+      updatedAtMs: 44_000,
+      contentHash: null,
+      sourceTransport: 'cloud-group-agent-offline',
+      sourceEventId: 'processing',
+    } as CanonicalSessionMessage,
+    requestId: 'msg_request',
+    conversationId: 'cloud-group-agent:session:group',
+    cancelledByAccountId: 'acct_me',
+    cancelledByRole: 'sender',
+  });
+
+  assert.equal(notice.createdAtMs, 55_000);
+  assert.equal((notice.content as { timestampMs?: number }).timestampMs, 55_000);
 });
 
 test('cloud agent cancel controls are hidden and show who cancelled the request', () => {

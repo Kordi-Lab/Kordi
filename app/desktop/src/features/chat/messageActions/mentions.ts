@@ -237,7 +237,7 @@ export function sharedCloudAgentMentionCandidatesForConversation(
         handle,
         normalizedHandle: normalizeMentionLabel(handle),
         displayLabel,
-        detailLabel: 'Agent',
+        detailLabel: `${owner}'s Agent`,
         targetKind: 'cloud-shared-agent' as const,
         targetAgentId: agent.agentId,
         targetOwnerAccountId: agent.ownerAccountId,

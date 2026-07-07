@@ -1,5 +1,32 @@
 import type { DesktopChatState, DesktopChatTurnSnapshot, Message, QueuedDesktopChatMessage } from '@/kordi-app/types';
 
+function mergeSessionSummaries(
+  current: DesktopChatState['sessions'],
+  next: DesktopChatState['sessions'],
+): DesktopChatState['sessions'] {
+  const nextIds = new Set(next.map((session) => session.id));
+  const preserved = current.filter((session) => !nextIds.has(session.id));
+  return preserved.length > 0 ? [...next, ...preserved] : next;
+}
+
+function mergeProjectGroups(
+  current: DesktopChatState['projects'],
+  next: DesktopChatState['projects'],
+): DesktopChatState['projects'] {
+  const currentById = new Map(current.map((project) => [project.id, project]));
+  const mergedProjects = next.map((project) => {
+    const currentProject = currentById.get(project.id);
+    if (!currentProject) return project;
+    return {
+      ...project,
+      sessions: mergeSessionSummaries(currentProject.sessions, project.sessions),
+    };
+  });
+  const nextProjectIds = new Set(next.map((project) => project.id));
+  const preservedProjects = current.filter((project) => !nextProjectIds.has(project.id));
+  return preservedProjects.length > 0 ? [...mergedProjects, ...preservedProjects] : mergedProjects;
+}
+
 export function mergeLatestDesktopChatState(
   current: DesktopChatState | null,
   nextState: DesktopChatState,
@@ -10,13 +37,19 @@ export function mergeLatestDesktopChatState(
     return nextState;
   }
 
+  const nextStateWithStableLists: DesktopChatState = {
+    ...nextState,
+    sessions: mergeSessionSummaries(current.sessions, nextState.sessions),
+    projects: mergeProjectGroups(current.projects, nextState.projects),
+  };
+
   const shouldPreserveActiveTranscript = preserveActiveTranscript && (
     current.activeSession.messageCount > nextState.activeSession.messageCount
     || current.activeSession.messages.length > nextState.activeSession.messages.length
   );
 
   if (!shouldPreserveActiveTranscript) {
-    return nextState;
+    return nextStateWithStableLists;
   }
 
   const nextMessageCount = Math.max(current.activeSession.messageCount, nextState.activeSession.messageCount);
@@ -24,8 +57,8 @@ export function mergeLatestDesktopChatState(
   const nextSubtitle = current.activeSession.subtitle;
 
   return {
-    ...nextState,
-    sessions: nextState.sessions.map((session) => (
+    ...nextStateWithStableLists,
+    sessions: nextStateWithStableLists.sessions.map((session) => (
       session.id === current.activeSession.id
         ? {
             ...session,
@@ -35,7 +68,7 @@ export function mergeLatestDesktopChatState(
           }
         : session
     )),
-    projects: nextState.projects.map((project) => ({
+    projects: nextStateWithStableLists.projects.map((project) => ({
       ...project,
       sessions: project.sessions.map((session) => (
         session.id === current.activeSession.id
@@ -49,7 +82,7 @@ export function mergeLatestDesktopChatState(
       )),
     })),
     activeSession: {
-      ...nextState.activeSession,
+      ...nextStateWithStableLists.activeSession,
       subtitle: nextSubtitle,
       updatedAtLabel: nextUpdatedAtLabel,
       messageCount: nextMessageCount,

@@ -1,19 +1,20 @@
 use rusqlite::Connection;
 
 use super::{
+    AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
+    AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalIdentity, CanonicalPresence,
+    CanonicalSessionMessage, CanonicalSessionParticipant, CanonicalSessionState,
+    CreateCanonicalDelegatedExchangeRequest, MarkCanonicalSessionReadRequest,
+    OpenCanonicalSessionFastResult, OpenCanonicalSessionRequest,
+    RemoveCanonicalSessionParticipantRequest, RenameCanonicalSessionRequest,
+    SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalPresenceRequest,
+    UpdateCanonicalSessionMetadataRequest, UpsertCanonicalIdentityRequest,
     add_session_participants_in_db, adopt_cloud_profile_identity_in_db, append_message_in_db,
-    create_delegated_exchange_in_db, json_from_db, open_db, open_or_create_session_in_db,
-    remove_session_participant_in_db, rename_any_session_title_in_db, rename_session_in_db,
-    require_group_admin, select_delegated_exchange, select_identity, select_session,
-    set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
-    upsert_identity_in_db, upsert_message_in_db, AddCanonicalSessionParticipantsRequest,
-    AdoptCloudProfileIdentityRequest, AppendCanonicalMessageRequest, CanonicalContextSnapshot,
-    CanonicalIdentity, CanonicalPresence, CanonicalSessionMessage, CanonicalSessionParticipant,
-    CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest, OpenCanonicalSessionFastResult,
-    OpenCanonicalSessionRequest, RemoveCanonicalSessionParticipantRequest,
-    RenameCanonicalSessionRequest, SetCanonicalSessionParticipantRoleRequest,
-    UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
-    UpsertCanonicalIdentityRequest,
+    create_delegated_exchange_in_db, json_from_db, mark_session_read_in_db, open_db,
+    open_or_create_session_in_db, remove_session_participant_in_db, rename_any_session_title_in_db,
+    rename_session_in_db, require_group_admin, select_delegated_exchange, select_identity,
+    select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
+    update_presence_in_db, upsert_identity_in_db, upsert_message_in_db,
 };
 
 fn query_all<T>(
@@ -354,6 +355,14 @@ pub(super) fn desktop_canonical_set_session_participant_role(
         &request.identity_id,
         &request.role,
     )?;
+    load_state_from_db(&conn)
+}
+
+pub(super) fn desktop_canonical_mark_session_read(
+    request: MarkCanonicalSessionReadRequest,
+) -> Result<CanonicalSessionState, String> {
+    let conn = open_db()?;
+    mark_session_read_in_db(&conn, request)?;
     load_state_from_db(&conn)
 }
 

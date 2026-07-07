@@ -351,6 +351,8 @@ export type AssembleKordiShellSlotsArgs = {
   activeSessionProject: DesktopChatProjectInfo | null;
   activeQueuedDesktopMessages: QueuedDesktopChatMessage[];
   queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
+  handleEditQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
+  handleCancelQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
   showAuthGate: boolean;
   dismissAuthGate: () => void;
   inlineAuthDialog: {
@@ -638,6 +640,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleForkChatMessage'
   | 'activeQueuedDesktopMessages'
   | 'queuedDesktopMessagesBySession'
+  | 'handleEditQueuedMessage'
+  | 'handleCancelQueuedMessage'
   | 'activeBridgeConversationHost'
   | 'activeBridgeConversation'
   | 'activeBridgeAwaitingReply'

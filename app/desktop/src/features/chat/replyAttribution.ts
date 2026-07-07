@@ -333,13 +333,18 @@ export function shouldSuppressAgentReplyAttribution(
 export function buildReplyAttribution(
   inputMessages: readonly Message[],
   liveTurn?: DesktopChatTurnSnapshot | null,
-  options: { inferLatestHumanRequest?: boolean; suppressAgentReplyAttribution?: boolean } = {},
+  options: {
+    inferLatestHumanRequest?: boolean;
+    suppressAgentReplyAttribution?: boolean;
+    messageIndexOffset?: number;
+  } = {},
 ): ReplyAttributionResult {
   const inferLatestHumanRequest = Boolean(options.inferLatestHumanRequest);
   const suppressAgentReplyAttribution = Boolean(options.suppressAgentReplyAttribution);
+  const messageIndexOffset = Number.isFinite(options.messageIndexOffset) ? Math.max(0, Math.floor(options.messageIndexOffset ?? 0)) : 0;
   const sourceByMessageId = new Map<string, MessageSourceReference>();
   const summariesByRequestId = new Map<string, MessageReplySummary>();
-  const messageIds = inputMessages.map(messageIdFor);
+  const messageIds = inputMessages.map((message, index) => messageIdFor(message, index + messageIndexOffset));
   const requestCandidates: RequestCandidate[] = [];
 
   const messagesWithIds = inputMessages.map((message, index) => {

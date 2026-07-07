@@ -3,6 +3,53 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 const workspaceViewModelSource = () => readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
+const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+const uiEffectsSource = () => readFileSync(new URL('../src/app/useKordiUiEffects.ts', import.meta.url), 'utf8');
+
+test('canonical full-state refresh key ignores active session selection-only changes', () => {
+  const source = appModelSource();
+  const keyStart = source.indexOf('const desktopCanonicalRefreshKey = useMemo(');
+  const keyEnd = source.indexOf('\n\n  const bridgeCanonicalRefreshKey = useMemo(', keyStart);
+  assert.notEqual(keyStart, -1, 'expected desktop canonical refresh key');
+  assert.notEqual(keyEnd, -1, 'expected end of desktop canonical refresh key');
+  const keyBlock = source.slice(keyStart, keyEnd);
+
+  assert.doesNotMatch(
+    keyBlock,
+    /desktopChatState\?\.activeSession(?:Id|\.)/,
+    'switching the selected session must not fetch and decode the full canonical state payload',
+  );
+  assert.match(keyBlock, /messageCount/, 'message count changes should still refresh canonical state');
+  assert.match(keyBlock, /updatedAtLabel/, 'session content updates should still refresh canonical state');
+});
+
+test('canonical Cloud chat selection does not invoke native desktop chat reload', () => {
+  const source = readFileSync(new URL('../src/features/chat/useDesktopSessionController.ts', import.meta.url), 'utf8');
+  const handlerStart = source.indexOf('const handleSelectChatSession = useCallback(async (sessionId: string) => {');
+  const handlerEnd = source.indexOf('  const handleCreateChatSession = useCallback', handlerStart);
+  assert.notEqual(handlerStart, -1, 'expected chat selection handler');
+  assert.notEqual(handlerEnd, -1, 'expected end of chat selection handler');
+  const handler = source.slice(handlerStart, handlerEnd);
+  const cloudGuardIndex = handler.indexOf('isCanonicalCloudSessionId(sessionId)');
+  const refreshIndex = handler.indexOf('await refreshDesktopChat(sessionId)');
+
+  assert.notEqual(cloudGuardIndex, -1, 'canonical Cloud session ids need a local-only selection fast path');
+  assert.notEqual(refreshIndex, -1, 'local runtime session ids should still refresh native desktop chat');
+  assert.ok(
+    cloudGuardIndex < refreshIndex,
+    'canonical Cloud session selection must return before native desktop_chat_state reload',
+  );
+});
+
+test('chat session changes reset transcript auto-follow before message hydration', () => {
+  const source = uiEffectsSource();
+  assert.match(source, /shouldAutoFollowChatRef\.current\s*=\s*true/, 'session changes should re-enable follow-to-bottom');
+  assert.match(
+    source,
+    /\[activeConvId, activeNav, activeProjectSessionId,[^\]]*shouldAutoFollowChatRef\]/,
+    'auto-follow reset should depend on selected chat/project identity',
+  );
+});
 
 test('canonical chat hydration is cached independently from active session selection', () => {
   const source = workspaceViewModelSource();
