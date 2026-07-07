@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -113,6 +114,22 @@ test('CloudContactsAdapter hides Cloud self agent rows and local-agent detail co
   assert.doesNotMatch(markup, /My agents/);
   assert.doesNotMatch(markup, /My agent • Direct local chat/);
   assert.doesNotMatch(markup, /Chat directly with my local Kordi agent/);
+});
+
+test('Cloud contact selection validation uses the rendered Cloud contact rows', () => {
+  const appModelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const cloudBridgeStateSource = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+
+  assert.match(
+    cloudBridgeStateSource,
+    /cloudContacts:\s*contacts\.contacts/,
+    'Cloud bridge state should expose the same contacts rendered by CloudContactsAdapter',
+  );
+  assert.match(
+    appModelSource,
+    /displayedContacts:\s*cloudAwareDisplayedContacts/,
+    'contact selection reset must validate against Cloud contacts in Cloud edition, not stale parent contacts',
+  );
 });
 
 test('CloudContactsAdapter shows one human row and removes other people agent groups', () => {

@@ -471,6 +471,7 @@ export function useKordiAppModel({
     sharedCloudAgents,
     cloudAgentDefinitionsById,
     refreshCloudContacts,
+    cloudContacts,
     cloudSessionActivity,
     refreshCloudSessionActivity,
     publishCloudTaskActivity,
@@ -1061,6 +1062,8 @@ export function useKordiAppModel({
     cloudSessionActivity,
   });
 
+  const cloudAwareDisplayedContacts = cloudSession.account ? cloudContacts : displayedContacts;
+
   useKordiUiEffects({
     isNativeShell,
     desktopChatState,
@@ -1071,7 +1074,7 @@ export function useKordiAppModel({
     activeProjectId,
     activeProjectSessionId,
     setActiveConvId,
-    displayedContacts,
+    displayedContacts: cloudAwareDisplayedContacts,
     activeContactId: contactsUi.activeContactId,
     setActiveContactId: contactsUi.setActiveContactId,
     setActiveContactGroup: contactsUi.setActiveContactGroup,
