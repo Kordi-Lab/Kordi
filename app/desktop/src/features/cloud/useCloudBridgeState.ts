@@ -290,7 +290,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
   conversationId,
   cancelledByAccountId,
   cancelledByRole,
-  now = Date.now(),
+  now,
 }: {
   processingMessage: CanonicalSessionMessage;
   requestId: string;
@@ -300,6 +300,10 @@ export function cloudGroupAgentCancelledNoticeRequest({
   now?: number;
 }): AppendCanonicalMessageRequest {
   const content = objectContent(processingMessage.content);
+  const stableTimestampMs = typeof content.timestampMs === 'number' && Number.isFinite(content.timestampMs)
+    ? content.timestampMs
+    : processingMessage.createdAtMs;
+  const noticeTimestampMs = typeof now === 'number' && Number.isFinite(now) ? now : stableTimestampMs;
   const trimmedRequestId = requestId.trim();
   const trimmedCancelledByAccountId = cancelledByAccountId.trim() || 'local';
   const role = cancelledByRole || 'participant';
@@ -326,7 +330,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
     contentText: text,
     content: {
       sender: typeof content.sender === 'string' ? content.sender : 'Kordi',
-      timestampMs: now,
+      timestampMs: noticeTimestampMs,
       deliveryState: 'cancelled',
       bridgeConversationId: conversationId,
       requestId: trimmedRequestId,
@@ -334,7 +338,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
       cancelledByAccountId: trimmedCancelledByAccountId,
       cancelledByRole: role,
     },
-    createdAtMs: now,
+    createdAtMs: noticeTimestampMs,
     parentMessageId: trimmedRequestId,
     status: 'cancelled',
     sourceTransport: 'cloud-group-agent',
@@ -1192,7 +1196,7 @@ function browserLocalStorage(): Storage | null {
   }
 }
 
-function normalizeCachedCloudMessage(value: unknown): CloudMessage | null {
+function normalizeCachedCloudMessage(accountId: string, value: unknown): CloudMessage | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const messageId = cleanText(typeof record.messageId === 'string' ? record.messageId : null);
@@ -1200,8 +1204,10 @@ function normalizeCachedCloudMessage(value: unknown): CloudMessage | null {
   const toAccountId = cleanText(typeof record.toAccountId === 'string' ? record.toAccountId : null);
   const createdAt = cleanText(typeof record.createdAt === 'string' ? record.createdAt : null);
   if (!messageId || !fromAccountId || !toAccountId || !createdAt) return null;
-  const direction = record.direction === 'outgoing' ? 'outgoing' : 'incoming';
+  if (fromAccountId !== accountId && toAccountId !== accountId) return null;
+  const direction = fromAccountId === accountId ? 'outgoing' : 'incoming';
   const attachments = Array.isArray(record.attachments) ? record.attachments as CloudMessage['attachments'] : undefined;
+  const sessionId = cleanText(typeof record.sessionId === 'string' ? record.sessionId : null);
   return {
     messageId,
     fromAccountId,
@@ -1211,6 +1217,7 @@ function normalizeCachedCloudMessage(value: unknown): CloudMessage | null {
     deliveredAt: typeof record.deliveredAt === 'string' ? record.deliveredAt : null,
     readAt: typeof record.readAt === 'string' ? record.readAt : null,
     direction,
+    ...(sessionId ? { sessionId } : {}),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
   };
 }
@@ -1226,7 +1233,9 @@ export function loadCachedCloudMessagesByPeer(accountId: string | null | undefin
     for (const [peerId, messages] of Object.entries(parsed)) {
       const trimmedPeerId = peerId.trim();
       if (!trimmedPeerId || !Array.isArray(messages)) continue;
-      const normalized = messages.map(normalizeCachedCloudMessage).filter((item): item is CloudMessage => Boolean(item));
+      const normalized = messages
+        .map((message) => normalizeCachedCloudMessage(trimmedAccountId, message))
+        .filter((item): item is CloudMessage => Boolean(item));
       if (normalized.length > 0) byPeer[trimmedPeerId] = normalized;
     }
     return byPeer;
@@ -3667,6 +3676,8 @@ export function useCloudBridgeState({
             && candidate.sourceTransport === 'cloud-group-agent'
             && cleanText(typeof content.requestId === 'string' ? content.requestId : null) === cancel.requestId;
         })) continue;
+        const cancelCreatedAtMs = Date.parse(message.createdAt);
+        const cancelDeliveredAtMs = Date.parse(message.deliveredAt ?? '');
         void upsertCanonicalMessage(cloudGroupAgentCancelledNoticeRequest({
           processingMessage,
           requestId: cancel.requestId,
@@ -3678,6 +3689,11 @@ export function useCloudBridgeState({
             processingMessage,
             cancelledByAccountId: message.fromAccountId,
           }),
+          now: Number.isFinite(cancelCreatedAtMs)
+            ? cancelCreatedAtMs
+            : Number.isFinite(cancelDeliveredAtMs)
+              ? cancelDeliveredAtMs
+              : undefined,
         }))
           .then((nextState) => {
             // See sender-side cancel handler for rationale: collapse the
@@ -4343,6 +4359,7 @@ export function useCloudBridgeState({
             processingMessage,
             cancelledByAccountId: account.accountId,
           }),
+          now: Date.now(),
         }));
         // Collapse the cancel write and the offline-placeholder removal into a
         // single render so the cancel notice replaces the "Processing…" bubble

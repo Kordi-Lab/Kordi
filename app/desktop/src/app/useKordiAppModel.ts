@@ -140,6 +140,7 @@ import {
   sessionMetadataRecord,
   sessionRenameNoticeText,
   shouldUseCloudSessionAction,
+  stripDerivedCloudUnreadCounts,
   uniqueStrings,
 } from '@/app/useKordiAppModelHelpers';
 
@@ -593,7 +594,7 @@ export function useKordiAppModel({
     const flight = canonicalRefreshFlightRef.current;
     const run = requestSingleFlightRun(flight, async () => {
       try {
-        const fetchedCanonicalState = await fetchCanonicalSessionState();
+        const fetchedCanonicalState = stripDerivedCloudUnreadCounts(await fetchCanonicalSessionState());
         setCanonicalSessionState((current) => mergeCanonicalStatePreservingBridgeUiMessages(fetchedCanonicalState, current));
         setCanonicalInitialRefreshError(false);
       } catch {
