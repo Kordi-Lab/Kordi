@@ -15,7 +15,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Extension, Json, Router};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -24,18 +24,18 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::auth::oauth::{
-    clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
-    exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
-    pkce_challenge, random_url_token, redirect_with_oauth_error, OAuthProfile, OAuthProvider,
+    OAuthProfile, OAuthProvider, clean_profile_avatar_url, clean_profile_display_name,
+    encode_oauth_fragment, exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect,
+    oauth_config, pkce_challenge, random_url_token, redirect_with_oauth_error,
 };
 use crate::auth::password::{
-    hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
-    PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
+    EmailFormatError, PASSWORD_ALGORITHM_ID, PasswordHasherConfig, PasswordPolicyError,
+    hash_password, validate_email, validate_password_strength, verify_password,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::session::{
-    bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
-    SESSION_TOKEN_PREFIX,
+    DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX, bump_expiry, issue_session,
+    lookup_session, revoke_session,
 };
 use crate::server::ServerState;
 
@@ -466,7 +466,7 @@ fn normalize_message_attachment(
                 "invalid_attachment",
                 "Attachment kind must be image or file.",
                 StatusCode::BAD_REQUEST,
-            ))
+            ));
         }
     };
     let mime_type = input
@@ -2796,10 +2796,10 @@ fn cloud_message_requires_accepted_contact(body: &str) -> bool {
 #[cfg(test)]
 mod cloud_message_policy_tests {
     use super::{
-        cloud_direct_person_session_id, cloud_message_effective_created_at,
-        cloud_message_requires_accepted_contact, contact_acceptance_hello_sync_summaries,
-        normalize_cloud_message_body, sanitized_cloud_group_control_body,
-        CLOUD_AGENT_RESPONSE_PREFIX, CLOUD_GROUP_CONTROL_PREFIX,
+        CLOUD_AGENT_RESPONSE_PREFIX, CLOUD_GROUP_CONTROL_PREFIX, cloud_direct_person_session_id,
+        cloud_message_effective_created_at, cloud_message_requires_accepted_contact,
+        contact_acceptance_hello_sync_summaries, normalize_cloud_message_body,
+        sanitized_cloud_group_control_body,
     };
     use base64::Engine as _;
     use chrono::{TimeZone, Utc};
@@ -3237,10 +3237,15 @@ async fn send_message(
     let created_at =
         cloud_message_effective_created_at(req.client_created_at.as_deref(), server_received_at);
     let delivered_at = server_received_at.to_rfc3339();
+    let read_at = if is_self_message {
+        Some(delivered_at.clone())
+    } else {
+        None
+    };
     if query(
         "INSERT INTO cloud_messages \
-         (message_id, from_account_id, to_account_id, body, created_at, delivered_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+         (message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(&message_id)
     .bind(&session.account_id)
@@ -3248,6 +3253,7 @@ async fn send_message(
     .bind(&body)
     .bind(&created_at)
     .bind(&delivered_at)
+    .bind(read_at.as_deref())
     .bind(&cloud_session_id)
     .execute(pool)
     .await
@@ -3319,7 +3325,7 @@ async fn send_message(
         session_id: cloud_session_id,
         created_at: created_at.clone(),
         delivered_at: Some(delivered_at.clone()),
-        read_at: None,
+        read_at,
         direction: "outgoing".into(),
         attachments,
     };
@@ -3510,9 +3516,15 @@ async fn mark_session_messages_read(
 
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();
-    if upsert_cloud_read_cursor(pool, &session.account_id, "session", &source_session_id, &now)
-        .await
-        .is_err()
+    if upsert_cloud_read_cursor(
+        pool,
+        &session.account_id,
+        "session",
+        &source_session_id,
+        &now,
+    )
+    .await
+    .is_err()
     {
         return err(
             "server_error",
@@ -3622,6 +3634,10 @@ async fn list_messages(
         "SELECT message_id, from_account_id, to_account_id, body, session_id, created_at, \
                 delivered_at, \
                 COALESCE(read_at, \
+                    CASE \
+                        WHEN from_account_id = $1 AND to_account_id = $1 \
+                        THEN COALESCE(delivered_at, created_at) \
+                    END, \
                     CASE \
                         WHEN to_account_id = $1 \
                          AND from_account_id = $2 \

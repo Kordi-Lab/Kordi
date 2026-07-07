@@ -796,6 +796,7 @@ export function cloudGroupMessageReadTargets(input: {
     if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
     const envelope = parseCloudGroupControl(message.body);
     if (!envelope || envelope.kind !== 'group-message') continue;
+    if (message.fromAccountId === accountId || envelope.message?.senderAccountId === accountId) continue;
     if (shouldCountCloudGroupMessageUnread({
       activeConversationId: input.activeConversationId,
       activeConversationIds: input.activeConversationIds,
@@ -862,6 +863,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
     if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
     const envelope = parseCloudGroupControl(message.body);
     if (!envelope || envelope.kind !== 'group-message') continue;
+    if (message.fromAccountId === accountId || envelope.message?.senderAccountId === accountId) continue;
     if (!shouldCountCloudGroupMessageUnread({
       activeConversationId: input.activeConversationId,
       activeConversationIds: input.activeConversationIds,

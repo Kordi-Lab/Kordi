@@ -194,6 +194,19 @@ export function canonicalMetadataRecord(metadata: unknown): Record<string, unkno
     : {};
 }
 
+export function stripDerivedCloudUnreadCounts(state: CanonicalSessionState | null): CanonicalSessionState | null {
+  if (!state) return state;
+  let changed = false;
+  const sessions = state.sessions.map((session) => {
+    const metadata = canonicalMetadataRecord(session.metadata);
+    if (!Object.prototype.hasOwnProperty.call(metadata, 'cloudUnreadCount')) return session;
+    changed = true;
+    delete metadata.cloudUnreadCount;
+    return { ...session, metadata };
+  });
+  return changed ? { ...state, sessions } : state;
+}
+
 export function sessionMetadataRecord(state: CanonicalSessionState | null, sessionId: string) {
   const session = state?.sessions.find((candidate) => candidate.id === sessionId);
   return canonicalMetadataRecord(session?.metadata);

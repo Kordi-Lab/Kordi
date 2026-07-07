@@ -812,6 +812,43 @@ test('cloud group unread count helper ignores messages at or before local read c
   }), {});
 });
 
+test('cloud group unread helper ignores self-authored cached controls even when direction is stale incoming', () => {
+  const accountId = 'acct_self';
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:self-cache',
+    groupSpaceId: 'session:group:self-cache',
+    groupTitle: 'Self cache',
+    createdByAccountId: accountId,
+    actor: { accountId, displayName: 'Me', avatarUrl: null, role: 'admin' },
+    participants: [{ accountId, displayName: 'Me', avatarUrl: null, role: 'admin' }],
+    message: {
+      id: 'msg_self_group',
+      senderAccountId: accountId,
+      text: 'hello',
+      createdAtMs: 1783440000000,
+      senderKind: 'human',
+    },
+  });
+
+  const unread = cloudGroupUnreadCountsBySessionId({
+    accountId,
+    messages: [{
+      messageId: 'cloud_msg_self_group',
+      fromAccountId: accountId,
+      toAccountId: accountId,
+      body,
+      createdAt: '2026-07-07T18:00:00Z',
+      deliveredAt: '2026-07-07T18:00:00Z',
+      readAt: null,
+      direction: 'incoming',
+      sessionId: 'session:group:self-cache',
+    }],
+  });
+
+  assert.deepEqual(unread, {});
+});
+
 test('cloud group unread count helper deduplicates inbound unread controls per hidden session', () => {
   const groupMessage = encodeCloudGroupControl({
     kind: 'group-message',
