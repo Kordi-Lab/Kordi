@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, LoaderCircle, Plus, Search, Trash2, UserPlus, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -40,6 +39,16 @@ function normalizedContactText(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase();
 }
 
+export function contactPresenceStatus(contact: Contact): string | null {
+  const directPresence = contact.presenceStatus?.trim().toLowerCase();
+  if (directPresence === 'online') return 'online';
+  if (directPresence) return 'offline';
+  const status = contact.status.trim().toLowerCase();
+  if (status === 'online') return 'online';
+  if (status === 'offline') return 'offline';
+  return null;
+}
+
 export function contactDetailBodyText(contact: Contact): string {
   const detail = contact.detail.trim();
   if (!detail) return '';
@@ -72,7 +81,6 @@ export function ContactsPage({
   activeContact,
   activeContactRequest,
   onCloseOverlay,
-  getStatusBadgeClass,
   onMessageContact,
   onRemoveContact,
 }: ContactsPageProps) {
@@ -518,14 +526,13 @@ export function ContactsPage({
                         seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
                         name={activeContact.name}
                         imageUrl={activeContact.profileImageUrl}
+                        presenceStatus={contactPresenceStatus(activeContact)}
+                        presenceLabel={`${activeContact.name} is ${contactPresenceStatus(activeContact) ?? 'offline'}`}
                         className="h-12 w-12 border border-white/10"
                       />
                       <div>
                         <div className="text-sm text-slate-300">
                           {activeContact.entityType} • {activeContact.subtitle}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <Badge className={cn('rounded-full px-2.5 py-1', getStatusBadgeClass(activeContact.status))}>{activeContact.status}</Badge>
                         </div>
                       </div>
                     </div>

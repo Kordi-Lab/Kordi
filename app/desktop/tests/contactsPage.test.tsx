@@ -215,6 +215,22 @@ test('contacts page controls use a Vercel-style aligned rail with reduced shape'
   assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-contact-row\.app-list-item-active/);
 });
 
+test('contact detail modal shows presence as an avatar light instead of a status pill', () => {
+  const markup = renderContactsPage([], {
+    contactOverlayMode: 'contact',
+    activeContact: contact({
+      id: 'cloud:acct_peer',
+      name: 'Jiaxin Pei',
+      subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
+      status: 'online',
+    }),
+  });
+
+  assert.match(markup, /data-presence-status="online"/);
+  assert.match(markup, /aria-label="Jiaxin Pei is online"/);
+  assert.doesNotMatch(markup, />online<\/span>/);
+});
+
 test('contact detail modal shows other users with a read-only avatar', () => {
   const markup = renderContactsPage([], {
     contactOverlayMode: 'contact',
