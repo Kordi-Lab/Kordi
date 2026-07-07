@@ -28,6 +28,7 @@ import {
   cloudGroupParticipantFromContact,
   cloudGroupSelfParticipant,
   isCloudGroupControlMessage,
+  type CloudGroupReadCursor,
 } from './cloudGroupMessages';
 import {
   cloudMessageIsSelfAgentRequest,
@@ -385,6 +386,19 @@ function cloudDirectPersonMessagesForPeer(
   });
 }
 
+function cloudMessageIsAtOrBeforeReadCursor(message: CloudMessage, cursor?: CloudGroupReadCursor | null): boolean {
+  if (!cursor) return false;
+  const messageId = cleanCloudSessionId(message.messageId);
+  const lastReadMessageId = cleanCloudSessionId(cursor.lastReadMessageId);
+  if (messageId && lastReadMessageId && messageId === lastReadMessageId) return true;
+  const lastReadCreatedAtMs = typeof cursor.lastReadCreatedAtMs === 'number' && Number.isFinite(cursor.lastReadCreatedAtMs)
+    ? cursor.lastReadCreatedAtMs
+    : null;
+  if (lastReadCreatedAtMs === null) return false;
+  const createdAtMs = Date.parse(message.createdAt);
+  return Number.isFinite(createdAtMs) && createdAtMs <= lastReadCreatedAtMs;
+}
+
 export function buildCloudBridgeHost(
   account: CloudAccount,
   contacts: Contact[],
@@ -498,6 +512,7 @@ export function buildCloudBridgeConversation({
   messages,
   runtime = CLOUD_PERSON_RUNTIME,
   readInboundMessageIds,
+  readCursorsBySessionId = {},
   forceRead = false,
   localAgentTurnsByRequestId = {},
   cloudSessionId = null,
@@ -508,6 +523,7 @@ export function buildCloudBridgeConversation({
   messages: CloudMessage[];
   runtime?: string;
   readInboundMessageIds?: Set<string>;
+  readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
   forceRead?: boolean;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
   cloudSessionId?: string | null;
@@ -516,6 +532,9 @@ export function buildCloudBridgeConversation({
   const peerAccountId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
   const isPerson = runtime.trim().toLowerCase() === CLOUD_PERSON_RUNTIME;
   const isSelfPeer = peerAccountId === account.accountId;
+  const normalizedCloudSessionId = cleanCloudSessionId(cloudSessionId);
+  const directPersonSessionId = isPerson && !isSelfPeer ? cloudDirectPersonSessionId(account.accountId, peerAccountId) : null;
+  const readCursorSessionId = normalizedCloudSessionId ?? directPersonSessionId;
   const cancelMessageByRequestId = new Map<string, CloudMessage>();
   for (const message of messages) {
     const cancel = parseCloudAgentCancel(message.body);
@@ -627,7 +646,6 @@ export function buildCloudBridgeConversation({
       localAgentTurnsByRequestId,
     })];
   });
-  const normalizedCloudSessionId = cleanCloudSessionId(cloudSessionId);
   const title = isPerson
     ? cloudPeerDisplayName(contact)
     : isSelfPeer && normalizedCloudSessionId
@@ -708,6 +726,7 @@ export function buildCloudBridgeConversation({
           && message.fromAccountId !== account.accountId
           && !message.readAt
           && !readInboundMessageIds?.has(message.messageId)
+          && !cloudMessageIsAtOrBeforeReadCursor(message, readCursorSessionId ? readCursorsBySessionId[readCursorSessionId] : null)
         )).length,
     updatedAtMs,
     updatedAtLabel: formatDesktopLastActiveLabel(updatedAtMs),
@@ -765,6 +784,7 @@ export function buildCloudDesktopBridgeState({
   contacts,
   messagesByPeer,
   readInboundMessageIdsByPeer = {},
+  readCursorsBySessionId = {},
   activeConversationId,
   localAgentTurnsByRequestId = {},
   localAgentRuntimeRoute = null,
@@ -776,6 +796,7 @@ export function buildCloudDesktopBridgeState({
   contacts: Contact[];
   messagesByPeer: Record<string, CloudMessage[]>;
   readInboundMessageIdsByPeer?: Record<string, Set<string>>;
+  readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
   activeConversationId?: string | null;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
   localAgentRuntimeRoute?: DesktopChatMessageRoute | null;
@@ -811,6 +832,7 @@ export function buildCloudDesktopBridgeState({
             messages: directPersonMessages,
             runtime: CLOUD_PERSON_RUNTIME,
             readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
+            readCursorsBySessionId,
             forceRead: isActivePeer,
             localAgentTurnsByRequestId,
           })]
@@ -834,6 +856,7 @@ export function buildCloudDesktopBridgeState({
             messages: sessionMessages,
             runtime: CLOUD_AGENT_RUNTIME,
             readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
+            readCursorsBySessionId,
             forceRead: isActivePeer && (!activeCloudSessionId || activeCloudSessionId === cloudSessionId),
             localAgentTurnsByRequestId,
             cloudSessionId,
