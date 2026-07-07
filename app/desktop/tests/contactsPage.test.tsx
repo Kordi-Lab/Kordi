@@ -258,7 +258,7 @@ test('contact detail modal shows other users with a read-only avatar', () => {
     }),
   });
 
-  assert.match(markup, /Contact detail/);
+  assert.doesNotMatch(markup, />\s*Contact detail\s*</);
   assert.match(markup, /Jiaxin Pei/);
   assert.doesNotMatch(markup, /app-avatar-upload-button/);
   assert.doesNotMatch(markup, /Upload jiaxin pei avatar/i);
@@ -268,7 +268,7 @@ test('contact detail modal shows other users with a read-only avatar', () => {
 test('contact detail modal removes redundant repeated metadata and unused profile action', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /Contact detail/);
+  assert.doesNotMatch(source, />\s*Contact detail\s*</);
   assert.doesNotMatch(source, /Owner: \{selfObjectLabel\(activeContact\.owner\)\}/);
   assert.doesNotMatch(source, />Joined bridges</);
   assert.doesNotMatch(source, />Discoverable on</);

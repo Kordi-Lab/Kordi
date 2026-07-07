@@ -501,10 +501,12 @@ export function ContactsPage({
               <div className="app-modal-panel w-full max-w-[420px] rounded-[28px] border border-white/10 p-4 text-white shadow-[var(--app-shadow-float)]">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
-                      {contactOverlayMode === 'contact' ? 'Contact detail' : 'Request review'}
-                    </div>
-                    <div className="mt-1 text-lg font-semibold">
+                    {contactOverlayMode === 'request' ? (
+                      <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
+                        Request review
+                      </div>
+                    ) : null}
+                    <div className={cn('text-lg font-semibold', contactOverlayMode === 'request' ? 'mt-1' : '')}>
                       {contactOverlayMode === 'contact' ? activeContact.name : activeContactRequest?.title}
                     </div>
                   </div>
