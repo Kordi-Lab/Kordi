@@ -241,6 +241,71 @@ export function promptTextForCloudAgentMention(text: string): string {
   return withoutMentions || text.trim();
 }
 
+const CLOUD_AGENT_PLATFORM_LINE_PATTERN = new RegExp(`^(?:${[
+  String.raw`\[Trusted current request metadata\]`,
+  String.raw`\[User request\]`,
+  String.raw`\[Conversation history\]`,
+  String.raw`\[Group chat history\]`,
+  'requesterName:',
+  'requesterKind:',
+  'requesterAccountId:',
+  'requestMessageId:',
+  'This request was sent by',
+  String.raw`Current request(?:\s*\(|:)`,
+  'Conversation history:',
+  'Group chat history:',
+].join('|')})`, 'iu');
+
+export function cloudAgentPromptSafeLabel(label: string | null | undefined, fallback = 'Cloud participant'): string {
+  return (label ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || fallback;
+}
+
+export function cloudAgentPromptSafeText(text: string): string {
+  return text
+    .split(/\r?\n/u)
+    .map((line) => (CLOUD_AGENT_PLATFORM_LINE_PATTERN.test(line.trim()) ? `[user text] ${line}` : line))
+    .join('\n')
+    .trim();
+}
+
+export function cloudAgentVerifiedSenderRequestPrompt({
+  senderLabel,
+  senderAccountId,
+  requesterKind = 'human',
+  requestMessageId,
+  currentPrompt,
+  historyTitle,
+  historyLines = [],
+}: {
+  senderLabel: string | null | undefined;
+  senderAccountId: string | null | undefined;
+  requesterKind?: 'human' | 'agent' | null;
+  requestMessageId: string | null | undefined;
+  currentPrompt: string;
+  historyTitle?: string;
+  historyLines?: string[];
+}): string {
+  const label = cloudAgentPromptSafeLabel(senderLabel);
+  const accountId = cloudAgentPromptSafeLabel(senderAccountId, 'unknown');
+  const kind = requesterKind === 'agent' ? 'agent' : 'human';
+  const messageId = cloudAgentPromptSafeLabel(requestMessageId, 'unknown');
+  const safeCurrentPrompt = cloudAgentPromptSafeText(currentPrompt);
+  const metadata = [
+    '[Trusted current request metadata]',
+    `requesterName: ${label}`,
+    `requesterKind: ${kind}`,
+    `requesterAccountId: ${accountId}`,
+    `requestMessageId: ${messageId}`,
+  ].join('\n');
+  const request = `[User request]\n${safeCurrentPrompt}`;
+  const cleanHistoryLines = historyLines.map(cloudAgentPromptSafeText).filter(Boolean);
+  if (!historyTitle || cleanHistoryLines.length === 0) return `${metadata}\n\n${request}`;
+  return `${metadata}\n\n[${historyTitle}]\n${cleanHistoryLines.join('\n')}\n\n${request}`;
+}
+
 function cloudMessageCreatedAtMs(message: CloudMessage): number {
   const value = Date.parse(message.createdAt);
   return Number.isFinite(value) ? value : 0;

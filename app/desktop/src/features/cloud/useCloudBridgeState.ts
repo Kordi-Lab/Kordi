@@ -68,6 +68,9 @@ import {
   encodeCloudAgentResponse,
   parseCloudAgentCancel,
   parseCloudAgentResponse,
+  cloudAgentPromptSafeLabel,
+  cloudAgentPromptSafeText,
+  cloudAgentVerifiedSenderRequestPrompt,
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import {
@@ -837,6 +840,10 @@ function cloudFallbackHistoryParticipantName(contact: Contact | undefined, owner
   return contact?.name?.trim() || ownerAccountId.trim() || 'Peer';
 }
 
+function cloudAccountPromptSenderLabel(account: CloudAccount): string {
+  return cloudAgentPromptSafeLabel(account.displayName || account.primaryEmail || 'Me', 'Me');
+}
+
 function cloudFallbackHistoryLine({
   account,
   contact,
@@ -862,7 +869,7 @@ function cloudFallbackHistoryLine({
     : message.fromAccountId === account.accountId
       ? 'Me'
       : peerName;
-  return `${label}: ${cleanText}`;
+  return `${cloudAgentPromptSafeLabel(label)}: ${cloudAgentPromptSafeText(cleanText)}`;
 }
 
 function cloudFallbackRunPromptForMessage({
@@ -886,8 +893,15 @@ function cloudFallbackRunPromptForMessage({
     .map((candidate) => cloudFallbackHistoryLine({ account, contact, message: candidate, ownerAccountId }))
     .filter((line): line is string => Boolean(line))
     .slice(-MAX_CLOUD_FALLBACK_HISTORY_MESSAGES);
-  if (history.length === 0) return currentPrompt;
-  return `Conversation history:\n${history.join('\n')}\n\nCurrent request:\n${currentPrompt}`;
+  return cloudAgentVerifiedSenderRequestPrompt({
+    senderLabel: cloudAccountPromptSenderLabel(account),
+    senderAccountId: message.fromAccountId || account.accountId,
+    requesterKind: 'human',
+    requestMessageId: message.messageId,
+    currentPrompt,
+    historyTitle: 'Conversation history',
+    historyLines: history,
+  });
 }
 
 function cloudGroupFallbackHistoryLine(envelope: CloudGroupControlEnvelope): string | null {
@@ -900,19 +914,35 @@ function cloudGroupFallbackHistoryLine(envelope: CloudGroupControlEnvelope): str
   const label = message.senderDisplayName?.trim()
     || (message.senderKind === 'agent' && participantName ? `${participantName}'s Kordi` : participantName)
     || 'Cloud participant';
-  return `${label}: ${text}`;
+  return `${cloudAgentPromptSafeLabel(label)}: ${cloudAgentPromptSafeText(text)}`;
+}
+
+function cloudGroupVerifiedSenderLabel(envelope: CloudGroupControlEnvelope, senderAccountId: string): string {
+  const accountId = senderAccountId.trim();
+  const message = envelope.message;
+  const bodySenderMatches = Boolean(accountId && message?.senderAccountId === accountId);
+  return (bodySenderMatches ? message?.senderDisplayName?.trim() : '')
+    || envelope.participants.find((participant) => participant.accountId === accountId)?.displayName?.trim()
+    || accountId
+    || 'Cloud participant';
 }
 
 function cloudGroupFallbackRunPromptForMessage({
   cloudMessages,
   groupId,
   requestMessageId,
+  requestSenderAccountId,
+  requestSenderLabel,
+  requestSenderKind,
   requestCreatedAtMs,
   requestText,
 }: {
   cloudMessages: CloudMessage[];
   groupId: string;
   requestMessageId: string;
+  requestSenderAccountId: string;
+  requestSenderLabel: string;
+  requestSenderKind: 'human' | 'agent';
   requestCreatedAtMs: number;
   requestText: string;
 }): string {
@@ -931,8 +961,15 @@ function cloudGroupFallbackRunPromptForMessage({
       return line ? [line] : [];
     })
     .slice(-MAX_CLOUD_FALLBACK_HISTORY_MESSAGES);
-  if (history.length === 0) return currentPrompt;
-  return `Group chat history:\n${history.join('\n')}\n\nCurrent request:\n${currentPrompt}`;
+  return cloudAgentVerifiedSenderRequestPrompt({
+    senderLabel: requestSenderLabel,
+    senderAccountId: requestSenderAccountId,
+    requesterKind: requestSenderKind,
+    requestMessageId,
+    currentPrompt,
+    historyTitle: 'Group chat history',
+    historyLines: history,
+  });
 }
 
 export function cloudFallbackRunClaimsForMessages({
@@ -955,7 +992,7 @@ export function cloudFallbackRunClaimsForMessages({
     for (const message of peerMessages) {
       if (message.fromAccountId !== account.accountId || message.toAccountId !== ownerAccountId) continue;
       const groupEnvelope = parseCloudGroupControl(message.body);
-      if (groupEnvelope?.kind === 'group-message' && groupEnvelope.message?.senderAccountId === account.accountId) {
+      if (groupEnvelope?.kind === 'group-message' && groupEnvelope.message) {
         const groupMessage = groupEnvelope.message;
         const groupRequestMessage = { ...message, body: groupMessage.text };
         if (!cloudMessageMentionsContactAgent(groupRequestMessage, contact)) continue;
@@ -969,6 +1006,10 @@ export function cloudFallbackRunClaimsForMessages({
             && envelope.message.deliveryState !== 'processing';
         });
         if (alreadyTerminal) continue;
+        const requestSenderAccountId = message.fromAccountId || groupMessage.senderAccountId;
+        const requestSenderKind = requestSenderAccountId === groupMessage.senderAccountId && groupMessage.senderKind === 'agent'
+          ? 'agent'
+          : 'human';
         claims.push({
           requestMessageId: groupMessage.id,
           sessionId: groupEnvelope.groupId,
@@ -978,6 +1019,9 @@ export function cloudFallbackRunClaimsForMessages({
             cloudMessages: allCloudMessages,
             groupId: groupEnvelope.groupId,
             requestMessageId: groupMessage.id,
+            requestSenderAccountId,
+            requestSenderLabel: cloudGroupVerifiedSenderLabel(groupEnvelope, requestSenderAccountId),
+            requestSenderKind,
             requestCreatedAtMs: groupMessage.createdAtMs,
             requestText: groupMessage.text,
           }),
@@ -3144,7 +3188,18 @@ export function useCloudBridgeState({
         processingSent.forEach((result) => {
           if (result.status === 'fulfilled') mergeMessage(result.value);
         });
-        const prompt = promptTextForCloudAgentMention(envelope.message!.text);
+        const requestSenderAccountId = cloudMessage.fromAccountId || envelope.message!.senderAccountId;
+        const requestSenderLabel = cloudGroupVerifiedSenderLabel(envelope, requestSenderAccountId);
+        const requestSenderKind = requestSenderAccountId === envelope.message!.senderAccountId && envelope.message!.senderKind === 'agent'
+          ? 'agent'
+          : 'human';
+        const prompt = cloudAgentVerifiedSenderRequestPrompt({
+          senderLabel: requestSenderLabel,
+          senderAccountId: requestSenderAccountId,
+          requesterKind: requestSenderKind,
+          requestMessageId: envelope.message!.id,
+          currentPrompt: promptTextForCloudAgentMention(envelope.message!.text),
+        });
         const contextMessages = [
           ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[envelope.message!.targetCloudAgentId ?? ''] ?? null),
           ...cloudGroupNativeContextMessages({
@@ -3721,7 +3776,13 @@ export function useCloudBridgeState({
           const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
           const directDisplayMessage = { ...message, body: cloudDirectMessageDisplayText(message.body) };
           const directDisplayMessages = messages.map((peerMessage) => ({ ...peerMessage, body: cloudDirectMessageDisplayText(peerMessage.body) }));
-          const prompt = promptTextForCloudAgentMention(directDisplayMessage.body);
+          const prompt = cloudAgentVerifiedSenderRequestPrompt({
+            senderLabel: peerHumanName,
+            senderAccountId: directDisplayMessage.fromAccountId,
+            requesterKind: 'human',
+            requestMessageId: directDisplayMessage.messageId,
+            currentPrompt: promptTextForCloudAgentMention(directDisplayMessage.body),
+          });
           const contextMessages = [
             ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[targetCloudAgentId ?? ''] ?? null),
             ...cloudAgentNativeContextMessagesFromDirectCloudSession({
