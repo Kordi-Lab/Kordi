@@ -215,20 +215,35 @@ test('contacts page controls use a Vercel-style aligned rail with reduced shape'
   assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-contact-row\.app-list-item-active/);
 });
 
-test('contact detail modal shows presence as an avatar light instead of a status pill', () => {
-  const markup = renderContactsPage([], {
+test('contact detail modal mirrors real presence instead of deriving it from status text', () => {
+  const statusOnlyMarkup = renderContactsPage([], {
     contactOverlayMode: 'contact',
     activeContact: contact({
       id: 'cloud:acct_peer',
       name: 'Jiaxin Pei',
       subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
       status: 'online',
+      presenceStatus: null,
     }),
   });
 
-  assert.match(markup, /data-presence-status="online"/);
-  assert.match(markup, /aria-label="Jiaxin Pei is online"/);
-  assert.doesNotMatch(markup, />online<\/span>/);
+  assert.doesNotMatch(statusOnlyMarkup, /data-presence-status=/);
+  assert.doesNotMatch(statusOnlyMarkup, />online<\/span>/);
+
+  const presenceMarkup = renderContactsPage([], {
+    contactOverlayMode: 'contact',
+    activeContact: contact({
+      id: 'cloud:acct_peer',
+      name: 'Jiaxin Pei',
+      subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
+      status: 'online',
+      presenceStatus: 'online',
+    }),
+  });
+
+  assert.match(presenceMarkup, /data-presence-status="online"/);
+  assert.match(presenceMarkup, /aria-label="Jiaxin Pei is online"/);
+  assert.doesNotMatch(presenceMarkup, />online<\/span>/);
 });
 
 test('contact detail modal shows other users with a read-only avatar', () => {

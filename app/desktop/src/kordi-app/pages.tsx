@@ -43,9 +43,6 @@ export function contactPresenceStatus(contact: Contact): string | null {
   const directPresence = contact.presenceStatus?.trim().toLowerCase();
   if (directPresence === 'online') return 'online';
   if (directPresence) return 'offline';
-  const status = contact.status.trim().toLowerCase();
-  if (status === 'online') return 'online';
-  if (status === 'offline') return 'offline';
   return null;
 }
 
@@ -207,6 +204,7 @@ export function ContactsPage({
     : 'No sent invites waiting for approval.';
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
   const activeContactDetailBody = contactDetailBodyText(activeContact);
+  const activeContactPresenceStatus = contactPresenceStatus(activeContact);
 
   const canRemoveActiveContact = Boolean(
     onRemoveContact
@@ -526,8 +524,8 @@ export function ContactsPage({
                         seed={activeContact.avatarSeed ?? activeContact.bridgePeerNodeId ?? activeContact.id}
                         name={activeContact.name}
                         imageUrl={activeContact.profileImageUrl}
-                        presenceStatus={contactPresenceStatus(activeContact)}
-                        presenceLabel={`${activeContact.name} is ${contactPresenceStatus(activeContact) ?? 'offline'}`}
+                        presenceStatus={activeContactPresenceStatus}
+                        presenceLabel={activeContactPresenceStatus ? `${activeContact.name} is ${activeContactPresenceStatus}` : undefined}
                         className="h-12 w-12 border border-white/10"
                       />
                       <div>
