@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { ContactRow } from '../src/kordi-app/components/transcript';
 import { ContactsPage } from '../src/kordi-app/pages';
 import { cloudRequestToContactRequest } from '../src/features/cloud/useCloudContacts';
 import type { Contact, ContactRequest } from '../src/kordi-app/types';
@@ -158,6 +159,19 @@ test('cloud request mapping keeps counterpart name for request avatar fallback',
   assert.equal(mapped.profileImageUrl, 'data:image/png;base64,avatar-111');
 });
 
+test('active contact rows stay visually neutral until hover', () => {
+  const markup = renderToStaticMarkup(createElement(ContactRow, {
+    contact: contact({ id: 'cloud:acct_peer', name: 'Jiaxin Pei', subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e' }),
+    active: true,
+    onSelect: () => undefined,
+  }));
+
+  assert.match(markup, /app-contact-row/);
+  assert.match(markup, /app-list-item/);
+  assert.doesNotMatch(markup, /app-list-item-active/);
+  assert.doesNotMatch(markup, /text-slate-100/);
+});
+
 test('contacts page controls use a Vercel-style aligned rail with reduced shape', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
   const componentSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
@@ -190,9 +204,15 @@ test('contacts page controls use a Vercel-style aligned rail with reduced shape'
   assert.match(shellCss, /\.app-contacts-sent-invites-row[\s\S]*border-radius:\s*8px/);
   assert.match(shellCss, /\.app-contacts-group-row[\s\S]*border-radius:\s*0/);
   assert.match(shellCss, /\.app-contacts-group-row[\s\S]*border-width:\s*0 0 1px/);
-  assert.match(componentSource, /app-contact-row/);
-  assert.match(shellCss, /\.app-contact-row\.app-list-item-active[\s\S]*box-shadow:\s*none/);
-  assert.match(themeOverridesCss, /\.bridge-app\.theme-light \.app-contact-row\.app-list-item-active[\s\S]*box-shadow:\s*none/);
+  const contactRowStart = componentSource.indexOf('export function ContactRow');
+  const contactRowEnd = componentSource.indexOf('export function ContactRequestRow', contactRowStart + 1);
+  assert.ok(contactRowStart >= 0, 'ContactRow source block should be present');
+  const contactRowBlock = componentSource.slice(contactRowStart, contactRowEnd > contactRowStart ? contactRowEnd : undefined);
+  assert.match(contactRowBlock, /app-contact-row app-list-item/);
+  assert.doesNotMatch(contactRowBlock, /app-list-item-active/);
+  assert.match(shellCss, /\.app-list-item:hover[\s\S]*background:\s*var\(--app-control-bg\)/);
+  assert.doesNotMatch(shellCss, /\.app-contact-row\.app-list-item-active/);
+  assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-contact-row\.app-list-item-active/);
 });
 
 test('contact detail modal removes redundant repeated metadata and unused profile action', () => {

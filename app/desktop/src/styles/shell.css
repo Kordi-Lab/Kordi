@@ -357,13 +357,6 @@
     var(--app-shadow-soft);
 }
 
-.app-contact-row.app-list-item-active {
-  border-color: color-mix(in oklab, var(--app-control-border) 86%, transparent);
-  background: color-mix(in oklab, var(--app-control-active) 72%, transparent);
-  box-shadow: none;
-}
-
-
 .app-side-note {
   border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
   background: color-mix(in oklab, var(--app-card-bg) 52%, transparent);
