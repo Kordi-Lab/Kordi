@@ -2382,7 +2382,8 @@ export function useCloudBridgeState({
     setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
   }, [account, bootstrapPeerKey, client]);
 
-  const syncCloudBridgeDiff = useCallback(async () => {
+  const syncCloudBridgeDiff = useCallback(async (options: { settleInitialMessages?: boolean } = {}) => {
+    const settleInitialMessages = options.settleInitialMessages ?? true;
     if (!account) return false;
     if (syncingCloudDiffRef.current) return true;
     const session = await loadSession();
@@ -2443,7 +2444,7 @@ export function useCloudBridgeState({
       ));
       setCloudHiddenSessionIds((current) => setsEqual(current, hiddenSessionIds) ? current : new Set(hiddenSessionIds));
       setCloudDeletedSessionIds((current) => setsEqual(current, deletedSessionIds) ? current : new Set(deletedSessionIds));
-      setInitialMessagesSettledPeerKey(bootstrapPeerKey);
+      if (settleInitialMessages) setInitialMessagesSettledPeerKey(bootstrapPeerKey);
       return true;
     } finally {
       syncingCloudDiffRef.current = false;
@@ -2465,8 +2466,8 @@ export function useCloudBridgeState({
       return;
     }
     void refreshCloudAgents();
-    void syncCloudBridgeDiff().then((diffSynced) => {
-      if (!diffSynced) void refreshCloudBridgeMessages();
+    void syncCloudBridgeDiff({ settleInitialMessages: false }).then(() => {
+      void refreshCloudBridgeMessages();
     });
     const interval = window.setInterval(() => {
       void syncCloudBridgeDiff().then((diffSynced) => {
