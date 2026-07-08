@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -46,6 +47,18 @@ test('long transcript windows clamp at the start and end of history', () => {
     end: 1000,
     windowed: true,
   });
+});
+
+test('ChatSessionPane resets the transcript window anchor before paint on session changes', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const resetCallIndex = source.indexOf('setTranscriptWindowAnchorIndex(Math.max(0, messages.length - 1));');
+  const resetSnippet = source.slice(
+    source.lastIndexOf('useLayoutEffect', resetCallIndex),
+    source.indexOf('const navigationTargetIndex', resetCallIndex),
+  );
+
+  assert.match(source, /import \{[^}]*useLayoutEffect[^}]*\} from 'react'/);
+  assert.match(resetSnippet, /useLayoutEffect\(\(\) => \{[\s\S]*setTranscriptWindowAnchorIndex\(Math\.max\(0, messages\.length - 1\)\);/);
 });
 
 test('scroll anchor resists variable-height transcript content', () => {
