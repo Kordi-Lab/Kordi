@@ -50,7 +50,7 @@ import {
 } from '../src/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
 import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
-import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
+import type { CanonicalSessionMessage, CanonicalSessionState, DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -478,6 +478,14 @@ test('Cloud reactivation keeps hot cache interactive before running background r
   assert.match(source, /cloudFocusRefreshTimerRef/, 'expected Cloud focus refreshes to coalesce into one delayed timer');
   assert.match(source, /window\.setTimeout\(runRefresh, CLOUD_FOCUS_REFRESH_DELAY_MS\)/, 'focus refresh should be scheduled after the hot-cache frame');
   assert.match(source, /window\.clearTimeout\(cloudFocusRefreshTimerRef\.current\)/, 'bursts should cancel the previous delayed refresh timer');
+});
+
+test('Cloud full message refreshes are single-flight and account-safe', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  assert.match(source, /refreshingCloudMessagesRef = useRef<Promise<void> \| null>\(null\)/, 'expected a single-flight Cloud message refresh ref');
+  assert.match(source, /if \(refreshingCloudMessagesRef\.current\) return refreshingCloudMessagesRef\.current;/, 'full peer refreshes should not overlap');
+  assert.match(source, /const refreshAccountId = account\.accountId;/, 'refreshes should capture the account they started for');
+  assert.match(source, /messagesCacheAccountRef\.current !== refreshAccountId/, 'stale old-account refreshes must not apply after account changes');
 });
 
 const message: CloudMessage = {
@@ -2178,6 +2186,46 @@ test('cloud cloud-agent mention requests and responses use bridge agent directio
   assert.equal(response.sender, null);
   assert.equal(response.requestId, 'msg_request');
   assert.equal(response.text, 'I am Kordi.');
+});
+
+test('cloud direct local-agent completed turn replaces processing while Cloud response sync catches up', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_local_agent_request_done_locally',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: '@MeCloudKordi can you check the issue?',
+    direction: 'incoming',
+    createdAt: new Date().toISOString(),
+  };
+  const completedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn_direct_local_done',
+    sessionId: 'cloud-agent:acct_me:acct_peer',
+    prompt: 'can you check the issue?',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'I checked it and found the issue.',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: true,
+    error: null,
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+    localAgentTurnsByRequestId: { [request.messageId]: completedTurn },
+  });
+
+  assert.equal(state.conversations[0].awaitingReply, false);
+  const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+  const agentMessage = view.messages.find((candidate) => candidate.role === 'owned-agent');
+  assert.notEqual(agentMessage?.turn?.status, 'processing');
+  assert.equal(agentMessage?.turn?.completed, true);
+  assert.equal(agentMessage?.turn?.assistantText, 'I checked it and found the issue.');
+  assert.equal(view.messages.some((candidate) => candidate.turn?.status === 'processing'), false);
 });
 
 test('cloud self-agent responses keep local runtime tool details local to the owner', () => {

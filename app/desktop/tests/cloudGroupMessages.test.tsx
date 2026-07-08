@@ -610,6 +610,20 @@ test('cloud group offline notice replies as the mentioned agent and marks the tu
   });
 });
 
+test('cloud group agent response state prefers terminal rows over older processing placeholders', () => {
+  const groupId = 'session:group:one';
+  const requestId = 'msg_request';
+  const targetAccountId = 'acct_target';
+  assert.equal(cloudGroupAgentMentionResponseState({
+    requestMessageId: requestId,
+    targetAccountId,
+    messages: [
+      { id: 'msg_processing', sessionId: groupId, senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { requestId, deliveryState: 'processing' }, parentMessageId: requestId, status: 'processing', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'cloud-group-agent' },
+      { id: 'msg_final', sessionId: groupId, senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'final answer', content: { requestId, deliveryState: 'complete' }, parentMessageId: requestId, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, sourceTransport: 'cloud-group-agent' },
+    ],
+  }), 'terminal');
+});
+
 test('cloud group local agent requests are considered handled after a synced processing or final response', () => {
   const requestId = 'msg_request';
   const responseBody = encodeCloudGroupControl({

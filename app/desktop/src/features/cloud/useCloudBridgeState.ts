@@ -2004,6 +2004,7 @@ export function useCloudBridgeState({
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
   const syncingCloudDiffRef = useRef(false);
+  const refreshingCloudMessagesRef = useRef<Promise<void> | null>(null);
   const lastCloudFocusRefreshAtRef = useRef(0);
   const cloudFocusRefreshTimerRef = useRef<number | null>(null);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
@@ -2348,38 +2349,48 @@ export function useCloudBridgeState({
   }, [cloudAgentsClient]);
 
   const refreshCloudBridgeMessages = useCallback(async () => {
-    const retainedPeerIds = Object.keys(messagesByPeerRef.current);
-    const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
-    if (!account || initialPeerIds.length === 0) {
-      setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
-      setInitialMessagesSettledPeerKey(bootstrapPeerKey);
-      return;
-    }
-    const session = await loadSession();
-    if (!session?.token) {
-      setInitialMessagesSettledPeerKey(null);
-      return;
-    }
+    if (refreshingCloudMessagesRef.current) return refreshingCloudMessagesRef.current;
+    const refreshPromise = (async () => {
+      const retainedPeerIds = Object.keys(messagesByPeerRef.current);
+      const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
+      if (!account || initialPeerIds.length === 0) {
+        setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
+        setInitialMessagesSettledPeerKey(bootstrapPeerKey);
+        return;
+      }
+      const refreshAccountId = account.accountId;
+      const session = await loadSession();
+      if (!session?.token) {
+        setInitialMessagesSettledPeerKey(null);
+        return;
+      }
 
-    const loaded = await loadCloudMessagesByPeerUntilStable({
-      accountId: account.accountId,
-      initialPeerIds,
-      existingMessagesByPeer: messagesByPeerRef.current,
-      listMessages: (peerId) => client.listMessages(session.token, peerId),
-      resolveMessageAttachments: async (messages) => Promise.all(messages.map(async (message) => ({
-        ...message,
-        attachments: message.attachments?.length
-          ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
-          : [],
-      }))),
-    });
+      const loaded = await loadCloudMessagesByPeerUntilStable({
+        accountId: refreshAccountId,
+        initialPeerIds,
+        existingMessagesByPeer: messagesByPeerRef.current,
+        listMessages: (peerId) => client.listMessages(session.token, peerId),
+        resolveMessageAttachments: async (messages) => Promise.all(messages.map(async (message) => ({
+          ...message,
+          attachments: message.attachments?.length
+            ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+            : [],
+        }))),
+      });
 
-    if (cancelledRef.current) return;
-    setMessagesByPeer((current) => {
-      const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
-      return cloudMessagesByPeerEqual(current, merged) ? current : merged;
-    });
-    setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
+      if (cancelledRef.current || messagesCacheAccountRef.current !== refreshAccountId) return;
+      setMessagesByPeer((current) => {
+        const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
+        return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      });
+      setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
+    })();
+    refreshingCloudMessagesRef.current = refreshPromise;
+    try {
+      await refreshPromise;
+    } finally {
+      if (refreshingCloudMessagesRef.current === refreshPromise) refreshingCloudMessagesRef.current = null;
+    }
   }, [account, bootstrapPeerKey, client]);
 
   const syncCloudBridgeDiff = useCallback(async () => {
