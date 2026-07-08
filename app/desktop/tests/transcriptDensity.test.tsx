@@ -322,7 +322,7 @@ test('image-only human messages use compact frosted attachment padding', () => {
   assert.doesNotMatch(markup, /px-4 py-2\.5/);
 });
 
-test('pending image attachments reserve an image-sized loading placeholder', () => {
+test('pending image attachments reserve a compact image-sized loading placeholder', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -341,9 +341,11 @@ test('pending image attachments reserve an image-sized loading placeholder', () 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /data-attachment-image-loading="true"/);
-  assert.match(markup, /w-\[min\(100%,29rem\)\]/);
+  assert.match(markup, /w-\[min\(100%,20rem\)\]/);
+  assert.match(markup, /auto-rows-\[4rem\]/);
   assert.match(markup, /aspect-\[4\/3\]/);
   assert.doesNotMatch(markup, /data-attachment-file-card="true"/);
+  assert.doesNotMatch(markup, /w-\[min\(100%,29rem\)\][^"]*auto-rows-\[6\.5rem\]/);
 });
 
 test('renders failed own message delivery as a compact red exclamation', () => {

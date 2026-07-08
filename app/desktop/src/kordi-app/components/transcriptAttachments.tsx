@@ -275,7 +275,7 @@ function AttachmentImageLoadingSurface({ className }: { className?: string }) {
     <div
       data-attachment-image-loading="true"
       aria-label="Loading attached image"
-      className={cn('relative flex h-full min-h-28 min-w-[min(18rem,72vw)] aspect-[4/3] items-center justify-center overflow-hidden rounded-[15px] bg-black/[0.055]', className)}
+      className={cn('relative flex h-full w-full min-h-28 aspect-[4/3] items-center justify-center overflow-hidden rounded-[15px] bg-black/[0.055]', className)}
     >
       <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.10)_42%,transparent_74%)] opacity-70 motion-safe:animate-[app-attachment-shimmer_1.45s_ease-in-out_infinite]" aria-hidden="true" />
       <div className="relative z-[1] flex flex-col items-center gap-2 text-slate-500/85" aria-hidden="true">
@@ -398,6 +398,8 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
   const [lightboxAttachment, setLightboxAttachment] = useState<{ attachment: MessageAttachment; previewUrl: string } | null>(null);
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
   const isSending = isAttachmentSending(msg);
+  const loadingOnlyImageCollage = previewImageAttachments.length > 0
+    && previewImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
 
   function openContextMenu(attachment: MessageAttachment, event: MouseEvent) {
     event.preventDefault();
@@ -427,7 +429,10 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
           <div
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
-            className="relative grid w-[min(100%,29rem)] max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0 shadow-[0_10px_26px_rgba(2,8,23,0.12)]"
+            className={cn(
+              'relative grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden rounded-[20px] p-0 shadow-[0_10px_26px_rgba(2,8,23,0.12)]',
+              loadingOnlyImageCollage ? 'w-[min(100%,20rem)] auto-rows-[4rem]' : 'w-[min(100%,29rem)] auto-rows-[6.5rem]',
+            )}
           >
             {previewImageAttachments.map((attachment, index) => (
               <AttachmentImageCard
