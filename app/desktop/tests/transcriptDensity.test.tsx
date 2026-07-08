@@ -1504,6 +1504,15 @@ test('styles folded answer reveal as a compact inline control', () => {
   assert.doesNotMatch(answerFoldedAfterBlock, /backdrop-filter:\s*blur\(/);
 });
 
+test('light theme keeps folded assistant markdown readable against the answer surface', () => {
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const lightAnswerMarkdownBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-live-assistant-answer-markdown :where\(p, li, blockquote, td, th, strong, em\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightAnswerListBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-live-assistant-answer-markdown :where\(ol, ul\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(lightAnswerMarkdownBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);
+  assert.match(lightAnswerListBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);
+});
+
 const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-source-message-quote[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer/;
 
 test('keeps source quote and tool summary inside the same assistant response background', () => {
