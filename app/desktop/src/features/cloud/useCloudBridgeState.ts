@@ -4160,6 +4160,7 @@ export function useCloudBridgeState({
       contacts: cloudBridgeContacts,
       messagesByPeer: visibleMessagesByPeer,
       readInboundMessageIdsByPeer,
+      readCursorsBySessionId: cloudGroupReadCursorsBySessionId(canonicalSessionState),
       activeConversationId,
       localAgentTurnsByRequestId,
       localAgentRuntimeRoute: activeRuntimeRoute,

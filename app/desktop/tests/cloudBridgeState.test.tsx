@@ -2072,6 +2072,28 @@ test('cloud read markers keep previously read inbound messages from becoming unr
   assert.equal(state.conversations[0].unreadCount, 0);
 });
 
+test('cloud direct unread honors canonical direct-session read cursor when cached readAt is stale', () => {
+  const directSessionId = cloudDirectPersonSessionId(account.accountId, 'acct_peer');
+  const staleCachedInbound: CloudMessage = {
+    ...message,
+    messageId: 'cloud_stale_unread_after_cursor',
+    sessionId: directSessionId,
+    createdAt: '2026-05-11T10:00:00Z',
+    readAt: null,
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [staleCachedInbound] },
+    readCursorsBySessionId: {
+      [directSessionId]: { lastReadMessageId: 'msg:canonical-latest', lastReadCreatedAtMs: Date.parse('2026-05-11T10:00:01Z') },
+    },
+    activeConversationId: null,
+  });
+
+  assert.equal(state.conversations[0].unreadCount, 0);
+});
+
 test('cloud self-agent messages never count as unread badges', () => {
   const selfMessage: CloudMessage = {
     ...message,

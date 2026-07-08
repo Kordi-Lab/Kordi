@@ -141,7 +141,18 @@ export function activeConversationForSelection(
     ?? (activeCloudSessionId
       ? chatConversations.find((conversation) => conversation.id === activeCloudSessionId || conversation.canonicalSessionId === activeCloudSessionId)
       : undefined);
-  if (selectedConversation) return selectedConversation;
+  if (selectedConversation) {
+    const selectedCanonicalId = selectedConversation.canonicalSessionId ?? selectedConversation.id;
+    if (isCanonicalCloudSessionId(selectedCanonicalId) && selectedConversation.messages.length === 0) {
+      const pending = pendingCanonicalCloudConversationForActiveId(selectedCanonicalId);
+      return pending ? {
+        ...selectedConversation,
+        subtitle: selectedConversation.subtitle || pending.subtitle,
+        messages: pending.messages,
+      } : selectedConversation;
+    }
+    return selectedConversation;
+  }
   const pendingCloudConversation = pendingCloudBridgeConversationForActiveId(activeConvId);
   if (pendingCloudConversation) return pendingCloudConversation;
   const pendingCanonicalCloudConversation = pendingCanonicalCloudConversationForActiveId(activeConvId);

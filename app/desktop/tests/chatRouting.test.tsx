@@ -114,6 +114,33 @@ test('workspace active conversation keeps selected canonical Cloud session in lo
   assert.notEqual(selected.messages[0]?.text, 'wrong local fallback');
 });
 
+test('workspace active conversation shows loading copy for an empty selected canonical Cloud shell', () => {
+  const emptyCloudShell = {
+    id: 'session:group:main',
+    canonicalSessionId: 'session:group:main',
+    name: 'main',
+    type: 'owned-agent' as const,
+    subtitle: '',
+    unread: 0,
+    bridges: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Group chat',
+    participants: ['Me', 'Alice'],
+    messages: [],
+  };
+
+  const selected = activeConversationForSelection(
+    'session:group:main',
+    [emptyCloudShell],
+    { isNativeShell: true, nativeChatPlaceholder: emptyCloudShell },
+  );
+
+  assert.equal(selected.id, 'session:group:main');
+  assert.equal(selected.name, 'main');
+  assert.equal(selected.messages.length > 0, true);
+  assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
+});
+
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
   const localConversation = {
     id: 'local-newer',
