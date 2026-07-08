@@ -14,7 +14,7 @@ afterEach(() => {
   clearCloudAttachmentLocalPathCacheForTests();
 });
 
-test('cloud attachment metadata maps to transcript attachment metadata without exposing object-store URLs', () => {
+test('cloud attachment metadata maps compressed previews but still hides original object-store URLs', () => {
   assert.deepEqual(cloudMessageAttachmentToMessageAttachment({
     attachmentId: 'att_1',
     name: 'Screenshot.png',
@@ -22,13 +22,13 @@ test('cloud attachment metadata maps to transcript attachment metadata without e
     mimeType: 'image/png',
     sizeBytes: 2048,
     downloadUrl: 'https://files.test/att_1',
-    previewUrl: null,
+    previewUrl: 'data:image/webp;base64,preview',
   }), {
     kind: 'image',
     name: 'Screenshot.png',
     mimeType: 'image/png',
     sizeBytes: 2048,
-    previewUrl: null,
+    previewUrl: 'data:image/webp;base64,preview',
     downloadUrl: null,
     localPath: null,
     attachmentId: 'att_1',
@@ -264,5 +264,47 @@ test('uploadComposerAttachments reads staged local files and preserves display m
     kind: 'file',
     mimeType: 'application/pdf',
     sizeBytes: 3,
+  }]);
+});
+
+test('uploadComposerAttachments includes a compressed image preview for fast large-image rendering', async () => {
+  const client = {
+    async uploadAttachment(_token: string, blob: Blob) {
+      return {
+        attachmentId: 'att_large_image',
+        objectKey: 'attachments/acct/att_large_image',
+        sizeBytes: blob.size,
+        contentType: blob.type,
+        sha256Hex: null,
+        finalizedAt: '2026-05-12T00:00:00Z',
+      };
+    },
+  } as Pick<CloudAuthClient, 'uploadAttachment'>;
+
+  const result = await uploadComposerAttachments({
+    token: 'kordi_cs_xyz',
+    client,
+    attachments: [{
+      id: 'local-large',
+      path: '/tmp/large.png',
+      name: 'large.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 24 * 1024 * 1024,
+    }],
+    readAttachment: async () => [1, 2, 3, 4],
+    createPreviewDataUrl: async (blob) => {
+      assert.equal(blob.type, 'image/png');
+      return 'data:image/webp;base64,compressed-preview';
+    },
+  });
+
+  assert.deepEqual(result, [{
+    attachmentId: 'att_large_image',
+    name: 'large.png',
+    kind: 'image',
+    mimeType: 'image/png',
+    sizeBytes: 24 * 1024 * 1024,
+    previewUrl: 'data:image/webp;base64,compressed-preview',
   }]);
 });

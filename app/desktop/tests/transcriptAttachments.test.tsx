@@ -161,6 +161,28 @@ test('remote images without a completed local preview render a quiet loading til
   assert.doesNotMatch(markup, />Screenshot 2026-05-20\.png</);
 });
 
+test('large image attachments render compressed preview with an original-file action', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: {
+      ...imageMessage,
+      attachments: [{
+        ...imageMessage.attachments[0],
+        name: 'Huge screenshot.png',
+        sizeBytes: 24 * 1024 * 1024,
+        previewUrl: 'data:image/webp;base64,compressed-preview',
+        localPath: null,
+      }],
+    },
+  }));
+
+  assert.match(markup, /data-attachment-image-preview-trigger="true"/);
+  assert.match(markup, /src="data:image\/webp;base64,compressed-preview"/);
+  assert.match(markup, /data-attachment-original-action="true"/);
+  assert.match(markup, /Open original/);
+  assert.match(markup, /24 MB/);
+  assert.doesNotMatch(markup, /data-attachment-image-loading="true"/);
+});
+
 test('loaded image previews enter with smooth opacity and scale transition classes', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
 

@@ -16,7 +16,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::{Body, to_bytes};
+use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
@@ -198,12 +198,10 @@ async fn signup_happy_path_returns_session_and_persists_account() {
     let status = response.status();
     let body = read_json(response).await;
     assert_eq!(status, StatusCode::CREATED, "got body {body}");
-    assert!(
-        body["session"]["token"]
-            .as_str()
-            .unwrap()
-            .starts_with("kordi_cs_")
-    );
+    assert!(body["session"]["token"]
+        .as_str()
+        .unwrap()
+        .starts_with("kordi_cs_"));
     assert_eq!(body["account"]["primaryEmail"], email);
     assert_eq!(body["account"]["passwordSet"], true);
 
@@ -471,7 +469,8 @@ async fn cloud_messages_preserve_attachment_metadata_and_enforce_attachment_owne
                     "name": "screen.png",
                     "kind": "image",
                     "mimeType": "image/png",
-                    "sizeBytes": 123
+                    "sizeBytes": 123,
+                    "previewUrl": "data:image/webp;base64,compressed-preview"
                 }]
             }),
         ))
@@ -487,7 +486,10 @@ async fn cloud_messages_preserve_attachment_metadata_and_enforce_attachment_owne
     );
     assert_eq!(send_body["message"]["attachments"][0]["name"], "screen.png");
     assert!(send_body["message"]["attachments"][0]["downloadUrl"].is_null());
-    assert!(send_body["message"]["attachments"][0]["previewUrl"].is_null());
+    assert_eq!(
+        send_body["message"]["attachments"][0]["previewUrl"],
+        "data:image/webp;base64,compressed-preview"
+    );
 
     let list_resp = router
         .clone()
@@ -503,7 +505,10 @@ async fn cloud_messages_preserve_attachment_metadata_and_enforce_attachment_owne
         "att_owner"
     );
     assert!(list_body["messages"][0]["attachments"][0]["downloadUrl"].is_null());
-    assert!(list_body["messages"][0]["attachments"][0]["previewUrl"].is_null());
+    assert_eq!(
+        list_body["messages"][0]["attachments"][0]["previewUrl"],
+        "data:image/webp;base64,compressed-preview"
+    );
 
     let forbidden_resp = router
         .oneshot(post_json_with_token(

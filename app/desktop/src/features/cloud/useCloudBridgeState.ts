@@ -4277,6 +4277,7 @@ export function useCloudBridgeState({
             kind: attachment.kind,
             mimeType: attachment.mimeType ?? null,
             sizeBytes: attachment.sizeBytes ?? null,
+            previewUrl: attachment.previewUrl ?? null,
           })) : input.message.attachments,
         }
       : null;

@@ -116,6 +116,7 @@ export type SendCloudMessageAttachmentInput = {
   kind: 'image' | 'file';
   mimeType?: string | null;
   sizeBytes?: number | null;
+  previewUrl?: string | null;
 };
 
 export type CloudAttachmentInitiateResult = {

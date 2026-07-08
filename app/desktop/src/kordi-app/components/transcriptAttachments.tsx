@@ -37,16 +37,23 @@ export function attachmentPreviewIdentity(attachment: MessageAttachment) {
   ].join(':');
 }
 
+function safeAttachmentPreviewUrl(value?: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed || isInternalObjectStoreUrl(trimmed)) return undefined;
+  return trimmed;
+}
+
 function attachmentPreviewUrl(attachment: MessageAttachment) {
   if (!shouldPreviewAttachmentInline(attachment)) return undefined;
-  if (attachment.localPath && isNativeShell()) {
+  const previewUrl = safeAttachmentPreviewUrl(attachment.previewUrl);
+  if (previewUrl) return previewUrl;
+  if (attachment.localPath && isNativeShell() && !isLargeAttachment(attachment)) {
     try {
       return convertFileSrc(attachment.localPath);
     } catch {
       return undefined;
     }
   }
-  if (attachment.previewUrl && !isInternalObjectStoreUrl(attachment.previewUrl)) return attachment.previewUrl;
   return undefined;
 }
 
@@ -65,7 +72,9 @@ function isLargeAttachment(attachment: MessageAttachment) {
 }
 
 function shouldPreviewAttachmentInline(attachment: MessageAttachment) {
-  return attachment.kind === 'image' && !isArchiveAttachment(attachment) && !isLargeAttachment(attachment);
+  return attachment.kind === 'image'
+    && !isArchiveAttachment(attachment)
+    && (!isLargeAttachment(attachment) || Boolean(safeAttachmentPreviewUrl(attachment.previewUrl)));
 }
 
 function formatAttachmentSize(sizeBytes?: number | null) {
@@ -81,7 +90,7 @@ function formatAttachmentSize(sizeBytes?: number | null) {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function AttachmentActions({ attachment, variant = 'icon' }: { attachment: MessageAttachment; variant?: 'icon' | 'menu' }) {
+function AttachmentActions({ attachment, variant = 'icon' }: { attachment: MessageAttachment; variant?: 'icon' | 'menu' | 'original' }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +135,42 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
     }
+  }
+
+  async function handleOpenOriginal() {
+    setIsDownloading(true);
+    setError(null);
+    try {
+      const localPath = await ensureLocalPath();
+      if (!localPath) return;
+      setDownloadedPath(localPath);
+      if (isNativeShell()) await openDesktopExternalUrl(localPath);
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : 'Unable to open original attachment');
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
+  if (variant === 'original') {
+    const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+    return (
+      <button
+        type="button"
+        data-attachment-original-action="true"
+        onClick={(event) => {
+          event.stopPropagation();
+          void handleOpenOriginal();
+        }}
+        disabled={isDownloading}
+        className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/92 shadow-lg shadow-black/20 backdrop-blur-md transition hover:bg-black/65 disabled:cursor-wait disabled:opacity-70"
+        aria-label={`Open original ${attachment.name}`}
+      >
+        {isDownloading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+        <span>Open original</span>
+        {sizeLabel ? <span className="font-medium opacity-75">{sizeLabel}</span> : null}
+      </button>
+    );
   }
 
   if (variant === 'menu') {
@@ -279,10 +324,10 @@ function AttachmentImageLoadingSurface({ className }: { className?: string }) {
     >
       <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.10)_42%,transparent_74%)] opacity-70 motion-safe:animate-[app-attachment-shimmer_1.45s_ease-in-out_infinite]" aria-hidden="true" />
       <div className="relative z-[1] flex flex-col items-center gap-2 text-slate-500/85" aria-hidden="true">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/55 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)] backdrop-blur-sm">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50/70 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)] backdrop-blur-sm">
           <Image className="h-4 w-4" />
         </div>
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-white/50 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]">
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-50/70 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]">
           <LoaderCircle className="h-3 w-3 animate-spin" />
           <span>Loading image</span>
         </div>
@@ -348,18 +393,19 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
   const previewUrl = attachmentPreviewUrl(attachment);
+  const [imageLoaded, setImageLoaded] = useState(() => Boolean(previewUrl?.startsWith('data:image/')));
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl && !previewFailed);
   const singleImage = totalCount <= 1;
+  const showOriginalAction = showImage && isLargeAttachment(attachment);
 
   return (
     <div
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
       data-attachment-image-context-target="true"
-      className={cn('app-attachment-image-card app-attachment-image-tile overflow-hidden bg-transparent', imageTileClass(index, totalCount))}
+      className={cn('app-attachment-image-card app-attachment-image-tile relative overflow-hidden bg-transparent', imageTileClass(index, totalCount))}
       onContextMenu={(event) => onOpenContextMenu(attachment, event)}
     >
       {showImage && previewUrl ? (
@@ -387,6 +433,11 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
       ) : (
         <AttachmentImageLoadingSurface />
       )}
+      {showOriginalAction ? (
+        <div className="absolute bottom-2 right-2 z-10">
+          <AttachmentActions attachment={attachment} variant="original" />
+        </div>
+      ) : null}
     </div>
   );
 }
