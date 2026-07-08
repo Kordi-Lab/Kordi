@@ -267,6 +267,47 @@ test('uploadComposerAttachments reads staged local files and preserves display m
   }]);
 });
 
+test('uploadComposerAttachments creates the compressed preview before uploading the original image', async () => {
+  const events: string[] = [];
+  const client = {
+    async uploadAttachment(_token: string, blob: Blob) {
+      events.push('upload');
+      assert.equal(blob.type, 'image/png');
+      return {
+        attachmentId: 'att_ordered_image',
+        objectKey: 'attachments/acct/att_ordered_image',
+        sizeBytes: blob.size,
+        contentType: blob.type,
+        sha256Hex: null,
+        finalizedAt: '2026-05-12T00:00:00Z',
+      };
+    },
+  } as Pick<CloudAuthClient, 'uploadAttachment'>;
+
+  await uploadComposerAttachments({
+    token: 'kordi_cs_xyz',
+    client,
+    attachments: [{
+      id: 'local-ordered',
+      path: '/tmp/ordered.png',
+      name: 'ordered.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 24 * 1024 * 1024,
+    }],
+    readAttachment: async () => {
+      events.push('read');
+      return [1, 2, 3, 4];
+    },
+    createPreviewDataUrl: async () => {
+      events.push('preview');
+      return 'data:image/webp;base64,compressed-preview';
+    },
+  });
+
+  assert.deepEqual(events, ['read', 'preview', 'upload']);
+});
+
 test('uploadComposerAttachments includes a compressed image preview for fast large-image rendering', async () => {
   const client = {
     async uploadAttachment(_token: string, blob: Blob) {

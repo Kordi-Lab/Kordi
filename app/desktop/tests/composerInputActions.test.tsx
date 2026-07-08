@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { composerConfigTargetSessionId } from '../src/features/chat/useComposerInputActions';
+import { composerAttachmentItemFromStoredPath, composerConfigTargetSessionId } from '../src/features/chat/useComposerInputActions';
 
 test('composer config routing does not target canonical Cloud direct or group sessions', () => {
   assert.equal(composerConfigTargetSessionId({
@@ -19,6 +19,37 @@ test('composer config routing does not target canonical Cloud direct or group se
     activeProjectSessionId: 'project-session',
     desktopActiveSessionId: 'local-agent-session',
   }), null);
+});
+
+test('composer path image attachments include a compressed preview for optimistic large-image rendering', async () => {
+  const previewCalls: Array<{ storedPath: string; name: string; kind: string; mimeType?: string | null; sizeBytes?: number | null }> = [];
+
+  const attachment = await composerAttachmentItemFromStoredPath({
+    sourcePath: '/Users/alice/Pictures/huge.png',
+    stored: {
+      path: '/app-cache/huge.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      formatLabel: 'PNG',
+      sizeBytes: 24 * 1024 * 1024,
+    },
+    createPreviewUrl: async (storedPath, metadata) => {
+      previewCalls.push({ storedPath, name: metadata.name, kind: metadata.kind, mimeType: metadata.mimeType, sizeBytes: metadata.sizeBytes });
+      return 'data:image/webp;base64,preview';
+    },
+  });
+
+  assert.equal(attachment.kind, 'image');
+  assert.equal(attachment.name.endsWith('.png'), true);
+  assert.equal(attachment.path, '/app-cache/huge.png');
+  assert.equal(attachment.previewUrl, 'data:image/webp;base64,preview');
+  assert.deepEqual(previewCalls, [{
+    storedPath: '/app-cache/huge.png',
+    name: attachment.name,
+    kind: 'image',
+    mimeType: 'image/png',
+    sizeBytes: 24 * 1024 * 1024,
+  }]);
 });
 
 test('composer config routing still targets local chat and project sessions', () => {

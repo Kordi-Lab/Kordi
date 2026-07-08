@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 
 import { isCanonicalBridgeSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
+import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
-import { storeDesktopChatAttachment, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig } from '@/lib/desktop';
+import { readDesktopChatAttachment, storeDesktopChatAttachment, storeDesktopChatAttachmentPath, updateDesktopChatSessionConfig, type DesktopStoredChatAttachment } from '@/lib/desktop';
 
 import { friendlyAttachmentName } from './composerAttachments';
 import { updateScopeDraft } from './composerDrafts';
@@ -176,6 +177,56 @@ function attachmentKindFromName(name: string): AttachmentItem['kind'] {
   return extension && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(extension)
     ? 'image'
     : 'file';
+}
+
+type ComposerPathPreviewMetadata = Pick<AttachmentItem, 'name' | 'kind' | 'mimeType' | 'sizeBytes'>;
+
+type ComposerPathPreviewGenerator = (storedPath: string, metadata: ComposerPathPreviewMetadata) => Promise<string | null | undefined>;
+
+async function createComposerAttachmentPathPreviewUrl(storedPath: string, metadata: ComposerPathPreviewMetadata) {
+  if (metadata.kind !== 'image') return null;
+  try {
+    const bytes = await readDesktopChatAttachment(storedPath);
+    const mimeType = metadata.mimeType?.trim() || null;
+    const blob = new Blob([new Uint8Array(bytes)], mimeType ? { type: mimeType } : undefined);
+    return await createCompressedImagePreviewDataUrl(blob);
+  } catch {
+    return null;
+  }
+}
+
+export async function composerAttachmentItemFromStoredPath({
+  sourcePath,
+  stored,
+  displayName: preferredDisplayName,
+  createPreviewUrl = createComposerAttachmentPathPreviewUrl,
+}: {
+  sourcePath: string;
+  stored: Pick<DesktopStoredChatAttachment, 'path' | 'kind' | 'mimeType' | 'formatLabel' | 'sizeBytes'> & { name?: string | null };
+  displayName?: string;
+  createPreviewUrl?: ComposerPathPreviewGenerator;
+}): Promise<AttachmentItem> {
+  const rawName = attachmentNameFromPath(sourcePath);
+  const kindFromName = attachmentKindFromName(rawName);
+  const displayName = preferredDisplayName?.trim() || stored.name?.trim() || friendlyAttachmentName(rawName, kindFromName);
+  const storedKind = stored.kind === 'image' ? ('image' as const) : ('file' as const);
+  const metadata: ComposerPathPreviewMetadata = {
+    name: displayName,
+    kind: storedKind,
+    mimeType: stored.mimeType ?? undefined,
+    sizeBytes: stored.sizeBytes ?? undefined,
+  };
+  const previewUrl = storedKind === 'image' ? await createPreviewUrl(stored.path, metadata) : null;
+  return {
+    id: `${displayName}-${stored.path}`,
+    name: displayName,
+    path: stored.path,
+    kind: storedKind,
+    mimeType: stored.mimeType ?? undefined,
+    formatLabel: stored.formatLabel ?? attachmentFormatLabel(displayName, stored.mimeType ?? undefined),
+    sizeBytes: stored.sizeBytes ?? undefined,
+    ...(previewUrl ? { previewUrl } : {}),
+  };
 }
 
 function attachmentSummaryTextValue(text: string, attachments: AttachmentItem[]) {
@@ -412,16 +463,7 @@ export function useComposerInputActions({
         const kind = attachmentKindFromName(rawName);
         const displayName = friendlyAttachmentName(rawName, kind);
         const stored = await storeDesktopChatAttachmentPath(sourcePath, displayName);
-        const storedKind = stored.kind === 'image' ? ('image' as const) : ('file' as const);
-        return {
-          id: `${displayName}-${stored.path}`,
-          name: displayName,
-          path: stored.path,
-          kind: storedKind,
-          mimeType: stored.mimeType ?? undefined,
-          formatLabel: stored.formatLabel ?? attachmentFormatLabel(displayName, stored.mimeType ?? undefined),
-          sizeBytes: stored.sizeBytes ?? undefined,
-        };
+        return composerAttachmentItemFromStoredPath({ sourcePath, stored, displayName });
       }));
 
       setChatComposerAttachments((current) => {

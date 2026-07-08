@@ -170,10 +170,10 @@ export async function uploadCloudFiles({
 }): Promise<CloudMessageAttachment[]> {
   const uploaded: CloudMessageAttachment[] = [];
   for (const file of files) {
-    const summary = await client.uploadAttachment(token, file);
     const mimeType = file.type?.trim() || null;
     const kind = mimeType?.startsWith('image/') ? 'image' : 'file';
     const previewUrl = kind === 'image' ? await createPreviewDataUrl(file, { name: file.name || 'attachment', kind, mimeType, sizeBytes: file.size }) : null;
+    const summary = await client.uploadAttachment(token, file);
     let localPath: string | null = null;
     try {
       const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
@@ -214,7 +214,6 @@ export async function uploadComposerAttachments({
     const bytes = await readAttachment(attachment.path);
     const mimeType = attachment.mimeType?.trim() || null;
     const blob = new Blob([new Uint8Array(bytes)], mimeType ? { type: mimeType } : undefined);
-    const summary = await client.uploadAttachment(token, blob);
     const kind = attachment.kind === 'image' ? 'image' : 'file';
     const previewUrl = kind === 'image'
       ? safeCloudAttachmentPreviewUrl(await createPreviewDataUrl(blob, {
@@ -224,6 +223,7 @@ export async function uploadComposerAttachments({
         sizeBytes: attachment.sizeBytes ?? blob.size,
       }))
       : null;
+    const summary = await client.uploadAttachment(token, blob);
     cloudAttachmentLocalPathCache.set(summary.attachmentId, attachment.path);
     uploaded.push({
       attachmentId: summary.attachmentId,
