@@ -6,6 +6,7 @@ import { Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { recoverCloudAttachmentPreview } from '@/features/cloud/cloudAttachments';
 import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -13,6 +14,9 @@ import type { Message, MessageAttachment } from '../types';
 
 const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
+const recoveredAttachmentPreviewUrls = new Map<string, string>();
+const recoveringAttachmentPreviewPromises = new Map<string, Promise<string | null>>();
+const failedAttachmentPreviewRecoveries = new Set<string>();
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
@@ -41,6 +45,48 @@ function safeAttachmentPreviewUrl(value?: string | null) {
   const trimmed = value?.trim() ?? '';
   if (!trimmed || isInternalObjectStoreUrl(trimmed)) return undefined;
   return trimmed;
+}
+
+function recoverableAttachmentId(attachment: MessageAttachment) {
+  return attachment.attachmentId?.trim() || null;
+}
+
+async function recoverAttachmentPreviewOnce(attachment: MessageAttachment) {
+  const attachmentId = recoverableAttachmentId(attachment);
+  if (!attachmentId || failedAttachmentPreviewRecoveries.has(attachmentId)) return null;
+  const cached = recoveredAttachmentPreviewUrls.get(attachmentId);
+  if (cached) return cached;
+  const existing = recoveringAttachmentPreviewPromises.get(attachmentId);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const session = await loadSession();
+      if (!session?.token) return null;
+      const previewUrl = await recoverCloudAttachmentPreview({
+        token: session.token,
+        client: defaultCloudAuthClient(),
+        attachment: {
+          attachmentId,
+          name: attachment.name,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType ?? null,
+          sizeBytes: attachment.sizeBytes ?? null,
+          previewUrl: attachment.previewUrl ?? null,
+        },
+      });
+      if (previewUrl) recoveredAttachmentPreviewUrls.set(attachmentId, previewUrl);
+      else failedAttachmentPreviewRecoveries.add(attachmentId);
+      return previewUrl;
+    } catch {
+      failedAttachmentPreviewRecoveries.add(attachmentId);
+      return null;
+    } finally {
+      recoveringAttachmentPreviewPromises.delete(attachmentId);
+    }
+  })();
+  recoveringAttachmentPreviewPromises.set(attachmentId, promise);
+  return promise;
 }
 
 function attachmentPreviewUrl(attachment: MessageAttachment) {
@@ -393,12 +439,31 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
-  const previewUrl = attachmentPreviewUrl(attachment);
+  const attachmentId = recoverableAttachmentId(attachment);
+  const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => attachmentId ? recoveredAttachmentPreviewUrls.get(attachmentId) ?? null : null);
+  const previewUrl = recoveredPreviewUrl ?? attachmentPreviewUrl(attachment);
   const [imageLoaded, setImageLoaded] = useState(() => Boolean(previewUrl?.startsWith('data:image/')));
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl && !previewFailed);
   const singleImage = totalCount <= 1;
   const showOriginalAction = showImage && isLargeAttachment(attachment);
+
+  useEffect(() => {
+    if (previewUrl || previewFailed || attachment.kind !== 'image' || !attachmentId) return;
+    let cancelled = false;
+    void recoverAttachmentPreviewOnce(attachment).then((nextPreviewUrl) => {
+      if (cancelled || !nextPreviewUrl) return;
+      setRecoveredPreviewUrl(nextPreviewUrl);
+      if (nextPreviewUrl.startsWith('data:image/')) setImageLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment, attachmentId, previewFailed, previewUrl]);
+
+  useEffect(() => {
+    if (previewUrl?.startsWith('data:image/')) setImageLoaded(true);
+  }, [previewUrl]);
 
   return (
     <div

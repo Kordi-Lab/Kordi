@@ -722,6 +722,10 @@ pub fn routes_with_config(
             get(crate::attachments::routes::download_url),
         )
         .route(
+            "/v1/cloud/attachments/:attachment_id/preview",
+            post(crate::attachments::routes::update_preview),
+        )
+        .route(
             "/v1/cloud/attachments/:attachment_id/content",
             get(crate::attachments::routes::content),
         )

@@ -4,6 +4,7 @@ import { afterEach, test } from 'node:test';
 import {
   clearCloudAttachmentLocalPathCacheForTests,
   cloudMessageAttachmentToMessageAttachment,
+  recoverCloudAttachmentPreview,
   resolveCloudMessageAttachments,
   uploadCloudFiles,
   uploadComposerAttachments,
@@ -265,6 +266,78 @@ test('uploadComposerAttachments reads staged local files and preserves display m
     mimeType: 'application/pdf',
     sizeBytes: 3,
   }]);
+});
+
+test('recoverCloudAttachmentPreview downloads old image attachments and persists compressed previews', async () => {
+  const events: string[] = [];
+  const client = {
+    async downloadAttachmentContent(_token: string, attachmentId: string) {
+      events.push(`download:${attachmentId}`);
+      return new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'image/png' });
+    },
+    async updateAttachmentPreview(_token: string, attachmentId: string, previewUrl: string) {
+      events.push(`update:${attachmentId}:${previewUrl}`);
+      return {
+        attachmentId,
+        previewUrl,
+        updatedLinks: 2,
+      };
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent' | 'updateAttachmentPreview'>;
+
+  const previewUrl = await recoverCloudAttachmentPreview({
+    token: 'kordi_cs_xyz',
+    client,
+    attachment: {
+      attachmentId: 'att_old_image',
+      name: 'old.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 24 * 1024 * 1024,
+      previewUrl: null,
+    },
+    createPreviewDataUrl: async (blob) => {
+      events.push(`preview:${blob.type}:${blob.size}`);
+      return 'data:image/webp;base64,recovered-preview';
+    },
+  });
+
+  assert.equal(previewUrl, 'data:image/webp;base64,recovered-preview');
+  assert.deepEqual(events, [
+    'download:att_old_image',
+    'preview:image/png:4',
+    'update:att_old_image:data:image/webp;base64,recovered-preview',
+  ]);
+});
+
+test('recoverCloudAttachmentPreview skips attachments that already have a preview', async () => {
+  let called = false;
+  const client = {
+    async downloadAttachmentContent() {
+      called = true;
+      return new Blob();
+    },
+    async updateAttachmentPreview() {
+      called = true;
+      return { attachmentId: 'att_1', previewUrl: '', updatedLinks: 0 };
+    },
+  } as unknown as Pick<CloudAuthClient, 'downloadAttachmentContent' | 'updateAttachmentPreview'>;
+
+  const previewUrl = await recoverCloudAttachmentPreview({
+    token: 'kordi_cs_xyz',
+    client,
+    attachment: {
+      attachmentId: 'att_existing',
+      name: 'existing.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 24,
+      previewUrl: 'data:image/webp;base64,existing',
+    },
+  });
+
+  assert.equal(previewUrl, null);
+  assert.equal(called, false);
 });
 
 test('uploadComposerAttachments creates the compressed preview before uploading the original image', async () => {

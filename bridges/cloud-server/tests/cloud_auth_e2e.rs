@@ -86,6 +86,8 @@ fn cloud_self_addressed_messages_are_read_by_definition() {
     assert!(routes_source.contains("WHEN from_account_id = $1 AND to_account_id = $1"));
     assert!(pool_source.contains("version: 30"));
     assert!(pool_source.contains("0030_mark_self_cloud_messages_read.sql"));
+    assert!(pool_source.contains("version: 31"));
+    assert!(pool_source.contains("0031_cloud_message_attachment_previews.sql"));
 }
 
 fn signup_body(email: &str, password: &str) -> Body {
@@ -529,6 +531,121 @@ async fn cloud_messages_preserve_attachment_metadata_and_enforce_attachment_owne
     assert_eq!(forbidden_resp.status(), StatusCode::FORBIDDEN);
     let forbidden_body = read_json(forbidden_resp).await;
     assert_eq!(forbidden_body["errorCode"], "invalid_attachment");
+}
+
+#[tokio::test]
+async fn cloud_attachment_preview_recovery_updates_old_message_links() {
+    let Some(pool) = try_pool().await else { return };
+    let email = unique_email("preview-recovery-owner");
+    let other_email = unique_email("preview-recovery-other");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+
+    let owner_signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    let owner_body = read_json(owner_signup).await;
+    let owner_token = owner_body["session"]["token"].as_str().unwrap().to_string();
+    let owner_account_id = owner_body["account"]["accountId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let other_signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&other_email, "correct horse"),
+        ))
+        .await
+        .unwrap();
+    let other_body = read_json(other_signup).await;
+    let other_token = other_body["session"]["token"].as_str().unwrap().to_string();
+
+    sqlx_core::query::query(
+        "INSERT INTO cloud_attachments \
+         (attachment_id, owner_account_id, object_key, content_type, size_bytes, created_at, finalized_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $6)",
+    )
+    .bind("att_recover_old")
+    .bind(&owner_account_id)
+    .bind("attachments/test/att_recover_old")
+    .bind("image/png")
+    .bind(24_i64 * 1024 * 1024)
+    .bind("2026-05-12T00:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let send_resp = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/messages",
+            &owner_token,
+            json!({
+                "peerAccountId": owner_account_id,
+                "body": "old image",
+                "attachments": [{
+                    "attachmentId": "att_recover_old",
+                    "name": "old.png",
+                    "kind": "image",
+                    "mimeType": "image/png",
+                    "sizeBytes": 25165824
+                }]
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(send_resp.status(), StatusCode::CREATED);
+
+    let forbidden_resp = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/attachments/att_recover_old/preview",
+            &other_token,
+            json!({ "previewUrl": "data:image/webp;base64,recovered-preview" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(forbidden_resp.status(), StatusCode::NOT_FOUND);
+
+    let update_resp = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/attachments/att_recover_old/preview",
+            &owner_token,
+            json!({ "previewUrl": "data:image/webp;base64,recovered-preview" }),
+        ))
+        .await
+        .unwrap();
+    let update_status = update_resp.status();
+    let update_body = read_json(update_resp).await;
+    assert_eq!(update_status, StatusCode::OK, "got body {update_body}");
+    assert_eq!(update_body["attachmentId"], "att_recover_old");
+    assert_eq!(
+        update_body["previewUrl"],
+        "data:image/webp;base64,recovered-preview"
+    );
+    assert_eq!(update_body["updatedLinks"], 1);
+
+    let list_resp = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/messages?peerAccountId={owner_account_id}"),
+            &owner_token,
+        ))
+        .await
+        .unwrap();
+    let list_body = read_json(list_resp).await;
+    assert_eq!(
+        list_body["messages"][0]["attachments"][0]["previewUrl"],
+        "data:image/webp;base64,recovered-preview"
+    );
 }
 
 #[tokio::test]

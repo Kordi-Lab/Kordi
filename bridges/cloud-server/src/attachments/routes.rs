@@ -67,6 +67,22 @@ pub struct DownloadResponse {
     pub expires_at: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdatePreviewRequest {
+    #[serde(rename = "previewUrl")]
+    pub preview_url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpdatePreviewResponse {
+    #[serde(rename = "attachmentId")]
+    pub attachment_id: String,
+    #[serde(rename = "previewUrl")]
+    pub preview_url: String,
+    #[serde(rename = "updatedLinks")]
+    pub updated_links: u64,
+}
+
 type AttachmentAccessRow = (String, String, Option<String>, Option<String>, Option<i64>);
 
 #[derive(Debug, Serialize)]
@@ -85,6 +101,45 @@ fn err(code: &str, message: &str, status: StatusCode) -> Response {
         }),
     )
         .into_response()
+}
+
+fn normalize_preview_url(value: Option<&str>) -> Result<String, Response> {
+    let Some(raw) = value else {
+        return Err(err(
+            "invalid_attachment",
+            "previewUrl is required.",
+            StatusCode::BAD_REQUEST,
+        ));
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(err(
+            "invalid_attachment",
+            "previewUrl is required.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    if trimmed.len() > 360_000 {
+        return Err(err(
+            "invalid_attachment",
+            "Attachment preview is too large.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    let allowed = lower.starts_with("data:image/png;base64,")
+        || lower.starts_with("data:image/jpeg;base64,")
+        || lower.starts_with("data:image/jpg;base64,")
+        || lower.starts_with("data:image/webp;base64,")
+        || lower.starts_with("data:image/gif;base64,");
+    if !allowed {
+        return Err(err(
+            "invalid_attachment",
+            "Attachment preview must be a data:image base64 URL.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    Ok(trimmed.to_string())
 }
 
 fn s3_or_503<'a>(state: &'a ServerState) -> Result<&'a S3Config, Response> {
@@ -471,6 +526,55 @@ pub async fn download_url(
         attachment_id,
         download_url: url.to_string(),
         expires_at: url_expires_at(SystemTime::now()).to_rfc3339(),
+    })
+    .into_response()
+}
+
+/// `POST /v1/cloud/attachments/:attachment_id/preview`
+///
+/// Stores a client-generated compressed preview for old message attachment
+/// links that predate preview metadata. The caller must be the attachment
+/// owner or a sender/recipient of a linked cloud message.
+pub async fn update_preview(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(attachment_id): Path<String>,
+    Json(req): Json<UpdatePreviewRequest>,
+) -> Response {
+    let preview_url = match normalize_preview_url(req.preview_url.as_deref()) {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+
+    if let Err(resp) = attachment_access_row(&state, &session, &attachment_id).await {
+        return resp;
+    }
+
+    let result = match query(
+        "UPDATE cloud_message_attachments \
+         SET preview_url = $1 \
+         WHERE attachment_id = $2 \
+           AND (preview_url IS NULL OR preview_url = '')",
+    )
+    .bind(&preview_url)
+    .bind(&attachment_id)
+    .execute(state.db_pool())
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not update attachment preview.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    Json(UpdatePreviewResponse {
+        attachment_id,
+        preview_url,
+        updated_links: result.rows_affected(),
     })
     .into_response()
 }
