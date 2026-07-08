@@ -254,7 +254,7 @@ function AttachmentFileCard({ attachment, index, isSending = false }: { attachme
   const Icon = attachment.kind === 'image' ? Image : FileText;
 
   return (
-    <div key={`${attachment.name}-${index}`} className="relative flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
+    <div key={`${attachment.name}-${index}`} data-attachment-file-card="true" className="relative flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
         <Icon className="h-4 w-4" />
       </div>
@@ -275,9 +275,18 @@ function AttachmentImageLoadingSurface({ className }: { className?: string }) {
     <div
       data-attachment-image-loading="true"
       aria-label="Loading attached image"
-      className={cn('relative flex h-full min-h-28 overflow-hidden rounded-[15px] bg-black/[0.055]', className)}
+      className={cn('relative flex h-full min-h-28 min-w-[min(18rem,72vw)] aspect-[4/3] items-center justify-center overflow-hidden rounded-[15px] bg-black/[0.055]', className)}
     >
       <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.10)_42%,transparent_74%)] opacity-70 motion-safe:animate-[app-attachment-shimmer_1.45s_ease-in-out_infinite]" aria-hidden="true" />
+      <div className="relative z-[1] flex flex-col items-center gap-2 text-slate-500/85" aria-hidden="true">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/55 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)] backdrop-blur-sm">
+          <Image className="h-4 w-4" />
+        </div>
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-white/50 px-2.5 py-1 text-[10px] font-medium text-slate-500 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]">
+          <LoaderCircle className="h-3 w-3 animate-spin" />
+          <span>Loading image</span>
+        </div>
+      </div>
       <span className="sr-only">Loading attached image</span>
     </div>
   );
@@ -418,7 +427,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
           <div
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
-            className="relative grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0 shadow-[0_10px_26px_rgba(2,8,23,0.12)]"
+            className="relative grid w-[min(100%,29rem)] max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0 shadow-[0_10px_26px_rgba(2,8,23,0.12)]"
           >
             {previewImageAttachments.map((attachment, index) => (
               <AttachmentImageCard

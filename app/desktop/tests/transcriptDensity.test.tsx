@@ -322,6 +322,30 @@ test('image-only human messages use compact frosted attachment padding', () => {
   assert.doesNotMatch(markup, /px-4 py-2\.5/);
 });
 
+test('pending image attachments reserve an image-sized loading placeholder', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '',
+    time: '21:09',
+    statusChips: ['sending'],
+    attachments: [{
+      kind: 'image',
+      name: 'Screenshot loading.png',
+      mimeType: 'image/png',
+    }],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /data-attachment-image-loading="true"/);
+  assert.match(markup, /w-\[min\(100%,29rem\)\]/);
+  assert.match(markup, /aspect-\[4\/3\]/);
+  assert.doesNotMatch(markup, /data-attachment-file-card="true"/);
+});
+
 test('renders failed own message delivery as a compact red exclamation', () => {
   const message: Message = {
     role: 'user',
