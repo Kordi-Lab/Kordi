@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide-react';
@@ -209,18 +209,38 @@ type AttachmentContextMenuState = {
   y: number;
 };
 
+type AttachmentContextMenuHost = {
+  contains: (target: Node | null) => boolean;
+} | null;
+
+export function shouldCloseAttachmentContextMenuForTarget(menuElement: AttachmentContextMenuHost, target: EventTarget | null) {
+  if (!menuElement || !target) return true;
+  if (typeof Node !== 'undefined' && !(target instanceof Node)) return true;
+  return !menuElement.contains(target as Node);
+}
+
 function AttachmentContextMenu({ state, onClose }: { state: AttachmentContextMenuState; onClose: () => void }) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (shouldCloseAttachmentContextMenuForTarget(menuRef.current, event.target)) onClose();
+    }
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    return () => window.removeEventListener('pointerdown', handlePointerDown, true);
+  }, [onClose]);
+
   return (
     <PortalLayer>
-      <div className="fixed inset-0 z-[230]" onMouseDown={onClose} onContextMenu={(event) => event.preventDefault()}>
-        <div
-          data-attachment-image-context-menu="true"
-          className="absolute rounded-[14px] border border-white/12 bg-slate-950/94 p-1.5 shadow-[0_18px_55px_rgba(0,0,0,0.38)] backdrop-blur-xl"
-          style={{ left: state.x, top: state.y }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <AttachmentActions attachment={state.attachment} variant="menu" />
-        </div>
+      <div
+        ref={menuRef}
+        data-attachment-image-context-menu="true"
+        className="fixed z-[230] rounded-[14px] border border-white/12 bg-slate-950/94 p-1.5 shadow-[0_18px_55px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+        style={{ left: state.x, top: state.y }}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <AttachmentActions attachment={state.attachment} variant="menu" />
       </div>
     </PortalLayer>
   );
@@ -275,7 +295,7 @@ function AttachmentImageLoadingSurface({ className }: { className?: string }) {
     <div
       data-attachment-image-loading="true"
       aria-label="Loading attached image"
-      className={cn('relative flex h-full min-h-28 overflow-hidden rounded-[15px] bg-black/[0.055]', className)}
+      className={cn('relative flex h-full min-h-28 overflow-hidden rounded-[15px] bg-black/[0.035]', className)}
     >
       <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.10)_42%,transparent_74%)] opacity-70 motion-safe:animate-[app-attachment-shimmer_1.45s_ease-in-out_infinite]" aria-hidden="true" />
       <span className="sr-only">Loading attached image</span>
@@ -367,8 +387,8 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
             src={previewUrl}
             alt={attachment.name || 'Attached image'}
             className={cn(
-              'relative block h-full w-full transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-hover:scale-[1.015]',
-              imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.985]',
+              'relative block h-full w-full transition-opacity duration-200 ease-out motion-reduce:transition-none',
+              imageLoaded ? 'opacity-100' : 'opacity-0',
               singleImage ? 'max-h-[320px] object-contain' : 'object-cover',
             )}
             onLoad={() => setImageLoaded(true)}
@@ -418,7 +438,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
           <div
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
-            className="relative grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0 shadow-[0_10px_26px_rgba(2,8,23,0.12)]"
+            className="relative grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0"
           >
             {previewImageAttachments.map((attachment, index) => (
               <AttachmentImageCard
