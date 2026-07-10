@@ -55,6 +55,28 @@ fn seed_session_with_messages(conn: &Connection) -> String {
 }
 
 #[test]
+fn mark_session_read_returns_self_participant_cursor_delta() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+
+    let result = mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id,
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:3".to_string()),
+        },
+    )
+    .expect("mark session read")
+    .expect("self participant cursor delta");
+
+    assert_eq!(result.session_id, "session:launch");
+    assert_eq!(result.identity_id, "human:alice");
+    assert!(result.last_seen_at_ms > 0);
+    assert_eq!(result.last_read_message_id.as_deref(), Some("msg:3"));
+}
+
+#[test]
 fn search_sessions_matches_message_text_and_returns_snippets() {
     let conn = test_conn();
     seed_session_with_messages(&conn);

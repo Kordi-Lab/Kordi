@@ -3,8 +3,8 @@ use rusqlite::Connection;
 use super::{
     AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
     AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalIdentity, CanonicalPresence,
-    CanonicalSessionMessage, CanonicalSessionParticipant, CanonicalSessionState,
-    CreateCanonicalDelegatedExchangeRequest, MarkCanonicalSessionReadRequest,
+    CanonicalReadCursorDelta, CanonicalSessionMessage, CanonicalSessionParticipant,
+    CanonicalSessionState, CreateCanonicalDelegatedExchangeRequest, MarkCanonicalSessionReadRequest,
     OpenCanonicalSessionFastResult, OpenCanonicalSessionRequest,
     RemoveCanonicalSessionParticipantRequest, RenameCanonicalSessionRequest,
     SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalPresenceRequest,
@@ -256,9 +256,9 @@ pub(super) fn desktop_canonical_upsert_message_fast(
 
 pub(super) fn desktop_canonical_append_message_fast(
     request: AppendCanonicalMessageRequest,
-) -> Result<String, String> {
+) -> Result<CanonicalSessionMessage, String> {
     let conn = open_db()?;
-    append_message_in_db(&conn, request).map(|message| message.id)
+    append_message_in_db(&conn, request)
 }
 
 pub(super) fn desktop_canonical_create_delegated_exchange(
@@ -360,10 +360,9 @@ pub(super) fn desktop_canonical_set_session_participant_role(
 
 pub(super) fn desktop_canonical_mark_session_read(
     request: MarkCanonicalSessionReadRequest,
-) -> Result<CanonicalSessionState, String> {
+) -> Result<Option<CanonicalReadCursorDelta>, String> {
     let conn = open_db()?;
-    mark_session_read_in_db(&conn, request)?;
-    load_state_from_db(&conn)
+    mark_session_read_in_db(&conn, request)
 }
 
 pub(crate) fn session_exists(session_id: &str) -> Result<bool, String> {

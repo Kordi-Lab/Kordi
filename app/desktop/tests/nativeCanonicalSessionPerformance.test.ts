@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const commandsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/commands.rs', import.meta.url), 'utf8');
 const canonicalSessionsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions.rs', import.meta.url), 'utf8');
+const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
 
 test('canonical state loading maps session_messages in one query instead of N+1 select_message calls', () => {
   const source = commandsSource();
@@ -28,4 +29,24 @@ test('canonical open-or-create command runs blocking database work off the Tauri
 
   assert.match(source, /async fn run_canonical_blocking/, 'canonical commands should share a blocking-pool helper');
   assert.match(command, /run_canonical_blocking\(move \|\| commands::desktop_canonical_open_or_create_session\(request\)\)\s*\.await/, 'open-or-create should dispatch DB state reload to the blocking pool');
+});
+
+test('mark-session-read returns a cursor delta without reloading canonical state', () => {
+  const source = commandsSource();
+  const commandStart = source.indexOf('pub(super) fn desktop_canonical_mark_session_read');
+  assert.notEqual(commandStart, -1, 'expected mark-session-read command');
+  const commandEnd = source.indexOf('pub(crate) fn session_exists', commandStart);
+  assert.notEqual(commandEnd, -1, 'expected next function after mark-session-read');
+  const command = source.slice(commandStart, commandEnd);
+
+  assert.match(command, /Result<Option<CanonicalReadCursorDelta>, String>/, 'read command should return only the updated participant cursor');
+  assert.doesNotMatch(command, /load_state_from_db/, 'read command must not reload all canonical messages');
+});
+
+test('fast append returns the persisted canonical message row across the native boundary', () => {
+  const rustSource = canonicalSessionsSource();
+  const rendererSource = desktopSource();
+
+  assert.match(rustSource, /pub async fn desktop_canonical_append_message_fast[\s\S]*?Result<CanonicalSessionMessage, String>/, 'native fast append should return the persisted row');
+  assert.match(rendererSource, /appendCanonicalMessageFast[\s\S]*?invokeDesktop<CanonicalSessionMessage>/, 'renderer fast append should receive the persisted row');
 });

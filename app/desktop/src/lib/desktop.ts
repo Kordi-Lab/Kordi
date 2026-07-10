@@ -3,6 +3,7 @@ import type {
   AdoptCloudProfileIdentityRequest,
   AppendCanonicalMessageRequest,
   CanonicalIdentity,
+  CanonicalReadCursorDelta,
   CanonicalSessionMessage,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
@@ -667,7 +668,7 @@ export async function upsertCanonicalMessageFast(request: AppendCanonicalMessage
 }
 
 export async function appendCanonicalMessageFast(request: AppendCanonicalMessageRequest) {
-  return invokeDesktop<string>('desktop_canonical_append_message_fast', { request });
+  return invokeDesktop<CanonicalSessionMessage>('desktop_canonical_append_message_fast', { request });
 }
 
 export async function createCanonicalDelegatedExchange(request: CreateCanonicalDelegatedExchangeRequest) {
@@ -699,7 +700,7 @@ export async function setCanonicalSessionParticipantRole(request: SetCanonicalSe
 }
 
 export async function markCanonicalSessionRead(request: MarkCanonicalSessionReadRequest) {
-  return invokeDesktop<CanonicalSessionState>('desktop_canonical_mark_session_read', { request });
+  return invokeDesktop<CanonicalReadCursorDelta | null>('desktop_canonical_mark_session_read', { request });
 }
 
 export async function fetchDesktopProjectSettings(projectRoot?: string) {

@@ -549,7 +549,7 @@ fn self_participant_identity_id(
 pub(super) fn mark_session_read_in_db(
     conn: &Connection,
     request: MarkCanonicalSessionReadRequest,
-) -> Result<(), String> {
+) -> Result<Option<CanonicalReadCursorDelta>, String> {
     let session_id = request.session_id.trim();
     if session_id.is_empty() {
         return Err("Session id is required".to_string());
@@ -567,7 +567,7 @@ pub(super) fn mark_session_read_in_db(
         .or(profile.human_identity_id.as_deref());
     let Some(identity_id) = self_participant_identity_id(conn, session_id, preferred_identity_id)?
     else {
-        return Ok(());
+        return Ok(None);
     };
 
     let message_id = request
@@ -586,7 +586,21 @@ pub(super) fn mark_session_read_in_db(
         params![now, message_id, session_id, identity_id],
     )
     .map_err(|err| err.to_string())?;
-    Ok(())
+    let last_read_message_id = conn
+        .query_row(
+            "SELECT last_read_message_id
+             FROM session_participants
+             WHERE session_id = ?1 AND identity_id = ?2 AND role = 'self'",
+            params![session_id, identity_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .map_err(|err| err.to_string())?;
+    Ok(Some(CanonicalReadCursorDelta {
+        session_id: session_id.to_string(),
+        identity_id,
+        last_seen_at_ms: now,
+        last_read_message_id,
+    }))
 }
 
 /// Trust boundary: this helper does not authorize the (session_id, message_id)
@@ -1655,7 +1669,7 @@ pub async fn desktop_canonical_upsert_message_fast(
 #[tauri::command]
 pub async fn desktop_canonical_append_message_fast(
     request: AppendCanonicalMessageRequest,
-) -> Result<String, String> {
+) -> Result<CanonicalSessionMessage, String> {
     run_canonical_blocking(move || commands::desktop_canonical_append_message_fast(request)).await
 }
 
@@ -1718,6 +1732,6 @@ pub async fn desktop_canonical_set_session_participant_role(
 #[tauri::command]
 pub async fn desktop_canonical_mark_session_read(
     request: MarkCanonicalSessionReadRequest,
-) -> Result<CanonicalSessionState, String> {
+) -> Result<Option<CanonicalReadCursorDelta>, String> {
     run_canonical_blocking(move || commands::desktop_canonical_mark_session_read(request)).await
 }

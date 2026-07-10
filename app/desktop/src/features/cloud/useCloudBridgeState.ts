@@ -37,6 +37,10 @@ import type {
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
 import {
+  mergeCanonicalMessageRow,
+  mergeCanonicalReadCursorDelta,
+} from '@/features/canonical/canonicalStateReducers';
+import {
   CloudAuthClient,
   cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
@@ -2190,8 +2194,8 @@ export function useCloudBridgeState({
     if (persistedActiveReadSignatureRef.current === signature) return;
     persistedActiveReadSignatureRef.current = signature;
     void markCanonicalSessionRead({ sessionId, messageId: latestMessage.id })
-      .then((nextState) => {
-        if (nextState) setCanonicalSessionState?.(nextState);
+      .then((delta) => {
+        setCanonicalSessionState?.((current) => mergeCanonicalReadCursorDelta(current, delta));
       })
       .catch(() => {
         persistedActiveReadSignatureRef.current = null;
@@ -3012,8 +3016,8 @@ export function useCloudBridgeState({
           sourceTransport: existingCloudGroupMessage.sourceTransport,
           sourceEventId: existingCloudGroupMessage.sourceEventId,
         } satisfies AppendCanonicalMessageRequest;
-        await upsertCanonicalMessageFast(attachmentUpdateRequest);
-        nextState = upsertCanonicalRequestIntoLocalState(nextState, attachmentUpdateRequest);
+        const persistedMessage = await upsertCanonicalMessageFast(attachmentUpdateRequest);
+        nextState = mergeCanonicalMessageRow(nextState, persistedMessage);
         setCanonicalSessionState(nextState);
       }
     }
@@ -3112,12 +3116,10 @@ export function useCloudBridgeState({
           : senderIsAgent ? 'cloud-group-agent' : 'cloud-group',
         sourceEventId: `${envelope.message.forkSnapshot ? 'cloud-group-fork-snapshot' : senderIsAgent ? 'cloud-group-agent' : 'cloud-group'}:${cloudMessage.messageId}`,
       };
-      if (shouldUpdateStableAgentSlot) {
-        await upsertCanonicalMessageFast(messageRequest);
-      } else {
-        await appendCanonicalMessageFast(messageRequest);
-      }
-      nextState = upsertCanonicalRequestIntoLocalState(nextState, messageRequest) ?? nextState;
+      const persistedMessage = shouldUpdateStableAgentSlot
+        ? await upsertCanonicalMessageFast(messageRequest)
+        : await appendCanonicalMessageFast(messageRequest);
+      nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
       // Race guard: if the local offline-timer effect added the offline-tier
       // placeholder AFTER we captured canonicalSessionState above (which can
       // happen when the response arrives in the same cloud-poll batch as the
@@ -3997,9 +3999,11 @@ export function useCloudBridgeState({
       )))];
       if (canonicalReadSessionIds.length > 0) {
         void Promise.all(canonicalReadSessionIds.map((sessionId) => markCanonicalSessionRead({ sessionId })))
-          .then((states) => {
-            const nextState = states[states.length - 1];
-            if (nextState) setCanonicalSessionState?.(nextState);
+          .then((deltas) => {
+            setCanonicalSessionState?.((current) => deltas.reduce(
+              (next, delta) => mergeCanonicalReadCursorDelta(next, delta),
+              current,
+            ));
           })
           .catch(() => {});
       }
@@ -4122,8 +4126,8 @@ export function useCloudBridgeState({
       }
       for (const messageRequest of plan.messageRequests) {
         if (cancelled) return;
-        await upsertCanonicalMessageFast(messageRequest);
-        nextState = upsertCanonicalRequestIntoLocalState(nextState, messageRequest);
+        const persistedMessage = await upsertCanonicalMessageFast(messageRequest);
+        nextState = mergeCanonicalMessageRow(nextState, persistedMessage);
       }
       if (!cancelled) setCanonicalSessionState(nextState);
     })().catch((error) => {

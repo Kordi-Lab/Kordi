@@ -529,6 +529,13 @@ export type CanonicalSessionState = {
   contextSnapshots: CanonicalContextSnapshot[];
 };
 
+export type CanonicalReadCursorDelta = {
+  sessionId: string;
+  identityId: string;
+  lastSeenAtMs: number;
+  lastReadMessageId: string | null;
+};
+
 export type OpenCanonicalSessionFastResult = {
   session: CanonicalSession;
   participants: CanonicalSessionParticipant[];

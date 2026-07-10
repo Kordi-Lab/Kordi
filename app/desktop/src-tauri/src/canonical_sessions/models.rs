@@ -17,6 +17,15 @@ pub struct CanonicalSessionState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CanonicalReadCursorDelta {
+    pub session_id: String,
+    pub identity_id: String,
+    pub last_seen_at_ms: i64,
+    pub last_read_message_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenCanonicalSessionFastResult {
     pub session: CanonicalSession,
     pub participants: Vec<CanonicalSessionParticipant>,
