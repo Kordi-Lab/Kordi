@@ -1168,12 +1168,12 @@ export function useChatMessageActions({
         [],
         sentAt,
         'cloud-group-ui',
-        'sent',
+        'sending',
       );
       if (preparedCanonicalMessage) {
         preparedCanonicalMessage.request.content = {
           ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
-          deliveryState: 'delivered',
+          deliveryState: 'sending',
         };
       }
       try {
@@ -1397,14 +1397,14 @@ export function useChatMessageActions({
         chatComposerAttachments,
         sentAt,
         'cloud-group-ui',
-        'sent',
+        'sending',
         mentionForBridgeTarget(mentionedTarget),
         activeChatQuote,
       );
       if (preparedCanonicalMessage) {
         preparedCanonicalMessage.request.content = {
           ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
-          deliveryState: 'delivered',
+          deliveryState: 'sending',
         };
       }
       let canonicalUserMessagePersisted = false;
@@ -1476,14 +1476,14 @@ export function useChatMessageActions({
         chatComposerAttachments,
         sentAt,
         'cloud-group-ui',
-        'sent',
+        'sending',
         undefined,
         activeChatQuote,
       );
       if (preparedCanonicalMessage) {
         preparedCanonicalMessage.request.content = {
           ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
-          deliveryState: 'delivered',
+          deliveryState: 'sending',
         };
       }
       let canonicalUserMessagePersisted = false;

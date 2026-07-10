@@ -177,6 +177,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "mark self cloud messages read",
         sql: include_str!("../../migrations/0030_mark_self_cloud_messages_read.sql"),
     },
+    EmbeddedMigration {
+        version: 32,
+        description: "cloud message idempotency",
+        sql: include_str!("../../migrations/0032_cloud_message_idempotency.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

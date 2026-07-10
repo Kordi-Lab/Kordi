@@ -141,6 +141,12 @@ import {
 import { defaultCloudAgentsClient, type CreateCloudAgentInput, type UpdateCloudAgentInput } from './cloudAgentsClient';
 import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgents';
 import { cloudMessageMetadataOnly, defaultCloudMessageCache } from './cloudMessageCache';
+import {
+  CloudGroupOutbox,
+  defaultCloudGroupOutboxPersistence,
+  patchCanonicalCloudGroupOutboxDelivery,
+  type CloudGroupOutboxEntry,
+} from './cloudGroupOutbox';
 import { CloudSyncCoordinator } from './cloudSyncCoordinator';
 import { loadCloudSessionVisibility, removeCloudSessionMessages, saveCloudSessionVisibility, syncCloudDiffOnce, type CloudSessionPinsById } from './cloudDiffSync';
 import {
@@ -572,6 +578,24 @@ function upsertCanonicalRequestIntoLocalState(
     ? current.messages.map((message, index) => (index === existingIndex ? nextMessage : message))
     : [...current.messages, nextMessage];
   return { ...current, messages };
+}
+
+function canonicalMessageUpsertRequest(message: CanonicalSessionMessage): AppendCanonicalMessageRequest {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    senderIdentityId: message.senderIdentityId,
+    senderRole: message.senderRole,
+    messageKind: message.messageKind,
+    contentText: message.contentText,
+    content: message.content,
+    createdAtMs: message.createdAtMs,
+    parentMessageId: message.parentMessageId,
+    delegatedExchangeId: message.delegatedExchangeId,
+    status: message.status,
+    sourceTransport: message.sourceTransport,
+    sourceEventId: message.sourceEventId,
+  };
 }
 
 function upsertCanonicalIdentityIntoLocalState(
@@ -1954,6 +1978,9 @@ export function useCloudBridgeState({
   const cloudAgentsClient = useMemo(() => defaultCloudAgentsClient(), []);
   const cloudMessageCache = useMemo(() => defaultCloudMessageCache(), []);
   const cloudSyncCoordinator = useMemo(() => new CloudSyncCoordinator(), []);
+  const cloudGroupOutbox = useMemo(() => account?.accountId
+    ? new CloudGroupOutbox(account.accountId, defaultCloudGroupOutboxPersistence(account.accountId))
+    : null, [account?.accountId]);
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
   const cloudMessageIndex = useMemo(
@@ -3524,6 +3551,103 @@ export function useCloudBridgeState({
   useEffect(() => { mergeMessageRef.current = mergeMessage; }, [mergeMessage]);
   useEffect(() => { syncCloudBridgeDiffRef.current = syncCloudBridgeDiff; }, [syncCloudBridgeDiff]);
 
+  const persistCloudGroupOutboxDelivery = useCallback(async (entry: CloudGroupOutboxEntry) => {
+    if (entry.trackCanonicalDelivery === false) return;
+    let baseState = canonicalSessionStateRef.current;
+    if (!baseState?.messages.some((message) => message.id === entry.canonicalMessageId)) {
+      baseState = await fetchCanonicalSessionState().catch(() => baseState);
+    }
+    const patchedState = patchCanonicalCloudGroupOutboxDelivery(baseState, entry);
+    if (!patchedState || patchedState === baseState) return;
+    const patchedMessage = patchedState.messages.find((message) => message.id === entry.canonicalMessageId);
+    if (!patchedMessage) return;
+
+    canonicalSessionStateRef.current = patchedState;
+    setCanonicalSessionState?.((current) => (
+      patchCanonicalCloudGroupOutboxDelivery(current ?? baseState, entry)
+    ));
+    const persistedMessage = await upsertCanonicalMessageFast(canonicalMessageUpsertRequest(patchedMessage));
+    canonicalSessionStateRef.current = mergeCanonicalMessageRow(canonicalSessionStateRef.current, persistedMessage);
+    setCanonicalSessionState?.((current) => mergeCanonicalMessageRow(current, persistedMessage));
+  }, [setCanonicalSessionState]);
+
+  const canonicalStateReady = Boolean(canonicalSessionState);
+  useEffect(() => {
+    if (!account || !cloudGroupOutbox || !canonicalStateReady || typeof window === 'undefined') return undefined;
+    let cancelled = false;
+    let draining = false;
+    let retryTimer: number | null = null;
+
+    const scheduleNext = () => {
+      if (cancelled) return;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      retryTimer = null;
+      const nextAttemptAtMs = cloudGroupOutbox.entries()
+        .filter((entry) => entry.pendingRecipientIds.length > 0)
+        .reduce((earliest, entry) => Math.min(earliest, entry.nextAttemptAtMs), Number.POSITIVE_INFINITY);
+      if (!Number.isFinite(nextAttemptAtMs)) return;
+      retryTimer = window.setTimeout(() => { void drain(); }, Math.max(0, nextAttemptAtMs - Date.now()));
+    };
+
+    const drain = async () => {
+      if (cancelled || draining) return;
+      draining = true;
+      let sentAny = false;
+      const sessionPromise = loadSession();
+      try {
+        const outcomes = await cloudGroupOutbox.deliverDue(async ({ recipientId, clientMessageId, entry }) => {
+          const session = await sessionPromise;
+          if (!session?.token) throw new Error('Not signed in.');
+          const message = await client.sendMessage(session.token, recipientId, entry.envelope, {
+            sessionId: entry.sessionId,
+            attachments: entry.attachments,
+            clientCreatedAt: entry.clientCreatedAt,
+            clientMessageId,
+          });
+          sentAny = true;
+          mergeMessageRef.current(message);
+        });
+        for (const outcome of outcomes) {
+          if (outcome) await persistCloudGroupOutboxDelivery(outcome);
+        }
+        if (sentAny) await syncCloudBridgeDiffRef.current?.();
+      } catch (error) {
+        // Keep the persisted recipients queued; focus/online/timer will resume.
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-group-outbox] retry failed', error);
+      } finally {
+        draining = false;
+        scheduleNext();
+      }
+    };
+
+    const resume = () => { void drain(); };
+    const resumeWhenVisible = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') resume();
+    };
+    const unsubscribe = cloudGroupOutbox.subscribe(scheduleNext);
+    void cloudGroupOutbox.restore().then(async (entries) => {
+      for (const entry of entries) {
+        await persistCloudGroupOutboxDelivery(entry).catch(() => {});
+      }
+      await drain();
+    }).catch((error) => {
+      // eslint-disable-next-line no-console
+      console.warn('[cloud-group-outbox] restore failed', error);
+    });
+    window.addEventListener('online', resume);
+    window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', resumeWhenVisible);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      window.removeEventListener('online', resume);
+      window.removeEventListener('focus', resume);
+      document.removeEventListener('visibilitychange', resumeWhenVisible);
+    };
+  }, [account, canonicalStateReady, client, cloudGroupOutbox, persistCloudGroupOutboxDelivery]);
+
   useEffect(() => {
     if (!account || typeof window === 'undefined') return undefined;
     const handleAcceptedContact = (event: Event) => {
@@ -4310,10 +4434,49 @@ export function useCloudBridgeState({
       : typeof (input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs) === 'number' && Number.isFinite(input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs)
         ? (input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs)!
         : null;
+    const clientCreatedAt = clientCreatedAtMs !== null ? new Date(clientCreatedAtMs).toISOString() : null;
+    const canonicalMessageId = cleanText(message?.id);
+    if (input.kind === 'group-message' && canonicalMessageId && cloudGroupOutbox) {
+      await cloudGroupOutbox.restore();
+      const queued = await cloudGroupOutbox.enqueue({
+        canonicalMessageId,
+        sessionId: input.groupId,
+        envelope,
+        trackCanonicalDelivery: message?.forkSnapshot !== true,
+        attachments: uploadedAttachments,
+        clientCreatedAt,
+        pendingRecipientIds: targetAccountIds,
+        deliveredRecipientIds: [],
+        attemptsByRecipientId: {},
+        nextAttemptAtMs: 0,
+      });
+      if (!queued) return;
+      let sentAny = false;
+      const outcome = await cloudGroupOutbox.deliver(canonicalMessageId, async ({ recipientId, clientMessageId, entry }) => {
+        const sentMessage = await client.sendMessage(session.token, recipientId, entry.envelope, {
+          sessionId: entry.sessionId,
+          attachments: entry.attachments,
+          clientCreatedAt: entry.clientCreatedAt,
+          clientMessageId,
+        });
+        sentAny = true;
+        mergeMessage(sentMessage);
+      }, { force: true });
+      if (outcome) {
+        await persistCloudGroupOutboxDelivery(outcome).catch((error) => {
+          // Delivery already happened (or remains durably queued); a local
+          // status-write failure must not rewrite the message as unsent.
+          // eslint-disable-next-line no-console
+          console.warn('[cloud-group-outbox] failed to persist delivery status', error);
+        });
+      }
+      if (sentAny) await syncCloudBridgeDiff().catch(() => {});
+      return;
+    }
     const results = await Promise.allSettled(targetAccountIds.map((peerId) => client.sendMessage(session.token, peerId, envelope, {
       sessionId: input.groupId,
       attachments: uploadedAttachments,
-      ...(clientCreatedAtMs !== null ? { clientCreatedAt: new Date(clientCreatedAtMs).toISOString() } : {}),
+      ...(clientCreatedAt ? { clientCreatedAt } : {}),
     })));
     const sent = fulfilledCloudGroupSends(results);
     sent.forEach(mergeMessage);
@@ -4323,7 +4486,7 @@ export function useCloudBridgeState({
     }
     const firstFailure = firstCloudGroupSendFailure(results);
     throw firstFailure instanceof Error ? firstFailure : new Error(String(firstFailure || 'Group message failed.'));
-  }, [account, client, cloudMessageIndex, mergeMessage, syncCloudBridgeDiff]);
+  }, [account, client, cloudGroupOutbox, cloudMessageIndex, mergeMessage, persistCloudGroupOutboxDelivery, syncCloudBridgeDiff]);
 
   const refreshCloudSessionActivity = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();

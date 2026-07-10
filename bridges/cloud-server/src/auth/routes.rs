@@ -23,6 +23,9 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use crate::auth::messages::{
+    PersistCloudMessageInput, PersistedMessageAttachment, persist_cloud_message,
+};
 use crate::auth::oauth::{
     OAuthProfile, OAuthProvider, clean_profile_avatar_url, clean_profile_display_name,
     encode_oauth_fragment, exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect,
@@ -291,6 +294,8 @@ pub struct SendMessageRequest {
     pub session_id: Option<String>,
     #[serde(rename = "clientCreatedAt")]
     pub client_created_at: Option<String>,
+    #[serde(rename = "clientMessageId")]
+    pub client_message_id: Option<String>,
     #[serde(default)]
     pub attachments: Vec<SendMessageAttachmentRequest>,
 }
@@ -3230,6 +3235,18 @@ async fn send_message(
         );
     }
 
+    let client_message_id = req
+        .client_message_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if client_message_id.is_some_and(|value| value.chars().count() > 512) {
+        return err(
+            "invalid_message",
+            "clientMessageId is too long.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
     let message_id = format!("msg_{}", uuid::Uuid::new_v4().simple());
     let cloud_session_id =
         cloud_message_session_id(req.session_id.as_deref(), &session.account_id, &peer, &body);
@@ -3242,66 +3259,84 @@ async fn send_message(
     } else {
         None
     };
-    if query(
-        "INSERT INTO cloud_messages \
-         (message_id, from_account_id, to_account_id, body, created_at, delivered_at, read_at, session_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    let persisted_attachments = attachments
+        .iter()
+        .map(|attachment| PersistedMessageAttachment {
+            attachment_id: attachment.attachment_id.clone(),
+            name: attachment.name.clone(),
+            kind: attachment.kind.clone(),
+            mime_type: attachment.mime_type.clone(),
+            size_bytes: attachment.size_bytes,
+            download_url: None,
+            preview_url: None,
+        })
+        .collect::<Vec<_>>();
+    let outcome = match persist_cloud_message(
+        pool,
+        PersistCloudMessageInput {
+            message_id: &message_id,
+            from_account_id: &session.account_id,
+            to_account_id: &peer,
+            client_message_id,
+            body: &body,
+            session_id: cloud_session_id.as_deref(),
+            created_at: &created_at,
+            delivered_at: &delivered_at,
+            read_at: read_at.as_deref(),
+            attachments: &persisted_attachments,
+        },
     )
-    .bind(&message_id)
-    .bind(&session.account_id)
-    .bind(&peer)
-    .bind(&body)
-    .bind(&created_at)
-    .bind(&delivered_at)
-    .bind(read_at.as_deref())
-    .bind(&cloud_session_id)
-    .execute(pool)
     .await
-    .is_err()
     {
-        return err(
-            "server_error",
-            "Could not record message.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
-
-    for (position, attachment) in attachments.iter().enumerate() {
-        if query(
-            "INSERT INTO cloud_message_attachments \
-             (message_id, attachment_id, name, kind, mime_type, size_bytes, position) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        )
-        .bind(&message_id)
-        .bind(&attachment.attachment_id)
-        .bind(&attachment.name)
-        .bind(&attachment.kind)
-        .bind(attachment.mime_type.as_deref())
-        .bind(attachment.size_bytes)
-        .bind(position as i32)
-        .execute(pool)
-        .await
-        .is_err()
-        {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("[cloud-messages] transactional write failed: {error}");
             return err(
                 "server_error",
-                "Could not record message attachment.",
+                "Could not record message.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
-    }
+    };
+    let summary = MessageSummary {
+        message_id: outcome.message.message_id,
+        from_account_id: outcome.message.from_account_id,
+        to_account_id: outcome.message.to_account_id,
+        body: outcome.message.body,
+        session_id: outcome.message.session_id,
+        created_at: outcome.message.created_at,
+        delivered_at: outcome.message.delivered_at,
+        read_at: outcome.message.read_at,
+        direction: "outgoing".into(),
+        attachments: outcome
+            .message
+            .attachments
+            .into_iter()
+            .map(|attachment| MessageAttachmentSummary {
+                attachment_id: attachment.attachment_id,
+                name: attachment.name,
+                kind: attachment.kind,
+                mime_type: attachment.mime_type,
+                size_bytes: attachment.size_bytes,
+                download_url: attachment.download_url,
+                preview_url: attachment.preview_url,
+            })
+            .collect(),
+    };
 
-    // Live fanout to the recipient's open WS.
-    {
+    // Publish only after the message, attachment links, visibility changes,
+    // and durable sync events commit together. Duplicate retries already have
+    // a published row and must not emit a second live delivery.
+    if outcome.inserted {
         let events = state.events().clone();
-        let message_id = message_id.clone();
+        let message_id = summary.message_id.clone();
         let from = session.account_id.clone();
         let to = peer.clone();
-        let body_clone = body.clone();
-        let created_at = created_at.clone();
-        let session_id = cloud_session_id.clone();
+        let body_clone = summary.body.clone();
+        let created_at = summary.created_at.clone();
+        let session_id = summary.session_id.clone();
         let event_attachments =
-            serde_json::to_value(&attachments).unwrap_or_else(|_| serde_json::json!([]));
+            serde_json::to_value(&summary.attachments).unwrap_or_else(|_| serde_json::json!([]));
         tokio::spawn(async move {
             events
                 .publish_message_arrived(
@@ -3315,87 +3350,6 @@ async fn send_message(
                 )
                 .await;
         });
-    }
-
-    let summary = MessageSummary {
-        message_id,
-        from_account_id: session.account_id.clone(),
-        to_account_id: peer.clone(),
-        body,
-        session_id: cloud_session_id,
-        created_at: created_at.clone(),
-        delivered_at: Some(delivered_at.clone()),
-        read_at,
-        direction: "outgoing".into(),
-        attachments,
-    };
-
-    if let Some(session_id) = summary.session_id.as_deref() {
-        if clear_cloud_session_visibility_for_update(pool, &session.account_id, session_id)
-            .await
-            .is_err()
-        {
-            return err(
-                "server_error",
-                "Could not restore updated session visibility.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-        if peer != session.account_id
-            && clear_cloud_session_visibility_for_update(pool, &peer, session_id)
-                .await
-                .is_err()
-        {
-            return err(
-                "server_error",
-                "Could not restore updated session visibility.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    }
-
-    if append_cloud_sync_event(
-        pool,
-        &session.account_id,
-        "message.upsert",
-        Some(&peer),
-        Some(&summary.message_id),
-        message_sync_payload(&summary),
-        &delivered_at,
-    )
-    .await
-    .is_err()
-    {
-        return err(
-            "server_error",
-            "Could not record sync event.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
-
-    if peer != session.account_id {
-        let recipient_summary = MessageSummary {
-            direction: "incoming".into(),
-            ..summary.clone()
-        };
-        if append_cloud_sync_event(
-            pool,
-            &peer,
-            "message.upsert",
-            Some(&session.account_id),
-            Some(&summary.message_id),
-            message_sync_payload(&recipient_summary),
-            &delivered_at,
-        )
-        .await
-        .is_err()
-        {
-            return err(
-                "server_error",
-                "Could not record sync event.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
     }
 
     (
@@ -3790,26 +3744,6 @@ async fn caller_can_access_cloud_session(
     Ok(participants
         .iter()
         .any(|participant| participant == account_id))
-}
-
-async fn clear_cloud_session_visibility_for_update(
-    pool: &PgPool,
-    account_id: &str,
-    session_id: &str,
-) -> Result<(), sqlx_core::error::Error> {
-    let session_id = session_id.trim();
-    if session_id.is_empty() {
-        return Ok(());
-    }
-    query(
-        "DELETE FROM cloud_account_session_visibility \
-         WHERE account_id = $1 AND session_id = $2",
-    )
-    .bind(account_id)
-    .bind(session_id)
-    .execute(pool)
-    .await?;
-    Ok(())
 }
 
 async fn list_cloud_session_visibility(

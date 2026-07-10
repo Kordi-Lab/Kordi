@@ -291,6 +291,7 @@ test('sendMessage posts attachment metadata and parses returned attachments', as
 
   const sent = await client.sendMessage('kordi_cs_xyz', 'acct_peer', 'see file', {
     sessionId: 'session-1',
+    clientMessageId: 'msg:canonical:one:acct_peer',
     attachments: [{
       attachmentId: 'att_1',
       name: 'report.pdf',
@@ -305,6 +306,7 @@ test('sendMessage posts attachment metadata and parses returned attachments', as
     peerAccountId: 'acct_peer',
     body: 'see file',
     sessionId: 'session-1',
+    clientMessageId: 'msg:canonical:one:acct_peer',
     attachments: [{
       attachmentId: 'att_1',
       name: 'report.pdf',
