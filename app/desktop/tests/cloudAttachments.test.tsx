@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 
 import {
+  CloudAttachmentPreviewQueue,
   clearCloudAttachmentLocalPathCacheForTests,
   cloudMessageAttachmentToMessageAttachment,
+  loadCloudAttachmentPreview,
   resolveCloudMessageAttachments,
   uploadCloudFiles,
   uploadComposerAttachments,
@@ -33,6 +35,54 @@ test('cloud attachment metadata maps to transcript attachment metadata without e
     localPath: null,
     attachmentId: 'att_1',
   });
+});
+
+test('visible preview loading uses the thumbnail attachment id when provided', async () => {
+  const requestedIds: string[] = [];
+  const result = await loadCloudAttachmentPreview({
+    token: 'token',
+    client: {
+      async downloadAttachmentContent(_token, attachmentId) {
+        requestedIds.push(attachmentId);
+        return new Blob([new Uint8Array([1, 2, 3])], { type: 'image/webp' });
+      },
+    },
+    attachment: {
+      attachmentId: 'att_original',
+      previewAttachmentId: 'att_preview',
+      name: 'photo.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 8_000_000,
+    },
+    createObjectUrl: () => 'blob:preview',
+  });
+
+  assert.deepEqual(requestedIds, ['att_preview']);
+  assert.equal(result, 'blob:preview');
+});
+
+test('preview queue caps recovery at four downloads and aborts queued rows', async () => {
+  const queue = new CloudAttachmentPreviewQueue(4);
+  const releases: Array<() => void> = [];
+  const started: number[] = [];
+  const controllers = Array.from({ length: 6 }, () => new AbortController());
+  const requests = controllers.map((controller, index) => queue.run(async () => {
+    started.push(index);
+    await new Promise<void>((resolve) => releases.push(resolve));
+    return index;
+  }, controller.signal));
+  const resultsPromise = Promise.allSettled(requests);
+
+  await Promise.resolve();
+  assert.deepEqual(started, [0, 1, 2, 3]);
+  controllers[5].abort();
+  releases.shift()?.();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(started, [0, 1, 2, 3, 4]);
+  releases.splice(0).forEach((release) => release());
+  const results = await resultsPromise;
+  assert.equal(results[5]?.status, 'rejected');
 });
 
 test('resolveCloudMessageAttachments auto-downloads small files into local attachment cache', async () => {

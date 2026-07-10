@@ -1,5 +1,6 @@
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
+import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
 
 export type CloudSyncEvent = AuthCloudSyncEvent;
@@ -116,7 +117,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
   if (!messageId || !fromAccountId || !toAccountId || !createdAt) return null;
   const direction = record.direction === 'outgoing' ? 'outgoing' : 'incoming';
   const attachments = Array.isArray(record.attachments) ? record.attachments as CloudMessage['attachments'] : undefined;
-  return {
+  return cloudMessageMetadataOnly({
     messageId,
     fromAccountId,
     toAccountId,
@@ -127,7 +128,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
     direction,
     ...(typeof record.sessionId === 'string' ? { sessionId: record.sessionId } : {}),
     ...(attachments ? { attachments } : {}),
-  };
+  });
 }
 
 function messagePeerId(accountId: string, message: CloudMessage, eventPeerId?: string | null): string | null {
@@ -413,6 +414,7 @@ export type SyncCloudDiffOnceInput = {
   hiddenSessionIds?: ReadonlySet<string>;
   deletedSessionIds?: ReadonlySet<string>;
   cursorStorage?: Storage | null;
+  shouldSaveCursor?: () => boolean;
   fetchEvents(cursor: string): Promise<CloudSyncResponse>;
 };
 
@@ -473,6 +475,8 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   const sessionForksById = applyCloudSyncEventsToSessionForks(input.sessionForksById ?? {}, events);
   const sessionPinsById = applyCloudSyncEventsToSessionPins(input.sessionPinsById ?? {}, events);
   const cloudAgentsById = applyCloudAgentSyncEvents(input.cloudAgentsById ?? {}, events);
-  saveCloudSyncCursor(input.accountId, nextCursor, storage);
+  if (!input.shouldSaveCursor || input.shouldSaveCursor()) {
+    saveCloudSyncCursor(input.accountId, nextCursor, storage);
+  }
   return { messagesByPeer, sessionActivity, sessionForksById, sessionPinsById, cloudAgentsById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
 }

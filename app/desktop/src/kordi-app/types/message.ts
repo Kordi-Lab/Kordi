@@ -70,6 +70,7 @@ export type MessageAttachment = {
   localPath?: string | null;
   sizeBytes?: number | null;
   attachmentId?: string | null;
+  previewAttachmentId?: string | null;
 };
 
 export type MessageMention = {

@@ -44,9 +44,6 @@ import {
   cloudGroupAgentResponseExistsForRequest,
   cloudAgentRunStatusAlreadyOwnsRequest,
   cloudFallbackRunClaimsForMessages,
-  cachedCloudMessagesByPeerHasMessages,
-  loadCachedCloudMessagesByPeer,
-  saveCachedCloudMessagesByPeer,
 } from '../src/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
 import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
@@ -434,10 +431,14 @@ test('cloud agent runtime routes fall back to current composer route for unconfi
   });
 });
 
-test('cloud bridge state does not replay stale localStorage messages before server sync settles', () => {
+test('cloud bridge state loads the asynchronous cache without treating it as authoritative', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
   assert.match(source, /if \(!initialMessagesSettled\) return \{\};[\s\S]*removeCloudSessionMessages\(account\.accountId, next, sessionId\)/);
+  assert.match(source, /defaultCloudMessageCache\(\)/);
+  assert.match(source, /cloudMessageCache\.load\(accountId\)\.then/);
+  assert.match(source, /hydratedMessagesCacheAccountRef\.current === account\.accountId/);
+  assert.doesNotMatch(source, /loadCachedCloudMessagesByPeer|saveCachedCloudMessagesByPeer/);
   assert.match(source, /loadCloudSessionVisibility\(account\?\.accountId\)/);
   assert.match(source, /if \(!account \|\| messagesCacheAccountRef\.current !== account\.accountId\) return;[\s\S]*saveCloudSessionVisibility/);
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
@@ -459,11 +460,34 @@ test('cloud unread badge reconciliation waits for authoritative startup message 
   );
 });
 
-test('cloud startup performs full message refresh before accepting diff-synced cache as settled', () => {
+test('cloud startup performs one coordinated full snapshot after contacts settle', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /syncCloudBridgeDiff\(\{\s*settleInitialMessages:\s*false\s*\}\)[\s\S]*refreshCloudBridgeMessages\(\)/);
+  assert.match(source, /if \(!contacts\.initialLoadSettled\) return;/);
+  assert.match(source, /startupFullSnapshotAccountRef\.current !== account\.accountId[\s\S]*refreshCloudBridgeMessages\(\)/);
+  assert.doesNotMatch(source, /syncCloudBridgeDiff\(\{\s*settleInitialMessages:\s*false/);
   assert.match(source, /if \(settleInitialMessages\) setInitialMessagesSettledPeerKey\(bootstrapPeerKey\)/);
+});
+
+test('normal Cloud events request diff sync instead of full snapshots', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const fullRefreshCalls = source.match(/void refreshCloudBridgeMessages\(\)/g) ?? [];
+
+  assert.equal(fullRefreshCalls.length, 1, 'only the post-contact startup path should request a full message snapshot');
+  assert.match(source, /lastCloudFocusRefreshAtRef\.current = now;\s*void syncCloudBridgeDiff\(\)/);
+  assert.match(source, /markSessionMessagesRead[\s\S]*void syncCloudBridgeDiff\(\)/);
+});
+
+test('cloud message bootstrap keeps attachments metadata-only', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const start = source.indexOf('const refreshCloudBridgeMessagesOnce');
+  const end = source.indexOf('const syncCloudBridgeDiffOnceForGeneration', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const bootstrap = source.slice(start, end);
+
+  assert.match(bootstrap, /client\.listMessages/);
+  assert.doesNotMatch(bootstrap, /resolveCloudMessageAttachments|downloadAttachmentContent/);
 });
 
 test('Cloud focus refresh is throttled across focus, visibility, and pageshow bursts', () => {
@@ -497,18 +521,6 @@ const message: CloudMessage = {
   readAt: null,
   direction: 'incoming',
 };
-
-function memoryStorage(): Storage {
-  const values = new Map<string, string>();
-  return {
-    get length() { return values.size; },
-    clear: () => values.clear(),
-    getItem: (key: string) => values.get(key) ?? null,
-    key: (index: number) => [...values.keys()][index] ?? null,
-    removeItem: (key: string) => { values.delete(key); },
-    setItem: (key: string, value: string) => { values.set(key, String(value)); },
-  };
-}
 
 test('cloud session fork map equality compares structural fork lineage to prevent refresh loops', () => {
   const left = {
@@ -547,50 +559,6 @@ test('cloud bridge state ignores poisoned localhost bridge state instead of merg
 
   assert.deepEqual(cloudState.hosts.map((host) => host.id), ['cloud']);
   assert.equal(cloudState.conversations.every((conversation) => conversation.hostId === 'cloud'), true);
-});
-
-test('cloud message local cache round-trips all peer chat messages', () => {
-  const storage = memoryStorage();
-  saveCachedCloudMessagesByPeer('acct_me', {
-    acct_peer: [message],
-    acct_group_peer: [{ ...message, messageId: 'msg_group_1', fromAccountId: 'acct_group_peer' }],
-  }, storage);
-
-  assert.equal(cachedCloudMessagesByPeerHasMessages('acct_me', storage), true);
-  assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), {
-    acct_peer: [message],
-    acct_group_peer: [{ ...message, messageId: 'msg_group_1', fromAccountId: 'acct_group_peer' }],
-  });
-});
-
-test('cloud message local cache ignores malformed cached records', () => {
-  const storage = memoryStorage();
-  storage.setItem('kordi.cloud.messagesByPeer.v1:acct_me', JSON.stringify({
-    acct_peer: [{ messageId: '', fromAccountId: 'acct_peer' }, message],
-  }));
-
-  assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), { acct_peer: [message] });
-});
-
-test('cloud message cache normalizes self-addressed rows as outgoing and preserves session ids', () => {
-  const storage = memoryStorage();
-  storage.setItem('kordi.cloud.messagesByPeer.v1:acct_self', JSON.stringify({
-    acct_self: [{
-      messageId: 'msg_self_1',
-      fromAccountId: 'acct_self',
-      toAccountId: 'acct_self',
-      body: 'cached self row',
-      createdAt: '2026-07-07T18:00:00Z',
-      deliveredAt: '2026-07-07T18:00:00Z',
-      readAt: null,
-      direction: 'incoming',
-      sessionId: 'session:self-agent:test',
-    }],
-  }));
-
-  const loaded = loadCachedCloudMessagesByPeer('acct_self', storage);
-  assert.equal(loaded.acct_self?.[0]?.direction, 'outgoing');
-  assert.equal(loaded.acct_self?.[0]?.sessionId, 'session:self-agent:test');
 });
 
 test('cloud group read marking patches stale local unread cache rows by session id', () => {
@@ -1881,7 +1849,6 @@ test('cloud initial message sync follows group peer discovery until stable', asy
     initialPeerIds: ['acct_peer_1'],
     existingMessagesByPeer: {},
     listMessages: async (peerId) => messagesByPeer[peerId] ?? [],
-    resolveMessageAttachments: async (messages) => messages,
   });
 
   assert.equal(result.complete, true);

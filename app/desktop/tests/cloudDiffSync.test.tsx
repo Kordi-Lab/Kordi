@@ -57,6 +57,41 @@ test('applyCloudSyncEventsToMessagesByPeer upserts messages idempotently by mess
   assert.deepEqual(twice, { acct_peer: [incoming] });
 });
 
+test('message diff events discard inline preview payloads before entering state', () => {
+  const result = applyCloudSyncEventsToMessagesByPeer('acct_me', {}, [{
+    eventId: '11',
+    eventType: 'message.upsert',
+    peerAccountId: 'acct_peer',
+    messageId: 'msg_preview',
+    payload: {
+      message: {
+        ...incoming,
+        messageId: 'msg_preview',
+        attachments: [{
+          attachmentId: 'att_original',
+          previewAttachmentId: 'att_preview',
+          name: 'photo.png',
+          kind: 'image',
+          mimeType: 'image/png',
+          sizeBytes: 100,
+          previewUrl: 'data:image/webp;base64,legacy',
+          localPath: '/tmp/original.png',
+        }],
+      },
+    },
+    occurredAt: '2026-05-13T00:01:00Z',
+  }]);
+
+  assert.deepEqual(result.acct_peer?.[0]?.attachments, [{
+    attachmentId: 'att_original',
+    previewAttachmentId: 'att_preview',
+    name: 'photo.png',
+    kind: 'image',
+    mimeType: 'image/png',
+    sizeBytes: 100,
+  }]);
+});
+
 test('applyCloudSyncEventsToMessagesByPeer revives a removed session when a new message arrives', () => {
   const removedMessage: CloudMessage = {
     ...incoming,
@@ -416,6 +451,20 @@ test('syncCloudDiffOnce advances cursor only after applying events', async () =>
   assert.deepEqual(result.messagesByPeer, { acct_peer: [incoming] });
   assert.equal(result.sessionActivity.tasksBySessionId['session:group:1']?.[0]?.taskId, 'task-1');
   assert.equal(result.fallbackRequired, false);
+});
+
+test('syncCloudDiffOnce does not advance a cursor after its account generation expires', async () => {
+  const storage = memoryStorage();
+  const result = await syncCloudDiffOnce({
+    accountId: 'acct_old',
+    cursorStorage: storage,
+    messagesByPeer: {},
+    shouldSaveCursor: () => false,
+    fetchEvents: async () => ({ cursor: '10', hasMore: false, events: [] }),
+  });
+
+  assert.equal(result.cursor, '10');
+  assert.equal(loadCloudSyncCursor('acct_old', storage), '0');
 });
 
 test('syncCloudDiffOnce requests fallback for invalid cursors without advancing local cursor', async () => {

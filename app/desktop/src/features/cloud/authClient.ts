@@ -101,6 +101,7 @@ export type CloudMessageDirection = 'incoming' | 'outgoing';
 
 export type CloudMessageAttachment = {
   attachmentId: string;
+  previewAttachmentId?: string | null;
   name: string;
   kind: 'image' | 'file';
   mimeType: string | null;
@@ -824,12 +825,13 @@ export class CloudAuthClient {
     );
   }
 
-  async downloadAttachmentContent(token: string, attachmentId: string): Promise<Blob> {
+  async downloadAttachmentContent(token: string, attachmentId: string, signal?: AbortSignal): Promise<Blob> {
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.baseUrl}/v1/cloud/attachments/${encodeURIComponent(attachmentId)}/content`, {
         method: 'GET',
         headers: { authorization: `Bearer ${token}` },
+        signal,
       });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Network request failed.';

@@ -6,6 +6,7 @@ import { Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { loadVisibleCloudAttachmentPreview } from '@/features/cloud/cloudAttachments';
 import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -65,7 +66,9 @@ function isLargeAttachment(attachment: MessageAttachment) {
 }
 
 function shouldPreviewAttachmentInline(attachment: MessageAttachment) {
-  return attachment.kind === 'image' && !isArchiveAttachment(attachment) && !isLargeAttachment(attachment);
+  return attachment.kind === 'image'
+    && !isArchiveAttachment(attachment)
+    && (!isLargeAttachment(attachment) || Boolean(attachment.previewAttachmentId));
 }
 
 function formatAttachmentSize(sizeBytes?: number | null) {
@@ -360,10 +363,39 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const previewUrl = attachmentPreviewUrl(attachment);
+  const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(null);
+  const previewUrl = remotePreviewUrl ?? attachmentPreviewUrl(attachment);
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl && !previewFailed);
   const singleImage = totalCount <= 1;
+
+  useEffect(() => {
+    if (previewUrl || previewFailed || attachment.kind !== 'image' || !attachment.attachmentId) return;
+    const controller = new AbortController();
+    void loadSession()
+      .then((session) => {
+        if (!session?.token || controller.signal.aborted) return null;
+        return loadVisibleCloudAttachmentPreview({
+          token: session.token,
+          client: defaultCloudAuthClient(),
+          attachment: {
+            attachmentId: attachment.attachmentId ?? '',
+            previewAttachmentId: attachment.previewAttachmentId ?? null,
+            kind: 'image',
+          },
+          signal: controller.signal,
+        });
+      })
+      .then((nextPreviewUrl) => {
+        if (!controller.signal.aborted && nextPreviewUrl) setRemotePreviewUrl(nextPreviewUrl);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted && (!(error instanceof Error) || error.name !== 'AbortError')) {
+          setPreviewFailed(true);
+        }
+      });
+    return () => controller.abort();
+  }, [attachment.attachmentId, attachment.kind, attachment.previewAttachmentId, previewFailed, previewUrl]);
 
   return (
     <div
