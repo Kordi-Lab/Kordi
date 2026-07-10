@@ -2,9 +2,8 @@ import { performance } from 'node:perf_hooks';
 
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import {
-  cloudGroupControlMessagesForAccount,
-  cloudGroupDeliveryStateFromMessages,
-} from '../src/features/cloud/cloudGroupMessages';
+  buildCloudMessageIndex,
+} from '../src/features/cloud/cloudMessageIndex';
 import { buildCanonicalIndexes } from '../src/features/canonical/readModel/indexes';
 import {
   CHAT_SCALE,
@@ -44,7 +43,6 @@ function benchmark(operation: () => void) {
 const canonicalState = buildScaleCanonicalState();
 const bridgeConversation = buildScaleBridgeConversation();
 const messagesByPeer = buildScaleCloudMessagesByPeer();
-const cloudMessages = Object.values(messagesByPeer).flat();
 const deliveryLookupIds = Array.from(
   { length: 1 },
   (_, index) => scaleMessageId(0, CHAT_SCALE.messagesPerSession + index),
@@ -71,11 +69,10 @@ if (indexedCanonicalSessionCount !== CHAT_SCALE.sessions) {
 }
 
 let indexedCloudMessageCount = 0;
+let cloudMessageIndex = buildCloudMessageIndex(null, {});
 const cloudIndexMs = benchmark(() => {
-  indexedCloudMessageCount = cloudGroupControlMessagesForAccount({
-    accountId: SCALE_ACCOUNT_ID,
-    messages: cloudMessages,
-  }).length;
+  cloudMessageIndex = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer);
+  indexedCloudMessageCount = cloudMessageIndex.replayRows.length;
 });
 if (indexedCloudMessageCount !== CHAT_SCALE.selectedSessionMessages) {
   throw new Error(`Unexpected indexed Cloud message count: ${indexedCloudMessageCount}`);
@@ -84,11 +81,7 @@ if (indexedCloudMessageCount !== CHAT_SCALE.selectedSessionMessages) {
 let resolvedDeliveryCount = 0;
 const cloudDeliveryLookupMs = benchmark(() => {
   resolvedDeliveryCount = deliveryLookupIds.filter((messageId) => (
-    cloudGroupDeliveryStateFromMessages({
-      accountId: SCALE_ACCOUNT_ID,
-      messageId,
-      messages: cloudMessages,
-    }) === 'read'
+    cloudMessageIndex.deliveryByMessageId.get(messageId)?.state === 'read'
   )).length;
 });
 if (resolvedDeliveryCount !== deliveryLookupIds.length) {

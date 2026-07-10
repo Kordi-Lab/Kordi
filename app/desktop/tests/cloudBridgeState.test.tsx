@@ -441,7 +441,7 @@ test('cloud bridge state does not replay stale localStorage messages before serv
   assert.match(source, /loadCloudSessionVisibility\(account\?\.accountId\)/);
   assert.match(source, /if \(!account \|\| messagesCacheAccountRef\.current !== account\.accountId\) return;[\s\S]*saveCloudSessionVisibility/);
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
-  assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*cloudGroupControlMessagesForAccount/);
+  assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*for \(const row of cloudMessageIndex\.replayRows\)/);
 });
 
 test('cloud unread badge reconciliation waits for authoritative startup message sync', () => {
@@ -1932,6 +1932,49 @@ test('stored self messages restore a private My Kordi cloud agent conversation',
     '@Kordi remember this private note',
     'I will remember it.',
   ]);
+});
+
+test('cloud bridge rebuild reuses unaffected conversation objects by message revision', () => {
+  const peerTwo = cloudContactToContact({
+    accountId: 'acct_two',
+    displayName: 'Second Person',
+    avatarUrl: null,
+    nodeId: 'node_two',
+    createdAt: '2026-05-11T00:00:00Z',
+  });
+  const secondPeerMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_2',
+    fromAccountId: 'acct_two',
+    body: 'hello from second peer',
+  };
+  const messagesByPeer = { acct_peer: [message], acct_two: [secondPeerMessage] };
+  const first = buildCloudDesktopBridgeState({ account, contacts: [peer, peerTwo], messagesByPeer });
+  const second = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer, peerTwo],
+    messagesByPeer,
+    previousState: first,
+  });
+
+  const firstByPeerId = new Map(first.conversations.map((conversation) => [conversation.peerNodeId, conversation]));
+  const secondByPeerId = new Map(second.conversations.map((conversation) => [conversation.peerNodeId, conversation]));
+  assert.equal(secondByPeerId.get('acct_peer'), firstByPeerId.get('acct_peer'));
+  assert.equal(secondByPeerId.get('acct_two'), firstByPeerId.get('acct_two'));
+
+  const updatedMessagesByPeer = {
+    ...messagesByPeer,
+    acct_peer: [{ ...message, readAt: '2026-05-11T10:00:01Z' }],
+  };
+  const third = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer, peerTwo],
+    messagesByPeer: updatedMessagesByPeer,
+    previousState: second,
+  });
+  const thirdByPeerId = new Map(third.conversations.map((conversation) => [conversation.peerNodeId, conversation]));
+  assert.notEqual(thirdByPeerId.get('acct_peer'), secondByPeerId.get('acct_peer'));
+  assert.equal(thirdByPeerId.get('acct_two'), secondByPeerId.get('acct_two'));
 });
 
 test('unscoped self-agent cloud cache is hidden when local canonical self-agent history exists', () => {
