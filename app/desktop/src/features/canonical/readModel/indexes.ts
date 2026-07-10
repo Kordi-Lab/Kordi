@@ -22,6 +22,7 @@ import {
   processingAgentMessage,
   stringValue,
 } from './messageMapping';
+import { canonicalMessageCountsForLastActive } from './conversationMapping';
 
 export type CanonicalIndexes = {
   storagePath: string;
@@ -33,6 +34,8 @@ export type CanonicalIndexes = {
   canonicalParticipantsBySessionId: Map<string, ConversationParticipant[]>;
   canonicalMessagesBySessionId: Map<string, Message[]>;
   rawMessagesBySessionId: Map<string, CanonicalSessionMessage[]>;
+  latestReadableMessageBySessionId: Map<string, CanonicalSessionMessage>;
+  latestActivityMessageBySessionId: Map<string, CanonicalSessionMessage>;
   rawMessageCountBySessionId: Map<string, number>;
   delegatedExchangeCountBySessionId: Map<string, number>;
   taskActivitiesBySessionId: Map<string, SessionTaskActivity[]>;
@@ -51,6 +54,8 @@ function emptyIndexes(): CanonicalIndexes {
     canonicalParticipantsBySessionId: new Map(),
     canonicalMessagesBySessionId: new Map(),
     rawMessagesBySessionId: new Map(),
+    latestReadableMessageBySessionId: new Map(),
+    latestActivityMessageBySessionId: new Map(),
     rawMessageCountBySessionId: new Map(),
     delegatedExchangeCountBySessionId: new Map(),
     taskActivitiesBySessionId: new Map(),
@@ -161,23 +166,79 @@ function normalizedLeadingMentionText(value: string) {
     .toLocaleLowerCase();
 }
 
+function pushMapArray<K, V>(map: Map<K, V[]>, key: K, value: V) {
+  const values = map.get(key);
+  if (values) {
+    values.push(value);
+  } else {
+    map.set(key, [value]);
+  }
+}
+
+function lowerBoundCreatedAt(messages: readonly CanonicalSessionMessage[], targetMs: number) {
+  let start = 0;
+  let end = messages.length;
+  while (start < end) {
+    const middle = Math.floor((start + end) / 2);
+    if (messages[middle].createdAtMs < targetMs) start = middle + 1;
+    else end = middle;
+  }
+  return start;
+}
+
+function messagesInCreatedAtRange(
+  messages: readonly CanonicalSessionMessage[] | undefined,
+  startMs: number,
+  endMs: number,
+) {
+  if (!messages?.length) return [];
+  const start = lowerBoundCreatedAt(messages, startMs);
+  const matches: CanonicalSessionMessage[] = [];
+  for (let index = start; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (message.createdAtMs > endMs) break;
+    matches.push(message);
+  }
+  return matches;
+}
+
+function hasMessageInCreatedAtRange(
+  messages: readonly CanonicalSessionMessage[] | undefined,
+  startMs: number,
+  endMs: number,
+) {
+  if (!messages?.length) return false;
+  const start = lowerBoundCreatedAt(messages, startMs);
+  return start < messages.length && messages[start].createdAtMs <= endMs;
+}
+
 function localAgentRuntimeUserEchoIds(messages: CanonicalSessionMessage[]) {
   const echoIds = new Set<string>();
-  const bridgeUiMentions = messages.filter((message) => (
-    message.sourceTransport === 'desktop-chat-ui'
-    && message.senderRole === 'user'
-    && message.contentText.trim().startsWith('@')
-  ));
+  const bridgeUiMentionsByKey = new Map<string, CanonicalSessionMessage[]>();
+  const duplicateKey = (message: CanonicalSessionMessage) => [
+    message.sessionId,
+    message.senderIdentityId,
+    message.senderRole,
+    normalizedLeadingMentionText(message.contentText),
+  ].join('\u0000');
+  for (const message of messages) {
+    if (
+      message.sourceTransport !== 'desktop-chat-ui'
+      || message.senderRole !== 'user'
+      || !message.contentText.trim().startsWith('@')
+    ) continue;
+    const key = duplicateKey(message);
+    if (key.endsWith('\u0000')) continue;
+    pushMapArray(bridgeUiMentionsByKey, key, message);
+  }
   for (const message of messages) {
     if (message.sourceTransport !== 'desktop-chat' || message.senderRole !== 'user') continue;
     const normalizedText = normalizedLeadingMentionText(message.contentText);
     if (!normalizedText) continue;
-    const duplicate = bridgeUiMentions.some((candidate) => (
-      candidate.senderIdentityId === message.senderIdentityId
-      && Math.abs(message.createdAtMs - candidate.createdAtMs) <= 5_000
-      && normalizedLeadingMentionText(candidate.contentText) === normalizedText
-    ));
-    if (duplicate) echoIds.add(message.id);
+    const candidates = bridgeUiMentionsByKey.get(duplicateKey(message));
+    if (hasMessageInCreatedAtRange(candidates, message.createdAtMs - 5_000, message.createdAtMs + 5_000)) {
+      echoIds.add(message.id);
+    }
   }
   return echoIds;
 }
@@ -195,61 +256,82 @@ function comparableOwnedAgentResponseText(value: string) {
   return value.trim().replace(/\s+/gu, '');
 }
 
-function sameOwnedAgentResponseText(left: string, right: string) {
-  const leftTrimmed = left.trim();
-  const rightTrimmed = right.trim();
-  if (!leftTrimmed || !rightTrimmed) return false;
-  return leftTrimmed === rightTrimmed
-    || comparableOwnedAgentResponseText(leftTrimmed) === comparableOwnedAgentResponseText(rightTrimmed);
-}
-
-function sameOwnedAgentResponse(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
-  return left.sessionId === right.sessionId
-    && left.senderIdentityId === right.senderIdentityId
-    && left.senderRole === 'owned-agent'
-    && right.senderRole === 'owned-agent'
-    && left.messageKind === 'agent-turn'
-    && right.messageKind === 'agent-turn'
-    && sameOwnedAgentResponseText(left.contentText, right.contentText)
-    && Math.abs(left.createdAtMs - right.createdAtMs) <= 30_000;
-}
-
 function normalizedDuplicateText(value: string) {
   return value.trim().replace(/\s+/gu, ' ').toLowerCase();
 }
 
-function bridgeParentUserMessageMatchesOptimisticUi(
-  parentMessage: CanonicalSessionMessage,
-  optimisticMessage: CanonicalSessionMessage,
-) {
-  return parentMessage.sessionId === optimisticMessage.sessionId
-    && parentMessage.senderRole === 'user'
-    && optimisticMessage.senderRole === 'user'
-    && parentMessage.messageKind === optimisticMessage.messageKind
-    && parentMessage.sourceTransport === 'desktop-bridge-parent'
-    && optimisticMessage.sourceTransport === 'desktop-bridge-ui'
-    && normalizedDuplicateText(parentMessage.contentText) === normalizedDuplicateText(optimisticMessage.contentText)
-    && Math.abs(parentMessage.createdAtMs - optimisticMessage.createdAtMs) <= 10_000;
+function bridgeUiOptimisticEchoKey(message: CanonicalSessionMessage) {
+  return [
+    message.sessionId,
+    message.senderRole,
+    message.messageKind,
+    normalizedDuplicateText(message.contentText),
+  ].join('\u0000');
 }
 
 function bridgeUiOptimisticEchoIds(messages: CanonicalSessionMessage[]) {
   const echoIds = new Set<string>();
-  const optimisticMessages = messages
-    .filter((message) => message.sourceTransport === 'desktop-bridge-ui' && message.senderRole === 'user')
-    .sort((left, right) => left.createdAtMs - right.createdAtMs || left.sequenceNum - right.sequenceNum);
-  const parentMessages = messages
-    .filter((message) => message.sourceTransport === 'desktop-bridge-parent' && message.senderRole === 'user')
-    .sort((left, right) => left.createdAtMs - right.createdAtMs || left.sequenceNum - right.sequenceNum);
+  const optimisticByKey = new Map<string, CanonicalSessionMessage[]>();
+  const parentsByKey = new Map<string, CanonicalSessionMessage[]>();
+  for (const message of messages) {
+    if (message.senderRole !== 'user') continue;
+    const key = bridgeUiOptimisticEchoKey(message);
+    if (message.sourceTransport === 'desktop-bridge-ui') {
+      pushMapArray(optimisticByKey, key, message);
+    } else if (message.sourceTransport === 'desktop-bridge-parent') {
+      pushMapArray(parentsByKey, key, message);
+    }
+  }
 
-  for (const parentMessage of parentMessages) {
-    const nearestOptimisticMessage = optimisticMessages
-      .filter((optimisticMessage) => !echoIds.has(optimisticMessage.id) && bridgeParentUserMessageMatchesOptimisticUi(parentMessage, optimisticMessage))
-      .sort((left, right) => {
-        const leftDistance = Math.abs(parentMessage.createdAtMs - left.createdAtMs);
-        const rightDistance = Math.abs(parentMessage.createdAtMs - right.createdAtMs);
-        return leftDistance - rightDistance || right.sequenceNum - left.sequenceNum;
-      })[0];
-    if (nearestOptimisticMessage) echoIds.add(nearestOptimisticMessage.id);
+  for (const [key, parentMessages] of parentsByKey) {
+    const optimisticMessages = optimisticByKey.get(key);
+    if (!optimisticMessages?.length) continue;
+    optimisticMessages.sort((left, right) => (
+      left.createdAtMs - right.createdAtMs
+      || right.sequenceNum - left.sequenceNum
+    ));
+    parentMessages.sort((left, right) => (
+      left.createdAtMs - right.createdAtMs
+      || left.sequenceNum - right.sequenceNum
+    ));
+
+    const next = Array.from({ length: optimisticMessages.length + 1 }, (_, index) => index);
+    const previous = Array.from({ length: optimisticMessages.length }, (_, index) => index);
+    const findNext = (candidateIndex: number): number => {
+      if (candidateIndex >= optimisticMessages.length) return optimisticMessages.length;
+      if (next[candidateIndex] === candidateIndex) return candidateIndex;
+      next[candidateIndex] = findNext(next[candidateIndex]);
+      return next[candidateIndex];
+    };
+    const findPrevious = (candidateIndex: number): number => {
+      if (candidateIndex < 0) return -1;
+      if (previous[candidateIndex] === candidateIndex) return candidateIndex;
+      previous[candidateIndex] = findPrevious(previous[candidateIndex]);
+      return previous[candidateIndex];
+    };
+    const removeCandidate = (candidateIndex: number) => {
+      next[candidateIndex] = findNext(candidateIndex + 1);
+      previous[candidateIndex] = findPrevious(candidateIndex - 1);
+    };
+
+    for (const parentMessage of parentMessages) {
+      const insertionIndex = lowerBoundCreatedAt(optimisticMessages, parentMessage.createdAtMs);
+      const leftIndex = findPrevious(insertionIndex - 1);
+      const rightIndex = findNext(insertionIndex);
+      const candidates = [leftIndex, rightIndex]
+        .filter((candidateIndex) => candidateIndex >= 0 && candidateIndex < optimisticMessages.length)
+        .map((candidateIndex) => ({ candidateIndex, message: optimisticMessages[candidateIndex] }))
+        .filter(({ message }) => Math.abs(parentMessage.createdAtMs - message.createdAtMs) <= 10_000)
+        .sort((left, right) => {
+          const leftDistance = Math.abs(parentMessage.createdAtMs - left.message.createdAtMs);
+          const rightDistance = Math.abs(parentMessage.createdAtMs - right.message.createdAtMs);
+          return leftDistance - rightDistance || right.message.sequenceNum - left.message.sequenceNum;
+        });
+      const nearest = candidates[0];
+      if (!nearest) continue;
+      echoIds.add(nearest.message.id);
+      removeCandidate(nearest.candidateIndex);
+    }
   }
 
   return echoIds;
@@ -342,37 +424,57 @@ function isPureBridgeAgentStatusRow(message: CanonicalSessionMessage) {
     || deliveryState === 'processing_failed';
 }
 
-function pairedLocalOwnedAgentTurnExists(
-  local: CanonicalSessionMessage,
-  bridge: CanonicalSessionMessage,
-) {
-  return local.sessionId === bridge.sessionId
-    && local.senderIdentityId === bridge.senderIdentityId
-    && local.senderRole === 'owned-agent'
-    && local.messageKind === 'agent-turn'
-    && Math.abs(local.createdAtMs - bridge.createdAtMs) <= 30_000;
+function localOwnedAgentPairKey(message: CanonicalSessionMessage) {
+  return [
+    message.sessionId,
+    message.senderIdentityId,
+    message.senderRole,
+    message.messageKind,
+  ].join('\u0000');
+}
+
+function localOwnedAgentResponseKey(message: CanonicalSessionMessage) {
+  const comparableText = comparableOwnedAgentResponseText(message.contentText);
+  return comparableText ? `${localOwnedAgentPairKey(message)}\u0000${comparableText}` : null;
 }
 
 function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
   const duplicateIds = new Set<string>();
-  const localRuntimeMessages = messages.filter((message) => (
-    message.sourceTransport === 'desktop-chat'
-    && isOwnedAgentTurn(message)
-  ));
-  const bridgeRelayMessages = messages.filter((message) => (
-    message.sourceTransport === 'desktop-bridge-session-relay'
-    && isOwnedAgentTurn(message)
-  ));
+  const localRuntimeMessagesByPairKey = new Map<string, CanonicalSessionMessage[]>();
+  const localRuntimeMessagesByResponseKey = new Map<string, CanonicalSessionMessage[]>();
+  const bridgeRelayMessages: CanonicalSessionMessage[] = [];
+
+  for (const message of messages) {
+    if (!isOwnedAgentTurn(message)) continue;
+    if (message.sourceTransport === 'desktop-chat') {
+      pushMapArray(localRuntimeMessagesByPairKey, localOwnedAgentPairKey(message), message);
+      const responseKey = localOwnedAgentResponseKey(message);
+      if (responseKey) pushMapArray(localRuntimeMessagesByResponseKey, responseKey, message);
+    } else if (message.sourceTransport === 'desktop-bridge-session-relay') {
+      bridgeRelayMessages.push(message);
+    }
+  }
 
   for (const bridgeMessage of bridgeRelayMessages) {
-    const matchingLocalMessages = localRuntimeMessages.filter((message) => sameOwnedAgentResponse(message, bridgeMessage));
+    const responseKey = localOwnedAgentResponseKey(bridgeMessage);
+    const matchingLocalMessages = responseKey
+      ? messagesInCreatedAtRange(
+          localRuntimeMessagesByResponseKey.get(responseKey),
+          bridgeMessage.createdAtMs - 30_000,
+          bridgeMessage.createdAtMs + 30_000,
+        )
+      : [];
     if (matchingLocalMessages.length === 0) {
       // Cancelled/failed bridge fanout rows are pure status markers — when the
       // sender's instance also has a desktop-chat owned-agent turn for the same
       // request, the bridge row is the redundant copy.
       if (
         isPureBridgeAgentStatusRow(bridgeMessage)
-        && localRuntimeMessages.some((local) => pairedLocalOwnedAgentTurnExists(local, bridgeMessage))
+        && hasMessageInCreatedAtRange(
+          localRuntimeMessagesByPairKey.get(localOwnedAgentPairKey(bridgeMessage)),
+          bridgeMessage.createdAtMs - 30_000,
+          bridgeMessage.createdAtMs + 30_000,
+        )
       ) {
         duplicateIds.add(bridgeMessage.id);
       }
@@ -444,7 +546,7 @@ function bridgeRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[])
       requestId,
       comparableText,
     ].join('\u0000');
-    messagesByRequest.set(key, [...(messagesByRequest.get(key) ?? []), message]);
+    pushMapArray(messagesByRequest, key, message);
   }
 
   for (const duplicateGroup of messagesByRequest.values()) {
@@ -478,12 +580,6 @@ function bridgeRequestIdForMessage(message: CanonicalSessionMessage) {
 
   const sourceEventId = message.sourceEventId?.trim() ?? '';
   return /\bbridge_req_[A-Za-z0-9_]+\b/u.exec(sourceEventId)?.[0] ?? null;
-}
-
-function bridgeRequestIdsDiffer(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
-  const leftRequestId = bridgeRequestIdForMessage(left);
-  const rightRequestId = bridgeRequestIdForMessage(right);
-  return Boolean(leftRequestId && rightRequestId && leftRequestId !== rightRequestId);
 }
 
 function pendingBridgeDelegationRequestKey(sessionId: string, requestId: string) {
@@ -538,7 +634,7 @@ function duplicateCloudGroupAgentResponseIds(messages: CanonicalSessionMessage[]
       || null;
     if (!requestId) continue;
     const key = [message.sessionId, message.senderIdentityId, requestId].join('\u0000');
-    responsesByRequest.set(key, [...(responsesByRequest.get(key) ?? []), message]);
+    pushMapArray(responsesByRequest, key, message);
   }
 
   for (const responses of responsesByRequest.values()) {
@@ -556,29 +652,55 @@ function duplicateCloudGroupAgentResponseIds(messages: CanonicalSessionMessage[]
 
 function staleProcessingPlaceholderIds(messages: CanonicalSessionMessage[]) {
   const staleIds = new Set<string>();
-  const completedAgentResponses = messages.filter((message) => (
-    (message.senderRole === 'owned-agent' || message.senderRole === 'external-agent')
-    && message.messageKind === 'agent-turn'
-    && !isProcessingPlaceholderText(message.contentText)
-    && message.contentText.trim()
-    && !['draft', 'sending', 'processing'].includes(message.status.trim().toLowerCase())
-  ));
-  const laterHumanActivity = messages.filter(isHumanConversationActivity);
+  const completedByParticipant = new Map<string, CanonicalSessionMessage[]>();
+  const completedWithoutRequestByParticipant = new Map<string, CanonicalSessionMessage[]>();
+  const completedByParticipantAndRequest = new Map<string, CanonicalSessionMessage[]>();
+  const latestHumanActivityBySessionId = new Map<string, number>();
+  const participantKey = (message: CanonicalSessionMessage) => [
+    message.sessionId,
+    message.senderIdentityId,
+    message.senderRole,
+  ].join('\u0000');
 
-  for (const placeholder of messages.filter(isStaleableProcessingPlaceholder)) {
-    const hasLaterResponse = completedAgentResponses.some((message) => (
-      message.sessionId === placeholder.sessionId
-      && message.senderIdentityId === placeholder.senderIdentityId
-      && message.senderRole === placeholder.senderRole
-      && message.createdAtMs >= placeholder.createdAtMs
-      && message.createdAtMs - placeholder.createdAtMs <= STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS
-      && !bridgeRequestIdsDiffer(placeholder, message)
-    ));
-    const hasMuchLaterHumanActivity = laterHumanActivity.some((message) => (
-      message.sessionId === placeholder.sessionId
-      && message.createdAtMs > placeholder.createdAtMs
-      && message.createdAtMs - placeholder.createdAtMs >= STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS
-    ));
+  for (const message of messages) {
+    if (isHumanConversationActivity(message)) {
+      latestHumanActivityBySessionId.set(
+        message.sessionId,
+        Math.max(latestHumanActivityBySessionId.get(message.sessionId) ?? 0, message.createdAtMs),
+      );
+    }
+    const completedAgentResponse = (
+      (message.senderRole === 'owned-agent' || message.senderRole === 'external-agent')
+      && message.messageKind === 'agent-turn'
+      && !isProcessingPlaceholderText(message.contentText)
+      && Boolean(message.contentText.trim())
+      && !['draft', 'sending', 'processing'].includes(message.status.trim().toLowerCase())
+    );
+    if (!completedAgentResponse) continue;
+    const baseKey = participantKey(message);
+    pushMapArray(completedByParticipant, baseKey, message);
+    const requestId = bridgeRequestIdForMessage(message);
+    if (requestId) {
+      pushMapArray(completedByParticipantAndRequest, `${baseKey}\u0000${requestId}`, message);
+    } else {
+      pushMapArray(completedWithoutRequestByParticipant, baseKey, message);
+    }
+  }
+
+  for (const placeholder of messages) {
+    if (!isStaleableProcessingPlaceholder(placeholder)) continue;
+    const baseKey = participantKey(placeholder);
+    const requestId = bridgeRequestIdForMessage(placeholder);
+    const rangeStart = placeholder.createdAtMs;
+    const rangeEnd = placeholder.createdAtMs + STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS;
+    const hasLaterResponse = requestId
+      ? hasMessageInCreatedAtRange(completedByParticipantAndRequest.get(`${baseKey}\u0000${requestId}`), rangeStart, rangeEnd)
+        || hasMessageInCreatedAtRange(completedWithoutRequestByParticipant.get(baseKey), rangeStart, rangeEnd)
+      : hasMessageInCreatedAtRange(completedByParticipant.get(baseKey), rangeStart, rangeEnd);
+    const hasMuchLaterHumanActivity = (
+      (latestHumanActivityBySessionId.get(placeholder.sessionId) ?? 0)
+      >= placeholder.createdAtMs + STALE_BRIDGE_PROCESSING_PLACEHOLDER_MS
+    );
     if (hasLaterResponse || hasMuchLaterHumanActivity) staleIds.add(placeholder.id);
   }
 
@@ -633,7 +755,7 @@ function buildTaskActivitiesBySessionId(
       contextPolicy: exchange.contextPolicy,
       error: exchange.error,
     };
-    activities.set(exchange.sessionId, [...(activities.get(exchange.sessionId) ?? []), activity]);
+    pushMapArray(activities, exchange.sessionId, activity);
   }
   for (const [sessionId, sessionActivities] of activities) {
     activities.set(sessionId, sessionActivities.sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.id.localeCompare(right.id)));
@@ -651,7 +773,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const participantsBySessionId = new Map<string, CanonicalSessionParticipant[]>();
   for (const participant of canonicalState.participants) {
     if (participant.state !== 'active') continue;
-    participantsBySessionId.set(participant.sessionId, [...(participantsBySessionId.get(participant.sessionId) ?? []), participant]);
+    pushMapArray(participantsBySessionId, participant.sessionId, participant);
   }
 
   const canonicalParticipantsBySessionId = new Map<string, ConversationParticipant[]>();
@@ -699,9 +821,33 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   }
 
   const rawMessagesBySessionId = new Map<string, CanonicalSessionMessage[]>();
+  const latestReadableMessageBySessionId = new Map<string, CanonicalSessionMessage>();
+  const latestActivityMessageBySessionId = new Map<string, CanonicalSessionMessage>();
   const rawMessageById = new Map<string, CanonicalSessionMessage>();
   for (const message of canonicalState.messages) {
-    rawMessagesBySessionId.set(message.sessionId, [...(rawMessagesBySessionId.get(message.sessionId) ?? []), message]);
+    const sessionMessages = rawMessagesBySessionId.get(message.sessionId);
+    if (sessionMessages) {
+      sessionMessages.push(message);
+    } else {
+      rawMessagesBySessionId.set(message.sessionId, [message]);
+    }
+    if (canonicalMessageCountsForLastActive(message)) {
+      const latestReadable = latestReadableMessageBySessionId.get(message.sessionId);
+      if (
+        !latestReadable
+        || message.sequenceNum > latestReadable.sequenceNum
+        || (
+          message.sequenceNum === latestReadable.sequenceNum
+          && message.createdAtMs >= latestReadable.createdAtMs
+        )
+      ) {
+        latestReadableMessageBySessionId.set(message.sessionId, message);
+      }
+      const latestActivity = latestActivityMessageBySessionId.get(message.sessionId);
+      if (!latestActivity || message.createdAtMs >= latestActivity.createdAtMs) {
+        latestActivityMessageBySessionId.set(message.sessionId, message);
+      }
+    }
     rawMessageById.set(message.id, message);
   }
   const messageSortById = buildMessageSortPositions(canonicalState.messages);
@@ -745,17 +891,11 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     }
     const target = identityById.get(exchange.targetIdentityId);
     if (!target || target.kind !== 'agent') continue;
-    processingDelegationMessagesBySessionId.set(
-      exchange.sessionId,
-      [
-        ...(processingDelegationMessagesBySessionId.get(exchange.sessionId) ?? []),
-        {
-          message: processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId),
-          ...exchangeSortPosition(exchange, messageSortById),
-          tieBreakAtMs: exchange.createdAtMs,
-        },
-      ],
-    );
+    pushMapArray(processingDelegationMessagesBySessionId, exchange.sessionId, {
+      message: processingAgentMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId),
+      ...exchangeSortPosition(exchange, messageSortById),
+      tieBreakAtMs: exchange.createdAtMs,
+    });
   }
 
   for (const exchange of canonicalState.delegatedExchanges) {
@@ -764,17 +904,11 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     if (!target || target.kind !== 'agent') continue;
     const stoppedMessage = cancelledBridgeAgentDelegationMessage(exchange, target, identityById, canonicalState.profile.humanIdentityId);
     if (!stoppedMessage) continue;
-    cancelledDelegationMessagesBySessionId.set(
-      exchange.sessionId,
-      [
-        ...(cancelledDelegationMessagesBySessionId.get(exchange.sessionId) ?? []),
-        {
-          message: stoppedMessage,
-          ...exchangeSortPosition(exchange, messageSortById),
-          tieBreakAtMs: exchange.createdAtMs,
-        },
-      ],
-    );
+    pushMapArray(cancelledDelegationMessagesBySessionId, exchange.sessionId, {
+      message: stoppedMessage,
+      ...exchangeSortPosition(exchange, messageSortById),
+      tieBreakAtMs: exchange.createdAtMs,
+    });
   }
 
   const canonicalMessagesBySessionId = new Map<string, Message[]>();
@@ -947,6 +1081,8 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     canonicalParticipantsBySessionId,
     canonicalMessagesBySessionId,
     rawMessagesBySessionId,
+    latestReadableMessageBySessionId,
+    latestActivityMessageBySessionId,
     rawMessageCountBySessionId,
     delegatedExchangeCountBySessionId,
     taskActivitiesBySessionId,

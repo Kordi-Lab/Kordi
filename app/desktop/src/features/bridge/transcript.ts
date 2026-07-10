@@ -197,29 +197,39 @@ function isBridgeProcessingResponsePlaceholder(
 }
 
 function historicalBridgeProcessingPlaceholderIds(conversation: DesktopBridgeConversation) {
-  const staleIds = new Set<string>();
-  conversation.messages.forEach((message, index) => {
-    if (!isBridgeProcessingResponsePlaceholder(conversation, message)) return;
+  const requestIdsWithBaseMessage = new Set<string>();
+  for (const message of conversation.messages) {
     const requestId = message.requestId?.trim();
-    const newerMessages = conversation.messages.slice(index + 1);
-    const hasMatchingRequest = requestId
-      ? conversation.messages.some((candidate) => (
-        candidate.requestId?.trim() === requestId
-        && (candidate.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND || candidate.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND)
-      ))
-      : false;
-    const hasTerminalResponseForSameRequest = requestId
-      ? newerMessages.some((laterMessage) => (
-        laterMessage.requestId?.trim() === requestId
-        && isBridgeAgentResponseDirection(laterMessage)
-        && !isBridgeProcessingResponsePlaceholder(conversation, laterMessage)
-      ))
-      : false;
-    const hasNewerTranscriptActivityWithoutThread = (!requestId || !hasMatchingRequest) && newerMessages.some((laterMessage) => (
-      !isBridgeProcessingResponsePlaceholder(conversation, laterMessage)
-    ));
-    if (hasTerminalResponseForSameRequest || hasNewerTranscriptActivityWithoutThread) staleIds.add(message.id);
-  });
+    if (!requestId) continue;
+    if (
+      message.direction === BRIDGE_MESSAGE_DIRECTION_OUTBOUND
+      || message.direction === BRIDGE_MESSAGE_DIRECTION_INBOUND
+    ) {
+      requestIdsWithBaseMessage.add(requestId);
+    }
+  }
+
+  const staleIds = new Set<string>();
+  const terminalResponseRequestIds = new Set<string>();
+  let hasLaterTranscriptActivity = false;
+  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
+    const message = conversation.messages[index];
+    const processing = isBridgeProcessingResponsePlaceholder(conversation, message);
+    const requestId = message.requestId?.trim() || null;
+    if (processing) {
+      if (
+        (requestId && terminalResponseRequestIds.has(requestId))
+        || ((!requestId || !requestIdsWithBaseMessage.has(requestId)) && hasLaterTranscriptActivity)
+      ) {
+        staleIds.add(message.id);
+      }
+      continue;
+    }
+    hasLaterTranscriptActivity = true;
+    if (requestId && isBridgeAgentResponseDirection(message)) {
+      terminalResponseRequestIds.add(requestId);
+    }
+  }
   return staleIds;
 }
 
