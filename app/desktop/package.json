@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:web": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "build": "vite build && pnpm check:bundle",
+    "bench:chat-scale": "tsx scripts/benchmark-chat-scale.ts",
     "check:bundle": "node scripts/check-js-chunk-budget.mjs",
     "typecheck": "tsc --noEmit",
     "test:unit": "tsx --test tests/*.test.tsx",
