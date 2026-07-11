@@ -203,6 +203,8 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeProjectBridgeHost: args.activeProjectBridgeHost,
       activeProjectBridgeProject: args.activeProjectBridgeProject,
       chatTranscriptScrollRef: args.chatTranscriptScrollRef,
+      canonicalHasOlderBySessionId: args.canonicalHasOlderBySessionId,
+      loadOlderCanonicalSessionMessages: args.loadOlderCanonicalSessionMessages,
       onProjectTranscriptScroll: args.onProjectTranscriptScroll,
       setActiveSourcePreview: args.setActiveSourcePreview,
       activeArtifactId: args.activeArtifactId,

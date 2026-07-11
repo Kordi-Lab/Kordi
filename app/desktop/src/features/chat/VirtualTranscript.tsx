@@ -1,0 +1,214 @@
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  type UIEvent,
+} from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
+  TRANSCRIPT_WINDOW_OVERSCAN,
+} from '@/features/chat/transcriptWindowing';
+
+export type VirtualTranscriptNavigationRequest = {
+  id: string;
+  nonce: number;
+};
+
+export type VirtualTranscriptProps<Item> = {
+  items: readonly Item[];
+  sessionKey: string;
+  getItemKey: (item: Item, index: number) => string | number;
+  renderItem: (item: Item, index: number) => ReactNode;
+  scrollRef?: RefObject<HTMLDivElement | null>;
+  scrollClassName?: string;
+  scrollStyle?: CSSProperties;
+  onScroll?: (event: UIEvent<HTMLDivElement>) => void;
+  navigationRequest?: VirtualTranscriptNavigationRequest | null;
+  findNavigationIndex?: (item: Item, messageId: string, index: number) => boolean;
+  onNavigationReady?: (messageId: string) => void;
+  hasOlder?: boolean;
+  onLoadOlder?: () => Promise<void> | void;
+  olderLoadingLabel?: ReactNode;
+  emptyState?: ReactNode;
+  tail?: ReactNode;
+  estimateSize?: (item: Item, index: number) => number;
+  gap?: number;
+};
+
+export function VirtualTranscript<Item>({
+  items,
+  sessionKey,
+  getItemKey,
+  renderItem,
+  scrollRef,
+  scrollClassName,
+  scrollStyle,
+  onScroll,
+  navigationRequest,
+  findNavigationIndex,
+  onNavigationReady,
+  hasOlder = false,
+  onLoadOlder,
+  olderLoadingLabel = 'Loading earlier messages…',
+  emptyState,
+  tail,
+  estimateSize,
+  gap = 4,
+}: VirtualTranscriptProps<Item>) {
+  const internalScrollRef = useRef<HTMLDivElement | null>(null);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const loadAttemptSignatureRef = useRef<string | null>(null);
+  const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const mountedRef = useRef(true);
+  const alignedSessionRef = useRef<{ sessionKey: string; itemCount: number } | null>(null);
+
+  const setScrollElement = useCallback((node: HTMLDivElement | null) => {
+    internalScrollRef.current = node;
+    if (scrollRef) scrollRef.current = node;
+  }, [scrollRef]);
+
+  const itemKeyAt = useCallback((index: number) => {
+    const item = items[index];
+    return item === undefined ? `missing:${index}` : getItemKey(item, index);
+  }, [getItemKey, items]);
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => internalScrollRef.current,
+    estimateSize: (index) => {
+      const item = items[index];
+      return item === undefined
+        ? TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT
+        : estimateSize?.(item, index) ?? TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT;
+    },
+    getItemKey: itemKeyAt,
+    overscan: TRANSCRIPT_WINDOW_OVERSCAN,
+    gap,
+    anchorTo: 'end',
+    useFlushSync: false,
+  });
+
+  const navigationTargetIndex = useMemo(() => {
+    const id = navigationRequest?.id.trim() ?? '';
+    if (!id) return -1;
+    return items.findIndex((item, index) => (
+      findNavigationIndex?.(item, id, index) ?? String(getItemKey(item, index)) === id
+    ));
+  }, [findNavigationIndex, getItemKey, items, navigationRequest?.id]);
+
+  const oldestItemKey = items.length > 0 ? String(getItemKey(items[0]!, 0)) : 'empty';
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
+
+  const requestOlder = useCallback((signature?: string) => {
+    if (!hasOlder || !onLoadOlder) return null;
+    if (signature && loadAttemptSignatureRef.current === signature) return olderLoadPromiseRef.current;
+    if (olderLoadPromiseRef.current) return olderLoadPromiseRef.current;
+    if (signature) loadAttemptSignatureRef.current = signature;
+    setIsLoadingOlder(true);
+    let succeeded = false;
+    const request = Promise.resolve(onLoadOlder())
+      .then(() => { succeeded = true; })
+      .catch(() => undefined)
+      .then(() => undefined)
+      .finally(() => {
+        if (olderLoadPromiseRef.current === request) olderLoadPromiseRef.current = null;
+        if (!succeeded && loadAttemptSignatureRef.current === signature) loadAttemptSignatureRef.current = null;
+        if (mountedRef.current) setIsLoadingOlder(false);
+      });
+    olderLoadPromiseRef.current = request;
+    return request;
+  }, [hasOlder, onLoadOlder]);
+
+  useEffect(() => {
+    const request = navigationRequest;
+    if (!request || navigationTargetIndex >= 0 || !hasOlder || !onLoadOlder) return;
+    const signature = `${sessionKey}:${request.nonce}:${request.id}:${items.length}:${oldestItemKey}`;
+    void requestOlder(signature);
+  }, [hasOlder, items.length, navigationRequest, navigationTargetIndex, oldestItemKey, onLoadOlder, requestOlder, sessionKey]);
+
+  const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    onScroll?.(event);
+    const element = event.currentTarget;
+    if (element.scrollTop > Math.max(160, element.clientHeight * 0.25)) return;
+    void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
+  }, [items.length, oldestItemKey, onScroll, requestOlder, sessionKey]);
+
+  useLayoutEffect(() => {
+    if (items.length === 0) {
+      if (alignedSessionRef.current?.sessionKey !== sessionKey) alignedSessionRef.current = null;
+      return;
+    }
+    const aligned = alignedSessionRef.current;
+    const shouldAlign = aligned?.sessionKey !== sessionKey
+      || (aligned.itemCount <= 1 && items.length > aligned.itemCount);
+    if (!shouldAlign) return;
+    alignedSessionRef.current = { sessionKey, itemCount: items.length };
+    virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
+  }, [items.length, sessionKey, virtualizer]);
+
+  useLayoutEffect(() => {
+    if (!navigationRequest || navigationTargetIndex < 0) return undefined;
+    virtualizer.scrollToIndex(navigationTargetIndex, { align: 'center' });
+    const frameId = window.requestAnimationFrame(() => onNavigationReady?.(navigationRequest.id));
+    return () => window.cancelAnimationFrame(frameId);
+  }, [navigationRequest, navigationTargetIndex, onNavigationReady, virtualizer]);
+
+  const virtualItems = virtualizer.getVirtualItems();
+
+  return (
+    <ScrollArea
+      ref={setScrollElement}
+      className={scrollClassName}
+      style={scrollStyle}
+      onScroll={handleScroll}
+      data-virtual-transcript-scroll="true"
+    >
+      {isLoadingOlder ? (
+        <div
+          data-transcript-older-loading="true"
+          className="pointer-events-none sticky top-1 z-10 flex h-0 justify-center overflow-visible text-[11px] text-[color:var(--utility-muted-text)]"
+          role="status"
+        >
+          {olderLoadingLabel}
+        </div>
+      ) : null}
+      {items.length > 0 ? (
+        <div
+          data-virtual-transcript-size="true"
+          className="relative w-full"
+          style={{ height: virtualizer.getTotalSize() }}
+        >
+          {virtualItems.map((virtualItem) => {
+            const item = items[virtualItem.index];
+            if (item === undefined) return null;
+            return (
+              <div
+                key={virtualItem.key}
+                ref={virtualizer.measureElement}
+                data-index={virtualItem.index}
+                data-transcript-window-item="true"
+                className="absolute left-0 top-0 w-full"
+                style={{ transform: `translateY(${virtualItem.start}px)` }}
+              >
+                {renderItem(item, virtualItem.index)}
+              </div>
+            );
+          })}
+        </div>
+      ) : emptyState}
+      {tail}
+    </ScrollArea>
+  );
+}

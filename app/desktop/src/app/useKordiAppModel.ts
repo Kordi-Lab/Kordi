@@ -680,6 +680,25 @@ export function useKordiAppModel({
     return canonicalStateFromStore(canonicalStoreRef.current);
   }, [hydrateCanonicalSessionPage]);
 
+  const loadOlderCanonicalSessionMessages = useCallback(async (sessionId: string) => {
+    const normalizedSessionId = sessionId.trim();
+    if (!normalizedSessionId) return;
+    const currentStore = canonicalStoreRef.current;
+    if (!currentStore.hasOlderBySessionId[normalizedSessionId]) return;
+    const currentMessages = currentStore.messagesBySessionId[normalizedSessionId] ?? [];
+    const oldestSequenceNum = currentMessages.reduce<number | null>((oldest, message) => (
+      oldest === null || message.sequenceNum < oldest ? message.sequenceNum : oldest
+    ), null);
+    if (oldestSequenceNum === null) {
+      await hydrateCanonicalSessionPage(normalizedSessionId, { force: true });
+      return;
+    }
+    await hydrateCanonicalSessionPage(normalizedSessionId, {
+      beforeSequenceNum: oldestSequenceNum,
+      force: true,
+    });
+  }, [hydrateCanonicalSessionPage]);
+
   const refreshCanonicalState = useCallback(async () => {
     if (!isNativeShell) {
       setCanonicalInitialRefreshSettled(true);
@@ -2755,6 +2774,8 @@ export function useKordiAppModel({
     activeProjectBridgeHost,
     activeProjectBridgeProject,
     chatTranscriptScrollRef,
+    canonicalHasOlderBySessionId: canonicalStore.hasOlderBySessionId,
+    loadOlderCanonicalSessionMessages,
     onProjectTranscriptScroll,
     onChatTranscriptScroll,
     activeSourcePreview: settingsUi.activeSourcePreview,

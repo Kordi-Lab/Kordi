@@ -262,6 +262,8 @@ export type AssembleKordiShellSlotsArgs = {
   activeProjectBridgeHost: DesktopBridgeHost | null;
   activeProjectBridgeProject: DesktopBridgeProject | null;
   chatTranscriptScrollRef: MutableRefObject<HTMLDivElement | null>;
+  canonicalHasOlderBySessionId: Record<string, boolean>;
+  loadOlderCanonicalSessionMessages: (sessionId: string) => Promise<void>;
   onProjectTranscriptScroll: () => void;
   onChatTranscriptScroll: () => void;
   activeSourcePreview: EditFilePreview | null;
@@ -565,6 +567,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeProjectBridgeHost'
   | 'activeProjectBridgeProject'
   | 'chatTranscriptScrollRef'
+  | 'canonicalHasOlderBySessionId'
+  | 'loadOlderCanonicalSessionMessages'
   | 'onProjectTranscriptScroll'
   | 'setActiveSourcePreview'
   | 'activeArtifactId'

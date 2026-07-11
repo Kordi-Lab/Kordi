@@ -61,3 +61,16 @@ test('canonical chat hydration is cached independently from active session selec
   assert.match(visibleMemo, /hydratedChatConversations/, 'visible conversations should reuse warmed canonical hydration');
   assert.match(visibleMemo, /activeConvId/, 'only the cheap visibility layer should depend on active selection');
 });
+
+test('older canonical transcript pages use the oldest loaded sequence cursor', () => {
+  const source = appModelSource();
+  const start = source.indexOf('const loadOlderCanonicalSessionMessages = useCallback');
+  const end = source.indexOf('\n\n  const refreshCanonicalState', start);
+  assert.notEqual(start, -1, 'expected an older-page loader');
+  assert.notEqual(end, -1, 'expected catalog refresh after the older-page loader');
+  const loader = source.slice(start, end);
+
+  assert.match(loader, /message\.sequenceNum < oldest/);
+  assert.match(loader, /beforeSequenceNum: oldestSequenceNum/);
+  assert.match(source, /canonicalHasOlderBySessionId: canonicalStore\.hasOlderBySessionId/);
+});
