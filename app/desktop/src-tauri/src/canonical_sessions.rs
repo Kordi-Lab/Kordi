@@ -1599,6 +1599,23 @@ pub async fn desktop_canonical_session_state() -> Result<CanonicalSessionState, 
 }
 
 #[tauri::command]
+pub async fn desktop_canonical_session_catalog() -> Result<CanonicalSessionCatalog, String> {
+    run_canonical_blocking(commands::desktop_canonical_session_catalog).await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_session_messages(
+    session_id: String,
+    before_sequence_num: Option<i64>,
+    limit: Option<i64>,
+) -> Result<CanonicalMessagePage, String> {
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_session_messages(&session_id, before_sequence_num, limit)
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn desktop_canonical_upsert_identity(
     request: UpsertCanonicalIdentityRequest,
 ) -> Result<CanonicalSessionState, String> {

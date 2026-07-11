@@ -17,6 +17,38 @@ pub struct CanonicalSessionState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CanonicalSessionCatalog {
+    pub storage_path: String,
+    pub profile: CanonicalLocalProfile,
+    pub identities: Vec<CanonicalIdentity>,
+    pub sessions: Vec<CanonicalSession>,
+    pub participants: Vec<CanonicalSessionParticipant>,
+    pub delegated_exchanges: Vec<CanonicalDelegatedExchange>,
+    pub presence: Vec<CanonicalPresence>,
+    pub summaries: Vec<CanonicalSessionSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalSessionSummary {
+    pub session_id: String,
+    pub message_count: i64,
+    pub latest_message: Option<CanonicalSessionMessage>,
+    pub context_snapshot_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalMessagePage {
+    pub session_id: String,
+    pub messages: Vec<CanonicalSessionMessage>,
+    pub oldest_sequence_num: Option<i64>,
+    pub newest_sequence_num: Option<i64>,
+    pub has_older: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CanonicalReadCursorDelta {
     pub session_id: String,
     pub identity_id: String,

@@ -10,7 +10,7 @@ import {
   buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
-  fetchCanonicalSessionState,
+  fetchCanonicalSessionMessages,
   markCanonicalSessionRead,
   openOrCreateCanonicalSession,
   openOrCreateCanonicalSessionFast,
@@ -2697,7 +2697,7 @@ export function useCloudBridgeState({
     syncingSelfAgentHistoryRef.current = true;
     let plannedSessionIds: string[] = [];
     void (async () => {
-      const latestState = await fetchCanonicalSessionState().catch(() => canonicalSessionState ?? null);
+      const latestState = canonicalSessionStateRef.current ?? canonicalSessionState ?? null;
       if (!latestState) return;
       const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
       if (!loadCloudSelfAgentForwardBaseline(account.accountId)) {
@@ -3555,7 +3555,15 @@ export function useCloudBridgeState({
     if (entry.trackCanonicalDelivery === false) return;
     let baseState = canonicalSessionStateRef.current;
     if (!baseState?.messages.some((message) => message.id === entry.canonicalMessageId)) {
-      baseState = await fetchCanonicalSessionState().catch(() => baseState);
+      const page = await fetchCanonicalSessionMessages(entry.sessionId, null, 200).catch(() => null);
+      if (baseState && page) {
+        baseState = page.messages.reduce<CanonicalSessionState | null>(
+          (current, message) => mergeCanonicalMessageRow(current, message),
+          baseState,
+        );
+        canonicalSessionStateRef.current = baseState;
+        setCanonicalSessionState?.(baseState);
+      }
     }
     const patchedState = patchCanonicalCloudGroupOutboxDelivery(baseState, entry);
     if (!patchedState || patchedState === baseState) return;

@@ -18,6 +18,7 @@ import {
   resolveProjectSelection,
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
+import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
 import { buildParticipantSpaces, ensureSelfParticipantSpace, filterParticipantSpaces } from '@/features/chat/participantSpaces';
@@ -26,6 +27,7 @@ import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
   Agent,
   CanonicalSessionState,
+  CanonicalSessionSummary,
   Contact,
   Conversation,
   DesktopBridgeConversation,
@@ -278,6 +280,8 @@ type UseWorkspaceViewModelsArgs = {
   desktopChatState: DesktopChatState | null;
   desktopBridgeState: DesktopBridgeState | null;
   canonicalSessionState: CanonicalSessionState | null;
+  canonicalSessionSummaries?: CanonicalSessionSummary[];
+  canonicalHydrationBySessionId?: Record<string, SessionHydrationState>;
   hiddenSessionIds: Set<string>;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
@@ -306,6 +310,8 @@ export function useWorkspaceViewModels({
   desktopChatState,
   desktopBridgeState,
   canonicalSessionState,
+  canonicalSessionSummaries = [],
+  canonicalHydrationBySessionId = {},
   hiddenSessionIds,
   projectWorkspaces,
   projectSelectedSessionIds,
@@ -327,7 +333,10 @@ export function useWorkspaceViewModels({
   cloudAgentDefinitionsById = {},
   cloudPresence = {},
 }: UseWorkspaceViewModelsArgs) {
-  const canonicalReadModel = useMemo(() => createCanonicalSessionReadModel(canonicalSessionState), [canonicalSessionState]);
+  const canonicalReadModel = useMemo(
+    () => createCanonicalSessionReadModel(canonicalSessionState, { summaries: canonicalSessionSummaries }),
+    [canonicalSessionState, canonicalSessionSummaries],
+  );
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
   const desktopLiveTurnsForViewModelRef = useRef({
     key: desktopLiveTurnViewModelKey,
@@ -582,11 +591,21 @@ export function useWorkspaceViewModels({
     [],
   );
 
-  const activeConv = useMemo(() => activeConversationForSelection(activeConvId, chatConversations, {
-    isNativeShell,
-    nativeChatPlaceholder,
-    fallbackConversation: conversations[0],
-  }), [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder]);
+  const activeConv = useMemo(() => {
+    const selected = activeConversationForSelection(activeConvId, chatConversations, {
+      isNativeShell,
+      nativeChatPlaceholder,
+      fallbackConversation: conversations[0],
+    });
+    const canonicalSessionId = selected.canonicalSessionId ?? selected.id;
+    const hydration = canonicalHydrationBySessionId[canonicalSessionId];
+    if (hydration !== 'cold' && hydration !== 'loading') return selected;
+    return {
+      ...selected,
+      subtitle: 'Loading chat history…',
+      messages: [{ role: 'system' as const, text: 'Loading chat history…', time: '--:--' }],
+    };
+  }, [activeConvId, canonicalHydrationBySessionId, chatConversations, isNativeShell, nativeChatPlaceholder]);
   const activeConversationIsBridge = isNativeShell && (
     activeConv.id.startsWith('bridge:')
     || isCanonicalBridgeSessionId(activeConv.canonicalSessionId ?? activeConv.id)

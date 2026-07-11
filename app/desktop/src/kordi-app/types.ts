@@ -529,6 +529,25 @@ export type CanonicalSessionState = {
   contextSnapshots: CanonicalContextSnapshot[];
 };
 
+export type CanonicalSessionSummary = {
+  sessionId: string;
+  messageCount: number;
+  latestMessage: CanonicalSessionMessage | null;
+  contextSnapshotCount: number;
+};
+
+export type CanonicalSessionCatalog = Omit<CanonicalSessionState, 'messages' | 'contextSnapshots'> & {
+  summaries: CanonicalSessionSummary[];
+};
+
+export type CanonicalMessagePage = {
+  sessionId: string;
+  messages: CanonicalSessionMessage[];
+  oldestSequenceNum: number | null;
+  newestSequenceNum: number | null;
+  hasOlder: boolean;
+};
+
 export type CanonicalReadCursorDelta = {
   sessionId: string;
   identityId: string;

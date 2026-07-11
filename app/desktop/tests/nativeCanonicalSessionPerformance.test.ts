@@ -5,6 +5,7 @@ import test from 'node:test';
 const commandsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/commands.rs', import.meta.url), 'utf8');
 const canonicalSessionsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions.rs', import.meta.url), 'utf8');
 const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
+const modelsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/models.rs', import.meta.url), 'utf8');
 
 test('canonical state loading maps session_messages in one query instead of N+1 select_message calls', () => {
   const source = commandsSource();
@@ -49,4 +50,46 @@ test('fast append returns the persisted canonical message row across the native 
 
   assert.match(rustSource, /pub async fn desktop_canonical_append_message_fast[\s\S]*?Result<CanonicalSessionMessage, String>/, 'native fast append should return the persisted row');
   assert.match(rendererSource, /appendCanonicalMessageFast[\s\S]*?invokeDesktop<CanonicalSessionMessage>/, 'renderer fast append should receive the persisted row');
+});
+
+test('canonical catalog returns summaries without loading complete message or context history', () => {
+  const source = commandsSource();
+  const start = source.indexOf('fn load_catalog_from_db');
+  const end = source.indexOf('pub(super) fn desktop_canonical_session_catalog', start);
+  assert.notEqual(start, -1, 'expected catalog query');
+  assert.notEqual(end, -1, 'expected catalog command after catalog query');
+  const command = source.slice(start, end);
+
+  assert.match(command, /COUNT\(\*\) OVER \(PARTITION BY sm\.session_id\)/);
+  assert.match(command, /ROW_NUMBER\(\) OVER/);
+  assert.doesNotMatch(command, /FROM context_snapshots ORDER BY/);
+  assert.doesNotMatch(command, /select_identity\(conn|select_session\(conn|select_delegated_exchange\(conn/, 'catalog metadata should be loaded in bulk instead of one query per row');
+  assert.match(modelsSource(), /pub struct CanonicalSessionCatalog/);
+  assert.match(modelsSource(), /pub struct CanonicalSessionSummary/);
+});
+
+test('canonical transcript page uses descending indexed reads with a bounded limit', () => {
+  const source = commandsSource();
+  const start = source.indexOf('fn load_message_page_from_db');
+  const end = source.indexOf('pub(super) fn desktop_canonical_session_messages', start);
+  assert.notEqual(start, -1, 'expected paged transcript query');
+  assert.notEqual(end, -1, 'expected page command after page query');
+  const command = source.slice(start, end);
+
+  assert.match(command, /sequence_num < \?2/);
+  assert.match(command, /ORDER BY sequence_num DESC, created_at_ms DESC, id DESC/);
+  assert.match(command, /\.clamp\(25, 200\)/);
+  assert.match(desktopSource(), /fetchCanonicalSessionCatalog[\s\S]*invokeDesktop<CanonicalSessionCatalog>/);
+  assert.match(desktopSource(), /fetchCanonicalSessionMessages[\s\S]*invokeDesktop<CanonicalMessagePage>/);
+});
+
+test('native scale regression seeds 20,000 rows and enforces catalog and page byte budgets', () => {
+  const source = commandsSource();
+  const start = source.indexOf('fn catalog_and_first_page_stay_bounded_with_twenty_thousand_messages');
+  assert.notEqual(start, -1, 'expected native 20k-row payload regression');
+  const testSource = source.slice(start);
+  assert.match(testSource, /20_000/);
+  assert.match(testSource, /catalog_bytes < 1024 \* 1024/);
+  assert.match(testSource, /page\.messages\.len\(\) <= 150/);
+  assert.match(testSource, /page_bytes < 512 \* 1024/);
 });

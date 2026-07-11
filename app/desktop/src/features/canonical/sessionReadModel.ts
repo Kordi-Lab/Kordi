@@ -1,5 +1,6 @@
 import type {
   CanonicalSessionState,
+  CanonicalSessionSummary,
   Conversation,
   ConversationBridgeTarget,
   ConversationParticipant,
@@ -327,10 +328,14 @@ export type CanonicalSessionReadModel = {
   buildChatConversations: (conversations: Conversation[], buildSubtitle: ConversationSubtitleBuilder) => Conversation[];
 };
 
-export function createCanonicalSessionReadModel(canonicalState: CanonicalSessionState | null): CanonicalSessionReadModel | null {
+export function createCanonicalSessionReadModel(
+  canonicalState: CanonicalSessionState | null,
+  options: { summaries?: CanonicalSessionSummary[] } = {},
+): CanonicalSessionReadModel | null {
   if (!canonicalState) return null;
 
   const indexes = buildCanonicalIndexes(canonicalState);
+  const summaryBySessionId = new Map((options.summaries ?? []).map((summary) => [summary.sessionId, summary]));
   const sessionActivityAtMs = (session: CanonicalSessionState['sessions'][number]) => (
     indexes.latestActivityMessageBySessionId.get(session.id)?.createdAtMs
     || sessionChatActivityAtMs(session)
@@ -452,9 +457,13 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         bridgeTarget,
         taskActivities,
         canonicalParticipantCount: canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
-        canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,
+        canonicalMessageCount: summaryBySessionId.get(sessionId)?.messageCount
+          ?? indexes.rawMessageCountBySessionId.get(sessionId)
+          ?? 0,
         canonicalDelegatedExchangeCount: taskActivities.length,
-        canonicalContextSnapshotCount: indexes.contextSnapshotCountBySessionId.get(sessionId) ?? 0,
+        canonicalContextSnapshotCount: summaryBySessionId.get(sessionId)?.contextSnapshotCount
+          ?? indexes.contextSnapshotCountBySessionId.get(sessionId)
+          ?? 0,
         canonicalPresenceSummary: indexes.presenceSummaryBySessionId.get(sessionId),
         forkedFromSessionId: canonicalForkedFromSessionId ?? conversation.forkedFromSessionId ?? null,
         forkedFromMessageId: canonicalForkedFromMessageId ?? conversation.forkedFromMessageId ?? null,

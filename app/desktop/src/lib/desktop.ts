@@ -3,7 +3,9 @@ import type {
   AdoptCloudProfileIdentityRequest,
   AppendCanonicalMessageRequest,
   CanonicalIdentity,
+  CanonicalMessagePage,
   CanonicalReadCursorDelta,
+  CanonicalSessionCatalog,
   CanonicalSessionMessage,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
@@ -633,6 +635,24 @@ export async function refreshDesktopBridgeRealtimeConnections() {
 export async function fetchCanonicalSessionState() {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_session_state');
+}
+
+export async function fetchCanonicalSessionCatalog() {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<CanonicalSessionCatalog>('desktop_canonical_session_catalog');
+}
+
+export async function fetchCanonicalSessionMessages(
+  sessionId: string,
+  beforeSequenceNum: number | null = null,
+  limit = 100,
+) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<CanonicalMessagePage>('desktop_canonical_session_messages', {
+    sessionId,
+    beforeSequenceNum,
+    limit,
+  });
 }
 
 export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {
