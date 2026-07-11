@@ -11,6 +11,10 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  beginChatPerformanceSpan,
+  finishChatPerformanceSpan,
+} from '@/features/performance/chatPerformance';
 
 export type ChatSidebarRow =
   | { kind: 'space'; key: string; spaceId: string; depth: number }
@@ -138,6 +142,7 @@ export function VirtualChatList({
   renderRow: (row: ChatSidebarRow) => ReactNode;
   emptyState?: ReactNode;
 }) {
+  const renderPerformanceSpan = beginChatPerformanceSpan('sidebar-virtual-render');
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
   const renderRowRef = useRef(renderRow);
   renderRowRef.current = renderRow;
@@ -184,6 +189,12 @@ export function VirtualChatList({
       };
     });
   }, [activeRowIndex, rows, virtualRows]);
+  useLayoutEffect(() => {
+    finishChatPerformanceSpan(renderPerformanceSpan, {
+      rowCount: rows.length,
+      visibleRowCount: renderedVirtualRows.length,
+    });
+  }, [renderPerformanceSpan, renderedVirtualRows.length, rows.length]);
   return (
     <ScrollArea
       ref={setScrollElement}

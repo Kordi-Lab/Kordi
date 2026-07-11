@@ -20,6 +20,36 @@ type ChatScaleBenchmark = {
   cloudIndexMs: number;
   cloudDeliveryLookupMs: number;
   serializedCacheBytes: number;
+  fixture: {
+    spaces: number;
+    sessions: number;
+    canonicalMessages: number;
+    selectedSessionMessages: number;
+    cloudRows: number;
+    cloudRecipients: number;
+  };
+  budgets: ChatScaleBenchmarkBudgets;
+  budgetFailures: string[];
+  passed: boolean;
+};
+
+type ChatScaleBenchmarkBudgets = {
+  bridgeMapMs: number;
+  canonicalIndexMs: number;
+  cloudIndexMs: number;
+  cloudDeliveryLookupMs: number;
+  serializedCacheBytes: number;
+};
+
+// These are deterministic linear-regression ceilings for the Node fixture.
+// Native click, IPC, DOM, CPU, and RSS acceptance budgets are recorded
+// separately because they require a packaged WebKit run on the QA machine.
+const BENCHMARK_BUDGETS: ChatScaleBenchmarkBudgets = {
+  bridgeMapMs: 100,
+  canonicalIndexMs: 100,
+  cloudIndexMs: 4_000,
+  cloudDeliveryLookupMs: 5,
+  serializedCacheBytes: 70 * 1024 * 1024,
 };
 
 function median(values: number[]) {
@@ -94,6 +124,28 @@ const output: ChatScaleBenchmark = {
   cloudIndexMs,
   cloudDeliveryLookupMs,
   serializedCacheBytes: new TextEncoder().encode(JSON.stringify(messagesByPeer)).byteLength,
+  fixture: {
+    spaces: CHAT_SCALE.spaces,
+    sessions: CHAT_SCALE.sessions,
+    canonicalMessages: canonicalState.messages.length,
+    selectedSessionMessages: CHAT_SCALE.selectedSessionMessages,
+    cloudRows: cloudMessageIndex.allMessages.length,
+    cloudRecipients: CHAT_SCALE.cloudRecipients,
+  },
+  budgets: BENCHMARK_BUDGETS,
+  budgetFailures: [],
+  passed: false,
 };
 
+for (const [metric, limit] of Object.entries(BENCHMARK_BUDGETS) as Array<[
+  keyof ChatScaleBenchmarkBudgets,
+  number,
+]>) {
+  if (output[metric] > limit) {
+    output.budgetFailures.push(`${metric}=${output[metric]} exceeds ${limit}`);
+  }
+}
+output.passed = output.budgetFailures.length === 0;
+
 console.log(JSON.stringify(output));
+if (!output.passed) process.exitCode = 1;

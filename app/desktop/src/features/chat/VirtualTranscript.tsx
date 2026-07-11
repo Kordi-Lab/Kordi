@@ -17,6 +17,11 @@ import {
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
+import {
+  beginChatPerformanceSpan,
+  completeSessionClickToFirstMessage,
+  finishChatPerformanceSpan,
+} from '@/features/performance/chatPerformance';
 
 export type VirtualTranscriptNavigationRequest = {
   id: string;
@@ -64,6 +69,7 @@ export function VirtualTranscript<Item>({
   estimateSize,
   gap = 4,
 }: VirtualTranscriptProps<Item>) {
+  const renderPerformanceSpan = beginChatPerformanceSpan('transcript-virtual-render');
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const loadAttemptSignatureRef = useRef<string | null>(null);
@@ -166,6 +172,19 @@ export function VirtualTranscript<Item>({
   }, [navigationRequest, navigationTargetIndex, onNavigationReady, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
+
+  useLayoutEffect(() => {
+    finishChatPerformanceSpan(renderPerformanceSpan, {
+      messageCount: items.length,
+      visibleRowCount: virtualItems.length,
+    });
+    if (items.length > 0 && virtualItems.length > 0) {
+      completeSessionClickToFirstMessage(sessionKey, {
+        messageCount: items.length,
+        visibleRowCount: virtualItems.length,
+      });
+    }
+  }, [items.length, renderPerformanceSpan, sessionKey, virtualItems.length]);
 
   return (
     <ScrollArea

@@ -41,6 +41,11 @@ import {
   mergeCanonicalReadCursorDelta,
 } from '@/features/canonical/canonicalStateReducers';
 import {
+  beginChatPerformanceSpan,
+  chatPerformancePayloadBytes,
+  finishChatPerformanceSpan,
+} from '@/features/performance/chatPerformance';
+import {
   CloudAuthClient,
   cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
@@ -4377,6 +4382,9 @@ export function useCloudBridgeState({
 
   const sendCloudGroupControl = useCallback(async (input: SendCloudGroupControlInput) => {
     if (!account) throw new Error('Not signed in.');
+    const firstAckPerformanceSpan = input.kind === 'group-message'
+      ? beginChatPerformanceSpan('cloud-send-to-first-ack')
+      : null;
     const relatedGroupControls = cloudGroupRelatedControlsForSend(cloudMessageIndex.groupRows.map((row) => ({
       envelope: row.envelope,
       createdAtMs: Date.parse(row.wire.createdAt) || 0,
@@ -4437,6 +4445,11 @@ export function useCloudBridgeState({
       fork: input.fork ?? forkFromSessionMetadata,
       message,
     });
+    const recordFirstAck = () => finishChatPerformanceSpan(firstAckPerformanceSpan, () => ({
+      recipientCount: targetAccountIds.length,
+      attachmentCount: uploadedAttachments.length,
+      payloadBytes: chatPerformancePayloadBytes(envelope),
+    }));
     const clientCreatedAtMs = typeof message?.createdAtMs === 'number' && Number.isFinite(message.createdAtMs)
       ? message.createdAtMs
       : typeof (input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs) === 'number' && Number.isFinite(input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs)
@@ -4467,6 +4480,7 @@ export function useCloudBridgeState({
           clientCreatedAt: entry.clientCreatedAt,
           clientMessageId,
         });
+        recordFirstAck();
         sentAny = true;
         mergeMessage(sentMessage);
       }, { force: true });
@@ -4481,11 +4495,15 @@ export function useCloudBridgeState({
       if (sentAny) await syncCloudBridgeDiff().catch(() => {});
       return;
     }
-    const results = await Promise.allSettled(targetAccountIds.map((peerId) => client.sendMessage(session.token, peerId, envelope, {
-      sessionId: input.groupId,
-      attachments: uploadedAttachments,
-      ...(clientCreatedAt ? { clientCreatedAt } : {}),
-    })));
+    const results = await Promise.allSettled(targetAccountIds.map(async (peerId) => {
+      const sentMessage = await client.sendMessage(session.token, peerId, envelope, {
+        sessionId: input.groupId,
+        attachments: uploadedAttachments,
+        ...(clientCreatedAt ? { clientCreatedAt } : {}),
+      });
+      recordFirstAck();
+      return sentMessage;
+    }));
     const sent = fulfilledCloudGroupSends(results);
     sent.forEach(mergeMessage);
     if (sent.length > 0) {

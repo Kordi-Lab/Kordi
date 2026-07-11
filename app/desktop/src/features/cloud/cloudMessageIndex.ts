@@ -1,4 +1,9 @@
 import type { CanonicalSessionState } from '@/kordi-app/types';
+import {
+  beginChatPerformanceSpan,
+  chatPerformancePayloadBytes,
+  finishChatPerformanceSpan,
+} from '@/features/performance/chatPerformance';
 
 import type { CloudMessage } from './authClient';
 import { parseCloudGroupControl, type CloudGroupControlEnvelope } from './cloudGroupMessages';
@@ -134,6 +139,7 @@ export function buildCloudMessageIndex(
   messagesByPeer: Record<string, CloudMessage[]>,
   options: CloudMessageIndexOptions = {},
 ): CloudMessageIndex {
+  const performanceSpan = beginChatPerformanceSpan('cloud-message-index');
   const localAccountId = cleanText(accountId);
   const parseGroupControl = options.parseGroupControl ?? parseCloudGroupControl;
   const uniqueByMessageId = new Map<string, CloudMessage>();
@@ -246,7 +252,7 @@ export function buildCloudMessageIndex(
     sessionRevisionBySessionId.set(sessionId, revisionForMessages(messages));
   }
 
-  return {
+  const index = {
     allMessages: exposeArray(allMessages),
     byMessageId,
     byPeerId,
@@ -261,6 +267,15 @@ export function buildCloudMessageIndex(
     sessionRevisionBySessionId,
     revision: revisionForMessages(allMessages),
   };
+  finishChatPerformanceSpan(performanceSpan, () => ({
+    messageCount: allMessages.length,
+    rowCount: groupRows.length,
+    payloadBytes: allMessages.reduce(
+      (bytes, message) => bytes + (chatPerformancePayloadBytes(message.body) ?? 0),
+      0,
+    ),
+  }));
+  return index;
 }
 
 function deliveryReadersEqual(existing: unknown, readers: readonly CloudDeliveryReader[]) {

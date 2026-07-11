@@ -31,6 +31,11 @@ import type {
   UpdateCanonicalSessionMetadataRequest,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
+import {
+  beginChatPerformanceSpan,
+  chatPerformancePayloadBytes,
+  finishChatPerformanceSpan,
+} from '@/features/performance/chatPerformance';
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -639,7 +644,19 @@ export async function fetchCanonicalSessionState() {
 
 export async function fetchCanonicalSessionCatalog() {
   if (!isNativeDesktopShell()) return null;
-  return invokeDesktop<CanonicalSessionCatalog>('desktop_canonical_session_catalog');
+  const performanceSpan = beginChatPerformanceSpan('canonical-catalog-ipc');
+  try {
+    const catalog = await invokeDesktop<CanonicalSessionCatalog>('desktop_canonical_session_catalog');
+    finishChatPerformanceSpan(performanceSpan, () => ({
+      sessionCount: catalog.sessions.length,
+      rowCount: catalog.summaries.length,
+      payloadBytes: chatPerformancePayloadBytes(catalog),
+    }));
+    return catalog;
+  } catch (error) {
+    finishChatPerformanceSpan(performanceSpan, { errorCount: 1 });
+    throw error;
+  }
 }
 
 export async function fetchCanonicalSessionMessages(
@@ -648,11 +665,22 @@ export async function fetchCanonicalSessionMessages(
   limit = 100,
 ) {
   if (!isNativeDesktopShell()) return null;
-  return invokeDesktop<CanonicalMessagePage>('desktop_canonical_session_messages', {
-    sessionId,
-    beforeSequenceNum,
-    limit,
-  });
+  const performanceSpan = beginChatPerformanceSpan('canonical-page-ipc');
+  try {
+    const page = await invokeDesktop<CanonicalMessagePage>('desktop_canonical_session_messages', {
+      sessionId,
+      beforeSequenceNum,
+      limit,
+    });
+    finishChatPerformanceSpan(performanceSpan, () => ({
+      messageCount: page.messages.length,
+      payloadBytes: chatPerformancePayloadBytes(page),
+    }));
+    return page;
+  } catch (error) {
+    finishChatPerformanceSpan(performanceSpan, { errorCount: 1 });
+    throw error;
+  }
 }
 
 export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {
