@@ -153,7 +153,7 @@ import {
   patchCanonicalCloudGroupOutboxDelivery,
   type CloudGroupOutboxEntry,
 } from './cloudGroupOutbox';
-import { CloudSyncCoordinator } from './cloudSyncCoordinator';
+import { CloudProfileIdentityAdoptionCoordinator, CloudSyncCoordinator } from './cloudSyncCoordinator';
 import { loadCloudSessionVisibility, removeCloudSessionMessages, saveCloudSessionVisibility, syncCloudDiffOnce, type CloudSessionPinsById } from './cloudDiffSync';
 import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
@@ -2002,6 +2002,7 @@ export function useCloudBridgeState({
   const cloudAgentsClient = useMemo(() => defaultCloudAgentsClient(), []);
   const cloudMessageCache = useMemo(() => defaultCloudMessageCache(), []);
   const cloudSyncCoordinator = useMemo(() => new CloudSyncCoordinator(), []);
+  const cloudProfileIdentityAdoptionCoordinator = useMemo(() => new CloudProfileIdentityAdoptionCoordinator(), []);
   const cloudGroupOutbox = useMemo(() => account?.accountId
     ? new CloudGroupOutbox(account.accountId, defaultCloudGroupOutboxPersistence(account.accountId))
     : null, [account?.accountId]);
@@ -2110,6 +2111,10 @@ export function useCloudBridgeState({
       deletedSessionIds: cloudDeletedSessionIds,
     });
   }, [account, cloudDeletedSessionIds, cloudHiddenSessionIds]);
+
+  useEffect(() => () => {
+    cloudProfileIdentityAdoptionCoordinator.changeAccount();
+  }, [account?.accountId, cloudProfileIdentityAdoptionCoordinator]);
 
   useEffect(() => {
     cloudSyncCoordinator.changeAccount();
@@ -2298,26 +2303,23 @@ export function useCloudBridgeState({
     if (!account || !canonicalStateReady || !setCanonicalSessionState) return;
     const stableIdentityId = `human:${account.accountId}`;
     if (canonicalSessionState?.profile.humanIdentityId === stableIdentityId) return;
-    let cancelled = false;
-    void adoptCloudProfileIdentity({
-      accountId: account.accountId,
-      displayName: account.displayName || account.primaryEmail || account.accountId,
-      avatarKey: account.accountId,
-      profileImageUrl: account.avatarUrl ?? null,
-    })
-      .then((delta) => {
-        if (!cancelled) {
-          setCanonicalSessionState?.((current) => applyCanonicalProfileIdentityDelta(current, delta));
-        }
-      })
+    void cloudProfileIdentityAdoptionCoordinator.request(
+      {
+        accountId: account.accountId,
+        displayName: account.displayName || account.primaryEmail || account.accountId,
+        avatarKey: account.accountId,
+        profileImageUrl: account.avatarUrl ?? null,
+      },
+      adoptCloudProfileIdentity,
+      (delta) => {
+        setCanonicalSessionState?.((current) => applyCanonicalProfileIdentityDelta(current, delta));
+      },
+    )
       .catch((error) => {
         // eslint-disable-next-line no-console
         console.warn('[cloud-profile-identity] failed to adopt stable cloud profile identity', error);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [account, canonicalSessionState?.profile.humanIdentityId, canonicalStateReady, cloudProfileAdoptionSignature, setCanonicalSessionState]);
+  }, [account, canonicalSessionState?.profile.humanIdentityId, canonicalStateReady, cloudProfileAdoptionSignature, cloudProfileIdentityAdoptionCoordinator, setCanonicalSessionState]);
 
   const contactIdentitySignature = useMemo(() => JSON.stringify({
     accountId: account?.accountId ?? null,

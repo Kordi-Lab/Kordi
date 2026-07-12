@@ -1,4 +1,13 @@
+import type {
+  AdoptCloudProfileIdentityRequest,
+  CanonicalProfileIdentityDelta,
+} from '@/kordi-app/types';
+
 type CloudSyncRun = (generation: number) => Promise<void>;
+
+type AdoptCloudProfileIdentity = (
+  request: AdoptCloudProfileIdentityRequest,
+) => Promise<CanonicalProfileIdentityDelta>;
 
 export class CloudSyncCoordinator {
   private inFlight: Promise<void> | null = null;
@@ -48,5 +57,24 @@ export class CloudSyncCoordinator {
     } while (this.rerunRequested);
 
     if (lastError) throw lastError;
+  }
+}
+
+export class CloudProfileIdentityAdoptionCoordinator {
+  private readonly coordinator = new CloudSyncCoordinator();
+
+  changeAccount() {
+    this.coordinator.changeAccount();
+  }
+
+  request(
+    request: AdoptCloudProfileIdentityRequest,
+    adopt: AdoptCloudProfileIdentity,
+    commit: (delta: CanonicalProfileIdentityDelta) => void,
+  ): Promise<void> {
+    return this.coordinator.request(async (generation) => {
+      const delta = await adopt(request);
+      if (this.coordinator.isCurrentGeneration(generation)) commit(delta);
+    });
   }
 }

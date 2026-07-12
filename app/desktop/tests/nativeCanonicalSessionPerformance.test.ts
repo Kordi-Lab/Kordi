@@ -174,3 +174,28 @@ test('cloud profile adoption waits for the canonical state readiness transition'
   );
   assert.match(effect, /setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/);
 });
+
+test('cloud profile adoption serializes same-account updates without per-render cancellation', () => {
+  const source = cloudBridgeSource();
+  assert.match(
+    source,
+    /const cloudProfileIdentityAdoptionCoordinator = useMemo\(\(\) => new CloudProfileIdentityAdoptionCoordinator\(\), \[\]\);/,
+  );
+  assert.match(
+    source,
+    /useEffect\(\(\) => \(\) => \{\s*cloudProfileIdentityAdoptionCoordinator\.changeAccount\(\);\s*\}, \[account\?\.accountId, cloudProfileIdentityAdoptionCoordinator\]\);/,
+    'account switch and unmount should invalidate the old generation',
+  );
+
+  const signatureStart = source.indexOf('const cloudProfileAdoptionSignature');
+  const effectStart = source.indexOf('useEffect(() => {', signatureStart);
+  const effectEnd = source.indexOf('const contactIdentitySignature', effectStart);
+  const effect = source.slice(effectStart, effectEnd);
+  assert.match(effect, /if \(!account \|\| !canonicalStateReady \|\| !setCanonicalSessionState\) return;/);
+  assert.match(effect, /cloudProfileIdentityAdoptionCoordinator\.request\(/);
+  assert.match(effect, /adoptCloudProfileIdentity,/);
+  assert.match(effect, /setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/);
+  assert.match(effect, /console\.warn\('\[cloud-profile-identity\] failed to adopt stable cloud profile identity', error\)/);
+  assert.doesNotMatch(effect, /\bcancelled\b/, 'same-account profile rerenders must not drop an in-flight migration delta');
+  assert.match(effect, /\[[^\]]*canonicalStateReady[^\]]*cloudProfileAdoptionSignature[^\]]*\]/);
+});
