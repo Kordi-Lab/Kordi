@@ -194,6 +194,20 @@ function normalizeState(value: unknown): CloudGroupOutboxPersistedState {
   return { version: CLOUD_GROUP_OUTBOX_VERSION, entries, completedCanonicalMessageIds };
 }
 
+function cappedCompletedCanonicalMessageIds(values: string[], prioritizedIds = new Set<string>()) {
+  const completedCanonicalMessageIds = uniqueText(values);
+  const prioritized = completedCanonicalMessageIds
+    .filter((canonicalMessageId) => prioritizedIds.has(canonicalMessageId))
+    .slice(-MAX_COMPLETED_MESSAGE_IDS);
+  const remainingCount = MAX_COMPLETED_MESSAGE_IDS - prioritized.length;
+  const remaining = remainingCount > 0
+    ? completedCanonicalMessageIds
+        .filter((canonicalMessageId) => !prioritizedIds.has(canonicalMessageId))
+        .slice(-remainingCount)
+    : [];
+  return [...remaining, ...prioritized];
+}
+
 function mergeEntries(
   indexedDbEntry: CloudGroupOutboxEntry,
   fallbackEntry: CloudGroupOutboxEntry,
@@ -257,6 +271,10 @@ function mergeStates(
     ...fallbackState.completedCanonicalMessageIds,
   ]);
   const completed = new Set(allCompletedCanonicalMessageIds);
+  const entryCanonicalMessageIds = new Set([
+    ...indexedDbState.entries.map((entry) => entry.canonicalMessageId),
+    ...fallbackState.entries.map((entry) => entry.canonicalMessageId),
+  ]);
   const entriesByCanonicalMessageId = new Map(
     indexedDbState.entries.map((entry) => [entry.canonicalMessageId, cloneEntry(entry)]),
   );
@@ -269,7 +287,10 @@ function mergeStates(
   }
   const entries = [...entriesByCanonicalMessageId.values()]
     .filter((entry) => !completed.has(entry.canonicalMessageId));
-  const completedCanonicalMessageIds = allCompletedCanonicalMessageIds.slice(-MAX_COMPLETED_MESSAGE_IDS);
+  const completedCanonicalMessageIds = cappedCompletedCanonicalMessageIds(
+    allCompletedCanonicalMessageIds,
+    entryCanonicalMessageIds,
+  );
   return { version: CLOUD_GROUP_OUTBOX_VERSION, entries, completedCanonicalMessageIds };
 }
 
@@ -293,17 +314,24 @@ function cloneState(state: CloudGroupOutboxPersistedState): CloudGroupOutboxPers
   };
 }
 
+type CloudGroupOutboxStateMutation = {
+  apply(state: CloudGroupOutboxPersistedState): unknown;
+};
+
 export class CloudGroupOutbox {
   private state: CloudGroupOutboxPersistedState = {
     version: CLOUD_GROUP_OUTBOX_VERSION,
     entries: [],
     completedCanonicalMessageIds: [],
   };
+  private committedState = cloneState(this.state);
 
   private restored = false;
   private restorePromise: Promise<CloudGroupOutboxEntry[]> | null = null;
-  private writeChain: Promise<void> = Promise.resolve();
+  private mutationTail: Promise<void> = Promise.resolve();
+  private readonly pendingMutations: CloudGroupOutboxStateMutation[] = [];
   private readonly inFlight = new Map<string, Promise<CloudGroupOutboxEntry | null>>();
+  private readonly acknowledgementInFlight = new Map<string, Promise<boolean>>();
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -315,7 +343,9 @@ export class CloudGroupOutbox {
     if (this.restored) return this.entries();
     if (this.restorePromise) return this.restorePromise;
     this.restorePromise = (async () => {
-      this.state = normalizeState(await this.persistence.load());
+      const restoredState = normalizeState(await this.persistence.load());
+      this.committedState = cloneState(restoredState);
+      this.state = restoredState;
       this.restored = true;
       this.notify();
       return this.entries();
@@ -343,14 +373,14 @@ export class CloudGroupOutbox {
     if (this.state.completedCanonicalMessageIds.includes(entry.canonicalMessageId)) return null;
     const existing = this.state.entries.find((candidate) => candidate.canonicalMessageId === entry.canonicalMessageId);
     if (existing) return cloneEntry(existing);
-    this.state.entries.push(entry);
-    try {
-      await this.persist();
-    } catch (error) {
-      this.state.entries = this.state.entries.filter((candidate) => candidate !== entry);
-      throw error;
-    }
-    return cloneEntry(entry);
+    return this.commitMutation((state) => {
+      if (state.completedCanonicalMessageIds.includes(entry.canonicalMessageId)) return null;
+      const persisted = state.entries.find((candidate) => candidate.canonicalMessageId === entry.canonicalMessageId);
+      if (persisted) return cloneEntry(persisted);
+      const queued = cloneEntry(entry);
+      state.entries.push(queued);
+      return cloneEntry(queued);
+    });
   }
 
   async deliver(
@@ -387,6 +417,18 @@ export class CloudGroupOutbox {
     await this.ensureRestored();
     const normalizedId = canonicalMessageId.trim();
     if (!normalizedId) return false;
+    const existingAcknowledgement = this.acknowledgementInFlight.get(normalizedId);
+    if (existingAcknowledgement) return existingAcknowledgement;
+    const acknowledgement = this.acknowledgeCanonicalDeliveryOnce(normalizedId);
+    this.acknowledgementInFlight.set(normalizedId, acknowledgement);
+    try {
+      return await acknowledgement;
+    } finally {
+      this.acknowledgementInFlight.delete(normalizedId);
+    }
+  }
+
+  private async acknowledgeCanonicalDeliveryOnce(normalizedId: string) {
     if (this.state.completedCanonicalMessageIds.includes(normalizedId)) return true;
     const entry = this.state.entries.find((candidate) => candidate.canonicalMessageId === normalizedId);
     if (
@@ -399,30 +441,27 @@ export class CloudGroupOutbox {
       return false;
     }
 
-    const entryIndex = this.state.entries.indexOf(entry);
-    const acknowledgedEntry = cloneEntry(entry);
-    const completedBeforeAcknowledgement = [...this.state.completedCanonicalMessageIds];
-    this.state.entries = this.state.entries.filter((candidate) => candidate.canonicalMessageId !== normalizedId);
-    this.state.completedCanonicalMessageIds = [
-      ...this.state.completedCanonicalMessageIds.filter((id) => id !== normalizedId),
-      normalizedId,
-    ].slice(-MAX_COMPLETED_MESSAGE_IDS);
-    try {
-      await this.persist();
-    } catch (error) {
-      this.state.completedCanonicalMessageIds = uniqueText([
-        ...completedBeforeAcknowledgement,
-        ...this.state.completedCanonicalMessageIds.filter((id) => id !== normalizedId),
-      ]).slice(-MAX_COMPLETED_MESSAGE_IDS);
-      if (!this.state.entries.some((candidate) => candidate.canonicalMessageId === normalizedId)) {
-        const restoredEntries = [...this.state.entries];
-        restoredEntries.splice(Math.min(entryIndex, restoredEntries.length), 0, acknowledgedEntry);
-        this.state.entries = restoredEntries;
+    const acknowledged = await this.commitMutation((state) => {
+      if (state.completedCanonicalMessageIds.includes(normalizedId)) return true;
+      const persistedEntry = state.entries.find((candidate) => candidate.canonicalMessageId === normalizedId);
+      if (
+        !persistedEntry
+        || persistedEntry.awaitingCanonicalAck !== true
+        || persistedEntry.pendingRecipientIds.length > 0
+        || (persistedEntry.exhaustedRecipientIds?.length ?? 0) > 0
+        || persistedEntry.deliveredRecipientIds.length === 0
+      ) {
+        return false;
       }
-      throw error;
-    }
-    this.notify();
-    return true;
+      state.entries = state.entries.filter((candidate) => candidate.canonicalMessageId !== normalizedId);
+      state.completedCanonicalMessageIds = [
+        ...state.completedCanonicalMessageIds.filter((id) => id !== normalizedId),
+        normalizedId,
+      ].slice(-MAX_COMPLETED_MESSAGE_IDS);
+      return true;
+    });
+    if (acknowledged) this.notify();
+    return acknowledged;
   }
 
   private async deliverOnce(
@@ -444,42 +483,46 @@ export class CloudGroupOutbox {
       });
       return recipientId;
     }));
-    const delivered = new Set(entry.deliveredRecipientIds);
-    const exhausted = new Set(entry.exhaustedRecipientIds ?? []);
-    const pending = new Set(entry.pendingRecipientIds);
+    const outcome = await this.commitMutation((state) => {
+      const persistedEntry = state.entries.find((candidate) => candidate.canonicalMessageId === canonicalMessageId);
+      if (!persistedEntry) return null;
+      const delivered = new Set(persistedEntry.deliveredRecipientIds);
+      const exhausted = new Set(persistedEntry.exhaustedRecipientIds ?? []);
+      const pending = new Set(persistedEntry.pendingRecipientIds);
 
-    outcomes.forEach((outcome, index) => {
-      const recipientId = pendingAtStart[index];
-      if (!recipientId) return;
-      if (outcome.status === 'fulfilled') {
-        pending.delete(recipientId);
-        exhausted.delete(recipientId);
-        delivered.add(recipientId);
-        return;
-      }
-      const attempts = (entry.attemptsByRecipientId[recipientId] ?? 0) + 1;
-      entry.attemptsByRecipientId[recipientId] = attempts;
-      if (attempts >= CLOUD_GROUP_OUTBOX_MAX_ATTEMPTS) {
-        pending.delete(recipientId);
-        exhausted.add(recipientId);
-      }
+      outcomes.forEach((recipientOutcome, index) => {
+        const recipientId = pendingAtStart[index];
+        if (!recipientId) return;
+        if (recipientOutcome.status === 'fulfilled') {
+          pending.delete(recipientId);
+          exhausted.delete(recipientId);
+          delivered.add(recipientId);
+          return;
+        }
+        const attempts = (persistedEntry.attemptsByRecipientId[recipientId] ?? 0) + 1;
+        persistedEntry.attemptsByRecipientId[recipientId] = attempts;
+        if (attempts >= CLOUD_GROUP_OUTBOX_MAX_ATTEMPTS) {
+          pending.delete(recipientId);
+          exhausted.add(recipientId);
+        }
+      });
+
+      persistedEntry.pendingRecipientIds = [...pending];
+      persistedEntry.deliveredRecipientIds = [...delivered];
+      persistedEntry.exhaustedRecipientIds = exhausted.size > 0 ? [...exhausted] : undefined;
+      persistedEntry.awaitingCanonicalAck = persistedEntry.pendingRecipientIds.length === 0
+        && delivered.size > 0
+        && exhausted.size === 0;
+      const retryDelays = persistedEntry.pendingRecipientIds.map((recipientId) => {
+        const attempts = Math.max(1, persistedEntry.attemptsByRecipientId[recipientId] ?? 1);
+        return CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS[
+          Math.min(attempts - 1, CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS.length - 1)
+        ];
+      });
+      persistedEntry.nextAttemptAtMs = retryDelays.length > 0 ? nowMs + Math.min(...retryDelays) : 0;
+      return cloneEntry(persistedEntry);
     });
-
-    entry.pendingRecipientIds = [...pending];
-    entry.deliveredRecipientIds = [...delivered];
-    entry.exhaustedRecipientIds = exhausted.size > 0 ? [...exhausted] : undefined;
-    entry.awaitingCanonicalAck = entry.pendingRecipientIds.length === 0
-      && delivered.size > 0
-      && exhausted.size === 0;
-    const retryDelays = entry.pendingRecipientIds.map((recipientId) => {
-      const attempts = Math.max(1, entry.attemptsByRecipientId[recipientId] ?? 1);
-      return CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS[Math.min(attempts - 1, CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS.length - 1)];
-    });
-    entry.nextAttemptAtMs = retryDelays.length > 0 ? nowMs + Math.min(...retryDelays) : 0;
-    const outcome = cloneEntry(entry);
-
-    await this.persist();
-    this.notify();
+    if (outcome) this.notify();
     return outcome;
   }
 
@@ -487,11 +530,40 @@ export class CloudGroupOutbox {
     if (!this.restored) await this.restore();
   }
 
-  private persist() {
-    this.writeChain = this.writeChain
-      .catch(() => {})
-      .then(() => this.persistence.save(cloneState(this.state)));
-    return this.writeChain;
+  private commitMutation<T>(apply: (state: CloudGroupOutboxPersistedState) => T) {
+    const mutation: CloudGroupOutboxStateMutation = { apply };
+    const optimisticState = cloneState(this.state);
+    apply(optimisticState);
+    this.state = optimisticState;
+    this.pendingMutations.push(mutation);
+
+    const execution = this.mutationTail.then(async () => {
+      const nextCommittedState = cloneState(this.committedState);
+      const result = apply(nextCommittedState);
+      await this.persistence.save(cloneState(nextCommittedState));
+      this.committedState = nextCommittedState;
+      return result;
+    });
+    const settled = execution.then(
+      (result) => {
+        this.settleMutation(mutation);
+        return result;
+      },
+      (error: unknown) => {
+        this.settleMutation(mutation);
+        throw error;
+      },
+    );
+    this.mutationTail = settled.then(() => {}, () => {});
+    return settled;
+  }
+
+  private settleMutation(mutation: CloudGroupOutboxStateMutation) {
+    const index = this.pendingMutations.indexOf(mutation);
+    if (index >= 0) this.pendingMutations.splice(index, 1);
+    const rebasedState = cloneState(this.committedState);
+    this.pendingMutations.forEach((pending) => pending.apply(rebasedState));
+    this.state = rebasedState;
   }
 
   private notify() {

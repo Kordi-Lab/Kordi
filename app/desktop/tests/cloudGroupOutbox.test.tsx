@@ -46,8 +46,31 @@ class ControlledFirstSaveFailurePersistence extends MemoryPersistence {
   releaseFirstSave() { this.resolveFirstSaveRelease?.(); }
 }
 
+class ControlledFirstSuccessSecondFailurePersistence extends MemoryPersistence {
+  private saveCount = 0;
+  private resolveFirstSaveStarted: (() => void) | null = null;
+  private resolveFirstSaveRelease: (() => void) | null = null;
+  readonly firstSaveStarted = new Promise<void>((resolve) => { this.resolveFirstSaveStarted = resolve; });
+  private readonly firstSaveRelease = new Promise<void>((resolve) => { this.resolveFirstSaveRelease = resolve; });
+
+  override async save(value: CloudGroupOutboxPersistedState) {
+    this.saveCount += 1;
+    if (this.saveCount === 1) {
+      this.resolveFirstSaveStarted?.();
+      await this.firstSaveRelease;
+      await super.save(value);
+      return;
+    }
+    if (this.saveCount === 2) throw new Error('forced second save failure');
+    await super.save(value);
+  }
+
+  releaseFirstSave() { this.resolveFirstSaveRelease?.(); }
+}
+
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
+  failRemovals = false;
 
   constructor(private readonly events: string[] = []) {}
 
@@ -57,6 +80,7 @@ class MemoryStorage implements Storage {
   key(index: number) { return [...this.values.keys()][index] ?? null; }
   removeItem(key: string) {
     this.events.push('storage-remove');
+    if (this.failRemovals) throw new Error('forced localStorage cleanup failure');
     this.values.delete(key);
   }
   setItem(key: string, value: string) { this.values.set(key, value); }
@@ -190,6 +214,16 @@ function entry() {
   };
 }
 
+function awaitingEntry(canonicalMessageId: string) {
+  return {
+    ...entry(),
+    canonicalMessageId,
+    awaitingCanonicalAck: true,
+    pendingRecipientIds: [],
+    deliveredRecipientIds: ['acct_a', 'acct_b'],
+  };
+}
+
 test('restart reconciles a newer fallback delivery state before promoting it to IndexedDB', async () => {
   const events: string[] = [];
   const storage = new MemoryStorage(events);
@@ -259,6 +293,43 @@ test('completion tombstones filter stale fallback entries before the persisted l
   });
 });
 
+test('promotion retains a suppressing tombstone when fallback cleanup fails before restart', async () => {
+  const events: string[] = [];
+  const storage = new MemoryStorage(events);
+  storage.failRemovals = true;
+  const completedCanonicalMessageId = entry().canonicalMessageId;
+  const indexedDb = new ControllableIndexedDb({
+    version: 1,
+    entries: [],
+    completedCanonicalMessageIds: [completedCanonicalMessageId],
+  }, events);
+  storage.setItem('kordi.cloud.groupOutbox.v1:acct_me', JSON.stringify({
+    version: 1,
+    entries: [entry()],
+    completedCanonicalMessageIds: Array.from(
+      { length: 1_000 },
+      (_, index) => `msg:canonical:fallback-completed:${index}`,
+    ),
+  }));
+
+  await withBrowserPersistenceGlobals(indexedDb.factory, storage, async () => {
+    const promoted = new CloudGroupOutbox('acct_me', defaultCloudGroupOutboxPersistence('acct_me'));
+    assert.deepEqual(await promoted.restore(), []);
+    assert.equal(storage.length, 1, 'failed cleanup must leave the fallback available');
+    assert.equal(
+      indexedDb.value?.completedCanonicalMessageIds.includes(completedCanonicalMessageId),
+      true,
+      'the promoted state must retain the tombstone that suppresses the fallback entry',
+    );
+
+    const restarted = new CloudGroupOutbox('acct_me', defaultCloudGroupOutboxPersistence('acct_me'));
+    assert.deepEqual(await restarted.restore(), []);
+    let sends = 0;
+    await restarted.deliverDue(async () => { sends += 1; }, 200);
+    assert.equal(sends, 0, 'the retained fallback must not resurrect a completed delivery');
+  });
+});
+
 test('enqueue rejects when neither browser persistence backend accepts the snapshot', async () => {
   await withBrowserPersistenceGlobals(undefined, undefined, async () => {
     const outbox = new CloudGroupOutbox('acct_me', defaultCloudGroupOutboxPersistence('acct_me'));
@@ -307,6 +378,34 @@ test('a queued successful enqueue cannot persist an entry whose earlier save rej
     restored.map((candidate) => candidate.canonicalMessageId),
     ['msg:canonical:retained'],
     'durable state must match the post-rollback in-memory state',
+  );
+});
+
+test('a successful enqueue cannot persist a concurrent enqueue whose later save rejects', async () => {
+  const persistence = new ControlledFirstSuccessSecondFailurePersistence();
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+  const retainedEntry = { ...entry(), canonicalMessageId: 'msg:canonical:retained' };
+  const rejectedEntry = { ...entry(), canonicalMessageId: 'msg:canonical:rejected' };
+
+  const retainedEnqueue = outbox.enqueue(retainedEntry);
+  const rejectedEnqueue = outbox.enqueue(rejectedEntry);
+  const rejectedResult = assert.rejects(rejectedEnqueue, /forced second save failure/);
+  await persistence.firstSaveStarted;
+  persistence.releaseFirstSave();
+
+  await retainedEnqueue;
+  await rejectedResult;
+  assert.deepEqual(
+    outbox.entries().map((candidate) => candidate.canonicalMessageId),
+    ['msg:canonical:retained'],
+  );
+
+  const restarted = new CloudGroupOutbox('acct_me', persistence);
+  assert.deepEqual(
+    (await restarted.restore()).map((candidate) => candidate.canonicalMessageId),
+    ['msg:canonical:retained'],
+    'the earlier successful save must exclude the later rejected mutation',
   );
 });
 
@@ -419,6 +518,53 @@ test('failed canonical acknowledgement rolls back so retry persists completion a
   const restarted = new CloudGroupOutbox('acct_me', persistence);
   assert.deepEqual(await restarted.restore(), []);
   assert.equal(await restarted.enqueue(entry()), null, 'retry must durably retain the completion tombstone');
+});
+
+test('concurrent failed acknowledgements restore exact capped state before independent retries', async () => {
+  const firstCanonicalMessageId = 'msg:canonical:awaiting:first';
+  const secondCanonicalMessageId = 'msg:canonical:awaiting:second';
+  const completedCanonicalMessageIds = Array.from(
+    { length: 1_000 },
+    (_, index) => `msg:canonical:completed:${index}`,
+  );
+  const persistence = new MemoryPersistence();
+  persistence.value = {
+    version: 1,
+    entries: [awaitingEntry(firstCanonicalMessageId), awaitingEntry(secondCanonicalMessageId)],
+    completedCanonicalMessageIds,
+  };
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+  persistence.failNextSave();
+  persistence.failNextSave();
+
+  const acknowledgements = await Promise.allSettled([
+    outbox.acknowledgeCanonicalDelivery(firstCanonicalMessageId),
+    outbox.acknowledgeCanonicalDelivery(secondCanonicalMessageId),
+  ]);
+  assert.deepEqual(acknowledgements.map((result) => result.status), ['rejected', 'rejected']);
+  assert.deepEqual(
+    outbox.entries().map((candidate) => candidate.canonicalMessageId),
+    [firstCanonicalMessageId, secondCanonicalMessageId],
+    'both failed mutations must restore the exact prior entries',
+  );
+  assert.equal(
+    await outbox.enqueue({
+      ...entry(),
+      canonicalMessageId: completedCanonicalMessageIds[0]!,
+    }),
+    null,
+    'concurrent rollbacks must preserve the oldest capped tombstone',
+  );
+
+  assert.deepEqual(await Promise.all([
+    outbox.acknowledgeCanonicalDelivery(firstCanonicalMessageId),
+    outbox.acknowledgeCanonicalDelivery(secondCanonicalMessageId),
+  ]), [true, true]);
+  const restarted = new CloudGroupOutbox('acct_me', persistence);
+  assert.deepEqual(await restarted.restore(), []);
+  assert.equal(await restarted.enqueue(awaitingEntry(firstCanonicalMessageId)), null);
+  assert.equal(await restarted.enqueue(awaitingEntry(secondCanonicalMessageId)), null);
 });
 
 test('canonical acknowledgement refuses pending, partial, and exhausted deliveries', async () => {
