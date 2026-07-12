@@ -7,9 +7,47 @@ import type {
 } from './authClient';
 
 export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
+// Transcript virtualization mounts a viewport plus 12 rows of overscan on each side.
+// Keep several mounted image windows warm while placing a hard ceiling on retained Blob URLs.
+export const CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY = 128;
 
 const cloudAttachmentLocalPathCache = new Map<string, string>();
 const cloudAttachmentPreviewUrlCache = new Map<string, string>();
+
+function revokeCloudAttachmentPreviewUrl(previewUrl: string) {
+  if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+}
+
+function cachedCloudAttachmentPreviewUrl(cacheId: string) {
+  const previewUrl = cloudAttachmentPreviewUrlCache.get(cacheId);
+  if (!previewUrl) return null;
+  cloudAttachmentPreviewUrlCache.delete(cacheId);
+  cloudAttachmentPreviewUrlCache.set(cacheId, previewUrl);
+  return previewUrl;
+}
+
+function retainCloudAttachmentPreviewUrl(cacheId: string, previewUrl: string) {
+  const retainedUrl = cachedCloudAttachmentPreviewUrl(cacheId);
+  if (retainedUrl) {
+    if (retainedUrl !== previewUrl) revokeCloudAttachmentPreviewUrl(previewUrl);
+    return retainedUrl;
+  }
+  cloudAttachmentPreviewUrlCache.set(cacheId, previewUrl);
+  if (cloudAttachmentPreviewUrlCache.size <= CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY) {
+    return previewUrl;
+  }
+  const oldestCacheId = cloudAttachmentPreviewUrlCache.keys().next().value;
+  if (oldestCacheId !== undefined) {
+    const oldestPreviewUrl = cloudAttachmentPreviewUrlCache.get(oldestCacheId);
+    cloudAttachmentPreviewUrlCache.delete(oldestCacheId);
+    if (oldestPreviewUrl) revokeCloudAttachmentPreviewUrl(oldestPreviewUrl);
+  }
+  return previewUrl;
+}
+
+export function cloudAttachmentPreviewCacheSizeForTests() {
+  return cloudAttachmentPreviewUrlCache.size;
+}
 
 type PreviewQueueTask<T> = {
   operation: (signal: AbortSignal) => Promise<T>;
@@ -151,21 +189,25 @@ export async function loadVisibleCloudAttachmentPreview(input: {
 }) {
   const cacheId = input.attachment.previewAttachmentId?.trim() || input.attachment.attachmentId?.trim();
   if (!cacheId) return null;
-  const cached = cloudAttachmentPreviewUrlCache.get(cacheId);
+  const cached = cachedCloudAttachmentPreviewUrl(cacheId);
   if (cached) return cached;
   return visiblePreviewQueue.run(async (signal) => {
-    const cachedInsideQueue = cloudAttachmentPreviewUrlCache.get(cacheId);
+    const cachedInsideQueue = cachedCloudAttachmentPreviewUrl(cacheId);
     if (cachedInsideQueue) return cachedInsideQueue;
     const previewUrl = await loadCloudAttachmentPreview({ ...input, signal });
-    if (previewUrl) cloudAttachmentPreviewUrlCache.set(cacheId, previewUrl);
-    return previewUrl;
+    if (!previewUrl) return null;
+    if (signal.aborted) {
+      revokeCloudAttachmentPreviewUrl(previewUrl);
+      throw abortError();
+    }
+    return retainCloudAttachmentPreviewUrl(cacheId, previewUrl);
   }, input.signal);
 }
 
 export function resetCloudAttachmentPreviewLoader() {
   visiblePreviewQueue.clear();
   for (const previewUrl of cloudAttachmentPreviewUrlCache.values()) {
-    if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+    revokeCloudAttachmentPreviewUrl(previewUrl);
   }
   cloudAttachmentPreviewUrlCache.clear();
 }

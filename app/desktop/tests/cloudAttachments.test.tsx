@@ -2,15 +2,47 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 
 import {
+  CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY,
   CloudAttachmentPreviewQueue,
   clearCloudAttachmentLocalPathCacheForTests,
+  cloudAttachmentPreviewCacheSizeForTests,
   cloudMessageAttachmentToMessageAttachment,
   loadCloudAttachmentPreview,
+  loadVisibleCloudAttachmentPreview,
+  resetCloudAttachmentPreviewLoader,
   resolveCloudMessageAttachments,
   uploadCloudFiles,
   uploadComposerAttachments,
 } from '../src/features/cloud/cloudAttachments';
 import type { CloudAuthClient } from '../src/features/cloud/authClient';
+
+function imagePreviewAttachment(attachmentId: string) {
+  return {
+    attachmentId,
+    kind: 'image' as const,
+  };
+}
+
+function installObjectUrlSpies() {
+  const originalCreateObjectUrl = URL.createObjectURL;
+  const originalRevokeObjectUrl = URL.revokeObjectURL;
+  const created: string[] = [];
+  const revoked: string[] = [];
+  URL.createObjectURL = () => {
+    const url = `blob:cloud-preview-${created.length + 1}`;
+    created.push(url);
+    return url;
+  };
+  URL.revokeObjectURL = (url) => revoked.push(url);
+  return {
+    created,
+    revoked,
+    restore() {
+      URL.createObjectURL = originalCreateObjectUrl;
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+    },
+  };
+}
 
 afterEach(() => {
   clearCloudAttachmentLocalPathCacheForTests();
@@ -60,6 +92,127 @@ test('visible preview loading uses the thumbnail attachment id when provided', a
 
   assert.deepEqual(requestedIds, ['att_preview']);
   assert.equal(result, 'blob:preview');
+});
+
+test('visible preview cache stays bounded, revokes the oldest Blob URL, and reloads it after eviction', async () => {
+  const objectUrls = installObjectUrlSpies();
+  const downloadCounts = new Map<string, number>();
+  const client = {
+    async downloadAttachmentContent(_token: string, attachmentId: string) {
+      downloadCounts.set(attachmentId, (downloadCounts.get(attachmentId) ?? 0) + 1);
+      return new Blob([attachmentId]);
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+
+  try {
+    for (let index = 0; index <= CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY; index += 1) {
+      await loadVisibleCloudAttachmentPreview({
+        token: 'token',
+        client,
+        attachment: imagePreviewAttachment(`preview-${index}`),
+      });
+    }
+
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
+    assert.equal(cloudAttachmentPreviewCacheSizeForTests(), CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY);
+
+    const reloaded = await loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('preview-0'),
+    });
+
+    assert.equal(reloaded, `blob:cloud-preview-${CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY + 2}`);
+    assert.equal(downloadCounts.get('preview-0'), 2);
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1', 'blob:cloud-preview-2']);
+    assert.equal(cloudAttachmentPreviewCacheSizeForTests(), CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY);
+  } finally {
+    resetCloudAttachmentPreviewLoader();
+    objectUrls.restore();
+  }
+});
+
+test('visible preview cache hits refresh LRU recency and reset revokes each retained Blob URL once', async () => {
+  const objectUrls = installObjectUrlSpies();
+  const client = {
+    async downloadAttachmentContent(_token: string, attachmentId: string) {
+      return new Blob([attachmentId]);
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+
+  try {
+    for (let index = 0; index < CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY; index += 1) {
+      await loadVisibleCloudAttachmentPreview({
+        token: 'token',
+        client,
+        attachment: imagePreviewAttachment(`preview-${index}`),
+      });
+    }
+    const recentlyUsed = await loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('preview-0'),
+    });
+    await loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment(`preview-${CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY}`),
+    });
+
+    assert.equal(recentlyUsed, 'blob:cloud-preview-1');
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-2']);
+
+    resetCloudAttachmentPreviewLoader();
+    resetCloudAttachmentPreviewLoader();
+
+    assert.equal(cloudAttachmentPreviewCacheSizeForTests(), 0);
+    assert.equal(objectUrls.revoked.length, CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY + 1);
+    assert.equal(new Set(objectUrls.revoked).size, CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY + 1);
+    assert.equal(objectUrls.revoked.filter((url) => url === 'blob:cloud-preview-2').length, 1);
+  } finally {
+    resetCloudAttachmentPreviewLoader();
+    objectUrls.restore();
+  }
+});
+
+test('concurrent duplicate preview results revoke the superseded Blob URL instead of leaking it', async () => {
+  const objectUrls = installObjectUrlSpies();
+  const releases: Array<(blob: Blob) => void> = [];
+  const client = {
+    async downloadAttachmentContent() {
+      return new Promise<Blob>((resolve) => releases.push(resolve));
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+
+  try {
+    const first = loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('shared-preview'),
+    });
+    const second = loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('shared-preview'),
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(releases.length, 2);
+
+    releases[0]?.(new Blob(['first']));
+    const firstUrl = await first;
+    releases[1]?.(new Blob(['second']));
+    const secondUrl = await second;
+
+    assert.equal(firstUrl, 'blob:cloud-preview-1');
+    assert.equal(secondUrl, firstUrl);
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-2']);
+
+    resetCloudAttachmentPreviewLoader();
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-2', 'blob:cloud-preview-1']);
+  } finally {
+    resetCloudAttachmentPreviewLoader();
+    objectUrls.restore();
+  }
 });
 
 test('preview queue caps recovery at four downloads and aborts queued rows', async () => {
