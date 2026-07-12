@@ -6,7 +6,10 @@ import { Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
-import { loadVisibleCloudAttachmentPreview } from '@/features/cloud/cloudAttachments';
+import {
+  loadVisibleCloudAttachmentPreview,
+  type CloudAttachmentPreviewLease,
+} from '@/features/cloud/cloudAttachments';
 import { loadSession } from '@/features/cloud/session';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
@@ -31,6 +34,7 @@ function isInternalObjectStoreUrl(value?: string | null) {
 export function attachmentPreviewIdentity(attachment: MessageAttachment) {
   return [
     attachment.attachmentId ?? '',
+    attachment.previewAttachmentId ?? '',
     attachment.localPath ?? '',
     attachment.previewUrl ?? '',
     attachment.name ?? '',
@@ -364,13 +368,14 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
   const [previewFailed, setPreviewFailed] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(null);
+  const previewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
   const previewUrl = remotePreviewUrl ?? attachmentPreviewUrl(attachment);
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl && !previewFailed);
   const singleImage = totalCount <= 1;
 
   useEffect(() => {
-    if (previewUrl || previewFailed || attachment.kind !== 'image' || !attachment.attachmentId) return;
+    if (attachmentPreviewUrl(attachment) || attachment.kind !== 'image' || !attachment.attachmentId) return;
     const controller = new AbortController();
     void loadSession()
       .then((session) => {
@@ -386,16 +391,27 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
           signal: controller.signal,
         });
       })
-      .then((nextPreviewUrl) => {
-        if (!controller.signal.aborted && nextPreviewUrl) setRemotePreviewUrl(nextPreviewUrl);
+      .then((nextPreviewLease) => {
+        if (!nextPreviewLease) return;
+        if (controller.signal.aborted) {
+          nextPreviewLease.release();
+          return;
+        }
+        previewLeaseRef.current?.release();
+        previewLeaseRef.current = nextPreviewLease;
+        setRemotePreviewUrl(nextPreviewLease.previewUrl);
       })
       .catch((error) => {
         if (!controller.signal.aborted && (!(error instanceof Error) || error.name !== 'AbortError')) {
           setPreviewFailed(true);
         }
       });
-    return () => controller.abort();
-  }, [attachment.attachmentId, attachment.kind, attachment.previewAttachmentId, previewFailed, previewUrl]);
+    return () => {
+      controller.abort();
+      previewLeaseRef.current?.release();
+      previewLeaseRef.current = null;
+    };
+  }, [attachment.attachmentId, attachment.kind, attachment.previewAttachmentId]);
 
   return (
     <div
@@ -424,7 +440,12 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
               singleImage ? 'max-h-[320px] object-contain' : 'object-cover',
             )}
             onLoad={() => setImageLoaded(true)}
-            onError={() => setPreviewFailed(true)}
+            onError={() => {
+              previewLeaseRef.current?.release();
+              previewLeaseRef.current = null;
+              setRemotePreviewUrl(null);
+              setPreviewFailed(true);
+            }}
           />
         </button>
       ) : (

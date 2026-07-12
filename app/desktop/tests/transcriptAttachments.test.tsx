@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -92,6 +93,29 @@ test('attachment image preview identity changes when local cache path becomes av
   assert.match(cached, /\/tmp\/kordi\/Screenshot\.png/);
 });
 
+test('attachment image preview identity changes when its remote preview is replaced', () => {
+  const original = attachmentPreviewIdentity({
+    kind: 'image',
+    name: 'Screenshot.png',
+    sizeBytes: 68 * 1024,
+    attachmentId: 'att_1',
+    previewAttachmentId: 'preview_1',
+    localPath: null,
+    previewUrl: null,
+  });
+  const replacement = attachmentPreviewIdentity({
+    kind: 'image',
+    name: 'Screenshot.png',
+    sizeBytes: 68 * 1024,
+    attachmentId: 'att_1',
+    previewAttachmentId: 'preview_2',
+    localPath: null,
+    previewUrl: null,
+  });
+
+  assert.notEqual(replacement, original);
+});
+
 test('image attachments render as clickable lightweight previews without heavy footer banner', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
 
@@ -167,6 +191,20 @@ test('remote images without a completed local preview render a quiet loading til
   assert.doesNotMatch(markup, /Preview unavailable/);
   assert.doesNotMatch(markup, /app-attachment-image-fallback/);
   assert.doesNotMatch(markup, />Screenshot 2026-05-20\.png</);
+});
+
+test('attachment image cards release remote preview leases on cleanup and image failure', () => {
+  const source = readFileSync(
+    new URL('../src/kordi-app/components/transcriptAttachments.tsx', import.meta.url),
+    'utf8',
+  );
+  const start = source.indexOf('function AttachmentImageCard');
+  const end = source.indexOf('export function AttachmentPreview', start);
+  const imageCard = source.slice(start, end);
+
+  assert.match(imageCard, /previewLeaseRef/);
+  assert.match(imageCard, /return \(\) => \{[\s\S]*?previewLeaseRef\.current\?\.release\(\)/);
+  assert.match(imageCard, /onError=\{\(\) => \{[\s\S]*?previewLeaseRef\.current\?\.release\(\)/);
 });
 
 test('loaded image previews use a simple fade without zoom or shadow effects', () => {

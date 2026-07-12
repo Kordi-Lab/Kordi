@@ -32,11 +32,17 @@ async function flushMicrotasks(count: number) {
   for (let index = 0; index < count; index += 1) await Promise.resolve();
 }
 
-function assertAbortResult(result: PromiseSettledResult<string | null> | undefined) {
+function assertAbortResult(result: PromiseSettledResult<unknown> | undefined) {
   assert.equal(result?.status, 'rejected');
   if (result?.status === 'rejected') {
     assert.equal(result.reason instanceof Error ? result.reason.name : null, 'AbortError');
   }
+}
+
+function releasePreviewLease(value: unknown) {
+  if (!value || typeof value !== 'object' || !('release' in value)) return;
+  const release = (value as { release?: unknown }).release;
+  if (typeof release === 'function') release();
 }
 
 function installObjectUrlSpies() {
@@ -122,11 +128,11 @@ test('visible preview cache stays bounded, revokes the oldest Blob URL, and relo
 
   try {
     for (let index = 0; index <= CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY; index += 1) {
-      await loadVisibleCloudAttachmentPreview({
+      releasePreviewLease(await loadVisibleCloudAttachmentPreview({
         token: 'token',
         client,
         attachment: imagePreviewAttachment(`preview-${index}`),
-      });
+      }));
     }
 
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
@@ -137,9 +143,125 @@ test('visible preview cache stays bounded, revokes the oldest Blob URL, and relo
       attachment: imagePreviewAttachment('preview-0'),
     });
 
-    assert.equal(reloaded, `blob:cloud-preview-${CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY + 2}`);
+    assert.equal(reloaded?.previewUrl, `blob:cloud-preview-${CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY + 2}`);
     assert.equal(downloadCounts.get('preview-0'), 2);
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1', 'blob:cloud-preview-2']);
+    reloaded?.release();
+  } finally {
+    resetCloudAttachmentPreviewLoader();
+    objectUrls.restore();
+  }
+});
+
+test('capacity eviction defers revocation while every mounted preview holds a lease', async () => {
+  const objectUrls = installObjectUrlSpies();
+  const leases: unknown[] = [];
+  const client = {
+    async downloadAttachmentContent(_token: string, attachmentId: string) {
+      return new Blob([attachmentId]);
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+
+  try {
+    for (let index = 0; index <= CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY; index += 1) {
+      const lease = await loadVisibleCloudAttachmentPreview({
+        token: 'token',
+        client,
+        attachment: imagePreviewAttachment(`mounted-preview-${index}`),
+      });
+      assert.ok(lease);
+      leases.push(lease);
+    }
+
+    assert.deepEqual(objectUrls.revoked, [], 'LRU eviction must not revoke a mounted preview');
+    const oldestLease = leases[0] as { previewUrl: string; release(): void };
+    assert.equal(oldestLease.previewUrl, 'blob:cloud-preview-1');
+    oldestLease.release();
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
+  } finally {
+    leases.forEach(releasePreviewLease);
+    resetCloudAttachmentPreviewLoader();
+    objectUrls.restore();
+  }
+});
+
+test('duplicate preview callers receive independent leases for the retained URL', async () => {
+  const objectUrls = installObjectUrlSpies();
+  const leases: unknown[] = [];
+  let sharedDownloads = 0;
+  const client = {
+    async downloadAttachmentContent(_token: string, attachmentId: string) {
+      if (attachmentId === 'independent-shared-preview') sharedDownloads += 1;
+      return new Blob([attachmentId]);
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+
+  try {
+    const first = await loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('independent-shared-preview'),
+    });
+    const second = await loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('independent-shared-preview'),
+    });
+    assert.ok(first);
+    assert.ok(second);
+    leases.push(first, second);
+
+    for (let index = 0; index < CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY; index += 1) {
+      const lease = await loadVisibleCloudAttachmentPreview({
+        token: 'token',
+        client,
+        attachment: imagePreviewAttachment(`independent-fill-${index}`),
+      });
+      releasePreviewLease(lease);
+    }
+
+    assert.equal((first as { previewUrl: string }).previewUrl, 'blob:cloud-preview-1');
+    assert.equal((second as { previewUrl: string }).previewUrl, 'blob:cloud-preview-1');
+    assert.equal(sharedDownloads, 1);
+    assert.deepEqual(objectUrls.revoked, []);
+    (first as { release(): void }).release();
+    assert.deepEqual(objectUrls.revoked, [], 'one lease must keep the shared URL alive');
+    (second as { release(): void }).release();
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
+  } finally {
+    leases.forEach(releasePreviewLease);
+    resetCloudAttachmentPreviewLoader();
+    objectUrls.restore();
+  }
+});
+
+test('reset before cached lease publication rejects without leaking or fulfilling a revoked URL', async () => {
+  const objectUrls = installObjectUrlSpies();
+  const client = {
+    async downloadAttachmentContent() {
+      return new Blob(['cached']);
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+
+  try {
+    const seededLease = await loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('reset-before-publication'),
+    });
+    releasePreviewLease(seededLease);
+    const request = loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('reset-before-publication'),
+    });
+    const resultPromise = Promise.allSettled([request]);
+
+    resetCloudAttachmentPreviewLoader();
+
+    const [result] = await resultPromise;
+    assertAbortResult(result);
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
   } finally {
     resetCloudAttachmentPreviewLoader();
     objectUrls.restore();
@@ -156,24 +278,25 @@ test('visible preview cache hits refresh LRU recency and reset revokes each reta
 
   try {
     for (let index = 0; index < CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY; index += 1) {
-      await loadVisibleCloudAttachmentPreview({
+      releasePreviewLease(await loadVisibleCloudAttachmentPreview({
         token: 'token',
         client,
         attachment: imagePreviewAttachment(`preview-${index}`),
-      });
+      }));
     }
     const recentlyUsed = await loadVisibleCloudAttachmentPreview({
       token: 'token',
       client,
       attachment: imagePreviewAttachment('preview-0'),
     });
-    await loadVisibleCloudAttachmentPreview({
+    releasePreviewLease(await loadVisibleCloudAttachmentPreview({
       token: 'token',
       client,
       attachment: imagePreviewAttachment(`preview-${CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY}`),
-    });
+    }));
 
-    assert.equal(recentlyUsed, 'blob:cloud-preview-1');
+    assert.equal(recentlyUsed?.previewUrl, 'blob:cloud-preview-1');
+    recentlyUsed?.release();
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-2']);
 
     resetCloudAttachmentPreviewLoader();
@@ -212,13 +335,15 @@ test('concurrent duplicate preview results revoke the superseded Blob URL instea
     assert.equal(releases.length, 2);
 
     releases[0]?.(new Blob(['first']));
-    const firstUrl = await first;
+    const firstLease = await first;
     releases[1]?.(new Blob(['second']));
-    const secondUrl = await second;
+    const secondLease = await second;
 
-    assert.equal(firstUrl, 'blob:cloud-preview-1');
-    assert.equal(secondUrl, firstUrl);
+    assert.equal(firstLease?.previewUrl, 'blob:cloud-preview-1');
+    assert.equal(secondLease?.previewUrl, firstLease?.previewUrl);
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-2']);
+    firstLease?.release();
+    secondLease?.release();
 
     resetCloudAttachmentPreviewLoader();
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-2', 'blob:cloud-preview-1']);
@@ -262,7 +387,8 @@ test('reset rejects a freshly retained preview when it runs before queue settlem
       attachment: imagePreviewAttachment('reset-fresh-preview'),
     });
     assert.equal(downloadCount, 2);
-    assert.equal(reloaded, 'blob:cloud-preview-2');
+    assert.equal(reloaded?.previewUrl, 'blob:cloud-preview-2');
+    reloaded?.release();
     resetCloudAttachmentPreviewLoader();
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1', 'blob:cloud-preview-2']);
   } finally {
@@ -318,6 +444,8 @@ test('reset rejects a cached-inside-queue preview before its public promise sett
     const results = await resultsPromise;
     assert.equal(results[0]?.status, 'fulfilled');
     assertAbortResult(results.at(-1));
+    assert.deepEqual(objectUrls.revoked, []);
+    if (results[0]?.status === 'fulfilled') releasePreviewLease(results[0].value);
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
 
     const reloaded = await loadVisibleCloudAttachmentPreview({
@@ -326,7 +454,8 @@ test('reset rejects a cached-inside-queue preview before its public promise sett
       attachment: imagePreviewAttachment('reset-cached-preview'),
     });
     assert.equal(sharedDownloadCount, 2);
-    assert.equal(reloaded, 'blob:cloud-preview-2');
+    assert.equal(reloaded?.previewUrl, 'blob:cloud-preview-2');
+    reloaded?.release();
     resetCloudAttachmentPreviewLoader();
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1', 'blob:cloud-preview-2']);
   } finally {
