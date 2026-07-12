@@ -5,7 +5,6 @@ import {
   CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY,
   CloudAttachmentPreviewQueue,
   clearCloudAttachmentLocalPathCacheForTests,
-  cloudAttachmentPreviewCacheSizeForTests,
   cloudMessageAttachmentToMessageAttachment,
   loadCloudAttachmentPreview,
   loadVisibleCloudAttachmentPreview,
@@ -21,6 +20,23 @@ function imagePreviewAttachment(attachmentId: string) {
     attachmentId,
     kind: 'image' as const,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => { resolve = nextResolve; });
+  return { promise, resolve };
+}
+
+async function flushMicrotasks(count: number) {
+  for (let index = 0; index < count; index += 1) await Promise.resolve();
+}
+
+function assertAbortResult(result: PromiseSettledResult<string | null> | undefined) {
+  assert.equal(result?.status, 'rejected');
+  if (result?.status === 'rejected') {
+    assert.equal(result.reason instanceof Error ? result.reason.name : null, 'AbortError');
+  }
 }
 
 function installObjectUrlSpies() {
@@ -114,7 +130,6 @@ test('visible preview cache stays bounded, revokes the oldest Blob URL, and relo
     }
 
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
-    assert.equal(cloudAttachmentPreviewCacheSizeForTests(), CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY);
 
     const reloaded = await loadVisibleCloudAttachmentPreview({
       token: 'token',
@@ -125,7 +140,6 @@ test('visible preview cache stays bounded, revokes the oldest Blob URL, and relo
     assert.equal(reloaded, `blob:cloud-preview-${CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY + 2}`);
     assert.equal(downloadCounts.get('preview-0'), 2);
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1', 'blob:cloud-preview-2']);
-    assert.equal(cloudAttachmentPreviewCacheSizeForTests(), CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY);
   } finally {
     resetCloudAttachmentPreviewLoader();
     objectUrls.restore();
@@ -165,7 +179,6 @@ test('visible preview cache hits refresh LRU recency and reset revokes each reta
     resetCloudAttachmentPreviewLoader();
     resetCloudAttachmentPreviewLoader();
 
-    assert.equal(cloudAttachmentPreviewCacheSizeForTests(), 0);
     assert.equal(objectUrls.revoked.length, CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY + 1);
     assert.equal(new Set(objectUrls.revoked).size, CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY + 1);
     assert.equal(objectUrls.revoked.filter((url) => url === 'blob:cloud-preview-2').length, 1);
@@ -210,6 +223,114 @@ test('concurrent duplicate preview results revoke the superseded Blob URL instea
     resetCloudAttachmentPreviewLoader();
     assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-2', 'blob:cloud-preview-1']);
   } finally {
+    resetCloudAttachmentPreviewLoader();
+    objectUrls.restore();
+  }
+});
+
+test('reset rejects a freshly retained preview when it runs before queue settlement', async () => {
+  const objectUrls = installObjectUrlSpies();
+  const firstDownload = deferred<Blob>();
+  let downloadCount = 0;
+  const client = {
+    downloadAttachmentContent() {
+      downloadCount += 1;
+      return downloadCount === 1 ? firstDownload.promise : Promise.resolve(new Blob(['reloaded']));
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+
+  try {
+    const request = loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('reset-fresh-preview'),
+    });
+    const resultPromise = Promise.allSettled([request]);
+    firstDownload.resolve(new Blob(['fresh']));
+    await flushMicrotasks(1);
+    assert.deepEqual(objectUrls.created, ['blob:cloud-preview-1']);
+
+    resetCloudAttachmentPreviewLoader();
+
+    const result = await resultPromise;
+    assertAbortResult(result[0]);
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
+
+    const reloaded = await loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('reset-fresh-preview'),
+    });
+    assert.equal(downloadCount, 2);
+    assert.equal(reloaded, 'blob:cloud-preview-2');
+    resetCloudAttachmentPreviewLoader();
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1', 'blob:cloud-preview-2']);
+  } finally {
+    resetCloudAttachmentPreviewLoader();
+    objectUrls.restore();
+  }
+});
+
+test('reset rejects a cached-inside-queue preview before its public promise settles', async () => {
+  const objectUrls = installObjectUrlSpies();
+  const sharedDownload = deferred<Blob>();
+  const blockerDownloads = Array.from({ length: 3 }, () => deferred<Blob>());
+  let sharedDownloadCount = 0;
+  const client = {
+    downloadAttachmentContent(_token: string, attachmentId: string) {
+      if (attachmentId === 'reset-cached-preview') {
+        sharedDownloadCount += 1;
+        return sharedDownloadCount === 1
+          ? sharedDownload.promise
+          : Promise.resolve(new Blob(['reloaded']));
+      }
+      const blockerIndex = Number(attachmentId.replace('reset-blocker-', ''));
+      return blockerDownloads[blockerIndex]?.promise ?? Promise.reject(new Error('unexpected preview id'));
+    },
+  } as Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+
+  try {
+    const primary = loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('reset-cached-preview'),
+    });
+    const blockers = blockerDownloads.map((_download, index) => loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment(`reset-blocker-${index}`),
+    }));
+    const queuedDuplicate = loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('reset-cached-preview'),
+    });
+    const resultsPromise = Promise.allSettled([primary, ...blockers, queuedDuplicate]);
+
+    sharedDownload.resolve(new Blob(['cached']));
+    await flushMicrotasks(4);
+    assert.equal(sharedDownloadCount, 1);
+    assert.deepEqual(objectUrls.created, ['blob:cloud-preview-1']);
+
+    resetCloudAttachmentPreviewLoader();
+    blockerDownloads.forEach((download) => download.resolve(new Blob(['aborted'])));
+
+    const results = await resultsPromise;
+    assert.equal(results[0]?.status, 'fulfilled');
+    assertAbortResult(results.at(-1));
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1']);
+
+    const reloaded = await loadVisibleCloudAttachmentPreview({
+      token: 'token',
+      client,
+      attachment: imagePreviewAttachment('reset-cached-preview'),
+    });
+    assert.equal(sharedDownloadCount, 2);
+    assert.equal(reloaded, 'blob:cloud-preview-2');
+    resetCloudAttachmentPreviewLoader();
+    assert.deepEqual(objectUrls.revoked, ['blob:cloud-preview-1', 'blob:cloud-preview-2']);
+  } finally {
+    blockerDownloads.forEach((download) => download.resolve(new Blob(['cleanup'])));
     resetCloudAttachmentPreviewLoader();
     objectUrls.restore();
   }

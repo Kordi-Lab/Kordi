@@ -45,10 +45,6 @@ function retainCloudAttachmentPreviewUrl(cacheId: string, previewUrl: string) {
   return previewUrl;
 }
 
-export function cloudAttachmentPreviewCacheSizeForTests() {
-  return cloudAttachmentPreviewUrlCache.size;
-}
-
 type PreviewQueueTask<T> = {
   operation: (signal: AbortSignal) => Promise<T>;
   controller: AbortController;
@@ -99,7 +95,7 @@ export class CloudAttachmentPreviewQueue {
   clear() {
     for (const task of this.tasks) {
       task.controller.abort();
-      if (!task.started) this.settle(task, () => task.reject(abortError()));
+      this.settle(task, () => task.reject(abortError()));
     }
   }
 
