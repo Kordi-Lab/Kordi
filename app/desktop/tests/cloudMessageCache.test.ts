@@ -31,21 +31,25 @@ class MemoryCacheStore implements CloudMessageCacheStore {
   async remove(accountId: string) { this.values.delete(accountId); }
 }
 
-class FirstWriteFailureCacheStore extends MemoryCacheStore {
+class ControlledFirstWriteCacheStore extends MemoryCacheStore {
   private markFirstWriteStarted!: () => void;
-  private releaseFirstWrite!: () => void;
+  private releaseFirstWriteGate!: () => void;
   readonly firstWriteStarted = new Promise<void>((resolve) => {
     this.markFirstWriteStarted = resolve;
   });
   private readonly firstWriteRelease = new Promise<void>((resolve) => {
-    this.releaseFirstWrite = resolve;
+    this.releaseFirstWriteGate = resolve;
   });
   attempts = 0;
   activeWrites = 0;
   maxActiveWrites = 0;
 
-  failFirstWrite() {
-    this.releaseFirstWrite();
+  constructor(private readonly firstWriteOutcome: 'resolve' | 'reject') {
+    super();
+  }
+
+  releaseFirstWrite() {
+    this.releaseFirstWriteGate();
   }
 
   override async setMany(entries: ReadonlyMap<string, unknown>, removeKeys: readonly string[] = []) {
@@ -56,7 +60,9 @@ class FirstWriteFailureCacheStore extends MemoryCacheStore {
       if (attempt === 1) {
         this.markFirstWriteStarted();
         await this.firstWriteRelease;
-        throw new Error('planned first cache write failure');
+        if (this.firstWriteOutcome === 'reject') {
+          throw new Error('planned first cache write failure');
+        }
       }
       await super.setMany(entries, removeKeys);
     } finally {
@@ -186,11 +192,13 @@ test('peer-scoped cache writes only the changed peer after the initial snapshot'
   assert.equal(Object.keys(loaded).length, 20);
 });
 
-test('peer-scoped cache recovers a failed write into the newest queued snapshot', async () => {
-  const store = new FirstWriteFailureCacheStore();
+test('peer-scoped cache recovers a failed write into the newest queued snapshot', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const store = new ControlledFirstWriteCacheStore('reject');
   const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
   const firstPeerMessages = [message];
   const first = cache.save('acct_me', { acct_peer: firstPeerMessages });
+  context.mock.timers.runAll();
   await store.firstWriteStarted;
 
   const secondPeerMessage: CloudMessage = {
@@ -203,8 +211,8 @@ test('peer-scoped cache recovers a failed write into the newest queued snapshot'
     acct_peer_2: [secondPeerMessage],
   });
   const firstFailure = assert.rejects(first, /planned first cache write failure/);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  store.failFirstWrite();
+  context.mock.timers.runAll();
+  store.releaseFirstWrite();
 
   await firstFailure;
   await second;
@@ -214,4 +222,63 @@ test('peer-scoped cache recovers a failed write into the newest queued snapshot'
   assert.equal(loaded.acct_peer?.[0]?.body, 'hello');
   assert.equal(loaded.acct_peer_2?.[0]?.body, 'hello');
   assert.equal(store.maxActiveWrites, 1);
+});
+
+test('peer-scoped cache removal wins when an active write succeeds', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const store = new ControlledFirstWriteCacheStore('resolve');
+  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const first = cache.save('acct_me', { acct_peer: [message] });
+  context.mock.timers.runAll();
+  await store.firstWriteStarted;
+
+  const removal = cache.remove('acct_me');
+  store.releaseFirstWrite();
+  await Promise.all([first, removal]);
+  await cache.save('acct_me', {});
+
+  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  assert.deepEqual(await reloaded.load('acct_me'), {});
+});
+
+test('peer-scoped cache removal suppresses recovery when an active write fails', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const store = new ControlledFirstWriteCacheStore('reject');
+  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const first = cache.save('acct_me', { acct_peer: [message] });
+  context.mock.timers.runAll();
+  await store.firstWriteStarted;
+
+  const firstFailure = assert.rejects(first, /planned first cache write failure/);
+  const removal = cache.remove('acct_me');
+  store.releaseFirstWrite();
+  await Promise.all([firstFailure, removal]);
+  const emptySave = cache.save('acct_me', {});
+  context.mock.timers.runAll();
+  await emptySave;
+  assert.equal(store.attempts, 2);
+
+  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  assert.deepEqual(await reloaded.load('acct_me'), {});
+});
+
+test('peer-scoped cache load discards stale recovery after a rejected save', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const store = new ControlledFirstWriteCacheStore('reject');
+  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const first = cache.save('acct_me', { acct_peer: [message] });
+  context.mock.timers.runAll();
+  await store.firstWriteStarted;
+
+  const firstFailure = assert.rejects(first, /planned first cache write failure/);
+  store.releaseFirstWrite();
+  await firstFailure;
+  assert.deepEqual(await cache.load('acct_me'), {});
+  const emptySave = cache.save('acct_me', {});
+  context.mock.timers.runAll();
+  await emptySave;
+  assert.equal(store.attempts, 2);
+
+  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  assert.deepEqual(await reloaded.load('acct_me'), {});
 });

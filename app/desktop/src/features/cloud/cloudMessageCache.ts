@@ -42,6 +42,12 @@ type PendingWrite = {
 
 type RecoverableWrite = Pick<PendingWrite, 'changedPeers' | 'removedPeerIds'>;
 
+type ActiveWrite = {
+  generation: number;
+  settled: Promise<void>;
+  settle: () => void;
+};
+
 function cleanText(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -239,7 +245,9 @@ export class IndexedDbCloudMessageCacheStore implements CloudMessageCacheStore {
 
 export class VersionedCloudMessageCache implements CloudMessageCache {
   private readonly pendingWrites = new Map<string, PendingWrite>();
-  private readonly activeWrites = new Set<string>();
+  private readonly activeWrites = new Map<string, ActiveWrite>();
+  private readonly activeRemovals = new Map<string, Promise<void>>();
+  private readonly accountGenerations = new Map<string, number>();
   private readonly failedWrites = new Map<string, RecoverableWrite>();
   private readonly latestValues = new Map<string, Record<string, CloudMessage[]>>();
 
@@ -252,6 +260,7 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
   async load(accountId: string) {
     const normalizedAccountId = accountId.trim();
     if (!normalizedAccountId) return {};
+    const failedWriteAtStart = this.failedWrites.get(normalizedAccountId);
     if (this.options.store) {
       try {
         const manifest = cacheManifest(await this.options.store.get(manifestCacheKey(normalizedAccountId)));
@@ -268,15 +277,13 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
             }
           }
           const messagesByPeer = normalizeCloudMessagesByPeer(normalizedAccountId, rawByPeer);
-          this.latestValues.set(normalizedAccountId, messagesByPeer);
-          return messagesByPeer;
+          return this.establishLoadedBaseline(normalizedAccountId, messagesByPeer, failedWriteAtStart);
         }
         const stored = await this.options.store.get(normalizedAccountId);
         if (stored !== undefined) {
           const messagesByPeer = normalizeCloudMessagesByPeer(normalizedAccountId, stored);
           await this.writePeers(normalizedAccountId, messagesByPeer, [], [normalizedAccountId]);
-          this.latestValues.set(normalizedAccountId, messagesByPeer);
-          return messagesByPeer;
+          return this.establishLoadedBaseline(normalizedAccountId, messagesByPeer, failedWriteAtStart);
         }
       } catch {
         // Fall through to the legacy snapshot when IndexedDB is unavailable.
@@ -300,13 +307,14 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
         // Keep the legacy value so a later load can retry migration.
       }
     }
-    this.latestValues.set(normalizedAccountId, messagesByPeer);
-    return messagesByPeer;
+    return this.establishLoadedBaseline(normalizedAccountId, messagesByPeer, failedWriteAtStart);
   }
 
   save(accountId: string, value: Record<string, CloudMessage[]>): Promise<void> {
     const normalizedAccountId = accountId.trim();
     if (!normalizedAccountId || !this.options.store) return Promise.resolve();
+    const removal = this.activeRemovals.get(normalizedAccountId);
+    if (removal) return removal.then(() => this.save(normalizedAccountId, value));
     const previous = this.latestValues.get(normalizedAccountId) ?? {};
     const peerIds = Object.keys(value).map(cleanText).filter(Boolean).sort();
     const changedPeers = new Map<string, CloudMessage[]>();
@@ -358,27 +366,43 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     });
   }
 
-  async remove(accountId: string) {
+  remove(accountId: string): Promise<void> {
     const normalizedAccountId = accountId.trim();
-    if (!normalizedAccountId) return;
-    const pending = this.pendingWrites.get(normalizedAccountId);
+    if (!normalizedAccountId) return Promise.resolve();
+    const activeRemoval = this.activeRemovals.get(normalizedAccountId);
+    if (activeRemoval) return activeRemoval;
+    let removal!: Promise<void>;
+    removal = this.removeAccount(normalizedAccountId).finally(() => {
+      if (this.activeRemovals.get(normalizedAccountId) === removal) {
+        this.activeRemovals.delete(normalizedAccountId);
+      }
+    });
+    this.activeRemovals.set(normalizedAccountId, removal);
+    return removal;
+  }
+
+  private async removeAccount(accountId: string) {
+    this.accountGenerations.set(accountId, (this.accountGenerations.get(accountId) ?? 0) + 1);
+    const pending = this.pendingWrites.get(accountId);
     if (pending) {
       clearTimeout(pending.timer);
       pending.waiters.forEach(({ resolve }) => resolve());
-      this.pendingWrites.delete(normalizedAccountId);
+      this.pendingWrites.delete(accountId);
     }
-    this.failedWrites.delete(normalizedAccountId);
-    this.latestValues.delete(normalizedAccountId);
+    this.failedWrites.delete(accountId);
+    this.latestValues.delete(accountId);
+    await this.activeWrites.get(accountId)?.settled;
+    this.failedWrites.delete(accountId);
     if (this.options.store) {
-      const manifest = cacheManifest(await this.options.store.get(manifestCacheKey(normalizedAccountId)));
+      const manifest = cacheManifest(await this.options.store.get(manifestCacheKey(accountId)));
       await this.options.store.setMany(new Map(), [
-        normalizedAccountId,
-        manifestCacheKey(normalizedAccountId),
-        ...(manifest?.peerIds ?? []).map((peerId) => peerCacheKey(normalizedAccountId, peerId)),
+        accountId,
+        manifestCacheKey(accountId),
+        ...(manifest?.peerIds ?? []).map((peerId) => peerCacheKey(accountId, peerId)),
       ]);
     }
     try {
-      this.options.legacyStorage?.removeItem(legacyCacheKey(normalizedAccountId));
+      this.options.legacyStorage?.removeItem(legacyCacheKey(accountId));
     } catch {
       // Best effort cleanup.
     }
@@ -389,7 +413,14 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     if (!pending || !this.options.store) return;
     if (this.activeWrites.has(accountId)) return;
     this.pendingWrites.delete(accountId);
-    this.activeWrites.add(accountId);
+    let settle!: () => void;
+    const generation = this.accountGenerations.get(accountId) ?? 0;
+    const activeWrite: ActiveWrite = {
+      generation,
+      settled: new Promise<void>((resolve) => { settle = resolve; }),
+      settle: () => settle(),
+    };
+    this.activeWrites.set(accountId, activeWrite);
     try {
       const normalizedChangedPeers: Record<string, CloudMessage[]> = {};
       for (const [peerId, messages] of pending.changedPeers) {
@@ -405,36 +436,51 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       await this.writePeers(accountId, normalizedChangedPeers, [...pending.removedPeerIds], [], peerIds);
       pending.waiters.forEach(({ resolve }) => resolve());
     } catch (error) {
-      const failedChangedPeers = new Map<string, CloudMessage[]>(
-        [...pending.changedPeers].filter(([peerId]) => !pending.removedPeerIds.has(peerId)),
-      );
-      const failedRemovedPeerIds = new Set(pending.removedPeerIds);
-      const newer = this.pendingWrites.get(accountId);
-      if (newer) {
-        for (const peerId of newer.removedPeerIds) {
-          failedChangedPeers.delete(peerId);
-          failedRemovedPeerIds.add(peerId);
+      if ((this.accountGenerations.get(accountId) ?? 0) === activeWrite.generation) {
+        const failedChangedPeers = new Map<string, CloudMessage[]>(
+          [...pending.changedPeers].filter(([peerId]) => !pending.removedPeerIds.has(peerId)),
+        );
+        const failedRemovedPeerIds = new Set(pending.removedPeerIds);
+        const newer = this.pendingWrites.get(accountId);
+        if (newer) {
+          for (const peerId of newer.removedPeerIds) {
+            failedChangedPeers.delete(peerId);
+            failedRemovedPeerIds.add(peerId);
+          }
+          for (const [peerId, messages] of newer.changedPeers) {
+            failedChangedPeers.set(peerId, messages);
+            failedRemovedPeerIds.delete(peerId);
+          }
+          this.pendingWrites.set(accountId, {
+            ...newer,
+            changedPeers: failedChangedPeers,
+            removedPeerIds: failedRemovedPeerIds,
+          });
+        } else {
+          this.failedWrites.set(accountId, {
+            changedPeers: failedChangedPeers,
+            removedPeerIds: failedRemovedPeerIds,
+          });
         }
-        for (const [peerId, messages] of newer.changedPeers) {
-          failedChangedPeers.set(peerId, messages);
-          failedRemovedPeerIds.delete(peerId);
-        }
-        this.pendingWrites.set(accountId, {
-          ...newer,
-          changedPeers: failedChangedPeers,
-          removedPeerIds: failedRemovedPeerIds,
-        });
-      } else {
-        this.failedWrites.set(accountId, {
-          changedPeers: failedChangedPeers,
-          removedPeerIds: failedRemovedPeerIds,
-        });
       }
       pending.waiters.forEach(({ reject }) => reject(error));
     } finally {
-      this.activeWrites.delete(accountId);
-      if (this.pendingWrites.get(accountId)?.ready) void this.flush(accountId);
+      if (this.activeWrites.get(accountId) === activeWrite) this.activeWrites.delete(accountId);
+      activeWrite.settle();
+      if (!this.activeRemovals.has(accountId) && this.pendingWrites.get(accountId)?.ready) {
+        void this.flush(accountId);
+      }
     }
+  }
+
+  private establishLoadedBaseline(
+    accountId: string,
+    messagesByPeer: Record<string, CloudMessage[]>,
+    failedWriteAtStart: RecoverableWrite | undefined,
+  ) {
+    if (this.failedWrites.get(accountId) === failedWriteAtStart) this.failedWrites.delete(accountId);
+    this.latestValues.set(accountId, messagesByPeer);
+    return messagesByPeer;
   }
 
   private async writePeers(
