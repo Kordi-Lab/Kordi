@@ -1,8 +1,14 @@
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{Map, Value};
 
 use super::{
-    AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
+    add_session_participants_in_db, adopt_cloud_profile_identity_in_db, append_message_in_db,
+    create_delegated_exchange_in_db, hash_hex, json_from_db, mark_session_read_in_db, now_ms,
+    open_db, open_or_create_session_in_db, remove_session_participant_in_db,
+    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
+    select_delegated_exchange, select_identity, select_session, set_session_metadata_in_db,
+    set_session_participant_role_in_db, update_presence_in_db, upsert_identity_in_db,
+    upsert_message_in_db, AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
     AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalDelegatedExchange,
     CanonicalIdentity, CanonicalMessageDeliveryDelta, CanonicalMessagePage, CanonicalPresence,
     CanonicalProfileIdentityDelta, CanonicalReadCursorDelta, CanonicalSession,
@@ -12,13 +18,7 @@ use super::{
     RemoveCanonicalSessionParticipantRequest, RenameCanonicalSessionRequest,
     SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalMessageDeliveryRequest,
     UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
-    UpsertCanonicalIdentityRequest, add_session_participants_in_db,
-    adopt_cloud_profile_identity_in_db, append_message_in_db, create_delegated_exchange_in_db,
-    hash_hex, json_from_db, mark_session_read_in_db, now_ms, open_db, open_or_create_session_in_db,
-    remove_session_participant_in_db, rename_any_session_title_in_db, rename_session_in_db,
-    require_group_admin, select_delegated_exchange, select_identity, select_session,
-    set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
-    upsert_identity_in_db, upsert_message_in_db,
+    UpsertCanonicalIdentityRequest,
 };
 
 fn query_all<T>(
@@ -913,7 +913,7 @@ pub(crate) fn delete_session(session_id: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod catalog_tests {
-    use rusqlite::{Connection, params};
+    use rusqlite::{params, Connection};
 
     use super::super::UpdateCanonicalMessageDeliveryRequest;
     use super::{
@@ -1233,22 +1233,18 @@ mod catalog_tests {
             }
         };
 
-        assert!(
-            update_canonical_message_delivery_in_db(
-                &mut conn,
-                request("message:missing", "session:one", "sending", "sending"),
-            )
-            .expect("missing rows are not errors")
-            .is_none()
-        );
-        assert!(
-            update_canonical_message_delivery_in_db(
-                &mut conn,
-                request("message:one", "session:other", "sending", "sending"),
-            )
-            .expect_err("wrong session must error")
-            .contains("session")
-        );
+        assert!(update_canonical_message_delivery_in_db(
+            &mut conn,
+            request("message:missing", "session:one", "sending", "sending"),
+        )
+        .expect("missing rows are not errors")
+        .is_none());
+        assert!(update_canonical_message_delivery_in_db(
+            &mut conn,
+            request("message:one", "session:other", "sending", "sending"),
+        )
+        .expect_err("wrong session must error")
+        .contains("session"));
         for invalid in [
             request(" ", "session:one", "sending", "sending"),
             request("message:one", " ", "sending", "sending"),
