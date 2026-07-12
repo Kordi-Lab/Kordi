@@ -378,6 +378,33 @@ test('peer-scoped cache load preserves a newer failed-save baseline', async (con
   assert.equal((await reloaded.load('acct_me')).acct_peer?.[0]?.body, 'hello');
 });
 
+test('peer-scoped cache load cannot replace a newer successful-save baseline', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const store = new ControlledLoadFailureCacheStore();
+  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const initialSave = cache.save('acct_me', { acct_peer: [message] });
+  context.mock.timers.runAll();
+  await initialSave;
+
+  store.blockNextPeerRead();
+  const loading = cache.load('acct_me');
+  await store.peerReadStarted;
+  const newestSnapshot = { acct_peer: [{ ...message, body: 'newest' }] };
+  const newerSave = cache.save('acct_me', newestSnapshot);
+  context.mock.timers.runAll();
+  await newerSave;
+  store.releasePeerRead();
+  assert.equal((await loading).acct_peer?.[0]?.body, 'hello');
+
+  const redundantSave = cache.save('acct_me', newestSnapshot);
+  context.mock.timers.runAll();
+  await redundantSave;
+  assert.equal(store.batches.length, 2, 'the stale load must not make an already-durable save look changed');
+
+  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  assert.equal((await reloaded.load('acct_me')).acct_peer?.[0]?.body, 'newest');
+});
+
 test('peer-scoped cache removal cancels a blocked v3 load baseline', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const store = new ControlledLoadFailureCacheStore();

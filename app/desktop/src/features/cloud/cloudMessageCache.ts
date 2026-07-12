@@ -281,6 +281,7 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
 
   private async loadAccount(normalizedAccountId: string, generation: number) {
     const failedWriteAtStart = this.failedWrites.get(normalizedAccountId);
+    const latestValueAtStart = this.latestValues.get(normalizedAccountId);
     if (this.options.store) {
       try {
         const manifest = cacheManifest(await this.options.store.get(manifestCacheKey(normalizedAccountId)));
@@ -301,6 +302,7 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
             normalizedAccountId,
             messagesByPeer,
             failedWriteAtStart,
+            latestValueAtStart,
             generation,
           );
         }
@@ -312,6 +314,7 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
             normalizedAccountId,
             messagesByPeer,
             failedWriteAtStart,
+            latestValueAtStart,
             generation,
           );
         }
@@ -341,6 +344,7 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       normalizedAccountId,
       messagesByPeer,
       failedWriteAtStart,
+      latestValueAtStart,
       generation,
     );
   }
@@ -517,10 +521,14 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     accountId: string,
     messagesByPeer: Record<string, CloudMessage[]>,
     failedWriteAtStart: RecoverableWrite | undefined,
+    latestValueAtStart: Record<string, CloudMessage[]> | undefined,
     generation: number,
   ) {
     if ((this.accountGenerations.get(accountId) ?? 0) !== generation) return {};
-    if (this.failedWrites.get(accountId) === failedWriteAtStart) {
+    if (
+      this.failedWrites.get(accountId) === failedWriteAtStart
+      && this.latestValues.get(accountId) === latestValueAtStart
+    ) {
       this.failedWrites.delete(accountId);
       this.latestValues.set(accountId, messagesByPeer);
     }
