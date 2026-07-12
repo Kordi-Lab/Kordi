@@ -1,6 +1,31 @@
 use super::*;
 use kordi_tools::{ReadSessionRequest, SearchSessionsRequest};
 
+struct TempSqliteFile {
+    path: std::path::PathBuf,
+}
+
+impl TempSqliteFile {
+    fn new() -> Self {
+        Self {
+            path: std::env::temp_dir().join(format!(
+                "kordi-monotonic-read-cursor-{}.sqlite3",
+                Uuid::new_v4().simple()
+            )),
+        }
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl Drop for TempSqliteFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 fn seed_session_with_messages(conn: &Connection) -> String {
     seed_identity(conn, "human:alice", "Alice", "human");
     seed_identity(conn, "human:bob", "Bob", "human");
@@ -178,14 +203,12 @@ fn mark_session_read_advances_from_a_missing_current_cursor() {
 
 #[test]
 fn mark_session_read_does_not_move_cursor_backward_across_connections() {
-    let db_path = std::env::temp_dir().join(format!(
-        "kordi-monotonic-read-cursor-{}.sqlite3",
-        Uuid::new_v4().simple()
-    ));
-    let newer_conn = Connection::open(&db_path).expect("open newer connection");
+    // Declaring the guard first makes it clean up after both connections during unwind.
+    let db_file = TempSqliteFile::new();
+    let newer_conn = Connection::open(db_file.path()).expect("open newer connection");
     schema::initialize_schema(&newer_conn).expect("initialize schema");
     let session_id = seed_session_with_messages(&newer_conn);
-    let stale_conn = Connection::open(&db_path).expect("open stale connection");
+    let stale_conn = Connection::open(db_file.path()).expect("open stale connection");
 
     let newer = mark_session_read_in_db(
         &newer_conn,
@@ -198,7 +221,7 @@ fn mark_session_read_does_not_move_cursor_backward_across_connections() {
     .expect("mark newer message read")
     .expect("newer cursor delta");
     assert_eq!(newer.last_read_message_id.as_deref(), Some("msg:2"));
-    let newer_seen_at_ms = newer.last_seen_at_ms.saturating_add(10_000);
+    let newer_seen_at_ms = i64::MAX - 1;
     newer_conn
         .execute(
             "UPDATE session_participants
@@ -228,10 +251,6 @@ fn mark_session_read_does_not_move_cursor_backward_across_connections() {
         participant_read_state(&newer_conn, &session_id, "human:alice"),
         (Some(newer_seen_at_ms), Some("msg:2".to_string()))
     );
-
-    drop(stale_conn);
-    drop(newer_conn);
-    std::fs::remove_file(db_path).expect("remove test database");
 }
 
 #[test]
