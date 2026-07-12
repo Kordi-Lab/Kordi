@@ -14,6 +14,7 @@ export type CloudGroupOutboxEntry = {
   canonicalMessageId: string;
   sessionId: string;
   envelope: string;
+  awaitingCanonicalAck?: boolean;
   trackCanonicalDelivery?: boolean;
   attachments?: SendCloudMessageAttachmentInput[];
   clientCreatedAt?: string | null;
@@ -153,6 +154,10 @@ function normalizeEntry(value: unknown): CloudGroupOutboxEntry | null {
   const pendingRecipientIds = uniqueText(record.pendingRecipientIds).filter((id) => !terminalIds.has(id));
   const allRecipientIds = new Set([...pendingRecipientIds, ...deliveredRecipientIds, ...exhaustedRecipientIds]);
   if (allRecipientIds.size === 0) return null;
+  const awaitingCanonicalAck = record.awaitingCanonicalAck === true
+    && pendingRecipientIds.length === 0
+    && deliveredRecipientIds.length > 0
+    && exhaustedRecipientIds.length === 0;
   const clientCreatedAt = cleanText(record.clientCreatedAt);
   const attachments = normalizedAttachments(record.attachments);
 
@@ -160,6 +165,7 @@ function normalizeEntry(value: unknown): CloudGroupOutboxEntry | null {
     canonicalMessageId,
     sessionId,
     envelope,
+    awaitingCanonicalAck,
     trackCanonicalDelivery: record.trackCanonicalDelivery !== false,
     ...(attachments ? { attachments } : {}),
     ...(clientCreatedAt ? { clientCreatedAt } : {}),
@@ -191,6 +197,7 @@ function normalizeState(value: unknown): CloudGroupOutboxPersistedState {
 function cloneEntry(entry: CloudGroupOutboxEntry): CloudGroupOutboxEntry {
   return {
     ...entry,
+    awaitingCanonicalAck: entry.awaitingCanonicalAck === true,
     attachments: entry.attachments?.map((attachment) => ({ ...attachment })),
     pendingRecipientIds: [...entry.pendingRecipientIds],
     deliveredRecipientIds: [...entry.deliveredRecipientIds],
@@ -284,9 +291,38 @@ export class CloudGroupOutbox {
   async deliverDue(send: CloudGroupOutboxSend, nowMs = Date.now()) {
     await this.ensureRestored();
     const dueIds = this.state.entries
-      .filter((entry) => entry.pendingRecipientIds.length > 0 && entry.nextAttemptAtMs <= nowMs)
+      .filter((entry) => (
+        entry.awaitingCanonicalAck === true
+        || (entry.pendingRecipientIds.length > 0 && entry.nextAttemptAtMs <= nowMs)
+      ))
       .map((entry) => entry.canonicalMessageId);
     return Promise.all(dueIds.map((id) => this.deliver(id, send, { nowMs })));
+  }
+
+  async acknowledgeCanonicalDelivery(canonicalMessageId: string) {
+    await this.ensureRestored();
+    const normalizedId = canonicalMessageId.trim();
+    if (!normalizedId) return false;
+    if (this.state.completedCanonicalMessageIds.includes(normalizedId)) return true;
+    const entry = this.state.entries.find((candidate) => candidate.canonicalMessageId === normalizedId);
+    if (
+      !entry
+      || entry.awaitingCanonicalAck !== true
+      || entry.pendingRecipientIds.length > 0
+      || (entry.exhaustedRecipientIds?.length ?? 0) > 0
+      || entry.deliveredRecipientIds.length === 0
+    ) {
+      return false;
+    }
+
+    this.state.entries = this.state.entries.filter((candidate) => candidate.canonicalMessageId !== normalizedId);
+    this.state.completedCanonicalMessageIds = [
+      ...this.state.completedCanonicalMessageIds.filter((id) => id !== normalizedId),
+      normalizedId,
+    ].slice(-MAX_COMPLETED_MESSAGE_IDS);
+    await this.persist();
+    this.notify();
+    return true;
   }
 
   private async deliverOnce(
@@ -332,6 +368,9 @@ export class CloudGroupOutbox {
     entry.pendingRecipientIds = [...pending];
     entry.deliveredRecipientIds = [...delivered];
     entry.exhaustedRecipientIds = exhausted.size > 0 ? [...exhausted] : undefined;
+    entry.awaitingCanonicalAck = entry.pendingRecipientIds.length === 0
+      && delivered.size > 0
+      && exhausted.size === 0;
     const retryDelays = entry.pendingRecipientIds.map((recipientId) => {
       const attempts = Math.max(1, entry.attemptsByRecipientId[recipientId] ?? 1);
       return CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS[Math.min(attempts - 1, CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS.length - 1)];
@@ -339,13 +378,6 @@ export class CloudGroupOutbox {
     entry.nextAttemptAtMs = retryDelays.length > 0 ? nowMs + Math.min(...retryDelays) : 0;
     const outcome = cloneEntry(entry);
 
-    if (entry.pendingRecipientIds.length === 0 && (entry.exhaustedRecipientIds?.length ?? 0) === 0) {
-      this.state.entries = this.state.entries.filter((candidate) => candidate.canonicalMessageId !== canonicalMessageId);
-      this.state.completedCanonicalMessageIds = [
-        ...this.state.completedCanonicalMessageIds.filter((id) => id !== canonicalMessageId),
-        canonicalMessageId,
-      ].slice(-MAX_COMPLETED_MESSAGE_IDS);
-    }
     await this.persist();
     this.notify();
     return outcome;

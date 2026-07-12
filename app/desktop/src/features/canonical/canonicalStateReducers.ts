@@ -278,25 +278,65 @@ export function mergeCanonicalMessageDeliveryDelta(
   const index = state.messages.findIndex((message) => (
     message.id === delta.messageId && message.sessionId === delta.sessionId
   ));
-  if (index < 0) return state;
+  let messages = state.messages;
+  if (index >= 0) {
+    const previous = state.messages[index];
+    if (delta.updatedAtMs >= previous.updatedAtMs) {
+      const previousContent = previous.content && typeof previous.content === 'object' && !Array.isArray(previous.content)
+        ? previous.content as Record<string, unknown>
+        : null;
+      const arraysEqual = (value: unknown, expected: string[]) => (
+        Array.isArray(value)
+        && value.length === expected.length
+        && value.every((item, itemIndex) => item === expected[itemIndex])
+      );
+      const contentMatches = previousContent !== null
+        && previousContent.deliveryState === delta.deliveryState
+        && arraysEqual(previousContent.deliveredRecipientIds, delta.deliveredRecipientIds)
+        && arraysEqual(previousContent.pendingRecipientIds, delta.pendingRecipientIds)
+        && arraysEqual(previousContent.exhaustedRecipientIds, delta.exhaustedRecipientIds);
+      const messageMatches = previous.status === delta.status
+        && previous.updatedAtMs === delta.updatedAtMs
+        && previous.contentHash === delta.contentHash
+        && contentMatches;
+      if (!messageMatches) {
+        const message: CanonicalSessionMessage = {
+          ...previous,
+          status: delta.status,
+          updatedAtMs: delta.updatedAtMs,
+          contentHash: delta.contentHash,
+          content: contentMatches
+            ? previous.content
+            : {
+                ...(previousContent ?? {}),
+                deliveryState: delta.deliveryState,
+                deliveredRecipientIds: delta.deliveredRecipientIds,
+                pendingRecipientIds: delta.pendingRecipientIds,
+                exhaustedRecipientIds: delta.exhaustedRecipientIds,
+              },
+        };
+        messages = [...state.messages];
+        messages[index] = message;
+      }
+    }
+  }
 
-  const previous = state.messages[index];
-  const previousContent = previous.content && typeof previous.content === 'object' && !Array.isArray(previous.content)
-    ? previous.content as Record<string, unknown>
-    : {};
-  const message: CanonicalSessionMessage = {
-    ...previous,
-    status: delta.status,
-    updatedAtMs: delta.updatedAtMs,
-    content: {
-      ...previousContent,
-      deliveryState: delta.deliveryState,
-      deliveredRecipientIds: delta.deliveredRecipientIds,
-      pendingRecipientIds: delta.pendingRecipientIds,
-      exhaustedRecipientIds: delta.exhaustedRecipientIds,
-    },
-  };
-  const messages = [...state.messages];
-  messages[index] = message;
-  return { ...state, messages };
+  let sessions = state.sessions;
+  const sessionIndex = state.sessions.findIndex((session) => session.id === delta.sessionId);
+  if (sessionIndex >= 0) {
+    const previous = state.sessions[sessionIndex];
+    const updatedAtMs = Math.max(previous.updatedAtMs, delta.sessionUpdatedAtMs);
+    const lastMessageAtMs = delta.sessionLastMessageAtMs !== null
+      && (previous.lastMessageAtMs == null || delta.sessionLastMessageAtMs > previous.lastMessageAtMs)
+      ? delta.sessionLastMessageAtMs
+      : previous.lastMessageAtMs;
+    if (updatedAtMs !== previous.updatedAtMs || lastMessageAtMs !== previous.lastMessageAtMs) {
+      sessions = [...state.sessions];
+      sessions[sessionIndex] = { ...previous, updatedAtMs, lastMessageAtMs };
+    }
+  }
+
+  return messages === state.messages && sessions === state.sessions
+    ? state
+    : { ...state, messages, sessions };
 }

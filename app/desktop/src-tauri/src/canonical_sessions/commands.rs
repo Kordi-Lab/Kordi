@@ -12,14 +12,13 @@ use super::{
     RemoveCanonicalSessionParticipantRequest, RenameCanonicalSessionRequest,
     SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalMessageDeliveryRequest,
     UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
-    UpsertCanonicalIdentityRequest,
-    add_session_participants_in_db, adopt_cloud_profile_identity_in_db, append_message_in_db,
-    create_delegated_exchange_in_db, hash_hex, json_from_db, mark_session_read_in_db, now_ms,
-    open_db, open_or_create_session_in_db, remove_session_participant_in_db,
-    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
-    select_delegated_exchange, select_identity, select_session, set_session_metadata_in_db,
-    set_session_participant_role_in_db, update_presence_in_db, upsert_identity_in_db,
-    upsert_message_in_db,
+    UpsertCanonicalIdentityRequest, add_session_participants_in_db,
+    adopt_cloud_profile_identity_in_db, append_message_in_db, create_delegated_exchange_in_db,
+    hash_hex, json_from_db, mark_session_read_in_db, now_ms, open_db, open_or_create_session_in_db,
+    remove_session_participant_in_db, rename_any_session_title_in_db, rename_session_in_db,
+    require_group_admin, select_delegated_exchange, select_identity, select_session,
+    set_session_metadata_in_db, set_session_participant_role_in_db, update_presence_in_db,
+    upsert_identity_in_db, upsert_message_in_db,
 };
 
 fn query_all<T>(
@@ -706,6 +705,22 @@ fn update_canonical_message_delivery_in_db(
         params![updated_at_ms, created_at_ms, session_id],
     )
     .map_err(|err| err.to_string())?;
+    let (content_hash, session_updated_at_ms, session_last_message_at_ms) = tx
+        .query_row(
+            "SELECT sm.content_hash, s.updated_at_ms, s.last_message_at_ms
+             FROM session_messages sm
+             JOIN sessions s ON s.id = sm.session_id
+             WHERE sm.id = ?1 AND sm.session_id = ?2",
+            params![message_id, session_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            },
+        )
+        .map_err(|err| err.to_string())?;
     tx.commit().map_err(|err| err.to_string())?;
 
     Ok(Some(CanonicalMessageDeliveryDelta {
@@ -717,6 +732,9 @@ fn update_canonical_message_delivery_in_db(
         pending_recipient_ids,
         exhausted_recipient_ids,
         updated_at_ms,
+        content_hash,
+        session_updated_at_ms,
+        session_last_message_at_ms,
     }))
 }
 
@@ -1107,6 +1125,9 @@ mod catalog_tests {
         assert_eq!(delta.session_id, "session:restored");
         assert_eq!(delta.status, "delivered");
         assert_eq!(delta.delivery_state, "partial");
+        assert_ne!(delta.content_hash, "old-hash");
+        assert_eq!(delta.session_updated_at_ms, delta.updated_at_ms);
+        assert_eq!(delta.session_last_message_at_ms, Some(202));
         let serialized = serde_json::to_value(&delta).expect("serialize bounded delivery delta");
         let object = serialized.as_object().expect("delivery delta object");
         let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
@@ -1114,12 +1135,15 @@ mod catalog_tests {
         assert_eq!(
             keys,
             vec![
+                "contentHash",
                 "deliveredRecipientIds",
                 "deliveryState",
                 "exhaustedRecipientIds",
                 "messageId",
                 "pendingRecipientIds",
                 "sessionId",
+                "sessionLastMessageAtMs",
+                "sessionUpdatedAtMs",
                 "status",
                 "updatedAtMs",
             ]
@@ -1136,7 +1160,7 @@ mod catalog_tests {
             .expect("load updated old target");
         assert_eq!(status, "delivered");
         assert_eq!(updated_at_ms, delta.updated_at_ms);
-        assert_ne!(content_hash, "old-hash");
+        assert_eq!(content_hash, delta.content_hash);
         let content: serde_json::Value =
             serde_json::from_str(&content_json).expect("parse content");
         assert_eq!(content["unrelated"]["keep"], true);
@@ -1209,18 +1233,22 @@ mod catalog_tests {
             }
         };
 
-        assert!(update_canonical_message_delivery_in_db(
-            &mut conn,
-            request("message:missing", "session:one", "sending", "sending"),
-        )
-        .expect("missing rows are not errors")
-        .is_none());
-        assert!(update_canonical_message_delivery_in_db(
-            &mut conn,
-            request("message:one", "session:other", "sending", "sending"),
-        )
-        .expect_err("wrong session must error")
-        .contains("session"));
+        assert!(
+            update_canonical_message_delivery_in_db(
+                &mut conn,
+                request("message:missing", "session:one", "sending", "sending"),
+            )
+            .expect("missing rows are not errors")
+            .is_none()
+        );
+        assert!(
+            update_canonical_message_delivery_in_db(
+                &mut conn,
+                request("message:one", "session:other", "sending", "sending"),
+            )
+            .expect_err("wrong session must error")
+            .contains("session")
+        );
         for invalid in [
             request(" ", "session:one", "sending", "sending"),
             request("message:one", " ", "sending", "sending"),

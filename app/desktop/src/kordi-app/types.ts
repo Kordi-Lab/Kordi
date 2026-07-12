@@ -571,6 +571,9 @@ export type CanonicalMessageDeliveryDelta = {
   pendingRecipientIds: string[];
   exhaustedRecipientIds: string[];
   updatedAtMs: number;
+  contentHash: string;
+  sessionUpdatedAtMs: number;
+  sessionLastMessageAtMs: number | null;
 };
 
 export type OpenCanonicalSessionFastResult = {

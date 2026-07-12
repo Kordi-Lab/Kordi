@@ -3569,20 +3569,25 @@ export function useCloudBridgeState({
   useEffect(() => { syncCloudBridgeDiffRef.current = syncCloudBridgeDiff; }, [syncCloudBridgeDiff]);
 
   const persistCloudGroupOutboxDelivery = useCallback(async (entry: CloudGroupOutboxEntry) => {
-    if (entry.trackCanonicalDelivery === false) return;
+    if (entry.trackCanonicalDelivery === false) {
+      await cloudGroupOutbox?.acknowledgeCanonicalDelivery(entry.canonicalMessageId);
+      return;
+    }
     const delivery = cloudGroupOutboxDeliveryStatus(entry);
     const delta = await updateCanonicalMessageDelivery({
       messageId: entry.canonicalMessageId,
       sessionId: entry.sessionId,
       ...delivery,
     });
-    if (!delta) return;
-    canonicalSessionStateRef.current = mergeCanonicalMessageDeliveryDelta(
-      canonicalSessionStateRef.current,
-      delta,
-    );
-    setCanonicalSessionState?.((current) => mergeCanonicalMessageDeliveryDelta(current, delta));
-  }, [setCanonicalSessionState]);
+    if (delta) {
+      canonicalSessionStateRef.current = mergeCanonicalMessageDeliveryDelta(
+        canonicalSessionStateRef.current,
+        delta,
+      );
+      setCanonicalSessionState?.((current) => mergeCanonicalMessageDeliveryDelta(current, delta));
+    }
+    await cloudGroupOutbox?.acknowledgeCanonicalDelivery(entry.canonicalMessageId);
+  }, [cloudGroupOutbox, setCanonicalSessionState]);
 
   useEffect(() => {
     if (!account || !cloudGroupOutbox || !canonicalStateReady || typeof window === 'undefined') return undefined;
@@ -4485,8 +4490,8 @@ export function useCloudBridgeState({
       }, { force: true });
       if (outcome) {
         await persistCloudGroupOutboxDelivery(outcome).catch((error) => {
-          // Delivery already happened (or remains durably queued); a local
-          // status-write failure must not rewrite the message as unsent.
+          // Recipient delivery is durable; canonical acknowledgement replays
+          // on startup, focus, or reconnect without resending recipients.
           // eslint-disable-next-line no-console
           console.warn('[cloud-group-outbox] failed to persist delivery status', error);
         });

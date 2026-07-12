@@ -63,14 +63,21 @@ test('outbox delivery persistence mutates the exact canonical message without lo
   assert.notEqual(end, -1, 'expected the next effect after outbox persistence');
   const persistence = source.slice(start, end);
 
-  assert.match(persistence, /if \(entry\.trackCanonicalDelivery === false\) return;/);
+  assert.match(
+    persistence,
+    /if \(entry\.trackCanonicalDelivery === false\) \{[\s\S]*?await cloudGroupOutbox\?\.acknowledgeCanonicalDelivery\(entry\.canonicalMessageId\);[\s\S]*?return;/,
+    'untracked terminal sends should acknowledge without invoking native storage',
+  );
   assert.match(persistence, /cloudGroupOutboxDeliveryStatus\(entry\)/);
   assert.match(persistence, /await updateCanonicalMessageDelivery\(\{[\s\S]*?messageId:\s*entry\.canonicalMessageId,[\s\S]*?sessionId:\s*entry\.sessionId,/);
-  assert.match(persistence, /if \(!delta\) return;/, 'a deleted native row must not be fabricated');
+  assert.doesNotMatch(persistence, /if \(!delta\) return;/, 'a missing native row still acknowledges the terminal outbox entry');
   assert.match(persistence, /canonicalSessionStateRef\.current\s*=\s*mergeCanonicalMessageDeliveryDelta\(/);
   assert.match(persistence, /setCanonicalSessionState\?\.\(\(current\) =>\s*mergeCanonicalMessageDeliveryDelta\(current, delta\)\s*\)/);
   assert.doesNotMatch(persistence, /fetchCanonicalSessionMessages/);
   assert.doesNotMatch(persistence, /\b200\b/);
   assert.doesNotMatch(persistence, /upsertCanonicalMessageFast/);
   assert.equal((persistence.match(/setCanonicalSessionState\?\.\(/g) ?? []).length, 1);
+  const nativeUpdate = persistence.indexOf('await updateCanonicalMessageDelivery');
+  const acknowledgement = persistence.lastIndexOf('await cloudGroupOutbox?.acknowledgeCanonicalDelivery');
+  assert.ok(nativeUpdate >= 0 && acknowledgement > nativeUpdate, 'native persistence must succeed before terminal acknowledgement');
 });

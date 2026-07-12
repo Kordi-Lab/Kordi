@@ -64,6 +64,85 @@ test('restart restores a pending outbox entry', async () => {
   assert.deepEqual(restarted.entries()[0]?.deliveredRecipientIds, ['acct_a']);
 });
 
+test('successful recipient delivery stays durable until canonical acknowledgement survives restart', async () => {
+  const persistence = new MemoryPersistence();
+  const first = new CloudGroupOutbox('acct_me', persistence);
+  await first.restore();
+  await first.enqueue(entry());
+  const outcome = await first.deliver('msg:canonical:one', async () => {}, { nowMs: 100, force: true });
+
+  assert.equal(outcome?.awaitingCanonicalAck, true);
+  assert.equal(first.entries()[0]?.awaitingCanonicalAck, true);
+  assert.deepEqual(first.entries()[0]?.pendingRecipientIds, []);
+  assert.deepEqual(persistence.value?.completedCanonicalMessageIds, []);
+
+  let acknowledgementReached = false;
+  const writeCanonical = async () => { throw new Error('forced canonical failure'); };
+  await assert.rejects(async () => {
+    await writeCanonical();
+    // This mirrors the native-write-before-ack ordering guarded by the source test.
+    acknowledgementReached = true;
+    await first.acknowledgeCanonicalDelivery('msg:canonical:one');
+  }, /forced canonical failure/);
+  assert.equal(acknowledgementReached, false);
+  const restarted = new CloudGroupOutbox('acct_me', persistence);
+  const restored = await restarted.restore();
+  assert.equal(restored[0]?.awaitingCanonicalAck, true);
+
+  let replaySends = 0;
+  const replayed = await restarted.deliverDue(async () => { replaySends += 1; }, 200);
+  assert.equal(replaySends, 0, 'canonical replay must not resend recipients');
+  assert.equal(replayed[0]?.awaitingCanonicalAck, true);
+
+  assert.equal(await restarted.acknowledgeCanonicalDelivery('msg:canonical:one'), true);
+  assert.deepEqual(restarted.entries(), []);
+  assert.deepEqual(persistence.value?.completedCanonicalMessageIds, ['msg:canonical:one']);
+  assert.equal(await restarted.acknowledgeCanonicalDelivery('msg:canonical:one'), true, 'ack is idempotent');
+  assert.equal(await restarted.enqueue(entry()), null, 'completed canonical ids still block duplicate sends');
+});
+
+test('canonical acknowledgement refuses pending, partial, and exhausted deliveries', async () => {
+  const pending = new CloudGroupOutbox('acct_me', new MemoryPersistence());
+  await pending.restore();
+  await pending.enqueue(entry());
+  assert.equal(await pending.acknowledgeCanonicalDelivery('msg:canonical:one'), false);
+
+  const partial = new CloudGroupOutbox('acct_me', new MemoryPersistence());
+  await partial.restore();
+  await partial.enqueue(entry());
+  await partial.deliver('msg:canonical:one', async ({ recipientId }) => {
+    if (recipientId === 'acct_b') throw new Error('offline');
+  }, { nowMs: 100, force: true });
+  assert.equal(await partial.acknowledgeCanonicalDelivery('msg:canonical:one'), false);
+
+  const exhausted = new CloudGroupOutbox('acct_me', new MemoryPersistence());
+  await exhausted.restore();
+  await exhausted.enqueue(entry());
+  let nowMs = 100;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const exhaustedOutcome = await exhausted.deliver('msg:canonical:one', async () => {
+      throw new Error('offline');
+    }, { nowMs, force: true });
+    nowMs = exhaustedOutcome?.nextAttemptAtMs ?? nowMs;
+  }
+  assert.equal(await exhausted.acknowledgeCanonicalDelivery('msg:canonical:one'), false);
+  assert.equal(exhausted.entries().length, 1);
+});
+
+test('legacy persisted entries normalize without an awaiting canonical acknowledgement phase', async () => {
+  const persistence = new MemoryPersistence();
+  persistence.value = {
+    version: 1,
+    entries: [entry()],
+    completedCanonicalMessageIds: [],
+  };
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+
+  const restored = await outbox.restore();
+
+  assert.equal(restored[0]?.awaitingCanonicalAck, false);
+});
+
 test('restart retains the exact canonical target when it is older than 200 newer rows', async () => {
   const persistence = new MemoryPersistence();
   const first = new CloudGroupOutbox('acct_me', persistence);
@@ -91,6 +170,8 @@ test('restart retains the exact canonical target when it is older than 200 newer
     pendingRecipientIds: [],
     exhaustedRecipientIds: [],
   });
+  assert.equal(outcome?.awaitingCanonicalAck, true);
+  assert.equal(await restarted.acknowledgeCanonicalDelivery('msg:canonical:one'), true);
 });
 
 test('retry sends only the failed recipient', async () => {
@@ -108,6 +189,8 @@ test('retry sends only the failed recipient', async () => {
   }, 1_100);
 
   assert.deepEqual(retried, ['acct_b']);
+  assert.equal(outbox.entries()[0]?.awaitingCanonicalAck, true);
+  assert.equal(await outbox.acknowledgeCanonicalDelivery('msg:canonical:one'), true);
   assert.deepEqual(outbox.entries(), []);
 });
 
@@ -118,6 +201,7 @@ test('a second enqueue with a completed canonical id cannot duplicate delivery',
   await outbox.enqueue(entry());
   let sends = 0;
   await outbox.deliver('msg:canonical:one', async () => { sends += 1; }, { nowMs: 100, force: true });
+  assert.equal(await outbox.acknowledgeCanonicalDelivery('msg:canonical:one'), true);
 
   const duplicate = await outbox.enqueue(entry());
   await outbox.deliver('msg:canonical:one', async () => { sends += 1; }, { nowMs: 200, force: true });

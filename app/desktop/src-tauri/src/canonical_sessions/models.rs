@@ -76,6 +76,9 @@ pub struct CanonicalMessageDeliveryDelta {
     pub pending_recipient_ids: Vec<String>,
     pub exhausted_recipient_ids: Vec<String>,
     pub updated_at_ms: i64,
+    pub content_hash: String,
+    pub session_updated_at_ms: i64,
+    pub session_last_message_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

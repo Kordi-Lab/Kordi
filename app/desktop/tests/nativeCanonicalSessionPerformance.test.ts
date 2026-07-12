@@ -111,9 +111,12 @@ test('canonical delivery mutation is an exact-id bounded delta path across nativ
       'pending_recipient_ids',
       'exhausted_recipient_ids',
       'updated_at_ms',
+      'content_hash',
+      'session_updated_at_ms',
+      'session_last_message_at_ms',
     ],
   );
-  assert.doesNotMatch(nativeModel[0], /content|history|CanonicalSessionState|CanonicalSessionMessage/);
+  assert.doesNotMatch(nativeModel[0], /content_text|content_json|history|CanonicalSessionState|CanonicalSessionMessage/);
 
   const rendererModel = /export type CanonicalMessageDeliveryDelta = \{([\s\S]*?)\n\};/.exec(typesSource());
   assert.ok(rendererModel, 'renderer types should expose the delivery delta');
@@ -128,6 +131,9 @@ test('canonical delivery mutation is an exact-id bounded delta path across nativ
       'pendingRecipientIds',
       'exhaustedRecipientIds',
       'updatedAtMs',
+      'contentHash',
+      'sessionUpdatedAtMs',
+      'sessionLastMessageAtMs',
     ],
   );
 

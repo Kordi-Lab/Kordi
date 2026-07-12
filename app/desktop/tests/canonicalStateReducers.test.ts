@@ -9,6 +9,7 @@ import {
 } from '../src/features/canonical/canonicalStateReducers';
 import type {
   CanonicalIdentity,
+  CanonicalMessageDeliveryDelta,
   CanonicalProfileIdentityDelta,
   CanonicalSessionMessage,
   CanonicalSessionState,
@@ -106,6 +107,45 @@ function messageRow(id: string, sequenceNum: number): CanonicalSessionMessage {
   };
 }
 
+function sessionRow(
+  id = 'session:one',
+  updatedAtMs = 1,
+  lastMessageAtMs: number | null = 1,
+): CanonicalSessionState['sessions'][number] {
+  return {
+    id,
+    kind: 'group',
+    title: id,
+    status: 'active',
+    createdByIdentityId: 'human:me',
+    primaryIdentityId: null,
+    relationshipIdentityId: null,
+    metadata: { keep: true },
+    createdAtMs: 1,
+    updatedAtMs,
+    lastMessageAtMs,
+  };
+}
+
+function deliveryDelta(
+  overrides: Partial<CanonicalMessageDeliveryDelta> = {},
+): CanonicalMessageDeliveryDelta {
+  return {
+    messageId: 'msg:one',
+    sessionId: 'session:one',
+    status: 'delivered',
+    deliveryState: 'partial',
+    deliveredRecipientIds: ['acct:a'],
+    pendingRecipientIds: [],
+    exhaustedRecipientIds: ['acct:b'],
+    updatedAtMs: 99,
+    contentHash: 'hash:delivery:99',
+    sessionUpdatedAtMs: 99,
+    sessionLastMessageAtMs: 2,
+    ...overrides,
+  };
+}
+
 test('read cursor deltas update only the matching participant', () => {
   const state = fixtureState();
   const next = mergeCanonicalReadCursorDelta(state, {
@@ -179,23 +219,21 @@ test('message delivery deltas patch only the loaded target and preserve unrelate
   };
   const untouched = messageRow('msg:two', 2);
   state.messages = [target, untouched];
+  const targetSession = sessionRow();
+  const untouchedSession = sessionRow('session:two', 5, 5);
+  state.sessions = [targetSession, untouchedSession];
 
-  const next = mergeCanonicalMessageDeliveryDelta(state, {
-    messageId: target.id,
-    sessionId: target.sessionId,
-    status: 'delivered',
-    deliveryState: 'partial',
-    deliveredRecipientIds: ['acct:a'],
-    pendingRecipientIds: [],
-    exhaustedRecipientIds: ['acct:b'],
-    updatedAtMs: 99,
-  });
+  const next = mergeCanonicalMessageDeliveryDelta(state, deliveryDelta());
 
   assert.notEqual(next, state);
   assert.notEqual(next?.messages, state.messages);
   assert.equal(next?.messages[1], untouched);
   assert.equal(next?.messages[0]?.status, 'delivered');
   assert.equal(next?.messages[0]?.updatedAtMs, 99);
+  assert.equal(next?.messages[0]?.contentHash, 'hash:delivery:99');
+  assert.equal(next?.sessions[0]?.updatedAtMs, 99);
+  assert.equal(next?.sessions[0]?.lastMessageAtMs, 2);
+  assert.equal(next?.sessions[1], untouchedSession);
   assert.deepEqual(next?.messages[0]?.content, {
     deliveryState: 'partial',
     deliveredRecipientIds: ['acct:a'],
@@ -207,19 +245,86 @@ test('message delivery deltas patch only the loaded target and preserve unrelate
 
 test('message delivery deltas preserve the exact state reference when the target is not loaded', () => {
   const state = fixtureState();
-  const next = mergeCanonicalMessageDeliveryDelta(state, {
+  const next = mergeCanonicalMessageDeliveryDelta(state, deliveryDelta({
     messageId: 'msg:older-than-loaded-window',
-    sessionId: 'session:one',
-    status: 'delivered',
-    deliveryState: 'delivered',
-    deliveredRecipientIds: ['acct:a'],
-    pendingRecipientIds: [],
-    exhaustedRecipientIds: [],
-    updatedAtMs: 99,
-  });
+    sessionId: 'session:missing',
+  }));
 
   assert.equal(next, state);
   assert.equal(mergeCanonicalMessageDeliveryDelta(null, null), null);
+});
+
+test('message delivery deltas update a loaded session when the old target row is not loaded', () => {
+  const state = fixtureState();
+  const targetSession = sessionRow('session:one', 10, 50);
+  const untouchedSession = sessionRow('session:two', 20, 20);
+  const untouchedMessage = messageRow('msg:newer-loaded-row', 201);
+  state.sessions = [targetSession, untouchedSession];
+  state.messages = [untouchedMessage];
+
+  const next = mergeCanonicalMessageDeliveryDelta(state, deliveryDelta({
+    messageId: 'msg:older-than-loaded-window',
+    sessionUpdatedAtMs: 99,
+    sessionLastMessageAtMs: 50,
+  }));
+
+  assert.notEqual(next, state);
+  assert.equal(next?.messages, state.messages, 'an unloaded message must not be fabricated');
+  assert.equal(next?.messages[0], untouchedMessage);
+  assert.equal(next?.sessions[0]?.updatedAtMs, 99);
+  assert.equal(next?.sessions[0]?.lastMessageAtMs, 50);
+  assert.equal(next?.sessions[1], untouchedSession);
+});
+
+test('older delivery deltas cannot roll loaded message or session state backward', () => {
+  const state = fixtureState();
+  state.messages = [{
+    ...messageRow('msg:one', 1),
+    status: 'delivered',
+    updatedAtMs: 200,
+    contentHash: 'hash:newer',
+    content: {
+      deliveryState: 'delivered',
+      deliveredRecipientIds: ['acct:a', 'acct:b'],
+      pendingRecipientIds: [],
+      exhaustedRecipientIds: [],
+      unrelated: true,
+    },
+  }];
+  state.sessions = [sessionRow('session:one', 250, 300)];
+
+  const next = mergeCanonicalMessageDeliveryDelta(state, deliveryDelta({
+    status: 'sending',
+    deliveryState: 'sending',
+    deliveredRecipientIds: [],
+    pendingRecipientIds: ['acct:a', 'acct:b'],
+    exhaustedRecipientIds: [],
+    updatedAtMs: 100,
+    contentHash: 'hash:older',
+    sessionUpdatedAtMs: 100,
+    sessionLastMessageAtMs: 200,
+  }));
+
+  assert.equal(next, state);
+});
+
+test('identical delivery delta replay preserves every state reference', () => {
+  const state = fixtureState();
+  state.sessions = [sessionRow('session:one', 1, 1)];
+  const delta = deliveryDelta();
+  const once = mergeCanonicalMessageDeliveryDelta(state, delta);
+  assert.ok(once);
+
+  const replay = mergeCanonicalMessageDeliveryDelta(once, {
+    ...delta,
+    deliveredRecipientIds: [...delta.deliveredRecipientIds],
+    pendingRecipientIds: [...delta.pendingRecipientIds],
+    exhaustedRecipientIds: [...delta.exhaustedRecipientIds],
+  });
+
+  assert.equal(replay, once);
+  assert.equal(replay?.messages, once.messages);
+  assert.equal(replay?.sessions, once.sessions);
 });
 
 test('profile identity deltas update the loaded profile without replacing message history', () => {
