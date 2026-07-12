@@ -247,6 +247,10 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
   private readonly pendingWrites = new Map<string, PendingWrite>();
   private readonly activeWrites = new Map<string, ActiveWrite>();
   private readonly activeRemovals = new Map<string, Promise<void>>();
+  private readonly activeLoads = new Map<
+    string,
+    Set<Promise<Record<string, CloudMessage[]>>>
+  >();
   private readonly accountGenerations = new Map<string, number>();
   private readonly failedWrites = new Map<string, RecoverableWrite>();
   private readonly latestValues = new Map<string, Record<string, CloudMessage[]>>();
@@ -257,9 +261,25 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     debounceMs?: number;
   }) {}
 
-  async load(accountId: string) {
+  load(accountId: string): Promise<Record<string, CloudMessage[]>> {
     const normalizedAccountId = accountId.trim();
-    if (!normalizedAccountId) return {};
+    if (!normalizedAccountId) return Promise.resolve({});
+    const removal = this.activeRemovals.get(normalizedAccountId);
+    if (removal) return removal.then(() => this.load(normalizedAccountId));
+    const generation = this.accountGenerations.get(normalizedAccountId) ?? 0;
+    const activeLoads = this.activeLoads.get(normalizedAccountId)
+      ?? new Set<Promise<Record<string, CloudMessage[]>>>();
+    let loading!: Promise<Record<string, CloudMessage[]>>;
+    loading = this.loadAccount(normalizedAccountId, generation).finally(() => {
+      activeLoads.delete(loading);
+      if (activeLoads.size === 0) this.activeLoads.delete(normalizedAccountId);
+    });
+    activeLoads.add(loading);
+    this.activeLoads.set(normalizedAccountId, activeLoads);
+    return loading;
+  }
+
+  private async loadAccount(normalizedAccountId: string, generation: number) {
     const failedWriteAtStart = this.failedWrites.get(normalizedAccountId);
     if (this.options.store) {
       try {
@@ -277,13 +297,23 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
             }
           }
           const messagesByPeer = normalizeCloudMessagesByPeer(normalizedAccountId, rawByPeer);
-          return this.establishLoadedBaseline(normalizedAccountId, messagesByPeer, failedWriteAtStart);
+          return this.establishLoadedBaseline(
+            normalizedAccountId,
+            messagesByPeer,
+            failedWriteAtStart,
+            generation,
+          );
         }
         const stored = await this.options.store.get(normalizedAccountId);
         if (stored !== undefined) {
           const messagesByPeer = normalizeCloudMessagesByPeer(normalizedAccountId, stored);
           await this.writePeers(normalizedAccountId, messagesByPeer, [], [normalizedAccountId]);
-          return this.establishLoadedBaseline(normalizedAccountId, messagesByPeer, failedWriteAtStart);
+          return this.establishLoadedBaseline(
+            normalizedAccountId,
+            messagesByPeer,
+            failedWriteAtStart,
+            generation,
+          );
         }
       } catch {
         // Fall through to the legacy snapshot when IndexedDB is unavailable.
@@ -307,7 +337,12 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
         // Keep the legacy value so a later load can retry migration.
       }
     }
-    return this.establishLoadedBaseline(normalizedAccountId, messagesByPeer, failedWriteAtStart);
+    return this.establishLoadedBaseline(
+      normalizedAccountId,
+      messagesByPeer,
+      failedWriteAtStart,
+      generation,
+    );
   }
 
   save(accountId: string, value: Record<string, CloudMessage[]>): Promise<void> {
@@ -383,6 +418,10 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
 
   private async removeAccount(accountId: string) {
     this.accountGenerations.set(accountId, (this.accountGenerations.get(accountId) ?? 0) + 1);
+    const activeLoadSettlements: Promise<void>[] = [...(this.activeLoads.get(accountId) ?? [])]
+      .map((loading) => loading.then(() => {}, () => {}));
+    const activeWrite = this.activeWrites.get(accountId);
+    if (activeWrite) activeLoadSettlements.push(activeWrite.settled);
     const pending = this.pendingWrites.get(accountId);
     if (pending) {
       clearTimeout(pending.timer);
@@ -391,8 +430,9 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     }
     this.failedWrites.delete(accountId);
     this.latestValues.delete(accountId);
-    await this.activeWrites.get(accountId)?.settled;
+    await Promise.all(activeLoadSettlements);
     this.failedWrites.delete(accountId);
+    this.latestValues.delete(accountId);
     if (this.options.store) {
       const manifest = cacheManifest(await this.options.store.get(manifestCacheKey(accountId)));
       await this.options.store.setMany(new Map(), [
@@ -477,7 +517,9 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     accountId: string,
     messagesByPeer: Record<string, CloudMessage[]>,
     failedWriteAtStart: RecoverableWrite | undefined,
+    generation: number,
   ) {
+    if ((this.accountGenerations.get(accountId) ?? 0) !== generation) return {};
     if (this.failedWrites.get(accountId) === failedWriteAtStart) {
       this.failedWrites.delete(accountId);
       this.latestValues.set(accountId, messagesByPeer);

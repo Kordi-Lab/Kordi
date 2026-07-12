@@ -114,6 +114,31 @@ class ControlledLoadFailureCacheStore extends MemoryCacheStore {
   }
 }
 
+class ControlledMigrationCacheStore extends MemoryCacheStore {
+  private markMigrationWriteStarted!: () => void;
+  private releaseMigrationWriteGate!: () => void;
+  readonly migrationWriteStarted = new Promise<void>((resolve) => {
+    this.markMigrationWriteStarted = resolve;
+  });
+  private readonly migrationWriteRelease = new Promise<void>((resolve) => {
+    this.releaseMigrationWriteGate = resolve;
+  });
+  private shouldBlockMigrationWrite = true;
+
+  releaseMigrationWrite() {
+    this.releaseMigrationWriteGate();
+  }
+
+  override async setMany(entries: ReadonlyMap<string, unknown>, removeKeys: readonly string[] = []) {
+    if (this.shouldBlockMigrationWrite) {
+      this.shouldBlockMigrationWrite = false;
+      this.markMigrationWriteStarted();
+      await this.migrationWriteRelease;
+    }
+    await super.setMany(entries, removeKeys);
+  }
+}
+
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
   return {
@@ -351,4 +376,44 @@ test('peer-scoped cache load preserves a newer failed-save baseline', async (con
 
   const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
   assert.equal((await reloaded.load('acct_me')).acct_peer?.[0]?.body, 'hello');
+});
+
+test('peer-scoped cache removal cancels a blocked v3 load baseline', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const store = new ControlledLoadFailureCacheStore();
+  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const initialSave = cache.save('acct_me', { acct_peer: [message] });
+  context.mock.timers.runAll();
+  await initialSave;
+
+  store.blockNextPeerRead();
+  const loading = cache.load('acct_me');
+  await store.peerReadStarted;
+  const removal = cache.remove('acct_me');
+  store.releasePeerRead();
+
+  const [loaded] = await Promise.all([loading, removal]);
+  assert.deepEqual(loaded, {});
+  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  assert.deepEqual(await reloaded.load('acct_me'), {});
+});
+
+test('peer-scoped cache removal deletes a blocked v2 migration write', async () => {
+  const store = new ControlledMigrationCacheStore();
+  store.values.set('acct_me', {
+    version: 2,
+    messagesByPeer: { acct_peer: [message] },
+  });
+  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const loading = cache.load('acct_me');
+  await store.migrationWriteStarted;
+
+  const removal = cache.remove('acct_me');
+  await Promise.resolve();
+  store.releaseMigrationWrite();
+
+  const [loaded] = await Promise.all([loading, removal]);
+  assert.deepEqual(loaded, {});
+  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  assert.deepEqual(await reloaded.load('acct_me'), {});
 });
