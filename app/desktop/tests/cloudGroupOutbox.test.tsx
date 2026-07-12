@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   CloudGroupOutbox,
   cloudGroupOutboxDeliveryStatus,
+  defaultCloudGroupOutboxPersistence,
   patchCanonicalCloudGroupOutboxDelivery,
   type CloudGroupOutboxPersistedState,
   type CloudGroupOutboxPersistence,
@@ -14,6 +15,134 @@ class MemoryPersistence implements CloudGroupOutboxPersistence {
   value: CloudGroupOutboxPersistedState | null = null;
   async load() { return this.value ? structuredClone(this.value) : null; }
   async save(value: CloudGroupOutboxPersistedState) { this.value = structuredClone(value); }
+}
+
+class MemoryStorage implements Storage {
+  private readonly values = new Map<string, string>();
+
+  constructor(private readonly events: string[] = []) {}
+
+  get length() { return this.values.size; }
+  clear() { this.values.clear(); }
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  key(index: number) { return [...this.values.keys()][index] ?? null; }
+  removeItem(key: string) {
+    this.events.push('storage-remove');
+    this.values.delete(key);
+  }
+  setItem(key: string, value: string) { this.values.set(key, value); }
+}
+
+type FakeRequest<T> = {
+  result: T;
+  error: DOMException | null;
+  onsuccess: ((this: IDBRequest<T>, event: Event) => unknown) | null;
+  onerror: ((this: IDBRequest<T>, event: Event) => unknown) | null;
+};
+
+type FakeTransaction = {
+  oncomplete: ((this: IDBTransaction, event: Event) => unknown) | null;
+  onabort: ((this: IDBTransaction, event: Event) => unknown) | null;
+  onerror: ((this: IDBTransaction, event: Event) => unknown) | null;
+  objectStore(name: string): IDBObjectStore;
+};
+
+class ControllableIndexedDb {
+  failWrites = false;
+  value: CloudGroupOutboxPersistedState | undefined;
+  readonly factory: IDBFactory;
+
+  constructor(value: CloudGroupOutboxPersistedState | undefined, private readonly events: string[]) {
+    this.value = value ? structuredClone(value) : undefined;
+    const database = {
+      objectStoreNames: { contains: () => true },
+      transaction: (_name: string, _mode: IDBTransactionMode) => this.transaction(),
+    } as unknown as IDBDatabase;
+    this.factory = {
+      open: () => {
+        const request: FakeRequest<IDBDatabase> = {
+          result: database,
+          error: null,
+          onsuccess: null,
+          onerror: null,
+        };
+        queueMicrotask(() => {
+          request.onsuccess?.call(request as unknown as IDBRequest<IDBDatabase>, new Event('success'));
+        });
+        return request as unknown as IDBOpenDBRequest;
+      },
+    } as unknown as IDBFactory;
+  }
+
+  private transaction(): IDBTransaction {
+    const transaction: FakeTransaction = {
+      oncomplete: null,
+      onabort: null,
+      onerror: null,
+      objectStore: () => ({
+        get: () => {
+          const request: FakeRequest<CloudGroupOutboxPersistedState | undefined> = {
+            result: undefined,
+            error: null,
+            onsuccess: null,
+            onerror: null,
+          };
+          queueMicrotask(() => {
+            request.result = this.value ? structuredClone(this.value) : undefined;
+            request.onsuccess?.call(
+              request as unknown as IDBRequest<CloudGroupOutboxPersistedState | undefined>,
+              new Event('success'),
+            );
+            transaction.oncomplete?.call(transaction as unknown as IDBTransaction, new Event('complete'));
+          });
+          return request as unknown as IDBRequest<unknown>;
+        },
+        put: (value: CloudGroupOutboxPersistedState) => {
+          const request: FakeRequest<IDBValidKey> = {
+            result: 'acct_me',
+            error: null,
+            onsuccess: null,
+            onerror: null,
+          };
+          queueMicrotask(() => {
+            if (this.failWrites) {
+              request.error = new DOMException('forced IndexedDB write failure');
+              request.onerror?.call(request as unknown as IDBRequest<IDBValidKey>, new Event('error'));
+              return;
+            }
+            this.value = structuredClone(value);
+            request.onsuccess?.call(request as unknown as IDBRequest<IDBValidKey>, new Event('success'));
+            this.events.push('idb-put-complete');
+            transaction.oncomplete?.call(transaction as unknown as IDBTransaction, new Event('complete'));
+          });
+          return request as unknown as IDBRequest<IDBValidKey>;
+        },
+      } as unknown as IDBObjectStore),
+    };
+    return transaction as unknown as IDBTransaction;
+  }
+}
+
+async function withBrowserPersistenceGlobals<T>(
+  factory: IDBFactory | undefined,
+  storage: Storage | undefined,
+  run: () => Promise<T>,
+) {
+  const indexedDbDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+  const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: factory });
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: storage ? { localStorage: storage } : undefined,
+  });
+  try {
+    return await run();
+  } finally {
+    if (indexedDbDescriptor) Object.defineProperty(globalThis, 'indexedDB', indexedDbDescriptor);
+    else Reflect.deleteProperty(globalThis, 'indexedDB');
+    if (windowDescriptor) Object.defineProperty(globalThis, 'window', windowDescriptor);
+    else Reflect.deleteProperty(globalThis, 'window');
+  }
 }
 
 function entry() {
@@ -27,6 +156,62 @@ function entry() {
     nextAttemptAtMs: 0,
   };
 }
+
+test('restart reconciles a newer fallback delivery state before promoting it to IndexedDB', async () => {
+  const events: string[] = [];
+  const storage = new MemoryStorage(events);
+  const indexedDb = new ControllableIndexedDb({
+    version: 1,
+    entries: [entry()],
+    completedCanonicalMessageIds: [],
+  }, events);
+
+  await withBrowserPersistenceGlobals(indexedDb.factory, storage, async () => {
+    indexedDb.failWrites = true;
+    const first = new CloudGroupOutbox('acct_me', defaultCloudGroupOutboxPersistence('acct_me'));
+    await first.restore();
+    await first.deliver('msg:canonical:one', async () => {}, { nowMs: 100, force: true });
+    assert.equal(first.entries()[0]?.awaitingCanonicalAck, true);
+    assert.equal(storage.length, 1, 'failed IDB write must retain the fallback snapshot');
+
+    indexedDb.failWrites = false;
+    const restarted = new CloudGroupOutbox('acct_me', defaultCloudGroupOutboxPersistence('acct_me'));
+    const restored = await restarted.restore();
+    assert.equal(restored[0]?.awaitingCanonicalAck, true);
+    assert.deepEqual(restored[0]?.pendingRecipientIds, []);
+    assert.deepEqual(restored[0]?.deliveredRecipientIds, ['acct_a', 'acct_b']);
+
+    let sends = 0;
+    await restarted.deliverDue(async () => { sends += 1; }, 200);
+    assert.equal(sends, 0, 'recovery must not resend recipients already recorded as delivered');
+    assert.equal(indexedDb.value?.entries[0]?.awaitingCanonicalAck, true);
+    assert.equal(storage.length, 0, 'fallback is removed after the recovered snapshot reaches IDB');
+    const idbWriteCompletedAt = events.indexOf('idb-put-complete');
+    const fallbackRemovedAt = events.indexOf('storage-remove');
+    assert.ok(
+      idbWriteCompletedAt >= 0 && fallbackRemovedAt > idbWriteCompletedAt,
+      'fallback cleanup must happen only after the IDB transaction completes',
+    );
+  });
+});
+
+test('enqueue rejects when neither browser persistence backend accepts the snapshot', async () => {
+  await withBrowserPersistenceGlobals(undefined, undefined, async () => {
+    const outbox = new CloudGroupOutbox('acct_me', defaultCloudGroupOutboxPersistence('acct_me'));
+    await outbox.restore();
+
+    await assert.rejects(
+      outbox.enqueue(entry()),
+      /unable to persist the cloud group outbox/i,
+    );
+    assert.deepEqual(outbox.entries(), [], 'a rejected enqueue must not leave a memory-only entry');
+    await assert.rejects(
+      outbox.enqueue(entry()),
+      /unable to persist the cloud group outbox/i,
+      'a retry must not bypass durability through the failed in-memory entry',
+    );
+  });
+});
 
 test('one fulfilled and one rejected target leaves only the failed recipient pending', async () => {
   const persistence = new MemoryPersistence();

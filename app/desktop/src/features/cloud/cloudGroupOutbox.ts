@@ -194,6 +194,84 @@ function normalizeState(value: unknown): CloudGroupOutboxPersistedState {
   return { version: CLOUD_GROUP_OUTBOX_VERSION, entries, completedCanonicalMessageIds };
 }
 
+function mergeEntries(
+  indexedDbEntry: CloudGroupOutboxEntry,
+  fallbackEntry: CloudGroupOutboxEntry,
+): CloudGroupOutboxEntry {
+  const deliveredRecipientIds = uniqueText([
+    ...indexedDbEntry.deliveredRecipientIds,
+    ...fallbackEntry.deliveredRecipientIds,
+  ]);
+  const delivered = new Set(deliveredRecipientIds);
+  const exhaustedRecipientIds = uniqueText([
+    ...(indexedDbEntry.exhaustedRecipientIds ?? []),
+    ...(fallbackEntry.exhaustedRecipientIds ?? []),
+  ]).filter((recipientId) => !delivered.has(recipientId));
+  const terminal = new Set([...deliveredRecipientIds, ...exhaustedRecipientIds]);
+  const pendingRecipientIds = uniqueText([
+    ...indexedDbEntry.pendingRecipientIds,
+    ...fallbackEntry.pendingRecipientIds,
+  ]).filter((recipientId) => !terminal.has(recipientId));
+  const recipientIds = new Set([
+    ...pendingRecipientIds,
+    ...deliveredRecipientIds,
+    ...exhaustedRecipientIds,
+  ]);
+  const attemptsByRecipientId: Record<string, number> = {};
+  for (const recipientId of recipientIds) {
+    attemptsByRecipientId[recipientId] = Math.max(
+      indexedDbEntry.attemptsByRecipientId[recipientId] ?? 0,
+      fallbackEntry.attemptsByRecipientId[recipientId] ?? 0,
+    );
+  }
+  const awaitingCanonicalAck = (
+    indexedDbEntry.awaitingCanonicalAck === true
+    || fallbackEntry.awaitingCanonicalAck === true
+  )
+    && pendingRecipientIds.length === 0
+    && deliveredRecipientIds.length > 0
+    && exhaustedRecipientIds.length === 0;
+
+  return {
+    ...indexedDbEntry,
+    ...fallbackEntry,
+    awaitingCanonicalAck,
+    trackCanonicalDelivery: indexedDbEntry.trackCanonicalDelivery !== false
+      && fallbackEntry.trackCanonicalDelivery !== false,
+    pendingRecipientIds,
+    deliveredRecipientIds,
+    ...(exhaustedRecipientIds.length > 0 ? { exhaustedRecipientIds } : { exhaustedRecipientIds: undefined }),
+    attemptsByRecipientId,
+    nextAttemptAtMs: pendingRecipientIds.length > 0
+      ? Math.max(indexedDbEntry.nextAttemptAtMs, fallbackEntry.nextAttemptAtMs)
+      : 0,
+  };
+}
+
+function mergeStates(
+  indexedDbState: CloudGroupOutboxPersistedState,
+  fallbackState: CloudGroupOutboxPersistedState,
+): CloudGroupOutboxPersistedState {
+  const completedCanonicalMessageIds = uniqueText([
+    ...indexedDbState.completedCanonicalMessageIds,
+    ...fallbackState.completedCanonicalMessageIds,
+  ]).slice(-MAX_COMPLETED_MESSAGE_IDS);
+  const completed = new Set(completedCanonicalMessageIds);
+  const entriesByCanonicalMessageId = new Map(
+    indexedDbState.entries.map((entry) => [entry.canonicalMessageId, cloneEntry(entry)]),
+  );
+  for (const fallbackEntry of fallbackState.entries) {
+    const indexedDbEntry = entriesByCanonicalMessageId.get(fallbackEntry.canonicalMessageId);
+    entriesByCanonicalMessageId.set(
+      fallbackEntry.canonicalMessageId,
+      indexedDbEntry ? mergeEntries(indexedDbEntry, fallbackEntry) : cloneEntry(fallbackEntry),
+    );
+  }
+  const entries = [...entriesByCanonicalMessageId.values()]
+    .filter((entry) => !completed.has(entry.canonicalMessageId));
+  return { version: CLOUD_GROUP_OUTBOX_VERSION, entries, completedCanonicalMessageIds };
+}
+
 function cloneEntry(entry: CloudGroupOutboxEntry): CloudGroupOutboxEntry {
   return {
     ...entry,
@@ -265,7 +343,12 @@ export class CloudGroupOutbox {
     const existing = this.state.entries.find((candidate) => candidate.canonicalMessageId === entry.canonicalMessageId);
     if (existing) return cloneEntry(existing);
     this.state.entries.push(entry);
-    await this.persist();
+    try {
+      await this.persist();
+    } catch (error) {
+      this.state.entries = this.state.entries.filter((candidate) => candidate !== entry);
+      throw error;
+    }
     return cloneEntry(entry);
   }
 
@@ -408,34 +491,66 @@ class BrowserCloudGroupOutboxPersistence implements CloudGroupOutboxPersistence 
   ) {}
 
   async load() {
+    let indexedDbState: CloudGroupOutboxPersistedState | null = null;
     if (this.factory) {
       try {
         const value = await this.request('readonly', (store) => store.get(this.accountId));
-        if (value !== undefined) return normalizeState(value);
+        if (value !== undefined) indexedDbState = normalizeState(value);
       } catch {
-        // Fall through to localStorage when IndexedDB is temporarily unavailable.
+        // Reconcile with localStorage when IndexedDB is temporarily unavailable.
       }
     }
+    let fallbackState: CloudGroupOutboxPersistedState | null = null;
     try {
       const raw = this.storage?.getItem(`${CLOUD_GROUP_OUTBOX_LOCAL_STORAGE_PREFIX}${this.accountId}`);
-      return raw ? normalizeState(JSON.parse(raw)) : null;
+      fallbackState = raw ? normalizeState(JSON.parse(raw)) : null;
     } catch {
-      return null;
+      fallbackState = null;
     }
+    const state = indexedDbState && fallbackState
+      ? mergeStates(indexedDbState, fallbackState)
+      : fallbackState ?? indexedDbState;
+    if (!state) return null;
+
+    if (fallbackState && this.factory) {
+      try {
+        await this.request('readwrite', (store) => store.put(state, this.accountId));
+        this.removeFallback();
+      } catch {
+        // Retain the fallback until the reconciled snapshot reaches IndexedDB.
+      }
+    }
+    return state;
   }
 
   async save(value: CloudGroupOutboxPersistedState) {
     if (this.factory) {
       try {
         await this.request('readwrite', (store) => store.put(value, this.accountId));
-        this.storage?.removeItem(`${CLOUD_GROUP_OUTBOX_LOCAL_STORAGE_PREFIX}${this.accountId}`);
+        this.removeFallback();
         return;
       } catch {
         // Preserve the outbox in localStorage so a transient IDB failure does
         // not silently turn a queued send into a memory-only operation.
       }
     }
-    this.storage?.setItem(`${CLOUD_GROUP_OUTBOX_LOCAL_STORAGE_PREFIX}${this.accountId}`, JSON.stringify(value));
+    try {
+      if (!this.storage) throw new Error('localStorage is unavailable.');
+      this.storage.setItem(
+        `${CLOUD_GROUP_OUTBOX_LOCAL_STORAGE_PREFIX}${this.accountId}`,
+        JSON.stringify(value),
+      );
+    } catch {
+      throw new Error('Unable to persist the Cloud group outbox to IndexedDB or localStorage.');
+    }
+  }
+
+  private removeFallback() {
+    try {
+      this.storage?.removeItem(`${CLOUD_GROUP_OUTBOX_LOCAL_STORAGE_PREFIX}${this.accountId}`);
+    } catch {
+      // A successful IndexedDB transaction remains the durable source of truth.
+    }
   }
 
   private open() {
