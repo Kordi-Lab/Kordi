@@ -43,6 +43,7 @@ export type CloudMessageIndex = {
 
 export type CloudMessageIndexOptions = {
   parseGroupControl?: (body: string) => CloudGroupControlEnvelope | null;
+  previousIndex?: CloudMessageIndex | null;
 };
 
 function cleanText(value?: string | null) {
@@ -142,6 +143,7 @@ export function buildCloudMessageIndex(
   const performanceSpan = beginChatPerformanceSpan('cloud-message-index');
   const localAccountId = cleanText(accountId);
   const parseGroupControl = options.parseGroupControl ?? parseCloudGroupControl;
+  const previousGroupRowByWireMessageId = options.previousIndex?.groupRowByWireMessageId;
   const uniqueByMessageId = new Map<string, CloudMessage>();
   const peerMessageIds = new Map<string, Set<string>>();
 
@@ -161,16 +163,21 @@ export function buildCloudMessageIndex(
 
   const allMessages = [...uniqueByMessageId.values()].sort(messageSort);
   const byMessageId = new Map(allMessages.map((message) => [message.messageId, message]));
-  const mutableByPeerId = new Map<string, CloudMessage[]>();
+  const byPeerId = new Map<string, readonly CloudMessage[]>();
   for (const [peerId, messageIds] of peerMessageIds) {
-    mutableByPeerId.set(peerId, [...messageIds]
+    const messages = [...messageIds]
       .flatMap((messageId) => {
         const message = byMessageId.get(messageId);
         return message ? [message] : [];
       })
-      .sort(messageSort));
+      .sort(messageSort);
+    const previousMessages = options.previousIndex?.byPeerId.get(peerId);
+    byPeerId.set(peerId, previousMessages
+      && previousMessages.length === messages.length
+      && previousMessages.every((message, index) => message === messages[index])
+      ? previousMessages
+      : exposeArray(messages));
   }
-  const byPeerId = exposeArrayMap(mutableByPeerId);
   const mutableMessagesBySessionId = new Map<string, CloudMessage[]>();
   for (const wire of allMessages) {
     const sessionId = cleanText(wire.sessionId);
@@ -188,10 +195,15 @@ export function buildCloudMessageIndex(
   }>();
 
   for (const wire of allMessages) {
-    const envelope = parseGroupControl(wire.body);
+    const previousRow = previousGroupRowByWireMessageId?.get(wire.messageId);
+    const envelope = previousRow?.wire.body === wire.body
+      ? previousRow.envelope
+      : parseGroupControl(wire.body);
     if (!envelope) continue;
     const canonicalMessageId = cleanText(envelope.message?.id) || null;
-    const row: IndexedCloudGroupRow = { wire, envelope, canonicalMessageId };
+    const row: IndexedCloudGroupRow = previousRow?.wire === wire
+      ? previousRow
+      : { wire, envelope, canonicalMessageId };
     groupRows.push(row);
     groupRowByWireMessageId.set(wire.messageId, row);
     pushMapValue(mutableRowsBySessionId, envelope.groupId, row);
@@ -245,7 +257,11 @@ export function buildCloudMessageIndex(
   const bySessionId = exposeArrayMap(mutableMessagesBySessionId);
   const peerRevisionByPeerId = new Map<string, string>();
   for (const [peerId, messages] of byPeerId) {
-    peerRevisionByPeerId.set(peerId, revisionForMessages(messages));
+    const previousMessages = options.previousIndex?.byPeerId.get(peerId);
+    const previousRevision = options.previousIndex?.peerRevisionByPeerId.get(peerId);
+    peerRevisionByPeerId.set(peerId, previousMessages === messages && previousRevision
+      ? previousRevision
+      : revisionForMessages(messages));
   }
   const sessionRevisionBySessionId = new Map<string, string>();
   for (const [sessionId, messages] of bySessionId) {
@@ -265,7 +281,10 @@ export function buildCloudMessageIndex(
     deliveryByMessageId,
     peerRevisionByPeerId,
     sessionRevisionBySessionId,
-    revision: revisionForMessages(allMessages),
+    revision: [...peerRevisionByPeerId.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([peerId, revision]) => `${peerId}:${revision}`)
+      .join('|'),
   };
   finishChatPerformanceSpan(performanceSpan, () => ({
     messageCount: allMessages.length,

@@ -631,6 +631,22 @@ test('cloud message refresh snapshots preserve locally merged newer messages', (
   assert.deepEqual(merged.acct_peer?.map((item) => item.messageId), ['msg_hello', 'msg_sent']);
 });
 
+test('cloud message snapshot merges preserve unchanged peer and message identities', () => {
+  const peerOne = [{ ...message, messageId: 'msg_peer_one' }];
+  const peerTwo = [{ ...message, messageId: 'msg_peer_two', fromAccountId: 'acct_two' }];
+  const current = { acct_peer: peerOne, acct_two: peerTwo };
+
+  assert.equal(mergeCloudMessagesByPeerSnapshot(current, current), current);
+
+  const merged = mergeCloudMessagesByPeerSnapshot(current, {
+    acct_peer: [{ ...peerOne[0]! }],
+    acct_two: [...peerTwo, { ...peerTwo[0]!, messageId: 'msg_peer_two_new' }],
+  });
+  assert.equal(merged.acct_peer, peerOne);
+  assert.equal(merged.acct_peer?.[0], peerOne[0]);
+  assert.notEqual(merged.acct_two, peerTwo);
+});
+
 test('cloud message peer equality detects attachment cache updates', () => {
   const baseMessage: CloudMessage = {
     ...message,

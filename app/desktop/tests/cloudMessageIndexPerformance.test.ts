@@ -73,6 +73,41 @@ test('Cloud message index parses each unique wire row once and builds constant-t
   assert.ok(elapsedMs < 100, `Expected 500-row index below 100ms, received ${elapsedMs.toFixed(1)}ms`);
 });
 
+test('a one-row Cloud delta reuses parsed envelopes from the 20,000-row index', () => {
+  const messagesByPeer = buildScaleCloudMessagesByPeer();
+  const previousIndex = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer);
+  const peerId = 'acct_scale_0';
+  const previousRows = messagesByPeer[peerId] ?? [];
+  const template = previousRows.at(-1)!;
+  const nextMessagesByPeer = {
+    ...messagesByPeer,
+    [peerId]: [
+      ...previousRows,
+      {
+        ...template,
+        messageId: 'wire:scale:incremental',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        deliveredAt: '2026-01-02T00:00:01.000Z',
+        readAt: null,
+      },
+    ],
+  };
+  let parseCalls = 0;
+  const startedAt = performance.now();
+  const nextIndex = buildCloudMessageIndex(SCALE_ACCOUNT_ID, nextMessagesByPeer, {
+    previousIndex,
+    parseGroupControl(body) {
+      parseCalls += 1;
+      return parseCloudGroupControl(body);
+    },
+  });
+  const elapsedMs = performance.now() - startedAt;
+
+  assert.equal(nextIndex.allMessages.length, previousIndex.allMessages.length + 1);
+  assert.equal(parseCalls, 1);
+  assert.ok(elapsedMs < 50, `Expected one-row index delta below 50ms, received ${elapsedMs.toFixed(1)}ms`);
+});
+
 test('canonical delivery patch preserves state identity after summaries are applied', () => {
   const messagesByPeer = buildScaleCloudMessagesByPeer();
   const index = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer);

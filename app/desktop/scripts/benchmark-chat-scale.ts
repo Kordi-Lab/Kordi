@@ -4,6 +4,7 @@ import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcr
 import {
   buildCloudMessageIndex,
 } from '../src/features/cloud/cloudMessageIndex';
+import { parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { buildCanonicalIndexes } from '../src/features/canonical/readModel/indexes';
 import {
   CHAT_SCALE,
@@ -18,6 +19,7 @@ type ChatScaleBenchmark = {
   bridgeMapMs: number;
   canonicalIndexMs: number;
   cloudIndexMs: number;
+  cloudIndexDeltaMs: number;
   cloudDeliveryLookupMs: number;
   serializedCacheBytes: number;
   fixture: {
@@ -37,6 +39,7 @@ type ChatScaleBenchmarkBudgets = {
   bridgeMapMs: number;
   canonicalIndexMs: number;
   cloudIndexMs: number;
+  cloudIndexDeltaMs: number;
   cloudDeliveryLookupMs: number;
   serializedCacheBytes: number;
 };
@@ -48,6 +51,7 @@ const BENCHMARK_BUDGETS: ChatScaleBenchmarkBudgets = {
   bridgeMapMs: 100,
   canonicalIndexMs: 100,
   cloudIndexMs: 4_000,
+  cloudIndexDeltaMs: 50,
   cloudDeliveryLookupMs: 5,
   serializedCacheBytes: 70 * 1024 * 1024,
 };
@@ -108,6 +112,38 @@ if (indexedCloudMessageCount !== CHAT_SCALE.selectedSessionMessages) {
   throw new Error(`Unexpected indexed Cloud message count: ${indexedCloudMessageCount}`);
 }
 
+const deltaPeerId = 'acct_scale_0';
+const deltaPeerMessages = messagesByPeer[deltaPeerId] ?? [];
+const deltaTemplate = deltaPeerMessages.at(-1);
+if (!deltaTemplate) throw new Error('Scale fixture is missing the delta template row.');
+const messagesByPeerWithDelta = {
+  ...messagesByPeer,
+  [deltaPeerId]: [
+    ...deltaPeerMessages,
+    {
+      ...deltaTemplate,
+      messageId: 'wire:scale:delta',
+      createdAt: '2026-01-02T00:00:00.000Z',
+      deliveredAt: '2026-01-02T00:00:01.000Z',
+      readAt: null,
+    },
+  ],
+};
+let deltaParseCalls = 0;
+const cloudIndexDeltaMs = benchmark(() => {
+  deltaParseCalls = 0;
+  buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeerWithDelta, {
+    previousIndex: cloudMessageIndex,
+    parseGroupControl(body) {
+      deltaParseCalls += 1;
+      return parseCloudGroupControl(body);
+    },
+  });
+});
+if (deltaParseCalls !== 1) {
+  throw new Error(`Unexpected incremental Cloud parse count: ${deltaParseCalls}`);
+}
+
 let resolvedDeliveryCount = 0;
 const cloudDeliveryLookupMs = benchmark(() => {
   resolvedDeliveryCount = deliveryLookupIds.filter((messageId) => (
@@ -122,6 +158,7 @@ const output: ChatScaleBenchmark = {
   bridgeMapMs,
   canonicalIndexMs,
   cloudIndexMs,
+  cloudIndexDeltaMs,
   cloudDeliveryLookupMs,
   serializedCacheBytes: new TextEncoder().encode(JSON.stringify(messagesByPeer)).byteLength,
   fixture: {

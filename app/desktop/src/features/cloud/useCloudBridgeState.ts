@@ -1184,28 +1184,31 @@ function cloudMessageAttachmentsEqual(left: CloudMessage['attachments'] = [], ri
   });
 }
 
+function cloudMessagesEqual(message: CloudMessage, other: CloudMessage | undefined): boolean {
+  if (!other) return false;
+  return message.messageId === other.messageId
+    && message.fromAccountId === other.fromAccountId
+    && message.toAccountId === other.toAccountId
+    && message.body === other.body
+    && message.createdAt === other.createdAt
+    && message.deliveredAt === other.deliveredAt
+    && message.readAt === other.readAt
+    && message.direction === other.direction
+    && (message.sessionId ?? null) === (other.sessionId ?? null)
+    && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
+}
+
 function cloudMessageListsEqual(left: CloudMessage[] = [], right: CloudMessage[] = []): boolean {
+  if (left === right) return true;
   if (left.length !== right.length) return false;
-  return left.every((message, index) => {
-    const other = right[index];
-    return Boolean(other)
-      && message.messageId === other.messageId
-      && message.fromAccountId === other.fromAccountId
-      && message.toAccountId === other.toAccountId
-      && message.body === other.body
-      && message.createdAt === other.createdAt
-      && message.deliveredAt === other.deliveredAt
-      && message.readAt === other.readAt
-      && message.direction === other.direction
-      && (message.sessionId ?? null) === (other.sessionId ?? null)
-      && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
-  });
+  return left.every((message, index) => cloudMessagesEqual(message, right[index]));
 }
 
 export function cloudMessagesByPeerEqual(
   left: Record<string, CloudMessage[]>,
   right: Record<string, CloudMessage[]>,
 ): boolean {
+  if (left === right) return true;
   const leftKeys = Object.keys(left).sort();
   const rightKeys = Object.keys(right).sort();
   if (leftKeys.length !== rightKeys.length) return false;
@@ -1218,17 +1221,28 @@ export function mergeCloudMessagesByPeerSnapshot(
 ): Record<string, CloudMessage[]> {
   const peerIds = uniqueSortedPeerIds([...Object.keys(current), ...Object.keys(incoming)]);
   const merged: Record<string, CloudMessage[]> = {};
+  let changed = peerIds.length !== Object.keys(current).length;
   for (const peerId of peerIds) {
+    const currentMessages = current[peerId] ?? [];
     const byMessageId = new Map<string, CloudMessage>();
-    for (const message of current[peerId] ?? []) byMessageId.set(message.messageId, message);
+    for (const message of currentMessages) byMessageId.set(message.messageId, message);
     for (const message of incoming[peerId] ?? []) {
       const previous = byMessageId.get(message.messageId);
-      byMessageId.set(message.messageId, previous ? { ...previous, ...message } : message);
+      if (!previous) {
+        byMessageId.set(message.messageId, message);
+        continue;
+      }
+      const candidate = { ...previous, ...message };
+      byMessageId.set(message.messageId, cloudMessagesEqual(previous, candidate) ? previous : candidate);
     }
     const messages = [...byMessageId.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-    if (messages.length > 0) merged[peerId] = messages;
+    if (messages.length > 0) {
+      const unchanged = cloudMessageListsEqual(currentMessages, messages);
+      merged[peerId] = unchanged ? currentMessages : messages;
+      if (!unchanged) changed = true;
+    }
   }
-  return merged;
+  return changed ? merged : current;
 }
 
 export function markCloudMessagesReadLocally(
@@ -1249,8 +1263,10 @@ export function markCloudMessagesReadLocally(
   let changed = false;
   const next: Record<string, CloudMessage[]> = {};
   for (const [peerId, messages] of Object.entries(current)) {
-    next[peerId] = messages.map((message) => {
-      if (message.toAccountId !== localAccountId || message.direction !== 'incoming' || message.readAt) return message;
+    let nextMessages: CloudMessage[] | null = null;
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index]!;
+      if (message.toAccountId !== localAccountId || message.direction !== 'incoming' || message.readAt) continue;
       const peerMatches = peerIds.has(peerId) || peerIds.has(message.fromAccountId);
       const indexedGroupId = targets.groupRowByWireMessageId?.get(message.messageId)?.envelope.groupId;
       const messageSessionId = peerMatches || sessionIds.size === 0
@@ -1259,10 +1275,12 @@ export function markCloudMessagesReadLocally(
           || cleanText(indexedGroupId)
           || (targets.groupRowByWireMessageId ? '' : cleanText(parseCloudGroupControl(message.body)?.groupId));
       const sessionMatches = Boolean(messageSessionId && sessionIds.has(messageSessionId));
-      if (!peerMatches && !sessionMatches) return message;
+      if (!peerMatches && !sessionMatches) continue;
       changed = true;
-      return { ...message, readAt };
-    });
+      nextMessages ??= messages.slice();
+      nextMessages[index] = { ...message, readAt };
+    }
+    next[peerId] = nextMessages ?? messages;
   }
   return changed ? next : current;
 }
@@ -1988,8 +2006,11 @@ export function useCloudBridgeState({
     : null, [account?.accountId]);
   const contacts = useCloudContacts(account);
   const [messagesByPeer, setMessagesByPeer] = useState<Record<string, CloudMessage[]>>({});
+  const cloudMessageIndexRef = useRef<CloudMessageIndex>(null!);
   const cloudMessageIndex = useMemo(
-    () => buildCloudMessageIndex(account?.accountId ?? null, messagesByPeer),
+    () => buildCloudMessageIndex(account?.accountId ?? null, messagesByPeer, {
+      previousIndex: cloudMessageIndexRef.current,
+    }),
     [account?.accountId, messagesByPeer],
   );
   const [cloudSessionActivity, setCloudSessionActivity] = useState<CloudSessionActivityStore>(() => loadCachedCloudSessionActivity(account?.accountId));
@@ -2000,7 +2021,6 @@ export function useCloudBridgeState({
   const [cloudHiddenSessionIds, setCloudHiddenSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).hiddenSessionIds);
   const [cloudDeletedSessionIds, setCloudDeletedSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).deletedSessionIds);
   const messagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
-  const cloudMessageIndexRef = useRef(cloudMessageIndex);
   const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
   const cloudSessionForksByIdRef = useRef<Record<string, CloudSessionForkSummary>>(cloudSessionForksById);
   const cloudSessionPinsByIdRef = useRef<CloudSessionPinsById>(cloudSessionPinsById);
