@@ -562,6 +562,17 @@ export type CanonicalReadCursorDelta = {
   lastReadMessageId: string | null;
 };
 
+export type CanonicalMessageDeliveryDelta = {
+  messageId: string;
+  sessionId: string;
+  status: 'sending' | 'delivered' | 'failed';
+  deliveryState: 'sending' | 'partial' | 'delivered' | 'failed';
+  deliveredRecipientIds: string[];
+  pendingRecipientIds: string[];
+  exhaustedRecipientIds: string[];
+  updatedAtMs: number;
+};
+
 export type OpenCanonicalSessionFastResult = {
   session: CanonicalSession;
   participants: CanonicalSessionParticipant[];
@@ -617,6 +628,16 @@ export type AppendCanonicalMessageRequest = {
   status?: string | null;
   sourceTransport?: string | null;
   sourceEventId?: string | null;
+};
+
+export type UpdateCanonicalMessageDeliveryRequest = {
+  messageId: string;
+  sessionId: string;
+  status: 'sending' | 'delivered' | 'failed';
+  deliveryState: 'sending' | 'partial' | 'delivered' | 'failed';
+  deliveredRecipientIds: string[];
+  pendingRecipientIds: string[];
+  exhaustedRecipientIds: string[];
 };
 
 export type CreateCanonicalDelegatedExchangeRequest = {

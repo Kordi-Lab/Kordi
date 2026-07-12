@@ -67,6 +67,19 @@ pub struct CanonicalReadCursorDelta {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CanonicalMessageDeliveryDelta {
+    pub message_id: String,
+    pub session_id: String,
+    pub status: String,
+    pub delivery_state: String,
+    pub delivered_recipient_ids: Vec<String>,
+    pub pending_recipient_ids: Vec<String>,
+    pub exhausted_recipient_ids: Vec<String>,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenCanonicalSessionFastResult {
     pub session: CanonicalSession,
     pub participants: Vec<CanonicalSessionParticipant>,
@@ -267,6 +280,18 @@ pub struct AppendCanonicalMessageRequest {
     pub status: Option<String>,
     pub source_transport: Option<String>,
     pub source_event_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCanonicalMessageDeliveryRequest {
+    pub message_id: String,
+    pub session_id: String,
+    pub status: String,
+    pub delivery_state: String,
+    pub delivered_recipient_ids: Vec<String>,
+    pub pending_recipient_ids: Vec<String>,
+    pub exhausted_recipient_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

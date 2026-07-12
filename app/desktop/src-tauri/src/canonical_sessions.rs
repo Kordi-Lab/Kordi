@@ -1715,6 +1715,14 @@ pub async fn desktop_canonical_upsert_message_fast(
 }
 
 #[tauri::command]
+pub async fn desktop_canonical_update_message_delivery(
+    request: UpdateCanonicalMessageDeliveryRequest,
+) -> Result<Option<CanonicalMessageDeliveryDelta>, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_update_message_delivery(request))
+        .await
+}
+
+#[tauri::command]
 pub async fn desktop_canonical_append_message_fast(
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionMessage, String> {

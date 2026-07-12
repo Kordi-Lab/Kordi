@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   CloudGroupOutbox,
+  cloudGroupOutboxDeliveryStatus,
   patchCanonicalCloudGroupOutboxDelivery,
   type CloudGroupOutboxPersistedState,
   type CloudGroupOutboxPersistence,
@@ -61,6 +62,35 @@ test('restart restores a pending outbox entry', async () => {
   await restarted.restore();
   assert.deepEqual(restarted.entries()[0]?.pendingRecipientIds, ['acct_b']);
   assert.deepEqual(restarted.entries()[0]?.deliveredRecipientIds, ['acct_a']);
+});
+
+test('restart retains the exact canonical target when it is older than 200 newer rows', async () => {
+  const persistence = new MemoryPersistence();
+  const first = new CloudGroupOutbox('acct_me', persistence);
+  await first.restore();
+  await first.enqueue(entry());
+  await first.deliver('msg:canonical:one', async ({ recipientId }) => {
+    if (recipientId === 'acct_b') throw new Error('offline');
+  }, { nowMs: 100, force: true });
+
+  const newerCanonicalMessageIds = Array.from(
+    { length: 201 },
+    (_, index) => `msg:canonical:newer:${index + 1}`,
+  );
+  const latestPageIds = newerCanonicalMessageIds.slice(-200);
+  assert.equal(latestPageIds.includes('msg:canonical:one'), false);
+
+  const restarted = new CloudGroupOutbox('acct_me', persistence);
+  await restarted.restore();
+  const [outcome] = await restarted.deliverDue(async () => {}, 1_100);
+  assert.equal(outcome?.canonicalMessageId, 'msg:canonical:one');
+  assert.deepEqual(cloudGroupOutboxDeliveryStatus(outcome!), {
+    status: 'delivered',
+    deliveryState: 'delivered',
+    deliveredRecipientIds: ['acct_a', 'acct_b'],
+    pendingRecipientIds: [],
+    exhaustedRecipientIds: [],
+  });
 });
 
 test('retry sends only the failed recipient', async () => {

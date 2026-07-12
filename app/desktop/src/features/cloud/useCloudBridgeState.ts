@@ -10,7 +10,6 @@ import {
   buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
-  fetchCanonicalSessionMessages,
   markCanonicalSessionRead,
   openOrCreateCanonicalSession,
   openOrCreateCanonicalSessionFast,
@@ -20,6 +19,7 @@ import {
   upsertCanonicalIdentityFast,
   upsertCanonicalMessage,
   upsertCanonicalMessageFast,
+  updateCanonicalMessageDelivery,
   type DesktopChatContextMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
@@ -38,6 +38,7 @@ import type {
 } from '@/kordi-app/types';
 import {
   applyCanonicalProfileIdentityDelta,
+  mergeCanonicalMessageDeliveryDelta,
   mergeCanonicalMessageRow,
   mergeCanonicalReadCursorDelta,
 } from '@/features/canonical/canonicalStateReducers';
@@ -149,8 +150,8 @@ import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgent
 import { cloudMessageMetadataOnly, defaultCloudMessageCache } from './cloudMessageCache';
 import {
   CloudGroupOutbox,
+  cloudGroupOutboxDeliveryStatus,
   defaultCloudGroupOutboxPersistence,
-  patchCanonicalCloudGroupOutboxDelivery,
   type CloudGroupOutboxEntry,
 } from './cloudGroupOutbox';
 import { CloudProfileIdentityAdoptionCoordinator, CloudSyncCoordinator } from './cloudSyncCoordinator';
@@ -584,24 +585,6 @@ function upsertCanonicalRequestIntoLocalState(
     ? current.messages.map((message, index) => (index === existingIndex ? nextMessage : message))
     : [...current.messages, nextMessage];
   return { ...current, messages };
-}
-
-function canonicalMessageUpsertRequest(message: CanonicalSessionMessage): AppendCanonicalMessageRequest {
-  return {
-    id: message.id,
-    sessionId: message.sessionId,
-    senderIdentityId: message.senderIdentityId,
-    senderRole: message.senderRole,
-    messageKind: message.messageKind,
-    contentText: message.contentText,
-    content: message.content,
-    createdAtMs: message.createdAtMs,
-    parentMessageId: message.parentMessageId,
-    delegatedExchangeId: message.delegatedExchangeId,
-    status: message.status,
-    sourceTransport: message.sourceTransport,
-    sourceEventId: message.sourceEventId,
-  };
 }
 
 function upsertCanonicalIdentityIntoLocalState(
@@ -3587,30 +3570,18 @@ export function useCloudBridgeState({
 
   const persistCloudGroupOutboxDelivery = useCallback(async (entry: CloudGroupOutboxEntry) => {
     if (entry.trackCanonicalDelivery === false) return;
-    let baseState = canonicalSessionStateRef.current;
-    if (!baseState?.messages.some((message) => message.id === entry.canonicalMessageId)) {
-      const page = await fetchCanonicalSessionMessages(entry.sessionId, null, 200).catch(() => null);
-      if (baseState && page) {
-        baseState = page.messages.reduce<CanonicalSessionState | null>(
-          (current, message) => mergeCanonicalMessageRow(current, message),
-          baseState,
-        );
-        canonicalSessionStateRef.current = baseState;
-        setCanonicalSessionState?.(baseState);
-      }
-    }
-    const patchedState = patchCanonicalCloudGroupOutboxDelivery(baseState, entry);
-    if (!patchedState || patchedState === baseState) return;
-    const patchedMessage = patchedState.messages.find((message) => message.id === entry.canonicalMessageId);
-    if (!patchedMessage) return;
-
-    canonicalSessionStateRef.current = patchedState;
-    setCanonicalSessionState?.((current) => (
-      patchCanonicalCloudGroupOutboxDelivery(current ?? baseState, entry)
-    ));
-    const persistedMessage = await upsertCanonicalMessageFast(canonicalMessageUpsertRequest(patchedMessage));
-    canonicalSessionStateRef.current = mergeCanonicalMessageRow(canonicalSessionStateRef.current, persistedMessage);
-    setCanonicalSessionState?.((current) => mergeCanonicalMessageRow(current, persistedMessage));
+    const delivery = cloudGroupOutboxDeliveryStatus(entry);
+    const delta = await updateCanonicalMessageDelivery({
+      messageId: entry.canonicalMessageId,
+      sessionId: entry.sessionId,
+      ...delivery,
+    });
+    if (!delta) return;
+    canonicalSessionStateRef.current = mergeCanonicalMessageDeliveryDelta(
+      canonicalSessionStateRef.current,
+      delta,
+    );
+    setCanonicalSessionState?.((current) => mergeCanonicalMessageDeliveryDelta(current, delta));
   }, [setCanonicalSessionState]);
 
   useEffect(() => {

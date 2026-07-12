@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const commandsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/commands.rs', import.meta.url), 'utf8');
 const canonicalSessionsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions.rs', import.meta.url), 'utf8');
+const tauriLibSource = () => readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
 const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
 const modelsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/models.rs', import.meta.url), 'utf8');
 const typesSource = () => readFileSync(new URL('../src/kordi-app/types.ts', import.meta.url), 'utf8');
@@ -94,6 +95,71 @@ test('native scale regression seeds 20,000 rows and enforces catalog and page by
   assert.match(testSource, /catalog_bytes < 1024 \* 1024/);
   assert.match(testSource, /page\.messages\.len\(\) <= 150/);
   assert.match(testSource, /page_bytes < 512 \* 1024/);
+});
+
+test('canonical delivery mutation is an exact-id bounded delta path across native and renderer layers', () => {
+  const nativeModel = /pub struct CanonicalMessageDeliveryDelta \{([\s\S]*?)\n\}/.exec(modelsSource());
+  assert.ok(nativeModel, 'native model should expose the delivery delta');
+  assert.deepEqual(
+    Array.from(nativeModel[1]?.matchAll(/pub (\w+):/g) ?? [], (match) => match[1]),
+    [
+      'message_id',
+      'session_id',
+      'status',
+      'delivery_state',
+      'delivered_recipient_ids',
+      'pending_recipient_ids',
+      'exhausted_recipient_ids',
+      'updated_at_ms',
+    ],
+  );
+  assert.doesNotMatch(nativeModel[0], /content|history|CanonicalSessionState|CanonicalSessionMessage/);
+
+  const rendererModel = /export type CanonicalMessageDeliveryDelta = \{([\s\S]*?)\n\};/.exec(typesSource());
+  assert.ok(rendererModel, 'renderer types should expose the delivery delta');
+  assert.deepEqual(
+    Array.from(rendererModel[1]?.matchAll(/^\s*(\w+)[?:]*:/gm) ?? [], (match) => match[1]),
+    [
+      'messageId',
+      'sessionId',
+      'status',
+      'deliveryState',
+      'deliveredRecipientIds',
+      'pendingRecipientIds',
+      'exhaustedRecipientIds',
+      'updatedAtMs',
+    ],
+  );
+
+  const commandSource = commandsSource();
+  const helperStart = commandSource.indexOf('fn update_canonical_message_delivery_in_db');
+  const helperEnd = commandSource.indexOf('pub(super) fn desktop_canonical_update_message_delivery', helperStart);
+  assert.notEqual(helperStart, -1, 'expected dedicated exact-id delivery helper');
+  assert.notEqual(helperEnd, -1, 'expected command wrapper after delivery helper');
+  const helper = commandSource.slice(helperStart, helperEnd);
+  assert.match(helper, /TransactionBehavior::Immediate/, 'read-modify-write must acquire the write transaction before reading');
+  assert.match(helper, /FROM session_messages WHERE id = \?1/);
+  assert.doesNotMatch(helper, /load_state_from_db|load_catalog_from_db|load_message_page_from_db|LIMIT 200|CanonicalSessionState/);
+
+  const commandEnd = commandSource.indexOf('pub(super) fn desktop_canonical_create_delegated_exchange', helperEnd);
+  const command = commandSource.slice(helperEnd, commandEnd);
+  assert.match(command, /Result<Option<CanonicalMessageDeliveryDelta>, String>/);
+  assert.doesNotMatch(command, /load_state_from_db|load_catalog_from_db|load_message_page_from_db|LIMIT 200|CanonicalSessionState/);
+
+  const rustSource = canonicalSessionsSource();
+  const wrapperStart = rustSource.indexOf('pub async fn desktop_canonical_update_message_delivery');
+  const wrapperEnd = rustSource.indexOf('#[tauri::command]', wrapperStart + 1);
+  const wrapper = rustSource.slice(wrapperStart, wrapperEnd);
+  assert.match(wrapper, /Result<Option<CanonicalMessageDeliveryDelta>, String>/);
+  assert.doesNotMatch(wrapper, /load_state_from_db|session_catalog|session_messages|LIMIT 200|CanonicalSessionState/);
+  assert.match(tauriLibSource(), /canonical_sessions::desktop_canonical_update_message_delivery,/);
+
+  const rendererSource = desktopSource();
+  const clientStart = rendererSource.indexOf('export async function updateCanonicalMessageDelivery');
+  const clientEnd = rendererSource.indexOf('export async function', clientStart + 1);
+  const client = rendererSource.slice(clientStart, clientEnd);
+  assert.match(client, /invokeDesktop<CanonicalMessageDeliveryDelta \| null>\('desktop_canonical_update_message_delivery'/);
+  assert.doesNotMatch(client, /CanonicalSessionState|CanonicalSessionMessage|fetchCanonicalSessionMessages/);
 });
 
 test('cloud profile adoption returns a bounded identity delta without loading canonical state', () => {

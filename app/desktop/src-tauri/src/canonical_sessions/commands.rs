@@ -1,22 +1,25 @@
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use serde_json::{Map, Value};
 
 use super::{
     AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
     AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalDelegatedExchange,
-    CanonicalIdentity, CanonicalMessagePage, CanonicalPresence, CanonicalProfileIdentityDelta,
-    CanonicalReadCursorDelta, CanonicalSession, CanonicalSessionCatalog, CanonicalSessionMessage,
-    CanonicalSessionParticipant, CanonicalSessionState, CanonicalSessionSummary,
-    CreateCanonicalDelegatedExchangeRequest, MarkCanonicalSessionReadRequest,
-    OpenCanonicalSessionFastResult, OpenCanonicalSessionRequest,
+    CanonicalIdentity, CanonicalMessageDeliveryDelta, CanonicalMessagePage, CanonicalPresence,
+    CanonicalProfileIdentityDelta, CanonicalReadCursorDelta, CanonicalSession,
+    CanonicalSessionCatalog, CanonicalSessionMessage, CanonicalSessionParticipant,
+    CanonicalSessionState, CanonicalSessionSummary, CreateCanonicalDelegatedExchangeRequest,
+    MarkCanonicalSessionReadRequest, OpenCanonicalSessionFastResult, OpenCanonicalSessionRequest,
     RemoveCanonicalSessionParticipantRequest, RenameCanonicalSessionRequest,
-    SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalPresenceRequest,
-    UpdateCanonicalSessionMetadataRequest, UpsertCanonicalIdentityRequest,
+    SetCanonicalSessionParticipantRoleRequest, UpdateCanonicalMessageDeliveryRequest,
+    UpdateCanonicalPresenceRequest, UpdateCanonicalSessionMetadataRequest,
+    UpsertCanonicalIdentityRequest,
     add_session_participants_in_db, adopt_cloud_profile_identity_in_db, append_message_in_db,
-    create_delegated_exchange_in_db, json_from_db, mark_session_read_in_db, open_db,
-    open_or_create_session_in_db, remove_session_participant_in_db, rename_any_session_title_in_db,
-    rename_session_in_db, require_group_admin, select_delegated_exchange, select_identity,
-    select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
-    update_presence_in_db, upsert_identity_in_db, upsert_message_in_db,
+    create_delegated_exchange_in_db, hash_hex, json_from_db, mark_session_read_in_db, now_ms,
+    open_db, open_or_create_session_in_db, remove_session_participant_in_db,
+    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
+    select_delegated_exchange, select_identity, select_session, set_session_metadata_in_db,
+    set_session_participant_role_in_db, update_presence_in_db, upsert_identity_in_db,
+    upsert_message_in_db,
 };
 
 fn query_all<T>(
@@ -565,6 +568,165 @@ pub(super) fn desktop_canonical_append_message_fast(
     append_message_in_db(&conn, request)
 }
 
+fn validate_outbox_delivery_value(
+    value: String,
+    allowed: &[&str],
+    label: &str,
+) -> Result<String, String> {
+    let value = value.trim();
+    if allowed.contains(&value) {
+        Ok(value.to_string())
+    } else {
+        Err(format!("Invalid canonical message {label}: {value}"))
+    }
+}
+
+fn validate_recipient_ids(ids: Vec<String>, label: &str) -> Result<Vec<String>, String> {
+    ids.into_iter()
+        .map(|id| {
+            let id = id.trim();
+            if id.is_empty() {
+                Err(format!(
+                    "Canonical message {label} must not contain blank ids"
+                ))
+            } else {
+                Ok(id.to_string())
+            }
+        })
+        .collect()
+}
+
+fn update_canonical_message_delivery_in_db(
+    conn: &mut Connection,
+    request: UpdateCanonicalMessageDeliveryRequest,
+) -> Result<Option<CanonicalMessageDeliveryDelta>, String> {
+    let message_id = request.message_id.trim();
+    if message_id.is_empty() {
+        return Err("Message id is required".to_string());
+    }
+    let session_id = request.session_id.trim();
+    if session_id.is_empty() {
+        return Err("Session id is required".to_string());
+    }
+    let status = validate_outbox_delivery_value(
+        request.status,
+        &["sending", "delivered", "failed"],
+        "status",
+    )?;
+    let delivery_state = validate_outbox_delivery_value(
+        request.delivery_state,
+        &["sending", "partial", "delivered", "failed"],
+        "delivery state",
+    )?;
+    let delivered_recipient_ids =
+        validate_recipient_ids(request.delivered_recipient_ids, "delivered recipient ids")?;
+    let pending_recipient_ids =
+        validate_recipient_ids(request.pending_recipient_ids, "pending recipient ids")?;
+    let exhausted_recipient_ids =
+        validate_recipient_ids(request.exhausted_recipient_ids, "exhausted recipient ids")?;
+
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|err| err.to_string())?;
+    let row = tx
+        .query_row(
+            "SELECT session_id, content_text, content_json, created_at_ms
+             FROM session_messages WHERE id = ?1",
+            params![message_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    let Some((stored_session_id, content_text, content_json, created_at_ms)) = row else {
+        tx.commit().map_err(|err| err.to_string())?;
+        return Ok(None);
+    };
+    if stored_session_id != session_id {
+        return Err(format!(
+            "Canonical message {message_id} belongs to session {stored_session_id}, not {session_id}"
+        ));
+    }
+
+    let mut content = match content_json {
+        Some(content_json) => {
+            match serde_json::from_str::<Value>(&content_json).map_err(|err| err.to_string())? {
+                Value::Object(content) => content,
+                _ => Map::new(),
+            }
+        }
+        None => Map::new(),
+    };
+    content.insert(
+        "deliveryState".to_string(),
+        Value::String(delivery_state.clone()),
+    );
+    content.insert(
+        "deliveredRecipientIds".to_string(),
+        serde_json::to_value(&delivered_recipient_ids).map_err(|err| err.to_string())?,
+    );
+    content.insert(
+        "pendingRecipientIds".to_string(),
+        serde_json::to_value(&pending_recipient_ids).map_err(|err| err.to_string())?,
+    );
+    content.insert(
+        "exhaustedRecipientIds".to_string(),
+        serde_json::to_value(&exhausted_recipient_ids).map_err(|err| err.to_string())?,
+    );
+    let content_json =
+        serde_json::to_string(&Value::Object(content)).map_err(|err| err.to_string())?;
+    let content_hash = hash_hex(&format!("{content_text}|{content_json}"), 16);
+    let updated_at_ms = now_ms();
+
+    tx.execute(
+        "UPDATE session_messages
+         SET status = ?1, content_json = ?2, updated_at_ms = ?3, content_hash = ?4
+         WHERE id = ?5 AND session_id = ?6",
+        params![
+            status,
+            content_json,
+            updated_at_ms,
+            content_hash,
+            message_id,
+            session_id,
+        ],
+    )
+    .map_err(|err| err.to_string())?;
+    tx.execute(
+        "UPDATE sessions
+         SET updated_at_ms = ?1,
+             last_message_at_ms = MAX(COALESCE(last_message_at_ms, 0), ?2)
+         WHERE id = ?3",
+        params![updated_at_ms, created_at_ms, session_id],
+    )
+    .map_err(|err| err.to_string())?;
+    tx.commit().map_err(|err| err.to_string())?;
+
+    Ok(Some(CanonicalMessageDeliveryDelta {
+        message_id: message_id.to_string(),
+        session_id: session_id.to_string(),
+        status,
+        delivery_state,
+        delivered_recipient_ids,
+        pending_recipient_ids,
+        exhausted_recipient_ids,
+        updated_at_ms,
+    }))
+}
+
+pub(super) fn desktop_canonical_update_message_delivery(
+    request: UpdateCanonicalMessageDeliveryRequest,
+) -> Result<Option<CanonicalMessageDeliveryDelta>, String> {
+    let mut conn = open_db()?;
+    update_canonical_message_delivery_in_db(&mut conn, request)
+}
+
 pub(super) fn desktop_canonical_create_delegated_exchange(
     request: CreateCanonicalDelegatedExchangeRequest,
 ) -> Result<CanonicalSessionState, String> {
@@ -735,7 +897,10 @@ pub(crate) fn delete_session(session_id: &str) -> Result<(), String> {
 mod catalog_tests {
     use rusqlite::{Connection, params};
 
-    use super::{load_catalog_from_db, load_message_page_from_db};
+    use super::super::UpdateCanonicalMessageDeliveryRequest;
+    use super::{
+        load_catalog_from_db, load_message_page_from_db, update_canonical_message_delivery_in_db,
+    };
 
     fn test_conn() -> Connection {
         let conn = Connection::open_in_memory().expect("open in-memory canonical db");
@@ -875,5 +1040,194 @@ mod catalog_tests {
                 .collect::<Vec<_>>(),
             vec!["m1", "m2", "m3"]
         );
+    }
+
+    #[test]
+    fn restored_delivery_updates_an_old_message_by_id_with_a_bounded_delta() {
+        let mut conn = test_conn();
+        seed_identity(&conn);
+        conn.execute(
+            "INSERT INTO sessions (
+                id, kind, title, status, created_by_identity_id,
+                created_at_ms, updated_at_ms, last_message_at_ms
+             ) VALUES ('session:restored', 'group', 'Restored', 'active', 'human:me', 1, 202, 202)",
+            [],
+        )
+        .expect("seed session");
+        let large_text = "t".repeat(512 * 1024);
+        let large_content = serde_json::json!({
+            "deliveryState": "sending",
+            "deliveredRecipientIds": [],
+            "pendingRecipientIds": ["acct:a", "acct:b"],
+            "exhaustedRecipientIds": [],
+            "unrelated": { "keep": true, "large": "x".repeat(512 * 1024) },
+        })
+        .to_string();
+        conn.execute(
+            "INSERT INTO session_messages (
+                id, session_id, sender_identity_id, sender_role, message_kind,
+                content_text, content_json, status, sequence_num,
+                created_at_ms, updated_at_ms, content_hash
+             ) VALUES ('message:restored-old', 'session:restored', 'human:me', 'user', 'text',
+                       ?1, ?2, 'sending', 1, 1, 1, 'old-hash')",
+            params![large_text, large_content],
+        )
+        .expect("seed old restored target");
+        let tx = conn.transaction().expect("begin newer-message seed");
+        for sequence_num in 2..=202 {
+            tx.execute(
+                "INSERT INTO session_messages (
+                    id, session_id, sender_identity_id, sender_role, message_kind,
+                    content_text, content_json, status, sequence_num,
+                    created_at_ms, updated_at_ms, content_hash
+                 ) VALUES (?1, 'session:restored', 'human:me', 'user', 'text',
+                           ?1, '{\"newer\":true}', 'sent', ?2, ?2, ?2, 'newer-hash')",
+                params![format!("message:newer:{sequence_num}"), sequence_num],
+            )
+            .expect("seed newer message");
+        }
+        tx.commit().expect("commit newer-message seed");
+
+        let delta = update_canonical_message_delivery_in_db(
+            &mut conn,
+            UpdateCanonicalMessageDeliveryRequest {
+                message_id: "message:restored-old".to_string(),
+                session_id: "session:restored".to_string(),
+                status: "delivered".to_string(),
+                delivery_state: "partial".to_string(),
+                delivered_recipient_ids: vec!["acct:a".to_string()],
+                pending_recipient_ids: Vec::new(),
+                exhausted_recipient_ids: vec!["acct:b".to_string()],
+            },
+        )
+        .expect("update restored delivery")
+        .expect("old target still exists");
+
+        assert_eq!(delta.message_id, "message:restored-old");
+        assert_eq!(delta.session_id, "session:restored");
+        assert_eq!(delta.status, "delivered");
+        assert_eq!(delta.delivery_state, "partial");
+        let serialized = serde_json::to_value(&delta).expect("serialize bounded delivery delta");
+        let object = serialized.as_object().expect("delivery delta object");
+        let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec![
+                "deliveredRecipientIds",
+                "deliveryState",
+                "exhaustedRecipientIds",
+                "messageId",
+                "pendingRecipientIds",
+                "sessionId",
+                "status",
+                "updatedAtMs",
+            ]
+        );
+        assert!(serde_json::to_vec(&delta).expect("encode delta").len() < 512);
+
+        let (status, content_json, content_hash, updated_at_ms): (String, String, String, i64) =
+            conn.query_row(
+                "SELECT status, content_json, content_hash, updated_at_ms
+                 FROM session_messages WHERE id = 'message:restored-old'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("load updated old target");
+        assert_eq!(status, "delivered");
+        assert_eq!(updated_at_ms, delta.updated_at_ms);
+        assert_ne!(content_hash, "old-hash");
+        let content: serde_json::Value =
+            serde_json::from_str(&content_json).expect("parse content");
+        assert_eq!(content["unrelated"]["keep"], true);
+        assert_eq!(
+            content["unrelated"]["large"].as_str().map(str::len),
+            Some(512 * 1024)
+        );
+        assert_eq!(content["deliveryState"], "partial");
+        assert_eq!(
+            content["deliveredRecipientIds"],
+            serde_json::json!(["acct:a"])
+        );
+        assert_eq!(content["pendingRecipientIds"], serde_json::json!([]));
+        assert_eq!(
+            content["exhaustedRecipientIds"],
+            serde_json::json!(["acct:b"])
+        );
+
+        let unchanged_newer_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_messages
+                 WHERE session_id = 'session:restored' AND sequence_num > 1
+                   AND status = 'sent' AND content_json = '{\"newer\":true}'
+                   AND content_hash = 'newer-hash' AND updated_at_ms = sequence_num",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count unchanged newer rows");
+        assert_eq!(unchanged_newer_count, 201);
+        let (session_updated_at_ms, last_message_at_ms): (i64, i64) = conn
+            .query_row(
+                "SELECT updated_at_ms, last_message_at_ms FROM sessions WHERE id = 'session:restored'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("load session timestamps");
+        assert_eq!(session_updated_at_ms, delta.updated_at_ms);
+        assert_eq!(last_message_at_ms, 202);
+    }
+
+    #[test]
+    fn delivery_update_validates_ids_and_states_and_distinguishes_missing_from_wrong_session() {
+        let mut conn = test_conn();
+        seed_identity(&conn);
+        conn.execute(
+            "INSERT INTO sessions (
+                id, kind, title, status, created_by_identity_id, created_at_ms, updated_at_ms
+             ) VALUES ('session:one', 'group', 'One', 'active', 'human:me', 1, 1)",
+            [],
+        )
+        .expect("seed session");
+        conn.execute(
+            "INSERT INTO session_messages (
+                id, session_id, sender_identity_id, sender_role, message_kind,
+                content_text, content_json, status, sequence_num, created_at_ms, updated_at_ms
+             ) VALUES ('message:one', 'session:one', 'human:me', 'user', 'text',
+                       'one', '{}', 'sending', 1, 1, 1)",
+            [],
+        )
+        .expect("seed message");
+        let request = |message_id: &str, session_id: &str, status: &str, delivery_state: &str| {
+            UpdateCanonicalMessageDeliveryRequest {
+                message_id: message_id.to_string(),
+                session_id: session_id.to_string(),
+                status: status.to_string(),
+                delivery_state: delivery_state.to_string(),
+                delivered_recipient_ids: Vec::new(),
+                pending_recipient_ids: vec!["acct:a".to_string()],
+                exhausted_recipient_ids: Vec::new(),
+            }
+        };
+
+        assert!(update_canonical_message_delivery_in_db(
+            &mut conn,
+            request("message:missing", "session:one", "sending", "sending"),
+        )
+        .expect("missing rows are not errors")
+        .is_none());
+        assert!(update_canonical_message_delivery_in_db(
+            &mut conn,
+            request("message:one", "session:other", "sending", "sending"),
+        )
+        .expect_err("wrong session must error")
+        .contains("session"));
+        for invalid in [
+            request(" ", "session:one", "sending", "sending"),
+            request("message:one", " ", "sending", "sending"),
+            request("message:one", "session:one", "sent", "sending"),
+            request("message:one", "session:one", "sending", "pending"),
+        ] {
+            assert!(update_canonical_message_delivery_in_db(&mut conn, invalid).is_err());
+        }
     }
 }

@@ -62,7 +62,7 @@ export function cloudGroupOutboxDeliveryStatus(entry: CloudGroupOutboxEntry) {
       : hasDelivered
         ? 'delivered'
         : 'sending';
-  return { status, deliveryState, deliveredRecipientIds, pendingRecipientIds, exhaustedRecipientIds };
+  return { status, deliveryState, deliveredRecipientIds, pendingRecipientIds, exhaustedRecipientIds } as const;
 }
 
 export function patchCanonicalCloudGroupOutboxDelivery(

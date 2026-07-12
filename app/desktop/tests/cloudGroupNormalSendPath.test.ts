@@ -54,3 +54,23 @@ test('cloud group messages stay sending until the persistent recipient outbox re
   assert.match(bridgeSource, /persistCloudGroupOutboxDelivery/);
   assert.match(cloudGroupOutboxSource(), /clientMessageId:\s*`\$\{entry\.canonicalMessageId\}:\$\{recipientId\}`/);
 });
+
+test('outbox delivery persistence mutates the exact canonical message without loading a transcript page', () => {
+  const source = cloudBridgeSource();
+  const start = source.indexOf('const persistCloudGroupOutboxDelivery = useCallback');
+  const end = source.indexOf('\n\n  useEffect(() => {', start);
+  assert.notEqual(start, -1, 'expected the outbox delivery persistence closure');
+  assert.notEqual(end, -1, 'expected the next effect after outbox persistence');
+  const persistence = source.slice(start, end);
+
+  assert.match(persistence, /if \(entry\.trackCanonicalDelivery === false\) return;/);
+  assert.match(persistence, /cloudGroupOutboxDeliveryStatus\(entry\)/);
+  assert.match(persistence, /await updateCanonicalMessageDelivery\(\{[\s\S]*?messageId:\s*entry\.canonicalMessageId,[\s\S]*?sessionId:\s*entry\.sessionId,/);
+  assert.match(persistence, /if \(!delta\) return;/, 'a deleted native row must not be fabricated');
+  assert.match(persistence, /canonicalSessionStateRef\.current\s*=\s*mergeCanonicalMessageDeliveryDelta\(/);
+  assert.match(persistence, /setCanonicalSessionState\?\.\(\(current\) =>\s*mergeCanonicalMessageDeliveryDelta\(current, delta\)\s*\)/);
+  assert.doesNotMatch(persistence, /fetchCanonicalSessionMessages/);
+  assert.doesNotMatch(persistence, /\b200\b/);
+  assert.doesNotMatch(persistence, /upsertCanonicalMessageFast/);
+  assert.equal((persistence.match(/setCanonicalSessionState\?\.\(/g) ?? []).length, 1);
+});

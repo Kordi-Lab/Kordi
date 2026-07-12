@@ -3,6 +3,7 @@ import type {
   AdoptCloudProfileIdentityRequest,
   AppendCanonicalMessageRequest,
   CanonicalIdentity,
+  CanonicalMessageDeliveryDelta,
   CanonicalMessagePage,
   CanonicalProfileIdentityDelta,
   CanonicalReadCursorDelta,
@@ -29,6 +30,7 @@ import type {
   RenameCanonicalSessionRequest,
   SetCanonicalSessionParticipantRoleRequest,
   UpdateCanonicalPresenceRequest,
+  UpdateCanonicalMessageDeliveryRequest,
   UpdateCanonicalSessionMetadataRequest,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
@@ -714,6 +716,10 @@ export async function upsertCanonicalMessage(request: AppendCanonicalMessageRequ
 
 export async function upsertCanonicalMessageFast(request: AppendCanonicalMessageRequest) {
   return invokeDesktop<CanonicalSessionMessage>('desktop_canonical_upsert_message_fast', { request });
+}
+
+export async function updateCanonicalMessageDelivery(request: UpdateCanonicalMessageDeliveryRequest) {
+  return invokeDesktop<CanonicalMessageDeliveryDelta | null>('desktop_canonical_update_message_delivery', { request });
 }
 
 export async function appendCanonicalMessageFast(request: AppendCanonicalMessageRequest) {

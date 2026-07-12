@@ -1,4 +1,5 @@
 import type {
+  CanonicalMessageDeliveryDelta,
   CanonicalProfileIdentityDelta,
   CanonicalReadCursorDelta,
   CanonicalSessionMessage,
@@ -267,4 +268,35 @@ export function mergeCanonicalMessageRow(
       : session
   ));
   return { ...state, sessions, messages };
+}
+
+export function mergeCanonicalMessageDeliveryDelta(
+  state: CanonicalSessionState | null,
+  delta: CanonicalMessageDeliveryDelta | null,
+): CanonicalSessionState | null {
+  if (!state || !delta) return state;
+  const index = state.messages.findIndex((message) => (
+    message.id === delta.messageId && message.sessionId === delta.sessionId
+  ));
+  if (index < 0) return state;
+
+  const previous = state.messages[index];
+  const previousContent = previous.content && typeof previous.content === 'object' && !Array.isArray(previous.content)
+    ? previous.content as Record<string, unknown>
+    : {};
+  const message: CanonicalSessionMessage = {
+    ...previous,
+    status: delta.status,
+    updatedAtMs: delta.updatedAtMs,
+    content: {
+      ...previousContent,
+      deliveryState: delta.deliveryState,
+      deliveredRecipientIds: delta.deliveredRecipientIds,
+      pendingRecipientIds: delta.pendingRecipientIds,
+      exhaustedRecipientIds: delta.exhaustedRecipientIds,
+    },
+  };
+  const messages = [...state.messages];
+  messages[index] = message;
+  return { ...state, messages };
 }

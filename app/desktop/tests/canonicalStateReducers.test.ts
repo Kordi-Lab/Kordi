@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   applyCanonicalProfileIdentityDelta,
+  mergeCanonicalMessageDeliveryDelta,
   mergeCanonicalMessageRow,
   mergeCanonicalReadCursorDelta,
 } from '../src/features/canonical/canonicalStateReducers';
@@ -161,6 +162,64 @@ test('message row deltas replace by id and append new persisted rows', () => {
   const appended = mergeCanonicalMessageRow(replaced, appendedRow);
   assert.equal(appended?.messages.length, 2);
   assert.equal(appended?.messages[1], appendedRow);
+});
+
+test('message delivery deltas patch only the loaded target and preserve unrelated content', () => {
+  const state = fixtureState();
+  const target = {
+    ...messageRow('msg:one', 1),
+    status: 'sending',
+    content: {
+      deliveryState: 'sending',
+      deliveredRecipientIds: [],
+      pendingRecipientIds: ['acct:a', 'acct:b'],
+      exhaustedRecipientIds: [],
+      unrelated: { keep: true },
+    },
+  };
+  const untouched = messageRow('msg:two', 2);
+  state.messages = [target, untouched];
+
+  const next = mergeCanonicalMessageDeliveryDelta(state, {
+    messageId: target.id,
+    sessionId: target.sessionId,
+    status: 'delivered',
+    deliveryState: 'partial',
+    deliveredRecipientIds: ['acct:a'],
+    pendingRecipientIds: [],
+    exhaustedRecipientIds: ['acct:b'],
+    updatedAtMs: 99,
+  });
+
+  assert.notEqual(next, state);
+  assert.notEqual(next?.messages, state.messages);
+  assert.equal(next?.messages[1], untouched);
+  assert.equal(next?.messages[0]?.status, 'delivered');
+  assert.equal(next?.messages[0]?.updatedAtMs, 99);
+  assert.deepEqual(next?.messages[0]?.content, {
+    deliveryState: 'partial',
+    deliveredRecipientIds: ['acct:a'],
+    pendingRecipientIds: [],
+    exhaustedRecipientIds: ['acct:b'],
+    unrelated: { keep: true },
+  });
+});
+
+test('message delivery deltas preserve the exact state reference when the target is not loaded', () => {
+  const state = fixtureState();
+  const next = mergeCanonicalMessageDeliveryDelta(state, {
+    messageId: 'msg:older-than-loaded-window',
+    sessionId: 'session:one',
+    status: 'delivered',
+    deliveryState: 'delivered',
+    deliveredRecipientIds: ['acct:a'],
+    pendingRecipientIds: [],
+    exhaustedRecipientIds: [],
+    updatedAtMs: 99,
+  });
+
+  assert.equal(next, state);
+  assert.equal(mergeCanonicalMessageDeliveryDelta(null, null), null);
 });
 
 test('profile identity deltas update the loaded profile without replacing message history', () => {
