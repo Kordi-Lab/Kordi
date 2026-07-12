@@ -409,6 +409,47 @@ test('concurrent duplicate enqueue stays pending until the shared durable save s
   assert.equal(persistence.saveCount, 1, 'an already committed duplicate must not rewrite persistence');
 });
 
+test('delivery rejects without sending when its pending enqueue persistence fails', async () => {
+  const persistence = new ControlledFirstSaveFailurePersistence();
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+
+  const enqueueResult = assert.rejects(outbox.enqueue(entry()), /forced first save failure/);
+  await persistence.firstSaveStarted;
+  let sends = 0;
+  const deliveryResult = assert.rejects(
+    outbox.deliverDue(async () => { sends += 1; }, 0),
+    /forced first save failure/,
+  );
+  persistence.releaseFirstSave();
+
+  await Promise.all([enqueueResult, deliveryResult]);
+  assert.equal(sends, 0, 'delivery must not escape before its outbox entry is durable');
+  assert.deepEqual(outbox.entries(), []);
+});
+
+test('concurrent deliveries wait for one durable enqueue and share one delivery flight', async () => {
+  const persistence = new ControlledFirstSaveSuccessPersistence();
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+
+  const enqueueResult = outbox.enqueue(entry());
+  await persistence.firstSaveStarted;
+  const sentRecipientIds: string[] = [];
+  const send = async ({ recipientId }: { recipientId: string }) => { sentRecipientIds.push(recipientId); };
+  const firstDelivery = outbox.deliver('msg:canonical:one', send, { nowMs: 100, force: true });
+  const secondDelivery = outbox.deliver('msg:canonical:one', send, { nowMs: 100, force: true });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(sentRecipientIds, [], 'recipient sends must wait for the durable enqueue');
+  persistence.releaseFirstSave();
+
+  await enqueueResult;
+  const [firstOutcome, secondOutcome] = await Promise.all([firstDelivery, secondDelivery]);
+  assert.deepEqual(secondOutcome, firstOutcome);
+  assert.deepEqual(sentRecipientIds.sort(), ['acct_a', 'acct_b']);
+});
+
 test('a queued successful enqueue cannot persist an entry whose earlier save rejected', async () => {
   const persistence = new ControlledFirstSaveFailurePersistence();
   const outbox = new CloudGroupOutbox('acct_me', persistence);

@@ -400,6 +400,8 @@ export class CloudGroupOutbox {
     await this.ensureRestored();
     const normalizedId = canonicalMessageId.trim();
     if (!normalizedId) return null;
+    const pendingEnqueue = this.enqueueInFlight.get(normalizedId);
+    if (pendingEnqueue) await pendingEnqueue;
     const existingFlight = this.inFlight.get(normalizedId);
     if (existingFlight) return existingFlight;
     const delivery = this.deliverOnce(normalizedId, send, options);
