@@ -330,6 +330,7 @@ export class CloudGroupOutbox {
   private restorePromise: Promise<CloudGroupOutboxEntry[]> | null = null;
   private mutationTail: Promise<void> = Promise.resolve();
   private readonly pendingMutations: CloudGroupOutboxStateMutation[] = [];
+  private readonly enqueueInFlight = new Map<string, Promise<CloudGroupOutboxEntry | null>>();
   private readonly inFlight = new Map<string, Promise<CloudGroupOutboxEntry | null>>();
   private readonly acknowledgementInFlight = new Map<string, Promise<boolean>>();
   private readonly listeners = new Set<() => void>();
@@ -370,10 +371,12 @@ export class CloudGroupOutbox {
     await this.ensureRestored();
     const entry = normalizeEntry(value);
     if (!entry) throw new Error('Cloud group outbox entry is invalid.');
+    const existingEnqueue = this.enqueueInFlight.get(entry.canonicalMessageId);
+    if (existingEnqueue) return existingEnqueue;
     if (this.state.completedCanonicalMessageIds.includes(entry.canonicalMessageId)) return null;
     const existing = this.state.entries.find((candidate) => candidate.canonicalMessageId === entry.canonicalMessageId);
     if (existing) return cloneEntry(existing);
-    return this.commitMutation((state) => {
+    const enqueue = this.commitMutation((state) => {
       if (state.completedCanonicalMessageIds.includes(entry.canonicalMessageId)) return null;
       const persisted = state.entries.find((candidate) => candidate.canonicalMessageId === entry.canonicalMessageId);
       if (persisted) return cloneEntry(persisted);
@@ -381,6 +384,12 @@ export class CloudGroupOutbox {
       state.entries.push(queued);
       return cloneEntry(queued);
     });
+    this.enqueueInFlight.set(entry.canonicalMessageId, enqueue);
+    try {
+      return await enqueue;
+    } finally {
+      this.enqueueInFlight.delete(entry.canonicalMessageId);
+    }
   }
 
   async deliver(

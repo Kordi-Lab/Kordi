@@ -46,6 +46,25 @@ class ControlledFirstSaveFailurePersistence extends MemoryPersistence {
   releaseFirstSave() { this.resolveFirstSaveRelease?.(); }
 }
 
+class ControlledFirstSaveSuccessPersistence extends MemoryPersistence {
+  saveCount = 0;
+  private resolveFirstSaveStarted: (() => void) | null = null;
+  private resolveFirstSaveRelease: (() => void) | null = null;
+  readonly firstSaveStarted = new Promise<void>((resolve) => { this.resolveFirstSaveStarted = resolve; });
+  private readonly firstSaveRelease = new Promise<void>((resolve) => { this.resolveFirstSaveRelease = resolve; });
+
+  override async save(value: CloudGroupOutboxPersistedState) {
+    this.saveCount += 1;
+    if (this.saveCount === 1) {
+      this.resolveFirstSaveStarted?.();
+      await this.firstSaveRelease;
+    }
+    await super.save(value);
+  }
+
+  releaseFirstSave() { this.resolveFirstSaveRelease?.(); }
+}
+
 class ControlledFirstSuccessSecondFailurePersistence extends MemoryPersistence {
   private saveCount = 0;
   private resolveFirstSaveStarted: (() => void) | null = null;
@@ -346,6 +365,48 @@ test('enqueue rejects when neither browser persistence backend accepts the snaps
       'a retry must not bypass durability through the failed in-memory entry',
     );
   });
+});
+
+test('concurrent duplicate enqueue shares the first persistence failure', async () => {
+  const persistence = new ControlledFirstSaveFailurePersistence();
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+
+  const firstEnqueue = outbox.enqueue(entry());
+  const firstResult = assert.rejects(firstEnqueue, /forced first save failure/);
+  await persistence.firstSaveStarted;
+  const duplicateEnqueue = outbox.enqueue(entry());
+  const duplicateResult = assert.rejects(duplicateEnqueue, /forced first save failure/);
+  persistence.releaseFirstSave();
+
+  await Promise.all([firstResult, duplicateResult]);
+  assert.deepEqual(outbox.entries(), []);
+  assert.equal(persistence.value, null);
+});
+
+test('concurrent duplicate enqueue stays pending until the shared durable save succeeds', async () => {
+  const persistence = new ControlledFirstSaveSuccessPersistence();
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+
+  const firstEnqueue = outbox.enqueue(entry());
+  await persistence.firstSaveStarted;
+  let duplicateSettled = false;
+  const duplicateEnqueue = outbox.enqueue(entry()).then((result) => {
+    duplicateSettled = true;
+    return result;
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(duplicateSettled, false, 'duplicate must not fulfill before the durable save');
+  persistence.releaseFirstSave();
+
+  const [firstResult, duplicateResult] = await Promise.all([firstEnqueue, duplicateEnqueue]);
+  assert.deepEqual(duplicateResult, firstResult);
+  assert.equal(persistence.saveCount, 1, 'concurrent duplicates must share one mutation transaction');
+
+  assert.deepEqual(await outbox.enqueue(entry()), firstResult, 'an already committed duplicate remains idempotent');
+  assert.equal(persistence.saveCount, 1, 'an already committed duplicate must not rewrite persistence');
 });
 
 test('a queued successful enqueue cannot persist an entry whose earlier save rejected', async () => {
