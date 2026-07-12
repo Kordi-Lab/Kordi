@@ -31,6 +31,40 @@ class MemoryCacheStore implements CloudMessageCacheStore {
   async remove(accountId: string) { this.values.delete(accountId); }
 }
 
+class FirstWriteFailureCacheStore extends MemoryCacheStore {
+  private markFirstWriteStarted!: () => void;
+  private releaseFirstWrite!: () => void;
+  readonly firstWriteStarted = new Promise<void>((resolve) => {
+    this.markFirstWriteStarted = resolve;
+  });
+  private readonly firstWriteRelease = new Promise<void>((resolve) => {
+    this.releaseFirstWrite = resolve;
+  });
+  attempts = 0;
+  activeWrites = 0;
+  maxActiveWrites = 0;
+
+  failFirstWrite() {
+    this.releaseFirstWrite();
+  }
+
+  override async setMany(entries: ReadonlyMap<string, unknown>, removeKeys: readonly string[] = []) {
+    const attempt = ++this.attempts;
+    this.activeWrites += 1;
+    this.maxActiveWrites = Math.max(this.maxActiveWrites, this.activeWrites);
+    try {
+      if (attempt === 1) {
+        this.markFirstWriteStarted();
+        await this.firstWriteRelease;
+        throw new Error('planned first cache write failure');
+      }
+      await super.setMany(entries, removeKeys);
+    } finally {
+      this.activeWrites -= 1;
+    }
+  }
+}
+
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
   return {
@@ -150,4 +184,34 @@ test('peer-scoped cache writes only the changed peer after the initial snapshot'
   const loaded = await cache.load('acct_me');
   assert.equal(loaded[changedPeerId]?.length, 2);
   assert.equal(Object.keys(loaded).length, 20);
+});
+
+test('peer-scoped cache recovers a failed write into the newest queued snapshot', async () => {
+  const store = new FirstWriteFailureCacheStore();
+  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const firstPeerMessages = [message];
+  const first = cache.save('acct_me', { acct_peer: firstPeerMessages });
+  await store.firstWriteStarted;
+
+  const secondPeerMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_2',
+    fromAccountId: 'acct_peer_2',
+  };
+  const second = cache.save('acct_me', {
+    acct_peer: firstPeerMessages,
+    acct_peer_2: [secondPeerMessage],
+  });
+  const firstFailure = assert.rejects(first, /planned first cache write failure/);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  store.failFirstWrite();
+
+  await firstFailure;
+  await second;
+
+  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const loaded = await reloaded.load('acct_me');
+  assert.equal(loaded.acct_peer?.[0]?.body, 'hello');
+  assert.equal(loaded.acct_peer_2?.[0]?.body, 'hello');
+  assert.equal(store.maxActiveWrites, 1);
 });
