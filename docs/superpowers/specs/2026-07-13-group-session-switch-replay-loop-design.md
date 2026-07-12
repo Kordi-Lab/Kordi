@@ -1,0 +1,132 @@
+# Group Session Switching and Cloud Replay Stability Design
+
+## Summary
+
+Users must be able to switch directly between child sessions inside one group. In the reproduced `user1` profile, clicking the second child session leaves the first row highlighted because Cloud group-control replay has entered a React update loop. The sidebar click handler and stored session identifiers are correct; background replay repeatedly mutates canonical state quickly enough to starve the foreground selection update.
+
+This change will bound and serialize Cloud group replay, prevent render-driven retry storms, and add a behavioral regression proving that two sessions in the same group remain independently selectable.
+
+## Evidence and Root Cause
+
+The live profile contains two distinct group sessions:
+
+- `session:group:e91d7fc0-772e-4ea6-999c-d2072159e6d2`
+- `session:group:c392fad1-b59a-4c0c-a7dc-32bc0ef7e8fd`
+
+Both intentionally share the same `groupSpaceId`, but their session IDs and message histories are independent. `WorkspaceSidebar` passes the clicked child row's `session.id` to `onSelectChatSession`, and `useDesktopSessionController` immediately calls `setActiveConvId(sessionId)`. There is no identifier collapse in this path.
+
+The live renderer log repeatedly reports:
+
+- `Maximum update depth exceeded`
+- `[cloud-group] sync failed`
+
+The current replay effect walks every replay row, starts each `applyCloudGroupControl` call without awaiting the previous row, and removes the replay key from the processed set whenever a row fails. A subsequent Cloud-index or callback dependency change can therefore retry the same failing row immediately. Each replay also performs canonical writes and React state updates. Historical processing controls in the reproduced profile make this an enduring retry and render loop rather than a one-time startup burst.
+
+The loop prevents the active-session update from committing reliably, so the first child row remains highlighted even after the second row is clicked.
+
+## Goals
+
+1. Clicking any visible child session immediately selects that exact session ID.
+2. Cloud group replay performs a bounded number of canonical mutations per replay generation.
+3. A failed replay row cannot retry on every render or dependency change.
+4. Successful replay remains idempotent and eventually processes new Cloud controls.
+5. Existing Cloud group delivery, agent-response, unread, and session hydration behavior remains intact.
+
+## Non-goals
+
+- Changing the group/session visual design.
+- Introducing a second optimistic selection state solely for the sidebar.
+- Dropping or permanently ignoring valid Cloud group controls.
+- Refactoring unrelated Cloud synchronization or canonical storage code.
+
+## Design
+
+### 1. Replay coordinator
+
+Add a small replay coordinator outside React. It will own replay lifecycle state for one account:
+
+- completed replay keys;
+- the currently draining promise;
+- retry metadata for failed keys;
+- the latest requested replay snapshot;
+- an account generation used to invalidate work after account changes.
+
+The coordinator accepts an ordered list of replay rows and an asynchronous row handler. It drains rows serially. Serial execution avoids concurrent SQLite writes and prevents many replay completions from committing React state in the same frame.
+
+Only one drain may run at a time. If a newer Cloud index arrives while a drain is active, the coordinator records the newer snapshot and performs another bounded pass after the current pass finishes.
+
+### 2. Retry policy
+
+A successful replay key is retained for the lifetime of the account generation. A failed key records its retry count and next eligible time instead of being deleted immediately.
+
+Retries use exponential cooldown beginning at one second and capped at thirty seconds. New Cloud sync results or the existing periodic Cloud refresh may request another drain, but the coordinator skips failed rows until their cooldown expires. The coordinator does not create a render-loop timer; React renders alone cannot trigger an immediate retry.
+
+Changing accounts resets completed and failed replay state and invalidates any in-flight generation.
+
+### 3. Hook integration
+
+`useCloudBridgeState` will create one coordinator instance and reset it when the account ID changes. The Cloud group replay effect will submit `cloudMessageIndex.replayRows` to the coordinator instead of launching uncoordinated `void applyCloudGroupControl(...)` calls.
+
+The row handler remains `applyCloudGroupControl`, preserving the existing compact canonical write path. Because rows are serialized and retry eligibility is external to React, the existing handler can continue to update canonical state after each completed row without producing an unbounded synchronous burst.
+
+The coordinator will expose an optional failure callback for the existing warning log. The log will contain the retry count and cooldown but no message contents or account secrets.
+
+### 4. Session selection
+
+Child-session selection remains a foreground UI action:
+
+1. The row calls `onSelectChatSession(session.id)`.
+2. The session controller sets `activeConvId` immediately.
+3. `activeSidebarRowSessionId` resolves the exact child row.
+4. The active conversation read model selects the conversation with that ID.
+
+No network request or replay drain is awaited by this path. The fix removes the background state storm that currently prevents this flow from committing. We will not add a separate sidebar-only active ID because that could display a new highlight while leaving the transcript on the old conversation.
+
+## Error Handling
+
+- A replay failure is isolated to its replay key and does not abort later eligible rows.
+- Failed rows retain retry metadata and retry after cooldown.
+- Account changes invalidate stale work so one account cannot update another account's state.
+- A handler rejection is logged once per attempt, not once per render.
+- Coordinator callbacks check the current generation before starting another pass.
+
+## Testing
+
+### Coordinator unit tests
+
+- Rows drain in order with at most one handler call in flight.
+- Duplicate replay keys run once after success.
+- A failed key is not immediately retried when the same snapshot is requested again.
+- A failed key becomes eligible after the cooldown.
+- A newer snapshot submitted during a drain is processed afterward.
+- Resetting the account generation invalidates stale queued work.
+
+### Sidebar behavioral regression
+
+Use the existing JSDOM/React harness pattern to render a group containing two sessions with the same `groupSpaceId`. Click the second child row and assert:
+
+- `onSelectChatSession` receives the second session's exact ID;
+- the controlled harness rerenders with the second ID;
+- only the second row has `app-session-row-active`;
+- the selected conversation corresponds to the second session.
+
+### Existing suites
+
+Run the focused Cloud replay, participant-space sidebar, virtual sidebar, routing, and performance tests, followed by desktop type checking and the complete desktop unit suite.
+
+### Live verification
+
+Relaunch the preserved `user1` profile and verify:
+
+1. The renderer log does not emit `Maximum update depth exceeded` during Cloud group startup replay.
+2. Clicking `# hiii` moves the blue highlight from `# hiiiii` to `# hiii`.
+3. The right transcript changes to the older session with its 139-message history.
+4. Clicking back selects the newer two-message session.
+
+## Acceptance Criteria
+
+- Two or more sessions inside one group can be switched by clicking their child rows.
+- The active highlight and transcript always represent the same session ID.
+- Failed Cloud group replay does not cause a render-driven retry loop.
+- Replay remains eventual and idempotent across Cloud refreshes.
+- No existing Cloud group or sidebar regression tests fail.
