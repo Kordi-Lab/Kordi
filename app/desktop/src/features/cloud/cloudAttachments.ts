@@ -8,7 +8,8 @@ import type {
 
 export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 // Transcript virtualization mounts a viewport plus 12 rows of overscan on each side.
-// Keep several mounted image windows warm while placing a hard ceiling on retained Blob URLs.
+// This bounds reusable idle cache entries. Active card and lightbox leases can keep
+// evicted Blob URLs alive beyond this count until those consumers release them.
 export const CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY = 128;
 
 const cloudAttachmentLocalPathCache = new Map<string, string>();
@@ -22,6 +23,7 @@ type CloudAttachmentPreviewResource = {
 
 export type CloudAttachmentPreviewLease = {
   previewUrl: string;
+  retain(): CloudAttachmentPreviewLease;
   release(): void;
 };
 
@@ -84,6 +86,10 @@ function acquireCloudAttachmentPreviewLease(resource: CloudAttachmentPreviewReso
   let released = false;
   return {
     previewUrl: resource.previewUrl,
+    retain() {
+      if (released) throw new Error('Cannot retain a released attachment preview lease.');
+      return acquireCloudAttachmentPreviewLease(resource);
+    },
     release() {
       if (released) return;
       released = true;

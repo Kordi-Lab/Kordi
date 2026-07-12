@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { createElement } from 'react';
+import { JSDOM } from 'jsdom';
+import { act, createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import {
+  CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY,
+  loadVisibleCloudAttachmentPreview,
+  resetCloudAttachmentPreviewLoader,
+} from '../src/features/cloud/cloudAttachments';
+import { __setSessionBackendForTests, type SessionStorageBackend } from '../src/features/cloud/session';
 import {
   AttachmentImageLightbox,
   AttachmentPreview,
@@ -11,6 +19,44 @@ import {
   shouldCloseAttachmentContextMenuForTarget,
 } from '../src/kordi-app/components/transcriptAttachments';
 import type { Message } from '../src/kordi-app/types';
+
+function installDom() {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
+  const target = globalThis as typeof globalThis & Record<string, unknown>;
+  const replacements: Record<string, unknown> = {
+    window: dom.window,
+    document: dom.window.document,
+    navigator: dom.window.navigator,
+    HTMLElement: dom.window.HTMLElement,
+    Element: dom.window.Element,
+    Node: dom.window.Node,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  };
+  const previous = new Map(
+    Object.keys(replacements).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  );
+  Object.entries(replacements).forEach(([key, value]) => {
+    Object.defineProperty(target, key, { configurable: true, writable: true, value });
+  });
+  return {
+    dom,
+    restore() {
+      previous.forEach((descriptor, key) => {
+        if (descriptor) Object.defineProperty(target, key, descriptor);
+        else delete target[key];
+      });
+      dom.window.close();
+    },
+  };
+}
+
+async function flushReactUpdates() {
+  await act(async () => {
+    for (let index = 0; index < 4; index += 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  });
+}
 
 const imageMessage = {
   role: 'user' as const,
@@ -205,6 +251,102 @@ test('attachment image cards release remote preview leases on cleanup and image 
   assert.match(imageCard, /previewLeaseRef/);
   assert.match(imageCard, /return \(\) => \{[\s\S]*?previewLeaseRef\.current\?\.release\(\)/);
   assert.match(imageCard, /onError=\{\(\) => \{[\s\S]*?previewLeaseRef\.current\?\.release\(\)/);
+});
+
+test('an evicted remote preview stays alive for its open lightbox until the lightbox closes', async () => {
+  const installedDom = installDom();
+  const originalFetch = globalThis.fetch;
+  const originalCreateObjectUrl = URL.createObjectURL;
+  const originalRevokeObjectUrl = URL.revokeObjectURL;
+  const created: string[] = [];
+  const revoked: string[] = [];
+  let root: Root | null = null;
+  const sessionBackend: SessionStorageBackend = {
+    async load() {
+      return { token: 'token', accountId: 'account', expiresAt: '2099-01-01T00:00:00.000Z' };
+    },
+    async save() {},
+    async clear() {},
+  };
+
+  try {
+    resetCloudAttachmentPreviewLoader();
+    __setSessionBackendForTests(sessionBackend);
+    globalThis.fetch = async () => new Response(new Blob(['preview']), { status: 200 });
+    URL.createObjectURL = () => {
+      const previewUrl = `blob:lightbox-preview-${created.length + 1}`;
+      created.push(previewUrl);
+      return previewUrl;
+    };
+    URL.revokeObjectURL = (previewUrl) => revoked.push(previewUrl);
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    const remoteMessage: Message = {
+      role: 'person',
+      text: '',
+      time: '19:45',
+      attachments: [{
+        kind: 'image',
+        name: 'Remote.png',
+        sizeBytes: 1024,
+        attachmentId: 'remote-preview',
+        localPath: null,
+        previewUrl: null,
+      }],
+    };
+    await act(async () => root?.render(createElement(AttachmentPreview, { msg: remoteMessage })));
+    await flushReactUpdates();
+
+    const trigger = host.querySelector<HTMLButtonElement>('[data-attachment-image-preview-trigger="true"]');
+    assert.ok(trigger);
+    await act(async () => {
+      trigger.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    assert.equal(document.querySelector('[data-attachment-image-lightbox="true"] img')?.getAttribute('src'), created[0]);
+
+    const fillerClient = { async downloadAttachmentContent() { return new Blob(['filler']); } };
+    for (let index = 0; index < CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY; index += 1) {
+      const lease = await loadVisibleCloudAttachmentPreview({
+        token: 'token',
+        client: fillerClient,
+        attachment: { attachmentId: `filler-${index}`, kind: 'image' },
+      });
+      lease?.release();
+    }
+    assert.equal(revoked.includes(created[0] ?? ''), false, 'mounted card must keep its evicted URL alive');
+
+    const replacementMessage: Message = {
+      ...remoteMessage,
+      attachments: [{
+        ...remoteMessage.attachments?.[0],
+        attachmentId: 'replacement-preview',
+        name: 'Replacement.png',
+        previewUrl: 'https://files.test/replacement.png',
+      }],
+    };
+    await act(async () => root?.render(createElement(AttachmentPreview, { msg: replacementMessage })));
+    await flushReactUpdates();
+
+    assert.equal(document.querySelector('[data-attachment-image-lightbox="true"] img')?.getAttribute('src'), created[0]);
+    assert.equal(revoked.includes(created[0] ?? ''), false, 'open lightbox must outlive the replaced card');
+
+    const close = document.querySelector<HTMLButtonElement>('[aria-label="Close image preview"]');
+    assert.ok(close);
+    await act(async () => {
+      close.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
+    });
+    assert.equal(revoked.filter((previewUrl) => previewUrl === created[0]).length, 1);
+  } finally {
+    if (root) await act(async () => root?.unmount());
+    resetCloudAttachmentPreviewLoader();
+    __setSessionBackendForTests(null);
+    globalThis.fetch = originalFetch;
+    URL.createObjectURL = originalCreateObjectUrl;
+    URL.revokeObjectURL = originalRevokeObjectUrl;
+    installedDom.restore();
+  }
 });
 
 test('loaded image previews use a simple fade without zoom or shadow effects', () => {

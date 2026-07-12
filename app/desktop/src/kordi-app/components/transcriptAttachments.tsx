@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide-react';
@@ -362,7 +362,11 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
   attachment: MessageAttachment;
   index: number;
   totalCount: number;
-  onOpenPreview: (attachment: MessageAttachment, previewUrl: string) => void;
+  onOpenPreview: (
+    attachment: MessageAttachment,
+    previewUrl: string,
+    previewLease: CloudAttachmentPreviewLease | null,
+  ) => void;
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -426,7 +430,11 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
           type="button"
           data-attachment-image-preview-trigger="true"
           title={`${displayName} · Right-click for image actions`}
-          onClick={() => onOpenPreview(attachment, previewUrl)}
+          onClick={() => onOpenPreview(
+            attachment,
+            previewUrl,
+            previewLeaseRef.current?.retain() ?? null,
+          )}
           className="group relative block h-full w-full overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20"
           aria-label={`Preview ${attachment.name || 'attached image'}`}
         >
@@ -459,9 +467,32 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
   const attachments = msg.attachments ?? [];
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
   const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
-  const [lightboxAttachment, setLightboxAttachment] = useState<{ attachment: MessageAttachment; previewUrl: string } | null>(null);
+  const [lightboxAttachment, setLightboxAttachment] = useState<{
+    attachment: MessageAttachment;
+    previewUrl: string;
+    previewLease: CloudAttachmentPreviewLease | null;
+  } | null>(null);
+  const lightboxPreviewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
   const isSending = isAttachmentSending(msg);
+
+  const openLightbox = useCallback((
+    attachment: MessageAttachment,
+    previewUrl: string,
+    previewLease: CloudAttachmentPreviewLease | null,
+  ) => {
+    const previousLease = lightboxPreviewLeaseRef.current;
+    lightboxPreviewLeaseRef.current = previewLease;
+    previousLease?.release();
+    setLightboxAttachment({ attachment, previewUrl, previewLease });
+  }, []);
+
+  const closeLightbox = useCallback(() => {
+    const previewLease = lightboxPreviewLeaseRef.current;
+    lightboxPreviewLeaseRef.current = null;
+    previewLease?.release();
+    setLightboxAttachment(null);
+  }, []);
 
   function openContextMenu(attachment: MessageAttachment, event: MouseEvent) {
     event.preventDefault();
@@ -473,12 +504,17 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
     if (!lightboxAttachment && !contextMenuState) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape') return;
-      setLightboxAttachment(null);
+      closeLightbox();
       setContextMenuState(null);
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [contextMenuState, lightboxAttachment]);
+  }, [closeLightbox, contextMenuState, lightboxAttachment]);
+
+  useEffect(() => () => {
+    lightboxPreviewLeaseRef.current?.release();
+    lightboxPreviewLeaseRef.current = null;
+  }, []);
 
   if (attachments.length === 0) {
     return null;
@@ -499,7 +535,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
                 attachment={attachment}
                 index={index}
                 totalCount={previewImageAttachments.length}
-                onOpenPreview={(nextAttachment, previewUrl) => setLightboxAttachment({ attachment: nextAttachment, previewUrl })}
+                onOpenPreview={openLightbox}
                 onOpenContextMenu={openContextMenu}
               />
             ))}
@@ -519,7 +555,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
           <AttachmentImageLightbox
             attachment={lightboxAttachment.attachment}
             previewUrl={lightboxAttachment.previewUrl}
-            onClose={() => setLightboxAttachment(null)}
+            onClose={closeLightbox}
             onContextMenu={(event) => openContextMenu(lightboxAttachment.attachment, event)}
           />
         </PortalLayer>
