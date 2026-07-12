@@ -1,21 +1,21 @@
-# Kordi chat scale final hardening evidence — 2026-07-12
+# Kordi chat scale final hardening evidence — 2026-07-13
 
-The `chat-scale-baseline-2026-07-10.md` filename is retained as the historical baseline path. This fresh 2026-07-12 capture covers the integrated Tasks 2–21 stack after Tasks 17–21 addressed final-review defects. It separates deterministic automated evidence from native acceptance work that still requires a packaged Kordi build, seeded Cloud accounts, WebKit process metrics, and a real Postgres-backed Cloud server.
+The `chat-scale-baseline-2026-07-10.md` filename is retained as the historical baseline path. This fresh 2026-07-13 capture covers the integrated Tasks 2–26 stack after Tasks 17–21 and 23–26 addressed final-review defects. It separates deterministic automated evidence from native acceptance work that still requires a packaged Kordi build, seeded Cloud accounts, WebKit process metrics, and a real Postgres-backed Cloud server.
 
 ## Decision
 
-- Targeted deterministic evidence passes: the benchmark meets every ceiling, including the 20,000+1 incremental Cloud-index budget, and the combined six-file final-hardening suite passes 82/82 tests.
-- Standalone TypeScript typecheck, ESLint, production build, bundle budget, the 105-test serialized native canonical-session filter, script tests, hygiene, diff checks, and desktop-only clippy pass.
-- Repository-wide status is not green. The normal frontend unit stage has the same 19 baseline failures; workspace rustfmt remains red; workspace clippy retains exactly two TUI `SessionRow` initializer errors; and the aggregate desktop Rust stage was manually interrupted after the same two Cloud file-store tests exceeded 60 seconds. None are hidden or counted as passes.
-- The integrated code is ready for PR review only if the final whole-range review approves it. This report is not a production-readiness claim.
+- Targeted deterministic evidence passes: the benchmark meets every ceiling, including the 20,000+1 incremental Cloud-index budget, and the combined seven-file final-hardening suite passes 102/102 tests.
+- Standalone TypeScript typecheck, ESLint, production build, bundle budget, the 106-test serialized native canonical-session filter, script tests, hygiene, diff checks, and desktop-only clippy pass.
+- Repository-wide status is not green. The configured frontend unit stage has the same 19 baseline failures, workspace rustfmt remains red, and workspace clippy retains exactly two TUI `SessionRow` initializer errors. The final head's full desktop Rust suite passes 266/266 when serialized; the earlier default-parallel aggregate interruption is retained below as historical gate evidence rather than counted as a pass.
+- The final whole-range review approves the integrated code with no P1–P3 findings, so it is ready for PR review. This report is not a production-readiness claim.
 - `DATABASE_URL` is not configured; real-Postgres, packaged-native, and WebKit CPU/RSS/latency acceptance remain pending, so no tracked issue should close yet.
 - No GitHub issue, pull request, or other external state was changed while producing this report.
 
 ## Branch topology
 
-Task 1 remains an independent, reversible branch from the reviewed base and is not part of the integrated Tasks 2–21 stack:
+Task 1 remains an independent, reversible branch from the reviewed base and is not part of the integrated Tasks 2–26 stack:
 
-- `fix/646-transcript-anchor` final head `b6a05399`; the CI test glob now covers its test file
+- `fix/646-transcript-anchor` final head `b6a05399`; its focused window-anchor suite passes 6/6, typecheck and lint pass, and the configured unit glob discovers those six tests (1,090/1,109 pass with the same 19 baseline failures)
 
 Tasks 2–11 form a stack from the same reviewed base, in this order:
 
@@ -38,15 +38,19 @@ Post-review Tasks 12–16 continue that stack:
 - Task 15: `fix/restored-outbox-delivery` at `448a0441` — exact-ID delivery delta, durable canonical acknowledgement, and parity
 - Task 16: `perf/chat-scale-final-validation` — this documentation-only validation branch, based on `448a0441`
 
-Final-review Tasks 17–21 were kept as discrete branches and then cherry-picked into the integration branch:
+Final-review Tasks 17–21 and 23–26 were kept as discrete branches and then cherry-picked into the integration branch:
 
 - Task 17, serialized/recoverable peer cache: `351e59d6`
 - Task 18, atomic profile-signature adoption: `bff68440`
 - Task 19, dual-store durable outbox: `cdbe489f`
 - Task 20, atomic monotonic read cursor: `da4a74cc`
 - Task 21, bounded attachment-preview cache: `0746af64`
+- Task 23, sequence-first renderer read-cursor ordering: `be7f2b54`
+- Task 24, mounted attachment-preview leases: `eb249dae`
+- Task 25, stale-load/newer-save cache baseline guard: `d36bb8c0`
+- Task 26, default-CI discovery for cursor/cache/profile regressions: `56a401dd`
 
-The integration branch `fix/chat-scale-final-hardening` was at `094f8bfd` after those cherry-picks and before this documentation commit. The independent #646 branch above remains separate.
+Task 22 is the validation/report checkpoint. The integration branch `fix/chat-scale-final-hardening` was at `149de6e1` after the final code cherry-picks and before this documentation update. The independent #646 branch above remains separate.
 
 ## Environment
 
@@ -59,7 +63,7 @@ The integration branch `fix/chat-scale-final-hardening` was at `094f8bfd` after 
 - Rust: rustc 1.93.1 (`01f6ddf75`, 2026-02-11); cargo 1.93.1 (`083ac5135`, 2025-12-15)
 - Reviewed base: `78db2b8d1a23234a421e73e3dd9e21dc1665bd04`
 - Approved Task 15 head and Task 16 validation base: `448a0441721904fc50b8421f5ba95743b486fb3e`
-- Final-hardening integration head before this documentation commit: `094f8bfd8e576e9c6f11c36152d9ca5874f1d851`
+- Final-hardening integration head before this documentation update: `149de6e1d016f758e48362f0b5a240b61658cf3a`
 
 All benchmark slices were run serially. Parallel runs were discarded because two simultaneous 67 MB fixtures distorted the Cloud median.
 
@@ -100,8 +104,10 @@ The Node benchmark ceilings are linear-regression guards, not substitutes for th
 | Instrumented final / Task 11 | 0.591 ms | 66.122 ms | 1,844.345 ms | — | 0.000 ms | 66,904,865 |
 | Post-review hardened final / Task 16 | 0.580 ms | 65.453 ms | 1,810.387 ms | 37.529 ms | 0.000 ms | 66,904,865 |
 | Final-review integrated / Tasks 17–21 | 0.964 ms | 71.388 ms | 1,797.149 ms | 36.393 ms | 0.000 ms | 66,904,865 |
+| Final whole-range integrated / Tasks 17–24 | 0.637 ms | 69.183 ms | 1,798.599 ms | 35.439 ms | 0.000 ms | 66,904,865 |
+| Reviewer-approved integrated / Tasks 17–26 | 0.633 ms | 68.574 ms | 1,857.877 ms | 34.929 ms | 0.000 ms | 66,904,865 |
 
-The original material benchmark change remains delivery lookup: 1,750.740 ms in the harness baseline to below the timer’s 0.001 ms reporting resolution after the parsed index. The fresh integrated benchmark also measures a one-row update against the existing 20,000-row index. It completed in 36.393 ms under the 50 ms ceiling, and the harness aborts unless exactly one new envelope is parsed, so the measurement also enforces the incremental one-parse invariant.
+The original material benchmark change remains delivery lookup: 1,750.740 ms in the harness baseline to below the timer’s 0.001 ms reporting resolution after the parsed index. The fresh integrated benchmark also measures a one-row update against the existing 20,000-row index. It completed in 34.929 ms under the 50 ms ceiling, and the harness aborts unless exactly one new envelope is parsed, so the measurement also enforces the incremental one-parse invariant.
 
 ### Raw JSON
 
@@ -177,6 +183,18 @@ Tasks 17–21 integrated final hardening:
 {"bridgeMapMs":0.964,"canonicalIndexMs":71.388,"cloudIndexMs":1797.149,"cloudIndexDeltaMs":36.393,"cloudDeliveryLookupMs":0,"serializedCacheBytes":66904865,"fixture":{"spaces":200,"sessions":200,"canonicalMessages":21000,"selectedSessionMessages":1000,"cloudRows":20000,"cloudRecipients":20},"budgets":{"bridgeMapMs":100,"canonicalIndexMs":100,"cloudIndexMs":4000,"cloudIndexDeltaMs":50,"cloudDeliveryLookupMs":5,"serializedCacheBytes":73400320},"budgetFailures":[],"passed":true}
 ```
 
+Tasks 17–24 final whole-range integration:
+
+```json
+{"bridgeMapMs":0.637,"canonicalIndexMs":69.183,"cloudIndexMs":1798.599,"cloudIndexDeltaMs":35.439,"cloudDeliveryLookupMs":0,"serializedCacheBytes":66904865,"fixture":{"spaces":200,"sessions":200,"canonicalMessages":21000,"selectedSessionMessages":1000,"cloudRows":20000,"cloudRecipients":20},"budgets":{"bridgeMapMs":100,"canonicalIndexMs":100,"cloudIndexMs":4000,"cloudIndexDeltaMs":50,"cloudDeliveryLookupMs":5,"serializedCacheBytes":73400320},"budgetFailures":[],"passed":true}
+```
+
+Tasks 17–26 reviewer-approved integration:
+
+```json
+{"bridgeMapMs":0.633,"canonicalIndexMs":68.574,"cloudIndexMs":1857.877,"cloudIndexDeltaMs":34.929,"cloudDeliveryLookupMs":0,"serializedCacheBytes":66904865,"fixture":{"spaces":200,"sessions":200,"canonicalMessages":21000,"selectedSessionMessages":1000,"cloudRows":20000,"cloudRecipients":20},"budgets":{"bridgeMapMs":100,"canonicalIndexMs":100,"cloudIndexMs":4000,"cloudIndexDeltaMs":50,"cloudDeliveryLookupMs":5,"serializedCacheBytes":73400320},"budgetFailures":[],"passed":true}
+```
+
 ## Post-review hardening
 
 - **Incremental index:** a 20,000-row index can be reused for a one-row delta without reparsing the old envelopes. The benchmark and focused regression both require exactly one parser call and a result below 50 ms.
@@ -189,8 +207,10 @@ Tasks 17–21 integrated final hardening:
 - **Serialized, recoverable peer cache:** cache mutation, load, and remove operations are serialized so a late write cannot resurrect removed peer state, and recoverable persistence covers reload as well as deletion paths.
 - **Atomic profile-signature adoption:** profile adoption commits atomically against the adopted profile signature, including avatar clear, so stale mutation completions cannot restore an obsolete identity field.
 - **Dual-store durable outbox:** browser IndexedDB/localStorage recovery is paired with durable native canonical acknowledgement. Browser mutations and in-flight delivery are serialized, preventing a restore, acknowledgement, retry, or removal from overtaking another transition.
-- **Atomic monotonic read cursor:** read-cursor updates are atomic and monotonic, so concurrent or late completions cannot move a peer’s cursor backward.
-- **Bounded preview lifecycle:** attachment previews use a 128-entry LRU, and reset/reload races revoke or discard superseded object URLs without repopulating stale preview state.
+- **Atomic monotonic read cursor:** native read-cursor updates are atomic and monotonic, while renderer deltas carry the canonical message sequence and compare sequence before timestamps. Concurrent, late, or equal-millisecond completions therefore cannot move a peer’s cursor backward.
+- **Bounded leased preview lifecycle:** attachment previews use a 128-entry idle LRU. Mounted cards and open lightboxes hold independent leases, while reset/reload races revoke or discard only unleased superseded object URLs without repopulating stale preview state.
+- **Versioned cache-load completion:** a blocked load captures the current in-memory baseline identity and cannot replace it after a newer save is accepted, whether that save succeeds or enters failed-write recovery.
+- **Default-CI regression discovery:** cursor reducer, peer cache, and profile coordinator suites now use the configured `.test.tsx` glob. The actual `test:unit` command executes the equal-millisecond cursor, successful-save/cache-load, and rapid A→B→A profile regressions.
 
 ## Privacy-safe performance spans
 
@@ -220,27 +240,29 @@ Records are available as `kordi:<span-name>` Performance entries, `[kordi-perfor
 
 | Gate | Result |
 |---|---|
-| `pnpm --dir app/desktop bench:chat-scale` | Pass; all ceilings met, including 36.393 ms < 50 ms for the 20,000+1 delta and exactly one new parse |
-| Combined six-file final-hardening suite | Pass, 82/82 across `tests/cloudMessageCache.test.ts`, `tests/cloudSyncCoordinator.test.ts`, `tests/nativeCanonicalSessionPerformance.test.ts`, `tests/cloudGroupOutbox.test.tsx`, `tests/cloudAttachments.test.tsx`, and `tests/canonicalStateReducers.test.ts` |
+| `pnpm --dir app/desktop bench:chat-scale` | Pass; all ceilings met, including 34.929 ms < 50 ms for the 20,000+1 delta and exactly one new parse |
+| Combined seven-file final-hardening suite | Pass, 102/102 across `tests/cloudMessageCache.test.tsx`, `tests/cloudSyncCoordinator.test.tsx`, `tests/nativeCanonicalSessionPerformance.test.ts`, `tests/cloudGroupOutbox.test.tsx`, `tests/cloudAttachments.test.tsx`, `tests/canonicalStateReducers.test.tsx`, and `tests/transcriptAttachments.test.tsx` |
 | `pnpm --dir app/desktop typecheck` | Pass |
 | `pnpm --dir app/desktop lint` | Pass |
-| `pnpm --dir app/desktop build` | Pass; six-JavaScript-chunk bundle budget passes, largest chunk `cloud-features--5_bCr8p.js` at 595.61 kB; the Vite edition warning is nonfatal |
-| `cargo test -p kordi-desktop --no-default-features canonical_sessions -- --test-threads=1` | Pass, 105/105; 160 filtered out |
+| `pnpm --dir app/desktop build` | Pass; six-JavaScript-chunk bundle budget passes, largest chunk `cloud-features-D_RvJbCE.js` at 597.10 kB; the Vite edition warning is nonfatal |
+| `cargo test -p kordi-desktop --no-default-features canonical_sessions -- --test-threads=1` | Pass, 106/106; 160 filtered out |
 | `pnpm test:scripts` | Pass, 18/18 |
 | `pnpm check:hygiene` | Pass |
 | `git diff --check` | Pass before and after documentation update |
-| Normal frontend unit run | Fail, exit 1: 1,135/1,154 pass and the same 19 tests match the documented baseline categories; this is 17 more total passing tests than the prior report |
+| Configured frontend unit run | Fail, exit 1: 1,179/1,198 pass with the same 19 baseline failures; the command now discovers 38 additional passing cursor/cache/profile hardening regressions |
+| Diagnostic all-source frontend run | Fail, exit 1: 1,356/1,377 pass with the same 21 failures as pre-hardening `00e1bbd9`, which passed 1,321/1,342; 35 tests were added and all pass |
 | Desktop-only clippy | Pass, exit 0 with warnings |
 | `pnpm check:rust:fmt` | Fail, exit 1: 126 `Diff in` records across 35 unique Rust files on the integration head, versus 127 records across the same 35 files on pre-hardening `00e1bbd9`; the gate remains red |
 | `pnpm check:rust:clippy` | Fail, exit 101: exactly two missing `parent_session_message_id` fields in TUI `SessionRow` test initializers at `agent/crates/tui/src/session_selector.rs:109` and `:121` |
-| Full Rust chain | Dependency stage passes; core stages pass 50/50, 196/196, and 22/22; the desktop stage has 265 total tests with 263 displayed passing, while the same two Cloud file-store tests exceed 60 seconds; the aggregate was manually interrupted and exits 1 |
-| Serialized Cloud file-store classification | Pass, 2/2 across two separate exact serial commands; each passes 1/1 with 264 filtered out |
+| Full serialized desktop Rust suite | Pass, 266/266 on the final integrated head with `--test-threads=1` |
+| Earlier default-parallel full Rust chain | Dependency stage passes; core stages pass 50/50, 196/196, and 22/22; at pre-final-review head `3048210d`, 263/265 desktop tests displayed as passing while two Cloud file-store tests exceeded 60 seconds; the aggregate was manually interrupted and exits 1 |
+| Serialized Cloud file-store classification | Pass, 2/2 on the final integrated head across two separate exact serial commands; each passes 1/1 with 265 filtered out |
 
-The production bundle passed with six JavaScript chunks. The largest was `cloud-features--5_bCr8p.js` at 595.61 kB, within the repository’s configured budget. Vite also emitted a warning that `%VITE_KORDI_EDITION%` was not defined; it did not fail the build or its bundle-budget check.
+The production bundle passed with six JavaScript chunks. The largest was `cloud-features-D_RvJbCE.js` at 597.10 kB, within the repository’s configured budget. Vite also emitted a warning that `%VITE_KORDI_EDITION%` was not defined; it did not fail the build or its bundle-budget check.
 
-The 19 frontend failures match the previously documented baseline count and remain snapshot/source-contract mismatches in unrelated Cloud avatar/auth copy, LM Studio error copy, participant-space/task expectations, viewport source assertions, shared-agent naming, and participant-context expectations. The fresh unit run contains 17 more passing tests than the prior report: 1,154 total, 1,135 passed, and 19 failed.
+The 19 configured frontend failures match the previously documented baseline count and remain snapshot/source-contract mismatches in unrelated Cloud avatar/auth copy, LM Studio error copy, participant-space/task expectations, viewport source assertions, shared-agent naming, and participant-context expectations. The fresh configured run has 1,198 total, 1,179 passed, and 19 failed; it explicitly executes the formerly excluded cursor, cache, and profile coordinator regressions. A broader diagnostic command covering both `tests/*.test.ts` and `tests/*.test.tsx` has 1,377 total, 1,356 passed, and the same 21 failures as pre-hardening `00e1bbd9`; the integration adds 35 passing tests to that source-wide run without adding a failure.
 
-The aggregate desktop Rust result is not reported as a pass. Of 265 total desktop tests, 263 displayed as passing while `cloud_session_uses_app_data_file_store_when_isolated_dev_instance_is_running` and `cloud_device_key_uses_stable_app_data_file_store` both exceeded 60 seconds; the aggregate was manually interrupted and recorded exit 1. Each exact test then passed 1/1 when rerun serially with 264 filtered out, for 2/2 serial. That outcome is consistent with the known shared-environment file-store race, but it does not turn the aggregate gate green.
+The earlier default-parallel aggregate desktop Rust result is not retroactively reported as a pass. At pre-final-review head `3048210d`, 263 of 265 tests displayed as passing while `cloud_session_uses_app_data_file_store_when_isolated_dev_instance_is_running` and `cloud_device_key_uses_stable_app_data_file_store` both exceeded 60 seconds; that run was manually interrupted and recorded exit 1. On the final integrated head, each exact test passes 1/1 with 265 filtered out, and the complete desktop suite passes 266/266 with `--test-threads=1`. This classifies the prior failure as parallel shared-environment behavior while preserving the failed default-parallel gate result.
 
 ## Native acceptance matrix
 
@@ -248,16 +270,16 @@ The following scenarios were not run in this non-interactive worktree session. T
 
 | Scenario | Automated proxy now available | Native status |
 |---|---|---|
-| Cold login with stale v1 cache | v1/v2→v3 per-peer cache migration plus serialized load/remove recovery and catalog/page tests | Pending packaged run |
-| Warm relaunch from v3 cache | serialized, recoverable per-peer cache/store tests | Pending packaged run |
+| Cold login with stale v1 cache | v1/v2→v3 per-peer cache migration plus serialized load/remove recovery, stale-load/newer-save ordering, and catalog/page tests | Pending packaged run |
+| Warm relaunch from v3 cache | serialized, recoverable per-peer cache/store tests including stale-load/newer-save ordering | Pending packaged run |
 | Reactivation after five minutes | sync coordinator focus/pageshow tests | Pending |
 | Adopt a changed profile, including avatar clear | atomic profile-signature adoption and stale-completion tests | Pending packaged identity run |
 | 50 switches between 1,000-message group and short direct chat | session paging and virtual transcript tests | Pending CPU/RSS capture |
 | Scroll newest→oldest→newest | variable-height prepend/jump tests | Pending native visual run |
 | Send to 20 recipients with one transient failure | dual-store durable exact-ID outbox, serialized in-flight mutation, partial-success/retry, and two-phase acknowledgement tests | Pending real Cloud run |
 | Restart before retry | dual-store durable exact-ID restore, mutation serialization, and acknowledgement-phase tests | Pending packaged restart run |
-| Concurrent read acknowledgements | atomic monotonic cursor tests | Pending real Cloud run |
-| Open and reset visible image previews without startup content hydration | metadata-only/lazy attachment tests plus the 128-entry preview LRU and reset-race coverage | Pending network and WebKit memory trace |
+| Concurrent read acknowledgements | atomic native monotonicity plus sequence-first renderer ordering tests, including equal timestamps | Pending real Cloud run |
+| Open and reset visible image previews without startup content hydration | metadata-only/lazy attachment tests plus the 128-entry idle LRU, mounted-card leases, independent lightbox leases, and reset-race coverage | Pending network and WebKit memory trace |
 
 `bridges/cloud-server/tests/cloud_auth_e2e.rs` contains real-Postgres idempotency cases, but those tests return early when `DATABASE_URL` is absent. No database was configured for this capture, so those cases are not claimed as executed evidence.
 
@@ -265,12 +287,12 @@ The following scenarios were not run in this non-interactive worktree session. T
 
 | Product budget | Evidence | Status |
 |---|---|---|
-| One-row Cloud index update < 50 ms | 36.393 ms over 20,000+1 rows; exactly one new envelope parsed | Pass (automated) |
-| Cache update writes only the changed peer | 20-peer v3 cache regression writes one peer record after initial snapshot; serialized load/remove recovery tests pass | Pass (automated) |
+| One-row Cloud index update < 50 ms | 34.929 ms over 20,000+1 rows; exactly one new envelope parsed | Pass (automated) |
+| Cache update writes only the changed peer | 20-peer v3 cache regression writes one peer record after initial snapshot; serialized load/remove recovery and stale-load/newer-save baseline tests pass | Pass (automated) |
 | Profile adoption avoids a full-state reload | < 2 KiB identity delta with 20,000 loaded messages; atomic profile-signature adoption includes avatar clear | Pass (automated) |
 | Restored outbox updates an old canonical target by exact ID | Dual-store durable restart regression targets a message older than 200 newer rows and serializes mutations and in-flight delivery through canonical acknowledgement | Pass (automated) |
-| Read cursor never regresses | Concurrent cursor updates are atomic and monotonic | Pass (automated) |
-| Preview cache stays bounded across resets | 128-entry LRU and reset-race regressions pass | Pass (automated proxy); pending WebKit memory trace |
+| Read cursor never regresses | Native mutations are atomic and monotonic; renderer deltas order by canonical sequence before timestamp, including equal-millisecond responses | Pass (automated) |
+| Preview cache stays bounded across resets | 128-entry idle LRU, reset-race, mounted-card lease, and independent lightbox-lease regressions pass | Pass (automated proxy); pending WebKit memory trace |
 | Warm click to first message p95 < 100 ms | Instrumentation added | Pending native sample |
 | Cold catalog + first page < 500 ms | Bounded native query test + instrumentation | Pending packaged timing |
 | No selection long task > 50 ms | Virtual/paged code and instrumentation | Pending WebKit trace |
@@ -286,7 +308,7 @@ The following scenarios were not run in this non-interactive worktree session. T
 
 ## Issue closure rules
 
-The code may proceed to PR review only if the final whole-range review approves it. These automated proxies are not production acceptance, and all issues below remain open until the named packaged-native, WebKit, and real-Postgres evidence is captured.
+The final whole-range review approves the code for PR review with no P1–P3 findings. These automated proxies are not production acceptance, and all issues below remain open until the named packaged-native, WebKit, and real-Postgres evidence is captured.
 
 - **#634:** do not close until the 20-recipient native send and real-Postgres idempotent partial-retry run pass.
 - **#638:** do not close until native click/send p95s pass, logs contain no `database is locked`, and the IPC trace confirms no full-state click request.
