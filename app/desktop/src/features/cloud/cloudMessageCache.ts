@@ -3,7 +3,8 @@ import type { CloudMessage, CloudMessageAttachment } from './authClient';
 export const CLOUD_MESSAGES_LEGACY_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
 export const CLOUD_MESSAGES_INDEXED_DB_NAME = 'kordi-cloud-message-cache-v2';
 const CLOUD_MESSAGES_INDEXED_DB_STORE = 'messagesByAccount';
-const CLOUD_MESSAGE_CACHE_VERSION = 2;
+const CLOUD_MESSAGE_CACHE_VERSION = 3;
+const CLOUD_MESSAGE_CACHE_SNAPSHOT_VERSION = 2;
 
 export interface CloudMessageCache {
   load(accountId: string): Promise<Record<string, CloudMessage[]>>;
@@ -13,17 +14,27 @@ export interface CloudMessageCache {
 
 export interface CloudMessageCacheStore {
   get(accountId: string): Promise<unknown | undefined>;
+  getMany(keys: readonly string[]): Promise<ReadonlyMap<string, unknown | undefined>>;
   set(accountId: string, value: unknown): Promise<void>;
+  setMany(entries: ReadonlyMap<string, unknown>, removeKeys?: readonly string[]): Promise<void>;
   remove(accountId: string): Promise<void>;
 }
 
-type CloudMessageCacheRecord = {
+type CloudMessageCacheManifest = {
   version: typeof CLOUD_MESSAGE_CACHE_VERSION;
-  messagesByPeer: Record<string, CloudMessage[]>;
+  peerIds: string[];
+};
+
+type CloudMessageCachePeerRecord = {
+  version: typeof CLOUD_MESSAGE_CACHE_VERSION;
+  peerId: string;
+  messages: CloudMessage[];
 };
 
 type PendingWrite = {
-  value: Record<string, CloudMessage[]>;
+  changedPeers: Map<string, CloudMessage[]>;
+  removedPeerIds: Set<string>;
+  peerIds: string[];
   timer: ReturnType<typeof setTimeout>;
   waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }>;
 };
@@ -95,7 +106,7 @@ export function normalizeCloudMessagesByPeer(
 ): Record<string, CloudMessage[]> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const record = value as Record<string, unknown>;
-  const source = record.version === CLOUD_MESSAGE_CACHE_VERSION
+  const source = (record.version === CLOUD_MESSAGE_CACHE_SNAPSHOT_VERSION || record.version === CLOUD_MESSAGE_CACHE_VERSION)
     && record.messagesByPeer
     && typeof record.messagesByPeer === 'object'
     && !Array.isArray(record.messagesByPeer)
@@ -115,6 +126,24 @@ export function normalizeCloudMessagesByPeer(
 
 function legacyCacheKey(accountId: string) {
   return `${CLOUD_MESSAGES_LEGACY_CACHE_PREFIX}${accountId}`;
+}
+
+function manifestCacheKey(accountId: string) {
+  return `manifest:${accountId}`;
+}
+
+function peerCacheKey(accountId: string, peerId: string) {
+  return `peer:${accountId}:${encodeURIComponent(peerId)}`;
+}
+
+function cacheManifest(value: unknown): CloudMessageCacheManifest | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.version !== CLOUD_MESSAGE_CACHE_VERSION || !Array.isArray(record.peerIds)) return null;
+  return {
+    version: CLOUD_MESSAGE_CACHE_VERSION,
+    peerIds: [...new Set(record.peerIds.map(cleanText).filter(Boolean))].sort(),
+  };
 }
 
 function browserLocalStorage(): Storage | null {
@@ -165,8 +194,39 @@ export class IndexedDbCloudMessageCacheStore implements CloudMessageCacheStore {
     return this.request('readonly', (store) => store.get(accountId));
   }
 
+  async getMany(keys: readonly string[]) {
+    if (keys.length === 0) return new Map<string, unknown | undefined>();
+    const database = await this.open();
+    return new Promise<ReadonlyMap<string, unknown | undefined>>((resolve, reject) => {
+      const transaction = database.transaction(CLOUD_MESSAGES_INDEXED_DB_STORE, 'readonly');
+      const store = transaction.objectStore(CLOUD_MESSAGES_INDEXED_DB_STORE);
+      const values = new Map<string, unknown | undefined>();
+      for (const key of keys) {
+        const request = store.get(key);
+        request.onsuccess = () => values.set(key, request.result);
+        request.onerror = () => reject(request.error ?? new Error('Cloud message cache request failed.'));
+      }
+      transaction.oncomplete = () => resolve(values);
+      transaction.onabort = () => reject(transaction.error ?? new Error('Cloud message cache transaction aborted.'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('Cloud message cache transaction failed.'));
+    });
+  }
+
   async set(accountId: string, value: unknown) {
     await this.request('readwrite', (store) => store.put(value, accountId));
+  }
+
+  async setMany(entries: ReadonlyMap<string, unknown>, removeKeys: readonly string[] = []) {
+    const database = await this.open();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(CLOUD_MESSAGES_INDEXED_DB_STORE, 'readwrite');
+      const store = transaction.objectStore(CLOUD_MESSAGES_INDEXED_DB_STORE);
+      for (const key of removeKeys) store.delete(key);
+      for (const [key, value] of entries) store.put(value, key);
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error ?? new Error('Cloud message cache transaction aborted.'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('Cloud message cache transaction failed.'));
+    });
   }
 
   async remove(accountId: string) {
@@ -176,6 +236,7 @@ export class IndexedDbCloudMessageCacheStore implements CloudMessageCacheStore {
 
 export class VersionedCloudMessageCache implements CloudMessageCache {
   private readonly pendingWrites = new Map<string, PendingWrite>();
+  private readonly latestValues = new Map<string, Record<string, CloudMessage[]>>();
 
   constructor(private readonly options: {
     store: CloudMessageCacheStore | null;
@@ -188,8 +249,30 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     if (!normalizedAccountId) return {};
     if (this.options.store) {
       try {
+        const manifest = cacheManifest(await this.options.store.get(manifestCacheKey(normalizedAccountId)));
+        if (manifest) {
+          const keys = manifest.peerIds.map((peerId) => peerCacheKey(normalizedAccountId, peerId));
+          const records = await this.options.store.getMany(keys);
+          const rawByPeer: Record<string, unknown> = {};
+          for (const peerId of manifest.peerIds) {
+            const value = records.get(peerCacheKey(normalizedAccountId, peerId));
+            if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+            const peerRecord = value as Partial<CloudMessageCachePeerRecord>;
+            if (peerRecord.version === CLOUD_MESSAGE_CACHE_VERSION && peerRecord.peerId === peerId) {
+              rawByPeer[peerId] = peerRecord.messages;
+            }
+          }
+          const messagesByPeer = normalizeCloudMessagesByPeer(normalizedAccountId, rawByPeer);
+          this.latestValues.set(normalizedAccountId, messagesByPeer);
+          return messagesByPeer;
+        }
         const stored = await this.options.store.get(normalizedAccountId);
-        if (stored !== undefined) return normalizeCloudMessagesByPeer(normalizedAccountId, stored);
+        if (stored !== undefined) {
+          const messagesByPeer = normalizeCloudMessagesByPeer(normalizedAccountId, stored);
+          await this.writePeers(normalizedAccountId, messagesByPeer, [], [normalizedAccountId]);
+          this.latestValues.set(normalizedAccountId, messagesByPeer);
+          return messagesByPeer;
+        }
       } catch {
         // Fall through to the legacy snapshot when IndexedDB is unavailable.
       }
@@ -206,30 +289,56 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     const messagesByPeer = normalizeCloudMessagesByPeer(normalizedAccountId, legacyValue);
     if (this.options.store) {
       try {
-        await this.options.store.set(normalizedAccountId, {
-          version: CLOUD_MESSAGE_CACHE_VERSION,
-          messagesByPeer,
-        } satisfies CloudMessageCacheRecord);
+        await this.writePeers(normalizedAccountId, messagesByPeer, [], [normalizedAccountId]);
         legacyStorage?.removeItem(legacyCacheKey(normalizedAccountId));
       } catch {
         // Keep the legacy value so a later load can retry migration.
       }
     }
+    this.latestValues.set(normalizedAccountId, messagesByPeer);
     return messagesByPeer;
   }
 
   save(accountId: string, value: Record<string, CloudMessage[]>): Promise<void> {
     const normalizedAccountId = accountId.trim();
     if (!normalizedAccountId || !this.options.store) return Promise.resolve();
+    const previous = this.latestValues.get(normalizedAccountId) ?? {};
+    const peerIds = Object.keys(value).map(cleanText).filter(Boolean).sort();
+    const changedPeers = new Map<string, CloudMessage[]>();
+    for (const peerId of peerIds) {
+      const messages = value[peerId] ?? [];
+      if (previous[peerId] !== messages) changedPeers.set(peerId, messages);
+    }
+    const removedPeerIds = new Set(Object.keys(previous).filter((peerId) => (
+      !Object.prototype.hasOwnProperty.call(value, peerId)
+    )));
+    this.latestValues.set(normalizedAccountId, { ...value });
+    if (changedPeers.size === 0 && removedPeerIds.size === 0) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
       const pending = this.pendingWrites.get(normalizedAccountId);
       if (pending) clearTimeout(pending.timer);
       const waiters = pending?.waiters ?? [];
       waiters.push({ resolve, reject });
+      const pendingChangedPeers = pending?.changedPeers ?? new Map<string, CloudMessage[]>();
+      const pendingRemovedPeerIds = pending?.removedPeerIds ?? new Set<string>();
+      for (const peerId of removedPeerIds) {
+        pendingChangedPeers.delete(peerId);
+        pendingRemovedPeerIds.add(peerId);
+      }
+      for (const [peerId, messages] of changedPeers) {
+        pendingChangedPeers.set(peerId, messages);
+        pendingRemovedPeerIds.delete(peerId);
+      }
       const timer = setTimeout(() => {
         void this.flush(normalizedAccountId);
       }, this.options.debounceMs ?? 250);
-      this.pendingWrites.set(normalizedAccountId, { value, timer, waiters });
+      this.pendingWrites.set(normalizedAccountId, {
+        changedPeers: pendingChangedPeers,
+        removedPeerIds: pendingRemovedPeerIds,
+        peerIds,
+        timer,
+        waiters,
+      });
     });
   }
 
@@ -242,7 +351,15 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
       pending.waiters.forEach(({ resolve }) => resolve());
       this.pendingWrites.delete(normalizedAccountId);
     }
-    await this.options.store?.remove(normalizedAccountId);
+    this.latestValues.delete(normalizedAccountId);
+    if (this.options.store) {
+      const manifest = cacheManifest(await this.options.store.get(manifestCacheKey(normalizedAccountId)));
+      await this.options.store.setMany(new Map(), [
+        normalizedAccountId,
+        manifestCacheKey(normalizedAccountId),
+        ...(manifest?.peerIds ?? []).map((peerId) => peerCacheKey(normalizedAccountId, peerId)),
+      ]);
+    }
     try {
       this.options.legacyStorage?.removeItem(legacyCacheKey(normalizedAccountId));
     } catch {
@@ -255,15 +372,46 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     if (!pending || !this.options.store) return;
     this.pendingWrites.delete(accountId);
     try {
-      const messagesByPeer = normalizeCloudMessagesByPeer(accountId, pending.value);
-      await this.options.store.set(accountId, {
-        version: CLOUD_MESSAGE_CACHE_VERSION,
-        messagesByPeer,
-      } satisfies CloudMessageCacheRecord);
+      const normalizedChangedPeers: Record<string, CloudMessage[]> = {};
+      for (const [peerId, messages] of pending.changedPeers) {
+        const normalized = normalizeCloudMessagesByPeer(accountId, { [peerId]: messages })[peerId];
+        if (normalized?.length) normalizedChangedPeers[peerId] = normalized;
+        else pending.removedPeerIds.add(peerId);
+      }
+      const peerIds = pending.peerIds.filter((peerId) => !pending.removedPeerIds.has(peerId));
+      await this.writePeers(accountId, normalizedChangedPeers, [...pending.removedPeerIds], [], peerIds);
       pending.waiters.forEach(({ resolve }) => resolve());
     } catch (error) {
+      if (!this.pendingWrites.has(accountId)) this.latestValues.delete(accountId);
       pending.waiters.forEach(({ reject }) => reject(error));
     }
+  }
+
+  private async writePeers(
+    accountId: string,
+    changedPeers: Record<string, CloudMessage[]>,
+    removedPeerIds: readonly string[] = [],
+    additionalRemoveKeys: readonly string[] = [],
+    manifestPeerIds: readonly string[] = Object.keys(changedPeers),
+  ) {
+    if (!this.options.store) return;
+    const entries = new Map<string, unknown>();
+    const peerIds = [...new Set(manifestPeerIds.map(cleanText).filter(Boolean))].sort();
+    entries.set(manifestCacheKey(accountId), {
+      version: CLOUD_MESSAGE_CACHE_VERSION,
+      peerIds,
+    } satisfies CloudMessageCacheManifest);
+    for (const [peerId, messages] of Object.entries(changedPeers)) {
+      entries.set(peerCacheKey(accountId, peerId), {
+        version: CLOUD_MESSAGE_CACHE_VERSION,
+        peerId,
+        messages,
+      } satisfies CloudMessageCachePeerRecord);
+    }
+    await this.options.store.setMany(entries, [
+      ...additionalRemoveKeys,
+      ...removedPeerIds.map((peerId) => peerCacheKey(accountId, peerId)),
+    ]);
   }
 }
 
