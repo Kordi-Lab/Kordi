@@ -13,8 +13,37 @@ import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 class MemoryPersistence implements CloudGroupOutboxPersistence {
   value: CloudGroupOutboxPersistedState | null = null;
+  private failuresRemaining = 0;
+
   async load() { return this.value ? structuredClone(this.value) : null; }
-  async save(value: CloudGroupOutboxPersistedState) { this.value = structuredClone(value); }
+  async save(value: CloudGroupOutboxPersistedState) {
+    if (this.failuresRemaining > 0) {
+      this.failuresRemaining -= 1;
+      throw new Error('forced persistence failure');
+    }
+    this.value = structuredClone(value);
+  }
+  failNextSave() { this.failuresRemaining += 1; }
+}
+
+class ControlledFirstSaveFailurePersistence extends MemoryPersistence {
+  private saveCount = 0;
+  private resolveFirstSaveStarted: (() => void) | null = null;
+  private resolveFirstSaveRelease: (() => void) | null = null;
+  readonly firstSaveStarted = new Promise<void>((resolve) => { this.resolveFirstSaveStarted = resolve; });
+  private readonly firstSaveRelease = new Promise<void>((resolve) => { this.resolveFirstSaveRelease = resolve; });
+
+  override async save(value: CloudGroupOutboxPersistedState) {
+    this.saveCount += 1;
+    if (this.saveCount === 1) {
+      this.resolveFirstSaveStarted?.();
+      await this.firstSaveRelease;
+      throw new Error('forced first save failure');
+    }
+    await super.save(value);
+  }
+
+  releaseFirstSave() { this.resolveFirstSaveRelease?.(); }
 }
 
 class MemoryStorage implements Storage {
@@ -93,7 +122,9 @@ class ControllableIndexedDb {
               request as unknown as IDBRequest<CloudGroupOutboxPersistedState | undefined>,
               new Event('success'),
             );
-            transaction.oncomplete?.call(transaction as unknown as IDBTransaction, new Event('complete'));
+            queueMicrotask(() => {
+              transaction.oncomplete?.call(transaction as unknown as IDBTransaction, new Event('complete'));
+            });
           });
           return request as unknown as IDBRequest<unknown>;
         },
@@ -110,10 +141,12 @@ class ControllableIndexedDb {
               request.onerror?.call(request as unknown as IDBRequest<IDBValidKey>, new Event('error'));
               return;
             }
-            this.value = structuredClone(value);
             request.onsuccess?.call(request as unknown as IDBRequest<IDBValidKey>, new Event('success'));
-            this.events.push('idb-put-complete');
-            transaction.oncomplete?.call(transaction as unknown as IDBTransaction, new Event('complete'));
+            queueMicrotask(() => {
+              this.value = structuredClone(value);
+              this.events.push('idb-put-complete');
+              transaction.oncomplete?.call(transaction as unknown as IDBTransaction, new Event('complete'));
+            });
           });
           return request as unknown as IDBRequest<IDBValidKey>;
         },
@@ -195,6 +228,37 @@ test('restart reconciles a newer fallback delivery state before promoting it to 
   });
 });
 
+test('completion tombstones filter stale fallback entries before the persisted list is capped', async () => {
+  const events: string[] = [];
+  const storage = new MemoryStorage(events);
+  const completedCanonicalMessageId = entry().canonicalMessageId;
+  const indexedDb = new ControllableIndexedDb({
+    version: 1,
+    entries: [],
+    completedCanonicalMessageIds: [completedCanonicalMessageId],
+  }, events);
+  storage.setItem('kordi.cloud.groupOutbox.v1:acct_me', JSON.stringify({
+    version: 1,
+    entries: [entry()],
+    completedCanonicalMessageIds: Array.from(
+      { length: 1_000 },
+      (_, index) => `msg:canonical:fallback-completed:${index}`,
+    ),
+  }));
+
+  await withBrowserPersistenceGlobals(indexedDb.factory, storage, async () => {
+    const restarted = new CloudGroupOutbox('acct_me', defaultCloudGroupOutboxPersistence('acct_me'));
+    const restored = await restarted.restore();
+    assert.deepEqual(restored, [], 'the stale entry must stay suppressed even if its tombstone is evicted');
+
+    let sends = 0;
+    await restarted.deliverDue(async () => { sends += 1; }, 200);
+    assert.equal(sends, 0);
+    assert.deepEqual(indexedDb.value?.entries, []);
+    assert.equal(indexedDb.value?.completedCanonicalMessageIds.length, 1_000);
+  });
+});
+
 test('enqueue rejects when neither browser persistence backend accepts the snapshot', async () => {
   await withBrowserPersistenceGlobals(undefined, undefined, async () => {
     const outbox = new CloudGroupOutbox('acct_me', defaultCloudGroupOutboxPersistence('acct_me'));
@@ -211,6 +275,39 @@ test('enqueue rejects when neither browser persistence backend accepts the snaps
       'a retry must not bypass durability through the failed in-memory entry',
     );
   });
+});
+
+test('a queued successful enqueue cannot persist an entry whose earlier save rejected', async () => {
+  const persistence = new ControlledFirstSaveFailurePersistence();
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+  const rejectedEntry = { ...entry(), canonicalMessageId: 'msg:canonical:rejected' };
+  const retainedEntry = { ...entry(), canonicalMessageId: 'msg:canonical:retained' };
+
+  const rejectedEnqueue = outbox.enqueue(rejectedEntry);
+  await persistence.firstSaveStarted;
+  const retainedEnqueue = outbox.enqueue(retainedEntry);
+  await Promise.resolve();
+  assert.deepEqual(
+    outbox.entries().map((candidate) => candidate.canonicalMessageId),
+    ['msg:canonical:rejected', 'msg:canonical:retained'],
+  );
+  persistence.releaseFirstSave();
+
+  await assert.rejects(rejectedEnqueue, /forced first save failure/);
+  await retainedEnqueue;
+  assert.deepEqual(
+    outbox.entries().map((candidate) => candidate.canonicalMessageId),
+    ['msg:canonical:retained'],
+  );
+
+  const restarted = new CloudGroupOutbox('acct_me', persistence);
+  const restored = await restarted.restore();
+  assert.deepEqual(
+    restored.map((candidate) => candidate.canonicalMessageId),
+    ['msg:canonical:retained'],
+    'durable state must match the post-rollback in-memory state',
+  );
 });
 
 test('one fulfilled and one rejected target leaves only the failed recipient pending', async () => {
@@ -284,6 +381,44 @@ test('successful recipient delivery stays durable until canonical acknowledgemen
   assert.deepEqual(persistence.value?.completedCanonicalMessageIds, ['msg:canonical:one']);
   assert.equal(await restarted.acknowledgeCanonicalDelivery('msg:canonical:one'), true, 'ack is idempotent');
   assert.equal(await restarted.enqueue(entry()), null, 'completed canonical ids still block duplicate sends');
+});
+
+test('failed canonical acknowledgement rolls back so retry persists completion across restart', async () => {
+  const persistence = new MemoryPersistence();
+  const initial = new CloudGroupOutbox('acct_me', persistence);
+  await initial.restore();
+  await initial.enqueue(entry());
+  await initial.deliver('msg:canonical:one', async () => {}, { nowMs: 100, force: true });
+  const previousCompletedCanonicalMessageIds = Array.from(
+    { length: 1_000 },
+    (_, index) => `msg:canonical:previously-completed:${index}`,
+  );
+  persistence.value = {
+    ...persistence.value!,
+    completedCanonicalMessageIds: previousCompletedCanonicalMessageIds,
+  };
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+  persistence.failNextSave();
+
+  await assert.rejects(
+    outbox.acknowledgeCanonicalDelivery('msg:canonical:one'),
+    /forced persistence failure/,
+  );
+  assert.equal(outbox.entries()[0]?.awaitingCanonicalAck, true);
+  assert.equal(
+    await outbox.enqueue({
+      ...entry(),
+      canonicalMessageId: previousCompletedCanonicalMessageIds[0]!,
+    }),
+    null,
+    'rollback must restore a completion tombstone evicted by the failed acknowledgement',
+  );
+  assert.equal(await outbox.acknowledgeCanonicalDelivery('msg:canonical:one'), true);
+
+  const restarted = new CloudGroupOutbox('acct_me', persistence);
+  assert.deepEqual(await restarted.restore(), []);
+  assert.equal(await restarted.enqueue(entry()), null, 'retry must durably retain the completion tombstone');
 });
 
 test('canonical acknowledgement refuses pending, partial, and exhausted deliveries', async () => {

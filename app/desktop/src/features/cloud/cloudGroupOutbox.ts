@@ -252,11 +252,11 @@ function mergeStates(
   indexedDbState: CloudGroupOutboxPersistedState,
   fallbackState: CloudGroupOutboxPersistedState,
 ): CloudGroupOutboxPersistedState {
-  const completedCanonicalMessageIds = uniqueText([
+  const allCompletedCanonicalMessageIds = uniqueText([
     ...indexedDbState.completedCanonicalMessageIds,
     ...fallbackState.completedCanonicalMessageIds,
-  ]).slice(-MAX_COMPLETED_MESSAGE_IDS);
-  const completed = new Set(completedCanonicalMessageIds);
+  ]);
+  const completed = new Set(allCompletedCanonicalMessageIds);
   const entriesByCanonicalMessageId = new Map(
     indexedDbState.entries.map((entry) => [entry.canonicalMessageId, cloneEntry(entry)]),
   );
@@ -269,6 +269,7 @@ function mergeStates(
   }
   const entries = [...entriesByCanonicalMessageId.values()]
     .filter((entry) => !completed.has(entry.canonicalMessageId));
+  const completedCanonicalMessageIds = allCompletedCanonicalMessageIds.slice(-MAX_COMPLETED_MESSAGE_IDS);
   return { version: CLOUD_GROUP_OUTBOX_VERSION, entries, completedCanonicalMessageIds };
 }
 
@@ -398,12 +399,28 @@ export class CloudGroupOutbox {
       return false;
     }
 
+    const entryIndex = this.state.entries.indexOf(entry);
+    const acknowledgedEntry = cloneEntry(entry);
+    const completedBeforeAcknowledgement = [...this.state.completedCanonicalMessageIds];
     this.state.entries = this.state.entries.filter((candidate) => candidate.canonicalMessageId !== normalizedId);
     this.state.completedCanonicalMessageIds = [
       ...this.state.completedCanonicalMessageIds.filter((id) => id !== normalizedId),
       normalizedId,
     ].slice(-MAX_COMPLETED_MESSAGE_IDS);
-    await this.persist();
+    try {
+      await this.persist();
+    } catch (error) {
+      this.state.completedCanonicalMessageIds = uniqueText([
+        ...completedBeforeAcknowledgement,
+        ...this.state.completedCanonicalMessageIds.filter((id) => id !== normalizedId),
+      ]).slice(-MAX_COMPLETED_MESSAGE_IDS);
+      if (!this.state.entries.some((candidate) => candidate.canonicalMessageId === normalizedId)) {
+        const restoredEntries = [...this.state.entries];
+        restoredEntries.splice(Math.min(entryIndex, restoredEntries.length), 0, acknowledgedEntry);
+        this.state.entries = restoredEntries;
+      }
+      throw error;
+    }
     this.notify();
     return true;
   }
@@ -471,8 +488,9 @@ export class CloudGroupOutbox {
   }
 
   private persist() {
-    const snapshot = cloneState(this.state);
-    this.writeChain = this.writeChain.catch(() => {}).then(() => this.persistence.save(snapshot));
+    this.writeChain = this.writeChain
+      .catch(() => {})
+      .then(() => this.persistence.save(cloneState(this.state)));
     return this.writeChain;
   }
 
