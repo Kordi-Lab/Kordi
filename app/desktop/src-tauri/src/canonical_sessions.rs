@@ -578,27 +578,55 @@ pub(super) fn mark_session_read_in_db(
         .map(ToString::to_string)
         .or(latest_readable_session_message_id(conn, session_id)?);
     let now = now_ms();
-    conn.execute(
-        "UPDATE session_participants
-         SET last_seen_at_ms = ?1,
-             last_read_message_id = COALESCE(?2, last_read_message_id)
-         WHERE session_id = ?3 AND identity_id = ?4 AND role = 'self'",
-        params![now, message_id, session_id, identity_id],
-    )
-    .map_err(|err| err.to_string())?;
-    let last_read_message_id = conn
+    let updated_cursor = conn
         .query_row(
-            "SELECT last_read_message_id
-             FROM session_participants
-             WHERE session_id = ?1 AND identity_id = ?2 AND role = 'self'",
-            params![session_id, identity_id],
-            |row| row.get::<_, Option<String>>(0),
+            "WITH target_message AS (
+                SELECT id, sequence_num
+                FROM session_messages
+                WHERE id = ?2
+                  AND session_id = ?3
+                  AND COALESCE(source_transport, '') NOT IN (
+                      'canonical-fork-snapshot',
+                      'cloud-group-fork-snapshot'
+                  )
+                  AND LOWER(TRIM(status)) NOT IN ('sending', 'processing')
+             )
+             UPDATE session_participants AS participant
+             SET last_seen_at_ms = MAX(COALESCE(participant.last_seen_at_ms, 0), ?1),
+                 last_read_message_id = CASE
+                     WHEN ?2 IS NULL THEN participant.last_read_message_id
+                     WHEN COALESCE(
+                         (
+                             SELECT target.sequence_num >= current.sequence_num
+                             FROM target_message AS target
+                             LEFT JOIN session_messages AS current
+                               ON current.id = participant.last_read_message_id
+                              AND current.session_id = participant.session_id
+                         ),
+                         1
+                     ) THEN ?2
+                     ELSE participant.last_read_message_id
+                 END
+             WHERE participant.session_id = ?3
+               AND participant.identity_id = ?4
+               AND participant.role = 'self'
+               AND (?2 IS NULL OR EXISTS(SELECT 1 FROM target_message))
+             RETURNING last_seen_at_ms, last_read_message_id",
+            params![now, message_id, session_id, identity_id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?)),
         )
+        .optional()
         .map_err(|err| err.to_string())?;
+    let Some((last_seen_at_ms, last_read_message_id)) = updated_cursor else {
+        if message_id.is_some() {
+            return Err("Message is not readable in this session".to_string());
+        }
+        return Ok(None);
+    };
     Ok(Some(CanonicalReadCursorDelta {
         session_id: session_id.to_string(),
         identity_id,
-        last_seen_at_ms: now,
+        last_seen_at_ms,
         last_read_message_id,
     }))
 }
