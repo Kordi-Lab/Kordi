@@ -220,6 +220,29 @@ test('Cloud profile adoption commits the migration delta before one newest trail
   assert.deepEqual(commits, ['A:human:legacy', 'C:human:acct']);
 });
 
+test('Cloud profile adoption dedupes identity-only rerenders while adopting same-account profile edits', async () => {
+  const coordinator = new CloudProfileIdentityAdoptionCoordinator();
+  const calls: AdoptCloudProfileIdentityRequest[] = [];
+  const adopt = async (request: AdoptCloudProfileIdentityRequest) => {
+    calls.push(request);
+    return adoptionDelta(request.displayName, 'human:acct');
+  };
+  const initial = adoptionRequest('Initial');
+  const renamed = adoptionRequest('Renamed');
+  const newAvatar = {
+    ...renamed,
+    profileImageUrl: 'https://example.invalid/new-avatar.png',
+  };
+
+  await coordinator.request(initial, adopt, () => {});
+  await coordinator.request(initial, adopt, () => {});
+  await coordinator.request(renamed, adopt, () => {});
+  await coordinator.request(renamed, adopt, () => {});
+  await coordinator.request(newAvatar, adopt, () => {});
+
+  assert.deepEqual(calls, [initial, renamed, newAvatar]);
+});
+
 test('Cloud profile adoption applies persisted account-switch deltas in native completion order', async () => {
   const coordinator = new CloudProfileIdentityAdoptionCoordinator();
   const first = deferredValue<CanonicalProfileIdentityDelta>();

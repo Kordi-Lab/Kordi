@@ -477,8 +477,8 @@ pub(super) fn desktop_canonical_upsert_identity(
 pub(super) fn desktop_canonical_adopt_cloud_profile_identity(
     request: AdoptCloudProfileIdentityRequest,
 ) -> Result<CanonicalProfileIdentityDelta, String> {
-    let conn = open_db()?;
-    adopt_cloud_profile_identity_in_db(&conn, request)
+    let mut conn = open_db()?;
+    adopt_cloud_profile_identity_in_db(&mut conn, request)
 }
 
 pub(super) fn desktop_canonical_upsert_identity_fast(

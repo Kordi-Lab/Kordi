@@ -2284,11 +2284,6 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account || !canonicalStateReady || !setCanonicalSessionState) return;
-    const stableIdentityId = `human:${account.accountId}`;
-    if (
-      canonicalSessionState?.profile.humanIdentityId === stableIdentityId
-      && !cloudProfileIdentityAdoptionCoordinator.hasPendingWork()
-    ) return;
     void cloudProfileIdentityAdoptionCoordinator.request(
       {
         accountId: account.accountId,

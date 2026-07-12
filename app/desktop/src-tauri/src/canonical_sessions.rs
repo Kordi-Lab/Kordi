@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -1312,7 +1312,7 @@ fn update_identity_references(
 }
 
 pub(super) fn adopt_cloud_profile_identity_in_db(
-    conn: &Connection,
+    conn: &mut Connection,
     request: AdoptCloudProfileIdentityRequest,
 ) -> Result<CanonicalProfileIdentityDelta, String> {
     let account_id = request.account_id.trim().to_string();
@@ -1322,7 +1322,10 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
         return Err("Cloud profile display name is required".to_string());
     }
 
-    let profile = ensure_local_profile(conn)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|err| err.to_string())?;
+    let profile = ensure_local_profile(&tx)?;
     let previous_human_identity_id = profile
         .human_identity_id
         .as_deref()
@@ -1331,7 +1334,7 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
         .map(ToString::to_string);
 
     let identity = upsert_identity_in_db(
-        conn,
+        &tx,
         UpsertCanonicalIdentityRequest {
             id: Some(stable_identity_id.clone()),
             kind: "human".to_string(),
@@ -1352,15 +1355,15 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
     )?;
 
     if let Some(previous_id) = previous_human_identity_id.as_deref() {
-        update_identity_references(conn, previous_id, &stable_identity_id)?;
+        update_identity_references(&tx, previous_id, &stable_identity_id)?;
     }
-    conn.execute(
+    tx.execute(
         "UPDATE session_participants SET role = 'self' WHERE identity_id = ?1 AND state = 'active'",
         params![stable_identity_id],
     )
     .map_err(|err| err.to_string())?;
     let group_session_ids = {
-        let mut stmt = conn
+        let mut stmt = tx
             .prepare(
                 "SELECT s.id
                  FROM sessions s
@@ -1375,16 +1378,19 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
             .map_err(|err| err.to_string())?
     };
     for session_id in &group_session_ids {
-        enforce_only_local_group_self(conn, session_id, &stable_identity_id)?;
+        enforce_only_local_group_self(&tx, session_id, &stable_identity_id)?;
     }
-    update_local_profile_identities(conn, Some(&stable_identity_id), None, Some(display_name))?;
+    update_local_profile_identities(&tx, Some(&stable_identity_id), None, Some(display_name))?;
 
-    Ok(CanonicalProfileIdentityDelta {
-        profile: ensure_local_profile(conn)?,
+    let delta = CanonicalProfileIdentityDelta {
+        profile: ensure_local_profile(&tx)?,
         identity,
         previous_identity_id: previous_human_identity_id,
         group_self_session_ids: group_session_ids,
-    })
+    };
+    tx.commit().map_err(|err| err.to_string())?;
+
+    Ok(delta)
 }
 
 fn update_local_profile_identities(

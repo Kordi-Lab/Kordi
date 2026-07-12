@@ -441,7 +441,7 @@ fn manual_title_metadata_survives_session_shell_upsert() {
 
 #[test]
 fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
-    let conn = test_conn();
+    let mut conn = test_conn();
     let old_local_human_id =
         local_profile_human_identity_id(&conn, "Old Device Name").expect("local profile");
     seed_identity(&conn, "agent:old-local", "Kordi", "agent");
@@ -556,7 +556,7 @@ fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
     .expect("append old local message");
 
     let delta = adopt_cloud_profile_identity_in_db(
-        &conn,
+        &mut conn,
         AdoptCloudProfileIdentityRequest {
             account_id: "acct_same".to_string(),
             display_name: "Cloud Name".to_string(),
@@ -732,6 +732,94 @@ fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
         )
         .expect("pre-adoption group self count");
     assert_eq!(pre_adoption_group_self_count, 1);
+}
+
+#[test]
+fn cloud_profile_identity_adoption_rolls_back_all_mutations_when_profile_update_fails() {
+    let mut conn = test_conn();
+    let old_local_human_id =
+        local_profile_human_identity_id(&conn, "Old Device Name").expect("local profile");
+    let local_agent = seed_identity(&conn, "agent:old-local", "Kordi", "agent");
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:atomic-adoption".to_string()),
+            kind: "self-agent".to_string(),
+            title: Some("Atomic adoption".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: old_local_human_id.clone(),
+            primary_identity_id: Some(local_agent.id.clone()),
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![local_agent.id],
+            metadata: Some(serde_json::json!({
+                "adminIdentityIds": [old_local_human_id.clone()],
+            })),
+        },
+    )
+    .expect("create local session");
+    conn.execute_batch(
+        "CREATE TRIGGER abort_cloud_profile_update
+         BEFORE UPDATE OF human_identity_id ON local_profile
+         WHEN NEW.human_identity_id = 'human:acct_atomic'
+         BEGIN
+             SELECT RAISE(ABORT, 'injected late profile failure');
+         END;",
+    )
+    .expect("install late failure trigger");
+
+    let error = adopt_cloud_profile_identity_in_db(
+        &mut conn,
+        AdoptCloudProfileIdentityRequest {
+            account_id: "acct_atomic".to_string(),
+            display_name: "Cloud Name".to_string(),
+            avatar_key: Some("acct_atomic".to_string()),
+            profile_image_url: Some("https://example.invalid/atomic.png".to_string()),
+        },
+    )
+    .expect_err("late profile failure must abort adoption");
+    assert!(error.contains("injected late profile failure"), "{error}");
+
+    let profile = schema::ensure_local_profile(&conn).expect("profile after failed adoption");
+    assert_eq!(
+        profile.human_identity_id.as_deref(),
+        Some(old_local_human_id.as_str())
+    );
+    assert_eq!(profile.display_name.as_deref(), Some("Old Device Name"));
+
+    let adopted_identity_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM identities WHERE id = 'human:acct_atomic'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("adopted identity count");
+    assert_eq!(adopted_identity_count, 0);
+
+    let (created_by_identity_id, metadata_json): (String, String) = conn
+        .query_row(
+            "SELECT created_by_identity_id, metadata_json
+             FROM sessions WHERE id = 'session:atomic-adoption'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("session after failed adoption");
+    assert_eq!(created_by_identity_id, old_local_human_id);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&metadata_json).expect("session metadata"),
+        serde_json::json!({ "adminIdentityIds": [old_local_human_id] })
+    );
+
+    let old_self_participant_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_participants
+             WHERE session_id = 'session:atomic-adoption' AND identity_id = ?1 AND role = 'self'",
+            params![old_local_human_id],
+            |row| row.get(0),
+        )
+        .expect("old self participant count");
+    assert_eq!(old_self_participant_count, 1);
 }
 
 #[test]
