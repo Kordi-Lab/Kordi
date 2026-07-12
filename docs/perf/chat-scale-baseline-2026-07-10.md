@@ -231,7 +231,7 @@ Records are available as `kordi:<span-name>` Performance entries, `[kordi-perfor
 | `git diff --check` | Pass before and after documentation update |
 | Normal frontend unit run | Fail, exit 1: 1,135/1,154 pass and the same 19 tests match the documented baseline categories; this is 17 more total passing tests than the prior report |
 | Desktop-only clippy | Pass, exit 0 with warnings |
-| `pnpm check:rust:fmt` | Fail, exit 1: 126 unique diff files on the integration head versus 127 on pre-hardening `00e1bbd9`; no formatting regression from final hardening |
+| `pnpm check:rust:fmt` | Fail, exit 1: 126 `Diff in` records across 35 unique Rust files on the integration head, versus 127 records across the same 35 files on pre-hardening `00e1bbd9`; the gate remains red |
 | `pnpm check:rust:clippy` | Fail, exit 101: exactly two missing `parent_session_message_id` fields in TUI `SessionRow` test initializers at `agent/crates/tui/src/session_selector.rs:109` and `:121` |
 | Full Rust chain | Dependency stage passes; core stages pass 50/50, 196/196, and 22/22; the desktop stage has 265 total tests with 263 displayed passing, while the same two Cloud file-store tests exceed 60 seconds; the aggregate was manually interrupted and exits 1 |
 | Serialized Cloud file-store classification | Pass, 2/2 across two separate exact serial commands; each passes 1/1 with 264 filtered out |
