@@ -3,8 +3,8 @@ use rusqlite::{Connection, params};
 use super::{
     AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
     AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalDelegatedExchange,
-    CanonicalIdentity, CanonicalMessagePage, CanonicalPresence, CanonicalReadCursorDelta,
-    CanonicalSession, CanonicalSessionCatalog, CanonicalSessionMessage,
+    CanonicalIdentity, CanonicalMessagePage, CanonicalPresence, CanonicalProfileIdentityDelta,
+    CanonicalReadCursorDelta, CanonicalSession, CanonicalSessionCatalog, CanonicalSessionMessage,
     CanonicalSessionParticipant, CanonicalSessionState, CanonicalSessionSummary,
     CreateCanonicalDelegatedExchangeRequest, MarkCanonicalSessionReadRequest,
     OpenCanonicalSessionFastResult, OpenCanonicalSessionRequest,
@@ -474,10 +474,9 @@ pub(super) fn desktop_canonical_upsert_identity(
 
 pub(super) fn desktop_canonical_adopt_cloud_profile_identity(
     request: AdoptCloudProfileIdentityRequest,
-) -> Result<CanonicalSessionState, String> {
+) -> Result<CanonicalProfileIdentityDelta, String> {
     let conn = open_db()?;
-    adopt_cloud_profile_identity_in_db(&conn, request)?;
-    load_state_from_db(&conn)
+    adopt_cloud_profile_identity_in_db(&conn, request)
 }
 
 pub(super) fn desktop_canonical_upsert_identity_fast(

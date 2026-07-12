@@ -6,6 +6,8 @@ const commandsSource = () => readFileSync(new URL('../src-tauri/src/canonical_se
 const canonicalSessionsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions.rs', import.meta.url), 'utf8');
 const desktopSource = () => readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
 const modelsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/models.rs', import.meta.url), 'utf8');
+const typesSource = () => readFileSync(new URL('../src/kordi-app/types.ts', import.meta.url), 'utf8');
+const cloudBridgeSource = () => readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
 test('canonical state loading maps session_messages in one query instead of N+1 select_message calls', () => {
   const source = commandsSource();
@@ -92,4 +94,58 @@ test('native scale regression seeds 20,000 rows and enforces catalog and page by
   assert.match(testSource, /catalog_bytes < 1024 \* 1024/);
   assert.match(testSource, /page\.messages\.len\(\) <= 150/);
   assert.match(testSource, /page_bytes < 512 \* 1024/);
+});
+
+test('cloud profile adoption returns a bounded identity delta without loading canonical state', () => {
+  const modelSource = modelsSource();
+  const nativeModel = /pub struct CanonicalProfileIdentityDelta \{([\s\S]*?)\n\}/.exec(modelSource);
+  assert.ok(nativeModel, 'native model should expose the bounded delta');
+  assert.deepEqual(
+    Array.from(nativeModel[1]?.matchAll(/pub (\w+):/g) ?? [], (match) => match[1]),
+    ['profile', 'identity', 'previous_identity_id', 'group_self_session_ids'],
+  );
+  assert.doesNotMatch(nativeModel[0], /messages|sessions|context_snapshots|CanonicalSessionState/);
+
+  const rendererModel = /export type CanonicalProfileIdentityDelta = \{([\s\S]*?)\n\};/.exec(typesSource());
+  assert.ok(rendererModel, 'renderer types should expose the bounded delta');
+  assert.deepEqual(
+    Array.from(rendererModel[1]?.matchAll(/^\s*(\w+)[?:]*:/gm) ?? [], (match) => match[1]),
+    ['profile', 'identity', 'previousIdentityId', 'groupSelfSessionIds'],
+  );
+
+  const commandSource = commandsSource();
+  const commandStart = commandSource.indexOf('pub(super) fn desktop_canonical_adopt_cloud_profile_identity');
+  const commandEnd = commandSource.indexOf('pub(super) fn desktop_canonical_upsert_identity_fast', commandStart);
+  assert.notEqual(commandStart, -1, 'expected native cloud profile adoption command');
+  assert.notEqual(commandEnd, -1, 'expected the next native command');
+  const command = commandSource.slice(commandStart, commandEnd);
+  assert.match(command, /Result<CanonicalProfileIdentityDelta, String>/);
+  assert.doesNotMatch(command, /CanonicalSessionState|load_state_from_db/);
+
+  const rustSource = canonicalSessionsSource();
+  const dbStart = rustSource.indexOf('pub(super) fn adopt_cloud_profile_identity_in_db');
+  const dbEnd = rustSource.indexOf('fn update_local_profile_identities', dbStart);
+  const dbAdoption = rustSource.slice(dbStart, dbEnd);
+  assert.match(dbAdoption, /Result<CanonicalProfileIdentityDelta, String>/);
+  assert.doesNotMatch(dbAdoption, /CanonicalSessionState|load_state_from_db/);
+
+  const wrapperStart = rustSource.indexOf('pub async fn desktop_canonical_adopt_cloud_profile_identity');
+  const wrapperEnd = rustSource.indexOf('#[tauri::command]', wrapperStart + 1);
+  const wrapper = rustSource.slice(wrapperStart, wrapperEnd);
+  assert.match(wrapper, /Result<CanonicalProfileIdentityDelta, String>/);
+  assert.doesNotMatch(wrapper, /CanonicalSessionState|load_state_from_db/);
+
+  const rendererSource = desktopSource();
+  const rendererStart = rendererSource.indexOf('export async function adoptCloudProfileIdentity');
+  const rendererEnd = rendererSource.indexOf('export async function', rendererStart + 1);
+  const rendererClient = rendererSource.slice(rendererStart, rendererEnd);
+  assert.match(rendererClient, /invokeDesktop<CanonicalProfileIdentityDelta>/);
+  assert.doesNotMatch(rendererClient, /CanonicalSessionState/);
+
+  const cloudSource = cloudBridgeSource();
+  assert.match(
+    cloudSource,
+    /\.then\(\(delta\) => \{[\s\S]*?setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/,
+    'cloud adoption should merge the delta with a functional React state update',
+  );
 });

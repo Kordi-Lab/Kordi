@@ -37,6 +37,7 @@ import type {
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
 import {
+  applyCanonicalProfileIdentityDelta,
   mergeCanonicalMessageRow,
   mergeCanonicalReadCursorDelta,
 } from '@/features/canonical/canonicalStateReducers';
@@ -2303,8 +2304,10 @@ export function useCloudBridgeState({
       avatarKey: account.accountId,
       profileImageUrl: account.avatarUrl ?? null,
     })
-      .then((nextState) => {
-        if (!cancelled) setCanonicalSessionState(nextState);
+      .then((delta) => {
+        if (!cancelled) {
+          setCanonicalSessionState?.((current) => applyCanonicalProfileIdentityDelta(current, delta));
+        }
       })
       .catch((error) => {
         // eslint-disable-next-line no-console

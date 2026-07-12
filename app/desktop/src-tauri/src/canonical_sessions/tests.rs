@@ -515,7 +515,7 @@ fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
     )
     .expect("append old local message");
 
-    adopt_cloud_profile_identity_in_db(
+    let delta = adopt_cloud_profile_identity_in_db(
         &conn,
         AdoptCloudProfileIdentityRequest {
             account_id: "acct_same".to_string(),
@@ -525,6 +525,38 @@ fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
         },
     )
     .expect("adopt cloud profile");
+
+    assert_eq!(
+        delta.previous_identity_id.as_deref(),
+        Some(old_local_human_id.as_str())
+    );
+    assert_eq!(delta.identity.id, "human:acct_same");
+    assert_eq!(
+        delta.profile.human_identity_id.as_deref(),
+        Some("human:acct_same")
+    );
+    assert_eq!(
+        delta.group_self_session_ids,
+        vec!["session:group:arrived-before-adoption".to_string()]
+    );
+    let delta_json = serde_json::to_value(&delta).expect("serialize identity delta");
+    assert_eq!(
+        delta_json
+            .as_object()
+            .expect("delta object")
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>(),
+        [
+            "groupSelfSessionIds",
+            "identity",
+            "previousIdentityId",
+            "profile",
+        ]
+        .into_iter()
+        .map(ToString::to_string)
+        .collect()
+    );
 
     let profile = schema::ensure_local_profile(&conn).expect("profile");
     assert_eq!(

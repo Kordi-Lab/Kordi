@@ -4,6 +4,7 @@ import type {
   AppendCanonicalMessageRequest,
   CanonicalIdentity,
   CanonicalMessagePage,
+  CanonicalProfileIdentityDelta,
   CanonicalReadCursorDelta,
   CanonicalSessionCatalog,
   CanonicalSessionMessage,
@@ -688,7 +689,7 @@ export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRe
 }
 
 export async function adoptCloudProfileIdentity(request: AdoptCloudProfileIdentityRequest) {
-  return invokeDesktop<CanonicalSessionState>('desktop_canonical_adopt_cloud_profile_identity', { request });
+  return invokeDesktop<CanonicalProfileIdentityDelta>('desktop_canonical_adopt_cloud_profile_identity', { request });
 }
 
 export async function upsertCanonicalIdentityFast(request: UpsertCanonicalIdentityRequest) {

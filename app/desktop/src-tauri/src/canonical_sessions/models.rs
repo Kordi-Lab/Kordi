@@ -17,6 +17,15 @@ pub struct CanonicalSessionState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CanonicalProfileIdentityDelta {
+    pub profile: CanonicalLocalProfile,
+    pub identity: CanonicalIdentity,
+    pub previous_identity_id: Option<String>,
+    pub group_self_session_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CanonicalSessionCatalog {
     pub storage_path: String,
     pub profile: CanonicalLocalProfile,

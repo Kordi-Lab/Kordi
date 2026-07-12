@@ -1,8 +1,215 @@
 import type {
+  CanonicalProfileIdentityDelta,
   CanonicalReadCursorDelta,
   CanonicalSessionMessage,
   CanonicalSessionState,
 } from '@/kordi-app/types';
+
+function mapPreservingArray<T>(items: T[], mapItem: (item: T) => T): T[] {
+  let changed = false;
+  const mapped = items.map((item) => {
+    const next = mapItem(item);
+    if (next !== item) changed = true;
+    return next;
+  });
+  return changed ? mapped : items;
+}
+
+function rewriteExactJsonIdentityReference(
+  value: unknown,
+  previousIdentityId: string,
+  stableIdentityId: string,
+): unknown {
+  if (typeof value === 'string') {
+    return value === previousIdentityId ? stableIdentityId : value;
+  }
+  if (Array.isArray(value)) {
+    let rewritten: unknown[] | null = null;
+    value.forEach((item, index) => {
+      const nextItem = rewriteExactJsonIdentityReference(item, previousIdentityId, stableIdentityId);
+      if (nextItem === item) return;
+      rewritten ??= value.slice();
+      rewritten[index] = nextItem;
+    });
+    return rewritten ?? value;
+  }
+  if (!value || typeof value !== 'object') return value;
+
+  const record = value as Record<string, unknown>;
+  let rewritten: Record<string, unknown> | null = null;
+  Object.entries(record).forEach(([key, item]) => {
+    const nextItem = rewriteExactJsonIdentityReference(item, previousIdentityId, stableIdentityId);
+    if (nextItem === item) return;
+    rewritten ??= { ...record };
+    rewritten[key] = nextItem;
+  });
+  return rewritten ?? value;
+}
+
+export function applyCanonicalProfileIdentityDelta(
+  state: CanonicalSessionState | null,
+  delta: CanonicalProfileIdentityDelta | null,
+): CanonicalSessionState | null {
+  if (!state || !delta) return state;
+
+  const stableIdentityId = delta.identity.id;
+  const previousIdentityId = delta.previousIdentityId?.trim() || null;
+  const shouldMigrate = Boolean(previousIdentityId && previousIdentityId !== stableIdentityId);
+  const rewriteIdentityId = (identityId: string | null | undefined) => (
+    shouldMigrate && identityId === previousIdentityId ? stableIdentityId : identityId
+  );
+  const rewriteJson = (value: unknown) => (
+    shouldMigrate && previousIdentityId
+      ? rewriteExactJsonIdentityReference(value, previousIdentityId, stableIdentityId)
+      : value
+  );
+
+  const rewriteIdentity = (identity: CanonicalSessionState['identities'][number]) => {
+    const ownerIdentityId = rewriteIdentityId(identity.ownerIdentityId);
+    const metadata = rewriteJson(identity.metadata);
+    return ownerIdentityId === identity.ownerIdentityId && metadata === identity.metadata
+      ? identity
+      : { ...identity, ownerIdentityId, metadata };
+  };
+  const adoptedIdentity = rewriteIdentity(delta.identity);
+  let identitiesChanged = false;
+  let stableIdentityInserted = false;
+  const identities: CanonicalSessionState['identities'] = [];
+  state.identities.forEach((identity) => {
+    if (shouldMigrate && identity.id === previousIdentityId) {
+      identitiesChanged = true;
+      return;
+    }
+    if (identity.id === stableIdentityId) {
+      if (stableIdentityInserted) {
+        identitiesChanged = true;
+        return;
+      }
+      stableIdentityInserted = true;
+      identities.push(adoptedIdentity);
+      if (adoptedIdentity !== identity) identitiesChanged = true;
+      return;
+    }
+    const rewritten = rewriteIdentity(identity);
+    identities.push(rewritten);
+    if (rewritten !== identity) identitiesChanged = true;
+  });
+  if (!stableIdentityInserted) {
+    identities.push(adoptedIdentity);
+    identitiesChanged = true;
+  }
+  const nextIdentities = identitiesChanged ? identities : state.identities;
+
+  const sessions = mapPreservingArray(state.sessions, (session) => {
+    const createdByIdentityId = rewriteIdentityId(session.createdByIdentityId) ?? session.createdByIdentityId;
+    const primaryIdentityId = rewriteIdentityId(session.primaryIdentityId);
+    const relationshipIdentityId = rewriteIdentityId(session.relationshipIdentityId);
+    const metadata = rewriteJson(session.metadata);
+    return createdByIdentityId === session.createdByIdentityId
+      && primaryIdentityId === session.primaryIdentityId
+      && relationshipIdentityId === session.relationshipIdentityId
+      && metadata === session.metadata
+      ? session
+      : {
+          ...session,
+          createdByIdentityId,
+          primaryIdentityId,
+          relationshipIdentityId,
+          metadata,
+        };
+  });
+
+  const groupSelfSessionIds = new Set(delta.groupSelfSessionIds);
+  const sessionsWithStableParticipant = new Set(
+    state.participants
+      .filter((participant) => participant.identityId === stableIdentityId)
+      .map((participant) => participant.sessionId),
+  );
+  let participantsChanged = false;
+  const participants: CanonicalSessionState['participants'] = [];
+  state.participants.forEach((participant) => {
+    if (
+      shouldMigrate
+      && participant.identityId === previousIdentityId
+      && sessionsWithStableParticipant.has(participant.sessionId)
+    ) {
+      participantsChanged = true;
+      return;
+    }
+
+    const identityId = rewriteIdentityId(participant.identityId) ?? participant.identityId;
+    const addedByIdentityId = rewriteIdentityId(participant.addedByIdentityId);
+    const metadata = rewriteJson(participant.metadata);
+    const isStableParticipant = identityId === stableIdentityId;
+    const role = isStableParticipant
+      ? 'self'
+      : groupSelfSessionIds.has(participant.sessionId) && participant.role === 'self'
+        ? 'person'
+        : participant.role;
+    const participantState = isStableParticipant ? 'active' : participant.state;
+    const rewritten = identityId === participant.identityId
+      && addedByIdentityId === participant.addedByIdentityId
+      && metadata === participant.metadata
+      && role === participant.role
+      && participantState === participant.state
+      ? participant
+      : {
+          ...participant,
+          identityId,
+          role,
+          state: participantState,
+          addedByIdentityId,
+          metadata,
+        };
+    participants.push(rewritten);
+    if (rewritten !== participant) participantsChanged = true;
+  });
+  const nextParticipants = participantsChanged ? participants : state.participants;
+
+  const messages = mapPreservingArray(state.messages, (message) => {
+    const senderIdentityId = rewriteIdentityId(message.senderIdentityId) ?? message.senderIdentityId;
+    const content = rewriteJson(message.content);
+    return senderIdentityId === message.senderIdentityId && content === message.content
+      ? message
+      : { ...message, senderIdentityId, content };
+  });
+
+  const delegatedExchanges = mapPreservingArray(state.delegatedExchanges, (exchange) => {
+    const initiatorIdentityId = rewriteIdentityId(exchange.initiatorIdentityId) ?? exchange.initiatorIdentityId;
+    const targetIdentityId = rewriteIdentityId(exchange.targetIdentityId) ?? exchange.targetIdentityId;
+    return initiatorIdentityId === exchange.initiatorIdentityId && targetIdentityId === exchange.targetIdentityId
+      ? exchange
+      : { ...exchange, initiatorIdentityId, targetIdentityId };
+  });
+
+  let presence = state.presence;
+  if (shouldMigrate) {
+    const filteredPresence = state.presence.filter((row) => row.identityId !== previousIdentityId);
+    if (filteredPresence.length !== state.presence.length) presence = filteredPresence;
+  }
+
+  if (
+    delta.profile === state.profile
+    && nextIdentities === state.identities
+    && sessions === state.sessions
+    && nextParticipants === state.participants
+    && messages === state.messages
+    && delegatedExchanges === state.delegatedExchanges
+    && presence === state.presence
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    profile: delta.profile,
+    identities: nextIdentities,
+    sessions,
+    participants: nextParticipants,
+    messages,
+    delegatedExchanges,
+    presence,
+  };
+}
 
 export function mergeCanonicalReadCursorDelta(
   state: CanonicalSessionState | null,

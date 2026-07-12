@@ -2,13 +2,56 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import {
+  applyCanonicalProfileIdentityDelta,
   mergeCanonicalMessageRow,
   mergeCanonicalReadCursorDelta,
 } from '../src/features/canonical/canonicalStateReducers';
 import type {
+  CanonicalIdentity,
+  CanonicalProfileIdentityDelta,
   CanonicalSessionMessage,
   CanonicalSessionState,
 } from '../src/kordi-app/types';
+
+function profileIdentityDelta(
+  state: CanonicalSessionState,
+  previousIdentityId = 'human:legacy',
+  identityId = 'human:acct',
+): CanonicalProfileIdentityDelta {
+  return {
+    profile: {
+      ...state.profile,
+      displayName: 'Cloud Name',
+      humanIdentityId: identityId,
+      updatedAtMs: 2,
+    },
+    identity: {
+      id: identityId,
+      kind: 'human',
+      displayName: 'Cloud Name',
+      ownerIdentityId: null,
+      source: 'local',
+      sourceHostId: null,
+      bridgeNodeId: null,
+      humanId: 'acct',
+      agentId: null,
+      avatarKey: 'acct',
+      profileImageUrl: null,
+      metadata: { accountId: 'acct', cloudProfileIdentity: true },
+      createdAtMs: 2,
+      updatedAtMs: 2,
+    },
+    previousIdentityId,
+    groupSelfSessionIds: [],
+  };
+}
+
+function applyProfileIdentityDelta(
+  state: CanonicalSessionState,
+  delta: CanonicalProfileIdentityDelta,
+): CanonicalSessionState | null {
+  return applyCanonicalProfileIdentityDelta(state, delta);
+}
 
 function fixtureState(): CanonicalSessionState {
   return {
@@ -118,4 +161,326 @@ test('message row deltas replace by id and append new persisted rows', () => {
   const appended = mergeCanonicalMessageRow(replaced, appendedRow);
   assert.equal(appended?.messages.length, 2);
   assert.equal(appended?.messages[1], appendedRow);
+});
+
+test('profile identity deltas update the loaded profile without replacing message history', () => {
+  const state = fixtureState();
+  state.profile = { ...state.profile, humanIdentityId: 'human:legacy' };
+  const next = applyProfileIdentityDelta(state, profileIdentityDelta(state));
+
+  assert.equal(next?.profile.humanIdentityId, 'human:acct');
+  assert.equal(next?.messages, state.messages);
+});
+
+test('profile identity deltas migrate loaded references, dedupe participants, and enforce group self roles', () => {
+  const oldId = 'human:legacy';
+  const stableId = 'human:acct';
+  const state = fixtureState();
+  state.profile = { ...state.profile, humanIdentityId: oldId };
+
+  const oldIdentity: CanonicalIdentity = {
+    id: oldId,
+    kind: 'human',
+    displayName: 'Legacy Me',
+    source: 'local',
+    avatarKey: 'legacy',
+    metadata: { exact: oldId },
+    createdAtMs: 1,
+    updatedAtMs: 1,
+  };
+  const existingStableIdentity: CanonicalIdentity = {
+    id: stableId,
+    kind: 'human',
+    displayName: 'Cloud placeholder',
+    source: 'bridge',
+    avatarKey: 'acct',
+    createdAtMs: 1,
+    updatedAtMs: 1,
+  };
+  const nestedMetadata = {
+    exact: oldId,
+    nested: [oldId, { partial: `prefix:${oldId}`, untouched: true }],
+    untouched: { value: 'keep-reference' },
+  };
+  const ownedAgent: CanonicalIdentity = {
+    id: 'agent:owned',
+    kind: 'agent',
+    displayName: 'Owned agent',
+    ownerIdentityId: oldId,
+    source: 'local',
+    avatarKey: 'owned',
+    metadata: nestedMetadata,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+  };
+  const untouchedIdentity: CanonicalIdentity = {
+    id: 'human:remote',
+    kind: 'human',
+    displayName: 'Remote',
+    source: 'bridge',
+    avatarKey: 'remote',
+    metadata: { partial: `prefix:${oldId}` },
+    createdAtMs: 1,
+    updatedAtMs: 1,
+  };
+  state.identities = [oldIdentity, existingStableIdentity, ownedAgent, untouchedIdentity];
+
+  const groupMetadata = {
+    creator: oldId,
+    nested: [oldId, { partial: `${oldId}:suffix` }],
+    untouched: { value: 'keep-reference' },
+  };
+  const groupSession: CanonicalSessionState['sessions'][number] = {
+    id: 'session:group',
+    kind: 'group',
+    title: 'Group',
+    status: 'active',
+    createdByIdentityId: oldId,
+    primaryIdentityId: oldId,
+    relationshipIdentityId: oldId,
+    metadata: groupMetadata,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    lastMessageAtMs: 1,
+  };
+  const untouchedSession: CanonicalSessionState['sessions'][number] = {
+    id: 'session:untouched',
+    kind: 'direct-person',
+    title: 'Untouched',
+    status: 'active',
+    createdByIdentityId: 'human:remote',
+    primaryIdentityId: 'human:remote',
+    relationshipIdentityId: null,
+    metadata: { partial: `prefix:${oldId}` },
+    createdAtMs: 1,
+    updatedAtMs: 1,
+    lastMessageAtMs: 1,
+  };
+  state.sessions = [groupSession, untouchedSession];
+
+  const migratedParticipant: CanonicalSessionState['participants'][number] = {
+    sessionId: 'session:group',
+    identityId: oldId,
+    role: 'admin',
+    state: 'active',
+    addedByIdentityId: oldId,
+    addedAtMs: 10,
+    lastSeenAtMs: 10,
+    lastReadMessageId: 'message:legacy',
+    metadata: { source: 'migrated', exact: oldId },
+  };
+  const existingStableParticipant: CanonicalSessionState['participants'][number] = {
+    sessionId: 'session:group',
+    identityId: stableId,
+    role: 'person',
+    state: 'left',
+    addedByIdentityId: oldId,
+    addedAtMs: 20,
+    lastSeenAtMs: 20,
+    lastReadMessageId: 'message:stable',
+    metadata: { source: 'stable', exact: oldId },
+  };
+  const remoteGroupSelf: CanonicalSessionState['participants'][number] = {
+    sessionId: 'session:group',
+    identityId: 'human:remote',
+    role: 'self',
+    state: 'active',
+    addedByIdentityId: 'human:remote',
+    addedAtMs: 30,
+    lastSeenAtMs: null,
+    lastReadMessageId: null,
+  };
+  const migratedOnlyParticipant: CanonicalSessionState['participants'][number] = {
+    sessionId: 'session:direct',
+    identityId: oldId,
+    role: 'person',
+    state: 'left',
+    addedByIdentityId: oldId,
+    addedAtMs: 40,
+    lastSeenAtMs: 40,
+    lastReadMessageId: 'message:direct',
+    metadata: { exact: oldId },
+  };
+  const untouchedParticipant: CanonicalSessionState['participants'][number] = {
+    sessionId: 'session:untouched',
+    identityId: 'human:remote',
+    role: 'person',
+    state: 'active',
+    addedByIdentityId: 'human:remote',
+    addedAtMs: 50,
+    lastSeenAtMs: null,
+    lastReadMessageId: null,
+  };
+  state.participants = [
+    migratedParticipant,
+    existingStableParticipant,
+    remoteGroupSelf,
+    migratedOnlyParticipant,
+    untouchedParticipant,
+  ];
+
+  const migratedMessage = {
+    ...messageRow('message:migrated', 1),
+    sessionId: 'session:group',
+    senderIdentityId: oldId,
+    content: { exact: oldId, partial: `prefix:${oldId}`, nested: [oldId] },
+  };
+  const untouchedMessage = {
+    ...messageRow('message:untouched', 2),
+    sessionId: 'session:untouched',
+    senderIdentityId: 'human:remote',
+    content: { partial: `prefix:${oldId}` },
+  };
+  state.messages = [migratedMessage, untouchedMessage];
+
+  state.delegatedExchanges = [{
+    id: 'exchange:one',
+    sessionId: 'session:group',
+    initiatorIdentityId: oldId,
+    targetIdentityId: oldId,
+    triggerMessageId: null,
+    requestMessageId: null,
+    responseMessageId: null,
+    transport: 'local',
+    bridgeHostId: null,
+    bridgeConversationId: null,
+    bridgeRequestId: null,
+    contextPolicy: 'recent-window',
+    status: 'complete',
+    error: null,
+    createdAtMs: 1,
+    updatedAtMs: 1,
+  }];
+  const oldPresence: CanonicalSessionState['presence'][number] = {
+    identityId: oldId,
+    status: 'online',
+    sessionId: null,
+    detail: null,
+    updatedAtMs: 1,
+    expiresAtMs: null,
+  };
+  const stablePresence: CanonicalSessionState['presence'][number] = {
+    identityId: stableId,
+    status: 'away',
+    sessionId: null,
+    detail: null,
+    updatedAtMs: 2,
+    expiresAtMs: null,
+  };
+  state.presence = [oldPresence, stablePresence];
+
+  const contextSnapshot: CanonicalSessionState['contextSnapshots'][number] = {
+    id: 'snapshot:one',
+    profileId: state.profile.id,
+    sessionId: 'session:group',
+    agentIdentityId: oldId,
+    provider: 'openai',
+    model: 'gpt',
+    promptHash: 'prompt',
+    projectContextHash: null,
+    participantHash: 'participants',
+    uptoMessageId: null,
+    messageRangeHash: 'messages',
+    summaryText: null,
+    summaryJson: { exact: oldId },
+    tokenCount: null,
+    createdAtMs: 1,
+    invalidatedAtMs: null,
+  };
+  state.contextSnapshots = [contextSnapshot];
+
+  const delta = profileIdentityDelta(state, oldId, stableId);
+  delta.groupSelfSessionIds = ['session:group'];
+  const next = applyProfileIdentityDelta(state, delta);
+  assert.ok(next);
+
+  assert.equal(next.profile, delta.profile);
+  assert.equal(next.identities.some((identity) => identity.id === oldId), false);
+  assert.equal(next.identities.find((identity) => identity.id === stableId), delta.identity);
+  const nextAgent = next.identities.find((identity) => identity.id === ownedAgent.id);
+  assert.equal(nextAgent?.ownerIdentityId, stableId);
+  assert.deepEqual(nextAgent?.metadata, {
+    exact: stableId,
+    nested: [stableId, { partial: `prefix:${oldId}`, untouched: true }],
+    untouched: nestedMetadata.untouched,
+  });
+  assert.equal((nextAgent?.metadata as typeof nestedMetadata).untouched, nestedMetadata.untouched);
+  assert.equal(next.identities.find((identity) => identity.id === untouchedIdentity.id), untouchedIdentity);
+
+  const nextGroup = next.sessions.find((session) => session.id === groupSession.id);
+  assert.equal(nextGroup?.createdByIdentityId, stableId);
+  assert.equal(nextGroup?.primaryIdentityId, stableId);
+  assert.equal(nextGroup?.relationshipIdentityId, stableId);
+  assert.deepEqual(nextGroup?.metadata, {
+    creator: stableId,
+    nested: [stableId, { partial: `${oldId}:suffix` }],
+    untouched: groupMetadata.untouched,
+  });
+  assert.equal((nextGroup?.metadata as typeof groupMetadata).untouched, groupMetadata.untouched);
+  assert.equal(next.sessions.find((session) => session.id === untouchedSession.id), untouchedSession);
+
+  const stableGroupRows = next.participants.filter((participant) => (
+    participant.sessionId === 'session:group' && participant.identityId === stableId
+  ));
+  assert.equal(stableGroupRows.length, 1);
+  assert.equal(stableGroupRows[0]?.role, 'self');
+  assert.equal(stableGroupRows[0]?.state, 'active');
+  assert.equal(stableGroupRows[0]?.addedByIdentityId, stableId);
+  assert.equal(stableGroupRows[0]?.addedAtMs, existingStableParticipant.addedAtMs);
+  assert.equal(stableGroupRows[0]?.lastReadMessageId, existingStableParticipant.lastReadMessageId);
+  assert.deepEqual(stableGroupRows[0]?.metadata, { source: 'stable', exact: stableId });
+  assert.equal(
+    next.participants.find((participant) => participant.identityId === 'human:remote' && participant.sessionId === 'session:group')?.role,
+    'person',
+  );
+  const migratedDirect = next.participants.find((participant) => participant.sessionId === 'session:direct');
+  assert.equal(migratedDirect?.identityId, stableId);
+  assert.equal(migratedDirect?.role, 'self');
+  assert.equal(migratedDirect?.state, 'active');
+  assert.equal(migratedDirect?.lastReadMessageId, migratedOnlyParticipant.lastReadMessageId);
+  assert.deepEqual(migratedDirect?.metadata, { exact: stableId });
+  assert.equal(next.participants.find((participant) => participant.sessionId === 'session:untouched'), untouchedParticipant);
+  assert.equal(new Set(next.participants.map((participant) => `${participant.sessionId}\0${participant.identityId}`)).size, next.participants.length);
+
+  assert.equal(next.messages[0]?.senderIdentityId, stableId);
+  assert.deepEqual(next.messages[0]?.content, {
+    exact: stableId,
+    partial: `prefix:${oldId}`,
+    nested: [stableId],
+  });
+  assert.equal(next.messages[1], untouchedMessage);
+  assert.equal(next.delegatedExchanges[0]?.initiatorIdentityId, stableId);
+  assert.equal(next.delegatedExchanges[0]?.targetIdentityId, stableId);
+  assert.deepEqual(next.presence, [stablePresence]);
+  assert.equal(next.presence[0], stablePresence);
+
+  assert.equal(next.contextSnapshots, state.contextSnapshots);
+  assert.equal(next.contextSnapshots[0], contextSnapshot);
+  assert.equal(next.contextSnapshots[0]?.agentIdentityId, oldId);
+  assert.deepEqual(next.contextSnapshots[0]?.summaryJson, { exact: oldId });
+});
+
+test('profile identity delta payload stays bounded with 20,000 loaded messages', () => {
+  const state = fixtureState();
+  state.profile = { ...state.profile, humanIdentityId: 'human:legacy' };
+  state.messages = Array.from({ length: 20_000 }, (_, index) => ({
+    ...messageRow(`message:${index}`, index),
+    senderIdentityId: 'human:other',
+  }));
+  const delta = profileIdentityDelta(state);
+
+  assert.deepEqual(Object.keys(delta).sort(), [
+    'groupSelfSessionIds',
+    'identity',
+    'previousIdentityId',
+    'profile',
+  ]);
+  assert.equal('messages' in delta, false);
+  assert.equal('sessions' in delta, false);
+  assert.equal('contextSnapshots' in delta, false);
+  assert.ok(JSON.stringify(delta).length < 2_048);
+
+  const next = applyProfileIdentityDelta(state, delta);
+  assert.equal(next?.messages, state.messages);
+  assert.equal(next?.messages.length, 20_000);
 });

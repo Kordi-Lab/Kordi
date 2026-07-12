@@ -1288,7 +1288,7 @@ fn update_identity_references(
 pub(super) fn adopt_cloud_profile_identity_in_db(
     conn: &Connection,
     request: AdoptCloudProfileIdentityRequest,
-) -> Result<CanonicalIdentity, String> {
+) -> Result<CanonicalProfileIdentityDelta, String> {
     let account_id = request.account_id.trim().to_string();
     let stable_identity_id = stable_cloud_human_identity_id(&account_id)?;
     let display_name = request.display_name.trim();
@@ -1348,12 +1348,17 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|err| err.to_string())?
     };
-    for session_id in group_session_ids {
-        enforce_only_local_group_self(conn, &session_id, &stable_identity_id)?;
+    for session_id in &group_session_ids {
+        enforce_only_local_group_self(conn, session_id, &stable_identity_id)?;
     }
     update_local_profile_identities(conn, Some(&stable_identity_id), None, Some(display_name))?;
 
-    Ok(identity)
+    Ok(CanonicalProfileIdentityDelta {
+        profile: ensure_local_profile(conn)?,
+        identity,
+        previous_identity_id: previous_human_identity_id,
+        group_self_session_ids: group_session_ids,
+    })
 }
 
 fn update_local_profile_identities(
@@ -1625,7 +1630,7 @@ pub async fn desktop_canonical_upsert_identity(
 #[tauri::command]
 pub async fn desktop_canonical_adopt_cloud_profile_identity(
     request: AdoptCloudProfileIdentityRequest,
-) -> Result<CanonicalSessionState, String> {
+) -> Result<CanonicalProfileIdentityDelta, String> {
     run_canonical_blocking(move || {
         commands::desktop_canonical_adopt_cloud_profile_identity(request)
     })

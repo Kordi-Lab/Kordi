@@ -529,6 +529,13 @@ export type CanonicalSessionState = {
   contextSnapshots: CanonicalContextSnapshot[];
 };
 
+export type CanonicalProfileIdentityDelta = {
+  profile: CanonicalLocalProfile;
+  identity: CanonicalIdentity;
+  previousIdentityId: string | null;
+  groupSelfSessionIds: string[];
+};
+
 export type CanonicalSessionSummary = {
   sessionId: string;
   messageCount: number;
