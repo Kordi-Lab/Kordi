@@ -199,3 +199,17 @@ test('cloud profile adoption serializes same-account updates without per-render 
   assert.doesNotMatch(effect, /\bcancelled\b/, 'same-account profile rerenders must not drop an in-flight migration delta');
   assert.match(effect, /\[[^\]]*canonicalStateReady[^\]]*cloudProfileAdoptionSignature[^\]]*\]/);
 });
+
+test('cloud profile adoption reconciles pending native work when the renderer already has the stable id', () => {
+  const source = cloudBridgeSource();
+  const signatureStart = source.indexOf('const cloudProfileAdoptionSignature');
+  const effectStart = source.indexOf('useEffect(() => {', signatureStart);
+  const effectEnd = source.indexOf('const contactIdentitySignature', effectStart);
+  const effect = source.slice(effectStart, effectEnd);
+
+  assert.match(
+    effect,
+    /if \(\s*canonicalSessionState\?\.profile\.humanIdentityId === stableIdentityId\s*&& !cloudProfileIdentityAdoptionCoordinator\.hasPendingWork\(\)\s*\) return;/,
+    'a stable renderer id must not suppress reconciliation of unsettled native adoption work',
+  );
+});

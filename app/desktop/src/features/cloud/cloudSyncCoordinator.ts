@@ -28,6 +28,10 @@ export class CloudSyncCoordinator {
     return this.generation;
   }
 
+  hasPendingWork() {
+    return this.inFlight !== null;
+  }
+
   request(runOnce: CloudSyncRun): Promise<void> {
     this.latestRun = runOnce;
     if (this.inFlight) {
@@ -66,6 +70,10 @@ export class CloudProfileIdentityAdoptionCoordinator {
 
   changeAccount() {
     this.coordinator.changeAccount();
+  }
+
+  hasPendingWork() {
+    return this.coordinator.hasPendingWork() || this.pendingDeltas.length > 0;
   }
 
   request(

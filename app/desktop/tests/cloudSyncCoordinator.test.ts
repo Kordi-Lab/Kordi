@@ -147,6 +147,11 @@ function assertLoadedIdentityReferences(
   assert.equal(state.messages[0]?.senderIdentityId, identityId);
 }
 
+function hasPendingWork(coordinator: CloudProfileIdentityAdoptionCoordinator) {
+  return (coordinator as unknown as { hasPendingWork?: () => boolean })
+    .hasPendingWork?.call(coordinator) ?? false;
+}
+
 test('CloudSyncCoordinator queues exactly one trailing run while a refresh is in flight', async () => {
   const coordinator = new CloudSyncCoordinator();
   const first = deferred();
@@ -307,4 +312,155 @@ test('Cloud profile adoption flushes a completed stale delta when the current ac
   assert.deepEqual(staleCommits, []);
   assertLoadedIdentityReferences(rendererState, 'human:account-a');
   assert.deepEqual(commits, ['human:legacy->human:account-a']);
+});
+
+test('Cloud profile adoption reconciles a rapid account A to B to A switch', async () => {
+  const coordinator = new CloudProfileIdentityAdoptionCoordinator();
+  const accountB = deferredValue<CanonicalProfileIdentityDelta>();
+  const accountA = deferredValue<CanonicalProfileIdentityDelta>();
+  const accountAStarted = deferred();
+  const calls: string[] = [];
+  const staleCommits: string[] = [];
+  const commits: string[] = [];
+  let nativeIdentityId = 'human:account-a';
+  let rendererState: CanonicalSessionState | null = canonicalState('human:account-a');
+  const accountBDelta = adoptionDelta(
+    'Account B',
+    'human:account-a',
+    'human:account-b',
+    'account-b',
+  );
+  const accountADelta = adoptionDelta(
+    'Account A',
+    'human:account-b',
+    'human:account-a',
+    'account-a',
+  );
+  const adopt = async (request: AdoptCloudProfileIdentityRequest) => {
+    calls.push(request.displayName);
+    if (request.accountId === 'account-b') {
+      const delta = await accountB.promise;
+      nativeIdentityId = delta.identity.id;
+      return delta;
+    }
+    accountAStarted.resolve();
+    const delta = await accountA.promise;
+    nativeIdentityId = delta.identity.id;
+    return delta;
+  };
+  const staleCommit = (delta: CanonicalProfileIdentityDelta) => {
+    staleCommits.push(`${delta.previousIdentityId}->${delta.identity.id}`);
+  };
+  const commit = (delta: CanonicalProfileIdentityDelta) => {
+    commits.push(`${delta.previousIdentityId}->${delta.identity.id}`);
+    rendererState = applyCanonicalProfileIdentityDelta(rendererState, delta);
+  };
+
+  const pending = coordinator.request(adoptionRequest('Account B', 'account-b'), adopt, staleCommit);
+  coordinator.changeAccount();
+  const stableIdentityId = 'human:account-a';
+  const pendingWhenRendererAlreadyStable = hasPendingWork(coordinator);
+  if (
+    rendererState.profile.humanIdentityId !== stableIdentityId
+    || pendingWhenRendererAlreadyStable
+  ) {
+    void coordinator.request(adoptionRequest('Account A', 'account-a'), adopt, commit);
+  }
+
+  accountB.resolve(accountBDelta);
+  if (pendingWhenRendererAlreadyStable) {
+    await accountAStarted.promise;
+    assert.deepEqual(staleCommits, []);
+    assert.deepEqual(commits, []);
+    accountA.resolve(accountADelta);
+  }
+  await pending;
+
+  assert.equal(nativeIdentityId, 'human:account-a');
+  assert.equal(pendingWhenRendererAlreadyStable, true);
+  assert.deepEqual(calls, ['Account B', 'Account A']);
+  assert.deepEqual(staleCommits, []);
+  assertLoadedIdentityReferences(rendererState, 'human:account-a');
+  assert.deepEqual(commits, [
+    'human:account-a->human:account-b',
+    'human:account-b->human:account-a',
+  ]);
+});
+
+test('Cloud profile adoption reports pending work through stale buffering and reconciliation', async () => {
+  const coordinator = new CloudProfileIdentityAdoptionCoordinator();
+  const accountB = deferredValue<CanonicalProfileIdentityDelta>();
+  const staleCommits: string[] = [];
+  const commits: string[] = [];
+  const accountBDelta = adoptionDelta(
+    'Account B',
+    'human:account-a',
+    'human:account-b',
+    'account-b',
+  );
+  const accountADelta = adoptionDelta(
+    'Account A',
+    'human:account-b',
+    'human:account-a',
+    'account-a',
+  );
+
+  assert.equal(hasPendingWork(coordinator), false);
+  const staleRequest = coordinator.request(
+    adoptionRequest('Account B', 'account-b'),
+    async () => accountB.promise,
+    (delta) => staleCommits.push(delta.identity.id),
+  );
+  assert.equal(hasPendingWork(coordinator), true);
+
+  coordinator.changeAccount();
+  accountB.resolve(accountBDelta);
+  await staleRequest;
+
+  assert.deepEqual(staleCommits, []);
+  assert.equal(hasPendingWork(coordinator), true);
+  const reconciliation = coordinator.request(
+    adoptionRequest('Account A', 'account-a'),
+    async () => accountADelta,
+    (delta) => commits.push(delta.identity.id),
+  );
+  assert.equal(hasPendingWork(coordinator), true);
+  await reconciliation;
+
+  assert.deepEqual(commits, ['human:account-b', 'human:account-a']);
+  assert.equal(hasPendingWork(coordinator), false);
+});
+
+test('Cloud profile adoption clears pending work after a current failure flushes stale deltas', async () => {
+  const coordinator = new CloudProfileIdentityAdoptionCoordinator();
+  const accountB = deferredValue<CanonicalProfileIdentityDelta>();
+  const currentError = new Error('account A reconciliation failed');
+  const commits: string[] = [];
+  const accountBDelta = adoptionDelta(
+    'Account B',
+    'human:account-a',
+    'human:account-b',
+    'account-b',
+  );
+
+  const staleRequest = coordinator.request(
+    adoptionRequest('Account B', 'account-b'),
+    async () => accountB.promise,
+    () => assert.fail('a stale generation must not commit'),
+  );
+  coordinator.changeAccount();
+  accountB.resolve(accountBDelta);
+  await staleRequest;
+  assert.equal(hasPendingWork(coordinator), true);
+
+  const reconciliation = coordinator.request(
+    adoptionRequest('Account A', 'account-a'),
+    async () => { throw currentError; },
+    (delta) => commits.push(delta.identity.id),
+  );
+  assert.equal(hasPendingWork(coordinator), true);
+  await assert.rejects(reconciliation, currentError);
+
+  assert.deepEqual(commits, ['human:account-b']);
+  assert.equal(hasPendingWork(coordinator), false);
 });
