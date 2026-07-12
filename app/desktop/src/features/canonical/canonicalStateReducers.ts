@@ -125,6 +125,13 @@ export function applyCanonicalProfileIdentityDelta(
       .filter((participant) => participant.identityId === stableIdentityId)
       .map((participant) => participant.sessionId),
   );
+  const sessionsWithPreviousParticipant = new Set(
+    shouldMigrate
+      ? state.participants
+          .filter((participant) => participant.identityId === previousIdentityId)
+          .map((participant) => participant.sessionId)
+      : [],
+  );
   let participantsChanged = false;
   const participants: CanonicalSessionState['participants'] = [];
   state.participants.forEach((participant) => {
@@ -141,12 +148,17 @@ export function applyCanonicalProfileIdentityDelta(
     const addedByIdentityId = rewriteIdentityId(participant.addedByIdentityId);
     const metadata = rewriteJson(participant.metadata);
     const isStableParticipant = identityId === stableIdentityId;
-    const role = isStableParticipant
+    const shouldActivateStableParticipant = isStableParticipant && (
+      participant.state === 'active' || sessionsWithPreviousParticipant.has(participant.sessionId)
+    );
+    const role = shouldActivateStableParticipant
       ? 'self'
-      : groupSelfSessionIds.has(participant.sessionId) && participant.role === 'self'
+      : !isStableParticipant
+        && groupSelfSessionIds.has(participant.sessionId)
+        && participant.role === 'self'
         ? 'person'
         : participant.role;
-    const participantState = isStableParticipant ? 'active' : participant.state;
+    const participantState = shouldActivateStableParticipant ? 'active' : participant.state;
     const rewritten = identityId === participant.identityId
       && addedByIdentityId === participant.addedByIdentityId
       && metadata === participant.metadata

@@ -460,6 +460,29 @@ test('profile identity deltas migrate loaded references, dedupe participants, an
   assert.deepEqual(next.contextSnapshots[0]?.summaryJson, { exact: oldId });
 });
 
+test('profile identity deltas preserve unrelated inactive stable participants', () => {
+  const state = fixtureState();
+  state.profile = { ...state.profile, humanIdentityId: 'human:legacy' };
+  const inactiveStableParticipant: CanonicalSessionState['participants'][number] = {
+    sessionId: 'session:left',
+    identityId: 'human:acct',
+    role: 'person',
+    state: 'left',
+    addedByIdentityId: 'human:other',
+    addedAtMs: 10,
+    lastSeenAtMs: 10,
+    lastReadMessageId: 'message:left',
+    metadata: { reason: 'left' },
+  };
+  state.participants = [inactiveStableParticipant];
+
+  const next = applyProfileIdentityDelta(state, profileIdentityDelta(state));
+
+  assert.equal(next?.participants[0], inactiveStableParticipant);
+  assert.equal(next?.participants[0]?.role, 'person');
+  assert.equal(next?.participants[0]?.state, 'left');
+});
+
 test('profile identity delta payload stays bounded with 20,000 loaded messages', () => {
   const state = fixtureState();
   state.profile = { ...state.profile, humanIdentityId: 'human:legacy' };
