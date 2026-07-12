@@ -149,3 +149,28 @@ test('cloud profile adoption returns a bounded identity delta without loading ca
     'cloud adoption should merge the delta with a functional React state update',
   );
 });
+
+test('cloud profile adoption waits for the canonical state readiness transition', () => {
+  const source = cloudBridgeSource();
+  const signatureStart = source.indexOf('const cloudProfileAdoptionSignature');
+  const effectStart = source.indexOf('useEffect(() => {', signatureStart);
+  const effectEnd = source.indexOf('const contactIdentitySignature', effectStart);
+  assert.notEqual(signatureStart, -1, 'expected cloud profile adoption signature');
+  assert.notEqual(effectStart, -1, 'expected cloud profile adoption effect');
+  assert.notEqual(effectEnd, -1, 'expected contact signature after adoption effect');
+  const readinessSetup = source.slice(Math.max(0, signatureStart - 200), signatureStart);
+  assert.match(
+    readinessSetup,
+    /const canonicalStateReady = Boolean\(canonicalSessionState\);/,
+    'readiness must be a primitive that changes when a null catalog becomes loaded',
+  );
+  const effect = source.slice(effectStart, effectEnd);
+
+  assert.match(effect, /if \(!account \|\| !canonicalStateReady \|\| !setCanonicalSessionState\) return;/);
+  assert.match(
+    effect,
+    /\}, \[[^\]]*canonicalStateReady[^\]]*\]\);/,
+    'null-to-loaded readiness must rerun adoption even when the human identity remains null',
+  );
+  assert.match(effect, /setCanonicalSessionState\?\.\(\(current\) => applyCanonicalProfileIdentityDelta\(current, delta\)\)/);
+});

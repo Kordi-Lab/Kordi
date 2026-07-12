@@ -182,6 +182,7 @@ test('profile identity deltas migrate loaded references, dedupe participants, an
     id: oldId,
     kind: 'human',
     displayName: 'Legacy Me',
+    ownerIdentityId: oldId,
     source: 'local',
     avatarKey: 'legacy',
     metadata: { exact: oldId },
@@ -395,7 +396,10 @@ test('profile identity deltas migrate loaded references, dedupe participants, an
   assert.ok(next);
 
   assert.equal(next.profile, delta.profile);
-  assert.equal(next.identities.some((identity) => identity.id === oldId), false);
+  const retainedOldIdentity = next.identities.find((identity) => identity.id === oldId);
+  assert.ok(retainedOldIdentity);
+  assert.equal(retainedOldIdentity.ownerIdentityId, stableId);
+  assert.deepEqual(retainedOldIdentity.metadata, { exact: stableId });
   assert.equal(next.identities.find((identity) => identity.id === stableId), delta.identity);
   const nextAgent = next.identities.find((identity) => identity.id === ownedAgent.id);
   assert.equal(nextAgent?.ownerIdentityId, stableId);
@@ -441,6 +445,17 @@ test('profile identity deltas migrate loaded references, dedupe participants, an
   assert.deepEqual(migratedDirect?.metadata, { exact: stableId });
   assert.equal(next.participants.find((participant) => participant.sessionId === 'session:untouched'), untouchedParticipant);
   assert.equal(new Set(next.participants.map((participant) => `${participant.sessionId}\0${participant.identityId}`)).size, next.participants.length);
+  assert.deepEqual(
+    next.participants.map((participant) => (
+      `${participant.sessionId}|${participant.addedAtMs}|${participant.identityId}`
+    )),
+    [
+      'session:direct|40|human:acct',
+      'session:group|20|human:acct',
+      'session:group|30|human:remote',
+      'session:untouched|50|human:remote',
+    ],
+  );
 
   assert.equal(next.messages[0]?.senderIdentityId, stableId);
   assert.deepEqual(next.messages[0]?.content, {
@@ -458,6 +473,10 @@ test('profile identity deltas migrate loaded references, dedupe participants, an
   assert.equal(next.contextSnapshots[0], contextSnapshot);
   assert.equal(next.contextSnapshots[0]?.agentIdentityId, oldId);
   assert.deepEqual(next.contextSnapshots[0]?.summaryJson, { exact: oldId });
+  assert.equal(
+    next.identities.some((identity) => identity.id === next.contextSnapshots[0]?.agentIdentityId),
+    true,
+  );
 });
 
 test('profile identity deltas preserve unrelated inactive stable participants', () => {

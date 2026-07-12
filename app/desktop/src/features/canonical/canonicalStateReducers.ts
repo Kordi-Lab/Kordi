@@ -76,10 +76,6 @@ export function applyCanonicalProfileIdentityDelta(
   let stableIdentityInserted = false;
   const identities: CanonicalSessionState['identities'] = [];
   state.identities.forEach((identity) => {
-    if (shouldMigrate && identity.id === previousIdentityId) {
-      identitiesChanged = true;
-      return;
-    }
     if (identity.id === stableIdentityId) {
       if (stableIdentityInserted) {
         identitiesChanged = true;
@@ -176,6 +172,14 @@ export function applyCanonicalProfileIdentityDelta(
     participants.push(rewritten);
     if (rewritten !== participant) participantsChanged = true;
   });
+  if (shouldMigrate && sessionsWithPreviousParticipant.size > 0) {
+    participants.sort((left, right) => {
+      if (left.sessionId !== right.sessionId) return left.sessionId < right.sessionId ? -1 : 1;
+      if (left.addedAtMs !== right.addedAtMs) return left.addedAtMs - right.addedAtMs;
+      if (left.identityId === right.identityId) return 0;
+      return left.identityId < right.identityId ? -1 : 1;
+    });
+  }
   const nextParticipants = participantsChanged ? participants : state.participants;
 
   const messages = mapPreservingArray(state.messages, (message) => {

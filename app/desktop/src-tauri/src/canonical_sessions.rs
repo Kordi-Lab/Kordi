@@ -1235,7 +1235,8 @@ fn update_identity_references(
     let participant_rows = {
         let mut stmt = conn
             .prepare(
-                "SELECT session_id, role, added_by_identity_id, added_at_ms
+                "SELECT session_id, role, added_by_identity_id, added_at_ms,
+                        last_seen_at_ms, last_read_message_id, metadata_json
                  FROM session_participants
                  WHERE identity_id = ?1",
             )
@@ -1247,6 +1248,9 @@ fn update_identity_references(
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
                 ))
             })
             .map_err(|err| err.to_string())?;
@@ -1254,15 +1258,37 @@ fn update_identity_references(
             .map_err(|err| err.to_string())?
     };
 
-    for (session_id, role, added_by, added_at_ms) in participant_rows {
-        upsert_participant(
-            conn,
-            &session_id,
-            new_identity_id,
-            &role,
-            added_by.as_deref(),
-            added_at_ms,
-        )?;
+    for (
+        session_id,
+        role,
+        added_by,
+        added_at_ms,
+        last_seen_at_ms,
+        last_read_message_id,
+        metadata_json,
+    ) in participant_rows
+    {
+        conn.execute(
+            "INSERT INTO session_participants(
+                 session_id, identity_id, role, state, added_by_identity_id, added_at_ms,
+                 last_seen_at_ms, last_read_message_id, metadata_json
+             )
+             VALUES(?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(session_id, identity_id) DO UPDATE SET
+                 role = CASE WHEN session_participants.role = 'self' THEN session_participants.role ELSE excluded.role END,
+                 state = 'active'",
+            params![
+                session_id,
+                new_identity_id,
+                role,
+                added_by,
+                added_at_ms,
+                last_seen_at_ms,
+                last_read_message_id,
+                metadata_json,
+            ],
+        )
+        .map_err(|err| err.to_string())?;
         if role == "self" {
             conn.execute(
                 "UPDATE session_participants SET role = 'self' WHERE session_id = ?1 AND identity_id = ?2",

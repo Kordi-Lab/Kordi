@@ -2286,6 +2286,7 @@ export function useCloudBridgeState({
   useEffect(() => {
     bootstrapPeerIdsRef.current = bootstrapPeerIds;
   }, [bootstrapPeerKey]);
+  const canonicalStateReady = Boolean(canonicalSessionState);
   const cloudProfileAdoptionSignature = useMemo(() => JSON.stringify({
     accountId: account?.accountId ?? null,
     displayName: account?.displayName ?? account?.primaryEmail ?? null,
@@ -2294,7 +2295,7 @@ export function useCloudBridgeState({
   }), [account?.accountId, account?.avatarUrl, account?.displayName, account?.primaryEmail, canonicalSessionState?.profile.humanIdentityId]);
 
   useEffect(() => {
-    if (!account || !setCanonicalSessionState) return;
+    if (!account || !canonicalStateReady || !setCanonicalSessionState) return;
     const stableIdentityId = `human:${account.accountId}`;
     if (canonicalSessionState?.profile.humanIdentityId === stableIdentityId) return;
     let cancelled = false;
@@ -2316,7 +2317,7 @@ export function useCloudBridgeState({
     return () => {
       cancelled = true;
     };
-  }, [account, canonicalSessionState?.profile.humanIdentityId, cloudProfileAdoptionSignature, setCanonicalSessionState]);
+  }, [account, canonicalSessionState?.profile.humanIdentityId, canonicalStateReady, cloudProfileAdoptionSignature, setCanonicalSessionState]);
 
   const contactIdentitySignature = useMemo(() => JSON.stringify({
     accountId: account?.accountId ?? null,
@@ -3607,7 +3608,6 @@ export function useCloudBridgeState({
     setCanonicalSessionState?.((current) => mergeCanonicalMessageRow(current, persistedMessage));
   }, [setCanonicalSessionState]);
 
-  const canonicalStateReady = Boolean(canonicalSessionState);
   useEffect(() => {
     if (!account || !cloudGroupOutbox || !canonicalStateReady || typeof window === 'undefined') return undefined;
     let cancelled = false;

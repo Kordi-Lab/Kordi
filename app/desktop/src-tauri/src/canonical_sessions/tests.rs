@@ -462,6 +462,23 @@ fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
         },
     )
     .expect("create local session");
+    let migrated_participant_metadata = serde_json::json!({
+        "identityId": old_local_human_id.clone(),
+        "partial": format!("prefix:{old_local_human_id}"),
+    });
+    let updated_migrated_participant = conn
+        .execute(
+            "UPDATE session_participants
+             SET role = 'person', state = 'left', added_by_identity_id = ?1, added_at_ms = 41,
+                 last_seen_at_ms = 51, last_read_message_id = 'msg:migrated-read', metadata_json = ?2
+             WHERE session_id = 'session:local-before-cloud' AND identity_id = ?1",
+            params![
+                old_local_human_id.as_str(),
+                migrated_participant_metadata.to_string()
+            ],
+        )
+        .expect("seed migrated-only participant fields");
+    assert_eq!(updated_migrated_participant, 1);
     seed_identity_with_source(
         &conn,
         "human:acct_same",
@@ -495,6 +512,29 @@ fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
         },
     )
     .expect("create pre-adoption cloud group");
+    upsert_participant(
+        &conn,
+        "session:group:arrived-before-adoption",
+        &old_local_human_id,
+        "admin",
+        Some(&old_local_human_id),
+        42,
+    )
+    .expect("seed old participant collision");
+    let collision_participant_metadata = serde_json::json!({
+        "identityId": old_local_human_id.clone(),
+        "source": "stable",
+    });
+    let updated_collision_participant = conn
+        .execute(
+            "UPDATE session_participants
+             SET role = 'person', state = 'left', added_by_identity_id = 'human:acct_remote', added_at_ms = 43,
+                 last_seen_at_ms = 53, last_read_message_id = 'msg:collision-read', metadata_json = ?1
+             WHERE session_id = 'session:group:arrived-before-adoption' AND identity_id = 'human:acct_same'",
+            params![collision_participant_metadata.to_string()],
+        )
+        .expect("seed stable collision participant fields");
+    assert_eq!(updated_collision_participant, 1);
     append_message_in_db(
         &conn,
         AppendCanonicalMessageRequest {
@@ -564,6 +604,94 @@ fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
         Some("human:acct_same")
     );
     assert_eq!(profile.display_name.as_deref(), Some("Cloud Name"));
+
+    let migrated_participant = conn
+        .query_row(
+            "SELECT role, state, added_by_identity_id, added_at_ms, last_seen_at_ms, last_read_message_id, metadata_json
+             FROM session_participants
+             WHERE session_id = 'session:local-before-cloud' AND identity_id = 'human:acct_same'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                ))
+            },
+        )
+        .expect("migrated participant");
+    assert_eq!(migrated_participant.0, "self");
+    assert_eq!(migrated_participant.1, "active");
+    assert_eq!(
+        migrated_participant.2.as_deref(),
+        Some("human:acct_same")
+    );
+    assert_eq!(migrated_participant.3, 41);
+    assert_eq!(migrated_participant.4, Some(51));
+    assert_eq!(
+        migrated_participant.5.as_deref(),
+        Some("msg:migrated-read")
+    );
+    assert_eq!(
+        migrated_participant
+            .6
+            .as_deref()
+            .map(serde_json::from_str::<serde_json::Value>)
+            .transpose()
+            .expect("migrated metadata json"),
+        Some(serde_json::json!({
+            "identityId": "human:acct_same",
+            "partial": format!("prefix:{old_local_human_id}"),
+        }))
+    );
+
+    let collision_participant = conn
+        .query_row(
+            "SELECT role, state, added_by_identity_id, added_at_ms, last_seen_at_ms, last_read_message_id, metadata_json
+             FROM session_participants
+             WHERE session_id = 'session:group:arrived-before-adoption' AND identity_id = 'human:acct_same'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                ))
+            },
+        )
+        .expect("collision participant");
+    assert_eq!(collision_participant.0, "self");
+    assert_eq!(collision_participant.1, "active");
+    assert_eq!(
+        collision_participant.2.as_deref(),
+        Some("human:acct_remote")
+    );
+    assert_eq!(collision_participant.3, 43);
+    assert_eq!(collision_participant.4, Some(53));
+    assert_eq!(
+        collision_participant.5.as_deref(),
+        Some("msg:collision-read")
+    );
+    assert_eq!(
+        collision_participant
+            .6
+            .as_deref()
+            .map(serde_json::from_str::<serde_json::Value>)
+            .transpose()
+            .expect("collision metadata json"),
+        Some(serde_json::json!({
+            "identityId": "human:acct_same",
+            "source": "stable",
+        }))
+    );
 
     let sender_identity_id: String = conn
         .query_row(
