@@ -823,6 +823,45 @@ fn cloud_profile_identity_adoption_rolls_back_all_mutations_when_profile_update_
 }
 
 #[test]
+fn cloud_profile_identity_adoption_clears_a_removed_profile_image_url() {
+    let mut conn = test_conn();
+    let with_avatar = adopt_cloud_profile_identity_in_db(
+        &mut conn,
+        AdoptCloudProfileIdentityRequest {
+            account_id: "acct_avatar".to_string(),
+            display_name: "Cloud Name".to_string(),
+            avatar_key: Some("acct_avatar".to_string()),
+            profile_image_url: Some("https://example.invalid/avatar.png".to_string()),
+        },
+    )
+    .expect("adopt cloud profile with avatar");
+    assert_eq!(
+        with_avatar.identity.profile_image_url.as_deref(),
+        Some("https://example.invalid/avatar.png")
+    );
+
+    let without_avatar = adopt_cloud_profile_identity_in_db(
+        &mut conn,
+        AdoptCloudProfileIdentityRequest {
+            account_id: "acct_avatar".to_string(),
+            display_name: "Cloud Name".to_string(),
+            avatar_key: Some("acct_avatar".to_string()),
+            profile_image_url: None,
+        },
+    )
+    .expect("adopt cloud profile after avatar removal");
+
+    assert_eq!(without_avatar.identity.profile_image_url, None);
+    assert_eq!(
+        select_identity(&conn, "human:acct_avatar")
+            .expect("select adopted identity")
+            .expect("adopted identity exists")
+            .profile_image_url,
+        None
+    );
+}
+
+#[test]
 fn cloud_group_open_keeps_local_profile_as_only_self_even_when_remote_created() {
     let conn = test_conn();
     let local_human_id = local_profile_human_identity_id(&conn, "You").expect("local profile");

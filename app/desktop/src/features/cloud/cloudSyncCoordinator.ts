@@ -98,6 +98,10 @@ export class CloudProfileIdentityAdoptionCoordinator {
     this.lastRequestedProfileSignature = profileSignature;
 
     const pendingRequest = this.coordinator.request(async (generation) => {
+      if (
+        this.coordinator.isCurrentGeneration(generation)
+        && this.lastAdoptedProfileSignature === profileSignature
+      ) return;
       try {
         this.pendingDeltas.push(await adopt(request));
         if (this.coordinator.isCurrentGeneration(generation)) {

@@ -1321,6 +1321,7 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
     if display_name.is_empty() {
         return Err("Cloud profile display name is required".to_string());
     }
+    let profile_image_url = clean_optional(request.profile_image_url);
 
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -1333,7 +1334,7 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
 
-    let identity = upsert_identity_in_db(
+    upsert_identity_in_db(
         &tx,
         UpsertCanonicalIdentityRequest {
             id: Some(stable_identity_id.clone()),
@@ -1346,13 +1347,20 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
             human_id: Some(account_id.clone()),
             agent_id: None,
             avatar_key: request.avatar_key.or_else(|| Some(account_id.clone())),
-            profile_image_url: request.profile_image_url,
+            profile_image_url: profile_image_url.clone(),
             metadata: Some(serde_json::json!({
                 "accountId": account_id,
                 "cloudProfileIdentity": true,
             })),
         },
     )?;
+    tx.execute(
+        "UPDATE identities SET profile_image_url = ?1 WHERE id = ?2",
+        params![profile_image_url.as_deref(), stable_identity_id],
+    )
+    .map_err(|err| err.to_string())?;
+    let identity = select_identity(&tx, &stable_identity_id)?
+        .ok_or_else(|| "Unable to refresh adopted cloud profile identity".to_string())?;
 
     if let Some(previous_id) = previous_human_identity_id.as_deref() {
         update_identity_references(&tx, previous_id, &stable_identity_id)?;

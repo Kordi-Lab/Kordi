@@ -243,6 +243,33 @@ test('Cloud profile adoption dedupes identity-only rerenders while adopting same
   assert.deepEqual(calls, [initial, renamed, newAvatar]);
 });
 
+test('Cloud profile adoption skips a queued same-generation signature that already succeeded', async () => {
+  const coordinator = new CloudProfileIdentityAdoptionCoordinator();
+  const first = deferredValue<CanonicalProfileIdentityDelta>();
+  const calls: string[] = [];
+  const commits: string[] = [];
+  const adopt = async (request: AdoptCloudProfileIdentityRequest) => {
+    calls.push(request.displayName);
+    return calls.length === 1
+      ? first.promise
+      : adoptionDelta(request.displayName, 'human:acct');
+  };
+  const commit = (delta: CanonicalProfileIdentityDelta) => {
+    commits.push(delta.profile.displayName ?? '');
+  };
+
+  const pending = coordinator.request(adoptionRequest('A'), adopt, commit);
+  void coordinator.request(adoptionRequest('B'), adopt, commit);
+  void coordinator.request(adoptionRequest('A'), adopt, commit);
+
+  assert.deepEqual(calls, ['A']);
+  first.resolve(adoptionDelta('A', 'human:legacy'));
+  await pending;
+
+  assert.deepEqual(calls, ['A']);
+  assert.deepEqual(commits, ['A']);
+});
+
 test('Cloud profile adoption applies persisted account-switch deltas in native completion order', async () => {
   const coordinator = new CloudProfileIdentityAdoptionCoordinator();
   const first = deferredValue<CanonicalProfileIdentityDelta>();
