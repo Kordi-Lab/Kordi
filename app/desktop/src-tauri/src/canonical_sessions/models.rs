@@ -63,6 +63,7 @@ pub struct CanonicalReadCursorDelta {
     pub identity_id: String,
     pub last_seen_at_ms: i64,
     pub last_read_message_id: Option<String>,
+    pub last_read_sequence_num: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -148,6 +149,7 @@ pub struct CanonicalSessionParticipant {
     pub added_at_ms: i64,
     pub last_seen_at_ms: Option<i64>,
     pub last_read_message_id: Option<String>,
+    pub last_read_sequence_num: Option<i64>,
     pub metadata: Option<Value>,
 }
 

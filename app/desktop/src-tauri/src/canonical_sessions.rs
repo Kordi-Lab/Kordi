@@ -611,13 +611,26 @@ pub(super) fn mark_session_read_in_db(
                AND participant.identity_id = ?4
                AND participant.role = 'self'
                AND (?2 IS NULL OR EXISTS(SELECT 1 FROM target_message))
-             RETURNING last_seen_at_ms, last_read_message_id",
+             RETURNING last_seen_at_ms, last_read_message_id,
+                 (
+                     SELECT current.sequence_num
+                     FROM session_messages AS current
+                     WHERE current.id = last_read_message_id
+                       AND current.session_id = ?3
+                 )",
             params![now, message_id, session_id, identity_id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            },
         )
         .optional()
         .map_err(|err| err.to_string())?;
-    let Some((last_seen_at_ms, last_read_message_id)) = updated_cursor else {
+    let Some((last_seen_at_ms, last_read_message_id, last_read_sequence_num)) = updated_cursor
+    else {
         if message_id.is_some() {
             return Err("Message is not readable in this session".to_string());
         }
@@ -628,6 +641,7 @@ pub(super) fn mark_session_read_in_db(
         identity_id,
         last_seen_at_ms,
         last_read_message_id,
+        last_read_sequence_num,
     }))
 }
 

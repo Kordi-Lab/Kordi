@@ -448,6 +448,7 @@ export type CanonicalSessionParticipant = {
   addedAtMs: number;
   lastSeenAtMs?: number | null;
   lastReadMessageId?: string | null;
+  lastReadSequenceNum?: number | null;
   metadata?: unknown;
 };
 
@@ -560,6 +561,7 @@ export type CanonicalReadCursorDelta = {
   identityId: string;
   lastSeenAtMs: number;
   lastReadMessageId: string | null;
+  lastReadSequenceNum: number | null;
 };
 
 export type CanonicalMessageDeliveryDelta = {

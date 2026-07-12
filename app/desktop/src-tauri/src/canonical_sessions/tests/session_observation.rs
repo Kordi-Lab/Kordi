@@ -154,6 +154,7 @@ fn mark_session_read_returns_self_participant_cursor_delta() {
     assert_eq!(result.identity_id, "human:alice");
     assert!(result.last_seen_at_ms > 0);
     assert_eq!(result.last_read_message_id.as_deref(), Some("msg:3"));
+    assert_eq!(result.last_read_sequence_num, Some(3));
 }
 
 #[test]
@@ -199,6 +200,7 @@ fn mark_session_read_advances_from_a_missing_current_cursor() {
     .expect("replacement cursor delta");
 
     assert_eq!(result.last_read_message_id.as_deref(), Some("msg:2"));
+    assert_eq!(result.last_read_sequence_num, Some(2));
 }
 
 #[test]
@@ -221,6 +223,7 @@ fn mark_session_read_does_not_move_cursor_backward_across_connections() {
     .expect("mark newer message read")
     .expect("newer cursor delta");
     assert_eq!(newer.last_read_message_id.as_deref(), Some("msg:2"));
+    assert_eq!(newer.last_read_sequence_num, Some(2));
     let newer_seen_at_ms = i64::MAX - 1;
     newer_conn
         .execute(
@@ -243,6 +246,7 @@ fn mark_session_read_does_not_move_cursor_backward_across_connections() {
     .expect("stale cursor delta");
 
     assert_eq!(stale.last_read_message_id.as_deref(), Some("msg:2"));
+    assert_eq!(stale.last_read_sequence_num, Some(2));
     assert_eq!(
         (stale.last_seen_at_ms, stale.last_read_message_id.clone()),
         (newer_seen_at_ms, Some("msg:2".to_string()))

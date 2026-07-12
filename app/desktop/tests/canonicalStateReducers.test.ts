@@ -78,6 +78,7 @@ function fixtureState(): CanonicalSessionState {
       addedAtMs: 1,
       lastSeenAtMs: null,
       lastReadMessageId: null,
+      lastReadSequenceNum: null,
     }],
     messages: [messageRow('msg:one', 1)],
     delegatedExchanges: [],
@@ -153,12 +154,14 @@ test('read cursor deltas update only the matching participant', () => {
     identityId: 'human:me',
     lastSeenAtMs: 10,
     lastReadMessageId: 'msg:one',
+    lastReadSequenceNum: 1,
   });
 
   assert.notEqual(next, state);
   assert.equal(next?.messages, state.messages);
   assert.equal(next?.participants[0]?.lastSeenAtMs, 10);
   assert.equal(next?.participants[0]?.lastReadMessageId, 'msg:one');
+  assert.equal(next?.participants[0]?.lastReadSequenceNum, 1);
 });
 
 test('read cursor deltas preserve state when the participant is absent', () => {
@@ -168,6 +171,7 @@ test('read cursor deltas preserve state when the participant is absent', () => {
     identityId: 'human:me',
     lastSeenAtMs: 10,
     lastReadMessageId: null,
+    lastReadSequenceNum: null,
   });
 
   assert.equal(next, state);
@@ -185,10 +189,69 @@ test('read cursor deltas cannot roll a newer local cursor backward', () => {
     identityId: 'human:me',
     lastSeenAtMs: 10,
     lastReadMessageId: 'msg:one',
+    lastReadSequenceNum: null,
   });
 
   assert.equal(next, state);
   assert.equal(next?.participants[0]?.lastReadMessageId, 'msg:newer');
+});
+
+test('read cursor deltas reject an equal-timestamp lower message sequence', () => {
+  const state = fixtureState();
+  const afterMessageThree = mergeCanonicalReadCursorDelta(state, {
+    sessionId: 'session:one',
+    identityId: 'human:me',
+    lastSeenAtMs: 10,
+    lastReadMessageId: 'msg:three',
+    lastReadSequenceNum: 3,
+  });
+  const afterDelayedMessageTwo = mergeCanonicalReadCursorDelta(afterMessageThree, {
+    sessionId: 'session:one',
+    identityId: 'human:me',
+    lastSeenAtMs: 10,
+    lastReadMessageId: 'msg:two',
+    lastReadSequenceNum: 2,
+  });
+
+  assert.equal(afterDelayedMessageTwo, afterMessageThree);
+  assert.equal(afterDelayedMessageTwo?.participants[0]?.lastReadMessageId, 'msg:three');
+  assert.equal(afterDelayedMessageTwo?.participants[0]?.lastReadSequenceNum, 3);
+});
+
+test('read cursor delta replay with the same sequence is idempotent', () => {
+  const state = fixtureState();
+  const delta = {
+    sessionId: 'session:one',
+    identityId: 'human:me',
+    lastSeenAtMs: 10,
+    lastReadMessageId: 'msg:three',
+    lastReadSequenceNum: 3,
+  };
+  const next = mergeCanonicalReadCursorDelta(state, delta);
+  const replayed = mergeCanonicalReadCursorDelta(next, delta);
+
+  assert.equal(replayed, next);
+});
+
+test('read cursor deltas cannot replace a bounded cursor with a missing cursor', () => {
+  const state = fixtureState();
+  const bounded = mergeCanonicalReadCursorDelta(state, {
+    sessionId: 'session:one',
+    identityId: 'human:me',
+    lastSeenAtMs: 10,
+    lastReadMessageId: 'msg:three',
+    lastReadSequenceNum: 3,
+  });
+  const afterMissingCursor = mergeCanonicalReadCursorDelta(bounded, {
+    sessionId: 'session:one',
+    identityId: 'human:me',
+    lastSeenAtMs: 10,
+    lastReadMessageId: null,
+    lastReadSequenceNum: null,
+  });
+
+  assert.equal(afterMissingCursor, bounded);
+  assert.equal(afterMissingCursor?.participants[0]?.lastReadMessageId, 'msg:three');
 });
 
 test('message row deltas replace by id and append new persisted rows', () => {

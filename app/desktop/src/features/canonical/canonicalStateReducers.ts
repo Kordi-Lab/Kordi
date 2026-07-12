@@ -238,12 +238,34 @@ export function mergeCanonicalReadCursorDelta(
     if (participant.sessionId !== delta.sessionId || participant.identityId !== delta.identityId) {
       return participant;
     }
-    if ((participant.lastSeenAtMs ?? 0) > delta.lastSeenAtMs) return participant;
+    const currentSequenceNum = participant.lastReadSequenceNum ?? null;
+    const incomingSequenceNum = delta.lastReadSequenceNum ?? null;
+    const sequenceOrder = currentSequenceNum === incomingSequenceNum
+      ? 0
+      : incomingSequenceNum === null
+        ? -1
+        : currentSequenceNum === null || incomingSequenceNum > currentSequenceNum
+          ? 1
+          : -1;
+    if (sequenceOrder < 0) return participant;
+
+    const currentLastSeenAtMs = participant.lastSeenAtMs ?? 0;
+    if (sequenceOrder === 0 && currentLastSeenAtMs > delta.lastSeenAtMs) return participant;
+    const lastSeenAtMs = Math.max(currentLastSeenAtMs, delta.lastSeenAtMs);
+    const lastReadMessageId = delta.lastReadMessageId ?? null;
+    if (
+      lastSeenAtMs === participant.lastSeenAtMs
+      && lastReadMessageId === (participant.lastReadMessageId ?? null)
+      && incomingSequenceNum === currentSequenceNum
+    ) {
+      return participant;
+    }
     changed = true;
     return {
       ...participant,
-      lastSeenAtMs: delta.lastSeenAtMs,
-      lastReadMessageId: delta.lastReadMessageId ?? null,
+      lastSeenAtMs,
+      lastReadMessageId,
+      lastReadSequenceNum: incomingSequenceNum,
     };
   });
   return changed ? { ...state, participants } : state;

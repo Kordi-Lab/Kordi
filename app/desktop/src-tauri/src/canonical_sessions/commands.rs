@@ -134,8 +134,18 @@ fn load_catalog_from_db(conn: &Connection) -> Result<CanonicalSessionCatalog, St
     )?;
     let participants = query_all(
         conn,
-        "SELECT session_id, identity_id, role, state, added_by_identity_id, added_at_ms, last_seen_at_ms, last_read_message_id, metadata_json
-         FROM session_participants ORDER BY session_id ASC, added_at_ms ASC, identity_id ASC",
+        "SELECT participant.session_id, participant.identity_id, participant.role, participant.state,
+                participant.added_by_identity_id, participant.added_at_ms, participant.last_seen_at_ms,
+                participant.last_read_message_id,
+                (
+                    SELECT message.sequence_num
+                    FROM session_messages AS message
+                    WHERE message.id = participant.last_read_message_id
+                      AND message.session_id = participant.session_id
+                ),
+                participant.metadata_json
+         FROM session_participants AS participant
+         ORDER BY participant.session_id ASC, participant.added_at_ms ASC, participant.identity_id ASC",
         |row| {
             Ok(CanonicalSessionParticipant {
                 session_id: row.get(0)?,
@@ -146,7 +156,8 @@ fn load_catalog_from_db(conn: &Connection) -> Result<CanonicalSessionCatalog, St
                 added_at_ms: row.get(5)?,
                 last_seen_at_ms: row.get(6)?,
                 last_read_message_id: row.get(7)?,
-                metadata: json_from_db(row.get(8)?),
+                last_read_sequence_num: row.get(8)?,
+                metadata: json_from_db(row.get(9)?),
             })
         },
     )?;
@@ -356,8 +367,18 @@ pub(super) fn load_state_from_db(conn: &Connection) -> Result<CanonicalSessionSt
     .collect();
     let participants = query_all(
         conn,
-        "SELECT session_id, identity_id, role, state, added_by_identity_id, added_at_ms, last_seen_at_ms, last_read_message_id, metadata_json
-         FROM session_participants ORDER BY session_id ASC, added_at_ms ASC, identity_id ASC",
+        "SELECT participant.session_id, participant.identity_id, participant.role, participant.state,
+                participant.added_by_identity_id, participant.added_at_ms, participant.last_seen_at_ms,
+                participant.last_read_message_id,
+                (
+                    SELECT message.sequence_num
+                    FROM session_messages AS message
+                    WHERE message.id = participant.last_read_message_id
+                      AND message.session_id = participant.session_id
+                ),
+                participant.metadata_json
+         FROM session_participants AS participant
+         ORDER BY participant.session_id ASC, participant.added_at_ms ASC, participant.identity_id ASC",
         |row| {
             Ok(CanonicalSessionParticipant {
                 session_id: row.get(0)?,
@@ -368,7 +389,8 @@ pub(super) fn load_state_from_db(conn: &Connection) -> Result<CanonicalSessionSt
                 added_at_ms: row.get(5)?,
                 last_seen_at_ms: row.get(6)?,
                 last_read_message_id: row.get(7)?,
-                metadata: json_from_db(row.get(8)?),
+                last_read_sequence_num: row.get(8)?,
+                metadata: json_from_db(row.get(9)?),
             })
         },
     )?;
@@ -494,8 +516,19 @@ fn select_session_participants(
 ) -> Result<Vec<CanonicalSessionParticipant>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT session_id, identity_id, role, state, added_by_identity_id, added_at_ms, last_seen_at_ms, last_read_message_id, metadata_json
-             FROM session_participants WHERE session_id = ?1 ORDER BY added_at_ms ASC, identity_id ASC",
+            "SELECT participant.session_id, participant.identity_id, participant.role, participant.state,
+                    participant.added_by_identity_id, participant.added_at_ms, participant.last_seen_at_ms,
+                    participant.last_read_message_id,
+                    (
+                        SELECT message.sequence_num
+                        FROM session_messages AS message
+                        WHERE message.id = participant.last_read_message_id
+                          AND message.session_id = participant.session_id
+                    ),
+                    participant.metadata_json
+             FROM session_participants AS participant
+             WHERE participant.session_id = ?1
+             ORDER BY participant.added_at_ms ASC, participant.identity_id ASC",
         )
         .map_err(|err| err.to_string())?;
     let rows = stmt
@@ -509,7 +542,8 @@ fn select_session_participants(
                 added_at_ms: row.get(5)?,
                 last_seen_at_ms: row.get(6)?,
                 last_read_message_id: row.get(7)?,
-                metadata: json_from_db(row.get(8)?),
+                last_read_sequence_num: row.get(8)?,
+                metadata: json_from_db(row.get(9)?),
             })
         })
         .map_err(|err| err.to_string())?;
@@ -917,7 +951,8 @@ mod catalog_tests {
 
     use super::super::UpdateCanonicalMessageDeliveryRequest;
     use super::{
-        load_catalog_from_db, load_message_page_from_db, update_canonical_message_delivery_in_db,
+        load_catalog_from_db, load_message_page_from_db, load_state_from_db,
+        select_session_participants, update_canonical_message_delivery_in_db,
     };
 
     fn test_conn() -> Connection {
@@ -934,6 +969,55 @@ mod catalog_tests {
             [],
         )
         .expect("seed identity");
+    }
+
+    #[test]
+    fn participant_queries_map_the_durable_last_read_sequence() {
+        let conn = test_conn();
+        seed_identity(&conn);
+        conn.execute(
+            "INSERT INTO sessions (
+                id, kind, title, status, created_by_identity_id,
+                created_at_ms, updated_at_ms, last_message_at_ms
+             ) VALUES ('session:one', 'group', 'One', 'active', 'human:me', 1, 7, 7)",
+            [],
+        )
+        .expect("seed session");
+        conn.execute(
+            "INSERT INTO session_messages (
+                id, session_id, sender_identity_id, sender_role, message_kind,
+                content_text, status, sequence_num, created_at_ms, updated_at_ms
+             ) VALUES ('message:seven', 'session:one', 'human:me', 'user', 'text',
+                       'Seven', 'sent', 7, 7, 7)",
+            [],
+        )
+        .expect("seed cursor message");
+        conn.execute(
+            "INSERT INTO session_participants (
+                session_id, identity_id, role, state, added_at_ms,
+                last_seen_at_ms, last_read_message_id
+             ) VALUES ('session:one', 'human:me', 'self', 'active', 1, 7, 'message:seven')",
+            [],
+        )
+        .expect("seed participant cursor");
+
+        let catalog = load_catalog_from_db(&conn).expect("load catalog");
+        assert_eq!(catalog.participants[0].last_read_sequence_num, Some(7));
+        let state = load_state_from_db(&conn).expect("load full state");
+        assert_eq!(state.participants[0].last_read_sequence_num, Some(7));
+        let session_participants =
+            select_session_participants(&conn, "session:one").expect("load session participants");
+        assert_eq!(session_participants[0].last_read_sequence_num, Some(7));
+
+        conn.execute(
+            "UPDATE session_participants
+             SET last_read_message_id = 'message:missing'
+             WHERE session_id = 'session:one' AND identity_id = 'human:me'",
+            [],
+        )
+        .expect("seed missing cursor message");
+        let catalog = load_catalog_from_db(&conn).expect("load catalog with missing cursor");
+        assert_eq!(catalog.participants[0].last_read_sequence_num, None);
     }
 
     #[test]
