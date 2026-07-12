@@ -62,6 +62,7 @@ export class CloudSyncCoordinator {
 
 export class CloudProfileIdentityAdoptionCoordinator {
   private readonly coordinator = new CloudSyncCoordinator();
+  private pendingDeltas: CanonicalProfileIdentityDelta[] = [];
 
   changeAccount() {
     this.coordinator.changeAccount();
@@ -73,8 +74,15 @@ export class CloudProfileIdentityAdoptionCoordinator {
     commit: (delta: CanonicalProfileIdentityDelta) => void,
   ): Promise<void> {
     return this.coordinator.request(async (generation) => {
-      const delta = await adopt(request);
-      if (this.coordinator.isCurrentGeneration(generation)) commit(delta);
+      try {
+        this.pendingDeltas.push(await adopt(request));
+      } finally {
+        if (this.coordinator.isCurrentGeneration(generation)) {
+          const pendingDeltas = this.pendingDeltas;
+          this.pendingDeltas = [];
+          pendingDeltas.forEach(commit);
+        }
+      }
     });
   }
 }
