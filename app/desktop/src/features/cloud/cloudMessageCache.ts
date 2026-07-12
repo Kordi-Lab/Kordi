@@ -478,8 +478,10 @@ export class VersionedCloudMessageCache implements CloudMessageCache {
     messagesByPeer: Record<string, CloudMessage[]>,
     failedWriteAtStart: RecoverableWrite | undefined,
   ) {
-    if (this.failedWrites.get(accountId) === failedWriteAtStart) this.failedWrites.delete(accountId);
-    this.latestValues.set(accountId, messagesByPeer);
+    if (this.failedWrites.get(accountId) === failedWriteAtStart) {
+      this.failedWrites.delete(accountId);
+      this.latestValues.set(accountId, messagesByPeer);
+    }
     return messagesByPeer;
   }
 

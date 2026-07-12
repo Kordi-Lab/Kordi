@@ -71,6 +71,49 @@ class ControlledFirstWriteCacheStore extends MemoryCacheStore {
   }
 }
 
+class ControlledLoadFailureCacheStore extends MemoryCacheStore {
+  private markPeerReadStarted!: () => void;
+  private releasePeerReadGate!: () => void;
+  readonly peerReadStarted = new Promise<void>((resolve) => {
+    this.markPeerReadStarted = resolve;
+  });
+  private readonly peerReadRelease = new Promise<void>((resolve) => {
+    this.releasePeerReadGate = resolve;
+  });
+  private shouldBlockPeerRead = false;
+  private shouldRejectWrite = false;
+
+  blockNextPeerRead() {
+    this.shouldBlockPeerRead = true;
+  }
+
+  releasePeerRead() {
+    this.releasePeerReadGate();
+  }
+
+  rejectNextWrite() {
+    this.shouldRejectWrite = true;
+  }
+
+  override async getMany(keys: readonly string[]) {
+    const values = await super.getMany(keys);
+    if (this.shouldBlockPeerRead) {
+      this.shouldBlockPeerRead = false;
+      this.markPeerReadStarted();
+      await this.peerReadRelease;
+    }
+    return values;
+  }
+
+  override async setMany(entries: ReadonlyMap<string, unknown>, removeKeys: readonly string[] = []) {
+    if (this.shouldRejectWrite) {
+      this.shouldRejectWrite = false;
+      throw new Error('planned newer cache write failure');
+    }
+    await super.setMany(entries, removeKeys);
+  }
+}
+
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
   return {
@@ -281,4 +324,31 @@ test('peer-scoped cache load discards stale recovery after a rejected save', asy
 
   const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
   assert.deepEqual(await reloaded.load('acct_me'), {});
+});
+
+test('peer-scoped cache load preserves a newer failed-save baseline', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const store = new ControlledLoadFailureCacheStore();
+  const cache = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  const initialSave = cache.save('acct_me', { acct_peer: [message] });
+  context.mock.timers.runAll();
+  await initialSave;
+
+  store.blockNextPeerRead();
+  const loading = cache.load('acct_me');
+  await store.peerReadStarted;
+  store.rejectNextWrite();
+  const failedRemoval = cache.save('acct_me', {});
+  context.mock.timers.runAll();
+  await assert.rejects(failedRemoval, /planned newer cache write failure/);
+  store.releasePeerRead();
+
+  const loaded = await loading;
+  assert.equal(loaded.acct_peer?.[0]?.body, 'hello');
+  const restoreLoadedSnapshot = cache.save('acct_me', loaded);
+  context.mock.timers.runAll();
+  await restoreLoadedSnapshot;
+
+  const reloaded = new VersionedCloudMessageCache({ store, legacyStorage: null, debounceMs: 0 });
+  assert.equal((await reloaded.load('acct_me')).acct_peer?.[0]?.body, 'hello');
 });
