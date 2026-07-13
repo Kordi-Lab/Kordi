@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 POLICY_DIR="${REPO_ROOT}/bridges/cloud-server/deploy/k3s/policies"
 SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET}"
 SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE}"
@@ -16,6 +17,7 @@ TMP_DIR="$(mktemp -d /tmp/kordi-release-credentials.XXXXXX)"
 BOOTSTRAP_STARTED=0
 
 umask 077
+source "${SCRIPT_DIR}/release-credential-utils.sh"
 
 remote() {
   gcloud compute ssh "${SSH_TARGET}" \
@@ -36,22 +38,8 @@ trap cleanup EXIT INT TERM
 reader_access_file="${TMP_DIR}/reader-access"
 reader_secret_file="${TMP_DIR}/reader-secret"
 publisher_access_file="${TMP_DIR}/publisher-access"
+publisher_access_original_file="${TMP_DIR}/publisher-access-original"
 publisher_secret_file="${TMP_DIR}/publisher-secret"
-
-normalize_access_key_file() {
-  local source_file="$1"
-  local normalized_file="${source_file}.normalized"
-  local normalized_length
-
-  tr -d '\r\n' <"${source_file}" >"${normalized_file}"
-  normalized_length="$(wc -c <"${normalized_file}" | tr -d '[:space:]')"
-  if [[ ! "${normalized_length}" =~ ^[0-9]+$ ]] || (( normalized_length < 3 )); then
-    echo "release access key is invalid" >&2
-    rm -f "${normalized_file}"
-    return 1
-  fi
-  mv "${normalized_file}" "${source_file}"
-}
 
 if remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader >/dev/null 2>&1"; then
   remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader -o jsonpath='{.data.access-key}' | base64 -d" >"${reader_access_file}"
@@ -97,6 +85,7 @@ load_or_create_gcp_secret \
   "${publisher_secret_file}" \
   "secret"
 
+cp "${publisher_access_file}" "${publisher_access_original_file}"
 normalize_access_key_file "${reader_access_file}"
 normalize_access_key_file "${publisher_access_file}"
 
@@ -108,6 +97,14 @@ for value_file in \
   test -s "${value_file}"
   chmod 600 "${value_file}"
 done
+
+if ! cmp -s "${publisher_access_original_file}" "${publisher_access_file}"; then
+  gcloud secrets versions add "kordi-release-publisher-access-key" \
+    --project "${GCP_PROJECT}" \
+    --data-file "${publisher_access_file}" \
+    --quiet >/dev/null
+fi
+rm -f "${publisher_access_original_file}"
 
 reader_access_b64="$(base64 <"${reader_access_file}" | tr -d '\n')"
 reader_secret_b64="$(base64 <"${reader_secret_file}" | tr -d '\n')"
