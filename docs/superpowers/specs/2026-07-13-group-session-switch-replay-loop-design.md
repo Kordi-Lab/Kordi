@@ -24,7 +24,7 @@ The current replay effect walks every replay row, starts each `applyCloudGroupCo
 
 Live stack tracing after the replay fix exposed a second loop in Cloud unread reconciliation. That effect correctly returns its current canonical state when unread counts are already equal, but `setCanonicalSessionState` always merged the result into a new `CanonicalStore`. The changed store identity recreated `canonicalSessionState`, retriggered the effect, and produced `Maximum update depth exceeded` continuously even though the logical state was unchanged.
 
-The state loops prevent the active-session update from committing reliably. After those loops were removed, a real `mousemove` reproduction showed a separate hover flicker: the `title` attribute on the truncated child-session label repeatedly opens and dismisses WebKit's native tooltip, causing the row's `:hover` background to alternate. Removing that native tooltip attribute makes the same captured hover region stable.
+The state loops prevent the active-session update from committing reliably. After those loops were removed, a real `mousemove` reproduction exposed two hover-specific problems. First, the `title` attribute on the truncated child-session label opens WebKit's native tooltip over the next row. More importantly, `ParticipantSpaceSessionRow` is declared inside `WorkspaceSidebar`, so every sidebar refresh creates a new React component type. Live mount diagnostics showed both group child buttons unmounting and remounting several times per second. Each remount drops `:hover`, which produces the continuing blue flicker even after the tooltip is removed.
 
 ## Goals
 
@@ -35,6 +35,7 @@ The state loops prevent the active-session update from committing reliably. Afte
 5. Existing Cloud group delivery, agent-response, unread, and session hydration behavior remains intact.
 6. A functional canonical state update that returns its current value must not rebuild or redispatch the store.
 7. Group child rows must not use a native title tooltip that can interrupt WebKit hover hit testing.
+8. Structurally unchanged group child buttons must preserve their DOM identity across sidebar refreshes.
 
 ## Non-goals
 
@@ -96,6 +97,10 @@ This matches React's native functional setter contract and prevents derived reco
 
 The visible child-session title remains normal text inside the button, so the button keeps its complete accessible name together with preview and timestamp content. The nested title span will not set an HTML `title` attribute. This prevents Tauri/WebKit from creating a native tooltip above the next row and repeatedly interrupting the hover state.
 
+### 7. Stable group child host identity
+
+Group child rows will use the same direct render-function pattern as agent session rows. `WorkspaceSidebar` may recompute row content when Cloud polling refreshes conversation objects, but React will continue reconciling the same host `<button>` rather than receiving a newly created nested component type. Stable session keys and stable host element types preserve the existing DOM node and its CSS hover state.
+
 ## Error Handling
 
 - A replay failure is isolated to its replay key and does not abort later eligible rows.
@@ -131,6 +136,10 @@ Apply a functional canonical-session update that returns its current value and a
 ### Hover tooltip regression
 
 Render an expanded group child row and assert that its visible hashtag title remains present but the nested title span has no native `title` attribute.
+
+### Host identity regression
+
+Assert that `WorkspaceSidebar` renders participant-space child rows through a direct render function and does not declare an inline `ParticipantSpaceSessionRow` component type. Live diagnostics must show no recurring child mount/unmount cycle after the change.
 
 ### Existing suites
 

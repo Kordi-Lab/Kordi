@@ -756,3 +756,25 @@ Assert that the hashtag child title stays visible but its span does not emit a n
 - [x] **Step 4: Implement and verify the minimal fix**
 
 Remove the native tooltip attribute from group child title spans. Confirm the focused test and sidebar suites pass, then repeat the real hover capture and require every frame after the initial CSS transition to remain identical.
+
+### Task 7: Preserve Group Child DOM Identity During Sidebar Refresh
+
+**Files:**
+- Modify: `app/desktop/tests/workspaceSidebarParticipantSpaces.test.tsx`
+- Modify: `app/desktop/src/pages/WorkspaceSidebar.tsx`
+
+- [x] **Step 1: Instrument live child mounts**
+
+Add temporary mount/unmount logging to the group child component and observe the preserved `user1` profile. Confirm both child rows unmount and remount several times per second while Cloud data refreshes, then remove the diagnostics.
+
+- [x] **Step 2: Add the failing stable-host regression**
+
+Assert that participant-space child rows use a direct render function and that no inline `ParticipantSpaceSessionRow` component type remains. Confirm the test fails against the remounting implementation.
+
+- [x] **Step 3: Switch to a direct render function**
+
+Render the existing child `<button>` tree directly from `renderParticipantSpaceSessionRow(session, depth)`, matching the stable agent-session pattern. Keep session keys, selection, context menu, unread, and fork behavior unchanged.
+
+- [ ] **Step 4: Run complete and clean-restart verification**
+
+Run the full desktop test suite and TypeScript check, restart `user1` without HMR state, and hold a real pointer over both group child rows while Cloud polling continues. Confirm the rows remain mounted and the hover background stays stable.
