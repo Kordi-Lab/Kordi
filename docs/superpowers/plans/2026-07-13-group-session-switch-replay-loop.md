@@ -20,6 +20,8 @@
 - Modify `app/desktop/src/features/canonical/canonicalStore.ts` — preserve store identity when a functional canonical state update is a no-op.
 - Modify `app/desktop/src/app/useKordiAppModel.ts` — use the canonical action adapter and skip identity-equal store dispatches.
 - Modify `app/desktop/tests/canonicalCatalog.test.tsx` — regression for the functional no-op contract.
+- Modify `app/desktop/src/pages/WorkspaceSidebar.tsx` — remove the native WebKit tooltip trigger from group child titles.
+- Modify `app/desktop/tests/workspaceSidebarParticipantSpaces.test.tsx` — lock the stable-hover markup contract.
 
 ### Task 1: Build the Serialized Replay Coordinator
 
@@ -732,3 +734,25 @@ Add `applyCanonicalSessionStateAction`, use it in `useKordiAppModel`, and skip `
 - [x] **Step 4: Verify the focused contract and live renderer**
 
 Run the canonical catalog, Cloud bridge, and replay coordinator suites plus TypeScript checking. Clean-restart `user1`, verify no update-depth or replay-loop errors, and sample both child-session hover regions repeatedly to confirm stable pixels.
+
+### Task 6: Remove the Native Group-child Hover Flicker
+
+**Files:**
+- Modify: `app/desktop/tests/workspaceSidebarParticipantSpaces.test.tsx`
+- Modify: `app/desktop/src/pages/WorkspaceSidebar.tsx`
+
+- [x] **Step 1: Reproduce with a real mouse event**
+
+Post a real macOS `mouseMoved` event over the group child label and capture the two child rows repeatedly. Confirm the native `# hiiiii` tooltip appears and the hovered row alternates between dark and blue.
+
+- [x] **Step 2: Isolate the native tooltip trigger**
+
+Temporarily remove the child title's HTML `title` attribute and repeat the same capture. Confirm all 30 captured frames are identical, then restore the source before starting implementation.
+
+- [x] **Step 3: Add the failing markup regression**
+
+Assert that the hashtag child title stays visible but its span does not emit a native `title` attribute. Confirm the test fails against the original markup.
+
+- [x] **Step 4: Implement and verify the minimal fix**
+
+Remove the native tooltip attribute from group child title spans. Confirm the focused test and sidebar suites pass, then repeat the real hover capture and require every frame after the initial CSS transition to remain identical.

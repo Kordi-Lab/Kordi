@@ -2,7 +2,7 @@
 
 ## Summary
 
-Users must be able to switch directly between child sessions inside one group. In the reproduced `user1` profile, clicking the second child session leaves the first row highlighted while the sidebar can visibly flicker. The sidebar click handler and stored session identifiers are correct; two background state paths can repeatedly rebuild canonical state quickly enough to starve or visually destabilize the foreground selection update.
+Users must be able to switch directly between child sessions inside one group. In the reproduced `user1` profile, clicking the second child session leaves the first row highlighted while the sidebar can visibly flicker. The sidebar click handler and stored session identifiers are correct; background state paths can starve the foreground selection update, while a separate native WebKit tooltip interaction destabilizes child-row hover.
 
 This change will bound and serialize Cloud group replay, restore React's functional-setter no-op contract in the canonical-store adapter, and add a behavioral regression proving that two sessions in the same group remain independently selectable.
 
@@ -24,7 +24,7 @@ The current replay effect walks every replay row, starts each `applyCloudGroupCo
 
 Live stack tracing after the replay fix exposed a second loop in Cloud unread reconciliation. That effect correctly returns its current canonical state when unread counts are already equal, but `setCanonicalSessionState` always merged the result into a new `CanonicalStore`. The changed store identity recreated `canonicalSessionState`, retriggered the effect, and produced `Maximum update depth exceeded` continuously even though the logical state was unchanged.
 
-These loops prevent the active-session update from committing reliably and can make the active blue row flicker while the pointer remains over a child session.
+The state loops prevent the active-session update from committing reliably. After those loops were removed, a real `mousemove` reproduction showed a separate hover flicker: the `title` attribute on the truncated child-session label repeatedly opens and dismisses WebKit's native tooltip, causing the row's `:hover` background to alternate. Removing that native tooltip attribute makes the same captured hover region stable.
 
 ## Goals
 
@@ -34,6 +34,7 @@ These loops prevent the active-session update from committing reliably and can m
 4. Successful replay remains idempotent and eventually processes new Cloud controls.
 5. Existing Cloud group delivery, agent-response, unread, and session hydration behavior remains intact.
 6. A functional canonical state update that returns its current value must not rebuild or redispatch the store.
+7. Group child rows must not use a native title tooltip that can interrupt WebKit hover hit testing.
 
 ## Non-goals
 
@@ -91,6 +92,10 @@ The canonical-store adapter will evaluate a functional `setCanonicalSessionState
 
 This matches React's native functional setter contract and prevents derived reconciliation effects, including unread-count reconciliation, from turning logical no-ops into render loops.
 
+### 6. Stable group child hover
+
+The visible child-session title remains normal text inside the button, so the button keeps its complete accessible name together with preview and timestamp content. The nested title span will not set an HTML `title` attribute. This prevents Tauri/WebKit from creating a native tooltip above the next row and repeatedly interrupting the hover state.
+
 ## Error Handling
 
 - A replay failure is isolated to its replay key and does not abort later eligible rows.
@@ -122,6 +127,10 @@ Use the existing JSDOM/React harness pattern to render a group containing two se
 ### Canonical adapter regression
 
 Apply a functional canonical-session update that returns its current value and assert that the adapter returns the exact existing store object.
+
+### Hover tooltip regression
+
+Render an expanded group child row and assert that its visible hashtag title remains present but the nested title span has no native `title` attribute.
 
 ### Existing suites
 
