@@ -6,7 +6,7 @@
 # - Credentials live in the minio-credentials Secret. The cloud-server
 #   reads the same secret as S3_ACCESS_KEY / S3_SECRET_KEY.
 # - A one-shot Job runs `mc mb` after the StatefulSet comes up to create
-#   the kordi-attachments bucket. Idempotent — re-running the manifest
+#   the private kordi-attachments and kordi-releases buckets. Idempotent — re-running the manifest
 #   re-creates the Job but `mc mb --ignore-existing` is a no-op when the
 #   bucket already exists.
 
@@ -159,5 +159,7 @@ spec:
               done
               mc mb --ignore-existing local/kordi-attachments
               mc anonymous set none local/kordi-attachments
+              mc mb --ignore-existing local/kordi-releases
+              mc anonymous set none local/kordi-releases
               echo "bucket ready"
               mc ls local/

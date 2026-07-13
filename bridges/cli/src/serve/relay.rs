@@ -428,7 +428,8 @@ async fn handle_derp_socket(state: Arc<ServerState>, node_id: String, socket: We
                         timestamp: chrono::Utc::now().to_rfc3339(),
                     };
                     match enqueue_mailbox_entry(&mut db, &dst_node_id, &entry, None) {
-                        Ok(EnqueueOutcome::Inserted { .. }) | Ok(EnqueueOutcome::Duplicate { .. }) => {}
+                        Ok(EnqueueOutcome::Inserted { .. })
+                        | Ok(EnqueueOutcome::Duplicate { .. }) => {}
                         Ok(EnqueueOutcome::QuotaExceeded) => {
                             if let Some(ack) =
                                 maybe_delivery_event_frame(&dst_node_id, &request_bytes, "failed")
@@ -1568,7 +1569,7 @@ mod tests {
                     blob: blob.to_string(),
                     project_id: None,
                     target_kind: None,
-                client_message_id: None,
+                    client_message_id: None,
                 }),
             )
             .await
@@ -1631,7 +1632,9 @@ mod tests {
 
         // Exactly one row remains and it carries the original payload.
         let rows: Vec<(String, String)> = conn
-            .prepare("SELECT message_id, blob FROM server_mailbox WHERE target_node_id = 'receiver'")
+            .prepare(
+                "SELECT message_id, blob FROM server_mailbox WHERE target_node_id = 'receiver'",
+            )
             .unwrap()
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .unwrap()
@@ -1653,10 +1656,10 @@ mod tests {
             project_id: None,
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
-        let first = enqueue_mailbox_entry(&mut conn, "receiver", &make_entry("a"), Some("k1"))
-            .unwrap();
-        let second = enqueue_mailbox_entry(&mut conn, "receiver", &make_entry("b"), Some("k2"))
-            .unwrap();
+        let first =
+            enqueue_mailbox_entry(&mut conn, "receiver", &make_entry("a"), Some("k1")).unwrap();
+        let second =
+            enqueue_mailbox_entry(&mut conn, "receiver", &make_entry("b"), Some("k2")).unwrap();
         assert!(matches!(first, EnqueueOutcome::Inserted { .. }));
         assert!(matches!(second, EnqueueOutcome::Inserted { .. }));
         let count: i64 = conn
@@ -1716,7 +1719,10 @@ mod tests {
         insert_aged("fresh-1", 0); // kept
 
         let pruned = gc_mailbox_retention(&conn, MAILBOX_RETENTION_DAYS).expect("gc");
-        assert_eq!(pruned, 2, "only the two rows older than 30 days should be pruned");
+        assert_eq!(
+            pruned, 2,
+            "only the two rows older than 30 days should be pruned"
+        );
 
         let remaining_ids: Vec<String> = conn
             .prepare("SELECT message_id FROM server_mailbox WHERE target_node_id = 'receiver' ORDER BY created_at")
@@ -1725,7 +1731,10 @@ mod tests {
             .unwrap()
             .map(|row| row.unwrap())
             .collect();
-        assert_eq!(remaining_ids, vec!["recent-1".to_string(), "fresh-1".to_string()]);
+        assert_eq!(
+            remaining_ids,
+            vec!["recent-1".to_string(), "fresh-1".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -1765,7 +1774,9 @@ mod tests {
         ack_mailbox_v2(
             State(state.clone()),
             Extension(AuthNode("receiver".to_string())),
-            Json(MailboxAckReq { message_ids: all_ids }),
+            Json(MailboxAckReq {
+                message_ids: all_ids,
+            }),
         )
         .await
         .expect("ack many");

@@ -5,11 +5,13 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use crate::cloud_agent_runtime::runs::{ClaimRunRequest, claim_run};
+use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
 };
-use crate::scheduled_tasks::schedule::{ScheduledTaskSchedule, initial_next_run_at, next_run_after};
+use crate::scheduled_tasks::schedule::{
+    initial_next_run_at, next_run_after, ScheduledTaskSchedule,
+};
 
 type TaskRow = (
     String,

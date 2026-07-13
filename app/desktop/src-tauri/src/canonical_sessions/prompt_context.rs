@@ -191,7 +191,8 @@ fn recent_session_message_lines(
     Ok(messages
         .into_iter()
         .map(|(sender, role, text, content_json, parent_message_id)| {
-            let action_context = message_action_context(content_json.as_deref(), parent_message_id.as_deref());
+            let action_context =
+                message_action_context(content_json.as_deref(), parent_message_id.as_deref());
             let line = format!("{} ({role}): {}", sender, truncate_context_line(&text, 700));
             match action_context {
                 Some(context) => format!("{line} [{context}]"),
@@ -201,20 +202,31 @@ fn recent_session_message_lines(
         .collect())
 }
 
-fn message_action_context(content_json: Option<&str>, parent_message_id: Option<&str>) -> Option<String> {
+fn message_action_context(
+    content_json: Option<&str>,
+    parent_message_id: Option<&str>,
+) -> Option<String> {
     let content = content_json
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .and_then(|value| serde_json::from_str::<Value>(value).ok())?;
     let action = content.get("messageAction")?;
-    let kind = action.get("kind").and_then(Value::as_str).unwrap_or_default().trim();
+    let kind = action
+        .get("kind")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
     let source = action.get("source").and_then(Value::as_object)?;
     let source_message_id = source
         .get("sourceMessageId")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .or_else(|| parent_message_id.map(str::trim).filter(|value| !value.is_empty()));
+        .or_else(|| {
+            parent_message_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        });
     let sender = source
         .get("senderLabel")
         .and_then(Value::as_str)
@@ -231,13 +243,17 @@ fn message_action_context(content_json: Option<&str>, parent_message_id: Option<
             "quotes message {} from {}{}",
             source_message_id.unwrap_or("unknown"),
             sender,
-            preview.map(|value| format!(": {value}")).unwrap_or_default(),
+            preview
+                .map(|value| format!(": {value}"))
+                .unwrap_or_default(),
         )),
         "forward" => Some(format!(
             "forwarded from message {} by {}{}",
             source_message_id.unwrap_or("unknown"),
             sender,
-            preview.map(|value| format!(": {value}")).unwrap_or_default(),
+            preview
+                .map(|value| format!(": {value}"))
+                .unwrap_or_default(),
         )),
         _ => None,
     }

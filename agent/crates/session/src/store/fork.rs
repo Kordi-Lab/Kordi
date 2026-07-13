@@ -92,12 +92,8 @@ pub(super) fn fork_session_from_entry(
     let row = get_entry(conn, source_session_id, entry_id)?
         .ok_or_else(|| anyhow::anyhow!("Entry not found: {entry_id}"))?;
 
-    let new_session_id = create_session_with_parent_and_message(
-        conn,
-        cwd,
-        Some(source_session_id),
-        Some(entry_id),
-    )?;
+    let new_session_id =
+        create_session_with_parent_and_message(conn, cwd, Some(source_session_id), Some(entry_id))?;
     copy_branch_to_session(conn, source_session_id, &new_session_id, entry_id)?;
 
     let _ = row; // existence verified above; payload no longer needed

@@ -9,7 +9,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::auth::routes::{CloudSession, cloud_session_middleware};
+use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::cloud_agent_runtime::routes::runner_authorized_for_scheduled_tasks;
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,

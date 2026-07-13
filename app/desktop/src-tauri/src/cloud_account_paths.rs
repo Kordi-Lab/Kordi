@@ -41,7 +41,9 @@ fn app_data_root() -> Result<PathBuf, String> {
 }
 
 fn account_storage_parent(account_id: &str) -> Result<PathBuf, String> {
-    Ok(app_data_root()?.join("accounts").join(account_dir_name(account_id)))
+    Ok(app_data_root()?
+        .join("accounts")
+        .join(account_dir_name(account_id)))
 }
 
 #[tauri::command]
@@ -52,7 +54,9 @@ pub fn cloud_account_storage_root(account_id: String) -> Result<String, String> 
 }
 
 #[tauri::command]
-pub fn cloud_account_storage_activate(account_id: String) -> Result<CloudAccountStorageActivation, String> {
+pub fn cloud_account_storage_activate(
+    account_id: String,
+) -> Result<CloudAccountStorageActivation, String> {
     let account_id = normalize_account_id(&account_id)?;
     let parent = account_storage_parent(&account_id)?;
     let storage_root = parent.join("kordi");
@@ -72,8 +76,9 @@ pub fn cloud_account_storage_activate(account_id: String) -> Result<CloudAccount
         requires_reload,
     };
     unsafe { std::env::set_var("KORDI_STORAGE_ROOT", parent) };
-    *active_storage().lock().map_err(|_| "cloud_account_storage_lock_failed".to_string())? =
-        Some(activation.clone());
+    *active_storage()
+        .lock()
+        .map_err(|_| "cloud_account_storage_lock_failed".to_string())? = Some(activation.clone());
     Ok(activation)
 }
 
@@ -100,7 +105,10 @@ mod tests {
         let _guard = env_lock().lock().expect("env lock poisoned");
         let previous_app_data_dir = std::env::var_os("APP_DATA_DIR");
         let previous_storage_root = std::env::var_os("KORDI_STORAGE_ROOT");
-        let dir = std::env::temp_dir().join(format!("kordi-cloud-account-paths-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!(
+            "kordi-cloud-account-paths-test-{}",
+            uuid::Uuid::new_v4()
+        ));
 
         std::env::set_var("APP_DATA_DIR", &dir);
         std::env::remove_var("KORDI_STORAGE_ROOT");
@@ -144,8 +152,14 @@ mod tests {
     #[test]
     fn invalid_account_ids_are_rejected() {
         with_app_data_dir(|_| {
-            assert_eq!(cloud_account_storage_root("".to_string()).unwrap_err(), "invalid_account_id");
-            assert_eq!(cloud_account_storage_root("human_123".to_string()).unwrap_err(), "invalid_account_id");
+            assert_eq!(
+                cloud_account_storage_root("".to_string()).unwrap_err(),
+                "invalid_account_id"
+            );
+            assert_eq!(
+                cloud_account_storage_root("human_123".to_string()).unwrap_err(),
+                "invalid_account_id"
+            );
         });
     }
 
@@ -153,12 +167,17 @@ mod tests {
     fn activation_sets_current_storage_root() {
         with_app_data_dir(|dir| {
             let activation = cloud_account_storage_activate("acct_alpha".to_string()).unwrap();
-            let current = cloud_account_storage_current().unwrap().expect("active storage");
+            let current = cloud_account_storage_current()
+                .unwrap()
+                .expect("active storage");
 
             assert_eq!(activation.account_id, "acct_alpha");
             assert_eq!(activation.storage_root, current.storage_root);
             let env_root = PathBuf::from(std::env::var("KORDI_STORAGE_ROOT").unwrap());
-            assert_eq!(env_root.join("kordi"), PathBuf::from(&activation.storage_root));
+            assert_eq!(
+                env_root.join("kordi"),
+                PathBuf::from(&activation.storage_root)
+            );
             assert!(PathBuf::from(&activation.storage_root).starts_with(dir.join("accounts")));
             assert!(!activation.requires_reload);
         });

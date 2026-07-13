@@ -37,6 +37,7 @@ import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from '@/features/cloud
 import { buildForkLineage, isGroupForkSession } from '@/features/chat/forkLineage';
 import { ChevronRight as ChevronRightIcon, Split } from 'lucide-react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
+import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
 import { cn } from '@/lib/utils';
 import {
   DeleteSessionDialog,
@@ -191,24 +192,6 @@ type BridgeHostSummary = {
   visiblePeerCount: number;
 };
 
-type DesktopUpdateCheckResult = {
-  status: 'updateAvailable' | 'upToDate' | 'unavailable';
-  currentVersion: string;
-  latestVersion?: string | null;
-  changelogUrl?: string | null;
-  downloadUrl?: string | null;
-  signature?: string | null;
-  installCommand?: string | null;
-  message: string;
-};
-
-type DesktopUpdateInstallResult = {
-  status: 'installing';
-  version?: string | null;
-  downloadedPath: string;
-  message: string;
-};
-
 type WorkspaceSidebarProps = {
   isNativeShell: boolean;
   isSingleWorkspacePage: boolean;
@@ -219,8 +202,10 @@ type WorkspaceSidebarProps = {
   setActiveNav: Dispatch<SetStateAction<NavId>>;
   chatConversations: ConversationItem[];
   onCreateChatSession: () => void;
-  onCheckForUpdates?: () => Promise<DesktopUpdateCheckResult>;
-  onInstallUpdate?: (input: { downloadUrl: string; version?: string | null }) => Promise<DesktopUpdateInstallResult>;
+  onCheckForUpdates?: () => Promise<DesktopUpdaterState>;
+  onInstallUpdate?: () => Promise<void>;
+  onRetryUpdate?: () => Promise<void>;
+  onSubscribeToUpdate?: (listener: (state: DesktopUpdaterState) => void) => () => void;
   onOpenUpdateUrl?: (url: string) => Promise<void> | void;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
@@ -283,6 +268,24 @@ type WorkspaceSidebarProps = {
   onCopyBridgeHostUrl: () => void;
   onCreateBridgeDraft: () => void;
 };
+
+function formatUpdateBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function desktopUpdateStatusMessage(state: DesktopUpdaterState) {
+  if (state.status === 'downloading') {
+    const received = formatUpdateBytes(state.receivedBytes ?? 0);
+    const total = typeof state.totalBytes === 'number' ? ` of ${formatUpdateBytes(state.totalBytes)}` : '';
+    return `Downloading update… ${received}${total}`;
+  }
+  if (state.status === 'installing') return 'Installing signed update…';
+  if (state.status === 'relaunching') return 'Relaunching Kordi…';
+  if (state.status === 'failed') return state.error || 'Unable to install the signed update.';
+  return null;
+}
 
 export type CloudProfileRow = { label: string; value: string; copyable?: boolean };
 
@@ -527,6 +530,8 @@ export function WorkspaceSidebar({
   onCreateChatSession,
   onCheckForUpdates,
   onInstallUpdate,
+  onRetryUpdate,
+  onSubscribeToUpdate,
   onOpenUpdateUrl,
   chatSearch,
   setChatSearch,
@@ -663,11 +668,10 @@ export function WorkspaceSidebar({
     };
   }, [isProfileCardOpen]);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
-  const [updateCheckResult, setUpdateCheckResult] = useState<DesktopUpdateCheckResult | null>(null);
+  const [updateState, setUpdateState] = useState<DesktopUpdaterState>({ status: 'idle' });
   const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
   const [updateConfirmAnchor, setUpdateConfirmAnchor] = useState<{ left: number; top: number } | null>(null);
   const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(false);
-  const [updateInstallState, setUpdateInstallState] = useState<{ status: 'idle' | 'installing' | 'error'; message?: string }>({ status: 'idle' });
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
@@ -704,16 +708,21 @@ export function WorkspaceSidebar({
   };
 
   useEffect(() => {
+    if (!onSubscribeToUpdate) return;
+    return onSubscribeToUpdate(setUpdateState);
+  }, [onSubscribeToUpdate]);
+
+  useEffect(() => {
     if (!onCheckForUpdates) return;
     let cancelled = false;
     setIsUpdateCheckPending(true);
     void onCheckForUpdates()
       .then((result) => {
         if (cancelled) return;
-        setUpdateCheckResult(result.status === 'updateAvailable' ? result : null);
+        setUpdateState(result);
       })
       .catch(() => {
-        if (!cancelled) setUpdateCheckResult(null);
+        if (!cancelled) setUpdateState({ status: 'idle' });
       })
       .finally(() => {
         if (!cancelled) setIsUpdateCheckPending(false);
@@ -747,19 +756,13 @@ export function WorkspaceSidebar({
   }, [isUpdateConfirmOpen]);
 
   const handleConfirmUpdate = async () => {
-    const downloadUrl = updateCheckResult?.downloadUrl?.trim();
-    if (!downloadUrl || !onInstallUpdate) {
-      const fallbackUrl = updateCheckResult?.changelogUrl?.trim();
-      if (fallbackUrl) await onOpenUpdateUrl?.(fallbackUrl);
-      return;
-    }
-    setUpdateInstallState({ status: 'installing', message: 'Installing update…' });
+    const action = updateState.status === 'failed' ? (onRetryUpdate ?? onInstallUpdate) : onInstallUpdate;
+    if (!action) return;
     try {
-      const result = await onInstallUpdate({ downloadUrl, version: updateCheckResult?.latestVersion ?? null });
-      setUpdateInstallState({ status: 'installing', message: result.message || 'Installing update…' });
+      await action();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to install update';
-      setUpdateInstallState({ status: 'error', message });
+      setUpdateState((current) => ({ ...current, status: 'failed', error: message }));
     }
   };
 
@@ -1667,7 +1670,11 @@ export function WorkspaceSidebar({
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      {updateCheckResult?.status === 'updateAvailable' ? (
+                      {updateState.status === 'available'
+                        || updateState.status === 'downloading'
+                        || updateState.status === 'installing'
+                        || updateState.status === 'relaunching'
+                        || updateState.status === 'failed' ? (
                         <button
                           ref={updateButtonRef}
                           type="button"
@@ -1679,7 +1686,7 @@ export function WorkspaceSidebar({
                             'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-full p-0 transition',
                             'border border-slate-300/70 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.12)] hover:bg-slate-50',
                           )}
-                          title={`Kordi ${updateCheckResult.latestVersion ?? 'update'} is available`}
+                          title={`Kordi ${updateState.latestVersion ?? 'update'} is available`}
                           aria-label="Check for Kordi updates"
                           aria-expanded={isUpdateConfirmOpen}
                         >
@@ -1988,27 +1995,36 @@ export function WorkspaceSidebar({
           }}
           className="app-popover w-[18rem] rounded-[18px] border px-3 py-3 text-foreground shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
         >
-          <div className="text-[13px] font-semibold text-slate-100">Update available</div>
+          <div className="text-[13px] font-semibold text-slate-100">
+            {updateState.status === 'failed' ? 'Update failed' : 'Update available'}
+          </div>
           <div className="mt-1 text-[11px] leading-5 text-slate-400">
-            {updateCheckResult?.message || `Kordi ${updateCheckResult?.latestVersion} is available.`}
+            {updateState.notes || `Kordi ${updateState.latestVersion ?? 'update'} is available.`}
           </div>
           <div className="mt-2 rounded-[12px] bg-white/[0.05] px-2.5 py-2 text-[10.5px] leading-4 text-slate-300">
-            {updateCheckResult?.downloadUrl
-              ? 'Click Update now to download, install, and relaunch Kordi automatically.'
-              : (updateCheckResult?.installCommand || 'No automatic installer is available for this release.')}
+            Click Update now to download, verify, install, and relaunch Kordi automatically.
           </div>
-          {updateInstallState.message ? (
+          {desktopUpdateStatusMessage(updateState) ? (
             <div
               role="status"
               className={cn(
                 'mt-2 rounded-[12px] px-2.5 py-2 text-[10.5px] leading-4',
-                updateInstallState.status === 'error' ? 'bg-rose-500/10 text-rose-200' : 'bg-blue-500/10 text-blue-200',
+                updateState.status === 'failed' ? 'bg-rose-500/10 text-rose-200' : 'bg-blue-500/10 text-blue-200',
               )}
             >
-              {updateInstallState.message}
+              {desktopUpdateStatusMessage(updateState)}
             </div>
           ) : null}
           <div className="mt-3 flex justify-end gap-2">
+            {updateState.status === 'failed' && updateState.manualDownloadUrl ? (
+              <button
+                type="button"
+                className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                onClick={() => { void onOpenUpdateUrl?.(updateState.manualDownloadUrl!); }}
+              >
+                Download manually
+              </button>
+            ) : null}
             <button
               type="button"
               className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
@@ -2019,10 +2035,18 @@ export function WorkspaceSidebar({
             <button
               type="button"
               className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={updateInstallState.status === 'installing' || (!updateCheckResult?.downloadUrl && !updateCheckResult?.changelogUrl)}
+              disabled={updateState.status === 'downloading' || updateState.status === 'installing' || updateState.status === 'relaunching' || !onInstallUpdate}
               onClick={() => { void handleConfirmUpdate(); }}
             >
-              {updateInstallState.status === 'installing' ? 'Installing…' : 'Update now'}
+              {updateState.status === 'failed'
+                ? 'Retry'
+                : updateState.status === 'downloading'
+                  ? 'Downloading…'
+                  : updateState.status === 'installing'
+                    ? 'Installing…'
+                    : updateState.status === 'relaunching'
+                      ? 'Relaunching…'
+                      : 'Update now'}
             </button>
           </div>
         </div>,

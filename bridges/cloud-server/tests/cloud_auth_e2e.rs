@@ -19,7 +19,7 @@ use std::time::Duration;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use kordi_cloud_server::auth::messages::{
-    PersistCloudMessageInput, PersistedMessageAttachment, persist_cloud_message,
+    persist_cloud_message, PersistCloudMessageInput, PersistedMessageAttachment,
 };
 use kordi_cloud_server::auth::password::PasswordHasherConfig;
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};

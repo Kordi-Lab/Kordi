@@ -4,20 +4,23 @@
 
 use std::sync::Arc;
 
-use axum::{Json, Router};
-use serde::Serialize;
+use axum::Router;
 use sqlx_postgres::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::attachments::S3Config;
 use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimiterError};
 use crate::events::{EventBus, EventBusError};
-use crate::pg::{PgPoolError, init_pool};
+use crate::pg::{init_pool, PgPoolError};
+use crate::updates::store::{
+    MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
+};
 
 pub struct ServerState {
     pool: PgPool,
     events: EventBus,
     s3: Option<S3Config>,
+    release_store: Option<ReleaseCatalogStore>,
 }
 
 impl ServerState {
@@ -26,11 +29,17 @@ impl ServerState {
             pool,
             events,
             s3: None,
+            release_store: None,
         }
     }
 
     pub fn with_s3(mut self, s3: S3Config) -> Self {
         self.s3 = Some(s3);
+        self
+    }
+
+    pub fn with_release_store(mut self, release_store: ReleaseCatalogStore) -> Self {
+        self.release_store = Some(release_store);
         self
     }
 
@@ -44,6 +53,10 @@ impl ServerState {
 
     pub fn s3(&self) -> Option<&S3Config> {
         self.s3.as_ref()
+    }
+
+    pub fn release_store(&self) -> Option<&ReleaseCatalogStore> {
+        self.release_store.as_ref()
     }
 }
 
@@ -76,52 +89,10 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
         .merge(crate::scheduled_tasks::routes::routes(state.clone()))
-        .merge(updates_routes())
+        .merge(crate::updates::routes::routes(state.clone()))
         .merge(ws_router)
         .route("/health", axum::routing::get(health))
         .layer(cors)
-}
-
-pub fn updates_routes() -> Router {
-    Router::new().route(
-        "/updates/releases/version",
-        axum::routing::get(update_release_version),
-    )
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateReleaseVersionResponse {
-    version: String,
-    changelog_url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    download_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    signature: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    install_command: Option<String>,
-}
-
-async fn update_release_version() -> Json<UpdateReleaseVersionResponse> {
-    Json(UpdateReleaseVersionResponse {
-        version: std::env::var("KORDI_RELEASE_VERSION")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
-        changelog_url: std::env::var("KORDI_RELEASE_CHANGELOG_URL")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "https://coordinar.io/updates/releases/version".to_string()),
-        download_url: std::env::var("KORDI_RELEASE_DOWNLOAD_URL")
-            .ok()
-            .filter(|value| !value.trim().is_empty()),
-        signature: std::env::var("KORDI_RELEASE_SIGNATURE")
-            .ok()
-            .filter(|value| !value.trim().is_empty()),
-        install_command: std::env::var("KORDI_RELEASE_INSTALL_COMMAND")
-            .ok()
-            .filter(|value| !value.trim().is_empty()),
-    })
 }
 
 async fn health() -> axum::Json<serde_json::Value> {
@@ -181,74 +152,7 @@ fn redact_url_credentials(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-    };
-    use http_body_util::BodyExt;
-    use std::sync::{Mutex, OnceLock};
-
-    use tower::ServiceExt;
-
-    use super::{redact_url_credentials, updates_routes};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    #[tokio::test]
-    async fn update_release_version_route_returns_public_version_metadata() {
-        let _guard = env_lock().lock().unwrap();
-        unsafe { std::env::set_var("KORDI_RELEASE_VERSION", "0.0.1-beta.6") };
-        unsafe {
-            std::env::set_var(
-                "KORDI_RELEASE_CHANGELOG_URL",
-                "https://coordinar.io/releases",
-            )
-        };
-        unsafe {
-            std::env::set_var(
-                "KORDI_RELEASE_INSTALL_COMMAND",
-                "Download Kordi from coordinar.io",
-            )
-        };
-        unsafe {
-            std::env::set_var(
-                "KORDI_RELEASE_DOWNLOAD_URL",
-                "https://coordinar.io/releases/Kordi.dmg",
-            )
-        };
-        unsafe { std::env::set_var("KORDI_RELEASE_SIGNATURE", "release-signature") };
-
-        let response = updates_routes()
-            .oneshot(
-                Request::builder()
-                    .uri("/updates/releases/version")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["version"], "0.0.1-beta.6");
-        assert_eq!(json["changelogUrl"], "https://coordinar.io/releases");
-        assert_eq!(json["installCommand"], "Download Kordi from coordinar.io");
-        assert_eq!(
-            json["downloadUrl"],
-            "https://coordinar.io/releases/Kordi.dmg"
-        );
-        assert_eq!(json["signature"], "release-signature");
-
-        unsafe { std::env::remove_var("KORDI_RELEASE_VERSION") };
-        unsafe { std::env::remove_var("KORDI_RELEASE_CHANGELOG_URL") };
-        unsafe { std::env::remove_var("KORDI_RELEASE_INSTALL_COMMAND") };
-        unsafe { std::env::remove_var("KORDI_RELEASE_DOWNLOAD_URL") };
-        unsafe { std::env::remove_var("KORDI_RELEASE_SIGNATURE") };
-    }
+    use super::redact_url_credentials;
 
     #[test]
     fn redacts_credentials_from_logged_urls() {
@@ -313,6 +217,24 @@ pub async fn run(
     } else {
         println!(
             "Kordi cloud server starting without S3 (attachments disabled — set S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY)"
+        );
+    }
+    if let Some(config) = ReleaseStoreConfig::from_env() {
+        match MinioReleaseStore::new(config) {
+            Ok(backend) => {
+                println!("Kordi cloud server release store configured (bucket=kordi-releases)");
+                state = state.with_release_store(ReleaseCatalogStore::new(Arc::new(backend)));
+            }
+            Err(ReleaseStoreError::Unavailable) => {
+                println!("Kordi cloud server release store is unavailable");
+            }
+            Err(_) => {
+                println!("Kordi cloud server release store configuration was rejected");
+            }
+        }
+    } else {
+        println!(
+            "Kordi cloud server starting without desktop release storage (set KORDI_RELEASE_S3_ENDPOINT, KORDI_RELEASE_S3_BUCKET, KORDI_RELEASE_S3_ACCESS_KEY, KORDI_RELEASE_S3_SECRET_KEY)"
         );
     }
     let state = Arc::new(state);

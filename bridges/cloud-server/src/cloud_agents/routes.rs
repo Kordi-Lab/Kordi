@@ -12,8 +12,7 @@ use serde_json::json;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::cloud_agents::models::{
-    CloudAgentDefinition, CreateCloudAgentRequest, SharedCloudAgentSummary,
-    UpdateCloudAgentRequest,
+    CloudAgentDefinition, CreateCloudAgentRequest, SharedCloudAgentSummary, UpdateCloudAgentRequest,
 };
 use crate::cloud_agents::store::{
     archive_agent_definition, create_agent_definition, list_agent_definitions,
@@ -49,7 +48,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/v1/cloud/agents", get(list_agents).post(create_agent))
         .route("/v1/cloud/agents/shared", get(list_shared_agents))
-        .route("/v1/cloud/agents/:agent_id", put(update_agent).delete(archive_agent))
+        .route(
+            "/v1/cloud/agents/:agent_id",
+            put(update_agent).delete(archive_agent),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
@@ -130,8 +132,14 @@ async fn update_agent(
     Path(agent_id): Path<String>,
     Json(input): Json<UpdateCloudAgentRequest>,
 ) -> Response {
-    match update_agent_definition(state.db_pool(), &session.account_id, &agent_id, input, Utc::now())
-        .await
+    match update_agent_definition(
+        state.db_pool(),
+        &session.account_id,
+        &agent_id,
+        input,
+        Utc::now(),
+    )
+    .await
     {
         Ok(Some(agent)) => Json(CloudAgentEnvelope { agent }).into_response(),
         Ok(None) => error_response(
@@ -148,7 +156,8 @@ async fn archive_agent(
     Extension(session): Extension<CloudSession>,
     Path(agent_id): Path<String>,
 ) -> Response {
-    match archive_agent_definition(state.db_pool(), &session.account_id, &agent_id, Utc::now()).await
+    match archive_agent_definition(state.db_pool(), &session.account_id, &agent_id, Utc::now())
+        .await
     {
         Ok(Some(agent)) => Json(CloudAgentEnvelope { agent }).into_response(),
         Ok(None) => error_response(

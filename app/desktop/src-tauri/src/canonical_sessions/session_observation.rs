@@ -3,7 +3,7 @@ use kordi_tools::{
     SessionObservationMessage, SessionObservationParticipant, SessionObservationReadSession,
     SessionObservationSearchResult, SessionObservationSnippet, SessionObservationWindow,
 };
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::open_db;
 

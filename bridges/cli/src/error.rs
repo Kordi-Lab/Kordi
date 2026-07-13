@@ -262,7 +262,11 @@ impl fmt::Display for ServerInitError {
                 version,
                 description,
                 source,
-            } => write!(f, "apply migration v{} ({}): {}", version, description, source),
+            } => write!(
+                f,
+                "apply migration v{} ({}): {}",
+                version, description, source
+            ),
         }
     }
 }

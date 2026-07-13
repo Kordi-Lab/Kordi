@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use axum::body::{Body, to_bytes};
+use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{TimeZone, Utc};
 use kordi_cloud_server::events::EventBus;
@@ -18,7 +18,7 @@ use kordi_cloud_server::scheduled_tasks::store::{
     list_scheduled_task_runs, list_scheduled_tasks, pause_scheduled_task, resume_scheduled_task,
     soft_delete_scheduled_task,
 };
-use kordi_cloud_server::server::{ServerState, router};
+use kordi_cloud_server::server::{router, ServerState};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -158,12 +158,10 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
         .await
         .expect("delete");
     assert!(deleted);
-    assert!(
-        list_scheduled_tasks(&pool, &account_id)
-            .await
-            .expect("list after delete")
-            .is_empty()
-    );
+    assert!(list_scheduled_tasks(&pool, &account_id)
+        .await
+        .expect("list after delete")
+        .is_empty());
 }
 
 #[tokio::test]
@@ -191,7 +189,10 @@ async fn scheduled_task_store_does_not_strand_new_once_tasks_at_or_before_creati
     .expect("create task");
 
     assert_eq!(task.status, "active");
-    assert_eq!(task.next_run_at.as_deref(), Some("2026-06-08T09:00:30+00:00"));
+    assert_eq!(
+        task.next_run_at.as_deref(),
+        Some("2026-06-08T09:00:30+00:00")
+    );
 
     let claimed = claim_due_scheduled_task_runs(&pool, now, 10)
         .await
@@ -272,8 +273,9 @@ fn stranded_scheduled_task_backfill_migration_is_embedded_and_skips_tasks_with_r
     assert!(pool_source.contains("version: 24"));
     assert!(pool_source.contains("0024_backfill_stranded_scheduled_tasks.sql"));
 
-    let migration = std::fs::read_to_string("migrations/0024_backfill_stranded_scheduled_tasks.sql")
-        .expect("read backfill migration");
+    let migration =
+        std::fs::read_to_string("migrations/0024_backfill_stranded_scheduled_tasks.sql")
+            .expect("read backfill migration");
     assert!(migration.contains("task.next_run_at IS NULL"));
     assert!(migration.contains("task.status = 'active'"));
     assert!(migration.contains("NOT EXISTS"));
@@ -457,11 +459,9 @@ async fn run_now_and_due_claim_separate_cloud_and_local_required_runs() {
         .find(|run| run.task_id == cloud.task_id)
         .expect("cloud run");
     assert_eq!(cloud_run.status, "queued");
-    assert!(
-        claimed
-            .iter()
-            .any(|run| run.task_id == local.task_id && run.status == "waiting_for_desktop")
-    );
+    assert!(claimed
+        .iter()
+        .any(|run| run.task_id == local.task_id && run.status == "waiting_for_desktop"));
 
     let fallback: (String, String, String, String, String) = query_as(
         "SELECT idempotency_key, request_message_id, session_id, status, prompt FROM cloud_agent_fallback_runs WHERE idempotency_key = $1",

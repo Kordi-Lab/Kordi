@@ -104,13 +104,18 @@ fn test_fork_from_assistant_entry_includes_assistant_response() {
     // Fork-AT semantics: the new session's leaf is the clicked
     // assistant response itself, and the transcript contains every
     // ancestor including the assistant response.
-    let forked =
-        fork_session_from_entry(&conn, &sid, assistant_id.as_str(), "/tmp/test").unwrap();
-    assert_eq!(forked.branch_leaf_id.as_deref(), Some(assistant_id.as_str()));
+    let forked = fork_session_from_entry(&conn, &sid, assistant_id.as_str(), "/tmp/test").unwrap();
+    assert_eq!(
+        forked.branch_leaf_id.as_deref(),
+        Some(assistant_id.as_str())
+    );
     assert_eq!(forked.source_entry_id, assistant_id.as_str());
 
     let forked_session = get_session(&conn, &forked.session_id).unwrap().unwrap();
-    assert_eq!(forked_session.leaf_id.as_deref(), Some(assistant_id.as_str()));
+    assert_eq!(
+        forked_session.leaf_id.as_deref(),
+        Some(assistant_id.as_str())
+    );
     assert_eq!(
         forked_session.parent_session_message_id.as_deref(),
         Some(assistant_id.as_str())

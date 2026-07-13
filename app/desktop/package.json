@@ -1,7 +1,7 @@
 {
   "name": "kordi-desktop",
   "private": true,
-  "version": "0.0.1-beta.5",
+  "version": "0.0.1-beta.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -24,10 +24,11 @@
     "tauri:dev:multi:reset": "node scripts/multi-instance/reset.mjs",
     "tauri:dev:multi:smoke": "node scripts/multi-instance/smoke.mjs",
     "release:secret-guard": "node scripts/assert-no-release-secrets.mjs",
+    "release:prerequisites": "node scripts/check-release-prerequisites.mjs",
     "tauri:build": "pnpm tauri:build:cloud",
     "tauri:build:cloud": "pnpm release:secret-guard && pnpm tauri:prepare-sidecars && tauri build --config src-tauri/tauri.cloud.conf.json",
     "release:verify-cloud-dmg": "node scripts/assert-macos-dmg-release.mjs --app-name Kordi",
-    "tauri:build:cloud:dmg": "pnpm release:secret-guard && pnpm tauri:prepare-sidecars && tauri build --config src-tauri/tauri.cloud.conf.json --bundles dmg && pnpm release:verify-cloud-dmg",
+    "tauri:build:cloud:dmg": "pnpm release:secret-guard && pnpm tauri:prepare-sidecars && tauri build --config src-tauri/tauri.cloud.conf.json --bundles app,dmg && pnpm release:verify-cloud-dmg",
     "tauri:dev:cloud": "pnpm tauri:prepare-sidecars && tauri dev --config src-tauri/tauri.cloud.conf.json"
   },
   "dependencies": {
@@ -35,6 +36,8 @@
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-virtual": "^3.14.5",
     "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.8.0",

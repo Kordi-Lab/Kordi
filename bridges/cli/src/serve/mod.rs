@@ -197,7 +197,6 @@ fn apply_versioned_migrations(conn: &Connection) -> Result<(), ServerInitError> 
     // server_messages / server_message_recipients are owned by the
     // kordi-cloud-server crate now and live in its own SQLite database.
 
-
     Ok(())
 }
 
@@ -485,7 +484,10 @@ fn spawn_mailbox_retention_gc(state: Arc<ServerState>) {
             };
             let result = runner
                 .write::<_, usize, MailboxGcError>(|conn| {
-                    Ok(relay::gc_mailbox_retention(conn, relay::MAILBOX_RETENTION_DAYS)?)
+                    Ok(relay::gc_mailbox_retention(
+                        conn,
+                        relay::MAILBOX_RETENTION_DAYS,
+                    )?)
                 })
                 .await;
             match result {
@@ -937,7 +939,10 @@ mod tests {
         init_server_db(&conn).expect("init db");
 
         // Migration 1 lands the covering mailbox index.
-        assert!(index_exists(&conn, "idx_server_mailbox_target_created_message"));
+        assert!(index_exists(
+            &conn,
+            "idx_server_mailbox_target_created_message"
+        ));
 
         // schema_versions has migration 1 recorded exactly once.
         let count: i64 = conn

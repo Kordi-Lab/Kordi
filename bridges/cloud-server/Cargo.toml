@@ -18,6 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+semver = "1"
 tokio.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
@@ -32,16 +33,16 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 curve25519-dalek = "4"
 axum = { version = "0.7", features = ["ws"] }
 futures-util = { version = "0.3", default-features = false }
-tower = { version = "0.4", features = ["limit"] }
 tower-http = { version = "0.5", features = ["cors"] }
 argon2 = "0.5"
+async-trait = "0.1"
 password-hash = { version = "0.5", features = ["alloc", "rand_core"] }
 async-nats = "0.37"
 bytes = "1"
 redis = { version = "0.27", default-features = false, features = ["tokio-comp", "aio", "connection-manager"] }
 rusty-s3 = "0.7"
 url = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 aes-gcm = "0.10"
 # Direct driver + core deps (no sqlx umbrella) so sqlx-sqlite doesn't show
 # up in the workspace dep graph and conflict with bridges/cli's rusqlite

@@ -36,6 +36,11 @@ test('desktop package commands expose only Cloud product entrypoints', () => {
   assert.equal(scripts['tauri:build'], 'pnpm tauri:build:cloud');
   assert.match(scripts['tauri:dev:cloud'], /tauri dev --config src-tauri\/tauri\.cloud\.conf\.json/);
   assert.match(scripts['tauri:build:cloud'], /tauri build --config src-tauri\/tauri\.cloud\.conf\.json/);
+  assert.match(
+    scripts['tauri:build:cloud:dmg'],
+    /tauri build --config src-tauri\/tauri\.cloud\.conf\.json --bundles app,dmg/,
+    'release builds must include the app bundle so Tauri emits the signed updater archive',
+  );
   assert.deepEqual(scriptNames.filter((name) => name.includes(':local')), []);
   assert.doesNotMatch(scriptBody, /\bVITE_KORDI_EDITION\b|\bKORDI_EDITION\b/);
 });

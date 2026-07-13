@@ -35,7 +35,8 @@ fn fresh_db_path(label: &str) -> PathBuf {
 
 fn open_configured(path: &PathBuf) -> Connection {
     let conn = Connection::open(path).expect("open db");
-    conn.busy_timeout(Duration::from_secs(5)).expect("busy timeout");
+    conn.busy_timeout(Duration::from_secs(5))
+        .expect("busy timeout");
     conn.execute_batch(
         "PRAGMA foreign_keys = ON;\n         PRAGMA journal_mode = WAL;\n         PRAGMA synchronous = NORMAL;\n         CREATE TABLE IF NOT EXISTS server_mailbox (\n             message_id      TEXT PRIMARY KEY,\n             target_node_id  TEXT NOT NULL,\n             from_node_id    TEXT NOT NULL,\n             blob            TEXT NOT NULL,\n             project_id      TEXT,\n             created_at      TEXT NOT NULL\n         );\n         CREATE INDEX IF NOT EXISTS idx_server_mailbox_target_created_message\n             ON server_mailbox (target_node_id, created_at, message_id);",
     )

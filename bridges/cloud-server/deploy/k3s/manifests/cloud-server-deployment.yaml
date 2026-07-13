@@ -115,6 +115,22 @@ spec:
                 secretKeyRef:
                   name: minio-credentials
                   key: secret-key
+            - name: KORDI_RELEASE_S3_ENDPOINT
+              value: "http://minio.kordi-cloud.svc.cluster.local:9000"
+            - name: KORDI_RELEASE_S3_BUCKET
+              value: "kordi-releases"
+            - name: KORDI_RELEASE_S3_REGION
+              value: "us-east-1"
+            - name: KORDI_RELEASE_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-release-reader
+                  key: access-key
+            - name: KORDI_RELEASE_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-release-reader
+                  key: secret-key
             - name: KORDI_OAUTH_GITHUB_CLIENT_ID
               valueFrom:
                 secretKeyRef:

@@ -15,7 +15,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Extension, Json, Router};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -24,21 +24,21 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use crate::auth::messages::{
-    PersistCloudMessageInput, PersistedMessageAttachment, persist_cloud_message,
+    persist_cloud_message, PersistCloudMessageInput, PersistedMessageAttachment,
 };
 use crate::auth::oauth::{
-    OAuthProfile, OAuthProvider, clean_profile_avatar_url, clean_profile_display_name,
-    encode_oauth_fragment, exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect,
-    oauth_config, pkce_challenge, random_url_token, redirect_with_oauth_error,
+    clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
+    exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
+    pkce_challenge, random_url_token, redirect_with_oauth_error, OAuthProfile, OAuthProvider,
 };
 use crate::auth::password::{
-    EmailFormatError, PASSWORD_ALGORITHM_ID, PasswordHasherConfig, PasswordPolicyError,
-    hash_password, validate_email, validate_password_strength, verify_password,
+    hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
+    PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::session::{
-    DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX, bump_expiry, issue_session,
-    lookup_session, revoke_session,
+    bump_expiry, issue_session, lookup_session, revoke_session, DEFAULT_SESSION_LIFETIME_DAYS,
+    SESSION_TOKEN_PREFIX,
 };
 use crate::server::ServerState;
 
@@ -2841,10 +2841,10 @@ fn cloud_message_requires_accepted_contact(body: &str) -> bool {
 #[cfg(test)]
 mod cloud_message_policy_tests {
     use super::{
-        CLOUD_AGENT_RESPONSE_PREFIX, CLOUD_GROUP_CONTROL_PREFIX, cloud_direct_person_session_id,
-        cloud_message_effective_created_at, cloud_message_requires_accepted_contact,
-        contact_acceptance_hello_sync_summaries, normalize_cloud_message_body,
-        sanitized_cloud_group_control_body,
+        cloud_direct_person_session_id, cloud_message_effective_created_at,
+        cloud_message_requires_accepted_contact, contact_acceptance_hello_sync_summaries,
+        normalize_cloud_message_body, sanitized_cloud_group_control_body,
+        CLOUD_AGENT_RESPONSE_PREFIX, CLOUD_GROUP_CONTROL_PREFIX,
     };
     use base64::Engine as _;
     use chrono::{TimeZone, Utc};

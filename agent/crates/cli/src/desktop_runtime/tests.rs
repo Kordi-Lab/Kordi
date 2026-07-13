@@ -190,9 +190,14 @@ async fn desktop_runtime_attaches_cloud_scheduled_task_runtime() -> Result<()> {
     }
     .save_global()?;
 
-    let mut runtime = DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), "session-schedule-runtime").await?;
+    let mut runtime =
+        DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), "session-schedule-runtime")
+            .await?;
     assert!(runtime.setup.tool_ctx.schedule_task.is_none());
-    runtime.set_scheduled_tasks_cloud_runtime("https://cloud.example/".to_string(), "session-token".to_string());
+    runtime.set_scheduled_tasks_cloud_runtime(
+        "https://cloud.example/".to_string(),
+        "session-token".to_string(),
+    );
     assert!(runtime.setup.tool_ctx.schedule_task.is_some());
     Ok(())
 }

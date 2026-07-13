@@ -250,11 +250,8 @@ fn bridge_agent_prompt_includes_inline_identity_frame_for_parent_session() {
     assert!(prompt.contains("- replyAs: agent:bob-kordi only"));
     assert!(prompt.contains("- identityId: human:alice"));
     assert!(prompt.contains("agent:bob-kordi | Bob's Kordi | agent"));
-    assert!(
-        prompt.contains(
-            "If the request asks you to create, manage, persist, search, or close a task"
-        )
-    );
+    assert!(prompt
+        .contains("If the request asks you to create, manage, persist, search, or close a task"));
     assert!(prompt.contains("use task_operator"));
     assert!(prompt.contains("action=create"));
     assert!(prompt.contains("action=search"));
@@ -626,16 +623,10 @@ fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
         .expect("migrated participant");
     assert_eq!(migrated_participant.0, "self");
     assert_eq!(migrated_participant.1, "active");
-    assert_eq!(
-        migrated_participant.2.as_deref(),
-        Some("human:acct_same")
-    );
+    assert_eq!(migrated_participant.2.as_deref(), Some("human:acct_same"));
     assert_eq!(migrated_participant.3, 41);
     assert_eq!(migrated_participant.4, Some(51));
-    assert_eq!(
-        migrated_participant.5.as_deref(),
-        Some("msg:migrated-read")
-    );
+    assert_eq!(migrated_participant.5.as_deref(), Some("msg:migrated-read"));
     assert_eq!(
         migrated_participant
             .6
@@ -923,16 +914,12 @@ fn cloud_group_open_keeps_local_profile_as_only_self_even_when_remote_created() 
         1,
         "group must have exactly one self participant",
     );
-    assert!(
-        roles
-            .iter()
-            .any(|(identity_id, role)| identity_id == &local_human_id && role == "self")
-    );
-    assert!(
-        roles
-            .iter()
-            .any(|(identity_id, role)| identity_id == &remote_creator.id && role == "person")
-    );
+    assert!(roles
+        .iter()
+        .any(|(identity_id, role)| identity_id == &local_human_id && role == "self"));
+    assert!(roles
+        .iter()
+        .any(|(identity_id, role)| identity_id == &remote_creator.id && role == "person"));
 }
 
 #[test]
@@ -1348,13 +1335,11 @@ fn local_agent_identity_uses_delegate_name_stable_agent_id_and_owner() {
         identity.owner_identity_id.as_deref(),
         Some(human_identity_id.as_str())
     );
-    assert!(
-        identity
-            .agent_id
-            .as_deref()
-            .unwrap_or_default()
-            .starts_with("local:")
-    );
+    assert!(identity
+        .agent_id
+        .as_deref()
+        .unwrap_or_default()
+        .starts_with("local:"));
     assert_eq!(identity.avatar_key, identity.agent_id.clone().unwrap());
     assert_eq!(
         identity
@@ -1552,12 +1537,10 @@ fn bridge_fallback_node_identity_can_be_reconciled_to_human_id() {
     .expect("cleanup fallback identity");
 
     let state = commands::load_state_from_db(&conn).expect("load state");
-    assert!(
-        state
-            .participants
-            .iter()
-            .all(|participant| participant.identity_id != "human:bridge-node:kd_alice")
-    );
+    assert!(state
+        .participants
+        .iter()
+        .all(|participant| participant.identity_id != "human:bridge-node:kd_alice"));
     assert_eq!(state.messages[0].sender_identity_id, human.id);
 }
 

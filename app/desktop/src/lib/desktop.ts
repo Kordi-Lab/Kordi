@@ -39,6 +39,10 @@ import {
   chatPerformancePayloadBytes,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
+import {
+  desktopUpdaterController,
+  type DesktopUpdaterState,
+} from '@/features/updates/desktopUpdater';
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -87,45 +91,22 @@ export async function openDesktopExternalUrl(url: string) {
   return window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-export type DesktopUpdateCheckResult = {
-  status: 'updateAvailable' | 'upToDate' | 'unavailable';
-  currentVersion: string;
-  latestVersion?: string | null;
-  changelogUrl?: string | null;
-  downloadUrl?: string | null;
-  signature?: string | null;
-  installCommand?: string | null;
-  message: string;
-};
+export type { DesktopUpdaterState };
 
-export type DesktopUpdateInstallResult = {
-  status: 'installing';
-  version?: string | null;
-  downloadedPath: string;
-  message: string;
-};
-
-export async function checkDesktopForUpdates(): Promise<DesktopUpdateCheckResult> {
-  if (!isNativeDesktopShell()) {
-    return {
-      status: 'unavailable',
-      currentVersion: '',
-      latestVersion: null,
-      changelogUrl: null,
-      downloadUrl: null,
-      signature: null,
-      installCommand: null,
-      message: 'Update checks are only available in Kordi Desktop.',
-    };
-  }
-  return invokeDesktop<DesktopUpdateCheckResult>('desktop_check_for_updates');
+export function checkDesktopForUpdates(): Promise<DesktopUpdaterState> {
+  return desktopUpdaterController.check();
 }
 
-export async function installDesktopUpdate(input: { downloadUrl: string; version?: string | null }): Promise<DesktopUpdateInstallResult> {
-  return invokeDesktop<DesktopUpdateInstallResult>('desktop_install_update', {
-    downloadUrl: input.downloadUrl,
-    version: input.version ?? null,
-  });
+export function installDesktopUpdate(): Promise<void> {
+  return desktopUpdaterController.install();
+}
+
+export function retryDesktopUpdate(): Promise<void> {
+  return desktopUpdaterController.retry();
+}
+
+export function subscribeDesktopUpdater(listener: (state: DesktopUpdaterState) => void) {
+  return desktopUpdaterController.subscribe(listener);
 }
 
 export type DesktopCloudOAuthLoopbackStart = {

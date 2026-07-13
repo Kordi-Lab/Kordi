@@ -132,14 +132,11 @@ fn normalize_request_for_cloud_at(
             }
         }
         ScheduleTaskSchedule::Once { at } => {
-            if DateTime::parse_from_rfc3339(at).is_err()
-                && !request_mentions_explicit_utc(&request)
+            if DateTime::parse_from_rfc3339(at).is_err() && !request_mentions_explicit_utc(&request)
             {
-                if let Some(utc_at) = local_once_wall_time_to_utc_rfc3339(
-                    at,
-                    local_offset_minutes,
-                    now_utc,
-                ) {
+                if let Some(utc_at) =
+                    local_once_wall_time_to_utc_rfc3339(at, local_offset_minutes, now_utc)
+                {
                     request.schedule = ScheduleTaskSchedule::Once { at: utc_at };
                 }
             }
@@ -160,7 +157,9 @@ fn local_once_wall_time_to_utc_rfc3339(
 ) -> Option<String> {
     let (hour, minute) = parse_hh_mm(time)?;
     let local_now = now_utc.naive_utc() + Duration::minutes(i64::from(local_offset_minutes));
-    let mut local_at = local_now.date().and_hms_opt(hour as u32, minute as u32, 0)?;
+    let mut local_at = local_now
+        .date()
+        .and_hms_opt(hour as u32, minute as u32, 0)?;
     if local_at <= local_now {
         local_at += Duration::days(1);
     }
@@ -247,8 +246,11 @@ mod tests {
     fn scheduled_tasks_runtime_converts_unqualified_once_local_wall_time_to_utc_rfc3339() {
         let request = ScheduleTaskRequest {
             title: "Summarize latest OpenAI news".to_string(),
-            prompt: "Search the web for the latest OpenAI news at 17:16 and summarize it for me.".to_string(),
-            schedule: ScheduleTaskSchedule::Once { at: "17:16".to_string() },
+            prompt: "Search the web for the latest OpenAI news at 17:16 and summarize it for me."
+                .to_string(),
+            schedule: ScheduleTaskSchedule::Once {
+                at: "17:16".to_string(),
+            },
             target_runtime: ScheduleTaskTargetRuntime::Cloud,
             tool_payload: json!({}),
         };
