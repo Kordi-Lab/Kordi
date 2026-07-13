@@ -299,4 +299,3 @@ git log --oneline -8
 ```
 
 Expected: the worktree is clean and the three repair commits are present above the design and plan commits.
-

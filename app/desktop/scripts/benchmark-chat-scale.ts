@@ -14,6 +14,11 @@ import {
   buildScaleCloudMessagesByPeer,
   scaleMessageId,
 } from '../tests/fixtures/chatScale';
+import {
+  CHAT_SCALE_BENCHMARK_BUDGETS,
+  chatScaleBenchmarkBudgetFailures,
+  type ChatScaleBenchmarkBudgets,
+} from './chat-scale-budget';
 
 type ChatScaleBenchmark = {
   bridgeMapMs: number;
@@ -33,27 +38,6 @@ type ChatScaleBenchmark = {
   budgets: ChatScaleBenchmarkBudgets;
   budgetFailures: string[];
   passed: boolean;
-};
-
-type ChatScaleBenchmarkBudgets = {
-  bridgeMapMs: number;
-  canonicalIndexMs: number;
-  cloudIndexMs: number;
-  cloudIndexDeltaMs: number;
-  cloudDeliveryLookupMs: number;
-  serializedCacheBytes: number;
-};
-
-// These are deterministic linear-regression ceilings for the Node fixture.
-// Native click, IPC, DOM, CPU, and RSS acceptance budgets are recorded
-// separately because they require a packaged WebKit run on the QA machine.
-const BENCHMARK_BUDGETS: ChatScaleBenchmarkBudgets = {
-  bridgeMapMs: 100,
-  canonicalIndexMs: 100,
-  cloudIndexMs: 4_000,
-  cloudIndexDeltaMs: 50,
-  cloudDeliveryLookupMs: 5,
-  serializedCacheBytes: 70 * 1024 * 1024,
 };
 
 function median(values: number[]) {
@@ -169,19 +153,12 @@ const output: ChatScaleBenchmark = {
     cloudRows: cloudMessageIndex.allMessages.length,
     cloudRecipients: CHAT_SCALE.cloudRecipients,
   },
-  budgets: BENCHMARK_BUDGETS,
+  budgets: CHAT_SCALE_BENCHMARK_BUDGETS,
   budgetFailures: [],
   passed: false,
 };
 
-for (const [metric, limit] of Object.entries(BENCHMARK_BUDGETS) as Array<[
-  keyof ChatScaleBenchmarkBudgets,
-  number,
-]>) {
-  if (output[metric] > limit) {
-    output.budgetFailures.push(`${metric}=${output[metric]} exceeds ${limit}`);
-  }
-}
+output.budgetFailures = chatScaleBenchmarkBudgetFailures(output);
 output.passed = output.budgetFailures.length === 0;
 
 console.log(JSON.stringify(output));

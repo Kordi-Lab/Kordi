@@ -2,7 +2,19 @@
 
 The `chat-scale-baseline-2026-07-10.md` filename is retained as the historical baseline path. This fresh 2026-07-13 capture covers the integrated Tasks 2–26 stack after Tasks 17–21 and 23–26 addressed final-review defects. It separates deterministic automated evidence from native acceptance work that still requires a packaged Kordi build, seeded Cloud accounts, WebKit process metrics, and a real Postgres-backed Cloud server.
 
-## Decision
+## Current integration status
+
+Subsequent full-suite repair and group-session replay/hover commits extend the Tasks 2–26 snapshot below. On the reviewed integration head:
+
+- The configured desktop unit command passes 1,209/1,209 tests, including the replay coordinator, exact grouped-child selection, canonical no-op identity, stable child-row host identity, and benchmark-budget regression.
+- Desktop typecheck, ESLint, production build, JavaScript bundle budget, all 266 serialized desktop Rust tests, the Cloud server suite, workspace Clippy, script tests, hygiene, and `git diff --check` pass.
+- The scale benchmark passes with `canonicalIndexMs=116.237` and `cloudIndexDeltaMs=56.337`. The guard now allows 160 ms and 80 ms respectively so ordinary host contention does not fail the fixture, while exact one-row parsing and the much tighter full-index/delivery/size invariants remain enforced.
+- Workspace `cargo fmt --all -- --check` still reports the same repository-wide formatting drift that predates this stack. No bulk unrelated formatting rewrite is included.
+- Packaged-native WebKit CPU/RSS/latency and real multi-account/Postgres acceptance remain manual release gates, so the linked issues should remain open until that validation is complete.
+
+The remaining sections preserve the original Tasks 2–26 evidence and measurements.
+
+## Original Tasks 2–26 decision
 
 - Targeted deterministic evidence passes: the benchmark meets every ceiling, including the 20,000+1 incremental Cloud-index budget, and the combined seven-file final-hardening suite passes 102/102 tests.
 - Standalone TypeScript typecheck, ESLint, production build, bundle budget, the 106-test serialized native canonical-session filter, script tests, hygiene, diff checks, and desktop-only clippy pass.
@@ -67,7 +79,7 @@ Task 22 is the validation/report checkpoint. The integration branch `fix/chat-sc
 
 All benchmark slices were run serially. Parallel runs were discarded because two simultaneous 67 MB fixtures distorted the Cloud median.
 
-## Fixture and automated ceilings
+## Original fixture and automated ceilings
 
 The deterministic fixture contains:
 
@@ -236,7 +248,7 @@ localStorage.setItem('kordi:performance-diagnostics', '1'); location.reload()
 
 Records are available as `kordi:<span-name>` Performance entries, `[kordi-performance]` console records, and `kordi:performance-span` window events. The in-memory buffer is capped at 500 records. Cloud index payload size is summed from wire bodies with a zero-allocation UTF-8 counter; diagnostics do not stringify the whole Cloud cache.
 
-## Automated validation
+## Original automated validation
 
 | Gate | Result |
 |---|---|

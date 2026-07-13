@@ -159,4 +159,3 @@ test('CloudGroupReplayCoordinator invalidates queued rows when the account chang
   assert.deepEqual(applied, ['old-one', 'new-one']);
   coordinator.dispose();
 });
-

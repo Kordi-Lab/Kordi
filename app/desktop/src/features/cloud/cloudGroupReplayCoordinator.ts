@@ -160,4 +160,3 @@ export class CloudGroupReplayCoordinator<Row> {
     this.retryTimerAtMs = null;
   }
 }
-
