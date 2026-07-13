@@ -13,7 +13,7 @@
 ## File Structure
 
 - Create `app/desktop/src/features/cloud/cloudGroupReplayCoordinator.ts` — generic serialized replay lifecycle, success dedupe, account invalidation, and retry scheduling.
-- Create `app/desktop/tests/cloudGroupReplayCoordinator.test.ts` — deterministic coordinator concurrency, dedupe, cooldown, queued-snapshot, and account-reset tests.
+- Create `app/desktop/tests/cloudGroupReplayCoordinator.test.tsx` — deterministic coordinator concurrency, dedupe, cooldown, queued-snapshot, and account-reset tests.
 - Modify `app/desktop/src/features/cloud/useCloudBridgeState.ts` — replace the render-coupled processed-key loop with the coordinator.
 - Modify `app/desktop/tests/cloudBridgeState.test.tsx` — assert the hook is wired through the coordinator and no longer deletes failed keys for immediate retry.
 - Modify `app/desktop/tests/virtualSidebar.test.tsx` — behavioral regression for clicking between two session rows in the same group space.
@@ -21,12 +21,12 @@
 ### Task 1: Build the Serialized Replay Coordinator
 
 **Files:**
-- Create: `app/desktop/tests/cloudGroupReplayCoordinator.test.ts`
+- Create: `app/desktop/tests/cloudGroupReplayCoordinator.test.tsx`
 - Create: `app/desktop/src/features/cloud/cloudGroupReplayCoordinator.ts`
 
 - [ ] **Step 1: Write the failing coordinator tests**
 
-Create `app/desktop/tests/cloudGroupReplayCoordinator.test.ts`:
+Create `app/desktop/tests/cloudGroupReplayCoordinator.test.tsx`:
 
 ```ts
 import assert from 'node:assert/strict';
@@ -197,7 +197,7 @@ test('CloudGroupReplayCoordinator invalidates queued rows when the account chang
 Run:
 
 ```bash
-pnpm --dir app/desktop exec tsx --test tests/cloudGroupReplayCoordinator.test.ts
+pnpm --dir app/desktop exec tsx --test tests/cloudGroupReplayCoordinator.test.tsx
 ```
 
 Expected: FAIL because `../src/features/cloud/cloudGroupReplayCoordinator` does not exist.
@@ -376,7 +376,7 @@ export class CloudGroupReplayCoordinator<Row> {
 Run:
 
 ```bash
-pnpm --dir app/desktop exec tsx --test tests/cloudGroupReplayCoordinator.test.ts
+pnpm --dir app/desktop exec tsx --test tests/cloudGroupReplayCoordinator.test.tsx
 ```
 
 Expected: 4 tests pass with zero failures.
@@ -384,7 +384,7 @@ Expected: 4 tests pass with zero failures.
 - [ ] **Step 5: Commit the coordinator**
 
 ```bash
-git add app/desktop/src/features/cloud/cloudGroupReplayCoordinator.ts app/desktop/tests/cloudGroupReplayCoordinator.test.ts
+git add app/desktop/src/features/cloud/cloudGroupReplayCoordinator.ts app/desktop/tests/cloudGroupReplayCoordinator.test.tsx
 git commit -m "fix: coordinate cloud group replay retries"
 ```
 
@@ -507,7 +507,7 @@ Replace the current `for (const row of cloudMessageIndex.replayRows)` block with
 Run:
 
 ```bash
-pnpm --dir app/desktop exec tsx --test tests/cloudGroupReplayCoordinator.test.ts tests/cloudGroupReplayPerformance.test.ts tests/cloudBridgeState.test.tsx
+pnpm --dir app/desktop exec tsx --test tests/cloudGroupReplayCoordinator.test.tsx tests/cloudGroupReplayPerformance.test.ts tests/cloudBridgeState.test.tsx
 ```
 
 Expected: all focused tests pass and the replay source regression finds no immediate processed-key deletion.
