@@ -154,6 +154,7 @@ import {
   defaultCloudGroupOutboxPersistence,
   type CloudGroupOutboxEntry,
 } from './cloudGroupOutbox';
+import { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
 import { CloudProfileIdentityAdoptionCoordinator, CloudSyncCoordinator } from './cloudSyncCoordinator';
 import { loadCloudSessionVisibility, removeCloudSessionMessages, saveCloudSessionVisibility, syncCloudDiffOnce, type CloudSessionPinsById } from './cloudDiffSync';
 import {
@@ -1986,6 +1987,10 @@ export function useCloudBridgeState({
   const cloudMessageCache = useMemo(() => defaultCloudMessageCache(), []);
   const cloudSyncCoordinator = useMemo(() => new CloudSyncCoordinator(), []);
   const cloudProfileIdentityAdoptionCoordinator = useMemo(() => new CloudProfileIdentityAdoptionCoordinator(), []);
+  const cloudGroupReplayCoordinator = useMemo(
+    () => new CloudGroupReplayCoordinator<IndexedCloudGroupRow>(),
+    [],
+  );
   const cloudGroupOutbox = useMemo(() => account?.accountId
     ? new CloudGroupOutbox(account.accountId, defaultCloudGroupOutboxPersistence(account.accountId))
     : null, [account?.accountId]);
@@ -2029,7 +2034,6 @@ export function useCloudBridgeState({
   const processedCloudAgentMentionIdsRef = useRef<Set<string>>(new Set());
   const claimedCloudFallbackRunKeysRef = useRef<Set<string>>(new Set());
   const syncedProviderAuthSnapshotKeysRef = useRef<Set<string>>(new Set());
-  const processedCloudGroupControlIdsRef = useRef<Set<string>>(new Set());
   const cloudAgentTurnIdsByRequestIdRef = useRef<Map<string, string>>(new Map());
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
@@ -2046,6 +2050,10 @@ export function useCloudBridgeState({
       cancelledRef.current = true;
     };
   }, []);
+
+  useEffect(() => () => {
+    cloudGroupReplayCoordinator.dispose();
+  }, [cloudGroupReplayCoordinator]);
 
   useEffect(() => {
     messagesByPeerRef.current = messagesByPeer;
@@ -2105,6 +2113,7 @@ export function useCloudBridgeState({
     startupFullSnapshotAccountRef.current = null;
     resetCloudAttachmentPreviewLoader();
     const accountId = account?.accountId ?? null;
+    cloudGroupReplayCoordinator.changeAccount(accountId);
     messagesCacheAccountRef.current = accountId;
     hydratedMessagesCacheAccountRef.current = null;
     setMessagesByPeer({});
@@ -2128,7 +2137,7 @@ export function useCloudBridgeState({
     return () => {
       cancelled = true;
     };
-  }, [account?.accountId, cloudMessageCache, cloudSyncCoordinator]);
+  }, [account?.accountId, cloudGroupReplayCoordinator, cloudMessageCache, cloudSyncCoordinator]);
 
   useEffect(() => {
     if (!account) return;
@@ -3791,19 +3800,28 @@ export function useCloudBridgeState({
 
   useEffect(() => {
     if (!account || !canonicalSessionState?.profile.humanIdentityId || !setCanonicalSessionState || !initialMessagesSettled) return;
-    for (const row of cloudMessageIndex.replayRows) {
-      const message = row.wire;
-      const envelope = row.envelope;
-      const replayKey = cloudGroupReplayKeyForRow(row);
-      if (processedCloudGroupControlIdsRef.current.has(replayKey)) continue;
-      processedCloudGroupControlIdsRef.current.add(replayKey);
-      void applyCloudGroupControl(message, envelope).catch((error) => {
-        processedCloudGroupControlIdsRef.current.delete(replayKey);
+    void cloudGroupReplayCoordinator.request({
+      entries: cloudMessageIndex.replayRows.map((row) => ({
+        key: cloudGroupReplayKeyForRow(row),
+        row,
+      })),
+      apply: async (row) => {
+        await applyCloudGroupControl(row.wire, row.envelope);
+      },
+      onFailure: ({ attempt, retryDelayMs, error }) => {
         // eslint-disable-next-line no-console
-        console.warn('[cloud-group] sync failed', error);
-      });
-    }
-  }, [account, applyCloudGroupControl, canonicalSessionState?.profile.humanIdentityId, cloudMessageIndex, initialMessagesSettled, setCanonicalSessionState]);
+        console.warn('[cloud-group] sync failed; retry scheduled', { attempt, retryDelayMs }, error);
+      },
+    });
+  }, [
+    account,
+    applyCloudGroupControl,
+    canonicalSessionState?.profile.humanIdentityId,
+    cloudGroupReplayCoordinator,
+    cloudMessageIndex,
+    initialMessagesSettled,
+    setCanonicalSessionState,
+  ]);
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;

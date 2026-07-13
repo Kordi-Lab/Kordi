@@ -442,7 +442,23 @@ test('cloud bridge state loads the asynchronous cache without treating it as aut
   assert.match(source, /loadCloudSessionVisibility\(account\?\.accountId\)/);
   assert.match(source, /if \(!account \|\| messagesCacheAccountRef\.current !== account\.accountId\) return;[\s\S]*saveCloudSessionVisibility/);
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
-  assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*for \(const row of cloudMessageIndex\.replayRows\)/);
+  assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*cloudGroupReplayCoordinator\.request/);
+});
+
+test('cloud group control replay uses bounded coordinator retries', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const replayStart = source.indexOf('if (!account || !canonicalSessionState?.profile.humanIdentityId');
+  const replayEnd = source.indexOf('\n  useEffect(() => {', replayStart + 1);
+  assert.notEqual(replayStart, -1, 'expected Cloud group replay effect');
+  assert.notEqual(replayEnd, -1, 'expected Cloud group replay effect end');
+  const replayEffect = source.slice(replayStart, replayEnd);
+
+  assert.match(source, /new CloudGroupReplayCoordinator<IndexedCloudGroupRow>/);
+  assert.match(source, /cloudGroupReplayCoordinator\.changeAccount\(accountId\)/);
+  assert.match(replayEffect, /cloudGroupReplayCoordinator\.request\(/);
+  assert.match(replayEffect, /entries: cloudMessageIndex\.replayRows\.map/);
+  assert.doesNotMatch(replayEffect, /processedCloudGroupControlIdsRef/);
+  assert.doesNotMatch(replayEffect, /processedCloudGroupControlIdsRef\.current\.delete/);
 });
 
 test('cloud unread badge reconciliation waits for authoritative startup message sync', () => {
