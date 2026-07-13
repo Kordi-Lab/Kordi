@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  applyCanonicalSessionStateAction,
   beginCanonicalSessionHydration,
   canonicalStateFromStore,
   createCanonicalStore,
@@ -146,6 +147,14 @@ test('local readable message deltas keep catalog counts and latest rows current'
 
   assert.equal(store.catalog?.summaries[0]?.messageCount, 4);
   assert.equal(store.catalog?.summaries[0]?.latestMessage?.id, 'm4');
+});
+
+test('canonical session state adapter preserves the store for functional no-op updates', () => {
+  const store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
+
+  const next = applyCanonicalSessionStateAction(store, (current) => current);
+
+  assert.equal(next, store);
 });
 
 test('product startup and Cloud replay no longer invoke the full canonical snapshot command', () => {

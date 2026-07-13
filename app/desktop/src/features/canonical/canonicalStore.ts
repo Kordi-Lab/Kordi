@@ -137,6 +137,19 @@ export function canonicalStateFromStore(store: CanonicalStore): CanonicalSession
   };
 }
 
+export type CanonicalSessionStateAction = CanonicalSessionState | null | (
+  (current: CanonicalSessionState | null) => CanonicalSessionState | null
+);
+
+export function applyCanonicalSessionStateAction(
+  store: CanonicalStore,
+  action: CanonicalSessionStateAction,
+): CanonicalStore {
+  const currentState = canonicalStateFromStore(store);
+  const nextState = typeof action === 'function' ? action(currentState) : action;
+  return nextState === currentState ? store : mergeCanonicalStateIntoStore(store, nextState);
+}
+
 function latestReadableMessage(messages: readonly CanonicalSessionMessage[]) {
   return messages.reduce<CanonicalSessionMessage | null>((latest, message) => {
     if (!isReadableCanonicalMessage(message)) return latest;

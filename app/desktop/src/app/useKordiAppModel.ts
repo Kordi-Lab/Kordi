@@ -48,13 +48,14 @@ import {
   isCanonicalBridgeSessionId,
 } from '@/features/canonical/sessionResolver';
 import {
+  applyCanonicalSessionStateAction,
   beginCanonicalSessionHydration,
   canonicalStateFromStore,
   createCanonicalStore,
   failCanonicalSessionHydration,
   mergeCanonicalCatalog,
   mergeCanonicalMessagePage,
-  mergeCanonicalStateIntoStore,
+  type CanonicalSessionStateAction,
   type CanonicalStore,
 } from '@/features/canonical/canonicalStore';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
@@ -214,18 +215,16 @@ export function useKordiAppModel({
     const next = typeof action === 'function'
       ? (action as (value: CanonicalStore) => CanonicalStore)(current)
       : action;
+    if (Object.is(next, current)) return;
     canonicalStoreRef.current = next;
     setCanonicalStoreValue(next);
   }, []);
   const canonicalSessionState = useMemo(() => canonicalStateFromStore(canonicalStore), [canonicalStore]);
   const setCanonicalSessionState = useCallback<Dispatch<SetStateAction<CanonicalSessionState | null>>>((action) => {
-    updateCanonicalStore((currentStore) => {
-      const currentState = canonicalStateFromStore(currentStore);
-      const nextState = typeof action === 'function'
-        ? (action as (value: CanonicalSessionState | null) => CanonicalSessionState | null)(currentState)
-        : action;
-      return mergeCanonicalStateIntoStore(currentStore, nextState);
-    });
+    updateCanonicalStore((currentStore) => applyCanonicalSessionStateAction(
+      currentStore,
+      action as CanonicalSessionStateAction,
+    ));
   }, [updateCanonicalStore]);
   const [canonicalInitialRefreshSettled, setCanonicalInitialRefreshSettled] = useState(!isNativeShell);
   const [canonicalInitialRefreshError, setCanonicalInitialRefreshError] = useState(false);
