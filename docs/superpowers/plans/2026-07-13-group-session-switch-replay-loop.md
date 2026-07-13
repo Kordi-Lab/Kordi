@@ -399,6 +399,8 @@ git commit -m "fix: coordinate cloud group replay retries"
 
 - [ ] **Step 1: Write the failing hook-wiring regression**
 
+In the existing `cloud bridge state loads the asynchronous cache without treating it as authoritative` test, replace the final assertion that expects `for (const row of cloudMessageIndex.replayRows)` with an assertion that the guarded effect calls `cloudGroupReplayCoordinator.request`.
+
 Add this test after the existing asynchronous-cache source test in `app/desktop/tests/cloudBridgeState.test.tsx`:
 
 ```ts
