@@ -168,12 +168,13 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
 }
 
 pub(super) fn ensure_local_profile(conn: &Connection) -> Result<CanonicalLocalProfile, String> {
+    if let Some(profile) = select_first_local_profile(conn)? {
+        return Ok(profile);
+    }
+
     let root = canonical_storage_root();
     let storage_root = root.display().to_string();
     let profile_id = stable_profile_id(&root);
-    if let Some(profile) = select_local_profile(conn, &profile_id)? {
-        return Ok(profile);
-    }
 
     let now = now_ms();
     conn.execute(
@@ -194,18 +195,33 @@ pub(super) fn select_local_profile(
         "SELECT id, display_name, human_identity_id, active_agent_identity_id, storage_root, created_at_ms, updated_at_ms
          FROM local_profile WHERE id = ?1",
         params![profile_id],
-        |row| {
-            Ok(CanonicalLocalProfile {
-                id: row.get(0)?,
-                display_name: row.get(1)?,
-                human_identity_id: row.get(2)?,
-                active_agent_identity_id: row.get(3)?,
-                storage_root: row.get(4)?,
-                created_at_ms: row.get(5)?,
-                updated_at_ms: row.get(6)?,
-            })
-        },
+        canonical_local_profile_from_row,
     )
     .optional()
     .map_err(|err| err.to_string())
+}
+
+fn select_first_local_profile(conn: &Connection) -> Result<Option<CanonicalLocalProfile>, String> {
+    conn.query_row(
+        "SELECT id, display_name, human_identity_id, active_agent_identity_id, storage_root, created_at_ms, updated_at_ms
+         FROM local_profile ORDER BY rowid ASC LIMIT 1",
+        [],
+        canonical_local_profile_from_row,
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+fn canonical_local_profile_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<CanonicalLocalProfile> {
+    Ok(CanonicalLocalProfile {
+        id: row.get(0)?,
+        display_name: row.get(1)?,
+        human_identity_id: row.get(2)?,
+        active_agent_identity_id: row.get(3)?,
+        storage_root: row.get(4)?,
+        created_at_ms: row.get(5)?,
+        updated_at_ms: row.get(6)?,
+    })
 }

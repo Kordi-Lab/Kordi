@@ -41,12 +41,16 @@ publisher_access_file="${TMP_DIR}/publisher-access"
 publisher_access_original_file="${TMP_DIR}/publisher-access-original"
 publisher_secret_file="${TMP_DIR}/publisher-secret"
 
-if remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader >/dev/null 2>&1"; then
+reader_secret_state="$(remote_secret_state "${NAMESPACE}" kordi-release-reader)"
+if [[ "${reader_secret_state}" == "present" ]]; then
   remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader -o jsonpath='{.data.access-key}' | base64 -d" >"${reader_access_file}"
   remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader -o jsonpath='{.data.secret-key}' | base64 -d" >"${reader_secret_file}"
-else
+elif [[ "${reader_secret_state}" == "absent" ]]; then
   openssl rand -hex 16 | tr -d '\r\n' >"${reader_access_file}"
   openssl rand -base64 36 | tr -d '\n' >"${reader_secret_file}"
+else
+  echo "release reader secret state is invalid" >&2
+  exit 1
 fi
 
 load_or_create_gcp_secret() {
@@ -215,7 +219,14 @@ spec:
               mc admin user add root "$PUBLISHER_ACCESS_KEY" "$PUBLISHER_SECRET_KEY" >/dev/null
               mc admin policy attach root kordi-releases-reader --user "$READER_ACCESS_KEY" >/dev/null
               mc admin policy attach root kordi-releases-publisher --user "$PUBLISHER_ACCESS_KEY" >/dev/null
-              mc anonymous get root/kordi-releases | grep -Eqi 'none|disabled'
+              anonymous_access="$(mc anonymous get root/kordi-releases)"
+              case "$anonymous_access" in
+                *private*|*Private*|*PRIVATE*|*none*|*None*|*NONE*|*disabled*|*Disabled*|*DISABLED*) ;;
+                *)
+                  echo "release bucket must remain private" >&2
+                  exit 1
+                  ;;
+              esac
               mc alias set reader "$endpoint" "$READER_ACCESS_KEY" "$READER_SECRET_KEY" >/dev/null
               mc ls reader/kordi-releases >/dev/null
               if printf test | mc pipe reader/kordi-releases/.reader-write-probe >/dev/null 2>&1; then

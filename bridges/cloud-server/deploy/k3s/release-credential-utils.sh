@@ -18,3 +18,28 @@ normalize_access_key_file() {
   chmod 600 "${normalized_file}"
   mv "${normalized_file}" "${source_file}"
 }
+
+# Return a stable state while preserving transport and Kubernetes failures.
+# `kubectl --ignore-not-found` makes an absent secret a successful empty read;
+# a failed gcloud/SSH/kubectl command must never rotate production credentials.
+remote_secret_state() {
+  local namespace="$1"
+  local secret_name="$2"
+  local remote_name
+
+  if ! remote_name="$(
+    remote "kubectl -n ${namespace} get secret ${secret_name} --ignore-not-found -o name"
+  )"; then
+    echo "unable to query release reader secret" >&2
+    return 1
+  fi
+
+  case "${remote_name}" in
+    "secret/${secret_name}") printf '%s\n' present ;;
+    '') printf '%s\n' absent ;;
+    *)
+      echo "release reader secret query returned an unexpected result" >&2
+      return 1
+      ;;
+  esac
+}
