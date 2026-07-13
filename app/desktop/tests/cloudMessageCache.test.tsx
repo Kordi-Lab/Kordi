@@ -173,7 +173,7 @@ const message: CloudMessage = {
   }],
 };
 
-test('peer-scoped cache imports v1 localStorage once and strips content-bearing attachment fields', async () => {
+test('peer-scoped cache imports v1 localStorage once, keeps bounded previews, and strips original-file fields', async () => {
   const store = new MemoryCacheStore();
   const legacyStorage = memoryStorage();
   const key = `${CLOUD_MESSAGES_LEGACY_CACHE_PREFIX}acct_me`;
@@ -183,7 +183,7 @@ test('peer-scoped cache imports v1 localStorage once and strips content-bearing 
   const loaded = await cache.load('acct_me');
   assert.equal(legacyStorage.getItem(key), null);
   assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.previewAttachmentId, 'att_preview');
-  assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.previewUrl, undefined);
+  assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.previewUrl, 'data:image/webp;base64,legacy-inline-payload');
   assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.downloadUrl, undefined);
   assert.equal(loaded.acct_peer?.[0]?.attachments?.[0]?.localPath, undefined);
 

@@ -319,6 +319,48 @@ function cloudAgentProcessingBridgeMessage({
   };
 }
 
+function cloudAgentCompletedLocalTurnBridgeMessage({
+  account,
+  request,
+  targetAccountId,
+  targetAgentName,
+  localTurn,
+}: {
+  account: CloudAccount;
+  request: CloudMessage;
+  targetAccountId: string;
+  targetAgentName: string | null;
+  localTurn: DesktopChatTurnSnapshot;
+}): DesktopBridgeConversationMessage {
+  const requestCreatedAtMs = Date.parse(request.createdAt) || Date.parse(request.deliveredAt ?? '') || 0;
+  const timestampMs = Math.max(
+    requestCreatedAtMs + 1,
+    localTurn.completedAtMs ?? localTurn.startedAtMs ?? requestCreatedAtMs + 1,
+  );
+  const assistantText = localTurn.assistantText.trim();
+  const cancelled = localTurn.status === 'cancelled';
+  const succeeded = localTurn.succeeded && assistantText.length > 0;
+  const fallbackText = localTurn.error?.trim() || localTurn.message?.trim() || 'Cloud agent returned no text response';
+  const text = succeeded
+    ? assistantText
+    : cancelled
+      ? 'Request stopped.'
+      : fallbackText;
+  return {
+    id: `cloud-agent-local-response:${request.messageId}`,
+    direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
+    sender: targetAgentName,
+    text,
+    timeLabel: formatCloudBridgeTime(timestampMs),
+    timestampMs,
+    requestId: request.messageId,
+    deliveryState: cancelled ? 'cancelled' : succeeded ? 'complete' : 'failed',
+    detail: undefined,
+    attachments: [],
+    localTurn,
+  };
+}
+
 function cloudAgentOfflineBridgeMessage({
   account,
   request,
@@ -619,7 +661,8 @@ export function buildCloudBridgeConversation({
   const pendingAgentRequests = agentRequests.filter((message) => {
     if (answeredRequestIds.has(message.messageId) || timedOutAgentRequestIds.has(message.messageId)) return false;
     if (requestTargetAccountIds.get(message.messageId) !== account.accountId) return true;
-    if (localAgentTurnsByRequestId[message.messageId]) return true;
+    const localTurn = localAgentTurnsByRequestId[message.messageId];
+    if (localTurn) return !localTurn.completed;
     if (cloudMessageMentionsFirstPersonAgent(message.body) || cloudMessageMentionsLocalAgent(message.body, account, { allowFirstPerson: message.fromAccountId === account.accountId })) return true;
     const createdAtMs = Date.parse(message.createdAt);
     return Number.isFinite(createdAtMs) && Date.now() - createdAtMs < CLOUD_LOCAL_AGENT_PENDING_WINDOW_MS;
@@ -629,6 +672,16 @@ export function buildCloudBridgeConversation({
     const mapped = cloudMessageToBridgeMessage(account, message, contact, { cancelledRequestIds, localAgentTurnsByRequestId, targetAgentNameByRequestId: explicitResponseAgentNames });
     const targetAccountId = requestTargetAccountIds.get(message.messageId);
     if (!targetAccountId) return [mapped];
+    const localTurn = localAgentTurnsByRequestId[message.messageId] ?? null;
+    if (localTurn?.completed && !answeredRequestIds.has(message.messageId)) {
+      return [mapped, cloudAgentCompletedLocalTurnBridgeMessage({
+        account,
+        request: message,
+        targetAccountId,
+        targetAgentName: requestTargetAgentNames.get(message.messageId) ?? null,
+        localTurn,
+      })];
+    }
     const cancel = cancelMessageByRequestId.get(message.messageId);
     if (cancel && !responseRequestIds.has(message.messageId)) {
       return [mapped, cloudAgentCancelledBridgeMessage({

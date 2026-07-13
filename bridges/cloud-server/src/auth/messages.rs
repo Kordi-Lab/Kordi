@@ -82,8 +82,15 @@ async fn load_attachments(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     message_id: &str,
 ) -> Result<Vec<PersistedMessageAttachment>, sqlx_core::Error> {
-    let rows: Vec<(String, String, String, Option<String>, Option<i64>)> = query_as(
-        "SELECT attachment_id, name, kind, mime_type, size_bytes \
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<String>,
+    )> = query_as(
+        "SELECT attachment_id, name, kind, mime_type, size_bytes, preview_url \
          FROM cloud_message_attachments WHERE message_id = $1 ORDER BY position ASC",
     )
     .bind(message_id)
@@ -92,14 +99,16 @@ async fn load_attachments(
     Ok(rows
         .into_iter()
         .map(
-            |(attachment_id, name, kind, mime_type, size_bytes)| PersistedMessageAttachment {
-                attachment_id,
-                name,
-                kind,
-                mime_type,
-                size_bytes,
-                download_url: None,
-                preview_url: None,
+            |(attachment_id, name, kind, mime_type, size_bytes, preview_url)| {
+                PersistedMessageAttachment {
+                    attachment_id,
+                    name,
+                    kind,
+                    mime_type,
+                    size_bytes,
+                    download_url: None,
+                    preview_url,
+                }
             },
         )
         .collect())
@@ -162,8 +171,8 @@ pub async fn persist_cloud_message(
         for (position, attachment) in input.attachments.iter().enumerate() {
             query(
                 "INSERT INTO cloud_message_attachments \
-                 (message_id, attachment_id, name, kind, mime_type, size_bytes, position) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7) \
+                 (message_id, attachment_id, name, kind, mime_type, size_bytes, position, preview_url) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
                  ON CONFLICT (message_id, attachment_id) DO NOTHING",
             )
             .bind(input.message_id)
@@ -173,6 +182,7 @@ pub async fn persist_cloud_message(
             .bind(attachment.mime_type.as_deref())
             .bind(attachment.size_bytes)
             .bind(position as i32)
+            .bind(attachment.preview_url.as_deref())
             .execute(&mut *tx)
             .await?;
         }

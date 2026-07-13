@@ -178,6 +178,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         sql: include_str!("../../migrations/0030_mark_self_cloud_messages_read.sql"),
     },
     EmbeddedMigration {
+        version: 31,
+        description: "cloud message attachment previews",
+        sql: include_str!("../../migrations/0031_cloud_message_attachment_previews.sql"),
+    },
+    EmbeddedMigration {
         version: 32,
         description: "cloud message idempotency",
         sql: include_str!("../../migrations/0032_cloud_message_idempotency.sql"),

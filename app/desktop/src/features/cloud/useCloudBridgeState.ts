@@ -1391,6 +1391,26 @@ export async function loadCloudMessagesByPeerUntilStable({
   return { messagesByPeer: byPeer, peerIds, complete: false };
 }
 
+export function createAccountScopedSingleFlight() {
+  const inFlightByAccount = new Map<string, Promise<void>>();
+  return (accountId: string, task: () => Promise<void>): Promise<void> => {
+    const key = accountId.trim();
+    const existing = inFlightByAccount.get(key);
+    if (existing) return existing;
+
+    let tracked: Promise<void>;
+    try {
+      tracked = task().finally(() => {
+        if (inFlightByAccount.get(key) === tracked) inFlightByAccount.delete(key);
+      });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    inFlightByAccount.set(key, tracked);
+    return tracked;
+  };
+}
+
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
 const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX = 'kordi.cloud.selfAgentForwardBaseline.v1:';
 
@@ -4442,6 +4462,7 @@ export function useCloudBridgeState({
             kind: attachment.kind,
             mimeType: attachment.mimeType ?? null,
             sizeBytes: attachment.sizeBytes ?? null,
+            previewUrl: attachment.previewUrl ?? null,
           })) : input.message.attachments,
         }
       : null;

@@ -57,7 +57,7 @@ test('applyCloudSyncEventsToMessagesByPeer upserts messages idempotently by mess
   assert.deepEqual(twice, { acct_peer: [incoming] });
 });
 
-test('message diff events discard inline preview payloads before entering state', () => {
+test('message diff events preserve bounded previews but discard local original-file state', () => {
   const result = applyCloudSyncEventsToMessagesByPeer('acct_me', {}, [{
     eventId: '11',
     eventType: 'message.upsert',
@@ -89,6 +89,7 @@ test('message diff events discard inline preview payloads before entering state'
     kind: 'image',
     mimeType: 'image/png',
     sizeBytes: 100,
+    previewUrl: 'data:image/webp;base64,legacy',
   }]);
 });
 

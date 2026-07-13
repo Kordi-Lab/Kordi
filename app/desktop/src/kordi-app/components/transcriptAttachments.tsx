@@ -8,6 +8,7 @@ import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import {
   loadVisibleCloudAttachmentPreview,
+  recoverCloudAttachmentPreview,
   type CloudAttachmentPreviewLease,
 } from '@/features/cloud/cloudAttachments';
 import { loadSession } from '@/features/cloud/session';
@@ -17,6 +18,10 @@ import type { Message, MessageAttachment } from '../types';
 
 const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
+const ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS = 30_000;
+const recoveredAttachmentPreviewUrls = new Map<string, string>();
+const recoveringAttachmentPreviewPromises = new Map<string, Promise<string | null>>();
+const attachmentPreviewRecoveryRetryAfter = new Map<string, number>();
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
@@ -42,16 +47,95 @@ export function attachmentPreviewIdentity(attachment: MessageAttachment) {
   ].join(':');
 }
 
+function safeAttachmentPreviewUrl(value?: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed || isInternalObjectStoreUrl(trimmed)) return undefined;
+  return trimmed;
+}
+
+function recoverableAttachmentId(attachment: MessageAttachment) {
+  return attachment.attachmentId?.trim() || null;
+}
+
+type AttachmentPreviewRecoveryDependencies = {
+  loadCloudSession?: () => Promise<{ token: string } | null>;
+  recoverPreview?: typeof recoverCloudAttachmentPreview;
+  now?: () => number;
+  retryDelayMs?: number;
+};
+
+export function clearAttachmentPreviewRecoveryStateForTests() {
+  recoveredAttachmentPreviewUrls.clear();
+  recoveringAttachmentPreviewPromises.clear();
+  attachmentPreviewRecoveryRetryAfter.clear();
+}
+
+export async function recoverAttachmentPreviewOnce(
+  attachment: MessageAttachment,
+  dependencies: AttachmentPreviewRecoveryDependencies = {},
+) {
+  const attachmentId = recoverableAttachmentId(attachment);
+  if (!attachmentId) return null;
+  const cached = recoveredAttachmentPreviewUrls.get(attachmentId);
+  if (cached) return cached;
+  const now = dependencies.now ?? Date.now;
+  const retryAfter = attachmentPreviewRecoveryRetryAfter.get(attachmentId) ?? 0;
+  if (retryAfter > now()) return null;
+  attachmentPreviewRecoveryRetryAfter.delete(attachmentId);
+  const existing = recoveringAttachmentPreviewPromises.get(attachmentId);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const session = await (dependencies.loadCloudSession ?? loadSession)();
+      if (!session?.token) return null;
+      const previewUrl = await (dependencies.recoverPreview ?? recoverCloudAttachmentPreview)({
+        token: session.token,
+        client: defaultCloudAuthClient(),
+        attachment: {
+          attachmentId,
+          name: attachment.name,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType ?? null,
+          sizeBytes: attachment.sizeBytes ?? null,
+          previewUrl: attachment.previewUrl ?? null,
+        },
+      });
+      if (previewUrl) {
+        recoveredAttachmentPreviewUrls.set(attachmentId, previewUrl);
+        attachmentPreviewRecoveryRetryAfter.delete(attachmentId);
+      } else {
+        attachmentPreviewRecoveryRetryAfter.set(
+          attachmentId,
+          now() + Math.max(0, dependencies.retryDelayMs ?? ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS),
+        );
+      }
+      return previewUrl;
+    } catch {
+      attachmentPreviewRecoveryRetryAfter.set(
+        attachmentId,
+        now() + Math.max(0, dependencies.retryDelayMs ?? ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS),
+      );
+      return null;
+    } finally {
+      recoveringAttachmentPreviewPromises.delete(attachmentId);
+    }
+  })();
+  recoveringAttachmentPreviewPromises.set(attachmentId, promise);
+  return promise;
+}
+
 function attachmentPreviewUrl(attachment: MessageAttachment) {
   if (!shouldPreviewAttachmentInline(attachment)) return undefined;
-  if (attachment.localPath && isNativeShell()) {
+  const previewUrl = safeAttachmentPreviewUrl(attachment.previewUrl);
+  if (previewUrl) return previewUrl;
+  if (attachment.localPath && isNativeShell() && !isLargeAttachment(attachment)) {
     try {
       return convertFileSrc(attachment.localPath);
     } catch {
       return undefined;
     }
   }
-  if (attachment.previewUrl && !isInternalObjectStoreUrl(attachment.previewUrl)) return attachment.previewUrl;
   return undefined;
 }
 
@@ -72,7 +156,11 @@ function isLargeAttachment(attachment: MessageAttachment) {
 function shouldPreviewAttachmentInline(attachment: MessageAttachment) {
   return attachment.kind === 'image'
     && !isArchiveAttachment(attachment)
-    && (!isLargeAttachment(attachment) || Boolean(attachment.previewAttachmentId));
+    && (
+      !isLargeAttachment(attachment)
+      || Boolean(attachment.previewAttachmentId)
+      || Boolean(safeAttachmentPreviewUrl(attachment.previewUrl))
+    );
 }
 
 function formatAttachmentSize(sizeBytes?: number | null) {
@@ -88,7 +176,7 @@ function formatAttachmentSize(sizeBytes?: number | null) {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function AttachmentActions({ attachment, variant = 'icon' }: { attachment: MessageAttachment; variant?: 'icon' | 'menu' }) {
+function AttachmentActions({ attachment, variant = 'icon' }: { attachment: MessageAttachment; variant?: 'icon' | 'menu' | 'original' }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +221,42 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
     }
+  }
+
+  async function handleOpenOriginal() {
+    setIsDownloading(true);
+    setError(null);
+    try {
+      const localPath = await ensureLocalPath();
+      if (!localPath) return;
+      setDownloadedPath(localPath);
+      if (isNativeShell()) await openDesktopExternalUrl(localPath);
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : 'Unable to open original attachment');
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
+  if (variant === 'original') {
+    const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+    return (
+      <button
+        type="button"
+        data-attachment-original-action="true"
+        onClick={(event) => {
+          event.stopPropagation();
+          void handleOpenOriginal();
+        }}
+        disabled={isDownloading}
+        className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/92 shadow-lg shadow-black/20 backdrop-blur-md transition hover:bg-black/65 disabled:cursor-wait disabled:opacity-70"
+        aria-label={`Open original ${attachment.name}`}
+      >
+        {isDownloading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+        <span>Open original</span>
+        {sizeLabel ? <span className="font-medium opacity-75">{sizeLabel}</span> : null}
+      </button>
+    );
   }
 
   if (variant === 'menu') {
@@ -281,7 +405,7 @@ function AttachmentFileCard({ attachment, index, isSending = false }: { attachme
   const Icon = attachment.kind === 'image' ? Image : FileText;
 
   return (
-    <div key={`${attachment.name}-${index}`} className="relative flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
+    <div key={`${attachment.name}-${index}`} data-attachment-file-card="true" className="relative flex items-center gap-3 rounded-[14px] border border-white/10 bg-black/10 px-3 py-2.5">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/6 text-slate-200">
         <Icon className="h-4 w-4" />
       </div>
@@ -302,7 +426,7 @@ function AttachmentImageLoadingSurface({ className }: { className?: string }) {
     <div
       data-attachment-image-loading="true"
       aria-label="Loading attached image"
-      className={cn('relative flex h-full min-h-28 overflow-hidden rounded-[15px] bg-black/[0.035]', className)}
+      className={cn('relative flex h-full min-h-28 aspect-[4/3] overflow-hidden rounded-[15px] bg-black/[0.035]', className)}
     >
       <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.10)_42%,transparent_74%)] opacity-70 motion-safe:animate-[app-attachment-shimmer_1.45s_ease-in-out_infinite]" aria-hidden="true" />
       <span className="sr-only">Loading attached image</span>
@@ -370,20 +494,32 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
 }) {
   const [previewFailed, setPreviewFailed] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const attachmentId = recoverableAttachmentId(attachment);
+  const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => attachmentId ? recoveredAttachmentPreviewUrls.get(attachmentId) ?? null : null);
   const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(null);
   const previewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
-  const previewUrl = remotePreviewUrl ?? attachmentPreviewUrl(attachment);
+  const previewUrl = recoveredPreviewUrl ?? remotePreviewUrl ?? attachmentPreviewUrl(attachment);
+  const [imageLoaded, setImageLoaded] = useState(() => Boolean(previewUrl?.startsWith('data:image/')));
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl && !previewFailed);
   const singleImage = totalCount <= 1;
+  const showOriginalAction = showImage && isLargeAttachment(attachment);
 
   useEffect(() => {
-    if (attachmentPreviewUrl(attachment) || attachment.kind !== 'image' || !attachment.attachmentId) return;
+    if (recoveredPreviewUrl || attachmentPreviewUrl(attachment) || previewFailed || attachment.kind !== 'image' || !attachmentId) return;
     const controller = new AbortController();
     void loadSession()
-      .then((session) => {
+      .then(async (session) => {
         if (!session?.token || controller.signal.aborted) return null;
+        if (!attachment.previewAttachmentId) {
+          const recoveredPreview = await recoverAttachmentPreviewOnce(attachment);
+          if (controller.signal.aborted) return null;
+          if (recoveredPreview) {
+            setRecoveredPreviewUrl(recoveredPreview);
+            if (recoveredPreview.startsWith('data:image/')) setImageLoaded(true);
+            return null;
+          }
+        }
         return loadVisibleCloudAttachmentPreview({
           token: session.token,
           client: defaultCloudAuthClient(),
@@ -415,14 +551,18 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
       previewLeaseRef.current?.release();
       previewLeaseRef.current = null;
     };
-  }, [attachment.attachmentId, attachment.kind, attachment.previewAttachmentId]);
+  }, [attachment, attachmentId, previewFailed, recoveredPreviewUrl]);
+
+  useEffect(() => {
+    if (previewUrl?.startsWith('data:image/')) setImageLoaded(true);
+  }, [previewUrl]);
 
   return (
     <div
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
       data-attachment-image-context-target="true"
-      className={cn('app-attachment-image-card app-attachment-image-tile overflow-hidden bg-transparent', imageTileClass(index, totalCount))}
+      className={cn('app-attachment-image-card app-attachment-image-tile relative overflow-hidden bg-transparent', imageTileClass(index, totalCount))}
       onContextMenu={(event) => onOpenContextMenu(attachment, event)}
     >
       {showImage && previewUrl ? (
@@ -459,6 +599,11 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
       ) : (
         <AttachmentImageLoadingSurface />
       )}
+      {showOriginalAction ? (
+        <div className="absolute bottom-2 right-2 z-10">
+          <AttachmentActions attachment={attachment} variant="original" />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -475,6 +620,8 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
   const lightboxPreviewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
   const isSending = isAttachmentSending(msg);
+  const loadingOnlyImageCollage = previewImageAttachments.length > 0
+    && previewImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
 
   const openLightbox = useCallback((
     attachment: MessageAttachment,
@@ -527,7 +674,10 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
           <div
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
-            className="relative grid max-w-[min(100%,29rem)] grid-cols-6 auto-rows-[6.5rem] gap-0.5 overflow-hidden rounded-[20px] p-0"
+            className={cn(
+              'relative grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden rounded-[20px] p-0',
+              loadingOnlyImageCollage ? 'w-[min(100%,20rem)] auto-rows-[4rem]' : 'w-[min(100%,29rem)] auto-rows-[6.5rem]',
+            )}
           >
             {previewImageAttachments.map((attachment, index) => (
               <AttachmentImageCard

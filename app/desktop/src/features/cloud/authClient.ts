@@ -45,6 +45,7 @@ export type CloudAuthErrorCode =
   | 'invalid_avatar'
   | 'invalid_session'
   | 'invalid_session_id'
+  | 'invalid_attachment'
   | 'invalid_provider_auth_snapshot'
   | 'provider_auth_not_configured'
   | 'provider_auth_snapshot_not_found'
@@ -117,6 +118,7 @@ export type SendCloudMessageAttachmentInput = {
   kind: 'image' | 'file';
   mimeType?: string | null;
   sizeBytes?: number | null;
+  previewUrl?: string | null;
 };
 
 export type CloudAttachmentInitiateResult = {
@@ -139,6 +141,12 @@ export type CloudAttachmentDownloadUrlResult = {
   attachmentId: string;
   downloadUrl: string;
   expiresAt: string;
+};
+
+export type CloudAttachmentPreviewUpdateResult = {
+  attachmentId: string;
+  previewUrl: string;
+  updatedLinks: number;
 };
 
 export type CloudMessage = {
@@ -360,6 +368,7 @@ function isErrorCode(value: unknown): value is CloudAuthErrorCode {
     value === 'invalid_avatar' ||
     value === 'invalid_session' ||
     value === 'invalid_session_id' ||
+    value === 'invalid_attachment' ||
     value === 'invalid_provider_auth_snapshot' ||
     value === 'provider_auth_not_configured' ||
     value === 'provider_auth_snapshot_not_found' ||
@@ -823,6 +832,18 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not download attachment.',
+    );
+  }
+
+  async updateAttachmentPreview(token: string, attachmentId: string, previewUrl: string): Promise<CloudAttachmentPreviewUpdateResult> {
+    return this.send<CloudAttachmentPreviewUpdateResult>(
+      `/v1/cloud/attachments/${encodeURIComponent(attachmentId)}/preview`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ previewUrl }),
+      },
+      'Could not recover attachment preview.',
     );
   }
 

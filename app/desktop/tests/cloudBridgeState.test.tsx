@@ -47,7 +47,7 @@ import {
 } from '../src/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
 import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
-import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
+import type { CanonicalSessionMessage, CanonicalSessionState, DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -525,6 +525,40 @@ test('Cloud reactivation keeps hot cache interactive before running background r
   assert.match(source, /cloudFocusRefreshTimerRef/, 'expected Cloud focus refreshes to coalesce into one delayed timer');
   assert.match(source, /window\.setTimeout\(runRefresh, CLOUD_FOCUS_REFRESH_DELAY_MS\)/, 'focus refresh should be scheduled after the hot-cache frame');
   assert.match(source, /window\.clearTimeout\(cloudFocusRefreshTimerRef\.current\)/, 'bursts should cancel the previous delayed refresh timer');
+});
+
+test('Cloud full message refreshes are single-flight and account-safe', () => {
+  const createSingleFlight = (cloudBridgeStateModule as Record<string, unknown>).createAccountScopedSingleFlight;
+  assert.equal(typeof createSingleFlight, 'function', 'expected an account-scoped single-flight coordinator');
+
+  const run = (createSingleFlight as () => (
+    accountId: string,
+    task: () => Promise<void>,
+  ) => Promise<void>)();
+  let releaseFirstAccount!: () => void;
+  const firstAccountBlocked = new Promise<void>((resolve) => {
+    releaseFirstAccount = resolve;
+  });
+  let firstAccountStarts = 0;
+  let secondAccountStarts = 0;
+
+  const first = run('acct_first', async () => {
+    firstAccountStarts += 1;
+    await firstAccountBlocked;
+  });
+  const duplicate = run('acct_first', async () => {
+    firstAccountStarts += 1;
+  });
+  const second = run('acct_second', async () => {
+    secondAccountStarts += 1;
+  });
+
+  assert.equal(duplicate, first, 'same-account refreshes should share one promise');
+  assert.equal(firstAccountStarts, 1);
+  assert.equal(secondAccountStarts, 1, 'a new account must not wait behind the old account refresh');
+
+  releaseFirstAccount();
+  return Promise.all([first, duplicate, second]).then(() => undefined);
 });
 
 const message: CloudMessage = {
@@ -2227,6 +2261,97 @@ test('cloud cloud-agent mention requests and responses use bridge agent directio
   assert.equal(response.sender, null);
   assert.equal(response.requestId, 'msg_request');
   assert.equal(response.text, 'I am Kordi.');
+});
+
+test('cloud direct local-agent completed turn replaces processing while Cloud response sync catches up', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_local_agent_request_done_locally',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: '@MeCloudKordi can you check the issue?',
+    direction: 'incoming',
+    createdAt: new Date().toISOString(),
+  };
+  const completedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn_direct_local_done',
+    sessionId: 'cloud-agent:acct_me:acct_peer',
+    prompt: 'can you check the issue?',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'I checked it and found the issue.',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: true,
+    error: null,
+  };
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+    localAgentTurnsByRequestId: { [request.messageId]: completedTurn },
+  });
+
+  assert.equal(state.conversations[0].awaitingReply, false);
+  const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+  const agentMessage = view.messages.find((candidate) => candidate.role === 'owned-agent');
+  assert.notEqual(agentMessage?.turn?.status, 'processing');
+  assert.equal(agentMessage?.turn?.completed, true);
+  assert.equal(agentMessage?.turn?.assistantText, 'I checked it and found the issue.');
+  assert.equal(view.messages.some((candidate) => candidate.turn?.status === 'processing'), false);
+});
+
+test('cloud direct local-agent completed fallback timestamp is stable across renders', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_local_agent_stable_timestamp',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: '@MeCloudKordi can you check the issue?',
+    direction: 'incoming',
+    createdAt: '1970-01-01T00:00:00.100Z',
+  };
+  const completedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn_direct_local_stable_timestamp',
+    sessionId: 'cloud-agent:acct_me:acct_peer',
+    prompt: 'can you check the issue?',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'I checked it.',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: true,
+    error: null,
+  };
+  const originalNow = Date.now;
+  try {
+    Date.now = () => 1_000;
+    const firstState = buildCloudDesktopBridgeState({
+      account,
+      contacts: [peer],
+      messagesByPeer: { acct_peer: [request] },
+      activeConversationId: 'bridge:cloud:acct_peer:person',
+      localAgentTurnsByRequestId: { [request.messageId]: completedTurn },
+    });
+    Date.now = () => 2_000;
+    const secondState = buildCloudDesktopBridgeState({
+      account,
+      contacts: [peer],
+      messagesByPeer: { acct_peer: [request] },
+      activeConversationId: 'bridge:cloud:acct_peer:person',
+      localAgentTurnsByRequestId: { [request.messageId]: completedTurn },
+    });
+    const firstTimestamp = firstState.conversations[0].messages.find((candidate) => candidate.id === `cloud-agent-local-response:${request.messageId}`)?.timestampMs;
+    const secondTimestamp = secondState.conversations[0].messages.find((candidate) => candidate.id === `cloud-agent-local-response:${request.messageId}`)?.timestampMs;
+
+    assert.equal(firstTimestamp, 101);
+    assert.equal(secondTimestamp, firstTimestamp);
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 test('cloud self-agent responses keep local runtime tool details local to the owner', () => {

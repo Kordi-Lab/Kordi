@@ -1,4 +1,5 @@
 import type { CloudMessage, CloudMessageAttachment } from './authClient';
+import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 
 export const CLOUD_MESSAGES_LEGACY_CACHE_PREFIX = 'kordi.cloud.messagesByPeer.v1:';
 export const CLOUD_MESSAGES_INDEXED_DB_NAME = 'kordi-cloud-message-cache-v2';
@@ -64,6 +65,9 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
     ? record.sizeBytes
     : null;
   const previewAttachmentId = cleanText(record.previewAttachmentId);
+  const previewUrl = safeCloudAttachmentPreviewUrl(
+    typeof record.previewUrl === 'string' ? record.previewUrl : null,
+  );
   return {
     attachmentId,
     name,
@@ -71,6 +75,7 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
     mimeType,
     sizeBytes,
     ...(previewAttachmentId ? { previewAttachmentId } : {}),
+    ...(previewUrl ? { previewUrl } : {}),
   };
 }
 
