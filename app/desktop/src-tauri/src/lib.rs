@@ -560,6 +560,8 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
         .manage(DesktopBridgeManager::default())
