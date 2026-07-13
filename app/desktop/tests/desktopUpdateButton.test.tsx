@@ -110,8 +110,11 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /Not now/);
   assert.match(source, /onInstallUpdate/);
   assert.match(source, /Downloading/);
-  assert.match(source, /Installing/);
+  assert.match(source, /Installing verified update…/);
+  assert.doesNotMatch(source, /Installing signed update/);
   assert.match(source, /Relaunching/);
+  assert.match(source, /Unable to install the verified update\./);
+  assert.match(source, /download, verify, install, and relaunch Kordi automatically\./);
   assert.match(source, /Retry/);
   assert.match(source, /Download manually/);
   assert.match(source, /receivedBytes/);
