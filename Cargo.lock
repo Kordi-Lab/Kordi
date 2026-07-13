@@ -2796,7 +2796,7 @@ dependencies = [
 
 [[package]]
 name = "kordi-desktop"
-version = "0.0.1-beta.5"
+version = "0.0.1-beta.6"
 dependencies = [
  "base64 0.22.1",
  "bs58",

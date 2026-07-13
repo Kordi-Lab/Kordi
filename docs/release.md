@@ -62,8 +62,10 @@ This command:
 
 Hosted Desktop beta releases use two different version strings:
 
-- App/package version: `0.0.1-beta.N` (for example `0.0.1-beta.5`)
-- Git tag and GitHub prerelease: `V0.0.1.betaN` (for example `V0.0.1.beta5`)
+- App/package version: `0.0.1-beta.N` (for example `0.0.1-beta.6`)
+- Git tag and GitHub prerelease: `V0.0.1.betaN` (for example `V0.0.1.beta6`)
+
+The current updater bootstrap release is `0.0.1-beta.6` / `V0.0.1.beta6`. Keep the Cloud deployment's legacy metadata fallback on beta.5 until the validated beta channel pointer has been promoted; the signed channel catalog becomes authoritative after promotion.
 
 Use a clean release branch/worktree from the latest `origin/main`. Do not release from a dirty local development worktree.
 
