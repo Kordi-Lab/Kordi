@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   checkReleasePrerequisites,
+  parseReleasePrerequisiteArguments,
   redactReleaseText,
 } from '../scripts/check-release-prerequisites.mjs';
 
@@ -146,4 +147,11 @@ test('redaction removes signing values, credentials, internal URLs, and identity
 
   assert.doesNotMatch(redacted, /private-key-secret|password-secret|publisher-secret|Person Name|TEAM123|minio\.internal/);
   assert.match(redacted, /\[REDACTED\]/);
+});
+
+test('pnpm argument separator is ignored by the release prerequisite CLI parser', () => {
+  assert.deepEqual(
+    parseReleasePrerequisiteArguments(['--', '--source-only', '--expected-commit', COMMIT]),
+    { sourceOnly: true, expectedCommit: COMMIT },
+  );
 });

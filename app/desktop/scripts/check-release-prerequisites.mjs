@@ -129,11 +129,13 @@ export function checkReleasePrerequisites(options, dependencies = {}) {
   };
 }
 
-function parseArguments(argv) {
+export function parseReleasePrerequisiteArguments(argv) {
   const options = { sourceOnly: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === '--source-only') {
+    if (argument === '--') {
+      continue;
+    } else if (argument === '--source-only') {
       options.sourceOnly = true;
     } else if (argument === '--expected-commit') {
       options.expectedCommit = argv[index += 1];
@@ -148,7 +150,7 @@ function parseArguments(argv) {
 
 export function runReleasePrerequisiteCli(argv = process.argv.slice(2)) {
   try {
-    const result = checkReleasePrerequisites(parseArguments(argv));
+    const result = checkReleasePrerequisites(parseReleasePrerequisiteArguments(argv));
     const mode = result.sourceOnly ? 'source-only' : 'signed artifact';
     console.log(`[kordi] Release prerequisites passed for ${result.commit} (${mode}).`);
     return 0;
@@ -161,4 +163,3 @@ export function runReleasePrerequisiteCli(argv = process.argv.slice(2)) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   process.exitCode = runReleasePrerequisiteCli();
 }
-
