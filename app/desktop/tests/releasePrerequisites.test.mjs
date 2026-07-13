@@ -10,8 +10,8 @@ import {
 const COMMIT = 'beabfe8f49d868d9ac7848f31a044321b9e22c67';
 const APP = '/tmp/Kordi.app';
 
-function success(stdout = '') {
-  return { status: 0, stdout, stderr: '' };
+function success(stdout = '', stderr = '') {
+  return { status: 0, stdout, stderr };
 }
 
 function failure(stderr = 'command failed') {
@@ -27,9 +27,11 @@ function fakeDependencies(overrides = {}) {
   const results = new Map([
     ['git status --porcelain=v1 --untracked-files=all', success('')],
     ['git rev-parse HEAD', success(`${COMMIT}\n`)],
-    ['security find-identity -v -p codesigning', success('  1) ABCDEF "Developer ID Application: Example (TEAMID)"\n     1 valid identities found')],
-    [`codesign --verify --deep --strict --verbose=2 ${APP}`, success('')],
-    [`spctl --assess --type execute --verbose=2 ${APP}`, success('')],
+    ...(overrides.includeProductionSigningResults === false ? [] : [
+      ['security find-identity -v -p codesigning', success('  1) ABCDEF "Developer ID Application: Example (TEAMID)"\n     1 valid identities found')],
+      [`codesign --verify --deep --strict --verbose=2 ${APP}`, success('')],
+      [`spctl --assess --type execute --verbose=2 ${APP}`, success('')],
+    ]),
     ...(overrides.results ?? []),
   ]);
   return {
@@ -50,6 +52,7 @@ test('accepts an exact clean release commit with signing and Apple trust checks'
   assert.deepEqual(result, {
     commit: COMMIT,
     sourceOnly: false,
+    releaseProfile: 'production',
     signingIdentityAvailable: true,
     codesignVerified: true,
     gatekeeperVerified: true,
@@ -57,18 +60,116 @@ test('accepts an exact clean release commit with signing and Apple trust checks'
 });
 
 test('source-only mode verifies source without claiming artifact trust', () => {
+  const dependencies = fakeDependencies();
+  delete dependencies.env.TAURI_SIGNING_PRIVATE_KEY;
+  delete dependencies.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD;
+
   const result = checkReleasePrerequisites(
     { expectedCommit: COMMIT, sourceOnly: true },
-    fakeDependencies({ env: {} }),
+    dependencies,
   );
 
   assert.deepEqual(result, {
     commit: COMMIT,
     sourceOnly: true,
+    releaseProfile: 'production',
     signingIdentityAvailable: false,
     codesignVerified: false,
     gatekeeperVerified: false,
   });
+});
+
+test('accepts an identity-free ad-hoc preview signature without requiring Gatekeeper acceptance', () => {
+  const result = checkReleasePrerequisites(
+    {
+      expectedCommit: COMMIT,
+      appBundle: APP,
+      releaseProfile: 'adhoc-preview',
+    },
+    fakeDependencies({
+      includeProductionSigningResults: false,
+      results: [
+        [`codesign --verify --deep --strict --verbose=2 ${APP}`, success('')],
+        [
+          `codesign --display --verbose=4 ${APP}`,
+          success('', 'Signature=adhoc\nTeamIdentifier=not set'),
+        ],
+        [`spctl --assess --type execute --verbose=2 ${APP}`, failure('rejected')],
+      ],
+    }),
+  );
+
+  assert.deepEqual(result, {
+    commit: COMMIT,
+    sourceOnly: false,
+    releaseProfile: 'adhoc-preview',
+    signingIdentityAvailable: false,
+    codesignVerified: true,
+    gatekeeperVerified: false,
+  });
+});
+
+test('ad-hoc preview rejects an Authority identity and configured TeamIdentifier', () => {
+  for (const displayOutput of [
+    'Signature=adhoc\nAuthority=Developer ID Application: Example (TEAMID)\nTeamIdentifier=not set',
+    'Signature=adhoc\nTeamIdentifier=TEAM123',
+  ]) {
+    assert.throws(
+      () => checkReleasePrerequisites(
+        {
+          expectedCommit: COMMIT,
+          appBundle: APP,
+          releaseProfile: 'adhoc-preview',
+        },
+        fakeDependencies({
+          includeProductionSigningResults: false,
+          results: [
+            [`codesign --verify --deep --strict --verbose=2 ${APP}`, success('')],
+            [`codesign --display --verbose=4 ${APP}`, success('', displayOutput)],
+          ],
+        }),
+      ),
+      /identity-free ad-hoc code signature is required/i,
+    );
+  }
+});
+
+test('ad-hoc preview requires updater signing environment', () => {
+  for (const missing of ['TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD']) {
+    const deps = fakeDependencies({ includeProductionSigningResults: false });
+    delete deps.env[missing];
+
+    assert.throws(
+      () => checkReleasePrerequisites(
+        {
+          expectedCommit: COMMIT,
+          appBundle: APP,
+          releaseProfile: 'adhoc-preview',
+        },
+        deps,
+      ),
+      new RegExp(`${missing} is required`),
+    );
+  }
+});
+
+test('ad-hoc preview rejects an invalid code signature', () => {
+  assert.throws(
+    () => checkReleasePrerequisites(
+      {
+        expectedCommit: COMMIT,
+        appBundle: APP,
+        releaseProfile: 'adhoc-preview',
+      },
+      fakeDependencies({
+        includeProductionSigningResults: false,
+        results: [
+          [`codesign --verify --deep --strict --verbose=2 ${APP}`, failure('bad signature')],
+        ],
+      }),
+    ),
+    /codesign verification failed/i,
+  );
 });
 
 test('rejects a dirty worktree and a commit mismatch', () => {
@@ -152,6 +253,51 @@ test('redaction removes signing values, credentials, internal URLs, and identity
 test('pnpm argument separator is ignored by the release prerequisite CLI parser', () => {
   assert.deepEqual(
     parseReleasePrerequisiteArguments(['--', '--source-only', '--expected-commit', COMMIT]),
-    { sourceOnly: true, expectedCommit: COMMIT },
+    { sourceOnly: true, releaseProfile: 'production', expectedCommit: COMMIT },
+  );
+});
+
+test('parses the ad-hoc preview release profile', () => {
+  assert.deepEqual(
+    parseReleasePrerequisiteArguments([
+      '--release-profile',
+      'adhoc-preview',
+      '--expected-commit',
+      COMMIT,
+      '--app-bundle',
+      APP,
+    ]),
+    {
+      sourceOnly: false,
+      releaseProfile: 'adhoc-preview',
+      expectedCommit: COMMIT,
+      appBundle: APP,
+    },
+  );
+});
+
+test('rejects unknown release profiles in the checker and parser', () => {
+  assert.throws(
+    () => checkReleasePrerequisites(
+      {
+        expectedCommit: COMMIT,
+        sourceOnly: true,
+        releaseProfile: 'unsigned',
+      },
+      fakeDependencies(),
+    ),
+    /production or adhoc-preview/i,
+  );
+
+  assert.throws(
+    () => parseReleasePrerequisiteArguments(['--release-profile', 'unsigned']),
+    /production or adhoc-preview/i,
+  );
+});
+
+test('rejects a missing release-profile value clearly', () => {
+  assert.throws(
+    () => parseReleasePrerequisiteArguments(['--release-profile']),
+    /production or adhoc-preview/i,
   );
 });
