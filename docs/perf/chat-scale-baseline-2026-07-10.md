@@ -8,7 +8,7 @@ Subsequent full-suite repair and group-session replay/hover commits extend the T
 
 - The configured desktop unit command passes 1,209/1,209 tests, including the replay coordinator, exact grouped-child selection, canonical no-op identity, stable child-row host identity, and benchmark-budget regression.
 - Desktop typecheck, ESLint, production build, JavaScript bundle budget, all 266 serialized desktop Rust tests, the Cloud server suite, workspace Clippy, script tests, hygiene, and `git diff --check` pass.
-- The scale benchmark passes with `canonicalIndexMs=116.237` and `cloudIndexDeltaMs=56.337`. The guard now allows 160 ms and 80 ms respectively so ordinary host contention does not fail the fixture, while exact one-row parsing and the much tighter full-index/delivery/size invariants remain enforced.
+- The scale benchmark passes with `canonicalIndexMs=114.207` and `cloudIndexDeltaMs=64.155`. The guard now allows 160 ms and 80 ms respectively so ordinary host contention does not fail the fixture, while exact one-row parsing and the much tighter full-index/delivery/size invariants remain enforced.
 - Workspace `cargo fmt --all -- --check` still reports the same repository-wide formatting drift that predates this stack. No bulk unrelated formatting rewrite is included.
 - Packaged-native WebKit CPU/RSS/latency and real multi-account/Postgres acceptance remain manual release gates, so the linked issues should remain open until that validation is complete.
 
