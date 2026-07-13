@@ -220,15 +220,9 @@ pub fn cloud_session_clear() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     fn with_isolated_app_data_dir<T>(test: impl FnOnce(PathBuf) -> T) -> T {
-        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _guard = crate::test_support::lock_process_environment();
         let previous_app_data_dir = std::env::var_os("APP_DATA_DIR");
         let previous_instance_id = std::env::var_os("APP_INSTANCE_ID");
         let dir =

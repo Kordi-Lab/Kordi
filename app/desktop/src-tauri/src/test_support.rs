@@ -6,7 +6,14 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 #[cfg(test)]
-static STORAGE_ENV_LOCK: Mutex<()> = Mutex::new(());
+static PROCESS_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn lock_process_environment() -> MutexGuard<'static, ()> {
+    PROCESS_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+}
 
 #[cfg(test)]
 pub(crate) struct ScopedKordiStorageRoot {
@@ -18,9 +25,7 @@ pub(crate) struct ScopedKordiStorageRoot {
 #[cfg(test)]
 impl ScopedKordiStorageRoot {
     pub(crate) fn new(label: &str) -> Self {
-        let guard = STORAGE_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|err| err.into_inner());
+        let guard = lock_process_environment();
         let root = std::env::temp_dir().join(format!(
             "{label}-{}-{}",
             std::process::id(),
