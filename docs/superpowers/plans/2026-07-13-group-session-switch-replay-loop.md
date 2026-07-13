@@ -17,6 +17,9 @@
 - Modify `app/desktop/src/features/cloud/useCloudBridgeState.ts` — replace the render-coupled processed-key loop with the coordinator.
 - Modify `app/desktop/tests/cloudBridgeState.test.tsx` — assert the hook is wired through the coordinator and no longer deletes failed keys for immediate retry.
 - Modify `app/desktop/tests/virtualSidebar.test.tsx` — behavioral regression for clicking between two session rows in the same group space.
+- Modify `app/desktop/src/features/canonical/canonicalStore.ts` — preserve store identity when a functional canonical state update is a no-op.
+- Modify `app/desktop/src/app/useKordiAppModel.ts` — use the canonical action adapter and skip identity-equal store dispatches.
+- Modify `app/desktop/tests/canonicalCatalog.test.tsx` — regression for the functional no-op contract.
 
 ### Task 1: Build the Serialized Replay Coordinator
 
@@ -706,3 +709,26 @@ git log --oneline -5
 ```
 
 Expected: branch `fix/group-session-switch-replay-loop`, clean worktree, and separate commits for coordinator, integration, and regression coverage.
+
+### Task 5: Stop Canonical No-op Updates from Rebuilding the Sidebar
+
+**Files:**
+- Modify: `app/desktop/tests/canonicalCatalog.test.tsx`
+- Modify: `app/desktop/src/features/canonical/canonicalStore.ts`
+- Modify: `app/desktop/src/app/useKordiAppModel.ts`
+
+- [x] **Step 1: Reproduce the warning with a component stack**
+
+Temporarily attach a stack to the React update-depth warning in the live `user1` renderer. Confirm the repeated dispatch originates in Cloud unread reconciliation through `setCanonicalSessionState`, then remove the instrumentation.
+
+- [x] **Step 2: Add a failing canonical adapter test**
+
+Assert that a functional action returning its current canonical state returns the exact existing `CanonicalStore`. Confirm the test fails before the adapter exists.
+
+- [x] **Step 3: Preserve identity for logical no-op updates**
+
+Add `applyCanonicalSessionStateAction`, use it in `useKordiAppModel`, and skip `updateCanonicalStore` dispatch when the next store is identity-equal to the current store.
+
+- [x] **Step 4: Verify the focused contract and live renderer**
+
+Run the canonical catalog, Cloud bridge, and replay coordinator suites plus TypeScript checking. Clean-restart `user1`, verify no update-depth or replay-loop errors, and sample both child-session hover regions repeatedly to confirm stable pixels.

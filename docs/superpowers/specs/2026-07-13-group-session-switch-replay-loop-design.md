@@ -2,9 +2,9 @@
 
 ## Summary
 
-Users must be able to switch directly between child sessions inside one group. In the reproduced `user1` profile, clicking the second child session leaves the first row highlighted because Cloud group-control replay has entered a React update loop. The sidebar click handler and stored session identifiers are correct; background replay repeatedly mutates canonical state quickly enough to starve the foreground selection update.
+Users must be able to switch directly between child sessions inside one group. In the reproduced `user1` profile, clicking the second child session leaves the first row highlighted while the sidebar can visibly flicker. The sidebar click handler and stored session identifiers are correct; two background state paths can repeatedly rebuild canonical state quickly enough to starve or visually destabilize the foreground selection update.
 
-This change will bound and serialize Cloud group replay, prevent render-driven retry storms, and add a behavioral regression proving that two sessions in the same group remain independently selectable.
+This change will bound and serialize Cloud group replay, restore React's functional-setter no-op contract in the canonical-store adapter, and add a behavioral regression proving that two sessions in the same group remain independently selectable.
 
 ## Evidence and Root Cause
 
@@ -22,7 +22,9 @@ The live renderer log repeatedly reports:
 
 The current replay effect walks every replay row, starts each `applyCloudGroupControl` call without awaiting the previous row, and removes the replay key from the processed set whenever a row fails. A subsequent Cloud-index or callback dependency change can therefore retry the same failing row immediately. Each replay also performs canonical writes and React state updates. Historical processing controls in the reproduced profile make this an enduring retry and render loop rather than a one-time startup burst.
 
-The loop prevents the active-session update from committing reliably, so the first child row remains highlighted even after the second row is clicked.
+Live stack tracing after the replay fix exposed a second loop in Cloud unread reconciliation. That effect correctly returns its current canonical state when unread counts are already equal, but `setCanonicalSessionState` always merged the result into a new `CanonicalStore`. The changed store identity recreated `canonicalSessionState`, retriggered the effect, and produced `Maximum update depth exceeded` continuously even though the logical state was unchanged.
+
+These loops prevent the active-session update from committing reliably and can make the active blue row flicker while the pointer remains over a child session.
 
 ## Goals
 
@@ -31,6 +33,7 @@ The loop prevents the active-session update from committing reliably, so the fir
 3. A failed replay row cannot retry on every render or dependency change.
 4. Successful replay remains idempotent and eventually processes new Cloud controls.
 5. Existing Cloud group delivery, agent-response, unread, and session hydration behavior remains intact.
+6. A functional canonical state update that returns its current value must not rebuild or redispatch the store.
 
 ## Non-goals
 
@@ -82,6 +85,12 @@ Child-session selection remains a foreground UI action:
 
 No network request or replay drain is awaited by this path. The fix removes the background state storm that currently prevents this flow from committing. We will not add a separate sidebar-only active ID because that could display a new highlight while leaving the transcript on the old conversation.
 
+### 5. Canonical state no-op identity
+
+The canonical-store adapter will evaluate a functional `setCanonicalSessionState` action once against the current derived state. If the action returns that same state object, the adapter returns the current `CanonicalStore` object. The store dispatcher also skips identity-equal updates.
+
+This matches React's native functional setter contract and prevents derived reconciliation effects, including unread-count reconciliation, from turning logical no-ops into render loops.
+
 ## Error Handling
 
 - A replay failure is isolated to its replay key and does not abort later eligible rows.
@@ -110,6 +119,10 @@ Use the existing JSDOM/React harness pattern to render a group containing two se
 - only the second row has `app-session-row-active`;
 - the selected conversation corresponds to the second session.
 
+### Canonical adapter regression
+
+Apply a functional canonical-session update that returns its current value and assert that the adapter returns the exact existing store object.
+
 ### Existing suites
 
 Run the focused Cloud replay, participant-space sidebar, virtual sidebar, routing, and performance tests, followed by desktop type checking and the complete desktop unit suite.
@@ -118,15 +131,18 @@ Run the focused Cloud replay, participant-space sidebar, virtual sidebar, routin
 
 Relaunch the preserved `user1` profile and verify:
 
-1. The renderer log does not emit `Maximum update depth exceeded` during Cloud group startup replay.
-2. Clicking `# hiii` moves the blue highlight from `# hiiiii` to `# hiii`.
+1. The renderer log does not emit `Maximum update depth exceeded` during startup or after entering chat.
+2. Clicking `# main` moves the blue highlight from `# hiiiii` to `# main`.
 3. The right transcript changes to the older session with its 139-message history.
 4. Clicking back selects the newer two-message session.
+5. Holding the pointer over either child row leaves the row pixels stable without blue-highlight flicker.
 
 ## Acceptance Criteria
 
 - Two or more sessions inside one group can be switched by clicking their child rows.
 - The active highlight and transcript always represent the same session ID.
 - Failed Cloud group replay does not cause a render-driven retry loop.
+- Canonical state no-op updates preserve store identity and do not retrigger reconciliation effects.
+- Child-session hover and active highlighting remain visually stable.
 - Replay remains eventual and idempotent across Cloud refreshes.
 - No existing Cloud group or sidebar regression tests fail.
