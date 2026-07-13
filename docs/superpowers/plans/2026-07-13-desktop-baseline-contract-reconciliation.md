@@ -84,7 +84,7 @@ Run:
 git diff --name-only
 ```
 
-Expected: only the three test files above and this plan document are listed.
+Expected: only the three test files above are listed; the plan document was committed before execution.
 
 - [ ] **Step 7: Run the complete desktop unit suite**
 
@@ -102,7 +102,6 @@ Expected: command exits zero with zero failed tests.
 git add \
   app/desktop/tests/shellViewportContainment.test.tsx \
   app/desktop/tests/useKordiAppModelBridgeMentions.test.tsx \
-  app/desktop/tests/useKordiAppModelHelpers.test.tsx \
-  docs/superpowers/plans/2026-07-13-desktop-baseline-contract-reconciliation.md
+  app/desktop/tests/useKordiAppModelHelpers.test.tsx
 git commit -m "test: reconcile desktop baseline contracts"
 ```
