@@ -387,6 +387,12 @@ async function verifyPromotedRelease(prepared, publicHttp) {
   ) {
     throw new Error('Updater endpoint returned unexpected release metadata after promotion');
   }
+  await verifyPublicAsset(
+    publicHttp,
+    prepared.urls.updaterArchive,
+    prepared.artifacts.updater.bytes,
+    prepared.artifacts.updater.sha256,
+  );
   if (prepared.channel === 'beta') {
     await verifyPublicAsset(
       publicHttp,
@@ -395,6 +401,322 @@ async function verifyPromotedRelease(prepared, publicHttp) {
       prepared.artifacts.manual.sha256,
     );
   }
+}
+
+function storedObject(value, label) {
+  if (!value || typeof value !== 'object' || value.bytes === undefined) {
+    throw new Error(`${label} did not include bytes and an ETag`);
+  }
+  const bytes = Buffer.from(value.bytes);
+  const etag = requireString(value.etag, `${label} ETag`);
+  if (/[\r\n]/.test(etag)) throw new Error(`${label} ETag is invalid`);
+  return { bytes, etag, versionId: value.versionId ?? null };
+}
+
+function assertExactKeys(value, expected, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+    throw new Error(`${label} has an invalid schema`);
+  }
+}
+
+function parseStoredJson(record, label) {
+  let value;
+  try {
+    value = JSON.parse(record.bytes.toString('utf8'));
+  } catch {
+    throw new Error(`${label} is not valid JSON`);
+  }
+  return value;
+}
+
+function assertDigest(value, label) {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) {
+    throw new Error(`${label} SHA-256 is invalid`);
+  }
+}
+
+function validateStoredAsset(asset, version, { updater }) {
+  const keys = ['objectKey', 'fileName', 'contentType', 'sha256', 'sizeBytes'];
+  if (updater) keys.push('signature');
+  assertExactKeys(asset, keys, updater ? 'Prior updater asset' : 'Prior manual asset');
+  const expectedName = updater ? 'Kordi.app.tar.gz' : `Kordi_${version}_aarch64.dmg`;
+  if (asset.fileName !== expectedName) throw new Error('Prior release asset filename is invalid');
+  if (asset.objectKey !== `desktop/releases/${version}/macos/aarch64/${expectedName}`) {
+    throw new Error('Prior release asset key is invalid');
+  }
+  const expectedContentType = updater ? 'application/gzip' : 'application/x-apple-diskimage';
+  if (asset.contentType !== expectedContentType) throw new Error('Prior release asset content type is invalid');
+  assertDigest(asset.sha256, 'Prior release asset');
+  if (!Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes <= 0) {
+    throw new Error('Prior release asset size is invalid');
+  }
+  if (updater) assertSignatureShape(asset.signature);
+}
+
+function validateStoredRelease(value, expectedKey) {
+  assertExactKeys(
+    value,
+    ['schemaVersion', 'version', 'notes', 'pubDate', 'changelogUrl', 'manual', 'platforms'],
+    'Prior release manifest',
+  );
+  if (value.schemaVersion !== 1 || !VERSION_PATTERN.test(value.version)) {
+    throw new Error('Prior release manifest version is invalid');
+  }
+  if (expectedKey !== `desktop/releases/${value.version}/release.json`) {
+    throw new Error('Prior release manifest key does not match its version');
+  }
+  if (typeof value.notes !== 'string' || !value.notes.trim() || value.notes.length > 16_384) {
+    throw new Error('Prior release notes are invalid');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value.pubDate) || Number.isNaN(Date.parse(value.pubDate))) {
+    throw new Error('Prior release publication date is invalid');
+  }
+  let changelog;
+  try {
+    changelog = new URL(value.changelogUrl);
+  } catch {
+    throw new Error('Prior release changelog URL is invalid');
+  }
+  if (changelog.protocol !== 'https:' || changelog.username || changelog.password) {
+    throw new Error('Prior release changelog URL is invalid');
+  }
+  assertExactKeys(value.platforms, ['darwin-aarch64'], 'Prior release platforms');
+  validateStoredAsset(value.manual, value.version, { updater: false });
+  validateStoredAsset(value.platforms['darwin-aarch64'], value.version, { updater: true });
+  return value;
+}
+
+async function loadChannelSnapshot(store, channel, updaterPublicKey = TAURI_UPDATER_PUBLIC_KEY) {
+  if (!SAFE_CHANNELS.has(channel)) throw new Error('Release channel must be beta or acceptance');
+  const pointerKey = `desktop/channels/${channel}/latest.json`;
+  const rawPointer = await store.getObject(pointerKey);
+  if (rawPointer === null || rawPointer === undefined) return null;
+  const pointerRecord = storedObject(rawPointer, 'Prior channel pointer');
+  const pointer = parseStoredJson(pointerRecord, 'Prior channel pointer');
+  assertExactKeys(
+    pointer,
+    ['schemaVersion', 'channel', 'releaseManifestKey', 'releaseManifestSha256'],
+    'Prior channel pointer',
+  );
+  if (pointer.schemaVersion !== 1 || pointer.channel !== channel) {
+    throw new Error('Prior channel pointer is invalid');
+  }
+  assertDigest(pointer.releaseManifestSha256, 'Prior channel pointer manifest');
+  if (!/^desktop\/releases\/(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-beta\.(?:0|[1-9]\d*)\/release\.json$/.test(pointer.releaseManifestKey)) {
+    throw new Error('Prior channel pointer manifest key is invalid');
+  }
+
+  const rawManifest = await store.getObject(pointer.releaseManifestKey);
+  if (rawManifest === null || rawManifest === undefined) {
+    throw new Error('Prior channel pointer references a missing release manifest');
+  }
+  const manifestRecord = storedObject(rawManifest, 'Prior release manifest');
+  if (sha256(manifestRecord.bytes) !== pointer.releaseManifestSha256) {
+    throw new Error('Prior channel pointer manifest digest is invalid');
+  }
+  const release = validateStoredRelease(
+    parseStoredJson(manifestRecord, 'Prior release manifest'),
+    pointer.releaseManifestKey,
+  );
+  const updaterAsset = release.platforms['darwin-aarch64'];
+  const rawManual = await store.getObject(release.manual.objectKey);
+  const rawUpdater = await store.getObject(updaterAsset.objectKey);
+  if (rawManual === null || rawManual === undefined || rawUpdater === null || rawUpdater === undefined) {
+    throw new Error('Prior channel pointer references a missing release artifact');
+  }
+  const manualRecord = storedObject(rawManual, 'Prior manual release artifact');
+  const updaterRecord = storedObject(rawUpdater, 'Prior updater release artifact');
+  for (const [record, asset] of [[manualRecord, release.manual], [updaterRecord, updaterAsset]]) {
+    if (record.bytes.length !== asset.sizeBytes || sha256(record.bytes) !== asset.sha256) {
+      throw new Error('Prior channel pointer references a corrupt release artifact');
+    }
+  }
+  verifyTauriUpdaterSignature(updaterRecord.bytes, updaterAsset.signature, updaterPublicKey);
+  const updaterEndpointPath = channel === 'acceptance'
+    ? '/updates/desktop/acceptance/darwin/aarch64/0.0.0'
+    : '/updates/desktop/darwin/aarch64/0.0.0';
+  return {
+    channel,
+    pointerKey,
+    pointerBytes: pointerRecord.bytes,
+    pointerEtag: pointerRecord.etag,
+    version: release.version,
+    pubDate: release.pubDate,
+    release,
+    artifacts: {
+      manual: { bytes: manualRecord.bytes, sha256: release.manual.sha256 },
+      updater: { bytes: updaterRecord.bytes, sha256: updaterAsset.sha256 },
+    },
+    urls: {
+      manual: `${PRODUCT_ORIGIN}/updates/releases/${release.version}/${release.manual.fileName}`,
+      updaterArchive: `${PRODUCT_ORIGIN}/updates/releases/${release.version}/${updaterAsset.fileName}`,
+      updaterEndpoint: `${PRODUCT_ORIGIN}${updaterEndpointPath}`,
+      stableManual: `${PRODUCT_ORIGIN}/updates/releases/latest/Kordi.dmg`,
+    },
+  };
+}
+
+async function verifyUnpublishedChannel(channel, publicHttp) {
+  const endpoint = channel === 'acceptance'
+    ? `${PRODUCT_ORIGIN}/updates/desktop/acceptance/darwin/aarch64/0.0.0`
+    : `${PRODUCT_ORIGIN}/updates/desktop/darwin/aarch64/0.0.0`;
+  const response = await publicHttp.get(endpoint);
+  if (response?.status !== 204) {
+    throw new Error(`Cleared updater endpoint returned status ${response?.status ?? 'unknown'} instead of 204`);
+  }
+  if (channel === 'beta') {
+    const stableUrl = `${PRODUCT_ORIGIN}/updates/releases/latest/Kordi.dmg`;
+    const [head, get] = await Promise.all([publicHttp.head(stableUrl), publicHttp.get(stableUrl)]);
+    if (head?.status !== 404 || get?.status !== 404) {
+      throw new Error('Cleared beta channel still exposes a stable manual artifact');
+    }
+    const legacy = await publicHttp.get(`${PRODUCT_ORIGIN}/updates/releases/version`);
+    if (legacy?.status !== 200) {
+      throw new Error(`Legacy fallback returned status ${legacy?.status ?? 'unknown'} instead of 200`);
+    }
+    let legacyMetadata;
+    try {
+      legacyMetadata = JSON.parse(responseBody(legacy).toString('utf8'));
+    } catch {
+      throw new Error('Legacy fallback returned invalid JSON');
+    }
+    if (
+      typeof legacyMetadata.version !== 'string'
+      || !VERSION_PATTERN.test(legacyMetadata.version)
+      || Object.hasOwn(legacyMetadata, 'downloadUrl')
+      || Object.hasOwn(legacyMetadata, 'signature')
+    ) {
+      throw new Error('Legacy fallback could authorize the unsafe beta.5 native installer');
+    }
+  }
+}
+
+export async function clearDesktopReleaseChannel(options, dependencies = {}) {
+  const channel = requireString(options?.channel, '--channel');
+  if (channel !== 'acceptance') {
+    throw new Error('Only the acceptance channel can be cleared by this release command');
+  }
+  const { store, publicHttp } = dependencies;
+  if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function' || typeof store.deleteObject !== 'function') {
+    throw new Error('A release object store adapter is required');
+  }
+  if (!publicHttp || typeof publicHttp.get !== 'function' || typeof publicHttp.head !== 'function') {
+    throw new Error('A public HTTP verification adapter is required');
+  }
+  const logger = dependencies.logger ?? { info() {} };
+  const previous = await loadChannelSnapshot(
+    store,
+    channel,
+    dependencies.updaterPublicKey ?? TAURI_UPDATER_PUBLIC_KEY,
+  );
+  if (!previous) {
+    await verifyUnpublishedChannel(channel, publicHttp);
+    logger.info('[release] acceptance channel already unpublished');
+    return { channel, removed: false };
+  }
+
+  await store.deleteObject(previous.pointerKey, { ifMatch: previous.pointerEtag });
+  try {
+    const remaining = await store.getObject(previous.pointerKey);
+    if (remaining !== null && remaining !== undefined) {
+      throw new Error('Acceptance channel pointer still exists after cleanup');
+    }
+    await verifyUnpublishedChannel(channel, publicHttp);
+  } catch (error) {
+    try {
+      await store.putObject(previous.pointerKey, previous.pointerBytes, {
+        contentType: 'application/json',
+        cacheControl: 'no-store',
+        ifNoneMatch: '*',
+      });
+      const restored = storedObject(
+        await store.getObject(previous.pointerKey),
+        'Restored acceptance channel pointer',
+      );
+      if (!safeEqual(restored.bytes, previous.pointerBytes)) {
+        throw new Error('Restored acceptance channel pointer does not match its prior bytes');
+      }
+      await verifyPromotedRelease(previous, publicHttp);
+    } catch (rollbackError) {
+      throw new Error('Acceptance cleanup verification failed and pointer restoration also failed', {
+        cause: new AggregateError([error, rollbackError]),
+      });
+    }
+    throw new Error(`Acceptance cleanup verification failed; the prior pointer was restored: ${error.message}`, {
+      cause: error,
+    });
+  }
+  logger.info('[release] acceptance channel unpublished and verified');
+  return { channel, removed: true };
+}
+
+export async function rollbackDesktopBetaChannel(options, dependencies = {}) {
+  const expectedCurrentVersion = requireString(
+    options?.expectedCurrentVersion,
+    '--expected-current-version',
+  );
+  if (!VERSION_PATTERN.test(expectedCurrentVersion)) {
+    throw new Error('Expected current version must be a beta semantic version');
+  }
+  const { store } = dependencies;
+  if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function' || typeof store.deleteObject !== 'function') {
+    throw new Error('A release object store adapter is required');
+  }
+  const previous = await loadChannelSnapshot(
+    store,
+    'beta',
+    dependencies.updaterPublicKey ?? TAURI_UPDATER_PUBLIC_KEY,
+  );
+  if (!previous) throw new Error('The beta channel is already unpublished');
+  if (previous.version !== expectedCurrentVersion) {
+    throw new Error(
+      `Expected beta channel ${expectedCurrentVersion}, but storage currently references ${previous.version}`,
+    );
+  }
+  const { publicHttp } = dependencies;
+  if (!publicHttp || typeof publicHttp.get !== 'function' || typeof publicHttp.head !== 'function') {
+    throw new Error('A public HTTP verification adapter is required');
+  }
+  const logger = dependencies.logger ?? { info() {} };
+
+  await store.deleteObject(previous.pointerKey, { ifMatch: previous.pointerEtag });
+  try {
+    const remaining = await store.getObject(previous.pointerKey);
+    if (remaining !== null && remaining !== undefined) {
+      throw new Error('Beta channel pointer still exists after rollback deletion');
+    }
+    await verifyUnpublishedChannel('beta', publicHttp);
+  } catch (error) {
+    try {
+      await store.putObject(previous.pointerKey, previous.pointerBytes, {
+        contentType: 'application/json',
+        cacheControl: 'no-store',
+        ifNoneMatch: '*',
+      });
+      const restored = storedObject(
+        await store.getObject(previous.pointerKey),
+        'Restored beta channel pointer',
+      );
+      if (!safeEqual(restored.bytes, previous.pointerBytes)) {
+        throw new Error('Restored beta channel pointer does not match its prior bytes');
+      }
+      await verifyPromotedRelease(previous, publicHttp);
+    } catch (rollbackError) {
+      throw new Error('Beta rollback verification failed and pointer restoration also failed', {
+        cause: new AggregateError([error, rollbackError]),
+      });
+    }
+    throw new Error(`Beta rollback verification failed; the beta.6 pointer was restored: ${error.message}`, {
+      cause: error,
+    });
+  }
+  logger.info(`[release] beta channel ${expectedCurrentVersion} unpublished and fallback verified`);
+  return { removedVersion: expectedCurrentVersion };
 }
 
 export async function publishDesktopRelease(options, dependencies = {}) {
@@ -417,7 +739,7 @@ export async function publishDesktopRelease(options, dependencies = {}) {
     const existing = await store.getObject(object.key);
     if (existing === null || existing === undefined) {
       missing.push(object);
-    } else if (!safeEqual(existing, object.bytes)) {
+    } else if (!safeEqual(storedObject(existing, `Immutable object ${object.key}`).bytes, object.bytes)) {
       throw new Error(`Immutable object conflict at ${object.key}`);
     }
   }
@@ -443,22 +765,52 @@ export async function publishDesktopRelease(options, dependencies = {}) {
     prepared.artifacts.updater.sha256,
   );
 
-  const previousPointer = await store.getObject(prepared.pointerKey);
-  await store.putObject(prepared.pointerKey, prepared.pointerBytes, {
+  const previous = await loadChannelSnapshot(
+    store,
+    prepared.channel,
+    dependencies.updaterPublicKey ?? TAURI_UPDATER_PUBLIC_KEY,
+  );
+  const promotion = await store.putObject(prepared.pointerKey, prepared.pointerBytes, {
     contentType: 'application/json',
     cacheControl: 'no-store',
+    ...(previous ? { ifMatch: previous.pointerEtag } : { ifNoneMatch: '*' }),
   });
+  const promotedEtag = requireString(promotion?.etag, 'Promoted channel pointer ETag');
   try {
+    const promotedPointer = storedObject(
+      await store.getObject(prepared.pointerKey),
+      'Promoted channel pointer',
+    );
+    if (
+      promotedPointer.etag !== promotedEtag
+      || !safeEqual(promotedPointer.bytes, prepared.pointerBytes)
+    ) {
+      throw new Error('Promoted channel pointer read-back does not match the requested release');
+    }
     await verifyPromotedRelease(prepared, publicHttp);
   } catch (error) {
     try {
-      if (previousPointer === null || previousPointer === undefined) {
-        await store.deleteObject(prepared.pointerKey);
+      if (!previous) {
+        await store.deleteObject(prepared.pointerKey, { ifMatch: promotedEtag });
+        const removed = await store.getObject(prepared.pointerKey);
+        if (removed !== null && removed !== undefined) {
+          throw new Error('Channel pointer still exists after rollback deletion');
+        }
+        await verifyUnpublishedChannel(prepared.channel, publicHttp);
       } else {
-        await store.putObject(prepared.pointerKey, previousPointer, {
+        await store.putObject(prepared.pointerKey, previous.pointerBytes, {
           contentType: 'application/json',
           cacheControl: 'no-store',
+          ifMatch: promotedEtag,
         });
+        const restored = storedObject(
+          await store.getObject(prepared.pointerKey),
+          'Restored channel pointer',
+        );
+        if (!safeEqual(restored.bytes, previous.pointerBytes)) {
+          throw new Error('Restored channel pointer bytes do not match the prior pointer');
+        }
+        await verifyPromotedRelease(previous, publicHttp);
       }
     } catch (rollbackError) {
       throw new Error('Post-promotion verification failed and channel rollback also failed', {

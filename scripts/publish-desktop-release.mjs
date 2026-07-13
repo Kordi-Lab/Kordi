@@ -87,7 +87,14 @@ export async function createS3ReleaseStore({ env = process.env, client: injected
     async getObject(key) {
       try {
         const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-        return awsBodyToBuffer(response.Body);
+        if (typeof response.ETag !== 'string' || response.ETag.trim().length === 0) {
+          throw new Error('Release object response did not include an ETag');
+        }
+        return {
+          bytes: await awsBodyToBuffer(response.Body),
+          etag: response.ETag,
+          versionId: response.VersionId ?? null,
+        };
       } catch (error) {
         const status = error?.$metadata?.httpStatusCode;
         if (status === 404 || error?.name === 'NoSuchKey' || error?.Code === 'NoSuchKey') return null;
@@ -96,26 +103,41 @@ export async function createS3ReleaseStore({ env = process.env, client: injected
     },
     async putObject(key, bytes, metadata = {}) {
       try {
-        await client.send(new PutObjectCommand({
+        if (metadata.ifMatch && metadata.ifNoneMatch) {
+          throw new Error('Release object mutation cannot use both If-Match and If-None-Match');
+        }
+        const response = await client.send(new PutObjectCommand({
           Bucket: bucket,
           Key: key,
           Body: bytes,
           ContentLength: bytes.length,
           ContentType: metadata.contentType,
           CacheControl: metadata.cacheControl,
-          ...(metadata.immutable ? { IfNoneMatch: '*' } : {}),
+          ...(metadata.ifMatch ? { IfMatch: metadata.ifMatch } : {}),
+          ...((metadata.ifNoneMatch || metadata.immutable) ? { IfNoneMatch: metadata.ifNoneMatch ?? '*' } : {}),
         }));
+        return { etag: response.ETag ?? null, versionId: response.VersionId ?? null };
       } catch (error) {
-        if (metadata.immutable && (error?.$metadata?.httpStatusCode === 412 || error?.name === 'PreconditionFailed')) {
-          throw new Error(`Immutable release object changed concurrently at ${key}`, { cause: error });
+        if (
+          (metadata.immutable || metadata.ifMatch || metadata.ifNoneMatch)
+          && ([409, 412].includes(error?.$metadata?.httpStatusCode) || error?.name === 'PreconditionFailed')
+        ) {
+          throw new Error(`Release object changed concurrently at ${key}`, { cause: error });
         }
         throw new Error('Unable to write a release object to private storage', { cause: error });
       }
     },
-    async deleteObject(key) {
+    async deleteObject(key, metadata = {}) {
       try {
-        await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+        await client.send(new DeleteObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          ...(metadata.ifMatch ? { IfMatch: metadata.ifMatch } : {}),
+        }));
       } catch (error) {
+        if (metadata.ifMatch && ([409, 412].includes(error?.$metadata?.httpStatusCode) || error?.name === 'PreconditionFailed')) {
+          throw new Error(`Release object changed concurrently at ${key}`, { cause: error });
+        }
         throw new Error('Unable to roll back the release channel pointer', { cause: error });
       }
     },

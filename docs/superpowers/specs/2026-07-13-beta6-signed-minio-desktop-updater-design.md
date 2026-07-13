@@ -152,7 +152,7 @@ This resolves the current beta channel to its allow-listed manual DMG and stream
 GET /updates/releases/version
 ```
 
-The existing route remains during beta.6. Once a valid beta channel pointer exists, it derives `version`, `changelogUrl`, `downloadUrl`, and `signature` from that channel manifest. `downloadUrl` points to the stable product-domain manual DMG. Before the beta channel is first promoted, the route retains the existing beta.5 environment-backed metadata response; an absent channel therefore does not disrupt current development builds or CLI notices. Invalid channel metadata never supplies a download URL. This compatibility path is read-only and does not participate in Tauri installation.
+The existing route remains during beta.6. Once a valid beta channel pointer exists, it derives `version` from that channel manifest and sets `changelogUrl` to the stable product-domain manual DMG. It deliberately omits `downloadUrl` and `signature`: the shipped beta.5 client treats any `downloadUrl` as authorization to invoke its unverified destructive native installer. Before the beta channel is first promoted, the route retains the beta.5 environment-backed version and changelog response, while still omitting installer authorization. The one-time beta.5 bootstrap therefore opens the product URL for a manual drag-to-Applications install and never participates in automatic installation.
 
 ## Desktop updater
 
@@ -187,8 +187,8 @@ A tested publisher script accepts an already-built release directory plus a chan
 6. Refuse to overwrite an existing immutable object with different bytes.
 7. Upload immutable objects and `release.json`.
 8. Verify each artifact through its unauthenticated `coordinar.io` GET and HEAD routes.
-9. Upload the channel pointer last.
-10. Re-read the public Tauri endpoint and stable DMG endpoint to verify the promoted release.
+9. Validate the prior pointer, manifest, and artifacts, then upload the channel pointer last with an ETag compare-and-swap condition.
+10. Re-read the exact pointer bytes plus public Tauri and stable DMG endpoints. Rollback is also ETag-conditional and re-verifies the restored public state.
 
 The script supports `--dry-run`, which performs every local validation and generates metadata without uploading or changing the channel.
 

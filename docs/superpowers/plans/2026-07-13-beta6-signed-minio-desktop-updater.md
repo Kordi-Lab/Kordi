@@ -361,7 +361,7 @@ Build an Axum router with the in-memory store. Cover:
 - stable DMG GET and HEAD resolve the beta pointer and use `Cache-Control: no-store`;
 - traversal, encoded slash/backslash, unknown version, unknown file, and a manifest object-key mismatch return 404;
 - response bodies and headers never contain MinIO endpoint or credentials;
-- legacy metadata derives version/changelog/download/signature from the valid beta catalog, retains the existing environment fallback before first promotion, and never supplies a download for invalid storage metadata.
+- legacy metadata derives the version and product-domain manual URL from the valid beta catalog, never emits `downloadUrl` or `signature`, and follows the shipped beta.5 decision branch that opens the URL instead of invoking its unsafe native installer.
 
 Run:
 
