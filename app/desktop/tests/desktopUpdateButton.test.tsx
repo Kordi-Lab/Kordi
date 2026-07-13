@@ -91,7 +91,7 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
 
 test('WorkspaceSidebar hides the update button until an available release is detected', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
-    onCheckForUpdates: async () => ({ status: 'updateAvailable', latestVersion: '99.0.0', downloadUrl: 'https://coordinar.io/releases/Kordi.dmg', installCommand: 'Install fake release' }),
+    onCheckForUpdates: async () => ({ status: 'available', latestVersion: '99.0.0', notes: 'Signed update' }),
   }) as never));
 
   assert.doesNotMatch(markup, /app-update-logo-button/);
@@ -104,28 +104,33 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
 
   assert.match(source, /RefreshCw/);
   assert.match(source, /app-update-logo-button/);
-  assert.match(source, /updateCheckResult\?\.status === 'updateAvailable'/);
+  assert.match(source, /updateState\.status === 'available'/);
   assert.match(source, /Update available/);
   assert.match(source, /Update now/);
   assert.match(source, /Not now/);
   assert.match(source, /onInstallUpdate/);
-  assert.match(source, /downloadUrl/);
+  assert.match(source, /Downloading/);
   assert.match(source, /Installing/);
+  assert.match(source, /Relaunching/);
+  assert.match(source, /Retry/);
+  assert.match(source, /Download manually/);
+  assert.match(source, /receivedBytes/);
+  assert.match(source, /totalBytes/);
   assert.match(source, /updateConfirmAnchor/);
   assert.match(source, /position: 'fixed'/);
   assert.match(source, /isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' \? createPortal/);
   assert.doesNotMatch(source, /src="\/favicon\.svg"/);
 });
 
-test('desktop update button is wired through the Tauri command surface', () => {
+test('desktop update button is wired through the signed updater controller', () => {
   const desktopSource = readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
   const tauriSource = readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
   const sidebarSource = readFileSync(new URL('../src/app/assembleSidebarSlot.tsx', import.meta.url), 'utf8');
 
-  assert.match(desktopSource, /desktop_check_for_updates/);
-  assert.match(desktopSource, /desktop_install_update/);
-  assert.match(tauriSource, /desktop_check_for_updates/);
-  assert.match(tauriSource, /desktop_install_update/);
+  assert.match(desktopSource, /desktopUpdaterController/);
+  assert.match(tauriSource, /tauri_plugin_updater/);
+  assert.match(tauriSource, /tauri_plugin_process/);
   assert.match(sidebarSource, /checkDesktopForUpdates/);
   assert.match(sidebarSource, /installDesktopUpdate/);
+  assert.match(sidebarSource, /subscribeDesktopUpdater/);
 });

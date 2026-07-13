@@ -40,8 +40,8 @@ import {
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
 import {
-  KORDI_MANUAL_UPDATE_URL,
   desktopUpdaterController,
+  type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
 
 function isNativeDesktopShell() {
@@ -91,58 +91,22 @@ export async function openDesktopExternalUrl(url: string) {
   return window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-export type DesktopUpdateCheckResult = {
-  status: 'updateAvailable' | 'upToDate' | 'unavailable';
-  currentVersion: string;
-  latestVersion?: string | null;
-  changelogUrl?: string | null;
-  downloadUrl?: string | null;
-  signature?: string | null;
-  installCommand?: string | null;
-  message: string;
-};
+export type { DesktopUpdaterState };
 
-export type DesktopUpdateInstallResult = {
-  status: 'installing';
-  version?: string | null;
-  downloadedPath: string;
-  message: string;
-};
-
-export async function checkDesktopForUpdates(): Promise<DesktopUpdateCheckResult> {
-  const result = await desktopUpdaterController.check();
-  if (result.status !== 'available') {
-    return {
-      status: 'unavailable',
-      currentVersion: result.currentVersion ?? '',
-      latestVersion: null,
-      changelogUrl: null,
-      downloadUrl: null,
-      signature: null,
-      installCommand: null,
-      message: 'Update checks are only available in Kordi Desktop.',
-    };
-  }
-  return {
-    status: 'updateAvailable',
-    currentVersion: result.currentVersion ?? '',
-    latestVersion: result.latestVersion ?? null,
-    changelogUrl: KORDI_MANUAL_UPDATE_URL,
-    downloadUrl: KORDI_MANUAL_UPDATE_URL,
-    signature: null,
-    installCommand: null,
-    message: result.notes || `Kordi ${result.latestVersion ?? 'update'} is available.`,
-  };
+export function checkDesktopForUpdates(): Promise<DesktopUpdaterState> {
+  return desktopUpdaterController.check();
 }
 
-export async function installDesktopUpdate(_input: { downloadUrl: string; version?: string | null }): Promise<DesktopUpdateInstallResult> {
-  await desktopUpdaterController.install();
-  return {
-    status: 'installing',
-    version: desktopUpdaterController.getState().latestVersion ?? null,
-    downloadedPath: '',
-    message: 'Kordi update installed. Relaunching…',
-  };
+export function installDesktopUpdate(): Promise<void> {
+  return desktopUpdaterController.install();
+}
+
+export function retryDesktopUpdate(): Promise<void> {
+  return desktopUpdaterController.retry();
+}
+
+export function subscribeDesktopUpdater(listener: (state: DesktopUpdaterState) => void) {
+  return desktopUpdaterController.subscribe(listener);
 }
 
 export type DesktopCloudOAuthLoopbackStart = {
