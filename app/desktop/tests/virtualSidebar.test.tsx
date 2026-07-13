@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { JSDOM } from 'jsdom';
-import React, { act } from 'react';
+import React, { act, useMemo, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import type { ChatSidebarRow } from '../src/pages/sidebar/VirtualChatList';
@@ -144,6 +144,66 @@ test('flat descriptors own expansion, active ancestry, and fork traversal', () =
   });
   assert.equal(expanded.length, collapsed.length + 1);
   assert.ok(expanded.some((row) => row.key === 'session:child-hidden'));
+});
+
+test('two sessions in one group space switch the active child row by exact id', async () => {
+  const selectedIds: string[] = [];
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+
+  function GroupSessionHarness() {
+    const [activeSessionId, setActiveSessionId] = useState('session:group:new');
+    const rows = useMemo(() => buildChatSidebarRows({
+      spaces: [{
+        spaceId: 'group:session:group:shared',
+        expanded: true,
+        rootSessionIds: ['session:group:new', 'session:group:old'],
+      }],
+      sessions: [
+        { sessionId: 'session:group:new', spaceId: 'group:session:group:shared', parentSessionId: null },
+        { sessionId: 'session:group:old', spaceId: 'group:session:group:shared', parentSessionId: null },
+      ],
+      collapsedForkParentIds: new Set<string>(),
+      activeSessionId,
+      includeSpaceRows: true,
+    }), [activeSessionId]);
+
+    return (
+      <VirtualChatList
+        rows={rows}
+        activeSessionId={activeSessionId}
+        scrollStyle={{ height: 240 }}
+        renderRow={(row) => row.kind === 'session' ? (
+          <button
+            type="button"
+            data-group-session-id={row.sessionId}
+            data-test-row-height="48"
+            className={row.sessionId === activeSessionId ? 'app-session-row-active' : ''}
+            onClick={() => {
+              selectedIds.push(row.sessionId);
+              setActiveSessionId(row.sessionId);
+            }}
+          >
+            {row.sessionId}
+          </button>
+        ) : <div data-test-row-height="48">Shared group</div>}
+      />
+    );
+  }
+
+  await act(async () => root?.render(<GroupSessionHarness />));
+  await flush();
+  const oldSession = host.querySelector<HTMLButtonElement>('[data-group-session-id="session:group:old"]');
+  assert.ok(oldSession);
+  assert.equal(host.querySelector('.app-session-row-active')?.getAttribute('data-group-session-id'), 'session:group:new');
+
+  await act(async () => oldSession.click());
+  await flush();
+
+  assert.deepEqual(selectedIds, ['session:group:old']);
+  assert.equal(host.querySelectorAll('.app-session-row-active').length, 1);
+  assert.equal(host.querySelector('.app-session-row-active')?.getAttribute('data-group-session-id'), 'session:group:old');
 });
 
 test('500 sidebar descriptors mount at most 80 rows and scroll the active row into view', async () => {
