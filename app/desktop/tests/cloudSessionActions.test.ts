@@ -278,7 +278,8 @@ test('cloud group requesting placeholder times out to unavailable notice instead
 test('cloud group hosted-agent sends render processing in the final response slot', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
   assert.match(source, /msg:cloud-agent-processing:\$\{candidate\.requestMessage\.id\}:\$\{candidate\.targetAccountId\}/);
-  assert.match(source, /setCanonicalSessionState\(\(current\) => appendCloudGroupRequestingPlaceholder\(current, candidate, noticeId\)\)/);
+  assert.match(source, /setCanonicalSessionState\(\(current\) => upsertCanonicalRequestIntoLocalState\(\s*appendCloudGroupRequestingPlaceholder\(current, candidate, noticeId\),\s*requestingNoticeRequest,\s*\)\);/);
+  assert.match(source, /void upsertCanonicalMessageFast\(requestingNoticeRequest\)/);
 });
 
 test('cloud group owner processing upserts the shared slot so a local placeholder cannot block broadcast', () => {
@@ -286,8 +287,9 @@ test('cloud group owner processing upserts the shared slot so a local placeholde
   const processingMessageIdIndex = source.indexOf('const processingMessageId = `msg:cloud-agent-processing:${envelope.message!.id}:${account.accountId}`;');
   assert.ok(processingMessageIdIndex >= 0, 'expected owner cloud group processing slot');
   const processingBlock = source.slice(processingMessageIdIndex, processingMessageIdIndex + 3200);
-  assert.match(processingBlock, /await upsertCanonicalMessage\(\{/);
-  assert.doesNotMatch(processingBlock, /await appendCanonicalMessage\(\{/);
+  assert.match(processingBlock, /await upsertCanonicalMessageFast\(processingRequest\)/);
+  assert.match(processingBlock, /upsertCanonicalRequestIntoLocalState\(current, processingRequest\)/);
+  assert.doesNotMatch(processingBlock, /await (?:append|upsert)CanonicalMessage\(\{/);
   assert.match(processingBlock, /sourceTransport:\s*'cloud-group-agent'/);
   assert.match(processingBlock, /targetAccountIds\.map\(\(targetAccountId\) => client\.sendMessage/);
 });

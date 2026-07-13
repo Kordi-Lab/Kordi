@@ -10,7 +10,7 @@
     "bench:chat-scale": "tsx scripts/benchmark-chat-scale.ts",
     "check:bundle": "node scripts/check-js-chunk-budget.mjs",
     "typecheck": "tsc --noEmit",
-    "test:unit": "tsx --test tests/*.test.tsx",
+    "test:unit": "tsx --test tests/*.test.tsx && tsx --test --test-concurrency=1 tests/*.test.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "tauri:refresh-icon": "swift scripts/reshape-mac-icon.swift",
