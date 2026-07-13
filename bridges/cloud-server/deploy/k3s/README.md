@@ -89,7 +89,7 @@ curl <PUBLIC_TEST_CLOUD_API_BASE>/health
 
 ## Private desktop release storage
 
-Desktop release objects live in the private MinIO bucket `kordi-releases`. The Cloud server receives a dedicated read-only identity through Kubernetes Secret `kordi-release-reader`; the release publisher uses a separate write-without-delete identity stored in GCP Secret Manager. Neither identity reuses `minio-credentials` or the attachment bucket.
+Desktop release objects live in the private MinIO bucket `kordi-releases`. The Cloud server receives a dedicated read-only identity through Kubernetes Secret `kordi-release-reader`; the release publisher uses a separate identity stored in GCP Secret Manager. The publisher can create and read versioned objects and can delete only mutable `desktop/channels/*/latest.json` pointers for CAS-safe rollback and acceptance cleanup. It cannot delete immutable release objects. Neither identity reuses `minio-credentials` or the attachment bucket.
 
 After MinIO is running, provision or reconcile the scoped identities from a trusted operator machine:
 
@@ -100,7 +100,7 @@ export KORDI_CLOUD_GCP_PROJECT="hai-gcp-representation"
 bash bridges/cloud-server/deploy/k3s/create-release-credentials.sh
 ```
 
-The script creates no anonymous access. It verifies that the reader cannot write and that the publisher can write/read but cannot delete. Publisher values are stored under:
+The script creates no anonymous access. It verifies that the reader cannot write, that the publisher can write/read and delete channel pointers, and that the publisher cannot delete immutable versioned objects. Publisher values are stored under:
 
 - `kordi-release-publisher-access-key`
 - `kordi-release-publisher-secret-key`

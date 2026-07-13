@@ -95,6 +95,11 @@ test('credential and deploy scripts provision scoped users without logging crede
   assert.match(deploy, /rollout status statefulset\/minio/);
   assert.match(deploy, /release-store-check/);
   assert.ok(deploy.indexOf('release-store-check') < deploy.indexOf('rollout status deployment\/kordi-cloud-server'));
+  assert.match(deploy, /updates\/desktop\/darwin\/aarch64\/0\.0\.1-beta\.5/);
+  assert.match(deploy, /204/);
+  assert.match(deploy, /updates\/releases\/version/);
+  assert.match(deploy, /downloadUrl/);
+  assert.match(deploy, /https:\/\/coordinar\.io\/health/);
 });
 
 test('CI exercises release publisher contracts and the Cloud update server', async () => {

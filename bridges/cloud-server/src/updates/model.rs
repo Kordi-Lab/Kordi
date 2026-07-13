@@ -49,7 +49,7 @@ pub enum MetadataError {
     SchemaVersion,
     #[error("release version must be a semantic version")]
     Version,
-    #[error("release publication date must be RFC 3339")]
+    #[error("release publication date must be RFC 3339 UTC")]
     PublicationDate,
     #[error("release notes must not be empty")]
     Notes,
@@ -181,7 +181,11 @@ impl ReleaseManifest {
             return Err(MetadataError::SchemaVersion);
         }
         Version::parse(&self.version).map_err(|_| MetadataError::Version)?;
-        DateTime::parse_from_rfc3339(&self.pub_date).map_err(|_| MetadataError::PublicationDate)?;
+        let publication_date = DateTime::parse_from_rfc3339(&self.pub_date)
+            .map_err(|_| MetadataError::PublicationDate)?;
+        if publication_date.offset().local_minus_utc() != 0 {
+            return Err(MetadataError::PublicationDate);
+        }
         if self.notes.trim().is_empty() || self.notes.len() > 16_384 {
             return Err(MetadataError::Notes);
         }

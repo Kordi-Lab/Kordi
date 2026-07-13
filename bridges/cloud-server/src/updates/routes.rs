@@ -96,6 +96,38 @@ fn unavailable() -> Response {
     )
 }
 
+fn update_event_response(
+    mut response: Response,
+    correlation_id: &str,
+    channel: &str,
+    target: &str,
+    architecture: &str,
+    outcome: &str,
+    release_version: Option<&str>,
+    asset: Option<&ReleaseAsset>,
+) -> Response {
+    let safe_component = |value: &str| value.chars().take(64).collect::<String>();
+    let event = serde_json::json!({
+        "event": "desktop_update",
+        "correlationId": correlation_id,
+        "channel": channel,
+        "target": safe_component(target),
+        "architecture": safe_component(architecture),
+        "outcome": outcome,
+        "httpStatus": response.status().as_u16(),
+        "releaseVersion": release_version,
+        "sizeBytes": asset.map(|value| value.size_bytes),
+        "sha256": asset.map(|value| value.sha256.as_str()),
+    });
+    eprintln!("{event}");
+    if let Ok(value) = HeaderValue::from_str(correlation_id) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-kordi-update-id"), value);
+    }
+    response
+}
+
 fn public_base_url() -> String {
     let configured = std::env::var("KORDI_CLOUD_PUBLIC_BASE_URL")
         .ok()
@@ -140,28 +172,71 @@ async fn update_for_channel(
     arch: String,
     current_version: String,
 ) -> Response {
+    let correlation_id = uuid::Uuid::new_v4().to_string();
+    let respond = |response, outcome, release_version, asset| {
+        update_event_response(
+            response,
+            &correlation_id,
+            channel,
+            &target,
+            &arch,
+            outcome,
+            release_version,
+            asset,
+        )
+    };
     if !safe_route_component(&target) || !safe_route_component(&arch) {
-        return not_found();
+        return respond(not_found(), "invalid_platform", None, None);
     }
     let store = match release_store(&state) {
         Ok(store) => store,
-        Err(response) => return response,
+        Err(response) => return respond(response, "store_unconfigured", None, None),
     };
     let catalog = match store.load_channel(channel).await {
         Ok(Some(catalog)) => catalog,
-        Ok(None) => return StatusCode::NO_CONTENT.into_response(),
-        Err(_) => return unavailable(),
+        Ok(None) => {
+            return respond(
+                StatusCode::NO_CONTENT.into_response(),
+                "channel_unpublished",
+                None,
+                None,
+            )
+        }
+        Err(_) => return respond(unavailable(), "catalog_unavailable", None, None),
     };
     let decision = match select_update(&catalog.release, &target, &arch, &current_version) {
         Ok(decision) => decision,
-        Err(super::model::MetadataError::CurrentVersion) => return not_found(),
-        Err(_) => return unavailable(),
+        Err(super::model::MetadataError::CurrentVersion) => {
+            return respond(not_found(), "invalid_current_version", None, None)
+        }
+        Err(_) => return respond(unavailable(), "catalog_invalid", None, None),
     };
-    let UpdateDecision::Update(asset) = decision else {
-        return StatusCode::NO_CONTENT.into_response();
+    let asset = match decision {
+        UpdateDecision::Update(asset) => asset,
+        UpdateDecision::NoUpdate => {
+            return respond(
+                StatusCode::NO_CONTENT.into_response(),
+                "no_update",
+                Some(&catalog.release.version),
+                None,
+            )
+        }
+        UpdateDecision::Unsupported => {
+            return respond(
+                StatusCode::NO_CONTENT.into_response(),
+                "unsupported_platform",
+                Some(&catalog.release.version),
+                None,
+            )
+        }
     };
     let Some(signature) = asset.signature.clone() else {
-        return unavailable();
+        return respond(
+            unavailable(),
+            "signature_unavailable",
+            Some(&catalog.release.version),
+            Some(asset),
+        );
     };
     let url = format!(
         "{}/updates/releases/{}/{}",
@@ -169,17 +244,23 @@ async fn update_for_channel(
         catalog.release.version,
         asset.file_name
     );
-    (
+    let response = (
         [(header::CACHE_CONTROL, "no-store")],
         Json(TauriUpdateResponse {
-            version: catalog.release.version,
-            notes: catalog.release.notes,
-            pub_date: catalog.release.pub_date,
+            version: catalog.release.version.clone(),
+            notes: catalog.release.notes.clone(),
+            pub_date: catalog.release.pub_date.clone(),
             url,
             signature,
         }),
     )
-        .into_response()
+        .into_response();
+    respond(
+        response,
+        "update_available",
+        Some(&catalog.release.version),
+        Some(asset),
+    )
 }
 
 fn safe_route_component(value: &str) -> bool {
@@ -299,33 +380,25 @@ async fn asset_response(
 
 async fn legacy_release_version(State(state): State<Arc<ServerState>>) -> Response {
     let response = match state.release_store() {
-        None => legacy_environment_fallback(true),
+        None => legacy_environment_fallback(),
         Some(store) => match store.load_channel("beta").await {
             Ok(Some(catalog)) => LegacyReleaseVersionResponse {
                 version: catalog.release.version,
-                changelog_url: catalog.release.changelog_url,
-                download_url: Some(format!(
-                    "{}/updates/releases/latest/Kordi.dmg",
-                    public_base_url()
-                )),
-                signature: catalog
-                    .release
-                    .platforms
-                    .values()
-                    .find_map(|asset| asset.signature.clone()),
+                changelog_url: format!("{}/updates/releases/latest/Kordi.dmg", public_base_url()),
+                download_url: None,
+                signature: None,
                 install_command: Some(
-                    "Download, install, and relaunch Kordi automatically from coordinar.io."
+                    "Download Kordi from coordinar.io and drag it to Applications once."
                         .to_string(),
                 ),
             },
-            Ok(None) => legacy_environment_fallback(true),
-            Err(_) => legacy_environment_fallback(false),
+            Ok(None) | Err(_) => legacy_environment_fallback(),
         },
     };
     ([(header::CACHE_CONTROL, "no-store")], Json(response)).into_response()
 }
 
-fn legacy_environment_fallback(allow_download: bool) -> LegacyReleaseVersionResponse {
+fn legacy_environment_fallback() -> LegacyReleaseVersionResponse {
     let optional_env = |name: &str| {
         std::env::var(name)
             .ok()
@@ -337,12 +410,11 @@ fn legacy_environment_fallback(allow_download: bool) -> LegacyReleaseVersionResp
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
         changelog_url: optional_env("KORDI_RELEASE_CHANGELOG_URL")
             .unwrap_or_else(|| "https://coordinar.io/updates/releases/version".to_string()),
-        download_url: allow_download
-            .then(|| optional_env("KORDI_RELEASE_DOWNLOAD_URL"))
-            .flatten(),
-        signature: allow_download
-            .then(|| optional_env("KORDI_RELEASE_SIGNATURE"))
-            .flatten(),
+        // The shipped beta.5 client treats any downloadUrl as authorization to
+        // invoke its legacy unverified native installer. Keep these fields absent
+        // so beta.5 can only open changelogUrl for the one-time manual bootstrap.
+        download_url: None,
+        signature: None,
         install_command: optional_env("KORDI_RELEASE_INSTALL_COMMAND"),
     }
 }

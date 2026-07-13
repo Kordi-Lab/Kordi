@@ -22,6 +22,33 @@ use super::store::{
     ReleaseCatalogStore, ReleaseObjectStream, ReleaseStoreBackend, ReleaseStoreError,
 };
 
+#[derive(Debug, PartialEq, Eq)]
+enum Beta5ConfirmationAction {
+    NativeInstaller(String),
+    OpenProductUrl(String),
+    None,
+}
+
+fn shipped_beta5_confirmation_action(json: &serde_json::Value) -> Beta5ConfirmationAction {
+    if let Some(download_url) = json
+        .get("downloadUrl")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Beta5ConfirmationAction::NativeInstaller(download_url.to_string());
+    }
+    if let Some(changelog_url) = json
+        .get("changelogUrl")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Beta5ConfirmationAction::OpenProductUrl(changelog_url.to_string());
+    }
+    Beta5ConfirmationAction::None
+}
+
 #[derive(Default)]
 struct MemoryBackend {
     objects: Mutex<HashMap<String, Bytes>>,
@@ -165,6 +192,13 @@ async fn valid_beta_channel_returns_exact_tauri_manifest() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+    let correlation_id = response
+        .headers()
+        .get("x-kordi-update-id")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    uuid::Uuid::parse_str(correlation_id).unwrap();
     assert_eq!(
         body_json(response).await,
         serde_json::json!({
@@ -356,7 +390,7 @@ async fn traversal_unknown_and_unlisted_artifacts_return_404() {
 }
 
 #[tokio::test]
-async fn legacy_metadata_comes_from_the_same_validated_beta_catalog() {
+async fn beta5_legacy_metadata_uses_only_the_manual_product_download_path() {
     let backend = Arc::new(MemoryBackend::default());
     let release = seed_release(&backend, "0.0.1-beta.6", "beta");
     let response = test_router(backend)
@@ -372,15 +406,16 @@ async fn legacy_metadata_comes_from_the_same_validated_beta_catalog() {
     let json = body_json(response).await;
     assert_eq!(json["version"], release.version);
     assert_eq!(
-        json["downloadUrl"],
+        json["changelogUrl"],
         "https://coordinar.io/updates/releases/latest/Kordi.dmg"
     );
+    assert!(json.get("downloadUrl").is_none());
+    assert!(json.get("signature").is_none());
     assert_eq!(
-        json["signature"],
-        release.platforms["darwin-aarch64"]
-            .signature
-            .as_deref()
-            .unwrap()
+        shipped_beta5_confirmation_action(&json),
+        Beta5ConfirmationAction::OpenProductUrl(
+            "https://coordinar.io/updates/releases/latest/Kordi.dmg".to_string()
+        )
     );
 }
 
@@ -390,7 +425,7 @@ fn environment_lock() -> &'static Mutex<()> {
 }
 
 #[tokio::test]
-async fn legacy_metadata_keeps_beta5_fallback_before_promotion_and_strips_download_on_corruption() {
+async fn legacy_metadata_never_authorizes_beta5_native_installation() {
     let _guard = environment_lock().lock().unwrap();
     unsafe {
         std::env::set_var("KORDI_RELEASE_VERSION", "0.0.1-beta.5");
@@ -419,9 +454,13 @@ async fn legacy_metadata_keeps_beta5_fallback_before_promotion_and_strips_downlo
         .unwrap();
     let fallback = body_json(fallback).await;
     assert_eq!(fallback["version"], "0.0.1-beta.5");
-    assert_eq!(
-        fallback["downloadUrl"],
-        "https://coordinar.io/legacy/Kordi.dmg"
+    assert!(fallback.get("downloadUrl").is_none());
+    assert!(fallback.get("signature").is_none());
+    assert_ne!(
+        shipped_beta5_confirmation_action(&fallback),
+        Beta5ConfirmationAction::NativeInstaller(
+            "https://coordinar.io/legacy/Kordi.dmg".to_string()
+        )
     );
 
     backend.put("desktop/channels/beta/latest.json", b"corrupt".as_slice());

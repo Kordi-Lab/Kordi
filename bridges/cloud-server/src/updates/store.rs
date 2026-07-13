@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures_util::{Stream, StreamExt};
 use rusty_s3::actions::{GetObject, HeadObject, S3Action};
 use rusty_s3::{Bucket, Credentials, UrlStyle};
@@ -250,6 +250,25 @@ fn parse_release_manifest(bytes: &[u8]) -> Result<ReleaseManifest, ReleaseStoreE
     Ok(release)
 }
 
+pub(super) async fn collect_bounded_metadata<S>(
+    stream: S,
+    max_bytes: usize,
+) -> Result<Bytes, ReleaseStoreError>
+where
+    S: Stream<Item = Result<Bytes, ReleaseStoreError>>,
+{
+    futures_util::pin_mut!(stream);
+    let mut collected = BytesMut::with_capacity(max_bytes.min(64 * 1024));
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if collected.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(ReleaseStoreError::MetadataTooLarge);
+        }
+        collected.extend_from_slice(&chunk);
+    }
+    Ok(collected.freeze())
+}
+
 pub struct MinioReleaseStore {
     config: ReleaseStoreConfig,
     client: reqwest::Client,
@@ -308,14 +327,13 @@ impl ReleaseStoreBackend for MinioReleaseStore {
         {
             return Err(ReleaseStoreError::MetadataTooLarge);
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|_| ReleaseStoreError::Unavailable)?;
-        if bytes.len() > max_bytes {
-            return Err(ReleaseStoreError::MetadataTooLarge);
-        }
-        Ok(bytes)
+        collect_bounded_metadata(
+            response
+                .bytes_stream()
+                .map(|chunk| chunk.map_err(|_| ReleaseStoreError::Unavailable)),
+            max_bytes,
+        )
+        .await
     }
 
     async fn head_object(&self, key: &str) -> Result<u64, ReleaseStoreError> {

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -10,11 +11,31 @@ use sha2::{Digest, Sha256};
 
 use super::model::{ChannelPointer, ReleaseAsset, ReleaseManifest};
 use super::store::{
-    ReleaseCatalogStore, ReleaseObjectStream, ReleaseStoreBackend, ReleaseStoreConfig,
-    ReleaseStoreError, MAX_RELEASE_METADATA_BYTES,
+    collect_bounded_metadata, ReleaseCatalogStore, ReleaseObjectStream, ReleaseStoreBackend,
+    ReleaseStoreConfig, ReleaseStoreError, MAX_RELEASE_METADATA_BYTES,
 };
 
 const VERSION: &str = "0.0.1-beta.6";
+
+#[tokio::test]
+async fn metadata_stream_stops_as_soon_as_the_limit_is_exceeded() {
+    let emitted = Arc::new(AtomicUsize::new(0));
+    let counter = emitted.clone();
+    let chunks = stream::iter([
+        Ok(Bytes::from_static(b"123456")),
+        Ok(Bytes::from_static(b"789012")),
+        Ok(Bytes::from_static(b"must-not-be-read")),
+    ])
+    .inspect(move |_| {
+        counter.fetch_add(1, Ordering::SeqCst);
+    });
+
+    assert_eq!(
+        collect_bounded_metadata(chunks, 10).await.unwrap_err(),
+        ReleaseStoreError::MetadataTooLarge
+    );
+    assert_eq!(emitted.load(Ordering::SeqCst), 2);
+}
 
 #[derive(Default)]
 struct MemoryBackend {

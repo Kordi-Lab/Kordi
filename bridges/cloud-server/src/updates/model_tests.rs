@@ -80,6 +80,14 @@ fn release_rejects_invalid_version_date_size_digest_and_signature() {
         .contains("RFC 3339"));
 
     let mut candidate = release();
+    candidate.pub_date = "2026-07-13T08:00:00+08:00".to_string();
+    assert!(candidate
+        .validate()
+        .unwrap_err()
+        .to_string()
+        .contains("UTC"));
+
+    let mut candidate = release();
     candidate.manual.size_bytes = 0;
     assert!(candidate
         .validate()

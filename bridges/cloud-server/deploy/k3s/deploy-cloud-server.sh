@@ -22,6 +22,7 @@ SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE to the operator-provi
 REMOTE_DEPLOY="${KORDI_CLOUD_REMOTE_DIR:-\$HOME/kordi-cloud-server-deploy}"
 IMAGE_TAG="${KORDI_CLOUD_IMAGE_TAG:-dev-$(date +%Y%m%d-%H%M%S)}"
 IMAGE="docker.io/library/kordi-cloud-server:${IMAGE_TAG}"
+EXPECT_UNPUBLISHED_RELEASE="${KORDI_EXPECT_DESKTOP_RELEASE_UNPUBLISHED:-true}"
 
 echo "[deploy] image tag: ${IMAGE_TAG}"
 echo "[deploy] image ref: ${IMAGE}"
@@ -105,5 +106,30 @@ echo "[deploy] verifying /health from inside the cluster"
 gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --command "kubectl -n kordi-cloud get pods,svc -l app.kubernetes.io/name=kordi-cloud-server -o wide
 kubectl -n kordi-cloud run hc-${IMAGE_TAG} -i --rm --restart=Never --image=curlimages/curl:8.10.1 --quiet -- \
     -sS http://kordi-cloud-server.kordi-cloud.svc.cluster.local:17081/health"
+
+echo "[deploy] verifying safe legacy updater fallback"
+gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --command "kubectl -n kordi-cloud run legacy-${IMAGE_TAG} -i --rm --restart=Never --image=curlimages/curl:8.10.1 --quiet --command -- sh -c '
+set -eu
+BASE=http://kordi-cloud-server.kordi-cloud.svc.cluster.local:17081
+LEGACY=\$(curl -fsS \"\$BASE/updates/releases/version\")
+printf %s \"\$LEGACY\" | grep -q '\"version\":\"0.0.1-beta.'
+if printf %s \"\$LEGACY\" | grep -q '\"downloadUrl\"'; then
+  echo legacy-response-must-not-authorize-native-installation >&2
+  exit 1
+fi
+echo legacy-manual-bootstrap-ready
+'"
+
+if [ "${EXPECT_UNPUBLISHED_RELEASE}" = "true" ]; then
+    echo "[deploy] verifying unpublished beta channel returns 204"
+    UPDATE_STATUS="$(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --command "kubectl -n kordi-cloud run updater-${IMAGE_TAG} -i --rm --restart=Never --image=curlimages/curl:8.10.1 --quiet -- -sS -o /dev/null -w '%{http_code}' http://kordi-cloud-server.kordi-cloud.svc.cluster.local:17081/updates/desktop/darwin/aarch64/0.0.1-beta.5")"
+    if [ "${UPDATE_STATUS}" != "204" ]; then
+        echo "[deploy] expected unpublished updater status 204, got ${UPDATE_STATUS}" >&2
+        exit 1
+    fi
+fi
+
+echo "[deploy] verifying public product health"
+curl --fail --silent --show-error https://coordinar.io/health >/dev/null
 
 echo "[deploy] done. image=${IMAGE}"
