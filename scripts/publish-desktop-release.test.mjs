@@ -8,6 +8,7 @@ import {
   prepareDesktopRelease,
   publishDesktopRelease,
   redactPublisherText,
+  releaseTreeScanArguments,
   verifyTauriUpdaterSignature,
 } from './lib/desktop-release.mjs';
 import {
@@ -385,6 +386,14 @@ test('publisher error redaction removes credentials, signing material, and inter
   for (const secret of Object.values(env)) assert.doesNotMatch(redacted, new RegExp(secret));
   assert.doesNotMatch(redacted, /minio|svc\.cluster\.local/i);
   assert.match(redacted, /REDACTED/);
+});
+
+test('privacy scanning includes ignored build outputs and every mounted release file', () => {
+  const args = releaseTreeScanArguments('/tmp/Kordi.app');
+  assert.ok(args.includes('--no-ignore'));
+  assert.ok(args.includes('--hidden'));
+  assert.ok(args.includes('--text'));
+  assert.equal(args.at(-1), '/tmp/Kordi.app');
 });
 
 test('publisher CLI requires the exact release inputs and accepts pnpm separators', () => {

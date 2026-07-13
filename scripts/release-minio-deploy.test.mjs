@@ -12,6 +12,7 @@ const readerPolicyPath = new URL('../bridges/cloud-server/deploy/k3s/policies/ko
 const publisherPolicyPath = new URL('../bridges/cloud-server/deploy/k3s/policies/kordi-releases-publisher.json', import.meta.url);
 const credentialScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
 const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh', import.meta.url);
+const ciWorkflowPath = new URL('../.github/workflows/ci.yml', import.meta.url);
 
 function policyActions(policy) {
   return policy.Statement.flatMap((statement) => statement.Action);
@@ -94,4 +95,11 @@ test('credential and deploy scripts provision scoped users without logging crede
   assert.match(deploy, /rollout status statefulset\/minio/);
   assert.match(deploy, /release-store-check/);
   assert.ok(deploy.indexOf('release-store-check') < deploy.indexOf('rollout status deployment\/kordi-cloud-server'));
+});
+
+test('CI exercises release publisher contracts and the Cloud update server', async () => {
+  const workflow = await readFile(ciWorkflowPath, 'utf8');
+
+  assert.match(workflow, /run: pnpm test:scripts/);
+  assert.match(workflow, /run: cargo test -p kordi-cloud-server/);
 });

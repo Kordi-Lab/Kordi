@@ -561,17 +561,22 @@ function assertSignedApp(run, appBundle) {
   requireRun(run, 'spctl', ['--assess', '--type', 'execute', '--verbose=2', appBundle], 'Gatekeeper assessment failed');
 }
 
-function scanAppBundle(run, appBundle) {
-  const args = ['--text', '--hidden', '--no-messages', '-n'];
+export function releaseTreeScanArguments(root) {
+  const args = ['--text', '--hidden', '--no-ignore', '--no-messages', '-n'];
   for (const pattern of SENSITIVE_PATTERNS) args.push('-e', pattern);
-  args.push(appBundle);
+  args.push(root);
+  return args;
+}
+
+function scanReleaseTree(run, root) {
+  const args = releaseTreeScanArguments(root);
   const privacy = run('rg', args);
   if (privacy.status === 0) throw new Error('Release privacy scan found a forbidden value');
   if (privacy.status !== 1) throw new Error('Release privacy scan could not inspect the application bundle');
   requireRun(
     run,
     'rg',
-    ['--text', '--hidden', '--no-messages', '-l', '-e', 'https://coordinar\\.io|coordinar\\.io', appBundle],
+    ['--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-e', 'https://coordinar\\.io|coordinar\\.io', root],
     'Application bundle does not contain the coordinar.io product origin',
   );
 }
@@ -602,7 +607,7 @@ async function inspectUpdaterArchive(run, updaterPath, version) {
     if (!archivedApp) throw new Error('Tauri updater archive does not contain Kordi.app');
     assertAppVersion(run, archivedApp, version);
     assertSignedApp(run, archivedApp);
-    scanAppBundle(run, archivedApp);
+    scanReleaseTree(run, archivedApp);
   } finally {
     await rm(extractDir, { recursive: true, force: true });
   }
@@ -630,7 +635,7 @@ export function createProductionVerifier({ repoRoot = REPO_ROOT, run = defaultRu
       verifyTauriUpdaterSignature(input.updaterBytes, input.signature, input.updaterPublicKey);
       assertAppVersion(run, input.appBundle, input.version);
       assertSignedApp(run, input.appBundle);
-      scanAppBundle(run, input.appBundle);
+      scanReleaseTree(run, input.appBundle);
       await inspectUpdaterArchive(run, input.updaterPath, input.version);
 
       const mounted = mountDmg(input.manualPath);
@@ -639,7 +644,7 @@ export function createProductionVerifier({ repoRoot = REPO_ROOT, run = defaultRu
         const mountedApp = join(mounted.mountPoint, 'Kordi.app');
         assertAppVersion(run, mountedApp, input.version);
         assertSignedApp(run, mountedApp);
-        scanAppBundle(run, mountedApp);
+        scanReleaseTree(run, mounted.mountPoint);
       } finally {
         detachDmg(mounted.device);
       }

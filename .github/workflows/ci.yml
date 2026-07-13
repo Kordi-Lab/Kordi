@@ -38,6 +38,9 @@ jobs:
       - name: Unit test desktop
         run: pnpm --dir app/desktop test:unit
 
+      - name: Test repository scripts
+        run: pnpm test:scripts
+
       - name: Typecheck desktop
         run: pnpm --dir app/desktop typecheck
 
@@ -83,6 +86,9 @@ jobs:
 
       - name: Test desktop Tauri crate
         run: cargo test -p kordi-desktop --no-default-features
+
+      - name: Test Cloud server
+        run: cargo test -p kordi-cloud-server
 
   hygiene:
     name: Repository hygiene
