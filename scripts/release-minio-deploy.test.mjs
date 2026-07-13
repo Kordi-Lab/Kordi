@@ -85,6 +85,47 @@ function extractIdentityBootstrapCommand(source) {
     .join('\n');
 }
 
+async function renderLegacyUpdaterVerificationCommand(source, directory) {
+  const marker = 'echo "[deploy] verifying safe legacy updater fallback"';
+  const commandStart = source.indexOf(marker);
+  const commandEnd = source.indexOf('\n\nif [ "${EXPECT_UNPUBLISHED_RELEASE}"', commandStart);
+  assert.notEqual(commandStart, -1, 'legacy updater verification must exist');
+  assert.notEqual(commandEnd, -1, 'legacy updater verification must end before the native updater check');
+
+  const snippetPath = join(directory, 'legacy-updater-verification.sh');
+  const capturePath = join(directory, 'remote-command');
+  await writeFile(snippetPath, source.slice(commandStart, commandEnd));
+  await execFileAsync(
+    'bash',
+    [
+      '-c',
+      `set -euo pipefail
+       SSH_TARGET=test-host
+       SSH_ZONE=test-zone
+       IMAGE_TAG=test-image
+       gcloud() {
+         command=
+         while [ "$#" -gt 0 ]; do
+           case "$1" in
+             --command)
+               command="$2"
+               shift 2
+               ;;
+             *) shift ;;
+           esac
+         done
+         test -n "$command"
+         printf '%s' "$command" >"$CAPTURE_PATH"
+       }
+       source "$1"`,
+      'render-legacy-updater-verification',
+      snippetPath,
+    ],
+    { encoding: 'utf8', env: { ...process.env, CAPTURE_PATH: capturePath } },
+  );
+  return readFile(capturePath, 'utf8');
+}
+
 test('MinIO bootstrap creates private attachment and release buckets', async () => {
   const source = await readFile(minioPath, 'utf8');
   const documents = YAML.parseAllDocuments(source).map((document) => document.toJSON());
@@ -277,6 +318,52 @@ exit 0
     }),
     (error) => {
       assert.match(error.stderr, /release bucket must remain private/);
+      return true;
+    },
+  );
+});
+
+test('legacy updater verification executes its exact remote shell contract', async (t) => {
+  const deploy = await readFile(deployScriptPath, 'utf8');
+  const directory = await mkdtemp(join(tmpdir(), 'kordi-release-legacy-verification-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const command = await renderLegacyUpdaterVerificationCommand(deploy, directory);
+
+  const kubectlPath = join(directory, 'kubectl');
+  const curlPath = join(directory, 'curl');
+  await writeFile(
+    kubectlPath,
+    `#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--" ]; then
+    shift
+    exec "$@"
+  fi
+  shift
+done
+exit 64
+`,
+  );
+  await writeFile(curlPath, '#!/bin/sh\nprintf \'%s\\n\' "$LEGACY_UPDATE_FIXTURE"\n');
+  await chmod(kubectlPath, 0o700);
+  await chmod(curlPath, 0o700);
+
+  const env = {
+    ...process.env,
+    PATH: `${directory}:/usr/bin:/bin`,
+    LEGACY_UPDATE_FIXTURE: '{"version":"0.0.1-beta.5","notes":"manual update only"}',
+  };
+  const safe = await execFileAsync('/bin/bash', ['-c', command], { encoding: 'utf8', env });
+  assert.equal(safe.stdout, 'legacy-manual-bootstrap-ready\n');
+  assert.equal(safe.stderr, '');
+
+  await assert.rejects(
+    execFileAsync('/bin/bash', ['-c', command], {
+      encoding: 'utf8',
+      env: { ...env, LEGACY_UPDATE_FIXTURE: '{"version":"0.0.1-beta.5","downloadUrl":"https://unsafe.invalid/app.dmg"}' },
+    }),
+    (error) => {
+      assert.match(error.stderr, /legacy-response-must-not-authorize-native-installation/);
       return true;
     },
   );
