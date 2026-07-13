@@ -58,6 +58,7 @@ async function remoteSecretStateFixture(mode) {
          case "$REMOTE_MODE" in
            present) printf '%s\\n' 'secret/kordi-release-reader' ;;
            absent) return 0 ;;
+           unexpected) printf '%s\\n' 'configmap/kordi-release-reader' ;;
            error) return 42 ;;
          esac
        }
@@ -144,6 +145,7 @@ test('credential and deploy scripts provision scoped users without logging crede
   assert.match(credentials, /gcloud secrets versions add "kordi-release-publisher-access-key"/);
   assert.match(credentialUtils, /tr -d '\\r\\n'/);
   assert.match(credentialUtils, /chmod 600/);
+  assert.match(credentialUtils, /--ignore-not-found -o name/);
   assert.match(credentials, /kordi-release-reader/);
   assert.match(credentials, /kordi-release-publisher-access-key/);
   assert.match(credentials, /kordi-release-publisher-secret-key/);
@@ -221,6 +223,12 @@ test('remote reader-secret discovery distinguishes absence from transport failur
     assert.match(error.stderr, /unable to query release reader secret/);
     return true;
   });
+
+  await assert.rejects(remoteSecretStateFixture('unexpected'), (error) => {
+    assert.notEqual(error.code, 0);
+    assert.match(error.stderr, /unexpected result/);
+    return true;
+  });
 });
 
 test('identity bootstrap runs in the minimal mc image without grep', async (t) => {
@@ -233,7 +241,7 @@ test('identity bootstrap runs in the minimal mc image without grep', async (t) =
     mcPath,
     `#!/bin/sh
 case "$*" in
-  'anonymous get '*) printf '%s\\n' 'Access permission for root/kordi-releases is none' ;;
+  'anonymous get '*) printf '%s\\n' 'Access permission for \`root/kordi-releases\` is \`private\`' ;;
   *'pipe reader/'*) exit 1 ;;
   'rm publisher/'*) exit 1 ;;
   'rm --force root/'*) exit 0 ;;

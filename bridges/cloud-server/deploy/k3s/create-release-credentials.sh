@@ -221,7 +221,7 @@ spec:
               mc admin policy attach root kordi-releases-publisher --user "$PUBLISHER_ACCESS_KEY" >/dev/null
               anonymous_access="$(mc anonymous get root/kordi-releases)"
               case "$anonymous_access" in
-                *none*|*None*|*NONE*|*disabled*|*Disabled*|*DISABLED*) ;;
+                *private*|*Private*|*PRIVATE*|*none*|*None*|*NONE*|*disabled*|*Disabled*|*DISABLED*) ;;
                 *)
                   echo "release bucket must remain private" >&2
                   exit 1
