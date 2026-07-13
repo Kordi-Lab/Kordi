@@ -168,15 +168,13 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
 }
 
 pub(super) fn ensure_local_profile(conn: &Connection) -> Result<CanonicalLocalProfile, String> {
-    let root = canonical_storage_root();
-    let storage_root = root.display().to_string();
-    let profile_id = stable_profile_id(&root);
-    if let Some(profile) = select_local_profile(conn, &profile_id)? {
-        return Ok(profile);
-    }
     if let Some(profile) = select_first_local_profile(conn)? {
         return Ok(profile);
     }
+
+    let root = canonical_storage_root();
+    let storage_root = root.display().to_string();
+    let profile_id = stable_profile_id(&root);
 
     let now = now_ms();
     conn.execute(

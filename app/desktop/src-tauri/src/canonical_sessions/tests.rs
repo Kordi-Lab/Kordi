@@ -821,8 +821,22 @@ fn local_profile_remains_bound_to_an_initialized_connection_when_storage_root_ch
     let original_human_id =
         local_profile_human_identity_id(&conn, "Original Profile").expect("local profile");
     let original_profile = schema::ensure_local_profile(&conn).expect("original profile");
+    let changed_root = storage.root().join("changed-root");
+    let changed_profile_id = stable_profile_id(&changed_root);
+    conn.execute(
+        "INSERT INTO local_profile(
+             id, display_name, human_identity_id, active_agent_identity_id,
+             storage_root, created_at_ms, updated_at_ms
+         ) VALUES(?1, 'Raced Profile', NULL, NULL, ?2, ?3, ?3)",
+        params![
+            changed_profile_id,
+            changed_root.display().to_string(),
+            now_ms()
+        ],
+    )
+    .expect("seed second profile left by the old environment race");
 
-    std::env::set_var("KORDI_STORAGE_ROOT", storage.root().join("changed-root"));
+    std::env::set_var("KORDI_STORAGE_ROOT", &changed_root);
 
     let profile_after_change =
         schema::ensure_local_profile(&conn).expect("profile after process root change");
