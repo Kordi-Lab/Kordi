@@ -12,12 +12,16 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::attachments::S3Config;
 use crate::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter, RateLimiterError};
 use crate::events::{EventBus, EventBusError};
-use crate::pg::{PgPoolError, init_pool};
+use crate::pg::{init_pool, PgPoolError};
+use crate::updates::store::{
+    MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
+};
 
 pub struct ServerState {
     pool: PgPool,
     events: EventBus,
     s3: Option<S3Config>,
+    release_store: Option<ReleaseCatalogStore>,
 }
 
 impl ServerState {
@@ -26,11 +30,17 @@ impl ServerState {
             pool,
             events,
             s3: None,
+            release_store: None,
         }
     }
 
     pub fn with_s3(mut self, s3: S3Config) -> Self {
         self.s3 = Some(s3);
+        self
+    }
+
+    pub fn with_release_store(mut self, release_store: ReleaseCatalogStore) -> Self {
+        self.release_store = Some(release_store);
         self
     }
 
@@ -44,6 +54,10 @@ impl ServerState {
 
     pub fn s3(&self) -> Option<&S3Config> {
         self.s3.as_ref()
+    }
+
+    pub fn release_store(&self) -> Option<&ReleaseCatalogStore> {
+        self.release_store.as_ref()
     }
 }
 
@@ -313,6 +327,24 @@ pub async fn run(
     } else {
         println!(
             "Kordi cloud server starting without S3 (attachments disabled — set S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY)"
+        );
+    }
+    if let Some(config) = ReleaseStoreConfig::from_env() {
+        match MinioReleaseStore::new(config) {
+            Ok(backend) => {
+                println!("Kordi cloud server release store configured (bucket=kordi-releases)");
+                state = state.with_release_store(ReleaseCatalogStore::new(Arc::new(backend)));
+            }
+            Err(ReleaseStoreError::Unavailable) => {
+                println!("Kordi cloud server release store is unavailable");
+            }
+            Err(_) => {
+                println!("Kordi cloud server release store configuration was rejected");
+            }
+        }
+    } else {
+        println!(
+            "Kordi cloud server starting without desktop release storage (set KORDI_RELEASE_S3_ENDPOINT, KORDI_RELEASE_S3_BUCKET, KORDI_RELEASE_S3_ACCESS_KEY, KORDI_RELEASE_S3_SECRET_KEY)"
         );
     }
     let state = Arc::new(state);

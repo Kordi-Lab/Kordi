@@ -2747,6 +2747,7 @@ dependencies = [
  "aes-gcm",
  "argon2",
  "async-nats",
+ "async-trait",
  "axum",
  "base64 0.22.1",
  "bs58",
