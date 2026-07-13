@@ -224,15 +224,20 @@ impl ReleaseCatalogStore {
         &self,
         asset: &ReleaseAsset,
     ) -> Result<ReleaseObjectStream, ReleaseStoreError> {
-        let stored_size = self.backend.head_object(&asset.object_key).await?;
-        if stored_size != asset.size_bytes {
-            return Err(ReleaseStoreError::LengthMismatch);
-        }
+        self.verify_asset_size(asset).await?;
         let stream = self.backend.stream_object(&asset.object_key).await?;
         if stream.size_bytes != asset.size_bytes {
             return Err(ReleaseStoreError::LengthMismatch);
         }
         Ok(stream)
+    }
+
+    pub async fn verify_asset_size(&self, asset: &ReleaseAsset) -> Result<(), ReleaseStoreError> {
+        let stored_size = self.backend.head_object(&asset.object_key).await?;
+        if stored_size != asset.size_bytes {
+            return Err(ReleaseStoreError::LengthMismatch);
+        }
+        Ok(())
     }
 }
 
