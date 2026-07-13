@@ -102,6 +102,7 @@ export type CloudMessageDirection = 'incoming' | 'outgoing';
 
 export type CloudMessageAttachment = {
   attachmentId: string;
+  previewAttachmentId?: string | null;
   name: string;
   kind: 'image' | 'file';
   mimeType: string | null;
@@ -753,7 +754,7 @@ export class CloudAuthClient {
     return response?.run ?? null;
   }
 
-  async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[]; clientCreatedAt?: string | null } = {}): Promise<CloudMessage> {
+  async sendMessage(token: string, peerAccountId: string, body: string, options: { sessionId?: string | null; attachments?: SendCloudMessageAttachmentInput[]; clientCreatedAt?: string | null; clientMessageId?: string | null } = {}): Promise<CloudMessage> {
     const trimmedSessionId = options.sessionId?.trim() ?? '';
     const attachments = options.attachments ?? [];
     const response = await this.send<{ message: CloudMessage }>(
@@ -767,6 +768,7 @@ export class CloudAuthClient {
           ...(trimmedSessionId ? { sessionId: trimmedSessionId } : {}),
           ...(attachments.length > 0 ? { attachments } : {}),
           ...(options.clientCreatedAt?.trim() ? { clientCreatedAt: options.clientCreatedAt.trim() } : {}),
+          ...(options.clientMessageId?.trim() ? { clientMessageId: options.clientMessageId.trim() } : {}),
         }),
       },
       'Could not send message.',
@@ -845,12 +847,13 @@ export class CloudAuthClient {
     );
   }
 
-  async downloadAttachmentContent(token: string, attachmentId: string): Promise<Blob> {
+  async downloadAttachmentContent(token: string, attachmentId: string, signal?: AbortSignal): Promise<Blob> {
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.baseUrl}/v1/cloud/attachments/${encodeURIComponent(attachmentId)}/content`, {
         method: 'GET',
         headers: { authorization: `Bearer ${token}` },
+        signal,
       });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Network request failed.';

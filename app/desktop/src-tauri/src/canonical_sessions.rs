@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -549,7 +549,7 @@ fn self_participant_identity_id(
 pub(super) fn mark_session_read_in_db(
     conn: &Connection,
     request: MarkCanonicalSessionReadRequest,
-) -> Result<(), String> {
+) -> Result<Option<CanonicalReadCursorDelta>, String> {
     let session_id = request.session_id.trim();
     if session_id.is_empty() {
         return Err("Session id is required".to_string());
@@ -567,7 +567,7 @@ pub(super) fn mark_session_read_in_db(
         .or(profile.human_identity_id.as_deref());
     let Some(identity_id) = self_participant_identity_id(conn, session_id, preferred_identity_id)?
     else {
-        return Ok(());
+        return Ok(None);
     };
 
     let message_id = request
@@ -578,15 +578,71 @@ pub(super) fn mark_session_read_in_db(
         .map(ToString::to_string)
         .or(latest_readable_session_message_id(conn, session_id)?);
     let now = now_ms();
-    conn.execute(
-        "UPDATE session_participants
-         SET last_seen_at_ms = ?1,
-             last_read_message_id = COALESCE(?2, last_read_message_id)
-         WHERE session_id = ?3 AND identity_id = ?4 AND role = 'self'",
-        params![now, message_id, session_id, identity_id],
-    )
-    .map_err(|err| err.to_string())?;
-    Ok(())
+    let updated_cursor = conn
+        .query_row(
+            "WITH target_message AS (
+                SELECT id, sequence_num
+                FROM session_messages
+                WHERE id = ?2
+                  AND session_id = ?3
+                  AND COALESCE(source_transport, '') NOT IN (
+                      'canonical-fork-snapshot',
+                      'cloud-group-fork-snapshot'
+                  )
+                  AND LOWER(TRIM(status)) NOT IN ('sending', 'processing')
+             )
+             UPDATE session_participants AS participant
+             SET last_seen_at_ms = MAX(COALESCE(participant.last_seen_at_ms, 0), ?1),
+                 last_read_message_id = CASE
+                     WHEN ?2 IS NULL THEN participant.last_read_message_id
+                     WHEN COALESCE(
+                         (
+                             SELECT target.sequence_num >= current.sequence_num
+                             FROM target_message AS target
+                             LEFT JOIN session_messages AS current
+                               ON current.id = participant.last_read_message_id
+                              AND current.session_id = participant.session_id
+                         ),
+                         1
+                     ) THEN ?2
+                     ELSE participant.last_read_message_id
+                 END
+             WHERE participant.session_id = ?3
+               AND participant.identity_id = ?4
+               AND participant.role = 'self'
+               AND (?2 IS NULL OR EXISTS(SELECT 1 FROM target_message))
+             RETURNING last_seen_at_ms, last_read_message_id,
+                 (
+                     SELECT current.sequence_num
+                     FROM session_messages AS current
+                     WHERE current.id = last_read_message_id
+                       AND current.session_id = ?3
+                 )",
+            params![now, message_id, session_id, identity_id],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    let Some((last_seen_at_ms, last_read_message_id, last_read_sequence_num)) = updated_cursor
+    else {
+        if message_id.is_some() {
+            return Err("Message is not readable in this session".to_string());
+        }
+        return Ok(None);
+    };
+    Ok(Some(CanonicalReadCursorDelta {
+        session_id: session_id.to_string(),
+        identity_id,
+        last_seen_at_ms,
+        last_read_message_id,
+        last_read_sequence_num,
+    }))
 }
 
 /// Trust boundary: this helper does not authorize the (session_id, message_id)
@@ -1221,7 +1277,8 @@ fn update_identity_references(
     let participant_rows = {
         let mut stmt = conn
             .prepare(
-                "SELECT session_id, role, added_by_identity_id, added_at_ms
+                "SELECT session_id, role, added_by_identity_id, added_at_ms,
+                        last_seen_at_ms, last_read_message_id, metadata_json
                  FROM session_participants
                  WHERE identity_id = ?1",
             )
@@ -1233,6 +1290,9 @@ fn update_identity_references(
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
                 ))
             })
             .map_err(|err| err.to_string())?;
@@ -1240,15 +1300,37 @@ fn update_identity_references(
             .map_err(|err| err.to_string())?
     };
 
-    for (session_id, role, added_by, added_at_ms) in participant_rows {
-        upsert_participant(
-            conn,
-            &session_id,
-            new_identity_id,
-            &role,
-            added_by.as_deref(),
-            added_at_ms,
-        )?;
+    for (
+        session_id,
+        role,
+        added_by,
+        added_at_ms,
+        last_seen_at_ms,
+        last_read_message_id,
+        metadata_json,
+    ) in participant_rows
+    {
+        conn.execute(
+            "INSERT INTO session_participants(
+                 session_id, identity_id, role, state, added_by_identity_id, added_at_ms,
+                 last_seen_at_ms, last_read_message_id, metadata_json
+             )
+             VALUES(?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(session_id, identity_id) DO UPDATE SET
+                 role = CASE WHEN session_participants.role = 'self' THEN session_participants.role ELSE excluded.role END,
+                 state = 'active'",
+            params![
+                session_id,
+                new_identity_id,
+                role,
+                added_by,
+                added_at_ms,
+                last_seen_at_ms,
+                last_read_message_id,
+                metadata_json,
+            ],
+        )
+        .map_err(|err| err.to_string())?;
         if role == "self" {
             conn.execute(
                 "UPDATE session_participants SET role = 'self' WHERE session_id = ?1 AND identity_id = ?2",
@@ -1272,17 +1354,21 @@ fn update_identity_references(
 }
 
 pub(super) fn adopt_cloud_profile_identity_in_db(
-    conn: &Connection,
+    conn: &mut Connection,
     request: AdoptCloudProfileIdentityRequest,
-) -> Result<CanonicalIdentity, String> {
+) -> Result<CanonicalProfileIdentityDelta, String> {
     let account_id = request.account_id.trim().to_string();
     let stable_identity_id = stable_cloud_human_identity_id(&account_id)?;
     let display_name = request.display_name.trim();
     if display_name.is_empty() {
         return Err("Cloud profile display name is required".to_string());
     }
+    let profile_image_url = clean_optional(request.profile_image_url);
 
-    let profile = ensure_local_profile(conn)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|err| err.to_string())?;
+    let profile = ensure_local_profile(&tx)?;
     let previous_human_identity_id = profile
         .human_identity_id
         .as_deref()
@@ -1290,8 +1376,8 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
 
-    let identity = upsert_identity_in_db(
-        conn,
+    upsert_identity_in_db(
+        &tx,
         UpsertCanonicalIdentityRequest {
             id: Some(stable_identity_id.clone()),
             kind: "human".to_string(),
@@ -1303,24 +1389,31 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
             human_id: Some(account_id.clone()),
             agent_id: None,
             avatar_key: request.avatar_key.or_else(|| Some(account_id.clone())),
-            profile_image_url: request.profile_image_url,
+            profile_image_url: profile_image_url.clone(),
             metadata: Some(serde_json::json!({
                 "accountId": account_id,
                 "cloudProfileIdentity": true,
             })),
         },
     )?;
+    tx.execute(
+        "UPDATE identities SET profile_image_url = ?1 WHERE id = ?2",
+        params![profile_image_url.as_deref(), stable_identity_id],
+    )
+    .map_err(|err| err.to_string())?;
+    let identity = select_identity(&tx, &stable_identity_id)?
+        .ok_or_else(|| "Unable to refresh adopted cloud profile identity".to_string())?;
 
     if let Some(previous_id) = previous_human_identity_id.as_deref() {
-        update_identity_references(conn, previous_id, &stable_identity_id)?;
+        update_identity_references(&tx, previous_id, &stable_identity_id)?;
     }
-    conn.execute(
+    tx.execute(
         "UPDATE session_participants SET role = 'self' WHERE identity_id = ?1 AND state = 'active'",
         params![stable_identity_id],
     )
     .map_err(|err| err.to_string())?;
     let group_session_ids = {
-        let mut stmt = conn
+        let mut stmt = tx
             .prepare(
                 "SELECT s.id
                  FROM sessions s
@@ -1334,12 +1427,20 @@ pub(super) fn adopt_cloud_profile_identity_in_db(
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|err| err.to_string())?
     };
-    for session_id in group_session_ids {
-        enforce_only_local_group_self(conn, &session_id, &stable_identity_id)?;
+    for session_id in &group_session_ids {
+        enforce_only_local_group_self(&tx, session_id, &stable_identity_id)?;
     }
-    update_local_profile_identities(conn, Some(&stable_identity_id), None, Some(display_name))?;
+    update_local_profile_identities(&tx, Some(&stable_identity_id), None, Some(display_name))?;
 
-    Ok(identity)
+    let delta = CanonicalProfileIdentityDelta {
+        profile: ensure_local_profile(&tx)?,
+        identity,
+        previous_identity_id: previous_human_identity_id,
+        group_self_session_ids: group_session_ids,
+    };
+    tx.commit().map_err(|err| err.to_string())?;
+
+    Ok(delta)
 }
 
 fn update_local_profile_identities(
@@ -1585,6 +1686,23 @@ pub async fn desktop_canonical_session_state() -> Result<CanonicalSessionState, 
 }
 
 #[tauri::command]
+pub async fn desktop_canonical_session_catalog() -> Result<CanonicalSessionCatalog, String> {
+    run_canonical_blocking(commands::desktop_canonical_session_catalog).await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_session_messages(
+    session_id: String,
+    before_sequence_num: Option<i64>,
+    limit: Option<i64>,
+) -> Result<CanonicalMessagePage, String> {
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_session_messages(&session_id, before_sequence_num, limit)
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn desktop_canonical_upsert_identity(
     request: UpsertCanonicalIdentityRequest,
 ) -> Result<CanonicalSessionState, String> {
@@ -1594,7 +1712,7 @@ pub async fn desktop_canonical_upsert_identity(
 #[tauri::command]
 pub async fn desktop_canonical_adopt_cloud_profile_identity(
     request: AdoptCloudProfileIdentityRequest,
-) -> Result<CanonicalSessionState, String> {
+) -> Result<CanonicalProfileIdentityDelta, String> {
     run_canonical_blocking(move || {
         commands::desktop_canonical_adopt_cloud_profile_identity(request)
     })
@@ -1653,9 +1771,17 @@ pub async fn desktop_canonical_upsert_message_fast(
 }
 
 #[tauri::command]
+pub async fn desktop_canonical_update_message_delivery(
+    request: UpdateCanonicalMessageDeliveryRequest,
+) -> Result<Option<CanonicalMessageDeliveryDelta>, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_update_message_delivery(request))
+        .await
+}
+
+#[tauri::command]
 pub async fn desktop_canonical_append_message_fast(
     request: AppendCanonicalMessageRequest,
-) -> Result<String, String> {
+) -> Result<CanonicalSessionMessage, String> {
     run_canonical_blocking(move || commands::desktop_canonical_append_message_fast(request)).await
 }
 
@@ -1718,6 +1844,6 @@ pub async fn desktop_canonical_set_session_participant_role(
 #[tauri::command]
 pub async fn desktop_canonical_mark_session_read(
     request: MarkCanonicalSessionReadRequest,
-) -> Result<CanonicalSessionState, String> {
+) -> Result<Option<CanonicalReadCursorDelta>, String> {
     run_canonical_blocking(move || commands::desktop_canonical_mark_session_read(request)).await
 }

@@ -4,72 +4,42 @@ import test from 'node:test';
 
 import {
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
-  TRANSCRIPT_WINDOW_TAIL_COUNT,
-  TRANSCRIPT_WINDOW_THRESHOLD,
-  transcriptWindowRange,
-  transcriptWindowScrollAnchorIndex,
+  TRANSCRIPT_WINDOW_OVERSCAN,
+  transcriptWindowMessageIdentity,
+  transcriptWindowMessageMatchesId,
 } from '../src/features/chat/transcriptWindowing';
+import type { Message } from '../src/kordi-app/types';
 
-test('short transcripts render the full history without window spacers', () => {
-  assert.deepEqual(transcriptWindowRange(TRANSCRIPT_WINDOW_THRESHOLD), {
-    start: 0,
-    end: TRANSCRIPT_WINDOW_THRESHOLD,
-    windowed: false,
-  });
+function message(overrides: Partial<Message> = {}): Message {
+  return {
+    role: 'user',
+    text: 'hello',
+    time: '10:00',
+    ...overrides,
+  };
+}
+
+test('measured transcript virtualization uses a bounded overscan and conservative estimate', () => {
+  assert.equal(TRANSCRIPT_WINDOW_OVERSCAN, 12);
+  assert.equal(TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT, 74);
 });
 
-test('long transcripts initially mount only the recent tail window', () => {
-  const range = transcriptWindowRange(1000);
-
-  assert.equal(range.windowed, true);
-  assert.equal(range.end, 1000);
-  assert.equal(range.start, 1000 - TRANSCRIPT_WINDOW_TAIL_COUNT);
-  assert.equal(range.end - range.start, TRANSCRIPT_WINDOW_TAIL_COUNT);
+test('transcript message identity prefers stable persisted and runtime ids', () => {
+  assert.equal(transcriptWindowMessageIdentity(message({ id: 'message:1', entryId: 'entry:1' }), 4), 'message:1');
+  assert.equal(transcriptWindowMessageIdentity(message({ entryId: 'entry:1' }), 4), 'entry:1');
+  assert.equal(transcriptWindowMessageIdentity(message({ turn: { id: 'turn:1' } as Message['turn'] }), 4), 'turn:1');
+  assert.equal(transcriptWindowMessageIdentity(message({ sender: 'Me' }), 4), '4:user:Me:10:00');
 });
 
-test('long transcripts mount an overscanned window around the scroll anchor', () => {
-  const range = transcriptWindowRange(1000, 300);
-
-  assert.equal(range.windowed, true);
-  assert.ok(range.start < 300, 'window should include messages just before the anchor');
-  assert.ok(range.end > 300, 'window should include messages after the anchor');
-  assert.equal(range.end - range.start, TRANSCRIPT_WINDOW_TAIL_COUNT);
+test('jump matching covers message, entry, runtime, and fallback ids', () => {
+  const target = message({ id: 'message:1', entryId: 'entry:1', turn: { id: 'turn:1' } as Message['turn'] });
+  assert.equal(transcriptWindowMessageMatchesId(target, 'message:1', 4), true);
+  assert.equal(transcriptWindowMessageMatchesId(target, 'entry:1', 4), true);
+  assert.equal(transcriptWindowMessageMatchesId(target, 'turn:1', 4), true);
+  assert.equal(transcriptWindowMessageMatchesId(message(), 'transcript-message:4', 4), true);
 });
 
-test('long transcript windows clamp at the start and end of history', () => {
-  assert.deepEqual(transcriptWindowRange(1000, -50), {
-    start: 0,
-    end: TRANSCRIPT_WINDOW_TAIL_COUNT,
-    windowed: true,
-  });
-  assert.deepEqual(transcriptWindowRange(1000, 2000), {
-    start: 1000 - TRANSCRIPT_WINDOW_TAIL_COUNT,
-    end: 1000,
-    windowed: true,
-  });
-});
-
-test('ChatSessionPane resets the transcript window anchor before paint on session changes', () => {
-  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
-  const resetCallIndex = source.indexOf('setTranscriptWindowAnchorIndex(Math.max(0, messages.length - 1));');
-  const resetSnippet = source.slice(
-    source.lastIndexOf('useLayoutEffect', resetCallIndex),
-    source.indexOf('const navigationTargetIndex', resetCallIndex),
-  );
-
-  assert.match(source, /import \{[^}]*useLayoutEffect[^}]*\} from 'react'/);
-  assert.match(resetSnippet, /useLayoutEffect\(\(\) => \{[\s\S]*setTranscriptWindowAnchorIndex\(Math\.max\(0, messages\.length - 1\)\);/);
-});
-
-test('scroll anchor resists variable-height transcript content', () => {
-  const messageHeights = Array.from({ length: 260 }, () => TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT);
-  messageHeights[0] = TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT * 18;
-
-  const scrollTopInsideSecondMessage = messageHeights[0] + Math.floor(TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT / 2);
-
-  assert.equal(
-    transcriptWindowScrollAnchorIndex(scrollTopInsideSecondMessage, messageHeights),
-    1,
-    'a tall first message should not make the scroll anchor skip many transcript items',
-  );
+test('legacy manual spacer and scroll-anchor math is removed', () => {
+  const source = readFileSync(new URL('../src/features/chat/transcriptWindowing.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /transcriptWindowRange|transcriptWindowSpacerHeight|transcriptWindowScrollAnchorIndex/);
 });

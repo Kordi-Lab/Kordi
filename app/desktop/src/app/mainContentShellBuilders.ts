@@ -189,6 +189,8 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     setDesktopSessionRenameDraft: args.setDesktopSessionRenameDraft,
     onRenameDesktopSession: args.handleRenameDesktopSession,
     chatTranscriptScrollRef: args.chatTranscriptScrollRef,
+    canonicalHasOlderBySessionId: args.canonicalHasOlderBySessionId,
+    onLoadOlderCanonicalSessionMessages: args.loadOlderCanonicalSessionMessages,
     onTranscriptScroll: args.onChatTranscriptScroll,
     onOpenSource: (file) => {
       args.setActiveSourcePreview(file);

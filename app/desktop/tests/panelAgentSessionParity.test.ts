@@ -6,6 +6,7 @@ const chatsPageSource = () => readFileSync(new URL('../src/pages/ChatsPage.tsx',
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
 const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+const virtualTranscriptSource = () => readFileSync(new URL('../src/features/chat/VirtualTranscript.tsx', import.meta.url), 'utf8');
 
 function blockBetween(source: string, startNeedle: string, endNeedle: string): string {
   const start = source.indexOf(startNeedle);
@@ -114,7 +115,7 @@ test('side-panel cloud Agent model controls clone main bridge-routing menu behav
 test('split-pane Agent bottom controls stay compact without changing composer height during resize', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
-  const main = blockBetween(source, '<ChatSessionPane\n        messages={attributedTranscriptMessages}', '{showCompanionPane && companionSide === \'right\' ? splitDivider : null}');
+  const main = blockBetween(source, '<ChatSessionPane\n        sessionKey={activeConv.id}\n        messages={attributedTranscriptMessages}', '{showCompanionPane && companionSide === \'right\' ? splitDivider : null}');
   const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
 
   assert.match(composerSource, /compact\?: boolean/, 'ComposerModelControls should expose a compact density for narrow panes');
@@ -146,42 +147,49 @@ test('split-pane Agent model selection menu escapes the right panel clipping bou
   assert.doesNotMatch(controlsSource, /absolute bottom-full right-0 z-30 mb-2 max-h-\[min\(28rem,60vh\)\] w-\[340px\]/, 'model selector menu must not stay absolute inside the right-panel composer');
 });
 
-test('chat transcripts window long histories instead of rendering every message during session switches', () => {
+test('chat transcripts use measured virtualization instead of manual spacer windows', () => {
   const source = chatsPageSource();
   const pane = chatSessionPaneBlock(source);
+  const virtual = virtualTranscriptSource();
 
-  assert.match(source, /TRANSCRIPT_WINDOW_THRESHOLD/, 'ChatSessionPane should define a threshold for long transcript windowing');
-  assert.match(pane, /visibleTranscriptMessages/, 'ChatSessionPane should render a bounded visible message slice');
-  assert.match(pane, /data-transcript-window-spacer="top"/, 'windowed transcripts should preserve approximate scroll height above visible messages');
-  assert.match(pane, /data-transcript-window-spacer="bottom"/, 'windowed transcripts should preserve approximate scroll height below visible messages');
+  assert.match(pane, /<VirtualTranscript/, 'main and side transcripts should render through the measured virtualizer');
+  assert.match(virtual, /useVirtualizer\(\{/, 'the shared transcript should use TanStack virtualization');
+  assert.match(virtual, /ref=\{virtualizer\.measureElement\}/, 'variable-height rows should be measured');
+  assert.match(virtual, /overscan: TRANSCRIPT_WINDOW_OVERSCAN/, 'the mounted range should use bounded overscan');
+  assert.doesNotMatch(pane, /data-transcript-window-spacer/, 'manual spacer nodes should be removed');
   assert.doesNotMatch(pane, /messages\.length > 0 \? messages\.map\(\(msg, idx\)/, 'ChatSessionPane must not render every message directly for long histories');
 });
 
-test('windowed chat transcripts update the rendered slice while scrolling through long history', () => {
-  const source = chatsPageSource();
-  const pane = chatSessionPaneBlock(source);
+test('virtualized chat transcripts update their measured range while scrolling', () => {
+  const virtual = virtualTranscriptSource();
 
-  assert.match(pane, /transcriptWindowAnchorIndex/, 'windowed transcripts should track a scroll-derived anchor index');
-  assert.match(pane, /handleTranscriptScroll/, 'windowed transcripts should wrap the external scroll handler');
-  assert.match(pane, /transcriptWindowScrollAnchorIndex\(event\.currentTarget\.scrollTop,\s*transcriptMessageHeights\)/, 'scroll position should determine which message range is mounted');
+  assert.match(virtual, /const virtualItems = virtualizer\.getVirtualItems\(\)/, 'visible rows should come from the virtualizer range');
+  assert.match(virtual, /onScroll=\{handleScroll\}/, 'the shared transcript should preserve external scroll handling');
+  assert.doesNotMatch(virtual, /transcriptWindowScrollAnchorIndex|transcriptMessageHeights/, 'scrolling should not run manual height summation');
 });
 
-test('windowed chat transcripts reset their anchor when switching between equal-length sessions', () => {
+test('virtualized chat transcripts reset by session identity even for equal-length sessions', () => {
   const source = chatsPageSource();
   const pane = chatSessionPaneBlock(source);
+  const virtual = virtualTranscriptSource();
 
-  assert.match(pane, /transcriptWindowResetKey/, 'windowed transcripts should derive a reset key from message identity');
-  assert.doesNotMatch(pane, /\[messages\.length\]\);/, 'windowed transcript reset must not depend only on message count');
+  assert.match(source, /sessionKey=\{activeConv\.id\}/, 'the main transcript should key resets by selected session');
+  assert.match(source, /sessionKey=\{companionConversation\.id\}/, 'the side transcript should key resets by selected session');
+  assert.match(pane, /sessionKey=\{sessionKey\}/, 'the shared pane should forward session identity');
+  assert.match(virtual, /useLayoutEffect\([\s\S]*aligned\?\.sessionKey !== sessionKey/, 'tail alignment should happen in a layout effect keyed by session');
 });
 
-test('windowed chat transcripts keep jump-to-message working for messages outside the mounted slice', () => {
+test('virtualized chat transcripts load and mount off-page jump targets', () => {
   const source = chatsPageSource();
   const pane = chatSessionPaneBlock(source);
+  const virtual = virtualTranscriptSource();
 
   assert.match(source, /type TranscriptNavigationRequest/, 'jumps into windowed transcripts should use an explicit navigation request');
-  assert.match(pane, /navigationTargetIndex/, 'ChatSessionPane should resolve jump targets against the full message list');
-  assert.match(pane, /setTranscriptWindowAnchorIndex\(navigationTargetIndex\)/, 'jumping to an off-window message should move the mounted window first');
-  assert.match(pane, /navigateToTranscriptMessage\(navigationRequest\.id, scrollRef\)/, 'ChatSessionPane should retry the DOM scroll once the target is mounted');
+  assert.match(pane, /findNavigationIndex=\{\(entry, messageId\)/, 'ChatSessionPane should resolve jump targets against loaded messages');
+  assert.match(pane, /onNavigationReady=\{\(messageId\) => navigateToTranscriptMessage\(messageId, scrollRef\)\}/, 'the mounted target should retain highlighting and centered navigation');
+  assert.match(virtual, /if \(!request \|\| navigationTargetIndex >= 0 \|\| !hasOlder \|\| !onLoadOlder\) return;/, 'already-loaded targets should not fetch older pages');
+  assert.match(virtual, /void requestOlder\(signature\)/, 'missing targets should request older pages');
+  assert.match(virtual, /virtualizer\.scrollToIndex\(navigationTargetIndex/, 'found targets should move into the mounted range');
 });
 
 test('side-panel Agent session omits the header session Details button', () => {

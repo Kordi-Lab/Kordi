@@ -448,6 +448,7 @@ export type CanonicalSessionParticipant = {
   addedAtMs: number;
   lastSeenAtMs?: number | null;
   lastReadMessageId?: string | null;
+  lastReadSequenceNum?: number | null;
   metadata?: unknown;
 };
 
@@ -529,6 +530,54 @@ export type CanonicalSessionState = {
   contextSnapshots: CanonicalContextSnapshot[];
 };
 
+export type CanonicalProfileIdentityDelta = {
+  profile: CanonicalLocalProfile;
+  identity: CanonicalIdentity;
+  previousIdentityId: string | null;
+  groupSelfSessionIds: string[];
+};
+
+export type CanonicalSessionSummary = {
+  sessionId: string;
+  messageCount: number;
+  latestMessage: CanonicalSessionMessage | null;
+  contextSnapshotCount: number;
+};
+
+export type CanonicalSessionCatalog = Omit<CanonicalSessionState, 'messages' | 'contextSnapshots'> & {
+  summaries: CanonicalSessionSummary[];
+};
+
+export type CanonicalMessagePage = {
+  sessionId: string;
+  messages: CanonicalSessionMessage[];
+  oldestSequenceNum: number | null;
+  newestSequenceNum: number | null;
+  hasOlder: boolean;
+};
+
+export type CanonicalReadCursorDelta = {
+  sessionId: string;
+  identityId: string;
+  lastSeenAtMs: number;
+  lastReadMessageId: string | null;
+  lastReadSequenceNum: number | null;
+};
+
+export type CanonicalMessageDeliveryDelta = {
+  messageId: string;
+  sessionId: string;
+  status: 'sending' | 'delivered' | 'failed';
+  deliveryState: 'sending' | 'partial' | 'delivered' | 'failed';
+  deliveredRecipientIds: string[];
+  pendingRecipientIds: string[];
+  exhaustedRecipientIds: string[];
+  updatedAtMs: number;
+  contentHash: string;
+  sessionUpdatedAtMs: number;
+  sessionLastMessageAtMs: number | null;
+};
+
 export type OpenCanonicalSessionFastResult = {
   session: CanonicalSession;
   participants: CanonicalSessionParticipant[];
@@ -584,6 +633,16 @@ export type AppendCanonicalMessageRequest = {
   status?: string | null;
   sourceTransport?: string | null;
   sourceEventId?: string | null;
+};
+
+export type UpdateCanonicalMessageDeliveryRequest = {
+  messageId: string;
+  sessionId: string;
+  status: 'sending' | 'delivered' | 'failed';
+  deliveryState: 'sending' | 'partial' | 'delivered' | 'failed';
+  deliveredRecipientIds: string[];
+  pendingRecipientIds: string[];
+  exhaustedRecipientIds: string[];
 };
 
 export type CreateCanonicalDelegatedExchangeRequest = {

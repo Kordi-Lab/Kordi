@@ -1,6 +1,31 @@
 use super::*;
 use kordi_tools::{ReadSessionRequest, SearchSessionsRequest};
 
+struct TempSqliteFile {
+    path: std::path::PathBuf,
+}
+
+impl TempSqliteFile {
+    fn new() -> Self {
+        Self {
+            path: std::env::temp_dir().join(format!(
+                "kordi-monotonic-read-cursor-{}.sqlite3",
+                Uuid::new_v4().simple()
+            )),
+        }
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl Drop for TempSqliteFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 fn seed_session_with_messages(conn: &Connection) -> String {
     seed_identity(conn, "human:alice", "Alice", "human");
     seed_identity(conn, "human:bob", "Bob", "human");
@@ -52,6 +77,297 @@ fn seed_session_with_messages(conn: &Connection) -> String {
         .expect("append message");
     }
     session.id
+}
+
+fn participant_read_state(
+    conn: &Connection,
+    session_id: &str,
+    identity_id: &str,
+) -> (Option<i64>, Option<String>) {
+    conn.query_row(
+        "SELECT last_seen_at_ms, last_read_message_id
+         FROM session_participants
+         WHERE session_id = ?1 AND identity_id = ?2",
+        params![session_id, identity_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .expect("read participant cursor")
+}
+
+fn seed_other_session_with_message(conn: &Connection) -> String {
+    let session = open_or_create_session_in_db(
+        conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:other".to_string()),
+            kind: "group".to_string(),
+            title: Some("Other session".to_string()),
+            status: Some("active".to_string()),
+            created_by_identity_id: "human:alice".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec!["human:bob".to_string()],
+            metadata: None,
+        },
+    )
+    .expect("seed other session");
+    append_message_in_db(
+        conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:other".to_string()),
+            session_id: session.id.clone(),
+            sender_identity_id: "human:alice".to_string(),
+            sender_role: "self".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "Other session message".to_string(),
+            content: None,
+            created_at_ms: Some(1_800_000_000_001),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("sent".to_string()),
+            source_transport: None,
+            source_event_id: None,
+        },
+    )
+    .expect("append other session message");
+    session.id
+}
+
+#[test]
+fn mark_session_read_returns_self_participant_cursor_delta() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+
+    let result = mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id,
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:3".to_string()),
+        },
+    )
+    .expect("mark session read")
+    .expect("self participant cursor delta");
+
+    assert_eq!(result.session_id, "session:launch");
+    assert_eq!(result.identity_id, "human:alice");
+    assert!(result.last_seen_at_ms > 0);
+    assert_eq!(result.last_read_message_id.as_deref(), Some("msg:3"));
+    assert_eq!(result.last_read_sequence_num, Some(3));
+}
+
+#[test]
+fn mark_session_read_uses_latest_readable_message_when_target_is_omitted() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+
+    let result = mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id,
+            identity_id: Some("human:alice".to_string()),
+            message_id: None,
+        },
+    )
+    .expect("mark latest message read")
+    .expect("latest cursor delta");
+
+    assert_eq!(result.last_read_message_id.as_deref(), Some("msg:3"));
+}
+
+#[test]
+fn mark_session_read_advances_from_a_missing_current_cursor() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+    conn.execute(
+        "UPDATE session_participants
+         SET last_read_message_id = 'msg:removed'
+         WHERE session_id = ?1 AND identity_id = 'human:alice'",
+        params![session_id],
+    )
+    .expect("seed missing cursor");
+
+    let result = mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id,
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:2".to_string()),
+        },
+    )
+    .expect("advance missing cursor")
+    .expect("replacement cursor delta");
+
+    assert_eq!(result.last_read_message_id.as_deref(), Some("msg:2"));
+    assert_eq!(result.last_read_sequence_num, Some(2));
+}
+
+#[test]
+fn mark_session_read_does_not_move_cursor_backward_across_connections() {
+    // Declaring the guard first makes it clean up after both connections during unwind.
+    let db_file = TempSqliteFile::new();
+    let newer_conn = Connection::open(db_file.path()).expect("open newer connection");
+    schema::initialize_schema(&newer_conn).expect("initialize schema");
+    let session_id = seed_session_with_messages(&newer_conn);
+    let stale_conn = Connection::open(db_file.path()).expect("open stale connection");
+
+    let newer = mark_session_read_in_db(
+        &newer_conn,
+        MarkCanonicalSessionReadRequest {
+            session_id: session_id.clone(),
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:2".to_string()),
+        },
+    )
+    .expect("mark newer message read")
+    .expect("newer cursor delta");
+    assert_eq!(newer.last_read_message_id.as_deref(), Some("msg:2"));
+    assert_eq!(newer.last_read_sequence_num, Some(2));
+    let newer_seen_at_ms = i64::MAX - 1;
+    newer_conn
+        .execute(
+            "UPDATE session_participants
+             SET last_seen_at_ms = ?1
+             WHERE session_id = ?2 AND identity_id = 'human:alice'",
+            params![newer_seen_at_ms, session_id],
+        )
+        .expect("model newer completion timestamp");
+
+    let stale = mark_session_read_in_db(
+        &stale_conn,
+        MarkCanonicalSessionReadRequest {
+            session_id: session_id.clone(),
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:1".to_string()),
+        },
+    )
+    .expect("mark stale message read")
+    .expect("stale cursor delta");
+
+    assert_eq!(stale.last_read_message_id.as_deref(), Some("msg:2"));
+    assert_eq!(stale.last_read_sequence_num, Some(2));
+    assert_eq!(
+        (stale.last_seen_at_ms, stale.last_read_message_id.clone()),
+        (newer_seen_at_ms, Some("msg:2".to_string()))
+    );
+    assert_eq!(
+        participant_read_state(&newer_conn, &session_id, "human:alice"),
+        (Some(newer_seen_at_ms), Some("msg:2".to_string()))
+    );
+}
+
+#[test]
+fn mark_session_read_rejects_cross_session_target_without_mutation() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+    seed_other_session_with_message(&conn);
+    mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id: session_id.clone(),
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:2".to_string()),
+        },
+    )
+    .expect("seed read cursor");
+    let before = participant_read_state(&conn, &session_id, "human:alice");
+
+    let result = mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id: session_id.clone(),
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:other".to_string()),
+        },
+    );
+
+    assert!(result.is_err(), "cross-session target must be rejected");
+    assert_eq!(
+        participant_read_state(&conn, &session_id, "human:alice"),
+        before
+    );
+}
+
+#[test]
+fn mark_session_read_rejects_unknown_target_without_mutation() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+    mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id: session_id.clone(),
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:2".to_string()),
+        },
+    )
+    .expect("seed read cursor");
+    let before = participant_read_state(&conn, &session_id, "human:alice");
+
+    let result = mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id: session_id.clone(),
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:missing".to_string()),
+        },
+    );
+
+    assert!(result.is_err(), "unknown target must be rejected");
+    assert_eq!(
+        participant_read_state(&conn, &session_id, "human:alice"),
+        before
+    );
+}
+
+#[test]
+fn mark_session_read_rejects_unreadable_target_without_mutation() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+    mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id: session_id.clone(),
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:2".to_string()),
+        },
+    )
+    .expect("seed read cursor");
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:sending".to_string()),
+            session_id: session_id.clone(),
+            sender_identity_id: "human:alice".to_string(),
+            sender_role: "self".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "Still sending".to_string(),
+            content: None,
+            created_at_ms: Some(1_800_000_000_001),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("sending".to_string()),
+            source_transport: None,
+            source_event_id: None,
+        },
+    )
+    .expect("append transient message");
+    let before = participant_read_state(&conn, &session_id, "human:alice");
+
+    let result = mark_session_read_in_db(
+        &conn,
+        MarkCanonicalSessionReadRequest {
+            session_id: session_id.clone(),
+            identity_id: Some("human:alice".to_string()),
+            message_id: Some("msg:sending".to_string()),
+        },
+    );
+
+    assert!(result.is_err(), "unreadable target must be rejected");
+    assert_eq!(
+        participant_read_state(&conn, &session_id, "human:alice"),
+        before
+    );
 }
 
 #[test]

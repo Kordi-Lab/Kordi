@@ -21,6 +21,7 @@ import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { formatDesktopClockTime, formatDesktopLastActiveLabel } from '@/lib/time';
 
 import type { CloudAccount, CloudMessage } from './authClient';
+import { buildCloudMessageIndex, type CloudMessageIndex } from './cloudMessageIndex';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { cloudAvatarImageUrl } from './avatar';
 import {
@@ -55,6 +56,7 @@ const CLOUD_LOCAL_AGENT_PENDING_WINDOW_MS = 10 * 60_000;
 const CLOUD_PERSON_RUNTIME = 'person';
 const CLOUD_AGENT_RUNTIME = 'kordi-desktop';
 const CLOUD_AGENT_SESSION_SUFFIX = ':session:';
+const cloudConversationRevisionByObject = new WeakMap<DesktopBridgeConversation, string>();
 
 export function isCloudBridgeHostId(hostId: string | null | undefined): boolean {
   return hostId === CLOUD_HOST_SENTINEL;
@@ -207,9 +209,18 @@ function cleanCloudConversationTitle(value?: string | null): string | null {
   return title;
 }
 
-function cloudSelfAgentTitleFromMessages(messages: CloudMessage[]): string | null {
+function cloudMessageIsGroupControl(message: CloudMessage, groupControlMessageIds?: ReadonlySet<string>) {
+  return groupControlMessageIds
+    ? groupControlMessageIds.has(message.messageId)
+    : isCloudGroupControlMessage(message.body);
+}
+
+function cloudSelfAgentTitleFromMessages(
+  messages: CloudMessage[],
+  groupControlMessageIds?: ReadonlySet<string>,
+): string | null {
   for (const message of [...messages].sort((left, right) => left.createdAt.localeCompare(right.createdAt))) {
-    if (isCloudAgentControlMessage(message.body) || isCloudGroupControlMessage(message.body) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
+    if (isCloudAgentControlMessage(message.body) || cloudMessageIsGroupControl(message, groupControlMessageIds) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
     const title = cleanCloudConversationTitle(message.body.split(/\r?\n/, 1)[0]);
     if (title) return title.length > 80 ? `${title.slice(0, 77).trimEnd()}…` : title;
   }
@@ -559,6 +570,7 @@ export function buildCloudBridgeConversation({
   localAgentTurnsByRequestId = {},
   cloudSessionId = null,
   cloudSessionTitle = null,
+  groupControlMessageIds,
 }: {
   account: CloudAccount;
   contact: Contact;
@@ -570,6 +582,7 @@ export function buildCloudBridgeConversation({
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
   cloudSessionId?: string | null;
   cloudSessionTitle?: string | null;
+  groupControlMessageIds?: ReadonlySet<string>;
 }): DesktopBridgeConversation {
   const peerAccountId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
   const isPerson = runtime.trim().toLowerCase() === CLOUD_PERSON_RUNTIME;
@@ -590,6 +603,7 @@ export function buildCloudBridgeConversation({
   const requestTargetAgentNames = new Map<string, string>();
   const explicitResponseAgentNames = new Map<string, string>();
   for (const message of messages) {
+    if (cloudMessageIsGroupControl(message, groupControlMessageIds)) continue;
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
     const displayBody = cloudDirectMessageDisplayText(message.body);
     const directTargetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
@@ -618,7 +632,7 @@ export function buildCloudBridgeConversation({
   }
   const visibleResponseKeys = new Set<string>();
   const visibleCloudMessages = messages.filter((message) => {
-    if (isCloudAgentControlMessage(message.body) || isCloudGroupControlMessage(message.body)) return false;
+    if (isCloudAgentControlMessage(message.body) || cloudMessageIsGroupControl(message, groupControlMessageIds)) return false;
     const response = parseCloudAgentResponse(message.body);
     if (!response) return true;
     const expectedResponderAccountId = requestTargetAccountIds.get(response.requestId);
@@ -630,6 +644,7 @@ export function buildCloudBridgeConversation({
     return true;
   });
   const agentRequests = messages.filter((message) => {
+    if (cloudMessageIsGroupControl(message, groupControlMessageIds)) return false;
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
     return Boolean(requestTargetAccountIds.get(message.messageId));
   });
@@ -702,7 +717,7 @@ export function buildCloudBridgeConversation({
   const title = isPerson
     ? cloudPeerDisplayName(contact)
     : isSelfPeer && normalizedCloudSessionId
-      ? cleanCloudConversationTitle(cloudSessionTitle) ?? cloudSelfAgentTitleFromMessages(visibleCloudMessages) ?? 'My Kordi'
+      ? cleanCloudConversationTitle(cloudSessionTitle) ?? cloudSelfAgentTitleFromMessages(visibleCloudMessages, groupControlMessageIds) ?? 'My Kordi'
       : isSelfPeer
         ? 'My Kordi'
         : cloudAgentDisplayName(contact);
@@ -835,7 +850,9 @@ function cloudSelfContact(account: CloudAccount): Contact {
 export function buildCloudDesktopBridgeState({
   account,
   contacts,
-  messagesByPeer,
+  messagesByPeer = {},
+  messageIndex,
+  previousState = null,
   readInboundMessageIdsByPeer = {},
   readCursorsBySessionId = {},
   activeConversationId,
@@ -847,7 +864,9 @@ export function buildCloudDesktopBridgeState({
 }: {
   account: CloudAccount;
   contacts: Contact[];
-  messagesByPeer: Record<string, CloudMessage[]>;
+  messagesByPeer?: Record<string, CloudMessage[]>;
+  messageIndex?: CloudMessageIndex;
+  previousState?: DesktopBridgeState | null;
   readInboundMessageIdsByPeer?: Record<string, Set<string>>;
   readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
   activeConversationId?: string | null;
@@ -857,6 +876,69 @@ export function buildCloudDesktopBridgeState({
   hiddenCloudSessionIds?: ReadonlySet<string>;
   suppressUnscopedSelfAgentConversation?: boolean;
 }): DesktopBridgeState {
+  const index = messageIndex ?? buildCloudMessageIndex(account.accountId, messagesByPeer);
+  const groupControlMessageIds = new Set(index.groupRows.map((row) => row.wire.messageId));
+  const previousConversationById = new Map((previousState?.conversations ?? []).map((conversation) => [conversation.id, conversation]));
+  const reuseConversation = (
+    conversationId: string,
+    revision: string,
+    build: () => DesktopBridgeConversation,
+  ) => {
+    const previous = previousConversationById.get(conversationId);
+    if (previous && cloudConversationRevisionByObject.get(previous) === revision) return previous;
+    const next = build();
+    cloudConversationRevisionByObject.set(next, revision);
+    return next;
+  };
+  const conversationRevision = ({
+    baseRevision,
+    cloudSessionId,
+    contact,
+    forceRead,
+    messages,
+    runtime,
+    title,
+  }: {
+    baseRevision: string;
+    cloudSessionId?: string | null;
+    contact: Contact;
+    forceRead: boolean;
+    messages: readonly CloudMessage[];
+    runtime: string;
+    title?: string | null;
+  }) => {
+    const readCursorSessionId = cleanCloudSessionId(cloudSessionId)
+      ?? (runtime === CLOUD_PERSON_RUNTIME
+        ? cloudDirectPersonSessionId(account.accountId, contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, ''))
+        : null);
+    const readCursor = readCursorSessionId ? readCursorsBySessionId[readCursorSessionId] : null;
+    const readIds = [...(readInboundMessageIdsByPeer[contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '')] ?? [])].sort();
+    const turnRevision = messages.flatMap((message) => {
+      const turn = localAgentTurnsByRequestId[message.messageId];
+      return turn ? [`${message.messageId}:${turn.id}:${turn.status}:${turn.completed}:${turn.assistantText.length}:${turn.error ?? ''}`] : [];
+    });
+    return [
+      baseRevision,
+      account.accountId,
+      account.displayName ?? '',
+      account.primaryEmail,
+      account.nodeId ?? '',
+      account.avatarUrl ?? '',
+      runtime,
+      cleanCloudSessionId(cloudSessionId) ?? '',
+      forceRead ? 'read' : 'unread',
+      contact.name,
+      contact.owner,
+      contact.profileImageUrl ?? '',
+      contact.avatarSeed ?? '',
+      title ?? '',
+      readCursor?.lastReadMessageId ?? '',
+      readCursor?.lastReadCreatedAtMs ?? '',
+      readIds.join(','),
+      messages.map((message) => message.messageId).join(','),
+      turnRevision.join(','),
+    ].join('\u0000');
+  };
   const directContacts = contacts.filter(isDirectCloudContact);
   const host = buildCloudBridgeHost(account, directContacts, localAgentRuntimeRoute);
   const activePeerId = activeConversationId ? cloudPeerAccountIdFromConversationId(activeConversationId) : null;
@@ -870,7 +952,7 @@ export function buildCloudDesktopBridgeState({
   const conversations = conversationContacts
     .flatMap((contact) => {
       const peerId = contact.bridgePeerNodeId || contact.id.replace(/^cloud:/, '');
-      const messages = messagesByPeer[peerId] ?? [];
+      const messages = [...(messagesByPeer[peerId] ?? index.byPeerId.get(peerId) ?? [])];
       const hasMessages = messages.length > 0;
       const isActivePeer = peerId === activePeerId;
       const isSelfPeer = peerId === account.accountId;
@@ -879,16 +961,27 @@ export function buildCloudDesktopBridgeState({
       const directPersonMessages = isSelfPeer ? [] : cloudDirectPersonMessagesForPeer(account, peerId, messages);
       const hasDirectPersonMessages = directPersonMessages.length > 0;
       const personConversation = !isSelfPeer && (hasDirectPersonMessages || activeConversationId === cloudBridgeConversationId(peerId, CLOUD_PERSON_RUNTIME))
-        ? [buildCloudBridgeConversation({
-            account,
-            contact,
-            messages: directPersonMessages,
-            runtime: CLOUD_PERSON_RUNTIME,
-            readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
-            readCursorsBySessionId,
-            forceRead: isActivePeer,
-            localAgentTurnsByRequestId,
-          })]
+        ? [reuseConversation(
+            cloudBridgeConversationId(peerId, CLOUD_PERSON_RUNTIME),
+            conversationRevision({
+              baseRevision: index.peerRevisionByPeerId.get(peerId) ?? '0::',
+              contact,
+              forceRead: isActivePeer,
+              messages: directPersonMessages,
+              runtime: CLOUD_PERSON_RUNTIME,
+            }),
+            () => buildCloudBridgeConversation({
+              account,
+              contact,
+              messages: directPersonMessages,
+              runtime: CLOUD_PERSON_RUNTIME,
+              readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
+              readCursorsBySessionId,
+              forceRead: isActivePeer,
+              localAgentTurnsByRequestId,
+              groupControlMessageIds,
+            }),
+          )]
         : [];
       const activeCloudSessionId = activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null;
       const agentConversation = (() => {
@@ -903,18 +996,38 @@ export function buildCloudDesktopBridgeState({
             bucket.push(cloudMessage);
             bySession.set(sessionId, bucket);
           }
-          return [...bySession.entries()].map(([cloudSessionId, sessionMessages]) => buildCloudBridgeConversation({
-            account,
-            contact,
-            messages: sessionMessages,
-            runtime: CLOUD_AGENT_RUNTIME,
-            readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
-            readCursorsBySessionId,
-            forceRead: isActivePeer && (!activeCloudSessionId || activeCloudSessionId === cloudSessionId),
-            localAgentTurnsByRequestId,
-            cloudSessionId,
-            cloudSessionTitle: cloudSessionId ? cloudSessionTitlesById[cloudSessionId] : null,
-          }));
+          return [...bySession.entries()].map(([cloudSessionId, sessionMessages]) => {
+            const forceRead = isActivePeer && (!activeCloudSessionId || activeCloudSessionId === cloudSessionId);
+            const cloudSessionTitle = cloudSessionId ? cloudSessionTitlesById[cloudSessionId] : null;
+            const conversationId = cloudBridgeConversationId(peerId, CLOUD_AGENT_RUNTIME, cloudSessionId);
+            return reuseConversation(
+              conversationId,
+              conversationRevision({
+                baseRevision: cloudSessionId
+                  ? index.sessionRevisionBySessionId.get(cloudSessionId) ?? '0::'
+                  : index.peerRevisionByPeerId.get(peerId) ?? '0::',
+                cloudSessionId,
+                contact,
+                forceRead,
+                messages: sessionMessages,
+                runtime: CLOUD_AGENT_RUNTIME,
+                title: cloudSessionTitle,
+              }),
+              () => buildCloudBridgeConversation({
+                account,
+                contact,
+                messages: sessionMessages,
+                runtime: CLOUD_AGENT_RUNTIME,
+                readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
+                readCursorsBySessionId,
+                forceRead,
+                localAgentTurnsByRequestId,
+                cloudSessionId,
+                cloudSessionTitle,
+                groupControlMessageIds,
+              }),
+            );
+          });
         }
         return [];
       })();

@@ -3,6 +3,11 @@ import type {
   AdoptCloudProfileIdentityRequest,
   AppendCanonicalMessageRequest,
   CanonicalIdentity,
+  CanonicalMessageDeliveryDelta,
+  CanonicalMessagePage,
+  CanonicalProfileIdentityDelta,
+  CanonicalReadCursorDelta,
+  CanonicalSessionCatalog,
   CanonicalSessionMessage,
   CanonicalSessionState,
   CreateCanonicalDelegatedExchangeRequest,
@@ -25,9 +30,15 @@ import type {
   RenameCanonicalSessionRequest,
   SetCanonicalSessionParticipantRoleRequest,
   UpdateCanonicalPresenceRequest,
+  UpdateCanonicalMessageDeliveryRequest,
   UpdateCanonicalSessionMetadataRequest,
   UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
+import {
+  beginChatPerformanceSpan,
+  chatPerformancePayloadBytes,
+  finishChatPerformanceSpan,
+} from '@/features/performance/chatPerformance';
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -634,12 +645,53 @@ export async function fetchCanonicalSessionState() {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_session_state');
 }
 
+export async function fetchCanonicalSessionCatalog() {
+  if (!isNativeDesktopShell()) return null;
+  const performanceSpan = beginChatPerformanceSpan('canonical-catalog-ipc');
+  try {
+    const catalog = await invokeDesktop<CanonicalSessionCatalog>('desktop_canonical_session_catalog');
+    finishChatPerformanceSpan(performanceSpan, () => ({
+      sessionCount: catalog.sessions.length,
+      rowCount: catalog.summaries.length,
+      payloadBytes: chatPerformancePayloadBytes(catalog),
+    }));
+    return catalog;
+  } catch (error) {
+    finishChatPerformanceSpan(performanceSpan, { errorCount: 1 });
+    throw error;
+  }
+}
+
+export async function fetchCanonicalSessionMessages(
+  sessionId: string,
+  beforeSequenceNum: number | null = null,
+  limit = 100,
+) {
+  if (!isNativeDesktopShell()) return null;
+  const performanceSpan = beginChatPerformanceSpan('canonical-page-ipc');
+  try {
+    const page = await invokeDesktop<CanonicalMessagePage>('desktop_canonical_session_messages', {
+      sessionId,
+      beforeSequenceNum,
+      limit,
+    });
+    finishChatPerformanceSpan(performanceSpan, () => ({
+      messageCount: page.messages.length,
+      payloadBytes: chatPerformancePayloadBytes(page),
+    }));
+    return page;
+  } catch (error) {
+    finishChatPerformanceSpan(performanceSpan, { errorCount: 1 });
+    throw error;
+  }
+}
+
 export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_upsert_identity', { request });
 }
 
 export async function adoptCloudProfileIdentity(request: AdoptCloudProfileIdentityRequest) {
-  return invokeDesktop<CanonicalSessionState>('desktop_canonical_adopt_cloud_profile_identity', { request });
+  return invokeDesktop<CanonicalProfileIdentityDelta>('desktop_canonical_adopt_cloud_profile_identity', { request });
 }
 
 export async function upsertCanonicalIdentityFast(request: UpsertCanonicalIdentityRequest) {
@@ -666,8 +718,12 @@ export async function upsertCanonicalMessageFast(request: AppendCanonicalMessage
   return invokeDesktop<CanonicalSessionMessage>('desktop_canonical_upsert_message_fast', { request });
 }
 
+export async function updateCanonicalMessageDelivery(request: UpdateCanonicalMessageDeliveryRequest) {
+  return invokeDesktop<CanonicalMessageDeliveryDelta | null>('desktop_canonical_update_message_delivery', { request });
+}
+
 export async function appendCanonicalMessageFast(request: AppendCanonicalMessageRequest) {
-  return invokeDesktop<string>('desktop_canonical_append_message_fast', { request });
+  return invokeDesktop<CanonicalSessionMessage>('desktop_canonical_append_message_fast', { request });
 }
 
 export async function createCanonicalDelegatedExchange(request: CreateCanonicalDelegatedExchangeRequest) {
@@ -699,7 +755,7 @@ export async function setCanonicalSessionParticipantRole(request: SetCanonicalSe
 }
 
 export async function markCanonicalSessionRead(request: MarkCanonicalSessionReadRequest) {
-  return invokeDesktop<CanonicalSessionState>('desktop_canonical_mark_session_read', { request });
+  return invokeDesktop<CanonicalReadCursorDelta | null>('desktop_canonical_mark_session_read', { request });
 }
 
 export async function fetchDesktopProjectSettings(projectRoot?: string) {

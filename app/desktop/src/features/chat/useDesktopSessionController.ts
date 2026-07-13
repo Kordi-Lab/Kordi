@@ -5,6 +5,7 @@ import { mergeDesktopBridgeState } from '@/features/bridge/useBridgeState';
 import { isCanonicalBridgeSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isCloudBridgeConversationId } from '@/features/cloud/cloudBridgeState';
 import type { DesktopBridgeState, DesktopChatState } from '@/kordi-app/types';
+import { startSessionClickToFirstMessage } from '@/features/performance/chatPerformance';
 import {
   createDesktopChatSession,
   forkDesktopChatSessionFromMessage,
@@ -86,6 +87,7 @@ export function useDesktopSessionController({
   onForkCreated,
 }: UseDesktopSessionControllerArgs) {
   const handleSelectChatSession = useCallback(async (sessionId: string) => {
+    startSessionClickToFirstMessage(sessionId);
     shouldAutoFollowChatRef.current = true;
     setActiveConvId(sessionId);
     setPendingUserChatMessage(null);

@@ -10,6 +10,7 @@ import type {
 
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
+import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } from './cloudTransportGuards';
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
@@ -732,14 +733,18 @@ export function cloudGroupAgentOfflineNoticeRequest(input: {
 export function cloudGroupLocalAgentRequestAlreadyHandled(input: {
   localAccountId: string;
   requestMessageId: string;
-  messages: CloudMessage[];
+  messages?: CloudMessage[];
+  groupRows?: readonly IndexedCloudGroupRow[];
 }): boolean {
   const localAccountId = cleanText(input.localAccountId);
   const requestMessageId = cleanText(input.requestMessageId);
   if (!localAccountId || !requestMessageId) return false;
-  return input.messages.some((message) => {
-    if (message.fromAccountId !== localAccountId) return false;
-    const envelope = parseCloudGroupControl(message.body);
+  const rows = input.groupRows ?? (input.messages ?? []).flatMap((wire) => {
+    const envelope = parseCloudGroupControl(wire.body);
+    return envelope ? [{ wire, envelope, canonicalMessageId: cleanText(envelope.message?.id) || null }] : [];
+  });
+  return rows.some(({ wire, envelope }) => {
+    if (wire.fromAccountId !== localAccountId) return false;
     const groupMessage = envelope?.kind === 'group-message' ? envelope.message : null;
     if (!groupMessage || groupMessage.senderAccountId !== localAccountId || groupMessage.senderKind !== 'agent') return false;
     const linkedRequestId = cleanText(groupMessage.requestId) || cleanText(groupMessage.replyToMessageId);
@@ -790,15 +795,19 @@ export function cloudGroupMessageReadTargets(input: {
   accountId: string;
   activeConversationId?: string | null;
   activeConversationIds?: Array<string | null | undefined>;
-  messages: CloudMessage[];
+  messages?: CloudMessage[];
+  groupRows?: readonly IndexedCloudGroupRow[];
 }): { peerIds: string[]; sessionIds: string[] } {
   const accountId = cleanText(input.accountId);
   const peerIds = new Set<string>();
   const sessionIds = new Set<string>();
   if (!accountId) return { peerIds: [], sessionIds: [] };
-  for (const message of input.messages) {
+  const rows = input.groupRows ?? (input.messages ?? []).flatMap((wire) => {
+    const envelope = parseCloudGroupControl(wire.body);
+    return envelope ? [{ wire, envelope, canonicalMessageId: cleanText(envelope.message?.id) || null }] : [];
+  });
+  for (const { wire: message, envelope } of rows) {
     if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
-    const envelope = parseCloudGroupControl(message.body);
     if (!envelope || envelope.kind !== 'group-message') continue;
     if (message.fromAccountId === accountId || envelope.message?.senderAccountId === accountId) continue;
     if (shouldCountCloudGroupMessageUnread({
@@ -857,15 +866,19 @@ export function cloudGroupUnreadCountsBySessionId(input: {
   activeConversationId?: string | null;
   activeConversationIds?: Array<string | null | undefined>;
   readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
-  messages: CloudMessage[];
+  messages?: CloudMessage[];
+  groupRows?: readonly IndexedCloudGroupRow[];
 }): Record<string, number> {
   const accountId = cleanText(input.accountId);
   if (!accountId) return {};
   const counts: Record<string, number> = {};
   const seenGroupMessageIds = new Set<string>();
-  for (const message of input.messages) {
+  const rows = input.groupRows ?? (input.messages ?? []).flatMap((wire) => {
+    const envelope = parseCloudGroupControl(wire.body);
+    return envelope ? [{ wire, envelope, canonicalMessageId: cleanText(envelope.message?.id) || null }] : [];
+  });
+  for (const { wire: message, envelope } of rows) {
     if (message.toAccountId !== accountId || message.direction !== 'incoming' || message.readAt) continue;
-    const envelope = parseCloudGroupControl(message.body);
     if (!envelope || envelope.kind !== 'group-message') continue;
     if (message.fromAccountId === accountId || envelope.message?.senderAccountId === accountId) continue;
     if (!shouldCountCloudGroupMessageUnread({

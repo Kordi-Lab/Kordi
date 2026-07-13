@@ -1,5 +1,6 @@
 import type {
   CanonicalSessionState,
+  CanonicalSessionSummary,
   Conversation,
   ConversationBridgeTarget,
   ConversationParticipant,
@@ -13,7 +14,6 @@ import { formatDesktopLastActiveLabel } from '@/lib/time';
 import { buildCanonicalIndexes } from './readModel/indexes';
 import type { CanonicalIndexes } from './readModel/indexes';
 import {
-  canonicalMessageCountsForLastActive,
   sessionChatActivityAtMs,
   sessionConversationDisplayTitle,
   sessionHasActiveProcessing,
@@ -146,31 +146,69 @@ function localRuntimeProgressForCanonicalPlaceholder(canonicalMessage: Message, 
   };
 }
 
+function ownedAgentTurnMatchKeys(message: Message) {
+  if (message.role !== 'owned-agent') return [];
+  const keys: string[] = [];
+  const responseText = messageResponseText(message);
+  if (responseText) keys.push(`text:${comparableAgentResponseText(responseText)}`);
+  const tools = comparableToolSignature(message);
+  if (tools) keys.push(`tools:${tools}`);
+  const thinking = message.turn?.thinkingText?.trim() ?? '';
+  if (thinking) keys.push(`thinking:${comparableAgentResponseText(thinking)}`);
+  return keys;
+}
+
 function mergeLocalOwnedAgentRuntimeStatus(
   canonicalMessages: Message[],
   existingMessages: Message[],
 ) {
   const merged = [...canonicalMessages];
+  const canonicalIndexesByMatchKey = new Map<string, number[]>();
+  const indexMessage = (message: Message, index: number) => {
+    for (const key of ownedAgentTurnMatchKeys(message)) {
+      const indexes = canonicalIndexesByMatchKey.get(key);
+      if (indexes) indexes.push(index);
+      else canonicalIndexesByMatchKey.set(key, [index]);
+    }
+  };
+  merged.forEach(indexMessage);
+
+  const pendingCanonicalIndexesByRole = new Map<Message['role'], number[]>();
+  merged.forEach((message, index) => {
+    if (!isPendingCanonicalAgentPlaceholder(message)) return;
+    const indexes = pendingCanonicalIndexesByRole.get(message.role);
+    if (indexes) indexes.push(index);
+    else pendingCanonicalIndexesByRole.set(message.role, [index]);
+  });
+
   for (const localMessage of existingMessages.filter(hasLocalOwnedAgentRuntimeStatus)) {
     if (localMessage.turn && !localMessage.turn.completed) {
-      const pendingCanonicalIndex = merged.findIndex((message) => (
-        isPendingCanonicalAgentPlaceholder(message)
-        && message.role === localMessage.role
-      ));
-      if (pendingCanonicalIndex >= 0) {
+      const pendingCanonicalIndex = (pendingCanonicalIndexesByRole.get(localMessage.role) ?? [])
+        .find((index) => isPendingCanonicalAgentPlaceholder(merged[index]));
+      if (pendingCanonicalIndex !== undefined) {
         merged[pendingCanonicalIndex] = localRuntimeProgressForCanonicalPlaceholder(
           merged[pendingCanonicalIndex],
           localMessage,
         );
+        indexMessage(merged[pendingCanonicalIndex], pendingCanonicalIndex);
         continue;
       }
     }
 
-    const matchingCanonicalIndex = merged.findIndex((message) => sameOwnedAgentTurn(message, localMessage));
-    if (matchingCanonicalIndex >= 0) {
+    const candidateIndexes = new Set<number>();
+    for (const key of ownedAgentTurnMatchKeys(localMessage)) {
+      for (const index of canonicalIndexesByMatchKey.get(key) ?? []) candidateIndexes.add(index);
+    }
+    const matchingCanonicalIndex = [...candidateIndexes]
+      .sort((left, right) => left - right)
+      .find((index) => sameOwnedAgentTurn(merged[index], localMessage));
+    if (matchingCanonicalIndex !== undefined) {
       merged[matchingCanonicalIndex] = localMessage;
+      indexMessage(localMessage, matchingCanonicalIndex);
     } else {
+      const nextIndex = merged.length;
       merged.push(localMessage);
+      indexMessage(localMessage, nextIndex);
     }
   }
   return merged;
@@ -276,13 +314,6 @@ function withMergedUnreadForSession<T extends Conversation>(conversation: T, ses
   };
 }
 
-function latestReadableRawMessage(messages: CanonicalSessionState['messages']) {
-  const readableMessages = [...messages]
-    .filter(canonicalMessageCountsForLastActive)
-    .sort((left, right) => left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs);
-  return readableMessages[readableMessages.length - 1] ?? null;
-}
-
 export type CanonicalSessionReadModel = {
   sessionTitle: (sessionId: string, fallback: string) => string;
   participantNames: (sessionId: string, fallback: string[]) => string[];
@@ -297,16 +328,28 @@ export type CanonicalSessionReadModel = {
   buildChatConversations: (conversations: Conversation[], buildSubtitle: ConversationSubtitleBuilder) => Conversation[];
 };
 
-export function createCanonicalSessionReadModel(canonicalState: CanonicalSessionState | null): CanonicalSessionReadModel | null {
+export function createCanonicalSessionReadModel(
+  canonicalState: CanonicalSessionState | null,
+  options: { summaries?: CanonicalSessionSummary[] } = {},
+): CanonicalSessionReadModel | null {
   if (!canonicalState) return null;
 
   const indexes = buildCanonicalIndexes(canonicalState);
+  const summaryBySessionId = new Map((options.summaries ?? []).map((summary) => [summary.sessionId, summary]));
+  const sessionActivityAtMs = (session: CanonicalSessionState['sessions'][number]) => (
+    indexes.latestActivityMessageBySessionId.get(session.id)?.createdAtMs
+    || sessionChatActivityAtMs(session)
+  );
+  const latestActivityMessages = (sessionId: string) => {
+    const latest = indexes.latestActivityMessageBySessionId.get(sessionId);
+    return latest ? [latest] : [];
+  };
   const chatSessions = canonicalState.sessions
     .filter((session) => session.kind !== 'project' && session.status !== 'archived' && !isCloudAgentRuntimeSessionId(session.id))
-    .sort((left, right) => sessionChatActivityAtMs(right) - sessionChatActivityAtMs(left));
+    .sort((left, right) => sessionActivityAtMs(right) - sessionActivityAtMs(left));
 
   const hasSelfReadLatestMessage = (sessionId: string) => {
-    const latestMessage = latestReadableRawMessage(indexes.rawMessagesBySessionId.get(sessionId) ?? []);
+    const latestMessage = indexes.latestReadableMessageBySessionId.get(sessionId);
     if (!latestMessage) return false;
     const participants = indexes.participantsBySessionId.get(sessionId) ?? [];
     const selfParticipant = participants.find((participant) => (
@@ -361,7 +404,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         ? canonicalParticipants.map((participant) => participant.name)
         : conversation.participants;
       const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
-      const latestTime = formatDesktopLastActiveLabel(sessionChatActivityAtMs(session, indexes.rawMessagesBySessionId.get(sessionId) ?? []));
+      const latestTime = formatDesktopLastActiveLabel(sessionActivityAtMs(session));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
       const directBridgeTarget = conversation.bridgeTarget ?? syntheticBridgeTarget(session, rawCanonicalParticipants);
       const bridgeTarget = directBridgeTarget ?? bridgeTargetForSession(session, rawCanonicalParticipants, indexes);
@@ -414,9 +457,13 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         bridgeTarget,
         taskActivities,
         canonicalParticipantCount: canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
-        canonicalMessageCount: indexes.rawMessageCountBySessionId.get(sessionId) ?? 0,
+        canonicalMessageCount: summaryBySessionId.get(sessionId)?.messageCount
+          ?? indexes.rawMessageCountBySessionId.get(sessionId)
+          ?? 0,
         canonicalDelegatedExchangeCount: taskActivities.length,
-        canonicalContextSnapshotCount: indexes.contextSnapshotCountBySessionId.get(sessionId) ?? 0,
+        canonicalContextSnapshotCount: summaryBySessionId.get(sessionId)?.contextSnapshotCount
+          ?? indexes.contextSnapshotCountBySessionId.get(sessionId)
+          ?? 0,
         canonicalPresenceSummary: indexes.presenceSummaryBySessionId.get(sessionId),
         forkedFromSessionId: canonicalForkedFromSessionId ?? conversation.forkedFromSessionId ?? null,
         forkedFromMessageId: canonicalForkedFromMessageId ?? conversation.forkedFromMessageId ?? null,
@@ -452,8 +499,8 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
         .sort((left, right) => {
           const leftSession = left[0];
           const rightSession = right[0];
-          return (rightSession ? sessionChatActivityAtMs(rightSession, indexes.rawMessagesBySessionId.get(rightSession.id) ?? []) : 0)
-            - (leftSession ? sessionChatActivityAtMs(leftSession, indexes.rawMessagesBySessionId.get(leftSession.id) ?? []) : 0);
+          return (rightSession ? sessionActivityAtMs(rightSession) : 0)
+            - (leftSession ? sessionActivityAtMs(leftSession) : 0);
         })
         .flatMap((sessions) => {
           const representativeWithMessages = sessions.find((session) => (indexes.rawMessageCountBySessionId.get(session.id) ?? 0) > 0);
@@ -476,7 +523,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
                   this.participantDetails(representative.id),
                   this.messages(representative.id),
                   buildSubtitle,
-                  indexes.rawMessagesBySessionId.get(representative.id) ?? [],
+                  latestActivityMessages(representative.id),
                 ),
                 buildSubtitle,
               )];
@@ -499,7 +546,7 @@ export function createCanonicalSessionReadModel(canonicalState: CanonicalSession
               fallbackParticipants,
               fallbackMessages,
               buildSubtitle,
-              indexes.rawMessagesBySessionId.get(fallbackSession.id) ?? [],
+              latestActivityMessages(fallbackSession.id),
             ),
             buildSubtitle,
           )];

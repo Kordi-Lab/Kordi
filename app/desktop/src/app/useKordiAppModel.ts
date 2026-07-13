@@ -1,4 +1,5 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 
 import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate, buildAuthDisplayProviders, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import {
@@ -46,6 +47,17 @@ import {
   canonicalProjectGroupIdFromRoot,
   isCanonicalBridgeSessionId,
 } from '@/features/canonical/sessionResolver';
+import {
+  applyCanonicalSessionStateAction,
+  beginCanonicalSessionHydration,
+  canonicalStateFromStore,
+  createCanonicalStore,
+  failCanonicalSessionHydration,
+  mergeCanonicalCatalog,
+  mergeCanonicalMessagePage,
+  type CanonicalSessionStateAction,
+  type CanonicalStore,
+} from '@/features/canonical/canonicalStore';
 import { useDesktopChatState } from '@/features/chat/useDesktopChatState';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useComposerViewModel } from '@/features/chat/useComposerViewModel';
@@ -92,7 +104,7 @@ import { buildBridgeMentionTargetsByScope, mentionableCloudAgentSummaries, share
 import { setLocalAgentAvatarSeed, setLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { bridgeContactRequestsForContactsPage } from '@/app/viewModels/helpers';
-import type { Agent, CanonicalIdentity, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, Message, OpenCanonicalSessionFastResult, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type { Agent, CanonicalIdentity, CanonicalMessagePage, CanonicalSessionState, ComposerScope, Contact, DesktopBridgeInvite, DesktopBridgeProject, DesktopChatState, Message, OpenCanonicalSessionFastResult, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 import type { BridgeSettingsDraft, BridgeWizardDraft } from '@/app/kordiShellSlots.types';
 import { createSingleFlightState, requestSingleFlightRun } from '@/lib/singleFlight';
@@ -103,7 +115,8 @@ import {
   createDesktopChatSession,
   createDesktopProject,
   createDesktopProjectFromFolder,
-  fetchCanonicalSessionState,
+  fetchCanonicalSessionCatalog,
+  fetchCanonicalSessionMessages,
   moveDesktopChatSessionToProject,
   openOrCreateCanonicalSessionFast,
   removeCanonicalSessionParticipant,
@@ -127,7 +140,6 @@ import {
   filterMentionTargets,
   groupRenameMetadata,
   isNativeDesktopShell,
-  mergeCanonicalStatePreservingBridgeUiMessages,
   metadataGroupSpaceId,
   metadataString,
   metadataStringArray,
@@ -196,7 +208,24 @@ export function useKordiAppModel({
   const shouldAutoFollowChatRef = useRef(true);
   const lastSeenArtifactByContextRef = useRef<Record<string, string | null>>({});
   const lastAutoAuthProviderSwitchRef = useRef<string | null>(null);
-  const [canonicalSessionState, setCanonicalSessionState] = useState<CanonicalSessionState | null>(null);
+  const [canonicalStore, setCanonicalStoreValue] = useState<CanonicalStore>(() => createCanonicalStore());
+  const canonicalStoreRef = useRef(canonicalStore);
+  const updateCanonicalStore = useCallback((action: SetStateAction<CanonicalStore>) => {
+    const current = canonicalStoreRef.current;
+    const next = typeof action === 'function'
+      ? (action as (value: CanonicalStore) => CanonicalStore)(current)
+      : action;
+    if (Object.is(next, current)) return;
+    canonicalStoreRef.current = next;
+    setCanonicalStoreValue(next);
+  }, []);
+  const canonicalSessionState = useMemo(() => canonicalStateFromStore(canonicalStore), [canonicalStore]);
+  const setCanonicalSessionState = useCallback<Dispatch<SetStateAction<CanonicalSessionState | null>>>((action) => {
+    updateCanonicalStore((currentStore) => applyCanonicalSessionStateAction(
+      currentStore,
+      action as CanonicalSessionStateAction,
+    ));
+  }, [updateCanonicalStore]);
   const [canonicalInitialRefreshSettled, setCanonicalInitialRefreshSettled] = useState(!isNativeShell);
   const [canonicalInitialRefreshError, setCanonicalInitialRefreshError] = useState(false);
   const [cloudInitialSyncStartedAt, setCloudInitialSyncStartedAt] = useState(() => Date.now());
@@ -212,6 +241,7 @@ export function useKordiAppModel({
   const localAvatarSeedsRef = useRef<{ human?: string | null; humanDisplayName?: string | null; humanProfileImageUrl?: string | null; agent?: string | null; agentDisplayName?: string | null }>({});
   const messageSelectionDragRef = useRef<{ conversationId: string; shouldSelect: boolean } | null>(null);
   const canonicalRefreshFlightRef = useRef(createSingleFlightState());
+  const canonicalPageFlightsRef = useRef(new Map<string, Promise<CanonicalMessagePage | null>>());
   const pendingParticipantSpaceCreateRef = useRef<Map<string, string>>(new Map());
 
   const localUi = useKordiLocalUiState();
@@ -598,21 +628,75 @@ export function useKordiAppModel({
   localAvatarSeedsRef.current.agent = localAgentAvatarSeed;
   localAvatarSeedsRef.current.agentDisplayName = localAgentDisplayName;
 
-  const desktopCanonicalRefreshKey = useMemo(
-    () => [
-      ...(desktopChatState?.sessions ?? []).map((session) => `${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
-      ...(desktopChatState?.projects ?? []).flatMap((project) => [
-        `${project.id}:${project.root}:${project.name}:${project.sessions.length}`,
-        ...project.sessions.map((session) => `${project.id}:${session.id}:${session.messageCount}:${session.updatedAtLabel}`),
-      ]),
-    ].join('|'),
-    [desktopChatState?.projects, desktopChatState?.sessions],
-  );
+  const hydrateCanonicalSessionPage = useCallback((
+    sessionId: string,
+    options: { beforeSequenceNum?: number | null; force?: boolean } = {},
+  ) => {
+    const normalizedSessionId = sessionId.trim();
+    if (!isNativeShell || !normalizedSessionId) return Promise.resolve(null);
+    const beforeSequenceNum = options.beforeSequenceNum ?? null;
+    const flightKey = `${normalizedSessionId}:${beforeSequenceNum ?? 'latest'}`;
+    const existingFlight = canonicalPageFlightsRef.current.get(flightKey);
+    if (existingFlight) return existingFlight;
+    const currentStore = canonicalStoreRef.current;
+    const hydration = currentStore.hydrationBySessionId[normalizedSessionId] ?? 'cold';
+    if (beforeSequenceNum === null && hydration === 'ready' && !options.force) return Promise.resolve(null);
 
-  const bridgeCanonicalRefreshKey = useMemo(
-    () => (desktopBridgeState?.conversations ?? []).map((conversation) => `${conversation.id}:${conversation.updatedAtMs}:${conversation.messages.length}`).join('|'),
-    [desktopBridgeState?.conversations],
-  );
+    if (beforeSequenceNum === null) {
+      updateCanonicalStore((current) => beginCanonicalSessionHydration(current, normalizedSessionId));
+    }
+    const request = fetchCanonicalSessionMessages(normalizedSessionId, beforeSequenceNum, 100)
+      .then((page) => {
+        if (!page) return null;
+        updateCanonicalStore((current) => mergeCanonicalMessagePage(current, page));
+        return page;
+      })
+      .catch((error) => {
+        if (beforeSequenceNum === null) {
+          updateCanonicalStore((current) => failCanonicalSessionHydration(current, normalizedSessionId));
+        }
+        throw error;
+      })
+      .finally(() => {
+        canonicalPageFlightsRef.current.delete(flightKey);
+      });
+    canonicalPageFlightsRef.current.set(flightKey, request);
+    return request;
+  }, [isNativeShell, updateCanonicalStore]);
+
+  const loadCanonicalSessionHistory = useCallback(async (sessionId: string) => {
+    const normalizedSessionId = sessionId.trim();
+    if (!normalizedSessionId) return canonicalStateFromStore(canonicalStoreRef.current);
+    let page = await hydrateCanonicalSessionPage(normalizedSessionId, { force: true });
+    let pageCount = 0;
+    while (page?.hasOlder && page.oldestSequenceNum !== null && pageCount < 10_000) {
+      page = await hydrateCanonicalSessionPage(normalizedSessionId, {
+        beforeSequenceNum: page.oldestSequenceNum,
+        force: true,
+      });
+      pageCount += 1;
+    }
+    return canonicalStateFromStore(canonicalStoreRef.current);
+  }, [hydrateCanonicalSessionPage]);
+
+  const loadOlderCanonicalSessionMessages = useCallback(async (sessionId: string) => {
+    const normalizedSessionId = sessionId.trim();
+    if (!normalizedSessionId) return;
+    const currentStore = canonicalStoreRef.current;
+    if (!currentStore.hasOlderBySessionId[normalizedSessionId]) return;
+    const currentMessages = currentStore.messagesBySessionId[normalizedSessionId] ?? [];
+    const oldestSequenceNum = currentMessages.reduce<number | null>((oldest, message) => (
+      oldest === null || message.sequenceNum < oldest ? message.sequenceNum : oldest
+    ), null);
+    if (oldestSequenceNum === null) {
+      await hydrateCanonicalSessionPage(normalizedSessionId, { force: true });
+      return;
+    }
+    await hydrateCanonicalSessionPage(normalizedSessionId, {
+      beforeSequenceNum: oldestSequenceNum,
+      force: true,
+    });
+  }, [hydrateCanonicalSessionPage]);
 
   const refreshCanonicalState = useCallback(async () => {
     if (!isNativeShell) {
@@ -622,8 +706,18 @@ export function useKordiAppModel({
     const flight = canonicalRefreshFlightRef.current;
     const run = requestSingleFlightRun(flight, async () => {
       try {
-        const fetchedCanonicalState = stripDerivedCloudUnreadCounts(await fetchCanonicalSessionState());
-        setCanonicalSessionState((current) => mergeCanonicalStatePreservingBridgeUiMessages(fetchedCanonicalState, current));
+        const fetchedCatalog = await fetchCanonicalSessionCatalog();
+        if (!fetchedCatalog) throw new Error('Canonical catalog is unavailable.');
+        const strippedState = stripDerivedCloudUnreadCounts({
+          ...fetchedCatalog,
+          messages: fetchedCatalog.summaries.flatMap((summary) => summary.latestMessage ? [summary.latestMessage] : []),
+          contextSnapshots: [],
+        });
+        const normalizedCatalog = {
+          ...fetchedCatalog,
+          sessions: strippedState?.sessions ?? fetchedCatalog.sessions,
+        };
+        updateCanonicalStore((current) => mergeCanonicalCatalog(current, normalizedCatalog));
         setCanonicalInitialRefreshError(false);
       } catch {
         setCanonicalInitialRefreshError(true);
@@ -633,11 +727,64 @@ export function useKordiAppModel({
       }
     });
     await (run ?? flight.currentPromise ?? Promise.resolve());
-  }, [isNativeShell]);
+  }, [isNativeShell, updateCanonicalStore]);
 
   useEffect(() => {
     void refreshCanonicalState();
-  }, [bridgeCanonicalRefreshKey, desktopCanonicalRefreshKey, refreshCanonicalState]);
+  }, [cloudSession.account?.accountId, refreshCanonicalState]);
+
+  const activeCanonicalPageSessionIds = useMemo(() => {
+    const catalogSessionIds = new Set(canonicalStore.catalog?.sessions.map((session) => session.id) ?? []);
+    const resolve = (candidate: string | null | undefined) => {
+      const id = candidate?.trim() ?? '';
+      if (!id) return null;
+      if (catalogSessionIds.has(id)) return id;
+      const bridgeSessionId = desktopBridgeState?.conversations.find((conversation) => (
+        conversation.id === id || conversation.canonicalSessionId === id
+      ))?.canonicalSessionId?.trim();
+      return bridgeSessionId && catalogSessionIds.has(bridgeSessionId) ? bridgeSessionId : null;
+    };
+    return uniqueStrings([
+      resolve(activeConvId) ?? '',
+      resolve(activeProjectSessionId) ?? '',
+    ]);
+  }, [activeConvId, activeProjectSessionId, canonicalStore.catalog?.sessions, desktopBridgeState?.conversations]);
+
+  useEffect(() => {
+    for (const sessionId of activeCanonicalPageSessionIds) {
+      void hydrateCanonicalSessionPage(sessionId).catch(() => {});
+    }
+  }, [activeCanonicalPageSessionIds, hydrateCanonicalSessionPage]);
+
+  useEffect(() => {
+    const sessionIds = (canonicalStore.catalog?.sessions ?? []).slice(0, 8).map((session) => session.id);
+    if (!isNativeShell || sessionIds.length === 0) return undefined;
+    let cancelled = false;
+    const prefetch = () => {
+      void (async () => {
+        for (const sessionId of sessionIds) {
+          if (cancelled) return;
+          await hydrateCanonicalSessionPage(sessionId).catch(() => null);
+        }
+      })();
+    };
+    const idleWindow = window as unknown as {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      const idleId = idleWindow.requestIdleCallback(prefetch, { timeout: 1_500 });
+      return () => {
+        cancelled = true;
+        idleWindow.cancelIdleCallback?.(idleId);
+      };
+    }
+    const timeoutId = globalThis.setTimeout(prefetch, 250);
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, [canonicalStore.catalog?.sessions, hydrateCanonicalSessionPage, isNativeShell]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -722,6 +869,8 @@ export function useKordiAppModel({
     desktopChatState,
     desktopBridgeState,
     canonicalSessionState,
+    canonicalSessionSummaries: canonicalStore.catalog?.summaries,
+    canonicalHydrationBySessionId: canonicalStore.hydrationBySessionId,
     hiddenSessionIds: combinedHiddenSessionIds,
     projectWorkspaces: projectsUi.projectWorkspaces,
     projectSelectedSessionIds,
@@ -1223,9 +1372,9 @@ export function useKordiAppModel({
 
   const syncCloudGroupFork = useCallback(async (result: { forkedSessionId: string; sourceSessionId: string; sourceMessageId: string }) => {
     if (!cloudSession.account) return;
-    const state = await fetchCanonicalSessionState();
+    await refreshCanonicalState();
+    const state = await loadCanonicalSessionHistory(result.forkedSessionId);
     if (!state) return;
-    setCanonicalSessionState(state);
     const forkSession = state.sessions.find((session) => session.id === result.forkedSessionId);
     if (!forkSession) return;
     const forkMetadata = forkSession.metadata && typeof forkSession.metadata === 'object' && !Array.isArray(forkSession.metadata)
@@ -1331,7 +1480,7 @@ export function useKordiAppModel({
         },
       });
     }
-  }, [cloudSession.account, recordCloudSessionFork, sendCloudGroupControl, setCanonicalSessionState]);
+  }, [cloudSession.account, loadCanonicalSessionHistory, recordCloudSessionFork, refreshCanonicalState, sendCloudGroupControl]);
 
   const {
     handleSelectChatSession,
@@ -2624,6 +2773,8 @@ export function useKordiAppModel({
     activeProjectBridgeHost,
     activeProjectBridgeProject,
     chatTranscriptScrollRef,
+    canonicalHasOlderBySessionId: canonicalStore.hasOlderBySessionId,
+    loadOlderCanonicalSessionMessages,
     onProjectTranscriptScroll,
     onChatTranscriptScroll,
     activeSourcePreview: settingsUi.activeSourcePreview,

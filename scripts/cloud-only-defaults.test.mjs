@@ -40,6 +40,14 @@ test('desktop package commands expose only Cloud product entrypoints', () => {
   assert.doesNotMatch(scriptBody, /\bVITE_KORDI_EDITION\b|\bKORDI_EDITION\b/);
 });
 
+test('desktop unit command discovers both TypeScript test suffixes without racing timing budgets', () => {
+  const command = readJson('app/desktop/package.json').scripts['test:unit'];
+
+  assert.match(command, /tests\/\*\.test\.tsx/);
+  assert.match(command, /tests\/\*\.test\.ts(?:\s|$)/);
+  assert.match(command, /--test-concurrency=1 tests\/\*\.test\.ts/);
+});
+
 test('public docs use neutral product wording and safe host guidance', () => {
   const publicDocs = [
     'README.md',

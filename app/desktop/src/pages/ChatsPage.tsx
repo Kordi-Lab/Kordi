@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction, UIEvent as ReactUIEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
@@ -79,12 +79,10 @@ import {
 } from '@/features/chat/composerController.shared';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import {
-  TRANSCRIPT_WINDOW_OVERSCAN,
-  TRANSCRIPT_WINDOW_THRESHOLD,
-  transcriptWindowRange,
-  transcriptWindowScrollAnchorIndex,
-  transcriptWindowSpacerHeight,
+  transcriptWindowMessageIdentity,
+  transcriptWindowMessageMatchesId,
 } from '@/features/chat/transcriptWindowing';
+import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
@@ -368,25 +366,13 @@ function ChatComposerShell({ children }: ChatComposerShellProps) {
   return <>{children}</>;
 }
 
-function transcriptWindowMessageIdentity(message: Message | undefined, fallbackIndex: number) {
-  if (!message) return 'none';
-  return message.id ?? message.entryId ?? message.turn?.id ?? `${fallbackIndex}:${message.role}:${message.sender}:${message.time}`;
-}
-
-function transcriptWindowMessageMatchesId(message: Message | undefined, messageId: string, fallbackIndex: number) {
-  if (!message || !messageId) return false;
-  return message.id === messageId
-    || message.entryId === messageId
-    || message.turn?.id === messageId
-    || `transcript-message:${fallbackIndex}` === messageId;
-}
-
 type TranscriptNavigationRequest = {
   id: string;
   nonce: number;
 };
 
 type ChatSessionPaneProps = {
+  sessionKey: string;
   messages: readonly Message[];
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnSender: string;
@@ -394,6 +380,8 @@ type ChatSessionPaneProps = {
   scrollRef: RefObject<HTMLDivElement | null>;
   scrollClassName: string;
   onTranscriptScroll?: () => void;
+  hasOlderMessages?: boolean;
+  onLoadOlderMessages?: () => Promise<void> | void;
   navigationRequest?: TranscriptNavigationRequest | null;
   emptyState?: ReactNode;
   composer: ReactNode;
@@ -442,6 +430,7 @@ type ChatSessionPaneProps = {
 };
 
 function ChatSessionPane({
+  sessionKey,
   messages,
   liveTurn,
   liveTurnSender,
@@ -449,6 +438,8 @@ function ChatSessionPane({
   scrollRef,
   scrollClassName,
   onTranscriptScroll,
+  hasOlderMessages = false,
+  onLoadOlderMessages,
   navigationRequest,
   emptyState,
   composer,
@@ -493,209 +484,118 @@ function ChatSessionPane({
   messageSelectionMode = false,
   densityMode = 'default',
 }: ChatSessionPaneProps) {
-  const [transcriptWindowAnchorIndex, setTranscriptWindowAnchorIndex] = useState(() => Math.max(0, messages.length - 1));
-  const measuredTranscriptMessageHeightsRef = useRef(new Map<string, number>());
-  const transcriptMessageResizeObserversRef = useRef(new Map<string, ResizeObserver>());
-  const transcriptWindowItemRefCallbacksRef = useRef(new Map<string, (node: HTMLDivElement | null) => void>());
-  const [measuredTranscriptHeightVersion, setMeasuredTranscriptHeightVersion] = useState(0);
-  const transcriptWindowResetKey = useMemo(() => {
-    const firstMessage = messages[0];
-    const lastMessage = messages[messages.length - 1];
-    return [
-      messages.length,
-      transcriptWindowMessageIdentity(firstMessage, 0),
-      transcriptWindowMessageIdentity(lastMessage, messages.length - 1),
-    ].join(':');
-  }, [messages]);
-
-  useLayoutEffect(() => {
-    setTranscriptWindowAnchorIndex(Math.max(0, messages.length - 1));
-  }, [messages.length, transcriptWindowResetKey]);
-
-  const navigationTargetIndex = useMemo(() => {
-    if (!navigationRequest?.id) return -1;
-    return messages.findIndex((message, index) => transcriptWindowMessageMatchesId(message, navigationRequest.id, index));
-  }, [messages, navigationRequest]);
-
-  useEffect(() => {
-    if (!navigationRequest || navigationTargetIndex < 0) return;
-    setTranscriptWindowAnchorIndex(navigationTargetIndex);
-  }, [navigationRequest, navigationTargetIndex]);
-
-  const transcriptMessageHeights = useMemo(() => messages.map((message, index) => (
-    measuredTranscriptMessageHeightsRef.current.get(transcriptWindowMessageIdentity(message, index))
-  )), [measuredTranscriptHeightVersion, messages]);
-
-  useEffect(() => {
-    const liveKeys = new Set(messages.map((message, index) => transcriptWindowMessageIdentity(message, index)));
-    for (const key of measuredTranscriptMessageHeightsRef.current.keys()) {
-      if (!liveKeys.has(key)) measuredTranscriptMessageHeightsRef.current.delete(key);
-    }
-    for (const key of transcriptWindowItemRefCallbacksRef.current.keys()) {
-      if (!liveKeys.has(key)) transcriptWindowItemRefCallbacksRef.current.delete(key);
-    }
-  }, [messages]);
-
-  useEffect(() => () => {
-    for (const observer of transcriptMessageResizeObserversRef.current.values()) {
-      observer.disconnect();
-    }
-    transcriptMessageResizeObserversRef.current.clear();
-  }, []);
-
-  const measureTranscriptWindowItem = useCallback((key: string, node: HTMLDivElement | null) => {
-    transcriptMessageResizeObserversRef.current.get(key)?.disconnect();
-    transcriptMessageResizeObserversRef.current.delete(key);
-
-    if (!node || typeof window === 'undefined') return;
-
-    const updateMeasuredHeight = () => {
-      const nextHeight = node.getBoundingClientRect().height;
-      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
-      const previousHeight = measuredTranscriptMessageHeightsRef.current.get(key);
-      if (previousHeight !== undefined && Math.abs(previousHeight - nextHeight) < 1) return;
-      measuredTranscriptMessageHeightsRef.current.set(key, nextHeight);
-      setMeasuredTranscriptHeightVersion((version) => version + 1);
-    };
-
-    updateMeasuredHeight();
-
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(updateMeasuredHeight);
-    observer.observe(node);
-    transcriptMessageResizeObserversRef.current.set(key, observer);
-  }, []);
-
-  const transcriptWindowItemRef = useCallback((key: string) => {
-    const existing = transcriptWindowItemRefCallbacksRef.current.get(key);
-    if (existing) return existing;
-    const ref = (node: HTMLDivElement | null) => measureTranscriptWindowItem(key, node);
-    transcriptWindowItemRefCallbacksRef.current.set(key, ref);
-    return ref;
-  }, [measureTranscriptWindowItem]);
-
-  const handleTranscriptScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
-    onTranscriptScroll?.();
-    if (messages.length <= TRANSCRIPT_WINDOW_THRESHOLD) return;
-    const nextAnchorIndex = transcriptWindowScrollAnchorIndex(event.currentTarget.scrollTop, transcriptMessageHeights);
-    setTranscriptWindowAnchorIndex((current) => (
-      Math.abs(current - nextAnchorIndex) >= TRANSCRIPT_WINDOW_OVERSCAN ? nextAnchorIndex : current
-    ));
-  }, [messages.length, onTranscriptScroll, transcriptMessageHeights]);
-
-  const transcriptWindow = transcriptWindowRange(messages.length, transcriptWindowAnchorIndex);
-  const visibleRawTranscriptMessages = messages.slice(transcriptWindow.start, transcriptWindow.end);
   const attributedTranscript = useMemo(
-    () => buildReplyAttribution(visibleRawTranscriptMessages, shouldRenderLiveTurn ? liveTurn : null, {
+    () => buildReplyAttribution(messages, shouldRenderLiveTurn ? liveTurn : null, {
       inferLatestHumanRequest: inferLatestHumanReplyTarget,
       suppressAgentReplyAttribution: plainAgentResponse,
-      messageIndexOffset: transcriptWindow.start,
     }),
-    [inferLatestHumanReplyTarget, liveTurn, plainAgentResponse, shouldRenderLiveTurn, transcriptWindow.start, visibleRawTranscriptMessages],
+    [inferLatestHumanReplyTarget, liveTurn, messages, plainAgentResponse, shouldRenderLiveTurn],
   );
-  const visibleTranscriptMessages = attributedTranscript.messages;
+  const originalIndexByMessageKey = useMemo(() => new Map(messages.map((message, index) => [
+    transcriptWindowMessageIdentity(message, index),
+    index,
+  ])), [messages]);
+  const transcriptEntries = useMemo(() => attributedTranscript.messages.map((message, index) => ({
+    message,
+    originalIndex: originalIndexByMessageKey.get(transcriptWindowMessageIdentity(message, index)) ?? index,
+  })), [attributedTranscript.messages, originalIndexByMessageKey]);
   const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
-  const topSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, 0, transcriptWindow.start) : 0;
-  const bottomSpacerHeight = transcriptWindow.windowed ? transcriptWindowSpacerHeight(transcriptMessageHeights, transcriptWindow.end, messages.length) : 0;
-  useEffect(() => {
-    if (!navigationRequest || navigationTargetIndex < transcriptWindow.start || navigationTargetIndex >= transcriptWindow.end) return;
-    const frameId = window.requestAnimationFrame(() => {
-      navigateToTranscriptMessage(navigationRequest.id, scrollRef);
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [navigationRequest, navigationTargetIndex, scrollRef, transcriptWindow.end, transcriptWindow.start]);
 
   return (
     <>
-      <ScrollArea
-        ref={scrollRef}
-        className={scrollClassName}
-        onScroll={handleTranscriptScroll}
-      >
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-1">
-          {topSpacerHeight > 0 ? <div data-transcript-window-spacer="top" style={{ height: topSpacerHeight }} aria-hidden="true" /> : null}
-          {messages.length > 0 ? visibleTranscriptMessages.map((msg, visibleIdx) => {
-            const idx = transcriptWindow.start + visibleIdx;
-            const windowItemKey = transcriptWindowMessageIdentity(msg, idx);
-            return (
-            <div
-              key={transcriptMessageRenderKey(msg, idx)}
-              ref={transcriptWindowItemRef(windowItemKey)}
-              data-transcript-window-item="true"
-            >
-              <MessageBubble
-                msg={msg}
-                onOpenSource={onOpenSource}
-                onOpenArtifact={onOpenArtifact}
-                onOpenAuthSettings={onOpenAuthSettings}
-                onNavigateToMessage={onNavigateToMessage}
-                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-                onRequestBridgeContact={onRequestBridgeContact}
-                onForkMessage={onForkMessage}
-                messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
-                onOpenForkSession={onOpenForkSession}
-                onReplyMessage={onReplyMessage}
-                onForwardMessage={onForwardMessage}
-                onOpenMessageDetail={onOpenMessageDetail}
-                onSelectMessage={onSelectMessage}
-                onRequestPinMessage={onRequestPinMessage}
-                onRequestUnpinMessage={onRequestUnpinMessage}
-                pinnedMessageId={pinnedMessageId}
-                selectionMode={selectionMode}
-                selectedMessageIds={selectedMessageIds}
-                isMessageSelectable={isMessageSelectable}
-                densityMode={densityMode}
-                onToggleSelectedMessage={onToggleSelectedMessage}
-                onSelectionDragStart={onSelectionDragStart}
-                onSelectionDragEnter={onSelectionDragEnter}
-                onSelectionDragEnd={onSelectionDragEnd}
-                plainAgentResponse={plainAgentResponse}
-                isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(messages, idx, -1)}
-                isGroupedWithNext={isGroupedWithAdjacentHumanMessage(messages, idx, 1)}
-              />
-              {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
-                <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
-                  <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                  <button
-                    type="button"
-                    onClick={() => onSelectSession?.(activeForkSourceSessionId)}
-                    disabled={!onSelectSession}
-                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
-                    title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
-                  >
-                    <Split className="h-3 w-3" />
-                    <span>Forked from conversation</span>
-                  </button>
-                  <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
-                </div>
-              ) : null}
-            </div>
-            );
-          }) : !shouldRenderLiveTurn ? emptyState : null}
-          {bottomSpacerHeight > 0 ? <div data-transcript-window-spacer="bottom" style={{ height: bottomSpacerHeight }} aria-hidden="true" /> : null}
-          {shouldRenderLiveTurn && attributedLiveTurn ? (
-            <LiveChatTurnMessage
-              turn={attributedLiveTurn}
-              sender={liveTurnSender}
-              onStopBridgeAgentRequest={onStopBridgeAgentRequest}
-              onStopActiveTurn={onStopActiveTurn}
-              plainAgentResponse={plainAgentResponse}
-              onNavigateToMessage={onNavigateToMessage}
+      <VirtualTranscript
+        items={transcriptEntries}
+        sessionKey={sessionKey}
+        scrollRef={scrollRef}
+        scrollClassName={scrollClassName}
+        onScroll={() => onTranscriptScroll?.()}
+        navigationRequest={navigationRequest}
+        findNavigationIndex={(entry, messageId) => transcriptWindowMessageMatchesId(
+          entry.message,
+          messageId,
+          entry.originalIndex,
+        )}
+        onNavigationReady={(messageId) => navigateToTranscriptMessage(messageId, scrollRef)}
+        hasOlder={hasOlderMessages}
+        onLoadOlder={onLoadOlderMessages}
+        getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
+        renderItem={({ message: msg, originalIndex: idx }) => (
+          <div>
+            <MessageBubble
+              msg={msg}
+              onOpenSource={onOpenSource}
               onOpenArtifact={onOpenArtifact}
               onOpenAuthSettings={onOpenAuthSettings}
+              onNavigateToMessage={onNavigateToMessage}
+              onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+              onRequestBridgeContact={onRequestBridgeContact}
+              onForkMessage={onForkMessage}
+              messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
+              onOpenForkSession={onOpenForkSession}
+              onReplyMessage={onReplyMessage}
+              onForwardMessage={onForwardMessage}
+              onOpenMessageDetail={onOpenMessageDetail}
+              onSelectMessage={onSelectMessage}
+              onRequestPinMessage={onRequestPinMessage}
+              onRequestUnpinMessage={onRequestUnpinMessage}
+              pinnedMessageId={pinnedMessageId}
+              selectionMode={selectionMode}
+              selectedMessageIds={selectedMessageIds}
+              isMessageSelectable={isMessageSelectable}
+              densityMode={densityMode}
+              onToggleSelectedMessage={onToggleSelectedMessage}
+              onSelectionDragStart={onSelectionDragStart}
+              onSelectionDragEnter={onSelectionDragEnter}
+              onSelectionDragEnd={onSelectionDragEnd}
+              plainAgentResponse={plainAgentResponse}
+              isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(messages, idx, -1)}
+              isGroupedWithNext={isGroupedWithAdjacentHumanMessage(messages, idx, 1)}
             />
-          ) : null}
-          {queuedMessages.map((message) => (
-            <QueuedMessageBubble
-              key={message.id}
-              message={message}
-              isCompressionActive={isCompressionActive}
-              onEdit={onEditQueuedMessage}
-              onCancel={onCancelQueuedMessage}
-            />
-          ))}
-        </motion.div>
-      </ScrollArea>
+            {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
+              <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
+                <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => onSelectSession?.(activeForkSourceSessionId)}
+                  disabled={!onSelectSession}
+                  className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-sky-300 transition hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  title={`Open the source conversation${activeForkSourceTitle ? ` (${activeForkSourceTitle})` : ''}`}
+                >
+                  <Split className="h-3 w-3" />
+                  <span>Forked from conversation</span>
+                </button>
+                <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
+              </div>
+            ) : null}
+          </div>
+        )}
+        emptyState={!shouldRenderLiveTurn ? emptyState : null}
+        tail={(
+          <div className="space-y-1">
+            {shouldRenderLiveTurn && attributedLiveTurn ? (
+              <LiveChatTurnMessage
+                turn={attributedLiveTurn}
+                sender={liveTurnSender}
+                onStopBridgeAgentRequest={onStopBridgeAgentRequest}
+                onStopActiveTurn={onStopActiveTurn}
+                plainAgentResponse={plainAgentResponse}
+                onNavigateToMessage={onNavigateToMessage}
+                onOpenArtifact={onOpenArtifact}
+                onOpenAuthSettings={onOpenAuthSettings}
+              />
+            ) : null}
+            {queuedMessages.map((message) => (
+              <QueuedMessageBubble
+                key={message.id}
+                message={message}
+                isCompressionActive={isCompressionActive}
+                onEdit={onEditQueuedMessage}
+                onCancel={onCancelQueuedMessage}
+              />
+            ))}
+          </div>
+        )}
+      />
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <div className="px-5 pt-3">
           <div
@@ -1055,6 +955,8 @@ type ChatsPageProps = {
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   onRenameDesktopSession: (baselineName: string) => Promise<void>;
   chatTranscriptScrollRef: RefObject<HTMLDivElement | null>;
+  canonicalHasOlderBySessionId?: Record<string, boolean>;
+  onLoadOlderCanonicalSessionMessages?: (sessionId: string) => Promise<void>;
   onTranscriptScroll: () => void;
   onOpenSource: (file: EditFilePreview) => void;
   onOpenArtifact: (artifactId: string) => void;
@@ -1150,6 +1052,8 @@ export function ChatsPage({
   setDesktopSessionRenameDraft,
   onRenameDesktopSession,
   chatTranscriptScrollRef,
+  canonicalHasOlderBySessionId = {},
+  onLoadOlderCanonicalSessionMessages,
   onTranscriptScroll,
   onOpenSource,
   onOpenArtifact,
@@ -1952,12 +1856,17 @@ export function ChatsPage({
         </div>
       </div>
       <ChatSessionPane
+        sessionKey={companionConversation.id}
         messages={companionTranscriptMessages}
         liveTurn={attributedCompanionTranscriptLiveTurn}
         liveTurnSender={companionLiveTurnSender}
         shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
         scrollRef={companionTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"
+        hasOlderMessages={Boolean(canonicalHasOlderBySessionId[companionConversation.canonicalSessionId ?? companionConversation.id])}
+        onLoadOlderMessages={onLoadOlderCanonicalSessionMessages
+          ? () => onLoadOlderCanonicalSessionMessages(companionConversation.canonicalSessionId ?? companionConversation.id)
+          : undefined}
         navigationRequest={companionTranscriptNavigationRequest}
         densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
@@ -2659,12 +2568,17 @@ export function ChatsPage({
       ) : null}
 
       <ChatSessionPane
+        sessionKey={activeConv.id}
         messages={attributedTranscriptMessages}
         liveTurn={attributedActiveTranscriptLiveTurn}
         liveTurnSender={liveTurnSender}
         shouldRenderLiveTurn={shouldRenderLiveTurn}
         scrollRef={chatTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3.5 py-5 sm:px-4"
+        hasOlderMessages={Boolean(canonicalHasOlderBySessionId[activeConv.canonicalSessionId ?? activeConv.id])}
+        onLoadOlderMessages={onLoadOlderCanonicalSessionMessages
+          ? () => onLoadOlderCanonicalSessionMessages(activeConv.canonicalSessionId ?? activeConv.id)
+          : undefined}
         navigationRequest={mainTranscriptNavigationRequest}
         densityMode={chatTranscriptDensityMode(activeConv)}
         onTranscriptScroll={onTranscriptScroll}

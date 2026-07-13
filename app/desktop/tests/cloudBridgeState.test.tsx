@@ -44,9 +44,6 @@ import {
   cloudGroupAgentResponseExistsForRequest,
   cloudAgentRunStatusAlreadyOwnsRequest,
   cloudFallbackRunClaimsForMessages,
-  cachedCloudMessagesByPeerHasMessages,
-  loadCachedCloudMessagesByPeer,
-  saveCachedCloudMessagesByPeer,
 } from '../src/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
 import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
@@ -434,14 +431,34 @@ test('cloud agent runtime routes fall back to current composer route for unconfi
   });
 });
 
-test('cloud bridge state does not replay stale localStorage messages before server sync settles', () => {
+test('cloud bridge state loads the asynchronous cache without treating it as authoritative', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
   assert.match(source, /if \(!initialMessagesSettled\) return \{\};[\s\S]*removeCloudSessionMessages\(account\.accountId, next, sessionId\)/);
+  assert.match(source, /defaultCloudMessageCache\(\)/);
+  assert.match(source, /cloudMessageCache\.load\(accountId\)\.then/);
+  assert.match(source, /hydratedMessagesCacheAccountRef\.current === account\.accountId/);
+  assert.doesNotMatch(source, /loadCachedCloudMessagesByPeer|saveCachedCloudMessagesByPeer/);
   assert.match(source, /loadCloudSessionVisibility\(account\?\.accountId\)/);
   assert.match(source, /if \(!account \|\| messagesCacheAccountRef\.current !== account\.accountId\) return;[\s\S]*saveCloudSessionVisibility/);
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
-  assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*cloudGroupControlMessagesForAccount/);
+  assert.match(source, /if \(!account \|\| !canonicalSessionState\?\.profile\.humanIdentityId \|\| !setCanonicalSessionState \|\| !initialMessagesSettled\) return;[\s\S]*cloudGroupReplayCoordinator\.request/);
+});
+
+test('cloud group control replay uses bounded coordinator retries', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const replayStart = source.indexOf('if (!account || !canonicalSessionState?.profile.humanIdentityId');
+  const replayEnd = source.indexOf('\n  useEffect(() => {', replayStart + 1);
+  assert.notEqual(replayStart, -1, 'expected Cloud group replay effect');
+  assert.notEqual(replayEnd, -1, 'expected Cloud group replay effect end');
+  const replayEffect = source.slice(replayStart, replayEnd);
+
+  assert.match(source, /new CloudGroupReplayCoordinator<IndexedCloudGroupRow>/);
+  assert.match(source, /cloudGroupReplayCoordinator\.changeAccount\(accountId\)/);
+  assert.match(replayEffect, /cloudGroupReplayCoordinator\.request\(/);
+  assert.match(replayEffect, /entries: cloudMessageIndex\.replayRows\.map/);
+  assert.doesNotMatch(replayEffect, /processedCloudGroupControlIdsRef/);
+  assert.doesNotMatch(replayEffect, /processedCloudGroupControlIdsRef\.current\.delete/);
 });
 
 test('cloud unread badge reconciliation waits for authoritative startup message sync', () => {
@@ -459,11 +476,34 @@ test('cloud unread badge reconciliation waits for authoritative startup message 
   );
 });
 
-test('cloud startup performs full message refresh before accepting diff-synced cache as settled', () => {
+test('cloud startup performs one coordinated full snapshot after contacts settle', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /syncCloudBridgeDiff\(\{\s*settleInitialMessages:\s*false\s*\}\)[\s\S]*refreshCloudBridgeMessages\(\)/);
+  assert.match(source, /if \(!contacts\.initialLoadSettled\) return;/);
+  assert.match(source, /startupFullSnapshotAccountRef\.current !== account\.accountId[\s\S]*refreshCloudBridgeMessages\(\)/);
+  assert.doesNotMatch(source, /syncCloudBridgeDiff\(\{\s*settleInitialMessages:\s*false/);
   assert.match(source, /if \(settleInitialMessages\) setInitialMessagesSettledPeerKey\(bootstrapPeerKey\)/);
+});
+
+test('normal Cloud events request diff sync instead of full snapshots', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const fullRefreshCalls = source.match(/void refreshCloudBridgeMessages\(\)/g) ?? [];
+
+  assert.equal(fullRefreshCalls.length, 1, 'only the post-contact startup path should request a full message snapshot');
+  assert.match(source, /lastCloudFocusRefreshAtRef\.current = now;\s*void syncCloudBridgeDiff\(\)/);
+  assert.match(source, /markSessionMessagesRead[\s\S]*void syncCloudBridgeDiff\(\)/);
+});
+
+test('cloud message bootstrap keeps attachments metadata-only', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const start = source.indexOf('const refreshCloudBridgeMessagesOnce');
+  const end = source.indexOf('const syncCloudBridgeDiffOnceForGeneration', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const bootstrap = source.slice(start, end);
+
+  assert.match(bootstrap, /client\.listMessages/);
+  assert.doesNotMatch(bootstrap, /resolveCloudMessageAttachments|downloadAttachmentContent/);
 });
 
 test('Cloud focus refresh is throttled across focus, visibility, and pageshow bursts', () => {
@@ -532,18 +572,6 @@ const message: CloudMessage = {
   direction: 'incoming',
 };
 
-function memoryStorage(): Storage {
-  const values = new Map<string, string>();
-  return {
-    get length() { return values.size; },
-    clear: () => values.clear(),
-    getItem: (key: string) => values.get(key) ?? null,
-    key: (index: number) => [...values.keys()][index] ?? null,
-    removeItem: (key: string) => { values.delete(key); },
-    setItem: (key: string, value: string) => { values.set(key, String(value)); },
-  };
-}
-
 test('cloud session fork map equality compares structural fork lineage to prevent refresh loops', () => {
   const left = {
     child: {
@@ -581,50 +609,6 @@ test('cloud bridge state ignores poisoned localhost bridge state instead of merg
 
   assert.deepEqual(cloudState.hosts.map((host) => host.id), ['cloud']);
   assert.equal(cloudState.conversations.every((conversation) => conversation.hostId === 'cloud'), true);
-});
-
-test('cloud message local cache round-trips all peer chat messages', () => {
-  const storage = memoryStorage();
-  saveCachedCloudMessagesByPeer('acct_me', {
-    acct_peer: [message],
-    acct_group_peer: [{ ...message, messageId: 'msg_group_1', fromAccountId: 'acct_group_peer' }],
-  }, storage);
-
-  assert.equal(cachedCloudMessagesByPeerHasMessages('acct_me', storage), true);
-  assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), {
-    acct_peer: [message],
-    acct_group_peer: [{ ...message, messageId: 'msg_group_1', fromAccountId: 'acct_group_peer' }],
-  });
-});
-
-test('cloud message local cache ignores malformed cached records', () => {
-  const storage = memoryStorage();
-  storage.setItem('kordi.cloud.messagesByPeer.v1:acct_me', JSON.stringify({
-    acct_peer: [{ messageId: '', fromAccountId: 'acct_peer' }, message],
-  }));
-
-  assert.deepEqual(loadCachedCloudMessagesByPeer('acct_me', storage), { acct_peer: [message] });
-});
-
-test('cloud message cache normalizes self-addressed rows as outgoing and preserves session ids', () => {
-  const storage = memoryStorage();
-  storage.setItem('kordi.cloud.messagesByPeer.v1:acct_self', JSON.stringify({
-    acct_self: [{
-      messageId: 'msg_self_1',
-      fromAccountId: 'acct_self',
-      toAccountId: 'acct_self',
-      body: 'cached self row',
-      createdAt: '2026-07-07T18:00:00Z',
-      deliveredAt: '2026-07-07T18:00:00Z',
-      readAt: null,
-      direction: 'incoming',
-      sessionId: 'session:self-agent:test',
-    }],
-  }));
-
-  const loaded = loadCachedCloudMessagesByPeer('acct_self', storage);
-  assert.equal(loaded.acct_self?.[0]?.direction, 'outgoing');
-  assert.equal(loaded.acct_self?.[0]?.sessionId, 'session:self-agent:test');
 });
 
 test('cloud group read marking patches stale local unread cache rows by session id', () => {
@@ -695,6 +679,22 @@ test('cloud message refresh snapshots preserve locally merged newer messages', (
   );
 
   assert.deepEqual(merged.acct_peer?.map((item) => item.messageId), ['msg_hello', 'msg_sent']);
+});
+
+test('cloud message snapshot merges preserve unchanged peer and message identities', () => {
+  const peerOne = [{ ...message, messageId: 'msg_peer_one' }];
+  const peerTwo = [{ ...message, messageId: 'msg_peer_two', fromAccountId: 'acct_two' }];
+  const current = { acct_peer: peerOne, acct_two: peerTwo };
+
+  assert.equal(mergeCloudMessagesByPeerSnapshot(current, current), current);
+
+  const merged = mergeCloudMessagesByPeerSnapshot(current, {
+    acct_peer: [{ ...peerOne[0]! }],
+    acct_two: [...peerTwo, { ...peerTwo[0]!, messageId: 'msg_peer_two_new' }],
+  });
+  assert.equal(merged.acct_peer, peerOne);
+  assert.equal(merged.acct_peer?.[0], peerOne[0]);
+  assert.notEqual(merged.acct_two, peerTwo);
 });
 
 test('cloud message peer equality detects attachment cache updates', () => {
@@ -1915,7 +1915,6 @@ test('cloud initial message sync follows group peer discovery until stable', asy
     initialPeerIds: ['acct_peer_1'],
     existingMessagesByPeer: {},
     listMessages: async (peerId) => messagesByPeer[peerId] ?? [],
-    resolveMessageAttachments: async (messages) => messages,
   });
 
   assert.equal(result.complete, true);
@@ -1966,6 +1965,49 @@ test('stored self messages restore a private My Kordi cloud agent conversation',
     '@Kordi remember this private note',
     'I will remember it.',
   ]);
+});
+
+test('cloud bridge rebuild reuses unaffected conversation objects by message revision', () => {
+  const peerTwo = cloudContactToContact({
+    accountId: 'acct_two',
+    displayName: 'Second Person',
+    avatarUrl: null,
+    nodeId: 'node_two',
+    createdAt: '2026-05-11T00:00:00Z',
+  });
+  const secondPeerMessage: CloudMessage = {
+    ...message,
+    messageId: 'msg_2',
+    fromAccountId: 'acct_two',
+    body: 'hello from second peer',
+  };
+  const messagesByPeer = { acct_peer: [message], acct_two: [secondPeerMessage] };
+  const first = buildCloudDesktopBridgeState({ account, contacts: [peer, peerTwo], messagesByPeer });
+  const second = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer, peerTwo],
+    messagesByPeer,
+    previousState: first,
+  });
+
+  const firstByPeerId = new Map(first.conversations.map((conversation) => [conversation.peerNodeId, conversation]));
+  const secondByPeerId = new Map(second.conversations.map((conversation) => [conversation.peerNodeId, conversation]));
+  assert.equal(secondByPeerId.get('acct_peer'), firstByPeerId.get('acct_peer'));
+  assert.equal(secondByPeerId.get('acct_two'), firstByPeerId.get('acct_two'));
+
+  const updatedMessagesByPeer = {
+    ...messagesByPeer,
+    acct_peer: [{ ...message, readAt: '2026-05-11T10:00:01Z' }],
+  };
+  const third = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer, peerTwo],
+    messagesByPeer: updatedMessagesByPeer,
+    previousState: second,
+  });
+  const thirdByPeerId = new Map(third.conversations.map((conversation) => [conversation.peerNodeId, conversation]));
+  assert.notEqual(thirdByPeerId.get('acct_peer'), secondByPeerId.get('acct_peer'));
+  assert.equal(thirdByPeerId.get('acct_two'), secondByPeerId.get('acct_two'));
 });
 
 test('unscoped self-agent cloud cache is hidden when local canonical self-agent history exists', () => {

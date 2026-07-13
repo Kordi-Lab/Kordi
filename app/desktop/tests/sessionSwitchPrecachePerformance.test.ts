@@ -6,21 +6,13 @@ const workspaceViewModelSource = () => readFileSync(new URL('../src/app/useWorks
 const appModelSource = () => readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
 const uiEffectsSource = () => readFileSync(new URL('../src/app/useKordiUiEffects.ts', import.meta.url), 'utf8');
 
-test('canonical full-state refresh key ignores active session selection-only changes', () => {
+test('canonical session selection pages only the selected transcript and never refreshes full state', () => {
   const source = appModelSource();
-  const keyStart = source.indexOf('const desktopCanonicalRefreshKey = useMemo(');
-  const keyEnd = source.indexOf('\n\n  const bridgeCanonicalRefreshKey = useMemo(', keyStart);
-  assert.notEqual(keyStart, -1, 'expected desktop canonical refresh key');
-  assert.notEqual(keyEnd, -1, 'expected end of desktop canonical refresh key');
-  const keyBlock = source.slice(keyStart, keyEnd);
-
-  assert.doesNotMatch(
-    keyBlock,
-    /desktopChatState\?\.activeSession(?:Id|\.)/,
-    'switching the selected session must not fetch and decode the full canonical state payload',
-  );
-  assert.match(keyBlock, /messageCount/, 'message count changes should still refresh canonical state');
-  assert.match(keyBlock, /updatedAtLabel/, 'session content updates should still refresh canonical state');
+  assert.doesNotMatch(source, /desktopCanonicalRefreshKey|bridgeCanonicalRefreshKey/);
+  assert.doesNotMatch(source, /fetchCanonicalSessionState/);
+  assert.match(source, /activeCanonicalPageSessionIds/);
+  assert.match(source, /hydrateCanonicalSessionPage\(sessionId\)/);
+  assert.match(source, /fetchCanonicalSessionMessages\(normalizedSessionId, beforeSequenceNum, 100\)/);
 });
 
 test('canonical Cloud chat selection does not invoke native desktop chat reload', () => {
@@ -68,4 +60,17 @@ test('canonical chat hydration is cached independently from active session selec
   const visibleMemo = source.slice(visibleStart, source.indexOf('\n\n  const activeConv', visibleStart));
   assert.match(visibleMemo, /hydratedChatConversations/, 'visible conversations should reuse warmed canonical hydration');
   assert.match(visibleMemo, /activeConvId/, 'only the cheap visibility layer should depend on active selection');
+});
+
+test('older canonical transcript pages use the oldest loaded sequence cursor', () => {
+  const source = appModelSource();
+  const start = source.indexOf('const loadOlderCanonicalSessionMessages = useCallback');
+  const end = source.indexOf('\n\n  const refreshCanonicalState', start);
+  assert.notEqual(start, -1, 'expected an older-page loader');
+  assert.notEqual(end, -1, 'expected catalog refresh after the older-page loader');
+  const loader = source.slice(start, end);
+
+  assert.match(loader, /message\.sequenceNum < oldest/);
+  assert.match(loader, /beforeSequenceNum: oldestSequenceNum/);
+  assert.match(source, /canonicalHasOlderBySessionId: canonicalStore\.hasOlderBySessionId/);
 });

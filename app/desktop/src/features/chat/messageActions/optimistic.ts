@@ -401,6 +401,5 @@ export function appendOptimisticCanonicalMessage(
 
 export async function persistCanonicalUserMessage(prepared: PreparedCanonicalUserMessage | null) {
   if (!prepared) return null;
-  await appendCanonicalMessageFast(prepared.request);
-  return prepared.messageId;
+  return appendCanonicalMessageFast(prepared.request);
 }

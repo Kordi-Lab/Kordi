@@ -17,6 +17,73 @@ pub struct CanonicalSessionState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CanonicalProfileIdentityDelta {
+    pub profile: CanonicalLocalProfile,
+    pub identity: CanonicalIdentity,
+    pub previous_identity_id: Option<String>,
+    pub group_self_session_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalSessionCatalog {
+    pub storage_path: String,
+    pub profile: CanonicalLocalProfile,
+    pub identities: Vec<CanonicalIdentity>,
+    pub sessions: Vec<CanonicalSession>,
+    pub participants: Vec<CanonicalSessionParticipant>,
+    pub delegated_exchanges: Vec<CanonicalDelegatedExchange>,
+    pub presence: Vec<CanonicalPresence>,
+    pub summaries: Vec<CanonicalSessionSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalSessionSummary {
+    pub session_id: String,
+    pub message_count: i64,
+    pub latest_message: Option<CanonicalSessionMessage>,
+    pub context_snapshot_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalMessagePage {
+    pub session_id: String,
+    pub messages: Vec<CanonicalSessionMessage>,
+    pub oldest_sequence_num: Option<i64>,
+    pub newest_sequence_num: Option<i64>,
+    pub has_older: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalReadCursorDelta {
+    pub session_id: String,
+    pub identity_id: String,
+    pub last_seen_at_ms: i64,
+    pub last_read_message_id: Option<String>,
+    pub last_read_sequence_num: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalMessageDeliveryDelta {
+    pub message_id: String,
+    pub session_id: String,
+    pub status: String,
+    pub delivery_state: String,
+    pub delivered_recipient_ids: Vec<String>,
+    pub pending_recipient_ids: Vec<String>,
+    pub exhausted_recipient_ids: Vec<String>,
+    pub updated_at_ms: i64,
+    pub content_hash: String,
+    pub session_updated_at_ms: i64,
+    pub session_last_message_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenCanonicalSessionFastResult {
     pub session: CanonicalSession,
     pub participants: Vec<CanonicalSessionParticipant>,
@@ -82,6 +149,7 @@ pub struct CanonicalSessionParticipant {
     pub added_at_ms: i64,
     pub last_seen_at_ms: Option<i64>,
     pub last_read_message_id: Option<String>,
+    pub last_read_sequence_num: Option<i64>,
     pub metadata: Option<Value>,
 }
 
@@ -217,6 +285,18 @@ pub struct AppendCanonicalMessageRequest {
     pub status: Option<String>,
     pub source_transport: Option<String>,
     pub source_event_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCanonicalMessageDeliveryRequest {
+    pub message_id: String,
+    pub session_id: String,
+    pub status: String,
+    pub delivery_state: String,
+    pub delivered_recipient_ids: Vec<String>,
+    pub pending_recipient_ids: Vec<String>,
+    pub exhausted_recipient_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
