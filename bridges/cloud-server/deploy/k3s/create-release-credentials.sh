@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 POLICY_DIR="${REPO_ROOT}/bridges/cloud-server/deploy/k3s/policies"
 SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET}"
 SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE}"
@@ -16,6 +17,7 @@ TMP_DIR="$(mktemp -d /tmp/kordi-release-credentials.XXXXXX)"
 BOOTSTRAP_STARTED=0
 
 umask 077
+source "${SCRIPT_DIR}/release-credential-utils.sh"
 
 remote() {
   gcloud compute ssh "${SSH_TARGET}" \
@@ -36,13 +38,14 @@ trap cleanup EXIT INT TERM
 reader_access_file="${TMP_DIR}/reader-access"
 reader_secret_file="${TMP_DIR}/reader-secret"
 publisher_access_file="${TMP_DIR}/publisher-access"
+publisher_access_original_file="${TMP_DIR}/publisher-access-original"
 publisher_secret_file="${TMP_DIR}/publisher-secret"
 
 if remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader >/dev/null 2>&1"; then
   remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader -o jsonpath='{.data.access-key}' | base64 -d" >"${reader_access_file}"
   remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader -o jsonpath='{.data.secret-key}' | base64 -d" >"${reader_secret_file}"
 else
-  openssl rand -hex 16 >"${reader_access_file}"
+  openssl rand -hex 16 | tr -d '\r\n' >"${reader_access_file}"
   openssl rand -base64 36 | tr -d '\n' >"${reader_secret_file}"
 fi
 
@@ -59,7 +62,7 @@ load_or_create_gcp_secret() {
     return
   fi
   if [[ "${generation_kind}" == "access" ]]; then
-    openssl rand -hex 16 >"${destination}"
+    openssl rand -hex 16 | tr -d '\r\n' >"${destination}"
   else
     openssl rand -base64 36 | tr -d '\n' >"${destination}"
   fi
@@ -82,6 +85,10 @@ load_or_create_gcp_secret \
   "${publisher_secret_file}" \
   "secret"
 
+cp "${publisher_access_file}" "${publisher_access_original_file}"
+normalize_access_key_file "${reader_access_file}"
+normalize_access_key_file "${publisher_access_file}"
+
 for value_file in \
   "${reader_access_file}" \
   "${reader_secret_file}" \
@@ -90,6 +97,14 @@ for value_file in \
   test -s "${value_file}"
   chmod 600 "${value_file}"
 done
+
+if ! cmp -s "${publisher_access_original_file}" "${publisher_access_file}"; then
+  gcloud secrets versions add "kordi-release-publisher-access-key" \
+    --project "${GCP_PROJECT}" \
+    --data-file "${publisher_access_file}" \
+    --quiet >/dev/null
+fi
+rm -f "${publisher_access_original_file}"
 
 reader_access_b64="$(base64 <"${reader_access_file}" | tr -d '\n')"
 reader_secret_b64="$(base64 <"${reader_secret_file}" | tr -d '\n')"

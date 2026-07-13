@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { readFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import test from 'node:test';
 
 const requireFromDesktop = createRequire(new URL('../app/desktop/package.json', import.meta.url));
@@ -11,11 +16,35 @@ const serverPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/cloud-s
 const readerPolicyPath = new URL('../bridges/cloud-server/deploy/k3s/policies/kordi-releases-reader.json', import.meta.url);
 const publisherPolicyPath = new URL('../bridges/cloud-server/deploy/k3s/policies/kordi-releases-publisher.json', import.meta.url);
 const credentialScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
+const credentialUtilsPath = new URL('../bridges/cloud-server/deploy/k3s/release-credential-utils.sh', import.meta.url);
 const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh', import.meta.url);
 const ciWorkflowPath = new URL('../.github/workflows/ci.yml', import.meta.url);
+const execFileAsync = promisify(execFile);
 
 function policyActions(policy) {
   return policy.Statement.flatMap((statement) => statement.Action);
+}
+
+async function createAccessKeyFixture(value) {
+  const directory = await mkdtemp(join(tmpdir(), 'kordi-release-access-key-'));
+  const path = join(directory, 'access-key');
+  await writeFile(path, value);
+  await chmod(path, 0o644);
+  return { directory, path };
+}
+
+async function normalizeAccessKeyFixture(path) {
+  return execFileAsync(
+    'bash',
+    [
+      '-c',
+      'set -euo pipefail; source "$1"; normalize_access_key_file "$2"',
+      'normalize-access-key-test',
+      fileURLToPath(credentialUtilsPath),
+      path,
+    ],
+    { encoding: 'utf8' },
+  );
 }
 
 test('MinIO bootstrap creates private attachment and release buckets', async () => {
@@ -68,9 +97,16 @@ test('Cloud deployment uses a dedicated release-reader secret and all release st
 
 test('credential and deploy scripts provision scoped users without logging credentials and validate storage before rollout', async () => {
   const credentials = await readFile(credentialScriptPath, 'utf8');
+  const credentialUtils = await readFile(credentialUtilsPath, 'utf8');
   const deploy = await readFile(deployScriptPath, 'utf8');
 
   assert.match(credentials, /openssl rand/);
+  assert.match(credentials, /source .*release-credential-utils\.sh/);
+  assert.match(credentials, /normalize_access_key_file "\$\{reader_access_file\}"/);
+  assert.match(credentials, /normalize_access_key_file "\$\{publisher_access_file\}"/);
+  assert.match(credentials, /gcloud secrets versions add "kordi-release-publisher-access-key"/);
+  assert.match(credentialUtils, /tr -d '\\r\\n'/);
+  assert.match(credentialUtils, /chmod 600/);
   assert.match(credentials, /kordi-release-reader/);
   assert.match(credentials, /kordi-release-publisher-access-key/);
   assert.match(credentials, /kordi-release-publisher-secret-key/);
@@ -94,6 +130,44 @@ test('credential and deploy scripts provision scoped users without logging crede
   assert.match(deploy, /updates\/releases\/version/);
   assert.match(deploy, /downloadUrl/);
   assert.match(deploy, /https:\/\/coordinar\.io\/health/);
+});
+
+test('access-key normalization handles LF and CRLF fixtures and locks file permissions', async (t) => {
+  const expected = '0123456789abcdef0123456789abcdef';
+  for (const suffix of ['\n', '\r\n']) {
+    const fixture = await createAccessKeyFixture(`${expected}${suffix}`);
+    t.after(() => rm(fixture.directory, { recursive: true, force: true }));
+
+    const result = await normalizeAccessKeyFixture(fixture.path);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr, '');
+    assert.equal(await readFile(fixture.path, 'utf8'), expected);
+    assert.equal((await stat(fixture.path)).mode & 0o777, 0o600);
+  }
+});
+
+test('access-key normalization is idempotent across repeated runs', async (t) => {
+  const expected = 'fedcba9876543210fedcba9876543210';
+  const fixture = await createAccessKeyFixture(`${expected}\n`);
+  t.after(() => rm(fixture.directory, { recursive: true, force: true }));
+
+  await normalizeAccessKeyFixture(fixture.path);
+  await normalizeAccessKeyFixture(fixture.path);
+
+  assert.equal(await readFile(fixture.path, 'utf8'), expected);
+  assert.equal((await stat(fixture.path)).mode & 0o777, 0o600);
+});
+
+test('access-key normalization rejects short input without exposing it', async (t) => {
+  const fixture = await createAccessKeyFixture('xy\r\n');
+  t.after(() => rm(fixture.directory, { recursive: true, force: true }));
+
+  await assert.rejects(normalizeAccessKeyFixture(fixture.path), (error) => {
+    assert.match(error.stderr, /release access key is invalid/);
+    assert.doesNotMatch(error.stderr, /xy/);
+    return true;
+  });
+  assert.equal(await readFile(fixture.path, 'utf8'), 'xy\r\n');
 });
 
 test('CI exercises release publisher contracts and the Cloud update server', async () => {

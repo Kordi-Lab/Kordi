@@ -94,15 +94,9 @@ pub fn cloud_account_storage_current() -> Result<Option<CloudAccountStorageActiv
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     fn with_app_data_dir<T>(test: impl FnOnce(PathBuf) -> T) -> T {
-        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _guard = crate::test_support::lock_process_environment();
         let previous_app_data_dir = std::env::var_os("APP_DATA_DIR");
         let previous_storage_root = std::env::var_os("KORDI_STORAGE_ROOT");
         let dir = std::env::temp_dir().join(format!(
