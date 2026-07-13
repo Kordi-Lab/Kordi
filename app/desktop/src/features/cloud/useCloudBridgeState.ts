@@ -1382,6 +1382,26 @@ export async function loadCloudMessagesByPeerUntilStable({
   return { messagesByPeer: byPeer, peerIds, complete: false };
 }
 
+export function createAccountScopedSingleFlight() {
+  const inFlightByAccount = new Map<string, Promise<void>>();
+  return (accountId: string, task: () => Promise<void>): Promise<void> => {
+    const key = accountId.trim();
+    const existing = inFlightByAccount.get(key);
+    if (existing) return existing;
+
+    let tracked: Promise<void>;
+    try {
+      tracked = task().finally(() => {
+        if (inFlightByAccount.get(key) === tracked) inFlightByAccount.delete(key);
+      });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    inFlightByAccount.set(key, tracked);
+    return tracked;
+  };
+}
+
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
 const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX = 'kordi.cloud.selfAgentForwardBaseline.v1:';
 
@@ -2004,6 +2024,10 @@ export function useCloudBridgeState({
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
   const syncingCloudDiffRef = useRef(false);
+  const cloudMessageRefreshSingleFlightRef = useRef<ReturnType<typeof createAccountScopedSingleFlight> | null>(null);
+  if (!cloudMessageRefreshSingleFlightRef.current) {
+    cloudMessageRefreshSingleFlightRef.current = createAccountScopedSingleFlight();
+  }
   const lastCloudFocusRefreshAtRef = useRef(0);
   const cloudFocusRefreshTimerRef = useRef<number | null>(null);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
@@ -2347,39 +2371,43 @@ export function useCloudBridgeState({
     return agent;
   }, [cloudAgentsClient]);
 
-  const refreshCloudBridgeMessages = useCallback(async () => {
-    const retainedPeerIds = Object.keys(messagesByPeerRef.current);
-    const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
-    if (!account || initialPeerIds.length === 0) {
-      setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
-      setInitialMessagesSettledPeerKey(bootstrapPeerKey);
-      return;
-    }
-    const session = await loadSession();
-    if (!session?.token) {
-      setInitialMessagesSettledPeerKey(null);
-      return;
-    }
+  const refreshCloudBridgeMessages = useCallback(() => {
+    const refreshAccount = account;
+    const refreshAccountId = refreshAccount?.accountId ?? '';
+    return cloudMessageRefreshSingleFlightRef.current!(refreshAccountId, async () => {
+      const retainedPeerIds = Object.keys(messagesByPeerRef.current);
+      const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
+      if (!refreshAccount || initialPeerIds.length === 0) {
+        setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
+        setInitialMessagesSettledPeerKey(bootstrapPeerKey);
+        return;
+      }
+      const session = await loadSession();
+      if (!session?.token) {
+        setInitialMessagesSettledPeerKey(null);
+        return;
+      }
 
-    const loaded = await loadCloudMessagesByPeerUntilStable({
-      accountId: account.accountId,
-      initialPeerIds,
-      existingMessagesByPeer: messagesByPeerRef.current,
-      listMessages: (peerId) => client.listMessages(session.token, peerId),
-      resolveMessageAttachments: async (messages) => Promise.all(messages.map(async (message) => ({
-        ...message,
-        attachments: message.attachments?.length
-          ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
-          : [],
-      }))),
-    });
+      const loaded = await loadCloudMessagesByPeerUntilStable({
+        accountId: refreshAccountId,
+        initialPeerIds,
+        existingMessagesByPeer: messagesByPeerRef.current,
+        listMessages: (peerId) => client.listMessages(session.token, peerId),
+        resolveMessageAttachments: async (messages) => Promise.all(messages.map(async (message) => ({
+          ...message,
+          attachments: message.attachments?.length
+            ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+            : [],
+        }))),
+      });
 
-    if (cancelledRef.current) return;
-    setMessagesByPeer((current) => {
-      const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
-      return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      if (cancelledRef.current || messagesCacheAccountRef.current !== refreshAccountId) return;
+      setMessagesByPeer((current) => {
+        const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
+        return cloudMessagesByPeerEqual(current, merged) ? current : merged;
+      });
+      setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
     });
-    setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
   }, [account, bootstrapPeerKey, client]);
 
   const syncCloudBridgeDiff = useCallback(async (options: { settleInitialMessages?: boolean } = {}) => {
@@ -4267,6 +4295,7 @@ export function useCloudBridgeState({
             kind: attachment.kind,
             mimeType: attachment.mimeType ?? null,
             sizeBytes: attachment.sizeBytes ?? null,
+            previewUrl: attachment.previewUrl ?? null,
           })) : input.message.attachments,
         }
       : null;

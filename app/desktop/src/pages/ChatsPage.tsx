@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction, UIEvent as ReactUIEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -508,7 +508,7 @@ function ChatSessionPane({
     ].join(':');
   }, [messages]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setTranscriptWindowAnchorIndex(Math.max(0, messages.length - 1));
   }, [messages.length, transcriptWindowResetKey]);
 

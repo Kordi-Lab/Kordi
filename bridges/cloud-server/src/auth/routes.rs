@@ -280,6 +280,8 @@ pub struct SendMessageAttachmentRequest {
     pub mime_type: Option<String>,
     #[serde(rename = "sizeBytes")]
     pub size_bytes: Option<i64>,
+    #[serde(rename = "previewUrl")]
+    pub preview_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -443,6 +445,39 @@ fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Re
     (status, Json(body)).into_response()
 }
 
+fn normalize_message_attachment_preview_url(
+    value: Option<&str>,
+) -> Result<Option<String>, Response> {
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.len() > 360_000 {
+        return Err(err(
+            "invalid_attachment",
+            "Attachment preview is too large.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    let allowed = lower.starts_with("data:image/png;base64,")
+        || lower.starts_with("data:image/jpeg;base64,")
+        || lower.starts_with("data:image/jpg;base64,")
+        || lower.starts_with("data:image/webp;base64,")
+        || lower.starts_with("data:image/gif;base64,");
+    if !allowed {
+        return Err(err(
+            "invalid_attachment",
+            "Attachment preview must be a data:image base64 URL.",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
 fn normalize_message_attachment(
     input: &SendMessageAttachmentRequest,
     attachment_id: &str,
@@ -480,13 +515,14 @@ fn normalize_message_attachment(
         .size_bytes
         .filter(|value| *value >= 0)
         .or(db_size_bytes);
+    let preview_url = normalize_message_attachment_preview_url(input.preview_url.as_deref())?;
     Ok(MessageAttachmentSummary {
         attachment_id: attachment_id.to_string(),
         name,
         kind,
         mime_type,
         size_bytes,
-        preview_url: None,
+        preview_url,
         download_url: None,
     })
 }
@@ -684,6 +720,10 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/attachments/:attachment_id/download-url",
             get(crate::attachments::routes::download_url),
+        )
+        .route(
+            "/v1/cloud/attachments/:attachment_id/preview",
+            post(crate::attachments::routes::update_preview),
         )
         .route(
             "/v1/cloud/attachments/:attachment_id/content",
@@ -3269,8 +3309,8 @@ async fn send_message(
     for (position, attachment) in attachments.iter().enumerate() {
         if query(
             "INSERT INTO cloud_message_attachments \
-             (message_id, attachment_id, name, kind, mime_type, size_bytes, position) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+             (message_id, attachment_id, name, kind, mime_type, size_bytes, position, preview_url) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(&message_id)
         .bind(&attachment.attachment_id)
@@ -3279,6 +3319,7 @@ async fn send_message(
         .bind(attachment.mime_type.as_deref())
         .bind(attachment.size_bytes)
         .bind(position as i32)
+        .bind(attachment.preview_url.as_deref())
         .execute(pool)
         .await
         .is_err()
@@ -3697,12 +3738,13 @@ async fn list_messages(
         String,
         Option<String>,
         Option<i64>,
+        Option<String>,
         String,
     )> = if message_ids.is_empty() {
         Vec::new()
     } else {
         match query_as(
-            "SELECT cma.message_id, cma.attachment_id, cma.name, cma.kind, cma.mime_type, cma.size_bytes, ca.object_key \
+            "SELECT cma.message_id, cma.attachment_id, cma.name, cma.kind, cma.mime_type, cma.size_bytes, cma.preview_url, ca.object_key \
              FROM cloud_message_attachments cma \
              JOIN cloud_attachments ca ON ca.attachment_id = cma.attachment_id \
              WHERE cma.message_id = ANY($1) \
@@ -3724,7 +3766,7 @@ async fn list_messages(
     };
     let mut attachments_by_message_id: HashMap<String, Vec<MessageAttachmentSummary>> =
         HashMap::new();
-    for (message_id, attachment_id, name, kind, mime_type, size_bytes, _object_key) in
+    for (message_id, attachment_id, name, kind, mime_type, size_bytes, preview_url, _object_key) in
         attachment_rows
     {
         attachments_by_message_id
@@ -3736,7 +3778,7 @@ async fn list_messages(
                 kind,
                 mime_type,
                 size_bytes,
-                preview_url: None,
+                preview_url,
                 download_url: None,
             });
     }

@@ -37,6 +37,7 @@ test('lmStudioDisplayError turns invalid passkey stack dumps into repair guidanc
   const message = lmStudioDisplayError(new Error(raw), 'Unable to read installed LM Studio models.');
 
   assert.equal(lmStudioNeedsInstallRefresh(raw), true);
+  assert.equal(lmStudioNeedsInstallRefresh('Failed to authenticate lms CLI client'), true);
   assert.match(message, /LM Studio rejected the lms CLI passkey/);
   assert.equal(lmStudioNeedsInstallRefresh(message), true);
   assert.match(message, /Repair lms install/);

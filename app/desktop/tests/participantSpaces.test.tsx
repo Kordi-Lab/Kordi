@@ -151,7 +151,7 @@ test('buildParticipantSpaces infers a local owned-agent session as part of the s
   assert.equal(spaces[0]?.id, 'self:local');
   assert.equal(spaces[0]?.kind, 'self');
   assert.equal(spaces[0]?.title, 'My chats');
-  assert.deepEqual(spaces[0]?.avatarStack, [{ kind: 'human', seed: 'human-local', imageUrl: null }]);
+  assert.deepEqual(spaces[0]?.avatarStack, [{ kind: 'human', seed: 'human-local', imageUrl: null, presenceStatus: null }]);
 });
 
 test('buildParticipantSpaces keeps one human plus agents in a human-centered space', () => {

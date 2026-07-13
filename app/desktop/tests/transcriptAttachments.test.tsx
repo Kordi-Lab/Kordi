@@ -3,13 +3,14 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import * as transcriptAttachmentsModule from '../src/kordi-app/components/transcriptAttachments';
 import {
   AttachmentImageLightbox,
   AttachmentPreview,
   attachmentPreviewIdentity,
   shouldCloseAttachmentContextMenuForTarget,
 } from '../src/kordi-app/components/transcriptAttachments';
-import type { Message } from '../src/kordi-app/types';
+import type { Message, MessageAttachment } from '../src/kordi-app/types';
 
 const imageMessage = {
   role: 'user' as const,
@@ -69,6 +70,87 @@ const fileMessage: Message = {
     mimeType: 'application/pdf',
   }],
 };
+
+test('attachment preview recovery retries after authentication becomes available', async () => {
+  const module = transcriptAttachmentsModule as Record<string, unknown>;
+  const clearRecoveryState = module.clearAttachmentPreviewRecoveryStateForTests;
+  const recoverOnce = module.recoverAttachmentPreviewOnce;
+  assert.equal(typeof clearRecoveryState, 'function');
+  assert.equal(typeof recoverOnce, 'function');
+  (clearRecoveryState as () => void)();
+
+  const attachment: MessageAttachment = {
+    kind: 'image',
+    name: 'old.png',
+    mimeType: 'image/png',
+    sizeBytes: 24 * 1024 * 1024,
+    attachmentId: 'att_retry_after_auth',
+    previewUrl: null,
+    localPath: null,
+  };
+  let authenticated = false;
+  let recoveryCalls = 0;
+  const dependencies = {
+    loadCloudSession: async () => authenticated ? { token: 'kordi_cs_ready' } : null,
+    recoverPreview: async () => {
+      recoveryCalls += 1;
+      return 'data:image/webp;base64,recovered-after-auth';
+    },
+  };
+
+  assert.equal(await (recoverOnce as (
+    attachment: MessageAttachment,
+    dependencies: typeof dependencies,
+  ) => Promise<string | null>)(attachment, dependencies), null);
+  authenticated = true;
+  assert.equal(await (recoverOnce as (
+    attachment: MessageAttachment,
+    dependencies: typeof dependencies,
+  ) => Promise<string | null>)(attachment, dependencies), 'data:image/webp;base64,recovered-after-auth');
+  assert.equal(recoveryCalls, 1);
+});
+
+test('attachment preview recovery retries transient failures after a bounded cooldown', async () => {
+  const module = transcriptAttachmentsModule as Record<string, unknown>;
+  const clearRecoveryState = module.clearAttachmentPreviewRecoveryStateForTests as (() => void) | undefined;
+  const recoverOnce = module.recoverAttachmentPreviewOnce;
+  assert.equal(typeof clearRecoveryState, 'function');
+  assert.equal(typeof recoverOnce, 'function');
+  clearRecoveryState?.();
+
+  const attachment: MessageAttachment = {
+    kind: 'image',
+    name: 'old-transient.png',
+    mimeType: 'image/png',
+    sizeBytes: 24 * 1024 * 1024,
+    attachmentId: 'att_retry_after_transient_failure',
+    previewUrl: null,
+    localPath: null,
+  };
+  let now = 1_000;
+  let recoveryCalls = 0;
+  const dependencies = {
+    loadCloudSession: async () => ({ token: 'kordi_cs_ready' }),
+    now: () => now,
+    retryDelayMs: 30_000,
+    recoverPreview: async () => {
+      recoveryCalls += 1;
+      if (recoveryCalls === 1) throw new Error('temporary network failure');
+      return 'data:image/webp;base64,recovered-after-retry';
+    },
+  };
+  const invoke = recoverOnce as (
+    attachment: MessageAttachment,
+    dependencies: typeof dependencies,
+  ) => Promise<string | null>;
+
+  assert.equal(await invoke(attachment, dependencies), null);
+  assert.equal(await invoke(attachment, dependencies), null);
+  assert.equal(recoveryCalls, 1, 'cooldown should suppress immediate retry storms');
+  now += 30_000;
+  assert.equal(await invoke(attachment, dependencies), 'data:image/webp;base64,recovered-after-retry');
+  assert.equal(recoveryCalls, 2);
+});
 
 test('attachment image preview identity changes when local cache path becomes available', () => {
   const pending = attachmentPreviewIdentity({
@@ -167,6 +249,28 @@ test('remote images without a completed local preview render a quiet loading til
   assert.doesNotMatch(markup, /Preview unavailable/);
   assert.doesNotMatch(markup, /app-attachment-image-fallback/);
   assert.doesNotMatch(markup, />Screenshot 2026-05-20\.png</);
+});
+
+test('large image attachments render compressed preview with an original-file action', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: {
+      ...imageMessage,
+      attachments: [{
+        ...imageMessage.attachments[0],
+        name: 'Huge screenshot.png',
+        sizeBytes: 24 * 1024 * 1024,
+        previewUrl: 'data:image/webp;base64,compressed-preview',
+        localPath: null,
+      }],
+    },
+  }));
+
+  assert.match(markup, /data-attachment-image-preview-trigger="true"/);
+  assert.match(markup, /src="data:image\/webp;base64,compressed-preview"/);
+  assert.match(markup, /data-attachment-original-action="true"/);
+  assert.match(markup, /Open original/);
+  assert.match(markup, /24 MB/);
+  assert.doesNotMatch(markup, /data-attachment-image-loading="true"/);
 });
 
 test('loaded image previews use a simple fade without zoom or shadow effects', () => {

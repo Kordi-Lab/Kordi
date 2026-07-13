@@ -325,7 +325,7 @@ test('buildBridgeMentionTargetsByScope includes shared hosted Cloud Agents for c
   assert.equal(projectDriver?.bridgeHostId, 'cloud');
   assert.equal(projectDriver?.nodeId, 'acct_owner');
   assert.equal(projectDriver?.ownerName, '111');
-  assert.equal(projectDriver?.detail, 'Agent');
+  assert.equal(projectDriver?.detail, "111's Agent");
   assert.equal(projectDriver?.avatarImageUrl, 'https://images.test/111.png');
 });
 

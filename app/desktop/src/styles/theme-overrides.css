@@ -1010,6 +1010,14 @@
   color: rgb(30 41 59) !important;
 }
 
+.bridge-app.theme-light .app-live-assistant-answer-markdown :where(p, li, blockquote, td, th, strong, em) {
+  color: var(--utility-foreground) !important;
+}
+
+.bridge-app.theme-light .app-live-assistant-answer-markdown :where(ol, ul) {
+  color: var(--utility-foreground) !important;
+}
+
 .bridge-app.theme-light .app-markdown-muted-heading {
   color: rgb(71 85 105) !important;
 }

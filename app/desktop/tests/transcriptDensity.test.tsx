@@ -322,6 +322,32 @@ test('image-only human messages use compact frosted attachment padding', () => {
   assert.doesNotMatch(markup, /px-4 py-2\.5/);
 });
 
+test('pending image attachments reserve a compact image-sized loading placeholder', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '',
+    time: '21:09',
+    statusChips: ['sending'],
+    attachments: [{
+      kind: 'image',
+      name: 'Screenshot loading.png',
+      mimeType: 'image/png',
+    }],
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /data-attachment-image-loading="true"/);
+  assert.match(markup, /w-\[min\(100%,20rem\)\]/);
+  assert.match(markup, /auto-rows-\[4rem\]/);
+  assert.match(markup, /aspect-\[4\/3\]/);
+  assert.doesNotMatch(markup, /data-attachment-file-card="true"/);
+  assert.doesNotMatch(markup, /w-\[min\(100%,29rem\)\][^"]*auto-rows-\[6\.5rem\]/);
+});
+
 test('renders failed own message delivery as a compact red exclamation', () => {
   const message: Message = {
     role: 'user',
@@ -1476,6 +1502,15 @@ test('styles folded answer reveal as a compact inline control', () => {
   assert.doesNotMatch(shellCss, /\.app-live-assistant-answer-toggle-overlay/);
   assert.match(answerFoldedAfterBlock, /height:\s*1\.05rem/);
   assert.doesNotMatch(answerFoldedAfterBlock, /backdrop-filter:\s*blur\(/);
+});
+
+test('light theme keeps folded assistant markdown readable against the answer surface', () => {
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const lightAnswerMarkdownBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-live-assistant-answer-markdown :where\(p, li, blockquote, td, th, strong, em\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightAnswerListBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-live-assistant-answer-markdown :where\(ol, ul\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(lightAnswerMarkdownBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);
+  assert.match(lightAnswerListBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);
 });
 
 const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-source-message-quote[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer/;

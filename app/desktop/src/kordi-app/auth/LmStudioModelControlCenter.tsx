@@ -126,8 +126,8 @@ export function lmStudioNeedsInstallRefresh(message?: string | null) {
   if (!message) return false;
   const normalized = message.toLowerCase();
   return normalized.includes('invalid passkey')
-    || normalized.includes('rejected the lms CLI passkey')
-    || (normalized.includes('failed to authenticate') && normalized.includes('lms CLI client'));
+    || normalized.includes('rejected the lms cli passkey')
+    || (normalized.includes('failed to authenticate') && normalized.includes('lms cli client'));
 }
 
 export function lmStudioDisplayError(error: unknown, fallback: string) {

@@ -10,6 +10,7 @@ import {
 } from '../src/features/cloud/avatarPreference';
 import {
   LOGIN_MODE_STORAGE_KEY,
+  clearLoginModePreference,
   readLoginModePreference,
   writeLoginModePreference,
 } from '../src/features/cloud/loginModePreference';
@@ -96,6 +97,24 @@ test('avatarPreference returns null when no storage is available', () => {
   // No global localStorage in node:test — call with undefined explicitly.
   assert.equal(readAvatarPreference(undefined), null);
   assert.equal(writeAvatarPreference({ kind: 'upload', dataUrl: 'data:image/jpeg;base64,abc' }, undefined), false);
+});
+
+test('Cloud preferences ignore unusable and inaccessible storage implementations', () => {
+  const unusable = {} as Storage;
+  const inaccessible = {
+    getItem: () => { throw new Error('blocked'); },
+    setItem: () => { throw new Error('blocked'); },
+    removeItem: () => { throw new Error('blocked'); },
+  } as unknown as Storage;
+
+  for (const storage of [unusable, inaccessible]) {
+    assert.equal(readAvatarPreference(storage), null);
+    assert.equal(writeAvatarPreference({ kind: 'upload', dataUrl: 'data:image/jpeg;base64,abc' }, storage), false);
+    assert.doesNotThrow(() => clearAvatarPreference(storage));
+    assert.equal(readLoginModePreference(storage), null);
+    assert.doesNotThrow(() => writeLoginModePreference('login', storage));
+    assert.doesNotThrow(() => clearLoginModePreference(storage));
+  }
 });
 
 test('loginModePreference round-trips login and signup', () => {

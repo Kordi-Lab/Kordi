@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { ProjectDetailPanel } from '../src/pages/ProjectDetailPanel';
 
-test('project detail task panel ignores simple delegated chat task activity rows', () => {
+test('project detail task panel renders synced delegated Cloud task activity rows', () => {
   const activeProjectSession = {
     id: 'session:project:one',
     name: 'Project session',
@@ -67,9 +67,11 @@ test('project detail task panel ignores simple delegated chat task activity rows
     onSelectArtifact: () => {},
   }));
 
-  assert.match(markup, /No planning or execution task activity in this project session yet/);
-  assert.doesNotMatch(markup, /app-inspector-source-row/);
-  assert.doesNotMatch(markup, /Remote Kordi/);
+  assert.doesNotMatch(markup, /No planning or execution task activity in this project session yet/);
+  assert.match(markup, /app-inspector-source-row/);
+  assert.match(markup, /Remote Kordi/);
+  assert.match(markup, /Synced Cloud task by Me\./);
+  assert.match(markup, /ID:\s*bridge_req_project_task/);
+  assert.match(markup, /aria-label="Task target participants"/);
   assert.doesNotMatch(markup, /Delegated by Me/);
-  assert.doesNotMatch(markup, /Shared with 2 participants/);
 });
