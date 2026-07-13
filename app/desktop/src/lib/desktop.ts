@@ -39,6 +39,10 @@ import {
   chatPerformancePayloadBytes,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
+import {
+  KORDI_MANUAL_UPDATE_URL,
+  desktopUpdaterController,
+} from '@/features/updates/desktopUpdater';
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
@@ -106,10 +110,11 @@ export type DesktopUpdateInstallResult = {
 };
 
 export async function checkDesktopForUpdates(): Promise<DesktopUpdateCheckResult> {
-  if (!isNativeDesktopShell()) {
+  const result = await desktopUpdaterController.check();
+  if (result.status !== 'available') {
     return {
       status: 'unavailable',
-      currentVersion: '',
+      currentVersion: result.currentVersion ?? '',
       latestVersion: null,
       changelogUrl: null,
       downloadUrl: null,
@@ -118,14 +123,26 @@ export async function checkDesktopForUpdates(): Promise<DesktopUpdateCheckResult
       message: 'Update checks are only available in Kordi Desktop.',
     };
   }
-  return invokeDesktop<DesktopUpdateCheckResult>('desktop_check_for_updates');
+  return {
+    status: 'updateAvailable',
+    currentVersion: result.currentVersion ?? '',
+    latestVersion: result.latestVersion ?? null,
+    changelogUrl: KORDI_MANUAL_UPDATE_URL,
+    downloadUrl: KORDI_MANUAL_UPDATE_URL,
+    signature: null,
+    installCommand: null,
+    message: result.notes || `Kordi ${result.latestVersion ?? 'update'} is available.`,
+  };
 }
 
-export async function installDesktopUpdate(input: { downloadUrl: string; version?: string | null }): Promise<DesktopUpdateInstallResult> {
-  return invokeDesktop<DesktopUpdateInstallResult>('desktop_install_update', {
-    downloadUrl: input.downloadUrl,
-    version: input.version ?? null,
-  });
+export async function installDesktopUpdate(_input: { downloadUrl: string; version?: string | null }): Promise<DesktopUpdateInstallResult> {
+  await desktopUpdaterController.install();
+  return {
+    status: 'installing',
+    version: desktopUpdaterController.getState().latestVersion ?? null,
+    downloadedPath: '',
+    message: 'Kordi update installed. Relaunching…',
+  };
 }
 
 export type DesktopCloudOAuthLoopbackStart = {
