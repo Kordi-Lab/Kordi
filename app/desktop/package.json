@@ -24,6 +24,7 @@
     "tauri:dev:multi:reset": "node scripts/multi-instance/reset.mjs",
     "tauri:dev:multi:smoke": "node scripts/multi-instance/smoke.mjs",
     "release:secret-guard": "node scripts/assert-no-release-secrets.mjs",
+    "release:prerequisites": "node scripts/check-release-prerequisites.mjs",
     "tauri:build": "pnpm tauri:build:cloud",
     "tauri:build:cloud": "pnpm release:secret-guard && pnpm tauri:prepare-sidecars && tauri build --config src-tauri/tauri.cloud.conf.json",
     "release:verify-cloud-dmg": "node scripts/assert-macos-dmg-release.mjs --app-name Kordi",

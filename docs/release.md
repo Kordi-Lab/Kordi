@@ -67,6 +67,41 @@ Hosted Desktop beta releases use two different version strings:
 
 Use a clean release branch/worktree from the latest `origin/main`. Do not release from a dirty local development worktree.
 
+### Signed desktop release prerequisites
+
+The beta.6 updater uses a Tauri minisign key and a notarized Developer ID build. The private Tauri key, its password, and Apple signing/notary material must be stored in GCP Secret Manager. Only the Tauri public key is committed in `app/desktop/src-tauri/tauri.conf.json`.
+
+The production secret names are:
+
+- `kordi-tauri-updater-private-key`
+- `kordi-tauri-updater-private-key-password`
+- `kordi-apple-developer-id-p12`
+- `kordi-apple-developer-id-p12-password`
+- `kordi-apple-notary-issuer-id`
+- `kordi-apple-notary-key-id`
+- `kordi-apple-notary-private-key`
+
+Create a secret from a protected temporary file without putting its value on the command line:
+
+```bash
+gcloud secrets create SECRET_NAME --project "hai-gcp-representation" --replication-policy automatic
+gcloud secrets versions add SECRET_NAME --project "hai-gcp-representation" --data-file /protected/path/to/value
+```
+
+Retrieve release material only inside a temporary release environment with shell history disabled. Remove temporary files and the temporary keychain after the signed build. Never print secret values:
+
+```bash
+gcloud secrets versions access latest --secret SECRET_NAME --project "hai-gcp-representation" --out-file /protected/temporary/path
+```
+
+The source-only prerequisite gate is suitable for CI and does not claim that an artifact is publishable:
+
+```bash
+pnpm --dir app/desktop release:prerequisites -- --source-only --expected-commit "$(git rev-parse HEAD)"
+```
+
+Before publishing built artifacts, omit `--source-only` and pass the exact `Kordi.app` bundle. The gate requires the Tauri signing environment, a valid Developer ID Application identity, successful `codesign --verify`, and successful Gatekeeper assessment.
+
 ### Version metadata to bump
 
 For each beta release, update and verify all desktop release metadata:
