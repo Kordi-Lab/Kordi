@@ -217,8 +217,12 @@ spec:
                 exit 1
               fi
               printf test | mc pipe "publisher/kordi-releases/$pointer_probe" >/dev/null
-              mc rm "publisher/kordi-releases/$pointer_probe" >/dev/null
+              if mc rm "publisher/kordi-releases/$pointer_probe" >/dev/null 2>&1; then
+                echo "publisher unexpectedly has pointer delete access" >&2
+                exit 1
+              fi
               mc rm --force "root/kordi-releases/$immutable_probe" >/dev/null
+              mc rm --force "root/kordi-releases/$pointer_probe" >/dev/null
               echo "release identities ready"
       volumes:
         - name: policies

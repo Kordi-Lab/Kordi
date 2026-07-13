@@ -115,13 +115,6 @@ class MemoryStore {
     return { etag: record.etag, versionId: record.versionId };
   }
 
-  async deleteObject(key, metadata = {}) {
-    this.actions.push({ type: 'delete', key, metadata });
-    const current = this.objects.get(key);
-    if (metadata.ifMatch && current?.etag !== metadata.ifMatch) throw new Error(`precondition failed for ${key}`);
-    this.objects.delete(key);
-  }
-
   forcePut(key, bytes) {
     this.objects.set(key, this.#record(bytes));
   }
@@ -223,6 +216,10 @@ function storedReleaseEntries(prepared, { includePointer = true } = {}) {
   const entries = prepared.immutableObjects.map((object) => [object.key, object.bytes]);
   if (includePointer) entries.push([prepared.pointerKey, prepared.pointerBytes]);
   return entries;
+}
+
+function tombstoneBytes(channel) {
+  return Buffer.from(`${JSON.stringify({ schemaVersion: 1, channel, unpublished: true }, null, 2)}\n`);
 }
 
 async function preparedFixture(fixture, overrides = {}) {
@@ -383,6 +380,31 @@ test('uploads immutable objects, verifies product GET and HEAD, and writes the p
   assert.equal(publicHttp.actions.some(({ url }) => url === prepared.urls.stableManual), true);
 });
 
+test('publishing from a tombstone compares against its ETag instead of treating the key as absent', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture);
+  const store = new MemoryStore([
+    ...storedReleaseEntries(prepared, { includePointer: false }),
+    [prepared.pointerKey, tombstoneBytes('beta')],
+  ]);
+  const tombstoneEtag = (await store.getObject(prepared.pointerKey)).etag;
+  store.actions.length = 0;
+
+  await publishDesktopRelease(optionsFor(fixture), {
+    verifier: passingVerifier(),
+    store,
+    publicHttp: makePublicHttp(prepared),
+  });
+
+  const promotion = store.actions.find(
+    (action) => action.type === 'put' && action.key === prepared.pointerKey,
+  );
+  assert.equal(promotion.metadata.ifMatch, tombstoneEtag);
+  assert.equal(promotion.metadata.ifNoneMatch, undefined);
+  assert.deepEqual(store.bytes(prepared.pointerKey), prepared.pointerBytes);
+});
+
 test('a public digest mismatch prevents pointer promotion', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
@@ -434,7 +456,7 @@ test('failed post-promotion verification restores exact prior pointer bytes', as
   assert.ok(publicHttp.actions.some((action) => action.method === 'GET' && action.url === previous.urls.updaterArchive));
 });
 
-test('failed first promotion removes the new pointer during rollback', async (t) => {
+test('failed first promotion atomically replaces the pointer with an unpublished tombstone', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
   const prepared = await preparedFixture(fixture);
@@ -446,9 +468,14 @@ test('failed first promotion removes the new pointer during rollback', async (t)
       publicHttp: makePublicHttp(prepared, { failPostPromotion: true }),
     }),
   );
-  assert.equal(store.objects.has(prepared.pointerKey), false);
-  const deletion = store.actions.find((action) => action.type === 'delete' && action.key === prepared.pointerKey);
-  assert.ok(deletion?.metadata.ifMatch);
+  assert.deepEqual(JSON.parse(store.bytes(prepared.pointerKey)), {
+    schemaVersion: 1,
+    channel: 'beta',
+    unpublished: true,
+  });
+  const pointerWrites = store.actions.filter((action) => action.type === 'put' && action.key === prepared.pointerKey);
+  assert.equal(pointerWrites.length, 2);
+  assert.equal(pointerWrites[1].metadata.ifMatch, pointerWrites[0].resultEtag);
 });
 
 test('a pointer read-back failure still rolls back the exact first promotion', async (t) => {
@@ -470,20 +497,19 @@ test('a pointer read-back failure still rolls back the exact first promotion', a
       if (key === prepared.pointerKey) failPointerRead = true;
       return result;
     },
-    async deleteObject(key, metadata) {
-      return baseStore.deleteObject(key, metadata);
-    },
   };
   const baseHttp = makePublicHttp(prepared);
   const publicHttp = {
     async head(url) {
-      if (url === prepared.urls.stableManual && !baseStore.objects.has(prepared.pointerKey)) {
+      const unpublished = JSON.parse(baseStore.bytes(prepared.pointerKey) ?? 'null')?.unpublished === true;
+      if (url === prepared.urls.stableManual && unpublished) {
         return { status: 404, headers: {}, body: Buffer.alloc(0) };
       }
       return baseHttp.head(url);
     },
     async get(url) {
-      if (!baseStore.objects.has(prepared.pointerKey)) {
+      const unpublished = JSON.parse(baseStore.bytes(prepared.pointerKey) ?? 'null')?.unpublished === true;
+      if (unpublished) {
         if (url === prepared.urls.updaterEndpoint) return { status: 204, headers: {}, body: Buffer.alloc(0) };
         if (url === prepared.urls.stableManual) return { status: 404, headers: {}, body: Buffer.alloc(0) };
         if (url === 'https://coordinar.io/updates/releases/version') {
@@ -509,9 +535,141 @@ test('a pointer read-back failure still rolls back the exact first promotion', a
     }),
     /read-back|post-promotion/i,
   );
-  assert.equal(baseStore.objects.has(prepared.pointerKey), false);
-  const deletion = baseStore.actions.find((action) => action.type === 'delete');
-  assert.equal(deletion.metadata.ifMatch, baseStore.actions.find((action) => action.type === 'put' && action.key === prepared.pointerKey).resultEtag);
+  assert.equal(JSON.parse(baseStore.bytes(prepared.pointerKey)).unpublished, true);
+  const writes = baseStore.actions.filter((action) => action.type === 'put' && action.key === prepared.pointerKey);
+  assert.equal(writes[1].metadata.ifMatch, writes[0].resultEtag);
+});
+
+test('promotion reconciles a committed write when MinIO loses the success response', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture);
+  const baseStore = new MemoryStore();
+  let losePromotionResponse = true;
+  const store = {
+    getObject: (key) => baseStore.getObject(key),
+    async putObject(key, bytes, metadata) {
+      const result = await baseStore.putObject(key, bytes, metadata);
+      if (key === prepared.pointerKey && losePromotionResponse) {
+        losePromotionResponse = false;
+        throw new Error('simulated committed write with lost response');
+      }
+      return result;
+    },
+  };
+
+  const result = await publishDesktopRelease(optionsFor(fixture), {
+    verifier: passingVerifier(),
+    store,
+    publicHttp: makePublicHttp(prepared),
+  });
+
+  assert.equal(result.published, true);
+  assert.deepEqual(baseStore.bytes(prepared.pointerKey), prepared.pointerBytes);
+});
+
+test('promotion retries an unchanged pre-commit failure and reconciles an ETag-less success', async (t) => {
+  for (const mode of ['pre-commit-throw', 'etagless-success']) {
+    await t.test(mode, async (t) => {
+      const fixture = await makeFixture();
+      t.after(() => rm(fixture.root, { recursive: true, force: true }));
+      const prepared = await preparedFixture(fixture);
+      const baseStore = new MemoryStore();
+      let firstPointerWrite = true;
+      const store = {
+        getObject: (key) => baseStore.getObject(key),
+        async putObject(key, bytes, metadata) {
+          if (key === prepared.pointerKey && firstPointerWrite) {
+            firstPointerWrite = false;
+            if (mode === 'pre-commit-throw') {
+              throw new Error('simulated request failure before storage commit');
+            }
+            await baseStore.putObject(key, bytes, metadata);
+            return { etag: null, versionId: null };
+          }
+          return baseStore.putObject(key, bytes, metadata);
+        },
+      };
+
+      const result = await publishDesktopRelease(optionsFor(fixture), {
+        verifier: passingVerifier(),
+        store,
+        publicHttp: makePublicHttp(prepared),
+      });
+
+      assert.equal(result.published, true);
+      assert.deepEqual(baseStore.bytes(prepared.pointerKey), prepared.pointerBytes);
+    });
+  }
+});
+
+test('failed verification reconciles a committed restore with a lost response', async (t) => {
+  const fixture = await makeFixture();
+  const previousFixture = await makeFixture(PREVIOUS_VERSION);
+  t.after(() => Promise.all([
+    rm(fixture.root, { recursive: true, force: true }),
+    rm(previousFixture.root, { recursive: true, force: true }),
+  ]));
+  const prepared = await preparedFixture(fixture);
+  const previous = await preparedFixture(previousFixture, { version: PREVIOUS_VERSION });
+  const baseStore = new MemoryStore(storedReleaseEntries(previous));
+  let pointerWrites = 0;
+  const store = {
+    getObject: (key) => baseStore.getObject(key),
+    async putObject(key, bytes, metadata) {
+      const result = await baseStore.putObject(key, bytes, metadata);
+      if (key === prepared.pointerKey && (pointerWrites += 1) === 2) {
+        throw new Error('simulated committed restore with lost response');
+      }
+      return result;
+    },
+  };
+
+  await assert.rejects(
+    publishDesktopRelease(optionsFor(fixture), {
+      verifier: passingVerifier(),
+      updaterPublicKey: TEST_PUBLIC_KEY,
+      store,
+      publicHttp: makePublicHttp(prepared, {
+        failPostPromotion: true,
+        previousPrepared: previous,
+      }),
+    }),
+    (error) => /post-promotion|updater endpoint/i.test(error.message)
+      && !/rollback also failed/i.test(error.message),
+  );
+  assert.deepEqual(baseStore.bytes(prepared.pointerKey), previous.pointerBytes);
+});
+
+test('ambiguous promotion never overwrites a third concurrent pointer state', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture);
+  const baseStore = new MemoryStore();
+  const concurrentPointer = Buffer.from('{"newer":"publisher"}\n');
+  let losePromotionResponse = true;
+  const store = {
+    getObject: (key) => baseStore.getObject(key),
+    async putObject(key, bytes, metadata) {
+      const result = await baseStore.putObject(key, bytes, metadata);
+      if (key === prepared.pointerKey && losePromotionResponse) {
+        losePromotionResponse = false;
+        baseStore.forcePut(key, concurrentPointer);
+        throw new Error('simulated ambiguous promotion response');
+      }
+      return result;
+    },
+  };
+
+  await assert.rejects(
+    publishDesktopRelease(optionsFor(fixture), {
+      verifier: passingVerifier(),
+      store,
+      publicHttp: makePublicHttp(prepared),
+    }),
+    /concurrent|reconcile|changed/i,
+  );
+  assert.deepEqual(baseStore.bytes(prepared.pointerKey), concurrentPointer);
 });
 
 test('invalid prior channel metadata fails before pointer promotion', async (t) => {
@@ -532,6 +690,45 @@ test('invalid prior channel metadata fails before pointer promotion', async (t) 
     store.actions.some((action) => action.type === 'put' && action.key === prepared.pointerKey),
     false,
   );
+});
+
+test('publisher rejects every malformed tombstone before mutating the channel pointer', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture);
+  const malformed = [
+    null,
+    [],
+    { schemaVersion: 1, channel: 'beta', unpublished: false },
+    { schemaVersion: 1, channel: 'acceptance', unpublished: true },
+    { schemaVersion: 1, channel: 'beta', unpublished: true, extra: 1 },
+    {
+      schemaVersion: 1,
+      channel: 'beta',
+      unpublished: true,
+      releaseManifestKey: prepared.pointer.releaseManifestKey,
+      releaseManifestSha256: prepared.pointer.releaseManifestSha256,
+    },
+  ];
+
+  for (const value of malformed) {
+    const store = new MemoryStore([
+      ...storedReleaseEntries(prepared, { includePointer: false }),
+      [prepared.pointerKey, Buffer.from(`${JSON.stringify(value)}\n`)],
+    ]);
+    await assert.rejects(
+      publishDesktopRelease(optionsFor(fixture), {
+        verifier: passingVerifier(),
+        store,
+        publicHttp: makePublicHttp(prepared),
+      }),
+      /channel pointer.*object|unpublished channel pointer|invalid schema/i,
+    );
+    assert.equal(
+      store.actions.some((action) => action.type === 'put' && action.key === prepared.pointerKey),
+      false,
+    );
+  }
 });
 
 test('a failed publisher cannot roll back a newer concurrent promotion', async (t) => {
@@ -562,7 +759,7 @@ test('a failed publisher cannot roll back a newer concurrent promotion', async (
   assert.deepEqual(store.bytes(prepared.pointerKey), concurrentPointer);
 });
 
-test('acceptance cleanup conditionally removes its pointer and verifies 204', async (t) => {
+test('acceptance cleanup conditionally writes an unpublished tombstone and verifies 204', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
   const prepared = await preparedFixture(fixture, { channel: 'acceptance' });
@@ -583,9 +780,69 @@ test('acceptance cleanup conditionally removes its pointer and verifies 204', as
   );
 
   assert.equal(result.removed, true);
-  assert.equal(store.objects.has(prepared.pointerKey), false);
-  const deletion = store.actions.find((action) => action.type === 'delete');
-  assert.equal(deletion.metadata.ifMatch, priorEtag);
+  assert.deepEqual(JSON.parse(store.bytes(prepared.pointerKey)), {
+    schemaVersion: 1,
+    channel: 'acceptance',
+    unpublished: true,
+  });
+  const cleanupWrite = store.actions.find((action) => action.type === 'put');
+  assert.equal(cleanupWrite.metadata.ifMatch, priorEtag);
+});
+
+test('acceptance cleanup reconciles a committed tombstone when its response is lost', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture, { channel: 'acceptance' });
+  const baseStore = new MemoryStore(storedReleaseEntries(prepared));
+  let loseCleanupResponse = true;
+  const store = {
+    getObject: (key) => baseStore.getObject(key),
+    async putObject(key, bytes, metadata) {
+      const result = await baseStore.putObject(key, bytes, metadata);
+      if (key === prepared.pointerKey && loseCleanupResponse) {
+        loseCleanupResponse = false;
+        throw new Error('simulated committed cleanup with lost response');
+      }
+      return result;
+    },
+  };
+  const publicHttp = {
+    async get() { return { status: 204, headers: {}, body: Buffer.alloc(0) }; },
+    async head() { throw new Error('acceptance cleanup must not read beta stable assets'); },
+  };
+
+  const result = await clearDesktopReleaseChannel(
+    { channel: 'acceptance' },
+    { store, publicHttp, updaterPublicKey: TEST_PUBLIC_KEY },
+  );
+
+  assert.equal(result.removed, true);
+  assert.equal(JSON.parse(baseStore.bytes(prepared.pointerKey)).unpublished, true);
+});
+
+test('acceptance cleanup is idempotent for an existing tombstone and still verifies 204', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture, { channel: 'acceptance' });
+  const store = new MemoryStore([[prepared.pointerKey, tombstoneBytes('acceptance')]]);
+  let endpointReads = 0;
+  const publicHttp = {
+    async get(url) {
+      assert.equal(url, prepared.urls.updaterEndpoint);
+      endpointReads += 1;
+      return { status: 204, headers: {}, body: Buffer.alloc(0) };
+    },
+    async head() { throw new Error('acceptance cleanup must not read beta stable assets'); },
+  };
+
+  const result = await clearDesktopReleaseChannel(
+    { channel: 'acceptance' },
+    { store, publicHttp, updaterPublicKey: TEST_PUBLIC_KEY },
+  );
+
+  assert.deepEqual(result, { channel: 'acceptance', removed: false });
+  assert.equal(endpointReads, 1);
+  assert.equal(store.actions.some((action) => action.type === 'put'), false);
 });
 
 test('failed acceptance cleanup restores and reverifies the exact prior pointer', async (t) => {
@@ -619,13 +876,13 @@ test('failed acceptance cleanup restores and reverifies the exact prior pointer'
     /cleanup verification failed|restored/i,
   );
   assert.deepEqual(store.bytes(prepared.pointerKey), prepared.pointerBytes);
-  const mutations = store.actions.filter((action) => ['delete', 'put'].includes(action.type));
-  assert.deepEqual(mutations.map((action) => action.type), ['delete', 'put']);
-  assert.equal(mutations[1].metadata.ifNoneMatch, '*');
+  const mutations = store.actions.filter((action) => action.type === 'put');
+  assert.equal(mutations.length, 2);
+  assert.equal(mutations[1].metadata.ifMatch, mutations[0].resultEtag);
   assert.equal(endpointReads, 2);
 });
 
-test('beta rollback deletes only the expected current release and verifies safe fallback', async (t) => {
+test('beta rollback tombstones only the expected current release and verifies safe fallback', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
   const prepared = await preparedFixture(fixture);
@@ -659,9 +916,13 @@ test('beta rollback deletes only the expected current release and verifies safe 
     { store, publicHttp, updaterPublicKey: TEST_PUBLIC_KEY },
   );
   assert.equal(result.removedVersion, VERSION);
-  assert.equal(store.objects.has(prepared.pointerKey), false);
-  const deletion = store.actions.find((action) => action.type === 'delete');
-  assert.equal(deletion.metadata.ifMatch, priorEtag);
+  assert.deepEqual(JSON.parse(store.bytes(prepared.pointerKey)), {
+    schemaVersion: 1,
+    channel: 'beta',
+    unpublished: true,
+  });
+  const rollbackWrite = store.actions.find((action) => action.type === 'put');
+  assert.equal(rollbackWrite.metadata.ifMatch, priorEtag);
 });
 
 test('beta rollback refuses a current version different from the operator expectation', async (t) => {
@@ -677,7 +938,7 @@ test('beta rollback refuses a current version different from the operator expect
     ),
     /expected.*beta\.7.*beta\.6/i,
   );
-  assert.equal(store.actions.some((action) => action.type === 'delete'), false);
+  assert.equal(store.actions.some((action) => action.type === 'put' && action.key === prepared.pointerKey), false);
 });
 
 test('dry-run executes local validation and writes metadata without network mutation', async (t) => {
@@ -743,7 +1004,7 @@ test('publisher CLI requires the exact release inputs and accepts pnpm separator
   assert.throws(() => parsePublisherArguments(['--unexpected']), /unknown publisher argument/i);
 });
 
-test('S3 adapter returns object validators and applies all conditional pointer mutations', async () => {
+test('S3 adapter returns object validators and exposes only conditional puts for pointer mutations', async () => {
   const commands = [];
   const client = {
     async send(command) {
@@ -756,7 +1017,7 @@ test('S3 adapter returns object validators and applies all conditional pointer m
         };
       }
       if (command.constructor.name === 'PutObjectCommand') return { ETag: '"etag-v2"', VersionId: 'version-v2' };
-      return { VersionId: 'version-v3' };
+      throw new Error(`unexpected command ${command.constructor.name}`);
     },
   };
   const store = await createS3ReleaseStore({
@@ -783,13 +1044,12 @@ test('S3 adapter returns object validators and applies all conditional pointer m
     contentType: 'application/json',
     ifMatch: '"etag-v1"',
   });
-  await store.deleteObject('desktop/channels/beta/latest.json', { ifMatch: '"etag-v2"' });
 
   assert.equal(commands[1].constructor.name, 'PutObjectCommand');
   assert.equal(commands[1].input.Bucket, 'kordi-releases');
   assert.equal(commands[1].input.IfNoneMatch, '*');
   assert.equal(commands[2].input.IfNoneMatch, undefined);
   assert.equal(commands[2].input.IfMatch, '"etag-v1"');
-  assert.equal(commands[3].constructor.name, 'DeleteObjectCommand');
-  assert.equal(commands[3].input.IfMatch, '"etag-v2"');
+  assert.equal(commands.length, 3);
+  assert.equal(store.deleteObject, undefined);
 });

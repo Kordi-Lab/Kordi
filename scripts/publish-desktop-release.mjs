@@ -71,7 +71,6 @@ export async function createS3ReleaseStore({ env = process.env, client: injected
   const accessKeyId = requireEnvironment(env, 'KORDI_RELEASE_PUBLISHER_ACCESS_KEY');
   const secretAccessKey = requireEnvironment(env, 'KORDI_RELEASE_PUBLISHER_SECRET_KEY');
   const {
-    DeleteObjectCommand,
     GetObjectCommand,
     PutObjectCommand,
     S3Client,
@@ -125,20 +124,6 @@ export async function createS3ReleaseStore({ env = process.env, client: injected
           throw new Error(`Release object changed concurrently at ${key}`, { cause: error });
         }
         throw new Error('Unable to write a release object to private storage', { cause: error });
-      }
-    },
-    async deleteObject(key, metadata = {}) {
-      try {
-        await client.send(new DeleteObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          ...(metadata.ifMatch ? { IfMatch: metadata.ifMatch } : {}),
-        }));
-      } catch (error) {
-        if (metadata.ifMatch && ([409, 412].includes(error?.$metadata?.httpStatusCode) || error?.name === 'PreconditionFailed')) {
-          throw new Error(`Release object changed concurrently at ${key}`, { cause: error });
-        }
-        throw new Error('Unable to roll back the release channel pointer', { cause: error });
       }
     },
   };

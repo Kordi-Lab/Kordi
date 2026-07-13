@@ -9,11 +9,12 @@ use futures_util::{Stream, StreamExt};
 use rusty_s3::actions::{GetObject, HeadObject, S3Action};
 use rusty_s3::{Bucket, Credentials, UrlStyle};
 use semver::Version;
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use url::Url;
 
-use super::model::{ChannelPointer, ReleaseAsset, ReleaseManifest};
+use super::model::{ChannelPointer, ReleaseAsset, ReleaseManifest, UnpublishedChannelPointer};
 
 pub const MAX_RELEASE_METADATA_BYTES: usize = 1024 * 1024;
 const PRESIGNED_REQUEST_TTL: Duration = Duration::from_secs(2 * 60);
@@ -135,6 +136,13 @@ pub struct ReleaseCatalogStore {
     backend: Arc<dyn ReleaseStoreBackend>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ChannelPointerDocument {
+    Published(ChannelPointer),
+    Unpublished(UnpublishedChannelPointer),
+}
+
 impl ReleaseCatalogStore {
     pub fn new(backend: Arc<dyn ReleaseStoreBackend>) -> Self {
         Self { backend }
@@ -157,8 +165,20 @@ impl ReleaseCatalogStore {
             Err(ReleaseStoreError::NotFound) => return Ok(None),
             Err(error) => return Err(error),
         };
-        let pointer: ChannelPointer = serde_json::from_slice(&pointer_bytes)
+        let pointer_document: ChannelPointerDocument = serde_json::from_slice(&pointer_bytes)
             .map_err(|_| ReleaseStoreError::InvalidMetadata)?;
+        let pointer = match pointer_document {
+            ChannelPointerDocument::Published(pointer) => pointer,
+            ChannelPointerDocument::Unpublished(pointer) => {
+                pointer
+                    .validate()
+                    .map_err(|_| ReleaseStoreError::InvalidMetadata)?;
+                if pointer.channel != channel {
+                    return Err(ReleaseStoreError::InvalidMetadata);
+                }
+                return Ok(None);
+            }
+        };
         pointer
             .validate()
             .map_err(|_| ReleaseStoreError::InvalidMetadata)?;

@@ -43,6 +43,14 @@ pub struct ChannelPointer {
     pub release_manifest_sha256: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UnpublishedChannelPointer {
+    pub schema_version: u32,
+    pub channel: String,
+    pub unpublished: bool,
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum MetadataError {
     #[error("unsupported metadata schema version")]
@@ -73,6 +81,8 @@ pub enum MetadataError {
     Channel,
     #[error("release manifest key is invalid")]
     ManifestKey,
+    #[error("release unpublished marker is invalid")]
+    Unpublished,
     #[error("current client version must be semantic")]
     CurrentVersion,
 }
@@ -240,6 +250,21 @@ impl ChannelPointer {
             || parts[3] != "release.json"
         {
             return Err(MetadataError::ManifestKey);
+        }
+        Ok(())
+    }
+}
+
+impl UnpublishedChannelPointer {
+    pub fn validate(&self) -> Result<(), MetadataError> {
+        if self.schema_version != SCHEMA_VERSION {
+            return Err(MetadataError::SchemaVersion);
+        }
+        if !matches!(self.channel.as_str(), "beta" | "acceptance") {
+            return Err(MetadataError::Channel);
+        }
+        if !self.unpublished {
+            return Err(MetadataError::Unpublished);
         }
         Ok(())
     }

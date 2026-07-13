@@ -370,6 +370,59 @@ async fn stable_dmg_uses_beta_channel_and_no_store_cache_policy() {
 }
 
 #[tokio::test]
+async fn unpublished_beta_tombstone_disables_updater_and_stable_download_routes() {
+    let backend = Arc::new(MemoryBackend::default());
+    seed_release(&backend, "0.0.1-beta.6", "beta");
+    backend.put(
+        "desktop/channels/beta/latest.json",
+        serde_json::to_vec(&serde_json::json!({
+            "schemaVersion": 1,
+            "channel": "beta",
+            "unpublished": true,
+        }))
+        .unwrap(),
+    );
+    let router = test_router(backend);
+
+    let updater = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/updates/desktop/darwin/aarch64/0.0.1-beta.5")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(updater.status(), StatusCode::NO_CONTENT);
+
+    let stable = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/updates/releases/latest/Kordi.dmg")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stable.status(), StatusCode::NOT_FOUND);
+
+    let legacy = router
+        .oneshot(
+            Request::builder()
+                .uri("/updates/releases/version")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let legacy = body_json(legacy).await;
+    assert!(legacy.get("downloadUrl").is_none());
+    assert!(legacy.get("signature").is_none());
+}
+
+#[tokio::test]
 async fn traversal_unknown_and_unlisted_artifacts_return_404() {
     let backend = Arc::new(MemoryBackend::default());
     seed_release(&backend, "0.0.1-beta.6", "beta");

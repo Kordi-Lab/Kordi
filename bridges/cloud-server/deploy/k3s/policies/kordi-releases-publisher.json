@@ -22,15 +22,6 @@
       "Resource": [
         "arn:aws:s3:::kordi-releases/*"
       ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:DeleteObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::kordi-releases/desktop/channels/*/latest.json"
-      ]
     }
   ]
 }

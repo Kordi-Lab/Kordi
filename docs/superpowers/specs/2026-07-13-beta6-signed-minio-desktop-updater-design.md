@@ -71,7 +71,15 @@ releaseManifestSha256: 64-character lowercase hexadecimal digest
 
 The channel pointer is uploaded last. Rollback restores the previous validated pointer; immutable release objects are not deleted during an incident.
 
-The `acceptance` channel uses the same pointer schema and immutable release objects. It is served by a separate acceptance-only updater endpoint and never changes what production beta clients see. The acceptance pointer is removed after the end-to-end installer test.
+An unpublished channel is represented by this separate strict schema:
+
+```yaml
+schemaVersion: 1
+channel: beta
+unpublished: true
+```
+
+The `acceptance` channel uses the same published and unpublished pointer schemas and immutable release objects. It is served by a separate acceptance-only updater endpoint and never changes what production beta clients see. After the end-to-end installer test, acceptance is conditionally changed to the unpublished tombstone. Publisher credentials cannot delete objects, and out-of-band pointer deletion is forbidden.
 
 ## Credentials and signing
 
@@ -188,7 +196,7 @@ A tested publisher script accepts an already-built release directory plus a chan
 7. Upload immutable objects and `release.json`.
 8. Verify each artifact through its unauthenticated `coordinar.io` GET and HEAD routes.
 9. Validate the prior pointer, manifest, and artifacts, then upload the channel pointer last with an ETag compare-and-swap condition.
-10. Re-read the exact pointer bytes plus public Tauri and stable DMG endpoints. Rollback is also ETag-conditional and re-verifies the restored public state.
+10. Re-read the exact pointer bytes plus public Tauri and stable DMG endpoints. Every rollback or cleanup is an ETag-conditional PUT of the prior bytes or strict unpublished tombstone, reconciles ambiguous storage responses, and re-verifies the restored public state.
 
 The script supports `--dry-run`, which performs every local validation and generates metadata without uploading or changing the channel.
 
@@ -212,7 +220,7 @@ The script supports `--dry-run`, which performs every local validation and gener
 
 - Missing secrets, invalid signatures, checksum differences, version mismatches, privacy findings, code-sign failures, Gatekeeper failures, failed tests, or failed public downloads block promotion.
 - A Cloud server failure before promotion leaves beta.5 metadata unchanged.
-- A failed channel promotion is rolled back by restoring the previous pointer bytes and verifying the public endpoints again.
+- A failed channel promotion is rolled back by restoring the prior validated pointer bytes, or a strict unpublished tombstone when the channel was previously absent, and verifying the public endpoints again.
 - A corrupt or tampered updater artifact is rejected by both SHA-256 release validation and the Tauri embedded signature before installation.
 - Download or install errors remain visible in the confirmation surface with retry and manual-product-download actions.
 - Logs include version, platform, byte count, digest, and status only. They exclude signing keys, passwords, object-store credentials, user data, and signed internal URLs.
@@ -247,7 +255,7 @@ All behavior changes use red-green test-driven development.
 - Missing signatures, template-only field values, wrong versions, wrong hashes, and unsafe object keys fail before upload.
 - Immutable-object conflicts stop publishing.
 - The channel pointer is the final write.
-- Rollback restores the exact previous pointer.
+- Rollback restores the prior validated pointer, or a strict unpublished tombstone when the channel was previously absent.
 
 ### Full validation
 

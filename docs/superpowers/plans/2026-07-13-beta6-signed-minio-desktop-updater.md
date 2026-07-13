@@ -474,7 +474,7 @@ Use tiny fixture bytes and an injected object-store/public-HTTP adapter. Cover:
 - immutable artifacts and manifest upload before any pointer write;
 - GET and HEAD product-domain verification occurs before pointer promotion;
 - pointer is the final write;
-- a failed post-promotion verification restores the exact previous pointer bytes;
+- a failed post-promotion verification restores the prior validated pointer bytes, or a strict unpublished tombstone when the channel was previously absent;
 - dry-run performs local checks and writes generated metadata without network mutation;
 - logs never contain credentials, private keys, internal URLs, or signature password.
 
@@ -688,7 +688,7 @@ Build an internal `0.0.1-beta.5.1` package whose only endpoint override is the a
 
 ### Step 3: Verify the one-time beta.5 manual path
 
-Install the public beta.6 DMG over an installed beta.5 copy. Verify account, keychain, canonical sessions, caches, and preferences remain intact and beta.6 starts normally. Remove the acceptance pointer after both tests, retaining immutable objects.
+Install the public beta.6 DMG over an installed beta.5 copy. Verify account, keychain, canonical sessions, caches, and preferences remain intact and beta.6 starts normally. Conditionally replace the acceptance pointer with the strict unpublished tombstone after both tests, retaining immutable objects.
 
 ## Task 16: Promote beta.6 and verify production behavior
 
@@ -712,7 +712,7 @@ stable DMG GET/HEAD -> beta.6 DMG with no-store
 MinIO endpoint/credentials -> absent from all public responses
 ```
 
-Monitor Cloud server logs, error rate, download byte counts, and desktop updater behavior. If promotion verification fails, restore the exact previous pointer bytes and re-run the matrix.
+Monitor Cloud server logs, error rate, download byte counts, and desktop updater behavior. If promotion verification fails, restore the prior validated pointer bytes, or a strict unpublished tombstone when the channel was previously absent, and re-run the matrix.
 
 ## Task 17: Tag and publish the GitHub prerelease mirror
 

@@ -413,6 +413,79 @@ function storedObject(value, label) {
   return { bytes, etag, versionId: value.versionId ?? null };
 }
 
+function unpublishedChannelPointerBytes(channel) {
+  if (!SAFE_CHANNELS.has(channel)) throw new Error('Release channel must be beta or acceptance');
+  return jsonBytes({ schemaVersion: 1, channel, unpublished: true });
+}
+
+function pointerRecordMatches(record, expected) {
+  if (!expected) return record === null || record === undefined;
+  return Boolean(
+    record
+    && record.etag === expected.pointerEtag
+    && safeEqual(record.bytes, expected.pointerBytes),
+  );
+}
+
+async function putChannelPointer(store, {
+  key,
+  bytes,
+  previous,
+  label,
+  attempts = 3,
+}) {
+  let lastMutationError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const result = await store.putObject(key, bytes, {
+        contentType: 'application/json',
+        cacheControl: 'no-store',
+        ...(previous ? { ifMatch: previous.pointerEtag } : { ifNoneMatch: '*' }),
+      });
+      const etag = typeof result?.etag === 'string' && result.etag.trim()
+        ? result.etag.trim()
+        : null;
+      if (etag && !/[\r\n]/.test(etag)) {
+        return { bytes: Buffer.from(bytes), etag, versionId: result?.versionId ?? null };
+      }
+      lastMutationError = new Error(`${label} response did not include a valid ETag`);
+    } catch (error) {
+      lastMutationError = error;
+    }
+
+    let current;
+    try {
+      const value = await store.getObject(key);
+      current = value === null || value === undefined ? null : storedObject(value, `${label} reconciliation`);
+    } catch (reconciliationError) {
+      throw new Error(`${label} outcome is ambiguous because read-back failed`, {
+        cause: new AggregateError([lastMutationError, reconciliationError]),
+      });
+    }
+    if (current && safeEqual(current.bytes, bytes)) {
+      return current;
+    }
+    if (pointerRecordMatches(current, previous)) {
+      if (attempt < attempts) continue;
+      throw new Error(`${label} was not committed after ${attempts} attempts`, {
+        cause: lastMutationError,
+      });
+    }
+    throw new Error(`${label} could not be reconciled because the channel changed concurrently`, {
+      cause: lastMutationError,
+    });
+  }
+  throw new Error(`${label} could not be committed`, { cause: lastMutationError });
+}
+
+async function requireCurrentPointer(store, key, expected, label) {
+  const current = storedObject(await store.getObject(key), label);
+  if (current.etag !== expected.etag || !safeEqual(current.bytes, expected.bytes)) {
+    throw new Error(`${label} does not match the requested channel state`);
+  }
+  return current;
+}
+
 function assertExactKeys(value, expected, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
@@ -498,6 +571,26 @@ async function loadChannelSnapshot(store, channel, updaterPublicKey = TAURI_UPDA
   if (rawPointer === null || rawPointer === undefined) return null;
   const pointerRecord = storedObject(rawPointer, 'Prior channel pointer');
   const pointer = parseStoredJson(pointerRecord, 'Prior channel pointer');
+  if (!pointer || typeof pointer !== 'object' || Array.isArray(pointer)) {
+    throw new Error('Prior channel pointer must be an object');
+  }
+  if (Object.hasOwn(pointer, 'unpublished')) {
+    assertExactKeys(
+      pointer,
+      ['schemaVersion', 'channel', 'unpublished'],
+      'Prior unpublished channel pointer',
+    );
+    if (pointer.schemaVersion !== 1 || pointer.channel !== channel || pointer.unpublished !== true) {
+      throw new Error('Prior unpublished channel pointer is invalid');
+    }
+    return {
+      channel,
+      pointerKey,
+      pointerBytes: pointerRecord.bytes,
+      pointerEtag: pointerRecord.etag,
+      unpublished: true,
+    };
+  }
   assertExactKeys(
     pointer,
     ['schemaVersion', 'channel', 'releaseManifestKey', 'releaseManifestSha256'],
@@ -545,6 +638,7 @@ async function loadChannelSnapshot(store, channel, updaterPublicKey = TAURI_UPDA
     pointerKey,
     pointerBytes: pointerRecord.bytes,
     pointerEtag: pointerRecord.etag,
+    unpublished: false,
     version: release.version,
     pubDate: release.pubDate,
     release,
@@ -602,7 +696,7 @@ export async function clearDesktopReleaseChannel(options, dependencies = {}) {
     throw new Error('Only the acceptance channel can be cleared by this release command');
   }
   const { store, publicHttp } = dependencies;
-  if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function' || typeof store.deleteObject !== 'function') {
+  if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function') {
     throw new Error('A release object store adapter is required');
   }
   if (!publicHttp || typeof publicHttp.get !== 'function' || typeof publicHttp.head !== 'function') {
@@ -614,33 +708,46 @@ export async function clearDesktopReleaseChannel(options, dependencies = {}) {
     channel,
     dependencies.updaterPublicKey ?? TAURI_UPDATER_PUBLIC_KEY,
   );
-  if (!previous) {
+  if (!previous || previous.unpublished) {
     await verifyUnpublishedChannel(channel, publicHttp);
     logger.info('[release] acceptance channel already unpublished');
     return { channel, removed: false };
   }
 
-  await store.deleteObject(previous.pointerKey, { ifMatch: previous.pointerEtag });
+  const tombstoneBytes = unpublishedChannelPointerBytes(channel);
+  let tombstone;
   try {
-    const remaining = await store.getObject(previous.pointerKey);
-    if (remaining !== null && remaining !== undefined) {
-      throw new Error('Acceptance channel pointer still exists after cleanup');
-    }
+    tombstone = await putChannelPointer(store, {
+      key: previous.pointerKey,
+      bytes: tombstoneBytes,
+      previous,
+      label: 'Acceptance channel tombstone',
+    });
+    await requireCurrentPointer(
+      store,
+      previous.pointerKey,
+      tombstone,
+      'Acceptance channel tombstone',
+    );
     await verifyUnpublishedChannel(channel, publicHttp);
   } catch (error) {
+    if (!tombstone) throw error;
     try {
-      await store.putObject(previous.pointerKey, previous.pointerBytes, {
-        contentType: 'application/json',
-        cacheControl: 'no-store',
-        ifNoneMatch: '*',
+      const restored = await putChannelPointer(store, {
+        key: previous.pointerKey,
+        bytes: previous.pointerBytes,
+        previous: {
+          pointerBytes: tombstone.bytes,
+          pointerEtag: tombstone.etag,
+        },
+        label: 'Acceptance channel pointer restoration',
       });
-      const restored = storedObject(
-        await store.getObject(previous.pointerKey),
+      await requireCurrentPointer(
+        store,
+        previous.pointerKey,
+        restored,
         'Restored acceptance channel pointer',
       );
-      if (!safeEqual(restored.bytes, previous.pointerBytes)) {
-        throw new Error('Restored acceptance channel pointer does not match its prior bytes');
-      }
       await verifyPromotedRelease(previous, publicHttp);
     } catch (rollbackError) {
       throw new Error('Acceptance cleanup verification failed and pointer restoration also failed', {
@@ -664,7 +771,7 @@ export async function rollbackDesktopBetaChannel(options, dependencies = {}) {
     throw new Error('Expected current version must be a beta semantic version');
   }
   const { store } = dependencies;
-  if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function' || typeof store.deleteObject !== 'function') {
+  if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function') {
     throw new Error('A release object store adapter is required');
   }
   const previous = await loadChannelSnapshot(
@@ -672,7 +779,7 @@ export async function rollbackDesktopBetaChannel(options, dependencies = {}) {
     'beta',
     dependencies.updaterPublicKey ?? TAURI_UPDATER_PUBLIC_KEY,
   );
-  if (!previous) throw new Error('The beta channel is already unpublished');
+  if (!previous || previous.unpublished) throw new Error('The beta channel is already unpublished');
   if (previous.version !== expectedCurrentVersion) {
     throw new Error(
       `Expected beta channel ${expectedCurrentVersion}, but storage currently references ${previous.version}`,
@@ -684,27 +791,35 @@ export async function rollbackDesktopBetaChannel(options, dependencies = {}) {
   }
   const logger = dependencies.logger ?? { info() {} };
 
-  await store.deleteObject(previous.pointerKey, { ifMatch: previous.pointerEtag });
+  const tombstoneBytes = unpublishedChannelPointerBytes('beta');
+  let tombstone;
   try {
-    const remaining = await store.getObject(previous.pointerKey);
-    if (remaining !== null && remaining !== undefined) {
-      throw new Error('Beta channel pointer still exists after rollback deletion');
-    }
+    tombstone = await putChannelPointer(store, {
+      key: previous.pointerKey,
+      bytes: tombstoneBytes,
+      previous,
+      label: 'Beta channel tombstone',
+    });
+    await requireCurrentPointer(store, previous.pointerKey, tombstone, 'Beta channel tombstone');
     await verifyUnpublishedChannel('beta', publicHttp);
   } catch (error) {
+    if (!tombstone) throw error;
     try {
-      await store.putObject(previous.pointerKey, previous.pointerBytes, {
-        contentType: 'application/json',
-        cacheControl: 'no-store',
-        ifNoneMatch: '*',
+      const restored = await putChannelPointer(store, {
+        key: previous.pointerKey,
+        bytes: previous.pointerBytes,
+        previous: {
+          pointerBytes: tombstone.bytes,
+          pointerEtag: tombstone.etag,
+        },
+        label: 'Beta channel pointer restoration',
       });
-      const restored = storedObject(
-        await store.getObject(previous.pointerKey),
+      await requireCurrentPointer(
+        store,
+        previous.pointerKey,
+        restored,
         'Restored beta channel pointer',
       );
-      if (!safeEqual(restored.bytes, previous.pointerBytes)) {
-        throw new Error('Restored beta channel pointer does not match its prior bytes');
-      }
       await verifyPromotedRelease(previous, publicHttp);
     } catch (rollbackError) {
       throw new Error('Beta rollback verification failed and pointer restoration also failed', {
@@ -727,7 +842,7 @@ export async function publishDesktopRelease(options, dependencies = {}) {
     return { ...prepared, dryRun: true, published: false };
   }
   const { store, publicHttp } = dependencies;
-  if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function' || typeof store.deleteObject !== 'function') {
+  if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function') {
     throw new Error('A release object store adapter is required');
   }
   if (!publicHttp || typeof publicHttp.get !== 'function' || typeof publicHttp.head !== 'function') {
@@ -770,47 +885,40 @@ export async function publishDesktopRelease(options, dependencies = {}) {
     prepared.channel,
     dependencies.updaterPublicKey ?? TAURI_UPDATER_PUBLIC_KEY,
   );
-  const promotion = await store.putObject(prepared.pointerKey, prepared.pointerBytes, {
-    contentType: 'application/json',
-    cacheControl: 'no-store',
-    ...(previous ? { ifMatch: previous.pointerEtag } : { ifNoneMatch: '*' }),
-  });
-  const promotedEtag = requireString(promotion?.etag, 'Promoted channel pointer ETag');
+  let promotion;
   try {
-    const promotedPointer = storedObject(
-      await store.getObject(prepared.pointerKey),
+    promotion = await putChannelPointer(store, {
+      key: prepared.pointerKey,
+      bytes: prepared.pointerBytes,
+      previous,
+      label: 'Channel pointer promotion',
+    });
+    await requireCurrentPointer(
+      store,
+      prepared.pointerKey,
+      promotion,
       'Promoted channel pointer',
     );
-    if (
-      promotedPointer.etag !== promotedEtag
-      || !safeEqual(promotedPointer.bytes, prepared.pointerBytes)
-    ) {
-      throw new Error('Promoted channel pointer read-back does not match the requested release');
-    }
     await verifyPromotedRelease(prepared, publicHttp);
   } catch (error) {
+    if (!promotion) throw error;
     try {
-      if (!previous) {
-        await store.deleteObject(prepared.pointerKey, { ifMatch: promotedEtag });
-        const removed = await store.getObject(prepared.pointerKey);
-        if (removed !== null && removed !== undefined) {
-          throw new Error('Channel pointer still exists after rollback deletion');
-        }
-        await verifyUnpublishedChannel(prepared.channel, publicHttp);
-      } else {
-        await store.putObject(prepared.pointerKey, previous.pointerBytes, {
-          contentType: 'application/json',
-          cacheControl: 'no-store',
-          ifMatch: promotedEtag,
-        });
-        const restored = storedObject(
-          await store.getObject(prepared.pointerKey),
-          'Restored channel pointer',
-        );
-        if (!safeEqual(restored.bytes, previous.pointerBytes)) {
-          throw new Error('Restored channel pointer bytes do not match the prior pointer');
-        }
+      const restoreBytes = previous?.pointerBytes
+        ?? unpublishedChannelPointerBytes(prepared.channel);
+      const restored = await putChannelPointer(store, {
+        key: prepared.pointerKey,
+        bytes: restoreBytes,
+        previous: {
+          pointerBytes: promotion.bytes,
+          pointerEtag: promotion.etag,
+        },
+        label: 'Channel pointer rollback',
+      });
+      await requireCurrentPointer(store, prepared.pointerKey, restored, 'Restored channel pointer');
+      if (previous && !previous.unpublished) {
         await verifyPromotedRelease(previous, publicHttp);
+      } else {
+        await verifyUnpublishedChannel(prepared.channel, publicHttp);
       }
     } catch (rollbackError) {
       throw new Error('Post-promotion verification failed and channel rollback also failed', {

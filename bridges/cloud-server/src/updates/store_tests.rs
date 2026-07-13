@@ -208,6 +208,35 @@ async fn missing_pointer_is_not_published_but_corruption_and_backend_failures_ar
 }
 
 #[tokio::test]
+async fn strict_unpublished_tombstone_is_not_a_release_but_malformed_tombstones_fail_closed() {
+    let backend = Arc::new(MemoryBackend::default());
+    let key = "desktop/channels/beta/latest.json";
+    backend.put(
+        key,
+        serde_json::to_vec(&serde_json::json!({
+            "schemaVersion": 1,
+            "channel": "beta",
+            "unpublished": true,
+        }))
+        .unwrap(),
+    );
+    let store = ReleaseCatalogStore::new(backend.clone());
+    assert!(store.load_channel("beta").await.unwrap().is_none());
+
+    for malformed in [
+        serde_json::json!({"schemaVersion": 1, "channel": "beta", "unpublished": false}),
+        serde_json::json!({"schemaVersion": 1, "channel": "acceptance", "unpublished": true}),
+        serde_json::json!({"schemaVersion": 1, "channel": "beta", "unpublished": true, "extra": 1}),
+    ] {
+        backend.put(key, serde_json::to_vec(&malformed).unwrap());
+        assert_eq!(
+            store.load_channel("beta").await.unwrap_err(),
+            ReleaseStoreError::InvalidMetadata
+        );
+    }
+}
+
+#[tokio::test]
 async fn digest_mismatch_fails_before_release_metadata_is_used() {
     let backend = Arc::new(MemoryBackend::default());
     seed(&backend, "beta");

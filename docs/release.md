@@ -106,7 +106,7 @@ Before publishing built artifacts, omit `--source-only` and pass the exact `Kord
 
 ### Private updater storage and publisher
 
-Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly: manifests and downloads are served only through `https://coordinar.io`. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects and delete only mutable `desktop/channels/*/latest.json` pointers; it cannot delete immutable versioned artifacts or administer buckets and policies.
+Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly: manifests and downloads are served only through `https://coordinar.io`. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects but cannot delete objects or administer buckets and policies. Cleanup and rollback conditionally PUT a strict unpublished tombstone instead of deleting a pointer; out-of-band pointer deletion is forbidden.
 
 Provision or reconcile these identities from a trusted operator machine:
 
@@ -292,7 +292,7 @@ strings "$DMG" | rg 'https://coordinar\.io|coordinar\.io'
 2. Build an internal `0.0.1-beta.5.1` acceptance package from the merge commit. Its embedded updater key must equal beta.6 and its only endpoint override must be `https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}`. On a disposable macOS user, seed account/session/cache/preference markers; confirm once; verify signed download, installation, automatic relaunch, beta.6 version, and preservation of all markers.
 3. Copy the updater archive, change one byte, and verify the Tauri signature check rejects the copy while the installed app remains runnable. Never upload the tampered copy.
 4. On a separate beta.5 installation, use the update confirmation to open the product-domain manual DMG. Verify beta.5 never starts its native installer, then drag beta.6 to Applications once and confirm login, keychain, canonical sessions, caches, and preferences remain intact.
-5. Remove and verify the acceptance pointer while retaining immutable objects:
+5. Mark the acceptance channel unpublished with its strict compare-and-swap tombstone, then verify it while retaining immutable objects:
 
    ```bash
    pnpm release:clear-desktop-acceptance
@@ -301,7 +301,7 @@ strings "$DMG" | rg 'https://coordinar\.io|coordinar\.io'
    ```
 
 6. Publish the same immutable release to `--channel beta`. Verify beta.5 legacy metadata contains beta.6 plus the manual `coordinar.io` URL and no `downloadUrl`; beta.5.1 receives the signed beta.6 manifest; beta.6, beta.7, and unsupported clients receive 204; anonymous DMG GET/HEAD and updater archive GET/HEAD match recorded sizes and SHA-256 values.
-7. For this first signed release, exercise rollback to the beta.5 environment fallback with an explicit expected-current-version guard. The command deletes beta.6 only if its ETag and version still match, verifies updater 204, stable-DMG 404, and safe legacy metadata, and restores/re-verifies beta.6 if those checks fail. Then promote beta.6 again and repeat the endpoint matrix:
+7. For this first signed release, exercise rollback to the beta.5 environment fallback with an explicit expected-current-version guard. The command replaces the beta.6 pointer with an unpublished tombstone only if its ETag and version still match, verifies updater 204, stable-DMG 404, and safe legacy metadata, and restores/re-verifies beta.6 if those checks fail. Then promote beta.6 again and repeat the endpoint matrix:
 
    ```bash
    pnpm release:rollback-desktop-beta -- \
