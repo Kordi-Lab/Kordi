@@ -87,6 +87,36 @@ For test servers:
 curl <PUBLIC_TEST_CLOUD_API_BASE>/health
 ```
 
+## Private desktop release storage
+
+Desktop release objects live in the private MinIO bucket `kordi-releases`. The Cloud server receives a dedicated read-only identity through Kubernetes Secret `kordi-release-reader`; the release publisher uses a separate write-without-delete identity stored in GCP Secret Manager. Neither identity reuses `minio-credentials` or the attachment bucket.
+
+After MinIO is running, provision or reconcile the scoped identities from a trusted operator machine:
+
+```bash
+export KORDI_CLOUD_SSH_TARGET="kordi-product"
+export KORDI_CLOUD_SSH_ZONE="us-central1-a"
+export KORDI_CLOUD_GCP_PROJECT="hai-gcp-representation"
+bash bridges/cloud-server/deploy/k3s/create-release-credentials.sh
+```
+
+The script creates no anonymous access. It verifies that the reader cannot write and that the publisher can write/read but cannot delete. Publisher values are stored under:
+
+- `kordi-release-publisher-access-key`
+- `kordi-release-publisher-secret-key`
+
+Run the credential script before `deploy-cloud-server.sh`. Server deployment re-applies the private bucket bootstrap and runs a read-only `release-store-check` pod before rolling the Cloud server.
+
+Required Cloud server variables are supplied by the deployment manifest:
+
+```text
+KORDI_RELEASE_S3_ENDPOINT=http://minio.kordi-cloud.svc.cluster.local:9000
+KORDI_RELEASE_S3_BUCKET=kordi-releases
+KORDI_RELEASE_S3_REGION=us-east-1
+KORDI_RELEASE_S3_ACCESS_KEY=<from kordi-release-reader>
+KORDI_RELEASE_S3_SECRET_KEY=<from kordi-release-reader>
+```
+
 ## Coexistence with old systemd deploys
 
 If a legacy systemd Cloud server is running on the same host, stop it before running the cluster Cloud server so two services do not compete for the same port.

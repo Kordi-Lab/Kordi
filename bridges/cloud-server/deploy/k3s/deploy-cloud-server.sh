@@ -29,6 +29,7 @@ echo "[deploy] image ref: ${IMAGE}"
 echo "[deploy] syncing Dockerfile.runtime + manifest to VM"
 tar -C "${REPO_ROOT}" -czf - \
         bridges/cloud-server/Dockerfile.runtime \
+        bridges/cloud-server/deploy/k3s/manifests/minio.yaml \
         bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml \
     | gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" \
         --command "cd ${REMOTE_DEPLOY} && tar -xzf -"
@@ -46,6 +47,51 @@ sudo buildah push ${IMAGE} oci-archive:\$TAR:${IMAGE}
 sudo k3s ctr images import \$TAR
 sudo rm -f \$TAR
 sudo k3s ctr images ls | grep kordi-cloud-server | head -3"
+
+echo "[deploy] reconciling private release storage"
+gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --command "set -e
+cd ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests
+kubectl -n kordi-cloud delete job/minio-bucket-init --ignore-not-found=true --wait=true >/dev/null
+kubectl apply -f minio.yaml >/dev/null
+kubectl -n kordi-cloud rollout status statefulset/minio --timeout=180s
+kubectl -n kordi-cloud wait --for=condition=complete job/minio-bucket-init --timeout=180s >/dev/null
+kubectl -n kordi-cloud get secret kordi-release-reader -o jsonpath='{.data.access-key}' | grep -q .
+kubectl -n kordi-cloud get secret kordi-release-reader -o jsonpath='{.data.secret-key}' | grep -q .
+kubectl -n kordi-cloud delete pod/release-store-check --ignore-not-found=true --wait=true >/dev/null
+cat <<'YAML' | kubectl apply -f - >/dev/null
+apiVersion: v1
+kind: Pod
+metadata:
+  name: release-store-check
+  namespace: kordi-cloud
+spec:
+  restartPolicy: Never
+  containers:
+    - name: mc
+      image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+      env:
+        - name: ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kordi-release-reader
+              key: access-key
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kordi-release-reader
+              key: secret-key
+      command:
+        - sh
+        - -c
+        - |
+          set -eu
+          mc alias set release http://minio.kordi-cloud.svc.cluster.local:9000 \"\$ACCESS_KEY\" \"\$SECRET_KEY\" >/dev/null
+          mc stat release/kordi-releases >/dev/null
+          echo release-store-ready
+YAML
+kubectl -n kordi-cloud wait --for=jsonpath='{.status.phase}'=Succeeded pod/release-store-check --timeout=120s >/dev/null
+kubectl -n kordi-cloud logs pod/release-store-check
+kubectl -n kordi-cloud delete pod/release-store-check --wait=true >/dev/null"
 
 echo "[deploy] applying manifest with image=${IMAGE}"
 gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --command "cd ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests && \
