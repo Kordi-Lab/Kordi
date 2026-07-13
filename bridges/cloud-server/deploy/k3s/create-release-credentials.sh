@@ -38,11 +38,26 @@ reader_secret_file="${TMP_DIR}/reader-secret"
 publisher_access_file="${TMP_DIR}/publisher-access"
 publisher_secret_file="${TMP_DIR}/publisher-secret"
 
+normalize_access_key_file() {
+  local source_file="$1"
+  local normalized_file="${source_file}.normalized"
+  local normalized_length
+
+  tr -d '\r\n' <"${source_file}" >"${normalized_file}"
+  normalized_length="$(wc -c <"${normalized_file}" | tr -d '[:space:]')"
+  if [[ ! "${normalized_length}" =~ ^[0-9]+$ ]] || (( normalized_length < 3 )); then
+    echo "release access key is invalid" >&2
+    rm -f "${normalized_file}"
+    return 1
+  fi
+  mv "${normalized_file}" "${source_file}"
+}
+
 if remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader >/dev/null 2>&1"; then
   remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader -o jsonpath='{.data.access-key}' | base64 -d" >"${reader_access_file}"
   remote "kubectl -n ${NAMESPACE} get secret kordi-release-reader -o jsonpath='{.data.secret-key}' | base64 -d" >"${reader_secret_file}"
 else
-  openssl rand -hex 16 >"${reader_access_file}"
+  openssl rand -hex 16 | tr -d '\r\n' >"${reader_access_file}"
   openssl rand -base64 36 | tr -d '\n' >"${reader_secret_file}"
 fi
 
@@ -59,7 +74,7 @@ load_or_create_gcp_secret() {
     return
   fi
   if [[ "${generation_kind}" == "access" ]]; then
-    openssl rand -hex 16 >"${destination}"
+    openssl rand -hex 16 | tr -d '\r\n' >"${destination}"
   else
     openssl rand -base64 36 | tr -d '\n' >"${destination}"
   fi
@@ -81,6 +96,9 @@ load_or_create_gcp_secret \
   "kordi-release-publisher-secret-key" \
   "${publisher_secret_file}" \
   "secret"
+
+normalize_access_key_file "${reader_access_file}"
+normalize_access_key_file "${publisher_access_file}"
 
 for value_file in \
   "${reader_access_file}" \

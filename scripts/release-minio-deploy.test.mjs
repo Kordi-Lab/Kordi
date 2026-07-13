@@ -71,6 +71,10 @@ test('credential and deploy scripts provision scoped users without logging crede
   const deploy = await readFile(deployScriptPath, 'utf8');
 
   assert.match(credentials, /openssl rand/);
+  assert.match(credentials, /normalize_access_key_file/);
+  assert.match(credentials, /tr -d '\\r\\n'/);
+  assert.match(credentials, /normalize_access_key_file "\$\{reader_access_file\}"/);
+  assert.match(credentials, /normalize_access_key_file "\$\{publisher_access_file\}"/);
   assert.match(credentials, /kordi-release-reader/);
   assert.match(credentials, /kordi-release-publisher-access-key/);
   assert.match(credentials, /kordi-release-publisher-secret-key/);
