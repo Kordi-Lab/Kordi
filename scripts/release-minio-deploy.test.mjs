@@ -241,7 +241,12 @@ test('identity bootstrap runs in the minimal mc image without grep', async (t) =
     mcPath,
     `#!/bin/sh
 case "$*" in
-  'anonymous get '*) printf '%s\\n' 'Access permission for \`root/kordi-releases\` is \`private\`' ;;
+  'anonymous get '*)
+    case "\${MC_ANONYMOUS_OUTPUT:-}" in
+      '') printf '%s\\n' 'Access permission for \`root/kordi-releases\` is \`private\`' ;;
+      *) printf '%s\\n' "$MC_ANONYMOUS_OUTPUT" ;;
+    esac
+    ;;
   *'pipe reader/'*) exit 1 ;;
   'rm publisher/'*) exit 1 ;;
   'rm --force root/'*) exit 0 ;;
@@ -251,21 +256,30 @@ exit 0
   );
   await chmod(mcPath, 0o700);
 
-  const result = await execFileAsync('/bin/sh', ['-c', command], {
-    encoding: 'utf8',
-    env: {
-      PATH: directory,
-      ROOT_ACCESS_KEY: 'root-access',
-      ROOT_SECRET_KEY: 'root-secret',
-      READER_ACCESS_KEY: 'reader-access',
-      READER_SECRET_KEY: 'reader-secret',
-      PUBLISHER_ACCESS_KEY: 'publisher-access',
-      PUBLISHER_SECRET_KEY: 'publisher-secret',
-    },
-  });
+  const env = {
+    PATH: directory,
+    ROOT_ACCESS_KEY: 'root-access',
+    ROOT_SECRET_KEY: 'root-secret',
+    READER_ACCESS_KEY: 'reader-access',
+    READER_SECRET_KEY: 'reader-secret',
+    PUBLISHER_ACCESS_KEY: 'publisher-access',
+    PUBLISHER_SECRET_KEY: 'publisher-secret',
+  };
+  const result = await execFileAsync('/bin/sh', ['-c', command], { encoding: 'utf8', env });
 
   assert.equal(result.stdout, 'release identities ready\n');
   assert.equal(result.stderr, '');
+
+  await assert.rejects(
+    execFileAsync('/bin/sh', ['-c', command], {
+      encoding: 'utf8',
+      env: { ...env, MC_ANONYMOUS_OUTPUT: 'Access permission is download' },
+    }),
+    (error) => {
+      assert.match(error.stderr, /release bucket must remain private/);
+      return true;
+    },
+  );
 });
 
 test('CI exercises release publisher contracts and the Cloud update server', async () => {
