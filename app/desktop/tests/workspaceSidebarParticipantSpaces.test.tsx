@@ -1471,6 +1471,34 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   assert.doesNotMatch(sessionRowMarkup, />Direct chat<\//);
 });
 
+test('WorkspaceSidebar group child titles avoid native tooltips that destabilize hover', () => {
+  const chatConversations = [conversation({
+    id: 'session:group-hover-stable',
+    canonicalSessionId: 'session:group-hover-stable',
+    name: 'Stable hover',
+    type: 'group',
+    participants: ['Me', 'Alice', 'Bob'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+    ],
+  })];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    activeConvId: 'session:group-hover-stable',
+    initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+  }) as never));
+  const sessionRowStart = markup.indexOf('data-testid="participant-space-session-row"');
+  const sessionRowMarkup = markup.slice(sessionRowStart, markup.indexOf('</button>', sessionRowStart));
+
+  assert.match(sessionRowMarkup, /app-participant-space-session-title[^>]*># Stable hover<\/span>/);
+  assert.doesNotMatch(sessionRowMarkup, /app-participant-space-session-title[^>]*\stitle=/);
+});
+
 test('WorkspaceSidebar hides old fork rows for canonical group sessions', () => {
   const chatConversations = [
     conversation({

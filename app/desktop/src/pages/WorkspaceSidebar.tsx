@@ -845,7 +845,7 @@ export function WorkspaceSidebar({
         >
           <div className="app-participant-space-session-main min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className="app-session-row-title app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium" title={sessionRowTitle}>{sessionRowTitle}</span>
+              <span className="app-session-row-title app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium">{sessionRowTitle}</span>
             </div>
             <div
               className={cn(
