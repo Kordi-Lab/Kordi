@@ -321,8 +321,11 @@ function cloudAgentCompletedLocalTurnBridgeMessage({
   targetAgentName: string | null;
   localTurn: DesktopChatTurnSnapshot;
 }): DesktopBridgeConversationMessage {
-  const requestCreatedAtMs = Date.parse(request.createdAt) || Date.now();
-  const timestampMs = localTurn.completedAtMs ?? Math.max(requestCreatedAtMs + 1, Date.now());
+  const requestCreatedAtMs = Date.parse(request.createdAt) || Date.parse(request.deliveredAt ?? '') || 0;
+  const timestampMs = Math.max(
+    requestCreatedAtMs + 1,
+    localTurn.completedAtMs ?? localTurn.startedAtMs ?? requestCreatedAtMs + 1,
+  );
   const assistantText = localTurn.assistantText.trim();
   const cancelled = localTurn.status === 'cancelled';
   const succeeded = localTurn.succeeded && assistantText.length > 0;

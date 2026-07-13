@@ -90,6 +90,16 @@ fn cloud_self_addressed_messages_are_read_by_definition() {
     assert!(pool_source.contains("0031_cloud_message_attachment_previews.sql"));
 }
 
+#[test]
+fn cloud_attachment_preview_recovery_only_updates_caller_visible_links() {
+    let source = std::fs::read_to_string("src/attachments/routes.rs")
+        .expect("read attachment routes source");
+    assert!(source.contains("UPDATE cloud_message_attachments cma"));
+    assert!(source.contains("cm.message_id = cma.message_id"));
+    assert!(source.contains("cm.from_account_id = $3 OR cm.to_account_id = $3"));
+    assert!(source.contains("$3 = $4"));
+}
+
 fn signup_body(email: &str, password: &str) -> Body {
     Body::from(
         json!({

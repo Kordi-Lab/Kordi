@@ -1382,6 +1382,26 @@ export async function loadCloudMessagesByPeerUntilStable({
   return { messagesByPeer: byPeer, peerIds, complete: false };
 }
 
+export function createAccountScopedSingleFlight() {
+  const inFlightByAccount = new Map<string, Promise<void>>();
+  return (accountId: string, task: () => Promise<void>): Promise<void> => {
+    const key = accountId.trim();
+    const existing = inFlightByAccount.get(key);
+    if (existing) return existing;
+
+    let tracked: Promise<void>;
+    try {
+      tracked = task().finally(() => {
+        if (inFlightByAccount.get(key) === tracked) inFlightByAccount.delete(key);
+      });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    inFlightByAccount.set(key, tracked);
+    return tracked;
+  };
+}
+
 const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX = 'kordi.cloud.selfAgentSync.v2:';
 const CLOUD_SELF_AGENT_FORWARD_BASELINE_PREFIX = 'kordi.cloud.selfAgentForwardBaseline.v1:';
 
@@ -2004,7 +2024,10 @@ export function useCloudBridgeState({
   const cloudSelfAgentForkRefreshKeyRef = useRef<string | null>(null);
   const syncingSelfAgentHistoryRef = useRef(false);
   const syncingCloudDiffRef = useRef(false);
-  const refreshingCloudMessagesRef = useRef<Promise<void> | null>(null);
+  const cloudMessageRefreshSingleFlightRef = useRef<ReturnType<typeof createAccountScopedSingleFlight> | null>(null);
+  if (!cloudMessageRefreshSingleFlightRef.current) {
+    cloudMessageRefreshSingleFlightRef.current = createAccountScopedSingleFlight();
+  }
   const lastCloudFocusRefreshAtRef = useRef(0);
   const cloudFocusRefreshTimerRef = useRef<number | null>(null);
   const syncedContactIdentitySignatureRef = useRef<string | null>(null);
@@ -2348,17 +2371,17 @@ export function useCloudBridgeState({
     return agent;
   }, [cloudAgentsClient]);
 
-  const refreshCloudBridgeMessages = useCallback(async () => {
-    if (refreshingCloudMessagesRef.current) return refreshingCloudMessagesRef.current;
-    const refreshPromise = (async () => {
+  const refreshCloudBridgeMessages = useCallback(() => {
+    const refreshAccount = account;
+    const refreshAccountId = refreshAccount?.accountId ?? '';
+    return cloudMessageRefreshSingleFlightRef.current!(refreshAccountId, async () => {
       const retainedPeerIds = Object.keys(messagesByPeerRef.current);
       const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
-      if (!account || initialPeerIds.length === 0) {
+      if (!refreshAccount || initialPeerIds.length === 0) {
         setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
         setInitialMessagesSettledPeerKey(bootstrapPeerKey);
         return;
       }
-      const refreshAccountId = account.accountId;
       const session = await loadSession();
       if (!session?.token) {
         setInitialMessagesSettledPeerKey(null);
@@ -2384,13 +2407,7 @@ export function useCloudBridgeState({
         return cloudMessagesByPeerEqual(current, merged) ? current : merged;
       });
       setInitialMessagesSettledPeerKey(loaded.complete ? bootstrapPeerKey : null);
-    })();
-    refreshingCloudMessagesRef.current = refreshPromise;
-    try {
-      await refreshPromise;
-    } finally {
-      if (refreshingCloudMessagesRef.current === refreshPromise) refreshingCloudMessagesRef.current = null;
-    }
+    });
   }, [account, bootstrapPeerKey, client]);
 
   const syncCloudBridgeDiff = useCallback(async (options: { settleInitialMessages?: boolean } = {}) => {

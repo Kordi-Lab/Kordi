@@ -14,9 +14,10 @@ import type { Message, MessageAttachment } from '../types';
 
 const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
+const ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS = 30_000;
 const recoveredAttachmentPreviewUrls = new Map<string, string>();
 const recoveringAttachmentPreviewPromises = new Map<string, Promise<string | null>>();
-const failedAttachmentPreviewRecoveries = new Set<string>();
+const attachmentPreviewRecoveryRetryAfter = new Map<string, number>();
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
@@ -51,19 +52,39 @@ function recoverableAttachmentId(attachment: MessageAttachment) {
   return attachment.attachmentId?.trim() || null;
 }
 
-async function recoverAttachmentPreviewOnce(attachment: MessageAttachment) {
+type AttachmentPreviewRecoveryDependencies = {
+  loadCloudSession?: () => Promise<{ token: string } | null>;
+  recoverPreview?: typeof recoverCloudAttachmentPreview;
+  now?: () => number;
+  retryDelayMs?: number;
+};
+
+export function clearAttachmentPreviewRecoveryStateForTests() {
+  recoveredAttachmentPreviewUrls.clear();
+  recoveringAttachmentPreviewPromises.clear();
+  attachmentPreviewRecoveryRetryAfter.clear();
+}
+
+export async function recoverAttachmentPreviewOnce(
+  attachment: MessageAttachment,
+  dependencies: AttachmentPreviewRecoveryDependencies = {},
+) {
   const attachmentId = recoverableAttachmentId(attachment);
-  if (!attachmentId || failedAttachmentPreviewRecoveries.has(attachmentId)) return null;
+  if (!attachmentId) return null;
   const cached = recoveredAttachmentPreviewUrls.get(attachmentId);
   if (cached) return cached;
+  const now = dependencies.now ?? Date.now;
+  const retryAfter = attachmentPreviewRecoveryRetryAfter.get(attachmentId) ?? 0;
+  if (retryAfter > now()) return null;
+  attachmentPreviewRecoveryRetryAfter.delete(attachmentId);
   const existing = recoveringAttachmentPreviewPromises.get(attachmentId);
   if (existing) return existing;
 
   const promise = (async () => {
     try {
-      const session = await loadSession();
+      const session = await (dependencies.loadCloudSession ?? loadSession)();
       if (!session?.token) return null;
-      const previewUrl = await recoverCloudAttachmentPreview({
+      const previewUrl = await (dependencies.recoverPreview ?? recoverCloudAttachmentPreview)({
         token: session.token,
         client: defaultCloudAuthClient(),
         attachment: {
@@ -75,11 +96,21 @@ async function recoverAttachmentPreviewOnce(attachment: MessageAttachment) {
           previewUrl: attachment.previewUrl ?? null,
         },
       });
-      if (previewUrl) recoveredAttachmentPreviewUrls.set(attachmentId, previewUrl);
-      else failedAttachmentPreviewRecoveries.add(attachmentId);
+      if (previewUrl) {
+        recoveredAttachmentPreviewUrls.set(attachmentId, previewUrl);
+        attachmentPreviewRecoveryRetryAfter.delete(attachmentId);
+      } else {
+        attachmentPreviewRecoveryRetryAfter.set(
+          attachmentId,
+          now() + Math.max(0, dependencies.retryDelayMs ?? ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS),
+        );
+      }
       return previewUrl;
     } catch {
-      failedAttachmentPreviewRecoveries.add(attachmentId);
+      attachmentPreviewRecoveryRetryAfter.set(
+        attachmentId,
+        now() + Math.max(0, dependencies.retryDelayMs ?? ATTACHMENT_PREVIEW_RECOVERY_RETRY_DELAY_MS),
+      );
       return null;
     } finally {
       recoveringAttachmentPreviewPromises.delete(attachmentId);

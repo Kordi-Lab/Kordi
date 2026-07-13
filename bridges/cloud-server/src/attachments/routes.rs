@@ -546,18 +546,31 @@ pub async fn update_preview(
         Err(resp) => return resp,
     };
 
-    if let Err(resp) = attachment_access_row(&state, &session, &attachment_id).await {
-        return resp;
-    }
+    let (_, owner_account_id, _, _, _) =
+        match attachment_access_row(&state, &session, &attachment_id).await {
+            Ok(row) => row,
+            Err(resp) => return resp,
+        };
 
     let result = match query(
-        "UPDATE cloud_message_attachments \
+        "UPDATE cloud_message_attachments cma \
          SET preview_url = $1 \
          WHERE attachment_id = $2 \
-           AND (preview_url IS NULL OR preview_url = '')",
+           AND (preview_url IS NULL OR preview_url = '') \
+           AND ( \
+             $3 = $4 \
+             OR EXISTS ( \
+               SELECT 1 \
+               FROM cloud_messages cm \
+               WHERE cm.message_id = cma.message_id \
+                 AND (cm.from_account_id = $3 OR cm.to_account_id = $3) \
+             ) \
+           )",
     )
     .bind(&preview_url)
     .bind(&attachment_id)
+    .bind(&session.account_id)
+    .bind(&owner_account_id)
     .execute(state.db_pool())
     .await
     {
