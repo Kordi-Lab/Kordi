@@ -14,12 +14,13 @@ const VALUE_ARGUMENTS = new Map([
   ['--app-bundle', 'appBundle'],
   ['--version', 'version'],
   ['--channel', 'channel'],
+  ['--release-profile', 'releaseProfile'],
   ['--expected-commit', 'expectedCommit'],
   ['--pub-date', 'pubDate'],
 ]);
 
 export function parsePublisherArguments(argv) {
-  const options = { dryRun: false };
+  const options = { dryRun: false, releaseProfile: 'production' };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--') continue;
