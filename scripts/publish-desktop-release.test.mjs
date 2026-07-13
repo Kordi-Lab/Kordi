@@ -70,6 +70,14 @@ function contractRun(overrides = new Map(), calls = []) {
       stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`,
       stderr: '',
     }],
+    [[
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '), {
+      status: 1,
+      stdout: '',
+      stderr: '',
+    }],
     ...overrides,
   ]);
   return (command, args = []) => {
@@ -441,6 +449,10 @@ test('application bundle contract enforces the ad-hoc profile in exact command o
       'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
       ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
     ].join(' '),
+    [
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '),
   ]);
 });
 
@@ -456,6 +468,14 @@ test('application bundle contract preserves the production Gatekeeper and endpoi
     ].join(' '), {
       status: 0,
       stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`,
+      stderr: '',
+    }],
+    [[
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '), {
+      status: 1,
+      stdout: '',
       stderr: '',
     }],
   ]), calls);
@@ -478,7 +498,62 @@ test('application bundle contract preserves the production Gatekeeper and endpoi
       'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
       PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
     ].join(' '),
+    [
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '),
   ]);
+});
+
+test('application bundle contract rejects mixed updater endpoints for both profiles', () => {
+  for (const releaseProfile of ['adhoc-preview', 'production']) {
+    const mixedEndpoints = new Map([
+      [`spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`, {
+        status: releaseProfile === 'production' ? 0 : 1,
+        stdout: '',
+        stderr: releaseProfile === 'production' ? '' : 'rejected',
+      }],
+      [[
+        'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+        ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
+      ].join(' '), {
+        status: 0, stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`, stderr: '',
+      }],
+      [[
+        'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+        PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+      ].join(' '), {
+        status: 0, stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`, stderr: '',
+      }],
+    ]);
+
+    assert.throws(
+      () => assertAppBundleContract(contractRun(mixedEndpoints), APP_CONTRACT_BUNDLE, {
+        version: VERSION,
+        identifier: 'io.kordi.cloud',
+        releaseProfile,
+      }),
+      /profile isolation|updater endpoint/i,
+      releaseProfile,
+    );
+  }
+});
+
+test('application bundle contract fails closed when the forbidden endpoint scan cannot run', () => {
+  const forbiddenCommand = [
+    'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+    PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+  ].join(' ');
+  assert.throws(
+    () => assertAppBundleContract(contractRun(new Map([[forbiddenCommand, {
+      status: 2, stdout: '', stderr: 'inspection error',
+    }]])), APP_CONTRACT_BUNDLE, {
+      version: VERSION,
+      identifier: 'io.kordi.cloud',
+      releaseProfile: 'adhoc-preview',
+    }),
+    /inspect.*updater endpoint|profile isolation/i,
+  );
 });
 
 test('application bundle contract rejects every preview contract mismatch', () => {
@@ -598,7 +673,11 @@ test('profile-aware verifiers apply one bundle contract to every artifact copy',
       const expectedEndpoint = releaseProfile === 'adhoc-preview'
         ? ACCEPTANCE_ENDPOINT
         : PRODUCTION_ENDPOINT;
+      const forbiddenEndpoint = releaseProfile === 'adhoc-preview'
+        ? PRODUCTION_ENDPOINT
+        : ACCEPTANCE_ENDPOINT;
       assert.equal(calls.filter((command) => command.includes(` -F ${expectedEndpoint} `)).length, 3);
+      assert.equal(calls.filter((command) => command.includes(` -F ${forbiddenEndpoint} `)).length, 3);
       assert.equal(calls.filter((command) => command.startsWith('rg ') && command.includes(' -n ')).length, 4);
       assert.ok(calls.indexOf('[inspect updater archive]') > calls.findIndex((command) => command.startsWith('codesign ')));
       assert.ok(calls.indexOf('[mount dmg]') > calls.indexOf('[inspect updater archive]'));

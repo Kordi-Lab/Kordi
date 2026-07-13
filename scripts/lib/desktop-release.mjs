@@ -1069,15 +1069,27 @@ export function assertAppBundleContract(run, appBundle, {
     throw new Error('Kordi.app identifier does not match the Cloud product identifier');
   }
   const trust = verifyMacAppSignature({ run, appBundle, profile: releaseProfile });
-  const endpoint = releaseProfile === 'adhoc-preview'
-    ? 'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}'
-    : 'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
+  const acceptanceEndpoint =
+    'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+  const productionEndpoint =
+    'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
+  const endpoint = releaseProfile === 'adhoc-preview' ? acceptanceEndpoint : productionEndpoint;
+  const forbiddenEndpoint = releaseProfile === 'adhoc-preview' ? productionEndpoint : acceptanceEndpoint;
   requireRun(
     run,
     'rg',
     ['--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F', endpoint, appBundle],
     'Application bundle does not contain the updater endpoint required by its release profile',
   );
+  const forbidden = run('rg', [
+    '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F', forbiddenEndpoint, appBundle,
+  ]);
+  if (forbidden?.status === 0) {
+    throw new Error('Application bundle violates updater endpoint profile isolation');
+  }
+  if (forbidden?.status !== 1) {
+    throw new Error('Unable to inspect application bundle updater-endpoint profile isolation');
+  }
   return trust;
 }
 
