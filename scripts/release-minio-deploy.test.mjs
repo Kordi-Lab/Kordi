@@ -29,7 +29,7 @@ test('MinIO bootstrap creates private attachment and release buckets', async () 
   assert.doesNotMatch(source, /reader-access-secret|publisher-secret-value|TAURI_SIGNING_PRIVATE_KEY/);
 });
 
-test('release reader and publisher policies are least privilege and contain no delete/admin rights', async () => {
+test('release policies allow pointer rollback but never immutable deletion or administration', async () => {
   const reader = JSON.parse(await readFile(readerPolicyPath, 'utf8'));
   const publisher = JSON.parse(await readFile(publisherPolicyPath, 'utf8'));
   const readerActions = policyActions(reader);
@@ -40,13 +40,23 @@ test('release reader and publisher policies are least privilege and contain no d
   assert.ok(publisherActions.includes('s3:PutObject'));
   assert.ok(publisherActions.includes('s3:ListBucket'));
   assert.ok(publisherActions.includes('s3:AbortMultipartUpload'));
-  for (const action of [...readerActions, ...publisherActions]) {
-    assert.doesNotMatch(action, /Delete|Policy|Admin|CreateBucket|PutBucket/i);
+  assert.ok(publisherActions.includes('s3:DeleteObject'));
+  assert.doesNotMatch(readerActions.join('\n'), /Delete|Policy|Admin|CreateBucket|PutBucket/i);
+  for (const action of publisherActions) {
+    assert.doesNotMatch(action, /Policy|Admin|CreateBucket|PutBucket/i);
   }
-  for (const policy of [reader, publisher]) {
-    const resources = policy.Statement.flatMap((statement) => statement.Resource);
-    assert.ok(resources.every((resource) => resource === 'arn:aws:s3:::kordi-releases' || resource === 'arn:aws:s3:::kordi-releases/*'));
-  }
+
+  const deleteStatements = publisher.Statement.filter((statement) =>
+    (Array.isArray(statement.Action) ? statement.Action : [statement.Action]).includes('s3:DeleteObject'),
+  );
+  assert.deepEqual(deleteStatements, [{
+    Effect: 'Allow',
+    Action: ['s3:DeleteObject'],
+    Resource: ['arn:aws:s3:::kordi-releases/desktop/channels/*/latest.json'],
+  }]);
+
+  const readerResources = reader.Statement.flatMap((statement) => statement.Resource);
+  assert.ok(readerResources.every((resource) => resource === 'arn:aws:s3:::kordi-releases' || resource === 'arn:aws:s3:::kordi-releases/*'));
 });
 
 test('Cloud deployment uses a dedicated release-reader secret and all release store settings', async () => {

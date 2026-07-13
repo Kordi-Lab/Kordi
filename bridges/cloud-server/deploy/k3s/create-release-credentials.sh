@@ -208,13 +208,17 @@ spec:
                 exit 1
               fi
               mc alias set publisher "$endpoint" "$PUBLISHER_ACCESS_KEY" "$PUBLISHER_SECRET_KEY" >/dev/null
-              printf test | mc pipe publisher/kordi-releases/.publisher-policy-probe >/dev/null
-              mc stat publisher/kordi-releases/.publisher-policy-probe >/dev/null
-              if mc rm publisher/kordi-releases/.publisher-policy-probe >/dev/null 2>&1; then
-                echo "publisher unexpectedly has delete access" >&2
+              immutable_probe="desktop/releases/.publisher-policy-probe/immutable"
+              pointer_probe="desktop/channels/.publisher-policy-probe/latest.json"
+              printf test | mc pipe "publisher/kordi-releases/$immutable_probe" >/dev/null
+              mc stat "publisher/kordi-releases/$immutable_probe" >/dev/null
+              if mc rm "publisher/kordi-releases/$immutable_probe" >/dev/null 2>&1; then
+                echo "publisher unexpectedly has immutable delete access" >&2
                 exit 1
               fi
-              mc rm --force root/kordi-releases/.publisher-policy-probe >/dev/null
+              printf test | mc pipe "publisher/kordi-releases/$pointer_probe" >/dev/null
+              mc rm "publisher/kordi-releases/$pointer_probe" >/dev/null
+              mc rm --force "root/kordi-releases/$immutable_probe" >/dev/null
               echo "release identities ready"
       volumes:
         - name: policies

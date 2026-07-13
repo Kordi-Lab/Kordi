@@ -102,6 +102,83 @@ pnpm --dir app/desktop release:prerequisites -- --source-only --expected-commit 
 
 Before publishing built artifacts, omit `--source-only` and pass the exact `Kordi.app` bundle. The gate requires the Tauri signing environment, a valid Developer ID Application identity, successful `codesign --verify`, and successful Gatekeeper assessment.
 
+### Private updater storage and publisher
+
+Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly: manifests and downloads are served only through `https://coordinar.io`. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects and delete only mutable `desktop/channels/*/latest.json` pointers; it cannot delete immutable versioned artifacts or administer buckets and policies.
+
+Provision or reconcile these identities from a trusted operator machine:
+
+```bash
+export KORDI_CLOUD_SSH_TARGET=kordi-product
+export KORDI_CLOUD_SSH_ZONE=us-central1-a
+export KORDI_CLOUD_GCP_PROJECT=hai-gcp-representation
+bash bridges/cloud-server/deploy/k3s/create-release-credentials.sh
+```
+
+The publisher accepts already-built artifacts and performs no build. Its release directory must contain exactly:
+
+```text
+Kordi_0.0.1-beta.N_aarch64.dmg
+Kordi.app.tar.gz
+Kordi.app.tar.gz.sig
+```
+
+Pass the corresponding `Kordi.app` bundle separately. The publisher checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `coordinar.io` product origin. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
+
+```bash
+RELEASE_COMMIT="$(git rev-parse HEAD)"
+pnpm release:publish-desktop -- \
+  --release-dir /protected/kordi-beta.N \
+  --app-bundle /protected/kordi-beta.N/Kordi.app \
+  --version 0.0.1-beta.N \
+  --channel acceptance \
+  --expected-commit "$RELEASE_COMMIT" \
+  --pub-date 2026-07-13T00:00:00Z \
+  --dry-run
+```
+
+For publication, expose MinIO only through a temporary loopback tunnel. On the product VM, forward the in-cluster service to VM loopback; from the operator machine, forward that VM loopback port locally:
+
+```bash
+# Product VM terminal
+kubectl -n kordi-cloud port-forward service/minio 9900:9000 --address 127.0.0.1
+
+# Operator terminal
+gcloud compute ssh --zone "us-central1-a" "kordi-product" \
+  --project "hai-gcp-representation" -- -N -L 9900:127.0.0.1:9900
+```
+
+Load publisher credentials from protected temporary files without printing them, then publish acceptance first. The script uploads immutable objects conditionally, verifies their unauthenticated product-domain GET and HEAD routes, writes the channel pointer last, and rolls the pointer back if post-promotion verification fails:
+
+```bash
+SECRET_DIR="$(mktemp -d /tmp/kordi-release-publisher.XXXXXX)"
+chmod 700 "$SECRET_DIR"
+trap 'rm -rf "$SECRET_DIR"' EXIT
+gcloud secrets versions access latest \
+  --secret kordi-release-publisher-access-key \
+  --project hai-gcp-representation \
+  --out-file "$SECRET_DIR/access" --quiet
+gcloud secrets versions access latest \
+  --secret kordi-release-publisher-secret-key \
+  --project hai-gcp-representation \
+  --out-file "$SECRET_DIR/secret" --quiet
+export KORDI_RELEASE_PUBLISHER_ACCESS_KEY="$(<"$SECRET_DIR/access")"
+export KORDI_RELEASE_PUBLISHER_SECRET_KEY="$(<"$SECRET_DIR/secret")"
+export KORDI_RELEASE_S3_ENDPOINT=http://127.0.0.1:9900
+export KORDI_RELEASE_S3_BUCKET=kordi-releases
+export KORDI_RELEASE_S3_REGION=us-east-1
+
+pnpm release:publish-desktop -- \
+  --release-dir /protected/kordi-beta.N \
+  --app-bundle /protected/kordi-beta.N/Kordi.app \
+  --version 0.0.1-beta.N \
+  --channel acceptance \
+  --expected-commit "$RELEASE_COMMIT" \
+  --pub-date 2026-07-13T00:00:00Z
+```
+
+Promote `--channel beta` only after acceptance installation, automatic relaunch, state preservation, and the one-time manual upgrade path have passed. Never copy the private updater key, its password, publisher credentials, or internal MinIO URLs into release notes or logs.
+
 ### Version metadata to bump
 
 For each beta release, update and verify all desktop release metadata:
