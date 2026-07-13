@@ -191,4 +191,3 @@ export const desktopUpdaterController = createDesktopUpdaterController({
   adapter: tauriDesktopUpdaterAdapter,
   isTauriRuntime,
 });
-
