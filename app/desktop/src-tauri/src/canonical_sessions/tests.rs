@@ -814,6 +814,26 @@ fn cloud_profile_identity_adoption_rolls_back_all_mutations_when_profile_update_
 }
 
 #[test]
+fn local_profile_remains_bound_to_an_initialized_connection_when_storage_root_changes() {
+    let storage =
+        crate::test_support::ScopedKordiStorageRoot::new("canonical-profile-connection-scope");
+    let conn = test_conn();
+    let original_human_id =
+        local_profile_human_identity_id(&conn, "Original Profile").expect("local profile");
+    let original_profile = schema::ensure_local_profile(&conn).expect("original profile");
+
+    std::env::set_var("KORDI_STORAGE_ROOT", storage.root().join("changed-root"));
+
+    let profile_after_change =
+        schema::ensure_local_profile(&conn).expect("profile after process root change");
+    assert_eq!(profile_after_change.id, original_profile.id);
+    assert_eq!(
+        profile_after_change.human_identity_id.as_deref(),
+        Some(original_human_id.as_str())
+    );
+}
+
+#[test]
 fn cloud_profile_identity_adoption_clears_a_removed_profile_image_url() {
     let mut conn = test_conn();
     let with_avatar = adopt_cloud_profile_identity_in_db(
