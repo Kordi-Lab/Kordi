@@ -1499,6 +1499,17 @@ test('WorkspaceSidebar group child titles avoid native tooltips that destabilize
   assert.doesNotMatch(sessionRowMarkup, /app-participant-space-session-title[^>]*\stitle=/);
 });
 
+test('WorkspaceSidebar keeps group child host rows mounted across parent refreshes', () => {
+  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+  const workspaceStart = source.indexOf('export function WorkspaceSidebar({');
+  const workspaceEnd = source.indexOf('\nexport ', workspaceStart + 1);
+  const workspace = source.slice(workspaceStart, workspaceEnd < 0 ? undefined : workspaceEnd);
+
+  assert.doesNotMatch(workspace, /const ParticipantSpaceSessionRow\s*=\s*\(/);
+  assert.match(workspace, /const renderParticipantSpaceSessionRow\s*=\s*\(\s*session:\s*ParticipantSpaceItem\['sessions'\]\[number\],/);
+  assert.match(workspace, /return row \? renderParticipantSpaceSessionRow\(row\.session, descriptor\.depth\) : null;/);
+});
+
 test('WorkspaceSidebar hides old fork rows for canonical group sessions', () => {
   const chatConversations = [
     conversation({

@@ -792,13 +792,10 @@ export function WorkspaceSidebar({
 
   // Session hierarchy is flattened before rendering; this component owns only
   // one measured row so offscreen fork descendants never mount recursively.
-  const ParticipantSpaceSessionRow = ({
-    session,
-    depth,
-  }: {
-    session: ParticipantSpaceItem['sessions'][number];
-    depth: number;
-  }) => {
+  const renderParticipantSpaceSessionRow = (
+    session: ParticipantSpaceItem['sessions'][number],
+    depth: number,
+  ) => {
     const conversation = session.conversation;
     const isActive = activeConvId === session.id || activeConvId === session.canonicalSessionId;
     const sessionRowTimeLabel = session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
@@ -1377,7 +1374,7 @@ export function WorkspaceSidebar({
       return space ? renderParticipantSpaceItem(space) : null;
     }
     const row = allSidebarSessionRowsById.get(descriptor.sessionId);
-    return row ? <ParticipantSpaceSessionRow session={row.session} depth={descriptor.depth} /> : null;
+    return row ? renderParticipantSpaceSessionRow(row.session, descriptor.depth) : null;
   };
   const renderAgentSidebarRow = (descriptor: ChatSidebarRow) => {
     if (descriptor.kind !== 'session') return null;
