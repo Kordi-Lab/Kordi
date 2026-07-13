@@ -112,8 +112,8 @@ gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --command "kubectl -n ko
 set -eu
 BASE=http://kordi-cloud-server.kordi-cloud.svc.cluster.local:17081
 LEGACY=\$(curl -fsS \"\$BASE/updates/releases/version\")
-printf %s \"\$LEGACY\" | grep -q '\"version\":\"0.0.1-beta.'
-if printf %s \"\$LEGACY\" | grep -q '\"downloadUrl\"'; then
+printf %s \"\$LEGACY\" | grep -q \"\\\"version\\\":\\\"0.0.1-beta.\"
+if printf %s \"\$LEGACY\" | grep -q \"\\\"downloadUrl\\\"\"; then
   echo legacy-response-must-not-authorize-native-installation >&2
   exit 1
 fi
