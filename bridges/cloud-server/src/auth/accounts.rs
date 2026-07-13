@@ -234,11 +234,13 @@ pub async fn update_cloud_account_profile(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|(account_id, display_name, avatar_url)| CloudAccountProfileRecord {
-        account_id,
-        display_name,
-        avatar_url,
-    }))
+    Ok(row.map(
+        |(account_id, display_name, avatar_url)| CloudAccountProfileRecord {
+            account_id,
+            display_name,
+            avatar_url,
+        },
+    ))
 }
 
 /// Register a device for an existing cloud account.

@@ -160,7 +160,10 @@ mod tests {
         runner
             .write::<_, _, TestError>(|conn| {
                 conn.execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY, label TEXT)")?;
-                conn.execute("INSERT INTO t (label) VALUES (?1)", rusqlite::params!["alpha"])?;
+                conn.execute(
+                    "INSERT INTO t (label) VALUES (?1)",
+                    rusqlite::params!["alpha"],
+                )?;
                 Ok(())
             })
             .await
@@ -168,11 +171,11 @@ mod tests {
 
         let label: String = runner
             .read::<_, _, TestError>(|conn| {
-                Ok(conn.query_row(
-                    "SELECT label FROM t WHERE id = 1",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )?)
+                Ok(
+                    conn.query_row("SELECT label FROM t WHERE id = 1", [], |row| {
+                        row.get::<_, String>(0)
+                    })?,
+                )
             })
             .await
             .expect("read ok");
@@ -200,7 +203,10 @@ mod tests {
             tasks.push(tokio::spawn(async move {
                 runner
                     .write::<_, _, TestError>(move |conn| {
-                        conn.execute("INSERT INTO counts (n) VALUES (?1)", rusqlite::params![value])?;
+                        conn.execute(
+                            "INSERT INTO counts (n) VALUES (?1)",
+                            rusqlite::params![value],
+                        )?;
                         Ok(())
                     })
                     .await

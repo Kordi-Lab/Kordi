@@ -129,12 +129,14 @@ pub async fn lookup_session(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|(token_id, account_id, device_id, expires_at)| CloudSessionRow {
-        token_id,
-        account_id,
-        device_id,
-        expires_at: parse_rfc3339(expires_at),
-    }))
+    Ok(row.map(
+        |(token_id, account_id, device_id, expires_at)| CloudSessionRow {
+            token_id,
+            account_id,
+            device_id,
+            expires_at: parse_rfc3339(expires_at),
+        },
+    ))
 }
 
 /// Mark a session as revoked. Idempotent.

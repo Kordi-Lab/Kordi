@@ -610,9 +610,7 @@ impl DesktopRuntimeSession {
     ) {
         self.setup.tool_ctx.schedule_task = Some(
             crate::scheduled_tasks_runtime::build_scheduled_tasks_runtime_for_session(
-                api_base,
-                token,
-                session_id,
+                api_base, token, session_id,
             ),
         );
     }

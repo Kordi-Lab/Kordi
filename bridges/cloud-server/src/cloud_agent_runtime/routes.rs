@@ -30,7 +30,10 @@ use crate::server::ServerState;
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
-        .route("/v1/cloud/agent-runs/request/:request_message_id", get(lookup_cloud_agent_run_for_request))
+        .route(
+            "/v1/cloud/agent-runs/request/:request_message_id",
+            get(lookup_cloud_agent_run_for_request),
+        )
         .route(
             "/v1/cloud/agent-provider-auth/snapshots",
             post(publish_provider_auth_snapshot),
@@ -472,17 +475,18 @@ async fn claim_cloud_agent_run(
         );
     }
 
-    let shared_agent_target = match claim_has_shared_cloud_agent_target(state.db_pool(), &input).await {
-        Ok(value) => value,
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] inspect shared agent target: {err}");
-            return error_response(
-                "server_error",
-                "Could not validate Cloud agent run authorization.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
+    let shared_agent_target =
+        match claim_has_shared_cloud_agent_target(state.db_pool(), &input).await {
+            Ok(value) => value,
+            Err(err) => {
+                eprintln!("[cloud_agent_runtime] inspect shared agent target: {err}");
+                return error_response(
+                    "server_error",
+                    "Could not validate Cloud agent run authorization.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        };
     let shared_agent_allowed = if shared_agent_target {
         match validate_shared_cloud_agent_claim(state.db_pool(), &input).await {
             Ok(value) => value,

@@ -140,10 +140,7 @@ impl CloudRateLimiter {
     /// `ConnectionManager` so transient network blips don't surface as
     /// hard auth failures to clients (the caller still wraps each Redis
     /// call in error handling and falls open on errors — see below).
-    pub async fn redis(
-        url: &str,
-        config: CloudRateLimitConfig,
-    ) -> Result<Self, RateLimiterError> {
+    pub async fn redis(url: &str, config: CloudRateLimitConfig) -> Result<Self, RateLimiterError> {
         let client = redis::Client::open(url).map_err(RateLimiterError::Connect)?;
         let conn = ConnectionManager::new(client)
             .await
@@ -223,11 +220,7 @@ impl CloudRateLimiter {
         RateLimitDecision::Allowed
     }
 
-    fn check_email_lockout_memory(
-        &self,
-        store: &MemoryStore,
-        email: &str,
-    ) -> RateLimitDecision {
+    fn check_email_lockout_memory(&self, store: &MemoryStore, email: &str) -> RateLimitDecision {
         let buckets = store.per_email.lock().expect("rate limiter poisoned");
         let Some(entry) = buckets.get(email) else {
             return RateLimitDecision::Allowed;

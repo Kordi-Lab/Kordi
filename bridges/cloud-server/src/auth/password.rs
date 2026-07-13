@@ -59,8 +59,14 @@ impl fmt::Display for PasswordPolicyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => write!(f, "password must contain printable characters"),
-            Self::TooShort => write!(f, "password must be at least {PASSWORD_MIN_LENGTH} characters"),
-            Self::TooLong => write!(f, "password must be at most {PASSWORD_MAX_LENGTH} characters"),
+            Self::TooShort => write!(
+                f,
+                "password must be at least {PASSWORD_MIN_LENGTH} characters"
+            ),
+            Self::TooLong => write!(
+                f,
+                "password must be at most {PASSWORD_MAX_LENGTH} characters"
+            ),
             Self::ContainsControlChar => write!(f, "password must not contain control characters"),
         }
     }
@@ -155,8 +161,13 @@ pub fn validate_email(input: &str) -> Result<String, EmailFormatError> {
 }
 
 fn build_argon2(config: PasswordHasherConfig) -> Result<Argon2<'static>, PasswordHashError> {
-    let params = Params::new(config.memory_cost_kib, config.time_cost, config.parallelism, None)
-        .map_err(|err| PasswordHashError::Params(err.to_string()))?;
+    let params = Params::new(
+        config.memory_cost_kib,
+        config.time_cost,
+        config.parallelism,
+        None,
+    )
+    .map_err(|err| PasswordHashError::Params(err.to_string()))?;
     Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
@@ -175,8 +186,8 @@ pub fn hash_password(
 
 /// Verify a plaintext against a stored PHC hash. Constant-time inside argon2.
 pub fn verify_password(stored_hash: &str, plaintext: &str) -> Result<bool, PasswordHashError> {
-    let parsed = PasswordHash::new(stored_hash)
-        .map_err(|err| PasswordHashError::Parse(err.to_string()))?;
+    let parsed =
+        PasswordHash::new(stored_hash).map_err(|err| PasswordHashError::Parse(err.to_string()))?;
     Ok(Argon2::default()
         .verify_password(plaintext.as_bytes(), &parsed)
         .is_ok())
@@ -210,7 +221,10 @@ mod tests {
 
     #[test]
     fn password_policy_blocks_short_long_and_control_chars() {
-        assert!(matches!(validate_password_strength(""), Err(PasswordPolicyError::Empty)));
+        assert!(matches!(
+            validate_password_strength(""),
+            Err(PasswordPolicyError::Empty)
+        ));
         assert!(matches!(
             validate_password_strength("short"),
             Err(PasswordPolicyError::TooShort)
@@ -231,11 +245,26 @@ mod tests {
 
     #[test]
     fn email_validation_normalizes_and_rejects_obvious_garbage() {
-        assert_eq!(validate_email("  Alice@Example.COM ").unwrap(), "alice@example.com");
+        assert_eq!(
+            validate_email("  Alice@Example.COM ").unwrap(),
+            "alice@example.com"
+        );
         assert!(matches!(validate_email(""), Err(EmailFormatError::Empty)));
-        assert!(matches!(validate_email("noatsign"), Err(EmailFormatError::Malformed)));
-        assert!(matches!(validate_email("a@b"), Err(EmailFormatError::Malformed)));
-        assert!(matches!(validate_email("a@@b.c"), Err(EmailFormatError::Malformed)));
-        assert!(matches!(validate_email("a b@c.d"), Err(EmailFormatError::Malformed)));
+        assert!(matches!(
+            validate_email("noatsign"),
+            Err(EmailFormatError::Malformed)
+        ));
+        assert!(matches!(
+            validate_email("a@b"),
+            Err(EmailFormatError::Malformed)
+        ));
+        assert!(matches!(
+            validate_email("a@@b.c"),
+            Err(EmailFormatError::Malformed)
+        ));
+        assert!(matches!(
+            validate_email("a b@c.d"),
+            Err(EmailFormatError::Malformed)
+        ));
     }
 }

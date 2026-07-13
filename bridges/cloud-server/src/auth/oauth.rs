@@ -309,7 +309,9 @@ fn github_profile_from_values(user: &Value, emails: &Value) -> OAuthProfile {
 mod tests {
     use serde_json::json;
 
-    use super::{github_profile_from_values, is_allowed_oauth_redirect_with_config, public_base_url};
+    use super::{
+        github_profile_from_values, is_allowed_oauth_redirect_with_config, public_base_url,
+    };
 
     #[test]
     fn public_base_url_defaults_to_product_cloud_host() {

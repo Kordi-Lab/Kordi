@@ -19,8 +19,14 @@ const CLOUD_ACTIVITY_CLIENT_UPDATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 
 pub fn routes() -> Router<Arc<ServerState>> {
     Router::new()
-        .route("/v1/cloud/session-activity", get(list_cloud_session_activity))
-        .route("/v1/cloud/session-activity/tasks", post(upsert_cloud_task_activity))
+        .route(
+            "/v1/cloud/session-activity",
+            get(list_cloud_session_activity),
+        )
+        .route(
+            "/v1/cloud/session-activity/tasks",
+            post(upsert_cloud_task_activity),
+        )
         .route(
             "/v1/cloud/session-activity/artifacts",
             post(upsert_cloud_artifact_activity),
@@ -178,7 +184,10 @@ fn artifact_activity_sync_payload(artifact: &CloudArtifactActivitySummary) -> se
     serde_json::json!({ "artifact": artifact })
 }
 
-fn cloud_activity_recipient_ids(owner_account_id: &str, participant_account_ids: &[String]) -> Vec<String> {
+fn cloud_activity_recipient_ids(
+    owner_account_id: &str,
+    participant_account_ids: &[String],
+) -> Vec<String> {
     let mut ids = BTreeSet::new();
     for value in participant_account_ids {
         let trimmed = value.trim();
@@ -208,7 +217,10 @@ fn clean_required_activity_text(value: &str, max_chars: usize) -> Option<String>
     Some(trimmed.chars().take(max_chars).collect::<String>())
 }
 
-fn cloud_activity_effective_updated_at(client_updated_at: Option<&str>, now: DateTime<Utc>) -> String {
+fn cloud_activity_effective_updated_at(
+    client_updated_at: Option<&str>,
+    now: DateTime<Utc>,
+) -> String {
     let Some(raw) = client_updated_at
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -219,7 +231,9 @@ fn cloud_activity_effective_updated_at(client_updated_at: Option<&str>, now: Dat
         return now.to_rfc3339();
     };
     let parsed_utc = parsed.with_timezone(&Utc);
-    if parsed_utc > now + ChronoDuration::seconds(CLOUD_ACTIVITY_CLIENT_UPDATED_AT_FUTURE_SKEW_SECONDS) {
+    if parsed_utc
+        > now + ChronoDuration::seconds(CLOUD_ACTIVITY_CLIENT_UPDATED_AT_FUTURE_SKEW_SECONDS)
+    {
         return now.to_rfc3339();
     }
     parsed_utc.to_rfc3339()
@@ -396,19 +410,36 @@ async fn upsert_cloud_task_activity(
     Json(req): Json<UpsertCloudTaskActivityRequest>,
 ) -> Response {
     let Some(session_id) = clean_required_activity_text(&req.session_id, 256) else {
-        return err("invalid_session_activity", "sessionId is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "sessionId is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let Some(task_id) = clean_required_activity_text(&req.task_id, 256) else {
-        return err("invalid_session_activity", "taskId is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "taskId is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let Some(title) = clean_required_activity_text(&req.title, 512) else {
-        return err("invalid_session_activity", "title is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "title is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let Some(status) = clean_required_activity_text(&req.status, 64) else {
-        return err("invalid_session_activity", "status is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "status is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
 
-    let updated_at = cloud_activity_effective_updated_at(req.client_updated_at.as_deref(), Utc::now());
+    let updated_at =
+        cloud_activity_effective_updated_at(req.client_updated_at.as_deref(), Utc::now());
     let task_activity_id = format!("taskact_{}", uuid::Uuid::new_v4().simple());
     let participants_json = serde_json::Value::Array(req.participants.clone());
     let artifact_ids_json = serde_json::Value::Array(
@@ -451,9 +482,16 @@ async fn upsert_cloud_task_activity(
 
     let task = match fetch_cloud_task_activity(pool, &session_id, &task_id).await {
         Ok(Some(task)) => task,
-        _ => return err("server_error", "Could not fetch task activity.", StatusCode::INTERNAL_SERVER_ERROR),
+        _ => {
+            return err(
+                "server_error",
+                "Could not fetch task activity.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     };
-    for recipient in cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids) {
+    for recipient in cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids)
+    {
         let _ = append_cloud_sync_event(
             pool,
             &recipient,
@@ -475,25 +513,50 @@ async fn upsert_cloud_artifact_activity(
     Json(req): Json<UpsertCloudArtifactActivityRequest>,
 ) -> Response {
     let Some(session_id) = clean_required_activity_text(&req.session_id, 256) else {
-        return err("invalid_session_activity", "sessionId is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "sessionId is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let Some(artifact_id) = clean_required_activity_text(&req.artifact_id, 512) else {
-        return err("invalid_session_activity", "artifactId is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "artifactId is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let Some(name) = clean_required_activity_text(&req.name, 255) else {
-        return err("invalid_session_activity", "name is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "name is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let Some(path) = clean_required_activity_text(&req.path, 1024) else {
-        return err("invalid_session_activity", "path is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "path is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let Some(kind) = clean_required_activity_text(&req.kind, 64) else {
-        return err("invalid_session_activity", "kind is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "kind is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let Some(category) = clean_required_activity_text(&req.category, 64) else {
-        return err("invalid_session_activity", "category is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "category is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
 
-    let updated_at = cloud_activity_effective_updated_at(req.client_updated_at.as_deref(), Utc::now());
+    let updated_at =
+        cloud_activity_effective_updated_at(req.client_updated_at.as_deref(), Utc::now());
     let artifact_activity_id = format!("artifactact_{}", uuid::Uuid::new_v4().simple());
     let pool = state.db_pool();
     if query(
@@ -531,9 +594,16 @@ async fn upsert_cloud_artifact_activity(
 
     let artifact = match fetch_cloud_artifact_activity(pool, &session_id, &artifact_id).await {
         Ok(Some(artifact)) => artifact,
-        _ => return err("server_error", "Could not fetch artifact activity.", StatusCode::INTERNAL_SERVER_ERROR),
+        _ => {
+            return err(
+                "server_error",
+                "Could not fetch artifact activity.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     };
-    for recipient in cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids) {
+    for recipient in cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids)
+    {
         let _ = append_cloud_sync_event(
             pool,
             &recipient,
@@ -546,7 +616,11 @@ async fn upsert_cloud_artifact_activity(
         .await;
     }
 
-    (StatusCode::OK, Json(CloudArtifactActivityResponse { artifact })).into_response()
+    (
+        StatusCode::OK,
+        Json(CloudArtifactActivityResponse { artifact }),
+    )
+        .into_response()
 }
 
 async fn list_cloud_session_activity(
@@ -555,7 +629,11 @@ async fn list_cloud_session_activity(
     Query(q): Query<ListCloudSessionActivityQuery>,
 ) -> Response {
     let Some(session_id) = clean_required_activity_text(&q.session_id, 256) else {
-        return err("invalid_session_activity", "sessionId is required.", StatusCode::BAD_REQUEST);
+        return err(
+            "invalid_session_activity",
+            "sessionId is required.",
+            StatusCode::BAD_REQUEST,
+        );
     };
     let pool = state.db_pool();
     let task_rows: Vec<TaskRow> = match query_as(
@@ -570,7 +648,13 @@ async fn list_cloud_session_activity(
     .await
     {
         Ok(rows) => rows,
-        Err(_) => return err("server_error", "Could not list task activity.", StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not list task activity.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     };
     let artifact_rows: Vec<ArtifactRow> = match query_as(
         "SELECT artifact_activity_id, session_id, artifact_id, name, path, kind, category, \
@@ -584,12 +668,21 @@ async fn list_cloud_session_activity(
     .await
     {
         Ok(rows) => rows,
-        Err(_) => return err("server_error", "Could not list artifact activity.", StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not list artifact activity.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     };
 
     Json(CloudSessionActivityResponse {
         tasks: task_rows.into_iter().map(task_summary_from_row).collect(),
-        artifacts: artifact_rows.into_iter().map(artifact_summary_from_row).collect(),
+        artifacts: artifact_rows
+            .into_iter()
+            .map(artifact_summary_from_row)
+            .collect(),
     })
     .into_response()
 }
@@ -740,9 +833,17 @@ mod tests {
     fn cloud_activity_recipient_ids_exclude_duplicates_and_empty_values() {
         let recipients = cloud_activity_recipient_ids(
             "acct_owner",
-            &["acct_b".to_string(), "acct_owner".to_string(), " ".to_string(), "acct_b".to_string()],
+            &[
+                "acct_b".to_string(),
+                "acct_owner".to_string(),
+                " ".to_string(),
+                "acct_b".to_string(),
+            ],
         );
 
-        assert_eq!(recipients, vec!["acct_b".to_string(), "acct_owner".to_string()]);
+        assert_eq!(
+            recipients,
+            vec!["acct_b".to_string(), "acct_owner".to_string()]
+        );
     }
 }

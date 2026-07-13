@@ -37,7 +37,10 @@ fn test_router(pool: sqlx_postgres::PgPool) -> axum::Router {
 }
 
 fn unique_email(prefix: &str) -> String {
-    format!("{prefix}-{}@cloud-agent.e2e.local", uuid::Uuid::new_v4().simple())
+    format!(
+        "{prefix}-{}@cloud-agent.e2e.local",
+        uuid::Uuid::new_v4().simple()
+    )
 }
 
 fn request(method: Method, uri: &str, token: Option<&str>, body: Body) -> Request<Body> {
@@ -105,27 +108,39 @@ fn sample_agent_body(name: &str) -> Value {
 #[test]
 fn cloud_agent_routes_are_mounted_in_source() {
     let server_source = std::fs::read_to_string("src/server.rs").expect("read server source");
-    let routes_source = std::fs::read_to_string("src/cloud_agents/routes.rs").expect("read cloud agent routes source");
+    let routes_source = std::fs::read_to_string("src/cloud_agents/routes.rs")
+        .expect("read cloud agent routes source");
     assert!(server_source.contains("cloud_agents::routes::routes"));
     assert!(routes_source.contains("/v1/cloud/agents"));
-    let models_source = std::fs::read_to_string("src/cloud_agents/models.rs").expect("read cloud agent models source");
-    let store_source = std::fs::read_to_string("src/cloud_agents/store.rs").expect("read cloud agent store source");
+    let models_source = std::fs::read_to_string("src/cloud_agents/models.rs")
+        .expect("read cloud agent models source");
+    let store_source = std::fs::read_to_string("src/cloud_agents/store.rs")
+        .expect("read cloud agent store source");
     assert!(models_source.contains("participant_conversations"));
     assert!(store_source.contains("access_scope = $4"));
 }
 
 #[test]
 fn shared_cloud_agent_lookup_is_mention_safe_in_source() {
-    let routes = std::fs::read_to_string("src/cloud_agents/routes.rs").expect("read cloud agent routes source");
-    let models = std::fs::read_to_string("src/cloud_agents/models.rs").expect("read cloud agent models source");
-    let store = std::fs::read_to_string("src/cloud_agents/store.rs").expect("read cloud agent store source");
+    let routes = std::fs::read_to_string("src/cloud_agents/routes.rs")
+        .expect("read cloud agent routes source");
+    let models = std::fs::read_to_string("src/cloud_agents/models.rs")
+        .expect("read cloud agent models source");
+    let store = std::fs::read_to_string("src/cloud_agents/store.rs")
+        .expect("read cloud agent store source");
 
     assert!(routes.contains("/v1/cloud/agents/shared"));
     assert!(models.contains("SharedCloudAgentSummary"));
     assert!(store.contains("list_shared_agent_summaries"));
     assert!(models.contains("pub struct SharedCloudAgentSummary"));
-    let summary_start = models.find("pub struct SharedCloudAgentSummary").expect("summary struct");
-    let summary_source = &models[summary_start..models[summary_start..].find("}\n").map(|index| summary_start + index).unwrap_or(models.len())];
+    let summary_start = models
+        .find("pub struct SharedCloudAgentSummary")
+        .expect("summary struct");
+    let summary_source = &models[summary_start
+        ..models[summary_start..]
+            .find("}\n")
+            .map(|index| summary_start + index)
+            .unwrap_or(models.len())];
     assert!(!summary_source.contains("system_prompt"));
     assert!(!summary_source.contains("model_routing"));
     assert!(!summary_source.contains("resources"));
@@ -158,7 +173,12 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
 
     let owner_list = router
         .clone()
-        .oneshot(request(Method::GET, "/v1/cloud/agents", Some(&owner_token), Body::empty()))
+        .oneshot(request(
+            Method::GET,
+            "/v1/cloud/agents",
+            Some(&owner_token),
+            Body::empty(),
+        ))
         .await
         .unwrap();
     assert_eq!(owner_list.status(), StatusCode::OK);
@@ -168,11 +188,19 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
 
     let other_list = router
         .clone()
-        .oneshot(request(Method::GET, "/v1/cloud/agents", Some(&other_token), Body::empty()))
+        .oneshot(request(
+            Method::GET,
+            "/v1/cloud/agents",
+            Some(&other_token),
+            Body::empty(),
+        ))
         .await
         .unwrap();
     assert_eq!(other_list.status(), StatusCode::OK);
-    assert!(read_json(other_list).await["agents"].as_array().unwrap().is_empty());
+    assert!(read_json(other_list).await["agents"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 
     let other_update = router
         .clone()
@@ -192,7 +220,10 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
             Method::PUT,
             &format!("/v1/cloud/agents/{agent_id}"),
             Some(&owner_token),
-            Body::from(json!({ "name": "Docs Helper v2", "accessScope": "participant_conversations" }).to_string()),
+            Body::from(
+                json!({ "name": "Docs Helper v2", "accessScope": "participant_conversations" })
+                    .to_string(),
+            ),
         ))
         .await
         .unwrap();
@@ -203,11 +234,19 @@ async fn private_cloud_agents_are_owner_scoped_and_emit_sync_events() {
 
     let owner_archive = router
         .clone()
-        .oneshot(request(Method::DELETE, &format!("/v1/cloud/agents/{agent_id}"), Some(&owner_token), Body::empty()))
+        .oneshot(request(
+            Method::DELETE,
+            &format!("/v1/cloud/agents/{agent_id}"),
+            Some(&owner_token),
+            Body::empty(),
+        ))
         .await
         .unwrap();
     assert_eq!(owner_archive.status(), StatusCode::OK);
-    assert_eq!(read_json(owner_archive).await["agent"]["status"], "archived");
+    assert_eq!(
+        read_json(owner_archive).await["agent"]["status"],
+        "archived"
+    );
 
     let events: Vec<(String, serde_json::Value)> = sqlx_core::query_as::query_as(
         "SELECT event_type, payload_json FROM cloud_sync_events WHERE account_id = $1 AND event_type LIKE 'agent.definition.%' ORDER BY event_id ASC",
@@ -241,5 +280,8 @@ async fn cloud_agent_create_rejects_unsupported_access() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(read_json(response).await["errorCode"], "invalid_cloud_agent");
+    assert_eq!(
+        read_json(response).await["errorCode"],
+        "invalid_cloud_agent"
+    );
 }

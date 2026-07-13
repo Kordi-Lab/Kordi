@@ -19,15 +19,14 @@ use super::realtime::send_realtime_or_relay;
 use super::{
     add_serve_contact, append_conversation_message_to_storage_with_timestamp,
     build_conversation_only_bridge_state, build_mailbox_poll_metadata_only_bridge_state,
-    current_local_server_status,
-    default_contact_request_message, default_display_name, fetch_serve_contact_requests,
-    fetch_serve_contacts, fetch_serve_discovery, load_bridge_store, load_conversation_store,
-    mark_bridge_conversation_read_in_storage, now_ms, relay_plaintext_message,
-    save_conversation_store, send_realtime_payload, update_message_delivery_state_in_storage,
-    DesktopBridgeContactRequest, DesktopBridgeConversationRecord, DesktopBridgeConversationStore,
-    DesktopBridgeHostConfig, DesktopBridgeLocalServerStatus, DesktopBridgeManager,
-    DesktopBridgeMessageAttachment, DesktopBridgeOutreachMetadata, DesktopBridgePeer,
-    DesktopBridgeState, DesktopBridgeStore,
+    current_local_server_status, default_contact_request_message, default_display_name,
+    fetch_serve_contact_requests, fetch_serve_contacts, fetch_serve_discovery, load_bridge_store,
+    load_conversation_store, mark_bridge_conversation_read_in_storage, now_ms,
+    relay_plaintext_message, save_conversation_store, send_realtime_payload,
+    update_message_delivery_state_in_storage, DesktopBridgeContactRequest,
+    DesktopBridgeConversationRecord, DesktopBridgeConversationStore, DesktopBridgeHostConfig,
+    DesktopBridgeLocalServerStatus, DesktopBridgeManager, DesktopBridgeMessageAttachment,
+    DesktopBridgeOutreachMetadata, DesktopBridgePeer, DesktopBridgeState, DesktopBridgeStore,
 };
 
 const MAX_BRIDGE_ATTACHMENT_BYTES: u64 = 10 * 1024 * 1024;
@@ -218,7 +217,10 @@ pub(super) async fn rebuild_state_after_mailbox_poll(
     let should_return_conversations = storage_changed || timeout_storage_changed;
     let local_server = current_local_server_status(manager).await;
     if !should_return_conversations {
-        return Ok(build_mailbox_poll_metadata_only_bridge_state(store, local_server));
+        return Ok(build_mailbox_poll_metadata_only_bridge_state(
+            store,
+            local_server,
+        ));
     }
     Ok(rebuild_conversation_state(
         store,

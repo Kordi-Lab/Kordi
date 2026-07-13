@@ -7,9 +7,8 @@ use uuid::Uuid;
 use crate::cloud_agents::models::{
     clean_access_scope, clean_optional_text, clean_required_text, clean_string_list,
     CloudAgentDefinition, CloudAgentResource, CloudAgentSkill, CreateCloudAgentRequest,
-    SharedCloudAgentSummary, UpdateCloudAgentRequest,
-    CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS, CLOUD_AGENT_STATUS_ACTIVE,
-    CLOUD_AGENT_STATUS_ARCHIVED,
+    SharedCloudAgentSummary, UpdateCloudAgentRequest, CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS,
+    CLOUD_AGENT_STATUS_ACTIVE, CLOUD_AGENT_STATUS_ARCHIVED,
 };
 
 const NAME_MAX_LEN: usize = 120;
@@ -63,8 +62,12 @@ fn clean_resources(resources: Vec<CloudAgentResource>) -> Vec<CloudAgentResource
             Some(CloudAgentResource {
                 kind: kind.chars().take(40).collect(),
                 value: value.chars().take(RESOURCE_VALUE_MAX_LEN).collect(),
-                title: clean_optional_text(resource.title.as_deref(), SKILL_FIELD_MAX_LEN).ok().flatten(),
-                summary: clean_optional_text(resource.summary.as_deref(), SOURCE_SUMMARY_MAX_LEN).ok().flatten(),
+                title: clean_optional_text(resource.title.as_deref(), SKILL_FIELD_MAX_LEN)
+                    .ok()
+                    .flatten(),
+                summary: clean_optional_text(resource.summary.as_deref(), SOURCE_SUMMARY_MAX_LEN)
+                    .ok()
+                    .flatten(),
             })
         })
         .take(RESOURCE_MAX_ITEMS)
@@ -76,7 +79,12 @@ fn clean_skills(skills: Vec<CloudAgentSkill>) -> Vec<CloudAgentSkill> {
     for skill in skills {
         let name = skill.name.trim();
         let description = skill.description.trim();
-        if name.is_empty() || description.is_empty() || cleaned.iter().any(|entry: &CloudAgentSkill| entry.name == name) {
+        if name.is_empty()
+            || description.is_empty()
+            || cleaned
+                .iter()
+                .any(|entry: &CloudAgentSkill| entry.name == name)
+        {
             continue;
         }
         cleaned.push(CloudAgentSkill {
@@ -90,7 +98,9 @@ fn clean_skills(skills: Vec<CloudAgentSkill>) -> Vec<CloudAgentSkill> {
     cleaned
 }
 
-fn json_or_array<T: serde::Serialize>(value: &T) -> Result<serde_json::Value, CloudAgentStoreError> {
+fn json_or_array<T: serde::Serialize>(
+    value: &T,
+) -> Result<serde_json::Value, CloudAgentStoreError> {
     serde_json::to_value(value).map_err(|err| CloudAgentStoreError::Invalid(err.to_string()))
 }
 
@@ -161,12 +171,19 @@ pub async fn create_agent_definition(
     input: CreateCloudAgentRequest,
     now: DateTime<Utc>,
 ) -> Result<CloudAgentDefinition, CloudAgentStoreError> {
-    let access_scope = clean_access_scope(input.access_scope.as_deref()).map_err(CloudAgentStoreError::Invalid)?;
-    let name = clean_required_text(&input.name, "name", NAME_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
-    let role = clean_required_text(&input.role, "role", ROLE_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
-    let system_prompt = clean_required_text(&input.system_prompt, "systemPrompt", PROMPT_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
-    let description = clean_optional_text(input.description.as_deref(), DESCRIPTION_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
-    let source_summary = clean_optional_text(input.source_summary.as_deref(), SOURCE_SUMMARY_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
+    let access_scope =
+        clean_access_scope(input.access_scope.as_deref()).map_err(CloudAgentStoreError::Invalid)?;
+    let name = clean_required_text(&input.name, "name", NAME_MAX_LEN)
+        .map_err(CloudAgentStoreError::Invalid)?;
+    let role = clean_required_text(&input.role, "role", ROLE_MAX_LEN)
+        .map_err(CloudAgentStoreError::Invalid)?;
+    let system_prompt = clean_required_text(&input.system_prompt, "systemPrompt", PROMPT_MAX_LEN)
+        .map_err(CloudAgentStoreError::Invalid)?;
+    let description = clean_optional_text(input.description.as_deref(), DESCRIPTION_MAX_LEN)
+        .map_err(CloudAgentStoreError::Invalid)?;
+    let source_summary =
+        clean_optional_text(input.source_summary.as_deref(), SOURCE_SUMMARY_MAX_LEN)
+            .map_err(CloudAgentStoreError::Invalid)?;
     let boundaries = clean_string_list(input.boundaries, BOUNDARY_MAX_ITEMS, BOUNDARY_MAX_LEN);
     let resources = clean_resources(input.resources);
     let skills = clean_skills(input.skills);
@@ -200,7 +217,14 @@ pub async fn create_agent_definition(
     .fetch_one(pool)
     .await?;
     let agent = row_to_definition(row);
-    insert_agent_sync_event(pool, owner_account_id, "agent.definition.upserted", &agent, now).await?;
+    insert_agent_sync_event(
+        pool,
+        owner_account_id,
+        "agent.definition.upserted",
+        &agent,
+        now,
+    )
+    .await?;
     Ok(agent)
 }
 
@@ -283,22 +307,28 @@ pub async fn update_agent_definition(
     }
 
     if let Some(value) = input.access_scope {
-        current.access_scope = clean_access_scope(Some(&value)).map_err(CloudAgentStoreError::Invalid)?;
+        current.access_scope =
+            clean_access_scope(Some(&value)).map_err(CloudAgentStoreError::Invalid)?;
     }
     if let Some(value) = input.name {
-        current.name = clean_required_text(&value, "name", NAME_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
+        current.name = clean_required_text(&value, "name", NAME_MAX_LEN)
+            .map_err(CloudAgentStoreError::Invalid)?;
     }
     if let Some(value) = input.role {
-        current.role = clean_required_text(&value, "role", ROLE_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
+        current.role = clean_required_text(&value, "role", ROLE_MAX_LEN)
+            .map_err(CloudAgentStoreError::Invalid)?;
     }
     if let Some(value) = input.description {
-        current.description = clean_optional_text(Some(&value), DESCRIPTION_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
+        current.description = clean_optional_text(Some(&value), DESCRIPTION_MAX_LEN)
+            .map_err(CloudAgentStoreError::Invalid)?;
     }
     if let Some(value) = input.system_prompt {
-        current.system_prompt = clean_required_text(&value, "systemPrompt", PROMPT_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
+        current.system_prompt = clean_required_text(&value, "systemPrompt", PROMPT_MAX_LEN)
+            .map_err(CloudAgentStoreError::Invalid)?;
     }
     if let Some(value) = input.source_summary {
-        current.source_summary = clean_optional_text(Some(&value), SOURCE_SUMMARY_MAX_LEN).map_err(CloudAgentStoreError::Invalid)?;
+        current.source_summary = clean_optional_text(Some(&value), SOURCE_SUMMARY_MAX_LEN)
+            .map_err(CloudAgentStoreError::Invalid)?;
     }
     if let Some(value) = input.boundaries {
         current.boundaries = clean_string_list(value, BOUNDARY_MAX_ITEMS, BOUNDARY_MAX_LEN);
@@ -344,7 +374,14 @@ pub async fn update_agent_definition(
         return Ok(None);
     };
     let agent = row_to_definition(row);
-    insert_agent_sync_event(pool, owner_account_id, "agent.definition.upserted", &agent, now).await?;
+    insert_agent_sync_event(
+        pool,
+        owner_account_id,
+        "agent.definition.upserted",
+        &agent,
+        now,
+    )
+    .await?;
     Ok(Some(agent))
 }
 
@@ -373,7 +410,14 @@ pub async fn archive_agent_definition(
         return Ok(None);
     };
     let agent = row_to_definition(row);
-    insert_agent_sync_event(pool, owner_account_id, "agent.definition.archived", &agent, now).await?;
+    insert_agent_sync_event(
+        pool,
+        owner_account_id,
+        "agent.definition.archived",
+        &agent,
+        now,
+    )
+    .await?;
     Ok(Some(agent))
 }
 

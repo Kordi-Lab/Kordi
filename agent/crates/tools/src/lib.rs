@@ -33,6 +33,10 @@ pub mod write;
 pub use metadata::{ToolDefinition, ToolLayer, ToolMetadata, ToolRiskLevel};
 pub use registry::builtin_tools;
 pub use registry_plan::{ToolRegistryPlan, ToolRegistryPlanEntry};
+pub use schedule_task::{
+    ScheduleTaskFn, ScheduleTaskFuture, ScheduleTaskRequest, ScheduleTaskResponse,
+    ScheduleTaskRuntime, ScheduleTaskSchedule, ScheduleTaskTargetRuntime,
+};
 pub use scheduler::{
     FileQueue, FileQueueReservation, cap_tool_result_content, execute_reserved_tool_call,
     execute_tool_call, execute_tool_calls,
@@ -48,8 +52,4 @@ pub use types::{
     TaskOperatorFn, TaskOperatorFuture, TaskOperatorRuntime, Tool, ToolApprovalDecision,
     ToolApprovalOutcome, ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolResult,
     ToolScheduling, WebSearchRuntime,
-};
-pub use schedule_task::{
-    ScheduleTaskFn, ScheduleTaskFuture, ScheduleTaskRequest, ScheduleTaskResponse,
-    ScheduleTaskRuntime, ScheduleTaskSchedule, ScheduleTaskTargetRuntime,
 };

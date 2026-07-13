@@ -63,8 +63,8 @@ pub(crate) use self::group_participants::{
     session_has_participant, set_session_metadata_in_db, set_session_participant_role_in_db,
 };
 pub(crate) use self::identity_context::{
-    IdentityContextParticipant, IdentityContextPermissions, IdentityContextRequest,
-    IdentityContextRole, render_multi_participant_identity_context,
+    render_multi_participant_identity_context, IdentityContextParticipant,
+    IdentityContextPermissions, IdentityContextRequest, IdentityContextRole,
 };
 use self::identity_helpers::{
     canonical_avatar_key, canonical_identity_id, default_session_title, stable_session_id,
