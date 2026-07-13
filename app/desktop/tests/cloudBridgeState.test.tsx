@@ -459,6 +459,13 @@ test('cloud unread badge reconciliation waits for authoritative startup message 
   );
 });
 
+test('cloud startup performs full message refresh before accepting diff-synced cache as settled', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /syncCloudBridgeDiff\(\{\s*settleInitialMessages:\s*false\s*\}\)[\s\S]*refreshCloudBridgeMessages\(\)/);
+  assert.match(source, /if \(settleInitialMessages\) setInitialMessagesSettledPeerKey\(bootstrapPeerKey\)/);
+});
+
 test('Cloud focus refresh is throttled across focus, visibility, and pageshow bursts', () => {
   const shouldRefreshCloudForVisibility = (cloudBridgeStateModule as Record<string, unknown>).shouldRefreshCloudForVisibility;
   const shouldRunCloudFocusRefresh = (cloudBridgeStateModule as Record<string, unknown>).shouldRunCloudFocusRefresh;

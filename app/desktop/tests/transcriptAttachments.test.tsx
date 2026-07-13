@@ -3,7 +3,12 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { AttachmentImageLightbox, AttachmentPreview, attachmentPreviewIdentity } from '../src/kordi-app/components/transcriptAttachments';
+import {
+  AttachmentImageLightbox,
+  AttachmentPreview,
+  attachmentPreviewIdentity,
+  shouldCloseAttachmentContextMenuForTarget,
+} from '../src/kordi-app/components/transcriptAttachments';
 import type { Message } from '../src/kordi-app/types';
 
 const imageMessage = {
@@ -108,6 +113,9 @@ test('multiple image attachments render as a banner-free collage', () => {
   assert.doesNotMatch(markup, /ring-white/);
   assert.doesNotMatch(markup, /bg-white\//);
   assert.doesNotMatch(markup, /bg-current\/10/);
+  assert.doesNotMatch(markup, /shadow-\[/);
+  assert.doesNotMatch(markup, /shadow-black/);
+  assert.doesNotMatch(markup, /group-hover:scale/);
   assert.doesNotMatch(markup, /61 KB/);
   assert.doesNotMatch(markup, /168 KB/);
   assert.doesNotMatch(markup, />Screenshot 2026-05-20 20\.54\.15\.png<\/span>/);
@@ -183,12 +191,27 @@ test('large image attachments render compressed preview with an original-file ac
   assert.doesNotMatch(markup, /data-attachment-image-loading="true"/);
 });
 
-test('loaded image previews enter with smooth opacity and scale transition classes', () => {
+test('loaded image previews use a simple fade without zoom or shadow effects', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
 
-  assert.match(markup, /transition-\[opacity,transform\]/);
-  assert.match(markup, /duration-300/);
-  assert.match(markup, /ease-\[cubic-bezier\(0\.22,1,0\.36,1\)\]/);
+  assert.match(markup, /transition-opacity/);
+  assert.match(markup, /duration-200/);
+  assert.match(markup, /ease-out/);
+  assert.doesNotMatch(markup, /scale-\[/);
+  assert.doesNotMatch(markup, /group-hover:scale/);
+  assert.doesNotMatch(markup, /shadow-\[/);
+});
+
+test('right-click menu dismisses for outside clicks without requiring a blocking backdrop', () => {
+  const insideTarget = { kind: 'inside-menu' } as unknown as EventTarget;
+  const outsideTarget = { kind: 'outside-menu' } as unknown as EventTarget;
+  const menuElement = {
+    contains: (target: EventTarget | null) => target === insideTarget,
+  };
+
+  assert.equal(shouldCloseAttachmentContextMenuForTarget(menuElement, insideTarget), false);
+  assert.equal(shouldCloseAttachmentContextMenuForTarget(menuElement, outsideTarget), true);
+  assert.equal(shouldCloseAttachmentContextMenuForTarget(menuElement, null), true);
 });
 
 test('attachment image lightbox renders as a centered modal with close affordance', () => {
