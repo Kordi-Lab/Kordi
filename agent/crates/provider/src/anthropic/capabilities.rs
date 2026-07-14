@@ -1,24 +1,5 @@
 use kordi_core::agent_session::ThinkingLevel;
 
-pub const DEFAULT_ANTHROPIC_MODEL_ID: &str = "claude-opus-4-8";
-
-pub const ANTHROPIC_SUBSCRIPTION_MODEL_IDS: &[&str] = &[
-    "claude-fable-5",
-    "claude-haiku-4-5",
-    "claude-haiku-4-5-20251001",
-    "claude-opus-4-1",
-    "claude-opus-4-1-20250805",
-    "claude-opus-4-5",
-    "claude-opus-4-5-20251101",
-    "claude-opus-4-6",
-    "claude-opus-4-7",
-    "claude-opus-4-8",
-    "claude-sonnet-4-5",
-    "claude-sonnet-4-5-20250929",
-    "claude-sonnet-4-6",
-    "claude-sonnet-5",
-];
-
 const BUDGET_LEVELS: &[ThinkingLevel] = &[
     ThinkingLevel::Off,
     ThinkingLevel::Minimal,
@@ -52,134 +33,185 @@ const FABLE_LEVELS: &[ThinkingLevel] = &[
     ThinkingLevel::Max,
 ];
 
+/// The request-side thinking mechanism supported by a Claude model.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClaudeThinkingMode {
+    /// Uses Anthropic's adaptive thinking configuration and effort values.
     Adaptive,
+    /// Uses an explicit thinking-token budget.
     Budget,
 }
 
+/// How an explicit stored [`ThinkingLevel::Off`] is represented in a request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThinkingOffBehavior {
+    /// Send an explicit disabled thinking payload.
     Disabled,
+    /// Omit the thinking payload entirely, as required by Claude Fable 5.
     Omit,
 }
 
+/// Request capabilities derived from a known Claude model's internal profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClaudeModelCapabilities {
+    /// Whether the model uses adaptive or budget thinking.
     pub thinking_mode: ClaudeThinkingMode,
+    /// Whether the model exposes native extra-high adaptive effort.
     pub native_xhigh: bool,
+    /// Whether the model exposes maximum adaptive effort.
     pub supports_max: bool,
+    /// Whether requests for this model may include temperature.
     pub supports_temperature: bool,
+    /// How request construction should represent explicit thinking-off state.
     pub thinking_off: ThinkingOffBehavior,
 }
 
-#[derive(Clone, Copy)]
-struct ClaudeModelContract {
-    capabilities: ClaudeModelCapabilities,
-    thinking_levels: &'static [ThinkingLevel],
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClaudeModelProfile {
+    Budget,
+    AdaptiveMaxWithoutXHigh,
+    AdaptiveXHighMax,
+    AdaptiveXHighMaxWithoutTemperature,
+    Fable,
 }
 
-const BUDGET_CONTRACT: ClaudeModelContract = ClaudeModelContract {
-    capabilities: ClaudeModelCapabilities {
-        thinking_mode: ClaudeThinkingMode::Budget,
-        native_xhigh: false,
-        supports_max: false,
-        supports_temperature: true,
-        thinking_off: ThinkingOffBehavior::Disabled,
-    },
-    thinking_levels: BUDGET_LEVELS,
-};
-const ADAPTIVE_MAX_CONTRACT: ClaudeModelContract = ClaudeModelContract {
-    capabilities: ClaudeModelCapabilities {
-        thinking_mode: ClaudeThinkingMode::Adaptive,
-        native_xhigh: false,
-        supports_max: true,
-        supports_temperature: true,
-        thinking_off: ThinkingOffBehavior::Disabled,
-    },
-    thinking_levels: MAX_WITHOUT_XHIGH_LEVELS,
-};
-const ADAPTIVE_XHIGH_CONTRACT: ClaudeModelContract = ClaudeModelContract {
-    capabilities: ClaudeModelCapabilities {
-        thinking_mode: ClaudeThinkingMode::Adaptive,
-        native_xhigh: true,
-        supports_max: true,
-        supports_temperature: false,
-        thinking_off: ThinkingOffBehavior::Disabled,
-    },
-    thinking_levels: NATIVE_XHIGH_LEVELS,
-};
-const SONNET_5_CONTRACT: ClaudeModelContract = ClaudeModelContract {
-    capabilities: ClaudeModelCapabilities {
-        thinking_mode: ClaudeThinkingMode::Adaptive,
-        native_xhigh: true,
-        supports_max: true,
-        supports_temperature: true,
-        thinking_off: ThinkingOffBehavior::Disabled,
-    },
-    thinking_levels: NATIVE_XHIGH_LEVELS,
-};
-const FABLE_CONTRACT: ClaudeModelContract = ClaudeModelContract {
-    capabilities: ClaudeModelCapabilities {
-        thinking_mode: ClaudeThinkingMode::Adaptive,
-        native_xhigh: true,
-        supports_max: true,
-        supports_temperature: true,
-        thinking_off: ThinkingOffBehavior::Omit,
-    },
-    thinking_levels: FABLE_LEVELS,
-};
+impl ClaudeModelProfile {
+    fn thinking_mode(self) -> ClaudeThinkingMode {
+        match self {
+            Self::Budget => ClaudeThinkingMode::Budget,
+            Self::AdaptiveMaxWithoutXHigh
+            | Self::AdaptiveXHighMax
+            | Self::AdaptiveXHighMaxWithoutTemperature
+            | Self::Fable => ClaudeThinkingMode::Adaptive,
+        }
+    }
 
-fn contract_for_model(model_id: &str) -> Option<ClaudeModelContract> {
-    match model_id {
-        "claude-fable-5" => Some(FABLE_CONTRACT),
-        "claude-haiku-4-5"
-        | "claude-haiku-4-5-20251001"
-        | "claude-opus-4-1"
-        | "claude-opus-4-1-20250805"
-        | "claude-opus-4-5"
-        | "claude-opus-4-5-20251101"
-        | "claude-sonnet-4-5"
-        | "claude-sonnet-4-5-20250929" => Some(BUDGET_CONTRACT),
-        "claude-opus-4-6" | "claude-sonnet-4-6" => Some(ADAPTIVE_MAX_CONTRACT),
-        "claude-opus-4-7" | "claude-opus-4-8" => Some(ADAPTIVE_XHIGH_CONTRACT),
-        "claude-sonnet-5" => Some(SONNET_5_CONTRACT),
-        _ => None,
+    fn thinking_levels(self) -> &'static [ThinkingLevel] {
+        match self {
+            Self::Budget => BUDGET_LEVELS,
+            Self::AdaptiveMaxWithoutXHigh => MAX_WITHOUT_XHIGH_LEVELS,
+            Self::AdaptiveXHighMax | Self::AdaptiveXHighMaxWithoutTemperature => {
+                NATIVE_XHIGH_LEVELS
+            }
+            Self::Fable => FABLE_LEVELS,
+        }
+    }
+
+    fn supports_temperature(self) -> bool {
+        !matches!(self, Self::AdaptiveXHighMaxWithoutTemperature)
+    }
+
+    fn thinking_off(self) -> ThinkingOffBehavior {
+        match self {
+            Self::Fable => ThinkingOffBehavior::Omit,
+            _ => ThinkingOffBehavior::Disabled,
+        }
+    }
+
+    fn capabilities(self) -> ClaudeModelCapabilities {
+        let levels = self.thinking_levels();
+        ClaudeModelCapabilities {
+            thinking_mode: self.thinking_mode(),
+            native_xhigh: levels.contains(&ThinkingLevel::XHigh),
+            supports_max: levels.contains(&ThinkingLevel::Max),
+            supports_temperature: self.supports_temperature(),
+            thinking_off: self.thinking_off(),
+        }
     }
 }
 
+macro_rules! define_claude_model_profiles {
+    (
+        default: $default_model:ident;
+        $(
+            $model:ident: $model_id:literal => $profile:ident
+        ),+ $(,)?
+    ) => {
+        $(const $model: &str = $model_id;)+
+
+        /// Exact ordered Claude model IDs available to Anthropic subscription accounts.
+        pub const ANTHROPIC_SUBSCRIPTION_MODEL_IDS: &[&str] = &[$($model),+];
+
+        /// Default Claude model ID selected for Anthropic subscription accounts.
+        pub const DEFAULT_ANTHROPIC_MODEL_ID: &str = $default_model;
+
+        fn profile_for_model(model_id: &str) -> Option<ClaudeModelProfile> {
+            match model_id {
+                $($model => Some(ClaudeModelProfile::$profile),)+
+                _ => None,
+            }
+        }
+    };
+}
+
+define_claude_model_profiles! {
+    default: OPUS_4_8;
+    FABLE_5: "claude-fable-5" => Fable,
+    HAIKU_4_5: "claude-haiku-4-5" => Budget,
+    HAIKU_4_5_20251001: "claude-haiku-4-5-20251001" => Budget,
+    OPUS_4_1: "claude-opus-4-1" => Budget,
+    OPUS_4_1_20250805: "claude-opus-4-1-20250805" => Budget,
+    OPUS_4_5: "claude-opus-4-5" => Budget,
+    OPUS_4_5_20251101: "claude-opus-4-5-20251101" => Budget,
+    OPUS_4_6: "claude-opus-4-6" => AdaptiveMaxWithoutXHigh,
+    OPUS_4_7: "claude-opus-4-7" => AdaptiveXHighMaxWithoutTemperature,
+    OPUS_4_8: "claude-opus-4-8" => AdaptiveXHighMaxWithoutTemperature,
+    SONNET_4_5: "claude-sonnet-4-5" => Budget,
+    SONNET_4_5_20250929: "claude-sonnet-4-5-20250929" => Budget,
+    SONNET_4_6: "claude-sonnet-4-6" => AdaptiveMaxWithoutXHigh,
+    SONNET_5: "claude-sonnet-5" => AdaptiveXHighMax,
+}
+
+/// Returns the request capabilities for an exact known Claude model ID.
+///
+/// Unknown IDs return `None`; capabilities are never inferred from ID substrings.
 pub fn capabilities_for_model(model_id: &str) -> Option<ClaudeModelCapabilities> {
-    contract_for_model(model_id).map(|contract| contract.capabilities)
+    profile_for_model(model_id).map(ClaudeModelProfile::capabilities)
 }
 
+/// Returns the exposed thinking levels for an exact known Claude model ID.
+///
+/// Unknown IDs return `None`. Fable omits [`ThinkingLevel::Off`] from this list,
+/// while [`clamp_thinking_level`] still preserves an explicitly stored Off value.
 pub fn thinking_levels(model_id: &str) -> Option<&'static [ThinkingLevel]> {
-    contract_for_model(model_id).map(|contract| contract.thinking_levels)
+    profile_for_model(model_id).map(ClaudeModelProfile::thinking_levels)
 }
 
-pub fn clamp_thinking_level(model_id: &str, requested: ThinkingLevel) -> Option<ThinkingLevel> {
-    let contract = contract_for_model(model_id)?;
-
+fn clamp_for_profile(profile: ClaudeModelProfile, requested: ThinkingLevel) -> ThinkingLevel {
     if requested == ThinkingLevel::Default
-        || contract.thinking_levels.contains(&requested)
-        || (requested == ThinkingLevel::Off
-            && contract.capabilities.thinking_off == ThinkingOffBehavior::Omit)
+        || profile.thinking_levels().contains(&requested)
+        || (requested == ThinkingLevel::Off && profile.thinking_off() == ThinkingOffBehavior::Omit)
     {
-        return Some(requested);
+        return requested;
     }
 
-    match requested {
-        ThinkingLevel::XHigh | ThinkingLevel::Max => Some(ThinkingLevel::High),
-        _ => None,
-    }
+    debug_assert!(matches!(
+        requested,
+        ThinkingLevel::XHigh | ThinkingLevel::Max
+    ));
+    ThinkingLevel::High
 }
 
+/// Clamps a requested thinking level to an exact known Claude model's profile.
+///
+/// Unknown IDs return `None`. Known models preserve supported levels and Default;
+/// Fable also preserves its hidden Off value. Unsupported XHigh or Max values
+/// clamp to High.
+pub fn clamp_thinking_level(model_id: &str, requested: ThinkingLevel) -> Option<ThinkingLevel> {
+    profile_for_model(model_id).map(|profile| clamp_for_profile(profile, requested))
+}
+
+/// Maps a thinking level to a stable adaptive-effort string for JSON payloads.
+///
+/// Returns `None` for unknown IDs, budget-thinking models, Off, and Default.
+/// Unsupported XHigh values are clamped through the model profile before mapping.
 pub fn adaptive_effort(model_id: &str, requested: ThinkingLevel) -> Option<&'static str> {
-    let capabilities = capabilities_for_model(model_id)?;
-    if capabilities.thinking_mode != ClaudeThinkingMode::Adaptive {
+    let profile = profile_for_model(model_id)?;
+    if profile.thinking_mode() != ClaudeThinkingMode::Adaptive {
         return None;
     }
 
-    match clamp_thinking_level(model_id, requested)? {
+    match clamp_for_profile(profile, requested) {
         ThinkingLevel::Minimal | ThinkingLevel::Low => Some("low"),
         ThinkingLevel::Medium => Some("medium"),
         ThinkingLevel::High => Some("high"),
