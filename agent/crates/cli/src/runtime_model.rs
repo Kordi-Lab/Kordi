@@ -269,7 +269,12 @@ pub(crate) fn request_thinking_value(
         effective_openai_thinking_level(model, auth_method, requested).unwrap_or(requested);
     match effective {
         ThinkingLevel::Default => None,
-        ThinkingLevel::Off if !model.reasoning => None,
+        ThinkingLevel::Off
+            if !model.reasoning
+                || login::normalize_provider_for_model_selection(&model.provider) != "openai" =>
+        {
+            None
+        }
         other => Some(other.as_str().to_string()),
     }
 }
@@ -433,6 +438,16 @@ mod tests {
         assert_eq!(
             request_thinking_value(gpt_55, None, ThinkingLevel::Max).as_deref(),
             Some("xhigh")
+        );
+
+        let claude = registry
+            .list()
+            .iter()
+            .find(|model| model.provider == "anthropic" && model.reasoning)
+            .unwrap();
+        assert_eq!(
+            request_thinking_value(claude, None, ThinkingLevel::Off),
+            None
         );
     }
 
