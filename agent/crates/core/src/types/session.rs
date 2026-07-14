@@ -174,6 +174,7 @@ pub enum ThinkingLevel {
         alias = "x-high"
     )]
     XHigh,
+    Max,
 }
 
 impl ThinkingLevel {
@@ -191,6 +192,7 @@ impl ThinkingLevel {
             "medium" => Some(Self::Medium),
             "high" => Some(Self::High),
             "xhigh" | "extrahigh" => Some(Self::XHigh),
+            "max" | "maximum" => Some(Self::Max),
             _ => None,
         }
     }
@@ -204,6 +206,7 @@ impl ThinkingLevel {
             Self::Medium => "medium",
             Self::High => "high",
             Self::XHigh => "xhigh",
+            Self::Max => "max",
         }
     }
 
@@ -287,6 +290,10 @@ mod tests {
             assert_eq!(level.as_str(), text);
             assert_eq!(level.to_string(), text);
         }
+
+        let max = ThinkingLevel::parse("max").expect("max thinking level should parse");
+        assert_eq!(max.as_str(), "max");
+        assert_eq!(serde_json::to_string(&max).unwrap(), "\"max\"");
     }
 
     #[test]

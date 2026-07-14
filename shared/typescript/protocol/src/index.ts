@@ -14,7 +14,7 @@ export type TimelineEntryKind = 'message' | 'status' | 'approval' | 'artifact' |
 export type TimelineRole = 'user' | 'assistant' | 'tool' | 'system' | 'peer' | 'bridge';
 export type TimelineState = 'streaming' | 'complete' | 'error';
 export type ArtifactKind = 'file' | 'image' | 'url';
-export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type ApprovalDecision = 'approve_once' | 'deny' | 'abort_turn';
 export type TurnOutcome = 'completed' | 'failed' | 'cancelled' | 'waiting_approval';
 

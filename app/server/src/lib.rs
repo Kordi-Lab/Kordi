@@ -1164,6 +1164,7 @@ fn protocol_thinking_level(level: &ThinkingLevel) -> &'static str {
         ThinkingLevel::Medium => "medium",
         ThinkingLevel::High => "high",
         ThinkingLevel::Xhigh => "xhigh",
+        ThinkingLevel::Max => "max",
     }
 }
 

@@ -111,6 +111,18 @@ pub enum ThinkingLevel {
     Medium,
     High,
     Xhigh,
+    Max,
+}
+
+#[cfg(test)]
+mod thinking_level_tests {
+    use super::ThinkingLevel;
+
+    #[test]
+    fn max_round_trips_as_lowercase() {
+        let level: ThinkingLevel = serde_json::from_str("\"max\"").unwrap();
+        assert_eq!(serde_json::to_string(&level).unwrap(), "\"max\"");
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
