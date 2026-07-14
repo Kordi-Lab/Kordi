@@ -23,7 +23,9 @@ import {
 import type { ComposerScope, ComposerSelectorType } from '@/kordi-app/types';
 import type {
   AttachmentItem,
+  ComposerConfigTargetOverride,
   ComposerDraftState,
+  ComposerSelection,
   ComposerSelectionState,
   ComposerSelectorState,
   MinimalModelOption,
@@ -53,6 +55,10 @@ type UseComposerInputActionsArgs = Pick<
   | 'setDesktopChatError'
   | 'shouldAutoFollowChatRef'
 >;
+
+export function desktopChatStateAfterConfigUpdate<T>(current: T, next: T, isolated: boolean): T {
+  return isolated ? current : next;
+}
 
 export function composerConfigTargetSessionId({
   scope,
@@ -271,14 +277,17 @@ export function useComposerInputActions({
     setOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
   }, [setOpenComposerSelector]);
 
-  const selectComposerValue = useCallback(async (scope: ComposerScope, type: ComposerSelectorType, value: string, targetSessionIdOverride?: string | null) => {
+  const selectComposerValue = useCallback(async (scope: ComposerScope, type: ComposerSelectorType, value: string, configTargetOverride?: ComposerConfigTargetOverride) => {
+    const isolatedTarget = typeof configTargetOverride === 'object' && configTargetOverride !== null
+      ? configTargetOverride
+      : null;
     const resolvedModelValue = type === 'provider'
       ? preferredModelValueForProvider(value)
       : type === 'model'
         ? value
         : null;
     const nextModelValue = resolvedModelValue ?? (type === 'model' ? value : undefined);
-    const currentSelection = composerSelections[scope];
+    const currentSelection = isolatedTarget?.selection ?? composerSelections[scope];
     const modelThinkingLevels = nextModelValue
       ? chatModelOptions.find((option) => option.value === nextModelValue)?.thinkingLevels ?? []
       : [];
@@ -288,26 +297,42 @@ export function useComposerInputActions({
     const nextThinkingValue = type === 'thinking' ? value : nextModelThinkingValue;
     const modelChanged = Boolean(nextModelValue && nextModelValue !== currentSelection.model);
     const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== currentSelection.thinking);
+    let nextSelection: ComposerSelection = currentSelection;
+    if (type === 'provider' && resolvedModelValue) {
+      nextSelection = {
+        ...currentSelection,
+        model: resolvedModelValue,
+        ...(nextModelThinkingValue ? { thinking: nextModelThinkingValue } : {}),
+      };
+    } else if (type === 'model') {
+      nextSelection = {
+        ...currentSelection,
+        model: value,
+        ...(nextModelThinkingValue ? { thinking: nextModelThinkingValue } : {}),
+      };
+    } else if (type === 'thinking') {
+      nextSelection = { ...currentSelection, thinking: value };
+    } else if (type === 'mode') {
+      nextSelection = { ...currentSelection, mode: value };
+    }
 
-    setComposerSelections((current: ComposerSelectionState) => ({
-      ...current,
-      [scope]: {
-        ...current[scope],
-        ...(type === 'provider'
-          ? (resolvedModelValue ? { model: resolvedModelValue, ...(nextModelThinkingValue ? { thinking: nextModelThinkingValue } : {}) } : {})
-          : type === 'model'
-            ? { model: value, ...(nextModelThinkingValue ? { thinking: nextModelThinkingValue } : {}) }
-            : type === 'thinking'
-              ? { thinking: value }
-              : { [type]: value }),
-      },
-    }));
+    if (isolatedTarget) {
+      isolatedTarget.onSelectionChange(nextSelection);
+    } else {
+      setComposerSelections((current: ComposerSelectionState) => ({
+        ...current,
+        [scope]: nextSelection,
+      }));
+    }
     setOpenComposerSelector(null);
     if (scope === 'chat') {
       focusComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
     }
 
-    const targetSessionId = targetSessionIdOverride?.trim() || composerConfigTargetSessionId({
+    const overrideSessionId = typeof configTargetOverride === 'string'
+      ? configTargetOverride
+      : isolatedTarget?.sessionId;
+    const targetSessionId = overrideSessionId?.trim() || composerConfigTargetSessionId({
       scope,
       activeConvId,
       activeConvCanonicalSessionId,
@@ -318,7 +343,7 @@ export function useComposerInputActions({
       try {
         setDesktopChatError(null);
 
-        if ((modelChanged || thinkingChanged) && desktopChatState?.activeSessionId === targetSessionId) {
+        if (!isolatedTarget && (modelChanged || thinkingChanged) && desktopChatState?.activeSessionId === targetSessionId) {
           shouldAutoFollowChatRef.current = true;
           setDesktopChatState((current) => {
             if (!current || current.activeSessionId !== targetSessionId) return current;
@@ -337,9 +362,26 @@ export function useComposerInputActions({
           nextModelValue,
           nextThinkingValue,
         );
-        setDesktopChatState(nextState);
+        if (isolatedTarget) {
+          const matchingModelValue = chatModelOptions.find((option) => (
+            option.provider === nextState.activeSession.provider
+            && option.label === nextState.activeSession.model
+          ))?.value ?? `${nextState.activeSession.provider}/${nextState.activeSession.model}`;
+          isolatedTarget.onSelectionChange({
+            ...nextSelection,
+            model: matchingModelValue,
+            thinking: nextState.activeSession.thinking,
+          });
+        }
+        setDesktopChatState((current) => (
+          desktopChatStateAfterConfigUpdate(current, nextState, Boolean(isolatedTarget))
+        ));
       } catch (error) {
-        await refreshDesktopChat(targetSessionId);
+        if (isolatedTarget) {
+          isolatedTarget.onSelectionChange(currentSelection);
+        } else {
+          await refreshDesktopChat(targetSessionId);
+        }
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to update session');
       }
     }
@@ -360,25 +402,29 @@ export function useComposerInputActions({
     shouldAutoFollowChatRef,
   ]);
 
-  const selectComposerAuthChoice = useCallback(async (scope: ComposerScope, providerId: string, choice: string, targetSessionIdOverride?: string | null) => {
+  const selectComposerAuthChoice = useCallback(async (scope: ComposerScope, providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => {
     await handleSelectAuthChoice(providerId, choice);
 
-    const currentProviderId = resolveComposerProviderId(scope, composerSelections[scope].model);
+    const isolatedTarget = typeof configTargetOverride === 'object' && configTargetOverride !== null
+      ? configTargetOverride
+      : null;
+    const currentSelection = isolatedTarget?.selection ?? composerSelections[scope];
+    const currentProviderId = resolveComposerProviderId(scope, currentSelection.model);
     const normalizedProviderId = normalizeSelectedProviderId(providerId) ?? providerId;
     const nextModelValue = preferredModelValueForProvider(providerId) ?? preferredModelValueForProvider(normalizedProviderId);
-    const currentModelValue = composerSelections[scope].model.toLowerCase();
+    const currentModelValue = currentSelection.model.toLowerCase();
     const shouldSwitchModelForAuth = normalizedProviderId !== currentProviderId
       || providerId === 'openai-codex'
       || (providerId === 'openai' && currentProviderId === 'openai' && currentModelValue.includes('gpt-5.5'));
-    if (shouldSwitchModelForAuth && nextModelValue && nextModelValue !== composerSelections[scope].model) {
-      await selectComposerValue(scope, 'model', nextModelValue, targetSessionIdOverride);
+    if (shouldSwitchModelForAuth && nextModelValue && nextModelValue !== currentSelection.model) {
+      await selectComposerValue(scope, 'model', nextModelValue, configTargetOverride);
       return;
     }
 
     setOpenComposerSelector((current: ComposerSelectorState) => (current?.scope === scope && current.type === 'auth' ? null : current));
   }, [composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, resolveComposerProviderId, selectComposerValue, setOpenComposerSelector]);
 
-  const selectComposerProviderChoice = useCallback(async (scope: ComposerScope, option: MinimalProviderOption, targetSessionIdOverride?: string | null) => {
+  const selectComposerProviderChoice = useCallback(async (scope: ComposerScope, option: MinimalProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => {
     const normalizedProviderId = normalizeSelectedProviderId(option.providerId) ?? option.providerId;
     const choice = option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
 
@@ -388,7 +434,7 @@ export function useComposerInputActions({
 
     const nextModelValue = preferredModelValueForProvider(option.providerId) ?? preferredModelValueForProvider(normalizedProviderId);
     if (nextModelValue) {
-      await selectComposerValue(scope, 'model', nextModelValue, targetSessionIdOverride);
+      await selectComposerValue(scope, 'model', nextModelValue, configTargetOverride);
       return;
     }
 
@@ -398,7 +444,7 @@ export function useComposerInputActions({
       return;
     }
 
-    await selectComposerValue(scope, 'provider', normalizedProviderId, targetSessionIdOverride);
+    await selectComposerValue(scope, 'provider', normalizedProviderId, configTargetOverride);
   }, [handleSelectAuthChoice, preferredModelValueForProvider, selectComposerValue, setDesktopChatError, setOpenComposerSelector]);
 
   const updateComposerDraft = useCallback((scope: ComposerScope, value: string, target: HTMLTextAreaElement) => {

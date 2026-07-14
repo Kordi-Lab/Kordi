@@ -1,6 +1,11 @@
 import { useCallback, useMemo } from 'react';
 
-import { buildAuthDisplayProviders, isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
+import {
+  buildAuthDisplayProviders,
+  isLocalProvider,
+  normalizeSelectedProviderId,
+  type AuthDisplayProvider,
+} from '@/kordi-app/auth/model';
 import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type {
   ComposerScope,
@@ -60,6 +65,69 @@ type UseComposerViewModelArgs = {
   composerSelections: ComposerSelections;
   composerDrafts: ComposerDrafts;
 };
+
+type PreferredRuntimeRoute = {
+  provider: string;
+  model: string;
+};
+
+export function preferredModelValueForProviderFromOptions(
+  providerId: string,
+  chatModelOptions: ComposerModelOption[],
+  authDisplayProviders: AuthDisplayProvider[],
+  preferredRuntimeRoute?: PreferredRuntimeRoute | null,
+) {
+  const modelProviderId = normalizeSelectedProviderId(providerId) ?? providerId;
+  const providerModels = chatModelOptions.filter((option) => option.provider === modelProviderId);
+  const savedLocalProvider = authDisplayProviders.find((provider) => (normalizeSelectedProviderId(provider.id) ?? provider.id) === modelProviderId);
+  const savedLocalModel = savedLocalProvider?.preferredModel?.trim();
+  const savedLocalModelValue = savedLocalProvider?.configured && isLocalProvider(modelProviderId) && modelProviderId !== 'ollama' && savedLocalModel
+    ? (() => {
+        const [savedProvider, ...modelParts] = savedLocalModel.split('/');
+        const normalizedSavedProvider = normalizeSelectedProviderId(savedProvider) ?? savedProvider;
+        const modelId = normalizedSavedProvider === modelProviderId && modelParts.length > 0 ? modelParts.join('/') : savedLocalModel;
+        return `${modelProviderId}/${modelId}`;
+      })()
+    : null;
+
+  if (savedLocalModelValue && providerModels.some((option) => option.value === savedLocalModelValue)) {
+    return savedLocalModelValue;
+  }
+  if (providerModels.length === 0) return savedLocalModelValue;
+
+  const preferredRouteProvider = preferredRuntimeRoute
+    ? normalizeSelectedProviderId(preferredRuntimeRoute.provider) ?? preferredRuntimeRoute.provider
+    : null;
+  const preferredRuntimeModel = preferredRouteProvider === modelProviderId
+    ? preferredRuntimeRoute?.model.trim().toLowerCase()
+    : null;
+  if (preferredRuntimeModel) {
+    const normalizedPreferredModel = preferredRuntimeModel.startsWith(`${modelProviderId}/`)
+      ? preferredRuntimeModel.slice(modelProviderId.length + 1)
+      : preferredRuntimeModel;
+    const exactRuntimeMatch = providerModels.find((option) => {
+      const normalizedValue = option.value.trim().toLowerCase();
+      const normalizedValueModel = normalizedValue.startsWith(`${modelProviderId}/`)
+        ? normalizedValue.slice(modelProviderId.length + 1)
+        : normalizedValue;
+      return normalizedValueModel === normalizedPreferredModel
+        || option.label.trim().toLowerCase() === normalizedPreferredModel;
+    });
+    if (exactRuntimeMatch) return exactRuntimeMatch.value;
+  }
+  const preferredNeedles = modelProviderId === 'anthropic'
+    ? ['claude-opus-4-7', 'claude-opus-4.7', 'claude-opus-4-6', 'claude-opus']
+    : modelProviderId === 'openai'
+      ? ['gpt-5.6-sol', 'gpt-5-6-sol', 'gpt-5.5', 'gpt-5.4', 'gpt-5']
+      : [];
+
+  for (const needle of preferredNeedles) {
+    const match = providerModels.find((option) => option.label.toLowerCase().includes(needle));
+    if (match) return match.value;
+  }
+
+  return savedLocalModelValue ?? providerModels[0]?.value ?? null;
+}
 
 export function useComposerViewModel({
   isNativeShell,
@@ -180,41 +248,19 @@ export function useComposerViewModel({
       });
   }, [authDisplayProviders, chatModelOptions]);
 
-  const preferredModelValueForProvider = useCallback((providerId: string) => {
-    const modelProviderId = normalizeSelectedProviderId(providerId) ?? providerId;
-    const providerModels = chatModelOptions.filter((option) => option.provider === modelProviderId);
-    const savedLocalProvider = authDisplayProviders.find((provider) => (normalizeSelectedProviderId(provider.id) ?? provider.id) === modelProviderId);
-    const savedLocalModel = savedLocalProvider?.preferredModel?.trim();
-    const savedLocalModelValue = savedLocalProvider?.configured && isLocalProvider(modelProviderId) && modelProviderId !== 'ollama' && savedLocalModel
-      ? (() => {
-          const [savedProvider, ...modelParts] = savedLocalModel.split('/');
-          const normalizedSavedProvider = normalizeSelectedProviderId(savedProvider) ?? savedProvider;
-          const modelId = normalizedSavedProvider === modelProviderId && modelParts.length > 0 ? modelParts.join('/') : savedLocalModel;
-          return `${modelProviderId}/${modelId}`;
-        })()
-      : null;
-
-    if (savedLocalModelValue && providerModels.some((option) => option.value === savedLocalModelValue)) {
-      return savedLocalModelValue;
-    }
-    if (providerModels.length === 0) return savedLocalModelValue;
-
-    const preferOpenAiSubscriptionModels = providerId === 'openai-codex';
-    const preferredNeedles = modelProviderId === 'anthropic'
-      ? ['claude-opus-4-7', 'claude-opus-4.7', 'claude-opus-4-6', 'claude-opus']
-      : modelProviderId === 'openai'
-        ? (preferOpenAiSubscriptionModels
-            ? ['gpt-5.5', 'gpt-5-5', 'gpt-5.4', 'gpt-5']
-            : ['gpt-5.4', 'gpt-5-4', 'gpt-5'])
-        : [];
-
-    for (const needle of preferredNeedles) {
-      const match = providerModels.find((option) => option.label.toLowerCase().includes(needle));
-      if (match) return match.value;
-    }
-
-    return savedLocalModelValue ?? providerModels[0]?.value ?? null;
-  }, [authDisplayProviders, chatModelOptions]);
+  const preferredModelValueForProvider = useCallback((providerId: string) => (
+    preferredModelValueForProviderFromOptions(
+      providerId,
+      chatModelOptions,
+      authDisplayProviders,
+      desktopChatState?.localAgent
+        ? {
+            provider: desktopChatState.localAgent.defaultProvider,
+            model: desktopChatState.localAgent.defaultModel,
+          }
+        : null,
+    )
+  ), [authDisplayProviders, chatModelOptions, desktopChatState?.localAgent]);
 
   const resolveComposerProviderId = useCallback((_: ComposerScope, modelLabel: string) => {
     const option = chatModelOptions.find((candidate) => candidate.value === modelLabel);

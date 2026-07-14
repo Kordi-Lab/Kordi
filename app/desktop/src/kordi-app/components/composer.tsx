@@ -291,6 +291,8 @@ export function normalizeComposerThinkingLevels(levels: string[]) {
 export function fallbackComposerThinkingValue(levels: string[], requested: string) {
   const normalizedLevels = normalizeComposerThinkingLevels(levels);
   if (normalizedLevels.includes(requested)) return requested;
+  if (requested === 'max' && normalizedLevels.includes('xhigh')) return 'xhigh';
+  if (requested === 'max' && normalizedLevels.includes('high')) return 'high';
   if (requested === 'xhigh' && normalizedLevels.includes('high')) return 'high';
   if (normalizedLevels.includes('medium')) return 'medium';
   if (normalizedLevels.includes('default')) return 'default';

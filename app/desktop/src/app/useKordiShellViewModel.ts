@@ -5,6 +5,7 @@ import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/co
 import type { ComposerScope, Conversation, DesktopChatState, ResolvedThemeMode } from '@/kordi-app/types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
+import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 
 type UseKordiShellViewModelArgs = {
   themeMode: ResolvedThemeMode;
@@ -15,9 +16,9 @@ type UseKordiShellViewModelArgs = {
   activeConv: Conversation;
   activeConversationIsBridge: boolean;
   chatModelOptions: ComposerModelOption[];
-  selectComposerValue: (scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, targetSessionIdOverride?: string | null) => Promise<void>;
-  selectComposerAuthChoice: (scope: ComposerScope, providerId: string, choice: string, targetSessionIdOverride?: string | null) => Promise<void>;
-  selectComposerProviderChoice: (scope: ComposerScope, option: ComposerProviderOption, targetSessionIdOverride?: string | null) => Promise<void>;
+  selectComposerValue: (scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
+  selectComposerAuthChoice: (scope: ComposerScope, providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
+  selectComposerProviderChoice: (scope: ComposerScope, option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
   handleStopDesktopChatTurn: () => Promise<void> | void;
   handleSendProjectMessage: (draftOverride?: string) => Promise<void> | void;
   handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => Promise<void> | void;
@@ -63,16 +64,16 @@ export function useKordiShellViewModel({
     shouldAutoFollowChatRef.current = isChatScrolledNearBottom(container);
   }, [chatTranscriptScrollRef, isChatScrolledNearBottom, shouldAutoFollowChatRef]);
 
-  const wrappedSelectComposerValue = useCallback((scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, targetSessionIdOverride?: string | null) => (
-    selectComposerValue(scope, type, value, targetSessionIdOverride)
+  const wrappedSelectComposerValue = useCallback((scope: ComposerScope, type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => (
+    selectComposerValue(scope, type, value, configTargetOverride)
   ), [selectComposerValue]);
 
-  const wrappedSelectComposerAuthChoice = useCallback((scope: ComposerScope, providerId: string, choice: string, targetSessionIdOverride?: string | null) => {
-    void selectComposerAuthChoice(scope, providerId, choice, targetSessionIdOverride);
+  const wrappedSelectComposerAuthChoice = useCallback((scope: ComposerScope, providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => {
+    void selectComposerAuthChoice(scope, providerId, choice, configTargetOverride);
   }, [selectComposerAuthChoice]);
 
-  const wrappedSelectComposerProviderChoice = useCallback((scope: ComposerScope, option: ComposerProviderOption, targetSessionIdOverride?: string | null) => {
-    void selectComposerProviderChoice(scope, option, targetSessionIdOverride);
+  const wrappedSelectComposerProviderChoice = useCallback((scope: ComposerScope, option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => {
+    void selectComposerProviderChoice(scope, option, configTargetOverride);
   }, [selectComposerProviderChoice]);
 
   const wrappedStopDesktopChatTurn = useCallback(() => {

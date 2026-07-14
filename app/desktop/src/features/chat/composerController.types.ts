@@ -22,7 +22,13 @@ import type {
   Project,
 } from '@/kordi-app/types';
 
-export type ComposerSelectionState = Record<ComposerScope, { mode: string; model: string; thinking: string }>;
+export type ComposerSelection = { mode: string; model: string; thinking: string };
+export type ComposerSelectionState = Record<ComposerScope, ComposerSelection>;
+export type ComposerConfigTargetOverride = string | null | {
+  sessionId: string | null;
+  selection: ComposerSelection;
+  onSelectionChange: (selection: ComposerSelection) => void;
+};
 export type { ComposerDraftEntry, ComposerDraftState } from './composerDrafts';
 export type ComposerSelectorState = { scope: ComposerScope; type: ComposerSelectorType } | null;
 export type AttachmentItem = MessageAttachment & { id: string; path: string };

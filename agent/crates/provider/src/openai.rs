@@ -1,3 +1,4 @@
+pub mod capabilities;
 mod codex;
 mod responses;
 mod sse;
@@ -183,7 +184,11 @@ impl Provider for OpenAiProvider {
         }
 
         if let Some(ref thinking) = request.thinking
-            && let Some(effort) = openai_reasoning_effort(thinking.as_str())
+            && let Some(effort) = openai_reasoning_effort(
+                &request.model,
+                thinking.as_str(),
+                is_standard_openai_api_base(&options.base_url),
+            )
         {
             body["reasoning_effort"] = json!(effort);
         }
@@ -330,15 +335,17 @@ impl Provider for OpenAiProvider {
     }
 }
 
-fn openai_reasoning_effort(thinking: &str) -> Option<&'static str> {
-    match thinking {
-        "default" => None,
-        "off" => Some("none"),
-        "low" | "minimal" => Some("low"),
-        "medium" => Some("medium"),
-        "high" | "xhigh" => Some("high"),
-        _ => Some("medium"),
-    }
+fn openai_reasoning_effort(
+    model_id: &str,
+    thinking: &str,
+    official_openai: bool,
+) -> Option<&'static str> {
+    let route = if official_openai {
+        capabilities::OpenAiAuthRoute::Api
+    } else {
+        capabilities::OpenAiAuthRoute::Compatible
+    };
+    capabilities::reasoning_effort(model_id, route, thinking)
 }
 
 #[cfg(test)]
@@ -348,10 +355,34 @@ mod tests {
 
     #[test]
     fn default_thinking_omits_reasoning_effort() {
-        assert_eq!(openai_reasoning_effort("default"), None);
-        assert_eq!(openai_reasoning_effort("off"), Some("none"));
-        assert_eq!(openai_reasoning_effort("minimal"), Some("low"));
-        assert_eq!(openai_reasoning_effort("xhigh"), Some("high"));
+        assert_eq!(
+            openai_reasoning_effort("gpt-5.6-luna", "default", true),
+            None
+        );
+        assert_eq!(
+            openai_reasoning_effort("gpt-5.6-luna", "off", true),
+            Some("none")
+        );
+        assert_eq!(
+            openai_reasoning_effort("gpt-5.6-luna", "minimal", true),
+            Some("minimal")
+        );
+        assert_eq!(
+            openai_reasoning_effort("gpt-5.6-luna", "xhigh", true),
+            Some("xhigh")
+        );
+        assert_eq!(
+            openai_reasoning_effort("gpt-5.6-luna", "max", true),
+            Some("max")
+        );
+        assert_eq!(
+            openai_reasoning_effort("gpt-5.6-luna", "minimal", false),
+            Some("low")
+        );
+        assert_eq!(
+            openai_reasoning_effort("gpt-5.6-luna", "max", false),
+            Some("high")
+        );
     }
 
     #[test]

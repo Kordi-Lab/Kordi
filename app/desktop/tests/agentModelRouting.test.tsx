@@ -143,6 +143,28 @@ test('localOwnedBridgeAgentsForModelRouting returns only agents owned by local b
   assert.equal(agents.some((agent) => agent.id === 'remote-agent'), false);
 });
 
+test('missing agent routes inherit the GPT-5.6 Sol runtime default without replacing explicit routes', () => {
+  const runtimeState = {
+    localAgent: {
+      label: 'Runtime Kordi',
+      defaultProvider: 'openai',
+      defaultModel: 'gpt-5.6-sol',
+    },
+  } as DesktopChatState;
+  const routedHosts: DesktopBridgeHost[] = [{
+    ...hosts[0],
+    agents: [
+      { ...hosts[0].agents[0], defaultModel: null },
+      { ...hosts[0].agents[1], defaultModel: 'openai/gpt-5.4' },
+    ],
+  }];
+
+  const agents = localOwnedBridgeAgentsForModelRouting(routedHosts, runtimeState);
+
+  assert.equal(agents[0]?.defaultModel, 'openai/gpt-5.6-sol');
+  assert.equal(agents[1]?.defaultModel, 'openai/gpt-5.4');
+});
+
 test('routingSelectionForBridgeAgent uses per-agent default, fallback, and thinking values', () => {
   const [agent] = localOwnedBridgeAgentsForModelRouting(hosts, desktopChatState);
 

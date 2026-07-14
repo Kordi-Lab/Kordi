@@ -1,13 +1,11 @@
 export const composerModelOptions = [
+  'GPT-5.6-Luna',
+  'GPT-5.6-Sol',
+  'GPT-5.6-Terra',
   'GPT-5.5',
-  'GPT-5.4',
-  'GPT-5.2-Codex',
-  'GPT-5.1-Codex-Max',
   'GPT-5.4-Mini',
-  'GPT-5.3-Codex',
+  'GPT-5.4',
   'GPT-5.3-Codex-Spark',
-  'GPT-5.2',
-  'GPT-5.1-Codex-Mini',
 ] as const;
 
 export const composerModeOptions = {
@@ -23,4 +21,5 @@ export const composerThinkingOptions = [
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
   { value: 'xhigh', label: 'Extra High' },
+  { value: 'max', label: 'Max' },
 ] as const;

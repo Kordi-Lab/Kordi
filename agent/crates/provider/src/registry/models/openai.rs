@@ -1,8 +1,35 @@
-use super::{ReasoningCapability, model, runtime, simple_cost};
+use super::{ReasoningCapability, cost, model, runtime, simple_cost};
 use crate::registry::{ApiType, Model};
 
 pub(super) fn builtin_models() -> Vec<Model> {
     vec![
+        model(
+            "gpt-5.6-luna",
+            "GPT-5.6 Luna",
+            "openai",
+            ApiType::OpenaiResponses,
+            (272_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(1.0, 6.0, 0.1, 1.25),
+        ),
+        model(
+            "gpt-5.6-sol",
+            "GPT-5.6 Sol",
+            "openai",
+            ApiType::OpenaiResponses,
+            (272_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(5.0, 30.0, 0.5, 6.25),
+        ),
+        model(
+            "gpt-5.6-terra",
+            "GPT-5.6 Terra",
+            "openai",
+            ApiType::OpenaiResponses,
+            (272_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(2.5, 15.0, 0.25, 3.125),
+        ),
         model(
             "gpt-5.5",
             "GPT-5.5",
@@ -130,4 +157,24 @@ pub(super) fn builtin_models() -> Vec<Model> {
             simple_cost(3.0, 12.0),
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::builtin_models;
+
+    #[test]
+    fn registry_contains_only_named_gpt_56_variants() {
+        let models = builtin_models();
+        for id in ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"] {
+            let model = models
+                .iter()
+                .find(|model| model.id == id)
+                .expect("GPT-5.6 variant");
+            assert_eq!(model.context_window, 272_000);
+            assert_eq!(model.max_tokens, 128_000);
+            assert!(model.reasoning);
+        }
+        assert!(models.iter().all(|model| model.id != "gpt-5.6"));
+    }
 }

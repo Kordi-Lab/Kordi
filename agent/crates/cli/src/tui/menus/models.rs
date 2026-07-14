@@ -194,7 +194,14 @@ impl TuiController {
                 value: format!("{}/{}", model.provider, model.id),
             })
             .collect();
-        items.sort_by(|a, b| a.label.cmp(&b.label));
+        items.sort_by(|a, b| {
+            let (a_provider, a_model) = a.value.split_once('/').unwrap_or(("", &a.value));
+            let (b_provider, b_model) = b.value.split_once('/').unwrap_or(("", &b.value));
+            a_provider.cmp(b_provider).then_with(|| {
+                crate::login::model_catalog_rank(a_provider, a_model)
+                    .cmp(&crate::login::model_catalog_rank(b_provider, b_model))
+            })
+        });
 
         self.send_command(TuiCommand::OpenSelectMenu {
             menu_id: "model".to_string(),
@@ -280,10 +287,6 @@ impl TuiController {
             id: model.id.clone(),
             reasoning: model.reasoning,
         });
-        if let Some(level) = thinking_override {
-            self.session_setup.thinking_level = level.as_str().to_string();
-            self.runtime_host.session_mut().set_thinking_level(level);
-        }
         self.runtime_host
             .runtime_mut()
             .set_model(Some(RuntimeModelRef {
@@ -297,6 +300,18 @@ impl TuiController {
         self.session_setup.api_key = runtime.api_key.clone();
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers = runtime.headers.clone();
+        let requested = thinking_override.unwrap_or_else(|| {
+            ThinkingLevel::parse(&self.session_setup.thinking_level).unwrap_or(ThinkingLevel::Off)
+        });
+        let effective = crate::runtime_model::effective_thinking_level_for_model(
+            &self.session_setup.model,
+            self.session_setup.auth.as_ref().map(|auth| auth.method),
+            requested,
+        );
+        self.session_setup.thinking_level = effective.as_str().to_string();
+        self.runtime_host
+            .session_mut()
+            .set_thinking_level(effective);
         self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
@@ -305,8 +320,8 @@ impl TuiController {
             headers: runtime.headers,
             enabled: true,
         });
-        let status = if let Some(level) = thinking_override {
-            format!("Model: {display} • thinking: {}", level.as_str())
+        let status = if thinking_override.is_some() || effective != requested {
+            format!("Model: {display} • thinking: {}", effective.as_str())
         } else {
             format!("Model: {display}")
         };
@@ -483,6 +498,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
+    use kordi_core::agent_session::ThinkingLevel;
     use kordi_core::agent_session_runtime::{
         AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost,
     };
@@ -652,7 +668,7 @@ mod tests {
 
         let (mut controller, mut command_rx) = build_test_controller(tempdir.path().to_path_buf());
         controller
-            .handle_model_selection_command(Some("gpt-4o"))
+            .handle_model_selection_command(Some("gpt-5.6-sol"))
             .expect("handle model selection");
 
         let commands = drain_commands(&mut command_rx);
@@ -784,8 +800,8 @@ mod tests {
 
         Settings {
             models: Some(vec![ModelOverride {
-                id: "gpt-4o".to_string(),
-                name: Some("gpt-4o".to_string()),
+                id: "gpt-5.6-sol".to_string(),
+                name: Some("gpt-5.6-sol".to_string()),
                 provider: "openrouter".to_string(),
                 api: Some("openai-completions".to_string()),
                 base_url: Some("https://openrouter.ai/api/v1".to_string()),
@@ -801,11 +817,11 @@ mod tests {
 
         let (mut controller, mut command_rx) = build_test_controller(tempdir.path().to_path_buf());
         assert_eq!(
-            controller.matching_model_providers("gpt-4o"),
+            controller.matching_model_providers("gpt-5.6-sol"),
             vec!["openai".to_string(), "openrouter".to_string()]
         );
         controller
-            .handle_model_selection_command(Some("gpt-4o"))
+            .handle_model_selection_command(Some("gpt-5.6-sol"))
             .expect("handle model selection");
 
         let commands = drain_commands(&mut command_rx);
@@ -823,10 +839,10 @@ mod tests {
             .expect("provider chooser menu");
 
         assert_eq!(menu.0, MODEL_PROVIDER_MENU_ID);
-        assert_eq!(menu.1, "Select provider for 'gpt-4o'");
+        assert_eq!(menu.1, "Select provider for 'gpt-5.6-sol'");
         assert_eq!(
             controller.pending_model_provider_search.as_deref(),
-            Some("gpt-4o")
+            Some("gpt-5.6-sol")
         );
         assert_eq!(
             menu.2
@@ -851,5 +867,26 @@ mod tests {
         assert!(menu.2[1].detail.as_deref().is_some_and(|detail| {
             detail.contains("active: API key") && detail.contains("saved ")
         }));
+    }
+
+    #[test]
+    fn model_selection_clamps_thinking_for_non_openai_destinations() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let (mut controller, _command_rx) = build_test_controller(tempdir.path().to_path_buf());
+        controller.session_setup.thinking_level = ThinkingLevel::Max.as_str().to_string();
+        let mut anthropic = test_model();
+        anthropic.id = "claude-sonnet-test".to_string();
+        anthropic.name = anthropic.id.clone();
+        anthropic.provider = "anthropic".to_string();
+        anthropic.api = ApiType::AnthropicMessages;
+        anthropic.reasoning = true;
+
+        controller.apply_model_selection_with_auth(anthropic, None, None);
+
+        assert_eq!(controller.session_setup.thinking_level, "high");
+        assert_eq!(
+            controller.runtime_host.session().thinking_level(),
+            ThinkingLevel::High
+        );
     }
 }

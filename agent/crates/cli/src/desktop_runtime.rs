@@ -31,8 +31,9 @@ pub use model_options::{
 };
 
 use model_options::{
-    effective_thinking_for_model, normalize_setup_thinking, request_thinking_for_model,
-    resolve_auth_choice_override_for_model, resolve_model_candidate,
+    effective_thinking_for_model_with_auth, normalize_setup_thinking,
+    request_thinking_for_model_with_auth, resolve_auth_choice_override_for_model,
+    resolve_model_candidate,
 };
 use session_catalog::{
     load_project_info, open_sessions_db, project_group_id, repair_session_title_from_history,
@@ -512,22 +513,31 @@ impl DesktopRuntimeSession {
         build_agent_profile_from_setup(&self.setup)
     }
 
-    pub fn set_model(&mut self, requested_model: &str) -> Result<()> {
+    fn apply_model(&mut self, requested_model: &str) -> Result<ThinkingLevel> {
         let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
         let model =
             resolve_model_candidate(&settings, requested_model, Some(&self.setup.model.provider))?;
-        let changed =
-            self.setup.model.provider != model.provider || self.setup.model.id != model.id;
         self.setup.model = model;
         let requested_thinking =
             ThinkingLevel::parse(&self.setup.thinking_level).unwrap_or(ThinkingLevel::Off);
-        let effective_thinking =
-            effective_thinking_for_model(requested_thinking, &self.setup.model);
-        let thinking_changed = self.setup.thinking_level != effective_thinking.as_str();
-        if thinking_changed {
-            self.setup.thinking_level = effective_thinking.as_str().to_string();
-        }
         refresh_provider_runtime_fields(&mut self.setup);
+        let effective_thinking = effective_thinking_for_model_with_auth(
+            requested_thinking,
+            &self.setup.model,
+            self.setup.auth.as_ref().map(|auth| auth.method),
+        );
+        self.setup.thinking_level = effective_thinking.as_str().to_string();
+        Ok(effective_thinking)
+    }
+
+    pub fn set_model(&mut self, requested_model: &str) -> Result<()> {
+        let previous_provider = self.setup.model.provider.clone();
+        let previous_model = self.setup.model.id.clone();
+        let previous_thinking = self.setup.thinking_level.clone();
+        let effective_thinking = self.apply_model(requested_model)?;
+        let changed =
+            previous_provider != self.setup.model.provider || previous_model != self.setup.model.id;
+        let thinking_changed = previous_thinking != self.setup.thinking_level;
         // Only record a model/thinking-level change as a transcript
         // entry once the session actually has visible content. Forks
         // resolve their default model at first activation; recording
@@ -548,12 +558,44 @@ impl DesktopRuntimeSession {
         Ok(())
     }
 
+    pub fn set_explicit_config(
+        &mut self,
+        requested_model: Option<&str>,
+        requested_thinking: Option<&str>,
+    ) -> Result<()> {
+        let previous_provider = self.setup.model.provider.clone();
+        let previous_model = self.setup.model.id.clone();
+        let previous_thinking = self.setup.thinking_level.clone();
+
+        if let Some(model) = requested_model {
+            self.apply_model(model)?;
+        }
+        if let Some(thinking) = requested_thinking {
+            self.apply_thinking(thinking)?;
+        }
+
+        let model_changed =
+            previous_provider != self.setup.model.provider || previous_model != self.setup.model.id;
+        let thinking_changed = previous_thinking != self.setup.thinking_level;
+        ensure_session_row_created(&mut self.setup)?;
+        if model_changed {
+            append_model_change_entry(&self.setup.conn, &self.setup.session_id, &self.setup.model)?;
+        }
+        if thinking_changed {
+            let thinking = ThinkingLevel::parse(&self.setup.thinking_level)
+                .ok_or_else(|| anyhow!("Unknown thinking level: {}", self.setup.thinking_level))?;
+            append_thinking_level_change_entry(&self.setup.conn, &self.setup.session_id, thinking)?;
+        }
+        Ok(())
+    }
+
     pub fn set_auth_choice(&mut self, provider: &str, choice: &str) -> Result<()> {
         let provider = provider.trim();
         let choice = choice.trim();
         if provider.is_empty() || choice.is_empty() {
             self.setup.auth_choice_override = None;
             refresh_provider_runtime_fields(&mut self.setup);
+            normalize_setup_thinking(&mut self.setup);
             return Ok(());
         }
 
@@ -575,15 +617,26 @@ impl DesktopRuntimeSession {
             choice: choice.to_string(),
         });
         refresh_provider_runtime_fields(&mut self.setup);
+        normalize_setup_thinking(&mut self.setup);
         Ok(())
     }
 
-    pub fn set_thinking(&mut self, requested_thinking: &str) -> Result<()> {
+    fn apply_thinking(&mut self, requested_thinking: &str) -> Result<ThinkingLevel> {
         let requested = ThinkingLevel::parse(requested_thinking)
             .ok_or_else(|| anyhow!("Unknown thinking level: {requested_thinking}"))?;
-        let thinking = effective_thinking_for_model(requested, &self.setup.model);
-        let changed = self.setup.thinking_level != thinking.as_str();
+        let thinking = effective_thinking_for_model_with_auth(
+            requested,
+            &self.setup.model,
+            self.setup.auth.as_ref().map(|auth| auth.method),
+        );
         self.setup.thinking_level = thinking.as_str().to_string();
+        Ok(thinking)
+    }
+
+    pub fn set_thinking(&mut self, requested_thinking: &str) -> Result<()> {
+        let previous_thinking = self.setup.thinking_level.clone();
+        let thinking = self.apply_thinking(requested_thinking)?;
+        let changed = previous_thinking != self.setup.thinking_level;
         if changed && self.setup.session_created {
             append_thinking_level_change_entry(&self.setup.conn, &self.setup.session_id, thinking)?;
         }
@@ -1145,7 +1198,11 @@ fn build_turn_config(
     };
     let tool_registry = std::mem::take(&mut setup.tool_registry);
 
-    let request_thinking = request_thinking_for_model(&setup.thinking_level, &setup.model);
+    let request_thinking = request_thinking_for_model_with_auth(
+        &setup.thinking_level,
+        &setup.model,
+        setup.auth.as_ref().map(|auth| auth.method),
+    );
 
     Ok(TurnConfig {
         conn: sibling_conn,

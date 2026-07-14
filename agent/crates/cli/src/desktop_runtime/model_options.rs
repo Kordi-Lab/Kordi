@@ -90,160 +90,22 @@ fn desktop_model_options_cache_key(cwd: &Path, settings: &Settings) -> String {
     parts.join("|")
 }
 
-const OFF_ONLY_THINKING_LEVELS: [ThinkingLevel; 1] = [ThinkingLevel::Off];
-const DEFAULT_ONLY_THINKING_LEVELS: [ThinkingLevel; 1] = [ThinkingLevel::Default];
-const LOCAL_EFFORT_THINKING_LEVELS: [ThinkingLevel; 3] = [
-    ThinkingLevel::Low,
-    ThinkingLevel::Medium,
-    ThinkingLevel::High,
-];
-const STANDARD_THINKING_LEVELS: [ThinkingLevel; 5] = [
-    ThinkingLevel::Off,
-    ThinkingLevel::Minimal,
-    ThinkingLevel::Low,
-    ThinkingLevel::Medium,
-    ThinkingLevel::High,
-];
-const XHIGH_THINKING_LEVELS: [ThinkingLevel; 6] = [
-    ThinkingLevel::Off,
-    ThinkingLevel::Minimal,
-    ThinkingLevel::Low,
-    ThinkingLevel::Medium,
-    ThinkingLevel::High,
-    ThinkingLevel::XHigh,
-];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ThinkingControlMode {
-    OffOnly,
-    DefaultOnly,
-    LocalEffort,
-    Standard,
-    XHigh,
-}
-
-fn normalized_model_capability_id(model: &Model) -> String {
-    [
-        model.provider.as_str(),
-        model.id.as_str(),
-        model.name.as_str(),
-    ]
-    .join("/")
-    .to_ascii_lowercase()
-    .replace([' ', '_'], "-")
-}
-
-fn normalized_local_provider_id(provider: &str) -> String {
-    login::normalize_provider_for_model_selection(provider)
-}
-
-fn is_ollama_model(model: &Model) -> bool {
-    normalized_local_provider_id(&model.provider) == "ollama"
-}
-
-fn local_model_matches_any(model: &Model, needles: &[&str]) -> bool {
-    let id = normalized_model_capability_id(model);
-    needles.iter().any(|needle| id.contains(needle))
-}
-
-// Ollama documents GPT-OSS as the local family with tunable `think` levels
-// (`low`/`medium`/`high`) and no fully disabled mode. Other known local
-// thinking families only expose a provider/model default in Kordi so we avoid
-// presenting unsupported effort controls.
-fn local_model_supports_effort_levels(model: &Model) -> bool {
-    if !is_ollama_model(model) {
-        return false;
-    }
-    local_model_matches_any(model, &["gpt-oss", "gptoss"])
-}
-
-fn local_model_supports_default_thinking(model: &Model) -> bool {
-    local_model_matches_any(
-        model,
-        &[
-            "thinking",
-            "reasoning",
-            "reasoner",
-            "qwen3",
-            "qwen-3",
-            "qwq",
-            "deepseek-r1",
-            "deepseek-v3.1",
-            "deepseek-v3-1",
-            "deepseek-v31",
-            "gemma-3n",
-            "gemma3n",
-            "gemma-4",
-            "gemma4",
-            "magistral",
-            "phi-4-reasoning",
-            "phi4-reasoning",
-            "seed-oss",
-            "seedoss",
-            "glm-z1",
-            "glmz1",
-        ],
-    ) || (!is_ollama_model(model) && local_model_matches_any(model, &["gpt-oss", "gptoss"]))
-        || model.reasoning
-}
-
-fn local_thinking_control_mode(model: &Model) -> Option<ThinkingControlMode> {
-    if !login::is_local_openai_provider(&model.provider) {
-        return None;
-    }
-
-    if local_model_supports_effort_levels(model) {
-        Some(ThinkingControlMode::LocalEffort)
-    } else if local_model_supports_default_thinking(model) {
-        Some(ThinkingControlMode::DefaultOnly)
-    } else {
-        Some(ThinkingControlMode::OffOnly)
-    }
-}
-
-fn supports_xhigh(model: &Model) -> bool {
-    if !model.reasoning || login::is_local_openai_provider(&model.provider) {
-        return false;
-    }
-
-    let id = normalized_model_capability_id(model);
-    [
-        "gpt-5.2", "gpt-5-2", "gpt-5.3", "gpt-5-3", "gpt-5.4", "gpt-5-4", "gpt-5.5", "gpt-5-5",
-    ]
-    .iter()
-    .any(|needle| id.contains(needle))
-        || ((id.contains("claude-opus-4-6") || id.contains("claude-opus-4.6"))
-            || (id.contains("claude-opus-4-7") || id.contains("claude-opus-4.7")))
-        || (id.contains("deepseek")
-            && (id.contains("v4-pro") || id.contains("v4pro") || id.contains("v4/pro")))
-}
-
-fn thinking_control_mode_for_model(model: &Model) -> ThinkingControlMode {
-    if let Some(mode) = local_thinking_control_mode(model) {
-        return mode;
-    }
-
-    if !model.reasoning {
-        ThinkingControlMode::OffOnly
-    } else if supports_xhigh(model) {
-        ThinkingControlMode::XHigh
-    } else {
-        ThinkingControlMode::Standard
-    }
-}
-
-fn available_thinking_levels_for_model(model: &Model) -> &'static [ThinkingLevel] {
-    match thinking_control_mode_for_model(model) {
-        ThinkingControlMode::OffOnly => &OFF_ONLY_THINKING_LEVELS,
-        ThinkingControlMode::DefaultOnly => &DEFAULT_ONLY_THINKING_LEVELS,
-        ThinkingControlMode::LocalEffort => &LOCAL_EFFORT_THINKING_LEVELS,
-        ThinkingControlMode::Standard => &STANDARD_THINKING_LEVELS,
-        ThinkingControlMode::XHigh => &XHIGH_THINKING_LEVELS,
-    }
+fn available_thinking_levels_for_model(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> &'static [ThinkingLevel] {
+    crate::runtime_model::thinking_levels_for_model(model, auth_method)
 }
 
 pub fn desktop_thinking_levels_for_model(model: &Model) -> Vec<String> {
-    available_thinking_levels_for_model(model)
+    desktop_thinking_levels_for_model_with_auth(model, None)
+}
+
+pub(super) fn desktop_thinking_levels_for_model_with_auth(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> Vec<String> {
+    available_thinking_levels_for_model(model, auth_method)
         .iter()
         .map(|level| level.as_str().to_string())
         .collect()
@@ -260,54 +122,45 @@ pub fn desktop_thinking_levels_for_model_id(
     let model = crate::runtime_model::resolve_or_synthesize_model_with_settings(
         &registry, settings, provider, model_id,
     );
-    desktop_thinking_levels_for_model(&model)
+    let auth_method = login::resolve_provider_auth(provider)
+        .map(|auth| auth.method)
+        .or_else(|| login::active_auth_method(provider));
+    desktop_thinking_levels_for_model_with_auth(&model, auth_method)
 }
 
-fn fallback_thinking_for_levels(levels: &[ThinkingLevel]) -> ThinkingLevel {
-    if levels.contains(&ThinkingLevel::Off) {
-        ThinkingLevel::Off
-    } else if levels.contains(&ThinkingLevel::Default) {
-        ThinkingLevel::Default
-    } else if levels.contains(&ThinkingLevel::Medium) {
-        ThinkingLevel::Medium
-    } else {
-        levels.first().copied().unwrap_or(ThinkingLevel::Off)
-    }
-}
-
-pub(super) fn effective_thinking_for_model(
+pub(super) fn effective_thinking_for_model_with_auth(
     requested: ThinkingLevel,
     model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
 ) -> ThinkingLevel {
-    let levels = available_thinking_levels_for_model(model);
-    if levels.contains(&requested) {
-        requested
-    } else if requested == ThinkingLevel::XHigh && levels.contains(&ThinkingLevel::High) {
-        ThinkingLevel::High
-    } else {
-        fallback_thinking_for_levels(levels)
-    }
+    crate::runtime_model::effective_thinking_level_for_model(model, auth_method, requested)
 }
 
 pub(super) fn normalize_setup_thinking(setup: &mut SessionRuntimeSetup) {
     let requested = ThinkingLevel::parse(&setup.thinking_level).unwrap_or(ThinkingLevel::Off);
-    setup.thinking_level = effective_thinking_for_model(requested, &setup.model)
-        .as_str()
-        .to_string();
+    setup.thinking_level = effective_thinking_for_model_with_auth(
+        requested,
+        &setup.model,
+        setup.auth.as_ref().map(|auth| auth.method),
+    )
+    .as_str()
+    .to_string();
 }
 
-pub(super) fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
+pub(super) fn request_thinking_for_model_with_auth(
+    thinking_level: &str,
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> Option<String> {
     let requested = ThinkingLevel::parse(thinking_level).unwrap_or(ThinkingLevel::Off);
-    let effective = effective_thinking_for_model(requested, model);
-    match effective {
-        ThinkingLevel::Off | ThinkingLevel::Default => None,
-        other => other
-            .reasoning_enabled()
-            .then(|| other.as_str().to_string()),
-    }
+    let effective = effective_thinking_for_model_with_auth(requested, model, auth_method);
+    crate::runtime_model::request_thinking_value(model, auth_method, effective)
 }
 
-fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
+fn desktop_model_option_from_model(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> DesktopChatModelOption {
     DesktopChatModelOption {
         provider: model.provider.clone(),
         provider_label: login::provider_display_name(&model.provider).into_owned(),
@@ -318,7 +171,7 @@ fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
             login::provider_display_name(&model.provider),
             model.name
         ),
-        thinking_levels: desktop_thinking_levels_for_model(model),
+        thinking_levels: desktop_thinking_levels_for_model_with_auth(model, auth_method),
     }
 }
 
@@ -361,14 +214,20 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
         }
     }
     models.sort_by(|left, right| {
-        left.provider
-            .cmp(&right.provider)
-            .then_with(|| left.id.cmp(&right.id))
+        left.provider.cmp(&right.provider).then_with(|| {
+            login::model_catalog_rank(&left.provider, &left.id)
+                .cmp(&login::model_catalog_rank(&right.provider, &right.id))
+        })
     });
 
     let options = models
         .iter()
-        .map(desktop_model_option_from_model)
+        .map(|model| {
+            let auth_method = login::resolve_provider_auth(&model.provider)
+                .map(|auth| auth.method)
+                .or_else(|| login::active_auth_method(&model.provider));
+            desktop_model_option_from_model(model, auth_method)
+        })
         .collect::<Vec<_>>();
 
     if !options.is_empty()

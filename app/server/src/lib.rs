@@ -1164,6 +1164,7 @@ fn protocol_thinking_level(level: &ThinkingLevel) -> &'static str {
         ThinkingLevel::Medium => "medium",
         ThinkingLevel::High => "high",
         ThinkingLevel::Xhigh => "xhigh",
+        ThinkingLevel::Max => "max",
     }
 }
 
@@ -1192,6 +1193,11 @@ mod tests {
     use tempfile::TempDir;
     use tokio::sync::Notify;
     use tower::util::ServiceExt;
+
+    #[test]
+    fn max_thinking_level_maps_to_cli_value() {
+        assert_eq!(protocol_thinking_level(&ThinkingLevel::Max), "max");
+    }
 
     #[derive(Clone)]
     struct FakeBridgesStatusProvider {

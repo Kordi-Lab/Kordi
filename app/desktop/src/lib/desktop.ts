@@ -19,6 +19,7 @@ import type {
   DesktopBridgeInvite,
   DesktopBridgeState,
   DesktopChatProjectSource,
+  DesktopChatSessionDetail,
   DesktopChatState,
   DesktopChatTurnSnapshot,
   MessageAttachment,
@@ -425,6 +426,11 @@ export async function cancelDesktopAuthAttempt(attemptId: string) {
 export async function fetchDesktopChatState(activeSessionId?: string) {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopChatState>('desktop_chat_state', { activeSessionId });
+}
+
+export async function fetchDesktopChatSessionDetail(sessionId: string) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<DesktopChatSessionDetail>('desktop_chat_session_detail', { sessionId });
 }
 
 export async function fetchDesktopBridgeState() {

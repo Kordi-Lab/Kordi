@@ -2,17 +2,25 @@ use super::*;
 use std::collections::HashSet;
 
 const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
+    "gpt-5.6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
     "gpt-5.5",
     "gpt-5.4-mini",
     "gpt-5.4",
     "gpt-5.3-codex-spark",
-    "gpt-5.3-codex",
-    "gpt-5.2-codex",
-    "gpt-5.2",
-    "gpt-5.1-codex-mini",
-    "gpt-5.1-codex-max",
-    "gpt-5.1",
 ];
+
+pub fn model_catalog_rank(provider: &str, model_id: &str) -> usize {
+    if normalize_provider_for_model_selection(provider) == "openai" {
+        OPENAI_CODEX_OAUTH_MODEL_IDS
+            .iter()
+            .position(|id| id.eq_ignore_ascii_case(model_id))
+            .unwrap_or(usize::MAX)
+    } else {
+        usize::MAX
+    }
+}
 
 const ANTHROPIC_OAUTH_MODEL_IDS: &[&str] = &[
     "claude-opus-4-7",
@@ -184,14 +192,7 @@ fn preferred_model_for_provider(provider: &str) -> Option<String> {
     match provider {
         "anthropic" => Some("claude-opus-4-6".to_string()),
         "openai" | "openai-codex" => {
-            if resolve_provider_auth("openai")
-                .as_ref()
-                .is_some_and(|auth| matches!(auth.method, ProviderAuthMethod::OAuth))
-            {
-                Some("gpt-5.5".to_string())
-            } else {
-                Some("gpt-5.4".to_string())
-            }
+            Some(kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID.to_string())
         }
         "google" => Some("gemini-3.1-pro".to_string()),
         "github-copilot" => {
@@ -240,7 +241,7 @@ pub fn preferred_startup_provider_and_model(
     }
 
     // Otherwise prefer OpenAI first when it is authenticated, so the app's
-    // startup default follows the active OpenAI auth path (ChatGPT OAuth prefers gpt-5.5).
+    // startup default follows the active OpenAI auth path.
     let openai_preferred = preferred_model_for_provider("openai");
     if let Some(model) =
         resolve_available_model_for_provider(settings, "openai", openai_preferred.as_deref())
@@ -414,14 +415,33 @@ mod tests {
 
         let model_ids = model_ids_for_provider("openai");
 
-        assert!(model_ids.contains(&"gpt-5.5".to_string()));
-        assert!(model_ids.contains(&"gpt-5.4".to_string()));
+        assert_eq!(
+            model_ids,
+            [
+                "gpt-5.6-luna",
+                "gpt-5.6-sol",
+                "gpt-5.6-terra",
+                "gpt-5.5",
+                "gpt-5.4-mini",
+                "gpt-5.4",
+                "gpt-5.3-codex-spark",
+            ]
+        );
+        assert!(!model_ids.contains(&"gpt-5.6".to_string()));
         assert!(!model_ids.contains(&"gpt-4o-mini".to_string()));
         assert!(!model_ids.contains(&"gpt-5".to_string()));
         assert!(!model_ids.contains(&"gpt-5-mini".to_string()));
         assert_eq!(
             available_model_for_provider(&Settings::default(), "openai", Some("gpt-5")),
-            Some("gpt-5.5".to_string()),
+            Some("gpt-5.6-sol".to_string()),
+        );
+        assert_eq!(
+            available_model_for_provider(&Settings::default(), "openai", Some("gpt-5.4")),
+            Some("gpt-5.4".to_string()),
+        );
+        assert_eq!(
+            available_model_for_provider(&Settings::default(), "openai", Some("gpt-5.2")),
+            Some("gpt-5.6-sol".to_string()),
         );
     }
 
@@ -436,6 +456,10 @@ mod tests {
         assert!(model_ids.contains(&"gpt-4o-mini".to_string()));
         assert!(model_ids.contains(&"gpt-5".to_string()));
         assert!(model_ids.contains(&"gpt-5.5".to_string()));
+        assert_eq!(
+            available_model_for_provider(&Settings::default(), "openai", None),
+            Some("gpt-5.6-sol".to_string()),
+        );
     }
 
     #[test]
@@ -484,7 +508,17 @@ mod tests {
 
         assert_eq!(
             preferred_startup_provider_and_model(&settings),
-            Some(("openai".to_string(), "gpt-5.5".to_string())),
+            Some(("openai".to_string(), "gpt-5.6-sol".to_string())),
+        );
+
+        let explicit_settings = Settings {
+            default_provider: Some("openai".to_string()),
+            default_model: Some("gpt-5.4".to_string()),
+            ..Settings::default()
+        };
+        assert_eq!(
+            preferred_startup_provider_and_model(&explicit_settings),
+            Some(("openai".to_string(), "gpt-5.4".to_string())),
         );
     }
 }

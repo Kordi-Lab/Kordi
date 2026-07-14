@@ -16,15 +16,12 @@ pub(super) fn resolve_codex_url(base_url: &str) -> String {
     }
 }
 
-pub(super) fn codex_reasoning_effort(thinking: &str) -> Option<&'static str> {
-    match thinking {
-        "default" => None,
-        "off" => Some("none"),
-        "low" | "minimal" => Some("low"),
-        "medium" => Some("medium"),
-        "high" | "xhigh" => Some("high"),
-        _ => Some("medium"),
-    }
+pub(super) fn codex_reasoning_effort(model_id: &str, thinking: &str) -> Option<&'static str> {
+    super::super::capabilities::reasoning_effort(
+        model_id,
+        super::super::capabilities::OpenAiAuthRoute::CodexOAuth,
+        thinking,
+    )
 }
 
 fn normalize_call_id(id: &str) -> &str {
@@ -240,4 +237,22 @@ pub(super) fn convert_messages_for_codex(messages: &[Value]) -> Vec<Value> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod reasoning_tests {
+    use super::codex_reasoning_effort;
+
+    #[test]
+    fn codex_effort_maps_minimal_but_preserves_new_high_levels() {
+        assert_eq!(
+            codex_reasoning_effort("gpt-5.6-sol", "minimal"),
+            Some("low")
+        );
+        assert_eq!(
+            codex_reasoning_effort("gpt-5.6-sol", "xhigh"),
+            Some("xhigh")
+        );
+        assert_eq!(codex_reasoning_effort("gpt-5.6-sol", "max"), Some("max"));
+    }
 }

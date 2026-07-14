@@ -7,6 +7,53 @@ fn execution_mode_menu_label(mode: ExecutionMode) -> &'static str {
     }
 }
 
+fn thinking_level_menu_values(
+    model: &kordi_provider::registry::Model,
+    auth_method: Option<crate::login::ProviderAuthMethod>,
+) -> Vec<&'static str> {
+    crate::runtime_model::thinking_levels_for_model(model, auth_method)
+        .iter()
+        .map(|level| level.as_str())
+        .collect()
+}
+
+#[cfg(test)]
+mod thinking_menu_tests {
+    use super::thinking_level_menu_values;
+    use crate::login::ProviderAuthMethod;
+    use kordi_provider::registry::{ApiType, CostConfig, Model, ModelInput};
+
+    fn openai_model(id: &str) -> Model {
+        Model {
+            id: id.to_string(),
+            name: id.to_string(),
+            provider: "openai".to_string(),
+            api: ApiType::OpenaiResponses,
+            context_window: 272_000,
+            max_tokens: 128_000,
+            reasoning: true,
+            input: vec![ModelInput::Text],
+            base_url: None,
+            cost: CostConfig::default(),
+        }
+    }
+
+    #[test]
+    fn openai_thinking_menu_uses_route_specific_capabilities() {
+        assert_eq!(
+            thinking_level_menu_values(
+                &openai_model("gpt-5.6-sol"),
+                Some(ProviderAuthMethod::OAuth)
+            ),
+            vec!["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        );
+        assert_eq!(
+            thinking_level_menu_values(&openai_model("gpt-5.5"), Some(ProviderAuthMethod::ApiKey)),
+            vec!["off", "low", "medium", "high", "xhigh"]
+        );
+    }
+}
+
 fn persist_tui_compaction_settings(
     enabled: bool,
     reserve_tokens: u64,
@@ -146,7 +193,10 @@ impl TuiController {
             ),
             "thinking" => (
                 "Thinking level",
-                vec!["off", "low", "medium", "high", "xhigh"],
+                thinking_level_menu_values(
+                    &self.session_setup.model,
+                    self.session_setup.auth.as_ref().map(|auth| auth.method),
+                ),
             ),
             "execution-mode" => ("Execution mode", vec!["safety", "yolo"]),
             "compaction-enabled" => ("Auto-compact", vec!["true", "false"]),

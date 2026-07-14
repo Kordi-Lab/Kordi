@@ -2,6 +2,14 @@ use super::*;
 use kordi_core::settings::ProviderOverride;
 use std::sync::Mutex;
 
+fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
+    model_options::effective_thinking_for_model_with_auth(requested, model, None)
+}
+
+fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
+    model_options::request_thinking_for_model_with_auth(thinking_level, model, None)
+}
+
 fn env_lock() -> &'static Mutex<()> {
     crate::login::auth_test_env_lock()
 }
@@ -137,6 +145,23 @@ async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd
         .map(|option| option.value.as_str())
         .collect::<Vec<_>>();
 
+    assert_eq!(
+        values
+            .iter()
+            .copied()
+            .filter(|value| value.starts_with("openai/"))
+            .collect::<Vec<_>>(),
+        vec![
+            "openai/gpt-5.6-luna",
+            "openai/gpt-5.6-sol",
+            "openai/gpt-5.6-terra",
+            "openai/gpt-5.5",
+            "openai/gpt-5.4-mini",
+            "openai/gpt-5.4",
+            "openai/gpt-5.3-codex-spark",
+        ]
+    );
+
     assert!(values.contains(&"openai/gpt-5.5"));
     assert!(!values.contains(&"openai/gpt-5"));
     assert!(!values.contains(&"openai/gpt-4o-mini"));
@@ -249,6 +274,35 @@ async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result
         stored.is_some(),
         "task_operator should use requested create_with_id session id"
     );
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
+async fn explicit_config_on_new_canonical_runtime_survives_restart() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings {
+        default_provider: Some("openai".to_string()),
+        default_model: Some("gpt-5.6-sol".to_string()),
+        ..Settings::default()
+    }
+    .save_global()?;
+
+    let session_id = "session:self-agent:canonical-runtime";
+    let mut runtime =
+        DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), session_id).await?;
+    runtime.set_explicit_config(Some("openai/gpt-5.6-luna"), Some("max"))?;
+    drop(runtime);
+
+    let resumed = DesktopRuntimeSession::resume(cwd.path().to_path_buf(), session_id).await?;
+    let detail = resumed.detail()?;
+    assert_eq!(detail.provider, "openai");
+    assert_eq!(detail.model, "gpt-5.6-luna");
+    assert_eq!(detail.thinking, "max");
     Ok(())
 }
 
@@ -392,6 +446,14 @@ fn non_reasoning_models_do_not_send_thinking_controls() {
         request_thinking_for_model("medium", &reasoning_model).as_deref(),
         Some("medium")
     );
+    assert_eq!(
+        request_thinking_for_model("off", &reasoning_model).as_deref(),
+        Some("off")
+    );
+    assert_eq!(
+        request_thinking_for_model("default", &reasoning_model),
+        None
+    );
 }
 
 #[test]
@@ -425,6 +487,44 @@ fn xhigh_is_exposed_only_for_supported_model_families() {
     assert_eq!(
         effective_thinking_for_model(ThinkingLevel::XHigh, &local),
         ThinkingLevel::Default
+    );
+}
+
+#[test]
+fn openai_thinking_levels_follow_model_and_auth_route() {
+    let gpt_56 = test_model("openai", "gpt-5.6-luna", true);
+    for method in [
+        login::ProviderAuthMethod::ApiKey,
+        login::ProviderAuthMethod::OAuth,
+    ] {
+        assert_eq!(
+            model_options::desktop_thinking_levels_for_model_with_auth(&gpt_56, Some(method)),
+            vec!["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        );
+    }
+
+    let gpt_55 = test_model("openai", "gpt-5.5", true);
+    assert_eq!(
+        model_options::desktop_thinking_levels_for_model_with_auth(
+            &gpt_55,
+            Some(login::ProviderAuthMethod::ApiKey),
+        ),
+        vec!["off", "low", "medium", "high", "xhigh"]
+    );
+    assert_eq!(
+        model_options::desktop_thinking_levels_for_model_with_auth(
+            &gpt_55,
+            Some(login::ProviderAuthMethod::OAuth),
+        ),
+        vec!["off", "minimal", "low", "medium", "high", "xhigh"]
+    );
+    assert_eq!(
+        model_options::effective_thinking_for_model_with_auth(
+            ThinkingLevel::Max,
+            &gpt_55,
+            Some(login::ProviderAuthMethod::OAuth),
+        ),
+        ThinkingLevel::XHigh
     );
 }
 
