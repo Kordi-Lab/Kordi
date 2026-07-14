@@ -1,4 +1,11 @@
-export const KORDI_MANUAL_UPDATE_URL = 'https://coordinar.io/updates/releases/latest/Kordi.dmg';
+const KORDI_RELEASE_ORIGIN = 'https://coordinar.io';
+const BETA_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$/;
+
+export function manualUpdateUrlForVersion(version: string | undefined) {
+  if (!version || !BETA_VERSION.test(version)) return undefined;
+  const encoded = encodeURIComponent(version);
+  return `${KORDI_RELEASE_ORIGIN}/updates/releases/${encoded}/Kordi_${encoded}_aarch64.dmg`;
+}
 
 export type DesktopUpdaterDownloadEvent =
   | { event: 'Started'; data: { contentLength?: number } }
@@ -46,7 +53,7 @@ type DesktopUpdaterControllerOptions = {
 function errorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message;
   if (typeof error === 'string' && error.trim()) return error;
-  return 'Unable to install the signed Kordi update.';
+  return 'Unable to install the verified Kordi update.';
 }
 
 function stateForUpdate(
@@ -59,7 +66,7 @@ function stateForUpdate(
     currentVersion: update.currentVersion,
     latestVersion: update.version,
     notes: update.body,
-    manualDownloadUrl: KORDI_MANUAL_UPDATE_URL,
+    manualDownloadUrl: manualUpdateUrlForVersion(update.version),
     ...extra,
   };
 }

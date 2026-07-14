@@ -281,9 +281,9 @@ function desktopUpdateStatusMessage(state: DesktopUpdaterState) {
     const total = typeof state.totalBytes === 'number' ? ` of ${formatUpdateBytes(state.totalBytes)}` : '';
     return `Downloading update… ${received}${total}`;
   }
-  if (state.status === 'installing') return 'Installing signed update…';
+  if (state.status === 'installing') return 'Installing verified update…';
   if (state.status === 'relaunching') return 'Relaunching Kordi…';
-  if (state.status === 'failed') return state.error || 'Unable to install the signed update.';
+  if (state.status === 'failed') return state.error || 'Unable to install the verified update.';
   return null;
 }
 

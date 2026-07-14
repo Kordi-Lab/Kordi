@@ -12,6 +12,9 @@ function readText(relativePath) {
   return readFileSync(new URL(relativePath, desktopRoot), 'utf8');
 }
 
+const acceptanceEndpoint =
+  'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+
 test('desktop Tauri config creates signed updater artifacts from the product endpoint', () => {
   const base = readJson('src-tauri/tauri.conf.json');
   const cloud = readJson('src-tauri/tauri.cloud.conf.json');
@@ -29,6 +32,35 @@ test('desktop Tauri config creates signed updater artifacts from the product end
 
   const serializedEndpoints = JSON.stringify(endpoints);
   assert.doesNotMatch(serializedEndpoints, /http:|github|minio|localhost|127\.0\.0\.1|googleapis|gcp/i);
+});
+
+test('acceptance flavors are ad-hoc, updater-signed, and isolated from beta', () => {
+  const base = readJson('src-tauri/tauri.conf.json');
+  const cloud = readJson('src-tauri/tauri.cloud.conf.json');
+  const target = readJson('src-tauri/tauri.cloud.acceptance.conf.json');
+  const bootstrap = readJson('src-tauri/tauri.cloud.acceptance-bootstrap.conf.json');
+  const pkg = readJson('package.json');
+
+  assert.equal(base.version, '0.0.1-beta.6');
+  assert.equal(base.bundle?.macOS?.signingIdentity, undefined);
+  assert.deepEqual(base.plugins?.updater?.endpoints, [
+    'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
+  ]);
+  assert.equal(cloud.identifier, 'io.kordi.cloud');
+
+  for (const flavor of [target, bootstrap]) {
+    assert.equal(flavor.productName, 'Kordi');
+    assert.equal(flavor.identifier, 'io.kordi.cloud');
+    assert.equal(flavor.bundle?.macOS?.signingIdentity, '-');
+    assert.deepEqual(flavor.plugins?.updater?.endpoints, [acceptanceEndpoint]);
+    assert.equal(flavor.plugins?.updater?.pubkey, undefined);
+  }
+  assert.equal(target.version, undefined);
+  assert.equal(bootstrap.version, '0.0.1-beta.5.1');
+  assert.match(pkg.scripts['tauri:build:cloud:adhoc-preview'], /tauri\.cloud\.acceptance\.conf\.json/);
+  assert.match(pkg.scripts['tauri:build:cloud:adhoc-bootstrap'], /tauri\.cloud\.acceptance-bootstrap\.conf\.json/);
+  assert.match(pkg.scripts['tauri:build:cloud:adhoc-preview'], /--bundles app,dmg/);
+  assert.match(pkg.scripts['tauri:build:cloud:adhoc-bootstrap'], /--bundles app,dmg/);
 });
 
 test('desktop capability grants only the updater and relaunch plugin permissions needed by the UI', () => {

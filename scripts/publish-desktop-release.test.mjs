@@ -6,7 +6,11 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  TAURI_UPDATER_PUBLIC_KEY,
+  assertAppBundleContract,
   clearDesktopReleaseChannel,
+  createAdhocPreviewVerifier,
+  createProductionVerifier,
   prepareDesktopRelease,
   publishDesktopRelease,
   redactPublisherText,
@@ -34,6 +38,133 @@ const TEST_SIGNATURE_TEXT = [
 ].join('\n');
 const TEST_SIGNATURE = Buffer.from(TEST_SIGNATURE_TEXT).toString('base64');
 const TEST_PUBLIC_KEY = Buffer.from(TEST_PUBLIC_KEY_TEXT).toString('base64');
+const APP_CONTRACT_BUNDLE = '/tmp/Kordi.app';
+const ACCEPTANCE_ENDPOINT =
+  'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+const PRODUCTION_ENDPOINT =
+  'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
+
+function contractRun(overrides = new Map(), calls = []) {
+  const info = `${APP_CONTRACT_BUNDLE}/Contents/Info.plist`;
+  const results = new Map([
+    [`plutil -extract CFBundleShortVersionString raw -o - ${info}`, {
+      status: 0, stdout: `${VERSION}\n`, stderr: '',
+    }],
+    [`plutil -extract CFBundleIdentifier raw -o - ${info}`, {
+      status: 0, stdout: 'io.kordi.cloud\n', stderr: '',
+    }],
+    [`codesign --verify --deep --strict --verbose=2 ${APP_CONTRACT_BUNDLE}`, {
+      status: 0, stdout: '', stderr: '',
+    }],
+    [`codesign --display --verbose=4 ${APP_CONTRACT_BUNDLE}`, {
+      status: 0, stdout: '', stderr: 'Signature=adhoc\nTeamIdentifier=not set\n',
+    }],
+    [`spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`, {
+      status: 1, stdout: '', stderr: 'rejected',
+    }],
+    [[
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '), {
+      status: 0,
+      stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`,
+      stderr: '',
+    }],
+    [[
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '), {
+      status: 1,
+      stdout: '',
+      stderr: '',
+    }],
+    ...overrides,
+  ]);
+  return (command, args = []) => {
+    const key = [command, ...args].join(' ');
+    calls.push(key);
+    return results.get(key)
+      ?? { status: 1, stdout: '', stderr: `unexpected command: ${key}` };
+  };
+}
+
+async function makeVerifierRepoFixture() {
+  const root = await mkdtemp(join(tmpdir(), 'kordi-verifier-repo-test-'));
+  const desktopRoot = join(root, 'app', 'desktop');
+  const tauriRoot = join(desktopRoot, 'src-tauri');
+  await mkdir(join(desktopRoot, 'tests'), { recursive: true });
+  await mkdir(tauriRoot, { recursive: true });
+  const packageLock = { version: VERSION, packages: { '': { version: VERSION } } };
+  const cargoVersion = `name = "kordi-desktop"\nversion = "${VERSION}"\n`;
+  const acceptanceConfig = {
+    productName: 'Kordi',
+    identifier: 'io.kordi.cloud',
+    bundle: { macOS: { signingIdentity: '-' } },
+    plugins: { updater: { endpoints: [ACCEPTANCE_ENDPOINT] } },
+  };
+  await Promise.all([
+    writeFile(join(desktopRoot, 'package.json'), JSON.stringify({ version: VERSION })),
+    writeFile(join(desktopRoot, 'package-lock.json'), JSON.stringify(packageLock)),
+    writeFile(join(tauriRoot, 'tauri.conf.json'), JSON.stringify({
+      version: VERSION,
+      plugins: { updater: { pubkey: TAURI_UPDATER_PUBLIC_KEY, endpoints: [PRODUCTION_ENDPOINT] } },
+    })),
+    writeFile(join(tauriRoot, 'tauri.cloud.conf.json'), JSON.stringify({ identifier: 'io.kordi.cloud' })),
+    writeFile(join(tauriRoot, 'tauri.cloud.acceptance.conf.json'), JSON.stringify(acceptanceConfig)),
+    writeFile(join(tauriRoot, 'tauri.cloud.acceptance-bootstrap.conf.json'), JSON.stringify({
+      ...acceptanceConfig,
+      version: '0.0.1-beta.5.1',
+    })),
+    writeFile(join(tauriRoot, 'Cargo.toml'), cargoVersion),
+    writeFile(join(tauriRoot, 'Cargo.lock'), cargoVersion),
+    writeFile(join(root, 'Cargo.lock'), cargoVersion),
+    writeFile(
+      join(desktopRoot, 'tests', 'releaseVersion.test.mjs'),
+      `const releaseName = 'V0.0.1.beta6';\nconst appVersion = '${VERSION}';\n`,
+    ),
+  ]);
+  return root;
+}
+
+function artifactVerifierRun(releaseProfile, calls) {
+  const expectedEndpoint = releaseProfile === 'adhoc-preview'
+    ? ACCEPTANCE_ENDPOINT
+    : PRODUCTION_ENDPOINT;
+  return (command, args = []) => {
+    const key = [command, ...args].join(' ');
+    calls.push(key);
+    if (command === 'git' && args[0] === 'status') return { status: 0, stdout: '', stderr: '' };
+    if (command === 'git' && args[0] === 'rev-parse') {
+      return { status: 0, stdout: '0123456789abcdef0123456789abcdef01234567\n', stderr: '' };
+    }
+    if (command === 'security') {
+      return {
+        status: 0,
+        stdout: '1) ABC "Developer ID Application: Example (TEAMID)"\n1 valid identities found\n',
+        stderr: '',
+      };
+    }
+    if (command === 'plutil' && args[1] === 'CFBundleShortVersionString') {
+      return { status: 0, stdout: `${VERSION}\n`, stderr: '' };
+    }
+    if (command === 'plutil' && args[1] === 'CFBundleIdentifier') {
+      return { status: 0, stdout: 'io.kordi.cloud\n', stderr: '' };
+    }
+    if (command === 'codesign' && args[0] === '--verify') return { status: 0, stdout: '', stderr: '' };
+    if (command === 'codesign' && args[0] === '--display') {
+      return { status: 0, stdout: '', stderr: 'Signature=adhoc\nTeamIdentifier=not set\n' };
+    }
+    if (command === 'spctl') {
+      return { status: releaseProfile === 'production' ? 0 : 1, stdout: '', stderr: 'rejected' };
+    }
+    if (command === 'rg' && args.includes('-n')) return { status: 1, stdout: '', stderr: '' };
+    if (command === 'rg' && args.includes('-F')) {
+      return { status: args.includes(expectedEndpoint) ? 0 : 1, stdout: 'Kordi\n', stderr: '' };
+    }
+    if (command === 'rg' && args.includes('-e')) return { status: 0, stdout: 'Kordi\n', stderr: '' };
+    return { status: 1, stdout: '', stderr: `unexpected command: ${key}` };
+  };
+}
 
 async function makeFixture(version = VERSION) {
   const root = await mkdtemp(join(tmpdir(), 'kordi-publisher-test-'));
@@ -253,6 +384,41 @@ test('generates deterministic beta.6 metadata, keys, checksums, and product URLs
   assert.deepEqual(await readFile(join(fixture.releaseDir, 'channel-beta-latest.json')), first.pointerBytes);
 });
 
+test('ad-hoc publication is legal only on acceptance and fails before storage', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  for (const [releaseProfile, channel] of [
+    ['adhoc-preview', 'beta'],
+    ['unsigned', 'acceptance'],
+  ]) {
+    const store = new MemoryStore();
+    await assert.rejects(
+      publishDesktopRelease(optionsFor(fixture, { releaseProfile, channel }), {
+        verifier: passingVerifier(), store, publicHttp: {},
+      }),
+      /release profile|ad-hoc preview.*acceptance/i,
+    );
+    assert.deepEqual(store.actions, []);
+  }
+});
+
+test('ad-hoc metadata is unmistakably preview-only', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture, {
+    releaseProfile: 'adhoc-preview',
+    channel: 'acceptance',
+  });
+  assert.equal(prepared.releaseProfile, 'adhoc-preview');
+  assert.equal(prepared.release.notes, `Kordi ${VERSION} ad-hoc external-test preview`);
+  assert.equal(
+    prepared.release.changelogUrl,
+    'https://github.com/Kordi-AI/Kordi/commit/0123456789abcdef0123456789abcdef01234567',
+  );
+  assert.equal(prepared.pointerKey, 'desktop/channels/acceptance/latest.json');
+  assert.equal(Object.hasOwn(prepared.release, 'releaseProfile'), false);
+});
+
 test('cryptographically verifies Tauri minisign metadata and rejects changed bytes', () => {
   const publicKey = Buffer.from(TEST_PUBLIC_KEY_TEXT).toString('base64');
   assert.doesNotThrow(() => verifyTauriUpdaterSignature(Buffer.from('test'), TEST_SIGNATURE, publicKey));
@@ -260,6 +426,304 @@ test('cryptographically verifies Tauri minisign metadata and rejects changed byt
     () => verifyTauriUpdaterSignature(Buffer.from('changed'), TEST_SIGNATURE, publicKey),
     /signature verification failed/i,
   );
+});
+
+test('application bundle contract enforces the ad-hoc profile in exact command order', () => {
+  const calls = [];
+  assert.doesNotThrow(() => assertAppBundleContract(
+    contractRun(new Map(), calls),
+    APP_CONTRACT_BUNDLE,
+    {
+      version: VERSION,
+      identifier: 'io.kordi.cloud',
+      releaseProfile: 'adhoc-preview',
+    },
+  ));
+  assert.deepEqual(calls, [
+    `plutil -extract CFBundleShortVersionString raw -o - ${APP_CONTRACT_BUNDLE}/Contents/Info.plist`,
+    `plutil -extract CFBundleIdentifier raw -o - ${APP_CONTRACT_BUNDLE}/Contents/Info.plist`,
+    `codesign --verify --deep --strict --verbose=2 ${APP_CONTRACT_BUNDLE}`,
+    `codesign --display --verbose=4 ${APP_CONTRACT_BUNDLE}`,
+    `spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`,
+    [
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '),
+    [
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '),
+  ]);
+});
+
+test('application bundle contract preserves the production Gatekeeper and endpoint checks', () => {
+  const calls = [];
+  const productionRun = contractRun(new Map([
+    [`spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`, {
+      status: 0, stdout: '', stderr: '',
+    }],
+    [[
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '), {
+      status: 0,
+      stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`,
+      stderr: '',
+    }],
+    [[
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '), {
+      status: 1,
+      stdout: '',
+      stderr: '',
+    }],
+  ]), calls);
+
+  assert.doesNotThrow(() => assertAppBundleContract(
+    productionRun,
+    APP_CONTRACT_BUNDLE,
+    {
+      version: VERSION,
+      identifier: 'io.kordi.cloud',
+      releaseProfile: 'production',
+    },
+  ));
+  assert.deepEqual(calls, [
+    `plutil -extract CFBundleShortVersionString raw -o - ${APP_CONTRACT_BUNDLE}/Contents/Info.plist`,
+    `plutil -extract CFBundleIdentifier raw -o - ${APP_CONTRACT_BUNDLE}/Contents/Info.plist`,
+    `codesign --verify --deep --strict --verbose=2 ${APP_CONTRACT_BUNDLE}`,
+    `spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`,
+    [
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '),
+    [
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
+    ].join(' '),
+  ]);
+});
+
+test('application bundle contract rejects mixed updater endpoints for both profiles', () => {
+  for (const releaseProfile of ['adhoc-preview', 'production']) {
+    const mixedEndpoints = new Map([
+      [`spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`, {
+        status: releaseProfile === 'production' ? 0 : 1,
+        stdout: '',
+        stderr: releaseProfile === 'production' ? '' : 'rejected',
+      }],
+      [[
+        'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+        ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
+      ].join(' '), {
+        status: 0, stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`, stderr: '',
+      }],
+      [[
+        'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+        PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+      ].join(' '), {
+        status: 0, stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`, stderr: '',
+      }],
+    ]);
+
+    assert.throws(
+      () => assertAppBundleContract(contractRun(mixedEndpoints), APP_CONTRACT_BUNDLE, {
+        version: VERSION,
+        identifier: 'io.kordi.cloud',
+        releaseProfile,
+      }),
+      /profile isolation|updater endpoint/i,
+      releaseProfile,
+    );
+  }
+});
+
+test('application bundle contract fails closed when the forbidden endpoint scan cannot run', () => {
+  const forbiddenCommand = [
+    'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+    PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
+  ].join(' ');
+  assert.throws(
+    () => assertAppBundleContract(contractRun(new Map([[forbiddenCommand, {
+      status: 2, stdout: '', stderr: 'inspection error',
+    }]])), APP_CONTRACT_BUNDLE, {
+      version: VERSION,
+      identifier: 'io.kordi.cloud',
+      releaseProfile: 'adhoc-preview',
+    }),
+    /inspect.*updater endpoint|profile isolation/i,
+  );
+});
+
+test('application bundle contract rejects every preview contract mismatch', () => {
+  const info = `${APP_CONTRACT_BUNDLE}/Contents/Info.plist`;
+  const rejectionCases = [
+    [
+      'wrong version',
+      new Map([[`plutil -extract CFBundleShortVersionString raw -o - ${info}`, {
+        status: 0, stdout: '0.0.1-beta.5.1\n', stderr: '',
+      }]]),
+      /version does not match/i,
+    ],
+    [
+      'wrong identifier',
+      new Map([[`plutil -extract CFBundleIdentifier raw -o - ${info}`, {
+        status: 0, stdout: 'io.kordi.desktop\n', stderr: '',
+      }]]),
+      /identifier/i,
+    ],
+    [
+      'normal endpoint',
+      new Map([[['rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+        ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE].join(' '), {
+        status: 1, stdout: '', stderr: '',
+      }]]),
+      /updater endpoint/i,
+    ],
+    [
+      'Developer ID authority',
+      new Map([[`codesign --display --verbose=4 ${APP_CONTRACT_BUNDLE}`, {
+        status: 0,
+        stdout: '',
+        stderr: 'Signature=adhoc\nAuthority=Developer ID Application: Example\nTeamIdentifier=not set\n',
+      }]]),
+      /identity-free ad-hoc/i,
+    ],
+    [
+      'invalid code signature',
+      new Map([[`codesign --verify --deep --strict --verbose=2 ${APP_CONTRACT_BUNDLE}`, {
+        status: 1, stdout: '', stderr: 'invalid',
+      }]]),
+      /codesign verification failed/i,
+    ],
+  ];
+
+  for (const [name, overrides, expected] of rejectionCases) {
+    assert.throws(
+      () => assertAppBundleContract(contractRun(overrides), APP_CONTRACT_BUNDLE, {
+        version: VERSION,
+        identifier: 'io.kordi.cloud',
+        releaseProfile: 'adhoc-preview',
+      }),
+      expected,
+      name,
+    );
+  }
+});
+
+test('profile-aware verifiers apply one bundle contract to every artifact copy', async (t) => {
+  for (const releaseProfile of ['production', 'adhoc-preview']) {
+    await t.test(releaseProfile, async (t) => {
+      const repoRoot = await makeVerifierRepoFixture();
+      t.after(() => rm(repoRoot, { recursive: true, force: true }));
+      const calls = [];
+      const run = artifactVerifierRun(releaseProfile, calls);
+      const options = {
+        repoRoot,
+        run,
+        env: {
+          TAURI_SIGNING_PRIVATE_KEY: 'updater-private-key',
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: 'updater-password',
+        },
+        async inspectUpdaterArchiveImpl(receivedRun, updaterPath, version, verifyBundle) {
+          assert.equal(receivedRun, run);
+          assert.equal(updaterPath, '/tmp/Kordi.app.tar.gz');
+          assert.equal(version, VERSION);
+          calls.push('[inspect updater archive]');
+          verifyBundle('/tmp/archive/Kordi.app');
+        },
+        mountDmgImpl(manualPath) {
+          assert.equal(manualPath, '/tmp/Kordi.dmg');
+          calls.push('[mount dmg]');
+          return { device: '/dev/disk-test', mountPoint: '/tmp/mounted-kordi' };
+        },
+        validateDmgVolumeLayoutImpl(mountPoint, contract) {
+          assert.equal(mountPoint, '/tmp/mounted-kordi');
+          assert.deepEqual(contract, { appName: 'Kordi' });
+          calls.push('[validate dmg layout]');
+        },
+        detachDmgImpl(device) {
+          assert.equal(device, '/dev/disk-test');
+          calls.push('[detach dmg]');
+        },
+      };
+      const verifier = releaseProfile === 'production'
+        ? createProductionVerifier(options)
+        : createAdhocPreviewVerifier(options);
+
+      await verifier.verify({
+        version: VERSION,
+        expectedCommit: '0123456789abcdef0123456789abcdef01234567',
+        appBundle: '/tmp/top/Kordi.app',
+        updaterPath: '/tmp/Kordi.app.tar.gz',
+        updaterBytes: Buffer.from('test'),
+        signature: TEST_SIGNATURE,
+        updaterPublicKey: TEST_PUBLIC_KEY,
+        manualPath: '/tmp/Kordi.dmg',
+      });
+
+      const count = (pattern) => calls.filter((command) => pattern.test(command)).length;
+      assert.equal(count(/^security find-identity /), releaseProfile === 'production' ? 1 : 0);
+      assert.equal(count(/^plutil -extract CFBundleShortVersionString /), 3);
+      assert.equal(count(/^plutil -extract CFBundleIdentifier /), 3);
+      assert.equal(count(/^codesign --verify /), 3);
+      assert.equal(count(/^codesign --display /), releaseProfile === 'adhoc-preview' ? 3 : 0);
+      assert.equal(count(/^spctl --assess /), 3);
+      const expectedEndpoint = releaseProfile === 'adhoc-preview'
+        ? ACCEPTANCE_ENDPOINT
+        : PRODUCTION_ENDPOINT;
+      const forbiddenEndpoint = releaseProfile === 'adhoc-preview'
+        ? PRODUCTION_ENDPOINT
+        : ACCEPTANCE_ENDPOINT;
+      assert.equal(calls.filter((command) => command.includes(` -F ${expectedEndpoint} `)).length, 3);
+      assert.equal(calls.filter((command) => command.includes(` -F ${forbiddenEndpoint} `)).length, 3);
+      assert.equal(calls.filter((command) => command.startsWith('rg ') && command.includes(' -n ')).length, 4);
+      assert.ok(calls.indexOf('[inspect updater archive]') > calls.findIndex((command) => command.startsWith('codesign ')));
+      assert.ok(calls.indexOf('[mount dmg]') > calls.indexOf('[inspect updater archive]'));
+      assert.ok(calls.indexOf('[validate dmg layout]') > calls.indexOf('[mount dmg]'));
+      assert.ok(calls.indexOf('[detach dmg]') > calls.indexOf('[validate dmg layout]'));
+      assert.equal(calls.at(-1), '[detach dmg]');
+    });
+  }
+});
+
+test('ad-hoc verifier rejects a changed acceptance overlay before artifact inspection', async (t) => {
+  const repoRoot = await makeVerifierRepoFixture();
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+  await writeFile(
+    join(repoRoot, 'app', 'desktop', 'src-tauri', 'tauri.cloud.acceptance.conf.json'),
+    JSON.stringify({
+      productName: 'Kordi',
+      identifier: 'io.kordi.cloud',
+      bundle: { macOS: { signingIdentity: '-' } },
+      plugins: { updater: { endpoints: [PRODUCTION_ENDPOINT] } },
+    }),
+  );
+  const calls = [];
+  const verifier = createAdhocPreviewVerifier({
+    repoRoot,
+    run: artifactVerifierRun('adhoc-preview', calls),
+    env: {
+      TAURI_SIGNING_PRIVATE_KEY: 'updater-private-key',
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: 'updater-password',
+    },
+  });
+
+  await assert.rejects(
+    verifier.verify({
+      version: VERSION,
+      expectedCommit: '0123456789abcdef0123456789abcdef01234567',
+      appBundle: '/tmp/top/Kordi.app',
+      updaterPath: '/tmp/Kordi.app.tar.gz',
+      updaterBytes: Buffer.from('test'),
+      signature: TEST_SIGNATURE,
+      updaterPublicKey: TEST_PUBLIC_KEY,
+      manualPath: '/tmp/Kordi.dmg',
+    }),
+    /Acceptance Tauri configuration does not match the ad-hoc preview contract/i,
+  );
+  assert.equal(calls.some((command) => command.startsWith('codesign ')), false);
 });
 
 test('invalid inputs and every local release-gate failure stop before storage access', async (t) => {
@@ -988,6 +1452,7 @@ test('publisher CLI requires the exact release inputs and accepts pnpm separator
     '--app-bundle', '/tmp/Kordi.app',
     '--version', VERSION,
     '--channel', 'acceptance',
+    '--release-profile', 'adhoc-preview',
     '--expected-commit', '0123456789abcdef0123456789abcdef01234567',
     '--pub-date', PUB_DATE,
     '--dry-run',
@@ -996,10 +1461,12 @@ test('publisher CLI requires the exact release inputs and accepts pnpm separator
     appBundle: '/tmp/Kordi.app',
     version: VERSION,
     channel: 'acceptance',
+    releaseProfile: 'adhoc-preview',
     expectedCommit: '0123456789abcdef0123456789abcdef01234567',
     pubDate: PUB_DATE,
     dryRun: true,
   });
+  assert.equal(parsePublisherArguments([]).releaseProfile, 'production');
   assert.throws(() => parsePublisherArguments(['--version']), /requires a value/i);
   assert.throws(() => parsePublisherArguments(['--unexpected']), /unknown publisher argument/i);
 });

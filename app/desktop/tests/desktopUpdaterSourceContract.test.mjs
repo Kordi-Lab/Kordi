@@ -30,6 +30,13 @@ test('the real updater adapter delegates verification and installation to Tauri 
   assert.match(controller, /downloadAndInstall/);
   assert.match(controller, /@tauri-apps\/plugin-process/);
   assert.match(controller, /relaunch/);
-  assert.match(controller, /https:\/\/coordinar\.io\/updates\/releases\/latest\/Kordi\.dmg/);
+  assert.match(controller, /const KORDI_RELEASE_ORIGIN = 'https:\/\/coordinar\.io'/);
+  assert.match(controller, /manualUpdateUrlForVersion\(update\.version\)/);
+  assert.match(controller, /\/updates\/releases\/\$\{encoded\}\/Kordi_\$\{encoded\}_aarch64\.dmg/);
+  assert.doesNotMatch(controller, /\/updates\/releases\/latest\/Kordi\.dmg/);
+  assert.doesNotMatch(controller, /https?:\/\/\$\{/);
+  const literalOrigins = [...controller.matchAll(/https?:\/\/[^/'"`\s]+/g)]
+    .map((match) => match[0]);
+  assert.deepEqual([...new Set(literalOrigins)], ['https://coordinar.io']);
   assert.doesNotMatch(controller, /http:\/\//);
 });
