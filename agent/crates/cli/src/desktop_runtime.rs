@@ -31,9 +31,9 @@ pub use model_options::{
 };
 
 use model_options::{
-    effective_thinking_for_model, effective_thinking_for_model_with_auth, normalize_setup_thinking,
-    request_thinking_for_model, request_thinking_for_model_with_auth,
-    resolve_auth_choice_override_for_model, resolve_model_candidate,
+    effective_thinking_for_model_with_auth, normalize_setup_thinking,
+    request_thinking_for_model_with_auth, resolve_auth_choice_override_for_model,
+    resolve_model_candidate,
 };
 use session_catalog::{
     load_project_info, open_sessions_db, project_group_id, repair_session_title_from_history,

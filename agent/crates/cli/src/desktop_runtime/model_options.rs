@@ -302,13 +302,6 @@ fn fallback_thinking_for_levels(levels: &[ThinkingLevel]) -> ThinkingLevel {
     }
 }
 
-pub(super) fn effective_thinking_for_model(
-    requested: ThinkingLevel,
-    model: &Model,
-) -> ThinkingLevel {
-    effective_thinking_for_model_with_auth(requested, model, None)
-}
-
 pub(super) fn effective_thinking_for_model_with_auth(
     requested: ThinkingLevel,
     model: &Model,
@@ -346,10 +339,6 @@ pub(super) fn normalize_setup_thinking(setup: &mut SessionRuntimeSetup) {
     )
     .as_str()
     .to_string();
-}
-
-pub(super) fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
-    request_thinking_for_model_with_auth(thinking_level, model, None)
 }
 
 pub(super) fn request_thinking_for_model_with_auth(

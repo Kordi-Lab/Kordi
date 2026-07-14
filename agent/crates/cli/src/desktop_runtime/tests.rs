@@ -2,6 +2,14 @@ use super::*;
 use kordi_core::settings::ProviderOverride;
 use std::sync::Mutex;
 
+fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
+    model_options::effective_thinking_for_model_with_auth(requested, model, None)
+}
+
+fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
+    model_options::request_thinking_for_model_with_auth(thinking_level, model, None)
+}
+
 fn env_lock() -> &'static Mutex<()> {
     crate::login::auth_test_env_lock()
 }
