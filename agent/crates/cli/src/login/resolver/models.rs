@@ -15,15 +15,16 @@ const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
 ];
 
 pub fn model_catalog_rank(provider: &str, model_id: &str) -> usize {
-    let model_ids = match normalize_provider_for_model_selection(provider).as_str() {
-        "openai" => OPENAI_CODEX_OAUTH_MODEL_IDS,
-        "anthropic" => ANTHROPIC_SUBSCRIPTION_MODEL_IDS,
-        _ => return usize::MAX,
-    };
-    model_ids
-        .iter()
-        .position(|id| id.eq_ignore_ascii_case(model_id))
-        .unwrap_or(usize::MAX)
+    match normalize_provider_for_model_selection(provider).as_str() {
+        "openai" => OPENAI_CODEX_OAUTH_MODEL_IDS
+            .iter()
+            .position(|id| id.eq_ignore_ascii_case(model_id)),
+        "anthropic" => ANTHROPIC_SUBSCRIPTION_MODEL_IDS
+            .iter()
+            .position(|id| *id == model_id),
+        _ => None,
+    }
+    .unwrap_or(usize::MAX)
 }
 
 fn active_oauth_model_ids_for_provider(
@@ -55,12 +56,25 @@ pub fn model_id_allowed_for_active_auth(
     provider: &str,
     model_id: &str,
 ) -> bool {
-    active_oauth_model_ids_for_provider(settings, provider)
-        .map(|ids| {
-            ids.iter()
-                .any(|allowed| allowed.eq_ignore_ascii_case(model_id.trim()))
-        })
-        .unwrap_or(true)
+    let normalized = normalize_provider_for_model_selection(provider);
+    match active_oauth_model_ids_for_provider(settings, &normalized) {
+        Some(_) if normalized == "anthropic" => is_safe_anthropic_model_id(model_id),
+        Some(ids) => ids
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(model_id.trim())),
+        None => true,
+    }
+}
+
+fn is_safe_anthropic_model_id(model_id: &str) -> bool {
+    let trimmed = model_id.trim();
+    let Some(suffix) = trimmed.strip_prefix("claude-") else {
+        return false;
+    };
+    !suffix.is_empty()
+        && trimmed
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 pub fn model_candidates_for_provider_auth_mode(
@@ -441,6 +455,16 @@ mod tests {
         assert!(!model_ids.contains(&"gpt-4o-mini".to_string()));
         assert!(!model_ids.contains(&"gpt-5".to_string()));
         assert!(!model_ids.contains(&"gpt-5-mini".to_string()));
+        assert!(model_id_allowed_for_active_auth(
+            &Settings::default(),
+            "openai",
+            "gpt-5.4"
+        ));
+        assert!(!model_id_allowed_for_active_auth(
+            &Settings::default(),
+            "openai",
+            "gpt-5"
+        ));
         assert_eq!(
             available_model_for_provider(&Settings::default(), "openai", Some("gpt-5")),
             Some("gpt-5.6-sol".to_string()),
@@ -496,17 +520,6 @@ mod tests {
                 model_id
             ));
         }
-        for removed_model_id in [
-            "claude-3-5-haiku-20241022",
-            "claude-haiku-4-20260115",
-            "claude-opus-4-20260115",
-        ] {
-            assert!(!model_id_allowed_for_active_auth(
-                &Settings::default(),
-                "anthropic",
-                removed_model_id
-            ));
-        }
         assert_eq!(
             available_model_for_provider(
                 &Settings::default(),
@@ -531,6 +544,39 @@ mod tests {
             ),
             Some(DEFAULT_ANTHROPIC_MODEL_ID.to_string())
         );
+    }
+
+    #[test]
+    fn anthropic_oauth_allows_safe_claude_ids_and_rejects_malformed_ids() {
+        let _lock = env_lock().lock().expect("env lock");
+        let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
+            isolated_auth_env();
+        save_single_auth("anthropic", ProviderAuthMethod::OAuth);
+
+        for model_id in [
+            "claude-opus-4-8",
+            "claude-3-7-sonnet-20250219",
+            "  claude-saved_legacy.1  ",
+        ] {
+            assert!(
+                model_id_allowed_for_active_auth(&Settings::default(), "anthropic", model_id),
+                "{model_id}"
+            );
+        }
+        for model_id in [
+            "",
+            "   ",
+            "claude-",
+            "gpt-5.5",
+            "claude-opus/4-8",
+            "claude-opus 4-8",
+            "claude-opus@4-8",
+        ] {
+            assert!(
+                !model_id_allowed_for_active_auth(&Settings::default(), "anthropic", model_id),
+                "{model_id}"
+            );
+        }
     }
 
     #[test]
@@ -564,6 +610,11 @@ mod tests {
             model_catalog_rank("anthropic", "claude-unknown-live-id"),
             usize::MAX
         );
+        assert_eq!(
+            model_catalog_rank("anthropic", "CLAUDE-OPUS-4-8"),
+            usize::MAX
+        );
+        assert_eq!(model_catalog_rank("openai", "GPT-5.5"), 3);
         assert_eq!(model_catalog_rank("google", "claude-opus-4-8"), usize::MAX);
     }
 
