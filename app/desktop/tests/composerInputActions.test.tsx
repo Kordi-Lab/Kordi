@@ -2,7 +2,24 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { composerAttachmentItemFromStoredPath, composerConfigTargetSessionId } from '../src/features/chat/useComposerInputActions';
+import * as composerInputActions from '../src/features/chat/useComposerInputActions';
 import { localAgentComposerConfigTargetSessionId } from '../src/pages/ChatsPage';
+
+test('isolated companion config updates preserve the active main desktop state', () => {
+  const stateAfterUpdate = (
+    composerInputActions as typeof composerInputActions & {
+      desktopChatStateAfterConfigUpdate?: <T>(current: T, next: T, isolated: boolean) => T;
+    }
+  ).desktopChatStateAfterConfigUpdate;
+
+  assert.equal(typeof stateAfterUpdate, 'function');
+  if (!stateAfterUpdate) return;
+
+  const mainState = { activeSessionId: 'session:main' };
+  const companionState = { activeSessionId: 'session:companion' };
+  assert.equal(stateAfterUpdate(mainState, companionState, true), mainState);
+  assert.equal(stateAfterUpdate(mainState, companionState, false), companionState);
+});
 
 test('composer config routing does not target canonical Cloud direct or group sessions', () => {
   assert.equal(composerConfigTargetSessionId({

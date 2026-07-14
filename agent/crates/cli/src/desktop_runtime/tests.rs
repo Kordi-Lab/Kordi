@@ -279,6 +279,35 @@ async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result
 
 #[allow(clippy::await_holding_lock)]
 #[tokio::test]
+async fn explicit_config_on_new_canonical_runtime_survives_restart() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir().expect("home tempdir");
+    let cwd = tempfile::tempdir().expect("cwd tempdir");
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings {
+        default_provider: Some("openai".to_string()),
+        default_model: Some("gpt-5.6-sol".to_string()),
+        ..Settings::default()
+    }
+    .save_global()?;
+
+    let session_id = "session:self-agent:canonical-runtime";
+    let mut runtime =
+        DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), session_id).await?;
+    runtime.set_explicit_config(Some("openai/gpt-5.6-luna"), Some("max"))?;
+    drop(runtime);
+
+    let resumed = DesktopRuntimeSession::resume(cwd.path().to_path_buf(), session_id).await?;
+    let detail = resumed.detail()?;
+    assert_eq!(detail.provider, "openai");
+    assert_eq!(detail.model, "gpt-5.6-luna");
+    assert_eq!(detail.thinking, "max");
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock)]
+#[tokio::test]
 async fn sync_visible_task_records_makes_active_cloud_tasks_closable_by_title() -> Result<()> {
     let _lock = env_lock().lock().unwrap();
     let home = tempfile::tempdir().expect("home tempdir");

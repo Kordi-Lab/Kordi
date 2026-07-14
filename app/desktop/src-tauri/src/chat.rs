@@ -549,6 +549,25 @@ pub async fn desktop_chat_state(
 }
 
 #[tauri::command]
+pub async fn desktop_chat_session_detail(
+    manager: State<'_, DesktopChatManager>,
+    session_id: String,
+) -> Result<DesktopChatSessionDetail, String> {
+    let cwd = chat_cwd()?;
+    let target_session_id =
+        ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
+    let session = {
+        let sessions = manager.sessions.lock().await;
+        sessions
+            .get(&target_session_id)
+            .cloned()
+            .ok_or_else(|| "Session is unavailable".to_string())?
+    };
+    let session = session.lock().await;
+    session.detail().map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 pub async fn desktop_chat_new_session(
     manager: State<'_, DesktopChatManager>,
 ) -> Result<DesktopChatState, String> {
@@ -634,13 +653,18 @@ pub async fn desktop_chat_update_session_config(
             .ok_or_else(|| "Session is unavailable".to_string())?
     };
     let mut session = session.lock().await;
-
-    if let Some(model) = model.as_deref() {
-        session.set_model(model).map_err(|err| err.to_string())?;
-    }
-    if let Some(thinking) = thinking.as_deref() {
+    if target_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
+        if let Some(model) = model.as_deref() {
+            session.set_model(model).map_err(|err| err.to_string())?;
+        }
+        if let Some(thinking) = thinking.as_deref() {
+            session
+                .set_thinking(thinking)
+                .map_err(|err| err.to_string())?;
+        }
+    } else {
         session
-            .set_thinking(thinking)
+            .set_explicit_config(model.as_deref(), thinking.as_deref())
             .map_err(|err| err.to_string())?;
     }
     drop(session);

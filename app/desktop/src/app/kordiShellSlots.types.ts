@@ -5,6 +5,7 @@ import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cl
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
 import type { CloudSessionPin } from '@/features/cloud/authClient';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
+import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
@@ -319,13 +320,13 @@ export type AssembleKordiShellSlotsArgs = {
   composerSelectionChat: ComposerSelection;
   openComposerSelector: ComposerSelectorState;
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
-  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, targetSessionIdOverride?: string | null) => void | Promise<void>;
+  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => void | Promise<void>;
   composerAuthLabelProject: string;
   composerAuthLabelChat: string;
   composerAuthOptionsProject: ComposerAuthOption[];
   composerAuthOptionsChat: ComposerAuthOption[];
-  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, targetSessionIdOverride?: string | null) => void;
-  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, targetSessionIdOverride?: string | null) => void;
+  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => void;
+  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => void;
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions: ComposerModelOption[] | undefined;
   isDesktopChatSending: boolean;

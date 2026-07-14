@@ -90,6 +90,8 @@ import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import { navigateToTranscriptMessage, scrollTranscriptToBottom } from '@/kordi-app/components/transcriptReplyAttribution';
 import { buildForkLineage, isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
+import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
+import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 
@@ -1008,11 +1010,11 @@ type ChatsPageProps = {
   composerSelection: { mode: string; model: string; thinking: string };
   openComposerSelector: { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
-  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, targetSessionIdOverride?: string | null) => void;
+  selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => void;
   composerAuthLabel: string;
   composerAuthOptions: ComposerAuthOption[];
-  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, targetSessionIdOverride?: string | null) => void;
-  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, targetSessionIdOverride?: string | null) => void;
+  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => void;
+  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => void;
   composerProviderOptions: ComposerProviderOption[];
   chatModelOptions?: ComposerModelOption[];
   isDesktopChatSending: boolean;
@@ -1257,6 +1259,16 @@ export function ChatsPage({
   const companionLocalAgentConfigTargetSessionId = companionConversation
     ? localAgentComposerConfigTargetSessionId(companionConversation)
     : null;
+  const companionComposerRuntime = useCompanionComposerRuntime({
+    enabled: companionShowsLocalAgentControls,
+    isNativeShell,
+    sessionId: companionLocalAgentConfigTargetSessionId,
+    fallbackMode: composerSelection.mode,
+    modelOptions: chatModelOptions ?? [],
+    authOptions: composerAuthOptions,
+  });
+  const companionComposerSelection = companionComposerRuntime.selection;
+  const companionComposerConfigTarget = companionComposerRuntime.configTarget;
   const toggleCompanionComposerSelector = (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => {
     setCompanionOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
   };
@@ -2027,7 +2039,7 @@ export function ChatsPage({
                   </Button>
                 </div>
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-visible">
-                  {companionShowsLocalAgentControls ? (
+                  {companionShowsLocalAgentControls && companionComposerSelection && companionComposerConfigTarget ? (
                     <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true">
                       {isNativeShell || companionRuntimeContextStatus ? (
                         <ComposerRuntimeStatus
@@ -2038,22 +2050,22 @@ export function ChatsPage({
                       <div className="min-w-0 max-w-full overflow-visible">
                         <ComposerModelControls
                           scope="chat"
-                          selection={composerSelection}
+                          selection={companionComposerSelection}
                           openSelector={companionOpenComposerSelector}
                           onToggleSelector={toggleCompanionComposerSelector}
                           onSelectValue={(scope, type, value) => {
                             setCompanionOpenComposerSelector(null);
-                            void selectComposerValue(scope, type, value, companionLocalAgentConfigTargetSessionId);
+                            void selectComposerValue(scope, type, value, companionComposerConfigTarget);
                           }}
-                          authLabel={composerAuthLabel}
-                          authOptions={composerAuthOptions}
+                          authLabel={companionComposerRuntime.authLabel}
+                          authOptions={companionComposerRuntime.authOptions}
                           onSelectAuthChoice={(scope, providerId, choice) => {
                             setCompanionOpenComposerSelector(null);
-                            void selectComposerAuthChoice(scope, providerId, choice, companionLocalAgentConfigTargetSessionId);
+                            void selectComposerAuthChoice(scope, providerId, choice, companionComposerConfigTarget);
                           }}
                           onSelectProviderChoice={(scope, option) => {
                             setCompanionOpenComposerSelector(null);
-                            void selectComposerProviderChoice(scope, option, companionLocalAgentConfigTargetSessionId);
+                            void selectComposerProviderChoice(scope, option, companionComposerConfigTarget);
                           }}
                           providerOptions={composerProviderOptions}
                           modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
@@ -2061,6 +2073,20 @@ export function ChatsPage({
                         />
                       </div>
                     </div>
+                  ) : companionShowsLocalAgentControls && companionComposerRuntime.isLoading ? (
+                    <span className="text-[12px] text-[color:var(--utility-muted-text)]" data-companion-model-loading="true">
+                      Loading model…
+                    </span>
+                  ) : companionShowsLocalAgentControls && companionComposerRuntime.loadError ? (
+                    <button
+                      type="button"
+                      onClick={companionComposerRuntime.retry}
+                      className="text-[12px] text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]"
+                      title={companionComposerRuntime.loadError}
+                      data-companion-model-retry="true"
+                    >
+                      Retry model
+                    </button>
                   ) : companionConversationIsBridgeAgent && selectedCompanionBridgeRoutingAgent ? (
                     <div className="relative flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-visible" data-companion-model-controls="true" data-companion-bridge-model-controls="true">
                       {companionBridgeRoutingControlVisibility.showAgentSelector ? (
