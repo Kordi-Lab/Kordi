@@ -677,5 +677,13 @@ mod tests {
         request.thinking = Some("max".to_string());
         let body = build_responses_request_body(&request, vec![]);
         assert_eq!(body["reasoning"]["effort"], "max");
+
+        request.thinking = Some("xhigh".to_string());
+        let body = build_responses_request_body(&request, vec![]);
+        assert_eq!(body["reasoning"]["effort"], "xhigh");
+
+        request.thinking = Some("minimal".to_string());
+        let body = build_responses_request_body(&request, vec![]);
+        assert_eq!(body["reasoning"]["effort"], "minimal");
     }
 }

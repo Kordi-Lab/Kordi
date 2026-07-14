@@ -64,6 +64,34 @@ fn codex_error_message(event: &Value, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
+fn build_codex_request_body(request: &CompletionRequest) -> Value {
+    let mut body = json!({
+        "model": request.model,
+        "store": false,
+        "stream": true,
+        "instructions": request.system_prompt,
+        "input": convert_messages_for_codex(&request.messages),
+        "text": { "verbosity": "medium" },
+        "include": ["reasoning.encrypted_content"],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+    });
+
+    if !request.tools.is_empty() {
+        body["tools"] = json!(convert_tools_for_codex(&request.tools));
+    }
+    if let Some(ref thinking) = request.thinking
+        && let Some(effort) = codex_reasoning_effort(&request.model, thinking.as_str())
+    {
+        body["reasoning"] = json!({
+            "effort": effort,
+            "summary": "auto"
+        });
+    }
+    body["prompt_cache_key"] = json!(super::default_prompt_cache_key(&request.model));
+    body
+}
+
 impl OpenAiProvider {
     pub(super) async fn stream_codex_oauth(
         &self,
@@ -73,31 +101,7 @@ impl OpenAiProvider {
         tx: mpsc::UnboundedSender<StreamEvent>,
     ) -> KordiResult<()> {
         let url = resolve_codex_url(&options.base_url);
-        let mut body = json!({
-            "model": request.model,
-            "store": false,
-            "stream": true,
-            "instructions": request.system_prompt,
-            "input": convert_messages_for_codex(&request.messages),
-            "text": { "verbosity": "medium" },
-            "include": ["reasoning.encrypted_content"],
-            "tool_choice": "auto",
-            "parallel_tool_calls": false,
-        });
-
-        if !request.tools.is_empty() {
-            body["tools"] = json!(convert_tools_for_codex(&request.tools));
-        }
-        if let Some(ref thinking) = request.thinking
-            && let Some(effort) = codex_reasoning_effort(&request.model, thinking.as_str())
-        {
-            body["reasoning"] = json!({
-                "effort": effort,
-                "summary": "auto"
-            });
-        }
-
-        body["prompt_cache_key"] = json!(super::default_prompt_cache_key(&request.model));
+        let body = build_codex_request_body(&request);
 
         let response = with_retry(
             options.max_retries,
@@ -282,7 +286,8 @@ impl OpenAiProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::oauth_usage_info;
+    use super::{build_codex_request_body, oauth_usage_info};
+    use crate::CompletionRequest;
     use kordi_core::types::CacheMetricsSource;
     use serde_json::json;
 
@@ -298,5 +303,30 @@ mod tests {
         assert_eq!(usage.output_tokens, 30);
         assert_eq!(usage.cache_read_tokens, 80);
         assert_eq!(usage.cache_metrics_source, CacheMetricsSource::Estimated);
+    }
+
+    #[test]
+    fn codex_body_preserves_gpt_56_max_reasoning() {
+        let mut request = CompletionRequest {
+            system_prompt: "system".to_string(),
+            messages: vec![],
+            tools: vec![],
+            extra_tool_schemas: vec![],
+            model: "gpt-5.6-luna".to_string(),
+            max_tokens: None,
+            stream: true,
+            thinking: Some("max".to_string()),
+        };
+
+        let body = build_codex_request_body(&request);
+        assert_eq!(body["reasoning"]["effort"], "max");
+
+        request.thinking = Some("xhigh".to_string());
+        let body = build_codex_request_body(&request);
+        assert_eq!(body["reasoning"]["effort"], "xhigh");
+
+        request.thinking = Some("minimal".to_string());
+        let body = build_codex_request_body(&request);
+        assert_eq!(body["reasoning"]["effort"], "low");
     }
 }
