@@ -321,9 +321,9 @@ pub(super) fn effective_thinking_for_model_with_auth(
         requested
     } else if requested == ThinkingLevel::Max && levels.contains(&ThinkingLevel::XHigh) {
         ThinkingLevel::XHigh
-    } else if requested == ThinkingLevel::Max && levels.contains(&ThinkingLevel::High) {
-        ThinkingLevel::High
-    } else if requested == ThinkingLevel::XHigh && levels.contains(&ThinkingLevel::High) {
+    } else if matches!(requested, ThinkingLevel::Max | ThinkingLevel::XHigh)
+        && levels.contains(&ThinkingLevel::High)
+    {
         ThinkingLevel::High
     } else {
         fallback_thinking_for_levels(levels)
