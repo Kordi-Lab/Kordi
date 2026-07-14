@@ -223,6 +223,12 @@ pub fn resolve_provider_auth(provider: &str) -> Option<ResolvedProviderAuth> {
     }
 
     let store = load_auth();
+    if let Some(method) = store.active_env_auth_methods.get(&normalized).copied()
+        && let Some(auth) = resolve_env_provider_auth(&normalized, method)
+    {
+        return Some(auth);
+    }
+
     let explicit_active_profile = store.active_auth_profiles.get(&normalized).cloned();
     let explicit_active_method = store.active_auth_methods.get(&normalized).copied();
     if let Some(profile_id) = explicit_active_profile.as_deref() {
@@ -705,6 +711,35 @@ mod tests {
         assert_eq!(explicit.method, ProviderAuthMethod::ApiKey);
         assert_eq!(explicit.credential_provider, "anthropic");
         assert_eq!(explicit.credential, "env-api-key");
+    }
+
+    #[test]
+    fn explicit_anthropic_environment_choice_persists_across_auth_store_reload() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set("HOME", home.path());
+        let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
+        let _storage_root = EnvVarGuard::unset("KORDI_STORAGE_ROOT");
+        let _app_data_dir = EnvVarGuard::unset("APP_DATA_DIR");
+        let _oauth = EnvVarGuard::set_value("ANTHROPIC_OAUTH_TOKEN", "env-oauth-token");
+        let _api_key = EnvVarGuard::set_value("ANTHROPIC_API_KEY", "env-api-key");
+
+        assert!(
+            crate::login::set_active_auth_choice("anthropic", "env:api-key")
+                .expect("persist environment API-key choice")
+        );
+
+        let resolved = resolve_provider_auth("anthropic").expect("persisted Anthropic auth");
+        assert_eq!(resolved.source, crate::login::resolver::AuthSource::EnvVar);
+        assert_eq!(resolved.method, ProviderAuthMethod::ApiKey);
+        assert_eq!(resolved.credential, "env-api-key");
+
+        let summaries = crate::login::provider_auth_option_summaries("anthropic");
+        assert!(summaries.iter().any(|summary| {
+            summary.active
+                && summary.source == crate::login::resolver::AuthSource::EnvVar
+                && summary.method == ProviderAuthMethod::ApiKey
+        }));
     }
 
     #[test]

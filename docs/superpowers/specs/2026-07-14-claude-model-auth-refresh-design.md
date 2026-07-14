@@ -50,7 +50,7 @@ Known adaptive models are:
 - Claude Sonnet 4.6 and 5;
 - Claude Fable 5.
 
-Native `xhigh` is exposed for Opus 4.7, Opus 4.8, Sonnet 5, and Fable 5. `max` is mapped according to each known model's capability entry. Opus 4.7 and 4.8 are marked as not supporting temperature. Fable 5 omits an explicit disabled-thinking payload; other known reasoning models emit it when reasoning is off.
+Native `xhigh` is exposed for Opus 4.7, Opus 4.8, Sonnet 5, and Fable 5. `max` is mapped according to each known model's capability entry. Fable 5, Opus 4.7, Opus 4.8, and Sonnet 5 are marked as not supporting non-default sampling parameters. Fable 5 omits an explicit disabled-thinking payload; other known reasoning models emit it when reasoning is off.
 
 Unknown live Claude IDs keep the existing conservative runtime fallback. They are not granted high-end reasoning levels unless the capability table recognizes them.
 
@@ -100,7 +100,7 @@ The helper handles:
 - reasoning-off behavior;
 - model output defaults.
 
-Kordi currently has no temperature field in `CompletionRequest`, so no temperature is emitted. Capability metadata records the restriction for Opus 4.7 and 4.8, and request regression tests assert that their bodies contain no temperature field. This avoids adding an unrelated temperature feature.
+Kordi currently has no temperature field in `CompletionRequest`, so no temperature is emitted. Capability metadata records the restriction for Fable 5, Opus 4.7, Opus 4.8, and Sonnet 5, and request regression tests assert that their bodies contain no temperature field. This avoids adding an unrelated temperature feature.
 
 ### 5. Environment auth precedence
 
@@ -147,7 +147,7 @@ All behavioral changes follow red-green-refactor cycles.
 - exact catalog IDs, ordering, metadata, and default;
 - capability lookup for adaptive, budget-based, native-`xhigh`, `max`, temperature, and reasoning-off cases;
 - request bodies for Opus 4.6, 4.7, 4.8, Sonnet 5, Fable 5, and a legacy budget model;
-- absence of temperature for Opus 4.7 and 4.8;
+- absence of temperature for Fable 5, Opus 4.7, Opus 4.8, and Sonnet 5;
 - conservative fallback for an unknown live Claude ID.
 
 ### CLI tests

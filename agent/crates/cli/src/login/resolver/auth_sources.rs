@@ -73,7 +73,7 @@ fn env_value_is_set(key: &str) -> bool {
 pub fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuthOptionSummary> {
     let normalized = normalize_provider_for_model_selection(provider);
     let store = load_auth();
-    let explicit_active_method = store.active_auth_methods.get(&normalized).copied();
+    let active_env_method = store.active_env_auth_methods.get(&normalized).copied();
     let mut options = stored_auth_profiles(&normalized)
         .into_iter()
         .map(|profile| ProviderAuthOptionSummary {
@@ -90,11 +90,15 @@ pub fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuthOptionS
 
     let stored_methods = stored_auth_methods(&normalized);
     let env_methods = env_auth_methods_for_provider(&normalized);
-    let active_method = active_auth_method(&normalized)
-        .or_else(|| explicit_active_method.filter(|method| env_methods.contains(method)))
+    let selected_env_method = active_env_method.filter(|method| env_methods.contains(method));
+    let active_method = selected_env_method
+        .or_else(|| active_auth_method(&normalized))
         .or_else(|| env_methods.first().copied());
     for method in env_methods {
-        let active = stored_methods.is_empty() && active_method == Some(method);
+        let active = selected_env_method == Some(method)
+            || (active_env_method.is_none()
+                && stored_methods.is_empty()
+                && active_method == Some(method));
         options.push(ProviderAuthOptionSummary {
             profile_id: None,
             method,
@@ -268,10 +272,19 @@ impl AuthSource {
 
 pub fn auth_source(provider: &str) -> Option<AuthSource> {
     let store = load_auth();
+    let normalized = normalize_provider_for_model_selection(provider);
+    let env_methods = env_auth_methods_for_provider(&normalized);
+    if store
+        .active_env_auth_methods
+        .get(&normalized)
+        .is_some_and(|method| env_methods.contains(method))
+    {
+        return Some(AuthSource::EnvVar);
+    }
     if !stored_auth_methods_for_store(&store, provider).is_empty() {
         return Some(AuthSource::KordiAuth);
     }
-    if !env_auth_methods_for_provider(provider).is_empty() {
+    if !env_methods.is_empty() {
         return Some(AuthSource::EnvVar);
     }
     None

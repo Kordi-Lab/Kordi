@@ -70,7 +70,6 @@ pub struct ClaudeModelCapabilities {
 enum ClaudeModelProfile {
     Budget,
     AdaptiveMaxWithoutXHigh,
-    AdaptiveXHighMax,
     AdaptiveXHighMaxWithoutTemperature,
     Fable,
 }
@@ -80,7 +79,6 @@ impl ClaudeModelProfile {
         match self {
             Self::Budget => ClaudeThinkingMode::Budget,
             Self::AdaptiveMaxWithoutXHigh
-            | Self::AdaptiveXHighMax
             | Self::AdaptiveXHighMaxWithoutTemperature
             | Self::Fable => ClaudeThinkingMode::Adaptive,
         }
@@ -90,15 +88,13 @@ impl ClaudeModelProfile {
         match self {
             Self::Budget => BUDGET_LEVELS,
             Self::AdaptiveMaxWithoutXHigh => MAX_WITHOUT_XHIGH_LEVELS,
-            Self::AdaptiveXHighMax | Self::AdaptiveXHighMaxWithoutTemperature => {
-                NATIVE_XHIGH_LEVELS
-            }
+            Self::AdaptiveXHighMaxWithoutTemperature => NATIVE_XHIGH_LEVELS,
             Self::Fable => FABLE_LEVELS,
         }
     }
 
     fn supports_temperature(self) -> bool {
-        !matches!(self, Self::AdaptiveXHighMaxWithoutTemperature)
+        !matches!(self, Self::AdaptiveXHighMaxWithoutTemperature | Self::Fable)
     }
 
     fn thinking_off(self) -> ThinkingOffBehavior {
@@ -159,7 +155,7 @@ define_claude_model_profiles! {
     SONNET_4_5: "claude-sonnet-4-5" => Budget,
     SONNET_4_5_20250929: "claude-sonnet-4-5-20250929" => Budget,
     SONNET_4_6: "claude-sonnet-4-6" => AdaptiveMaxWithoutXHigh,
-    SONNET_5: "claude-sonnet-5" => AdaptiveXHighMax,
+    SONNET_5: "claude-sonnet-5" => AdaptiveXHighMaxWithoutTemperature,
 }
 
 /// Returns the request capabilities for an exact known Claude model ID.
@@ -292,7 +288,7 @@ mod tests {
                 thinking_mode: ClaudeThinkingMode::Adaptive,
                 native_xhigh: true,
                 supports_max: true,
-                supports_temperature: true,
+                supports_temperature: false,
                 thinking_off: ThinkingOffBehavior::Omit,
             },
             ExpectedCapabilities {
@@ -304,19 +300,11 @@ mod tests {
                 thinking_off: ThinkingOffBehavior::Disabled,
             },
             ExpectedCapabilities {
-                ids: &["claude-opus-4-7", "claude-opus-4-8"],
+                ids: &["claude-opus-4-7", "claude-opus-4-8", "claude-sonnet-5"],
                 thinking_mode: ClaudeThinkingMode::Adaptive,
                 native_xhigh: true,
                 supports_max: true,
                 supports_temperature: false,
-                thinking_off: ThinkingOffBehavior::Disabled,
-            },
-            ExpectedCapabilities {
-                ids: &["claude-sonnet-5"],
-                thinking_mode: ClaudeThinkingMode::Adaptive,
-                native_xhigh: true,
-                supports_max: true,
-                supports_temperature: true,
                 thinking_off: ThinkingOffBehavior::Disabled,
             },
             ExpectedCapabilities {

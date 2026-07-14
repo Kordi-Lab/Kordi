@@ -474,8 +474,13 @@ mod tests {
     }
 
     #[test]
-    fn current_opus_requests_never_add_temperature() {
-        for model in ["claude-opus-4-7", "claude-opus-4-8"] {
+    fn current_models_with_sampling_restrictions_never_add_temperature() {
+        for model in [
+            "claude-fable-5",
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-sonnet-5",
+        ] {
             let body = request_body(model, Some("xhigh"), ProviderAuthMode::ApiKey);
             assert!(body.get("temperature").is_none(), "{model}");
         }

@@ -53,11 +53,12 @@ mod tests {
         let sonnet_5 = capabilities_for_model("claude-sonnet-5").unwrap();
         assert_eq!(sonnet_5.thinking_mode, ClaudeThinkingMode::Adaptive);
         assert!(sonnet_5.native_xhigh);
-        assert!(sonnet_5.supports_temperature);
+        assert!(!sonnet_5.supports_temperature);
 
         let fable_5 = capabilities_for_model("claude-fable-5").unwrap();
         assert_eq!(fable_5.thinking_mode, ClaudeThinkingMode::Adaptive);
         assert!(fable_5.native_xhigh);
+        assert!(!fable_5.supports_temperature);
         assert_eq!(fable_5.thinking_off, ThinkingOffBehavior::Omit);
     }
 
@@ -144,10 +145,9 @@ Implement `capabilities_for_model`, `thinking_levels`, `clamp_thinking_level`, a
 
 | IDs | Thinking mode | Exposed levels | Temperature | Off payload |
 |---|---|---|---|---|
-| Fable 5 | Adaptive | minimal, low, medium, high, xhigh, max | Supported | Omit |
+| Fable 5 | Adaptive | minimal, low, medium, high, xhigh, max | Unsupported | Omit |
 | Opus 4.6, Sonnet 4.6 | Adaptive | off, minimal, low, medium, high, max | Supported | Disabled |
-| Opus 4.7, Opus 4.8 | Adaptive | off, minimal, low, medium, high, xhigh, max | Unsupported | Disabled |
-| Sonnet 5 | Adaptive | off, minimal, low, medium, high, xhigh, max | Supported | Disabled |
+| Opus 4.7, Opus 4.8, Sonnet 5 | Adaptive | off, minimal, low, medium, high, xhigh, max | Unsupported | Disabled |
 | Haiku 4.5, Opus 4.1/4.5, Sonnet 4.5 aliases and dated IDs | Budget | off, minimal, low, medium, high | Supported | Disabled |
 
 For adaptive requests, map `minimal` and `low` to `low`, preserve `medium`, `high`, and native `xhigh`, and map `max` to `max`. Clamp unsupported `xhigh` to `high`; preserve `max` for Opus 4.6 and Sonnet 4.6. Preserve an explicit stored `off` for Fable 5 even though it is hidden from the exposed level list, allowing request construction to omit the disabled payload.
@@ -245,7 +245,7 @@ Use these exact metadata groups:
 | Opus 4.1 alias + dated | 200,000 | 32,000 | 15 / 75 | 1.5 / 18.75 |
 | Opus 4.5 alias + dated | 200,000 | 64,000 | 5 / 25 | 0.5 / 6.25 |
 | Opus 4.6/4.7/4.8 | 1,000,000 | 128,000 | 5 / 25 | 0.5 / 6.25 |
-| Sonnet 4.5 alias + dated | 1,000,000 | 64,000 | 3 / 15 | 0.3 / 3.75 |
+| Sonnet 4.5 alias + dated | 200,000 | 64,000 | 3 / 15 | 0.3 / 3.75 |
 | Sonnet 4.6 | 1,000,000 | 128,000 | 3 / 15 | 0.3 / 3.75 |
 | Sonnet 5 | 1,000,000 | 128,000 | 2 / 10 | 0.2 / 2.5 |
 
@@ -436,8 +436,7 @@ fn request(model: &str, thinking: Option<&str>) -> CompletionRequest {
 Add separate tests for these exact contracts:
 
 - Opus 4.6: adaptive thinking, summarized display, `high` when `xhigh` is clamped, and `max` for explicit `max`.
-- Opus 4.7 and 4.8: adaptive thinking, summarized display, native `xhigh`, explicit `max`, and no `temperature` key.
-- Sonnet 5 and Fable 5: adaptive thinking with native `xhigh` and explicit `max` preserved.
+- Fable 5, Opus 4.7, Opus 4.8, and Sonnet 5: adaptive thinking, summarized display, native `xhigh`, explicit `max`, and no `temperature` key.
 - Fable 5 with `off`: no `thinking` key.
 - Opus 4.8 with `off`: `{"type":"disabled"}`.
 - Opus 4.5 with `high`: budget thinking with `budget_tokens: 16384` and a raised `max_tokens` when needed.
@@ -780,7 +779,7 @@ Confirm the final diff contains tests for:
 - curated/live merge consistency and legacy live-ID retention;
 - adaptive, budget, native-`xhigh`, `max`, reasoning-off, and unknown-model behavior;
 - request bodies for Opus 4.6/4.7/4.8, Sonnet 5, Fable 5, and a budget model;
-- absence of temperature for Opus 4.7/4.8;
+- absence of temperature for Fable 5, Opus 4.7/4.8, and Sonnet 5;
 - OAuth environment discovery, status, precedence, and explicit profile preservation;
 - callback ordering, state validation, expiry margin, and scope-free refresh body.
 
