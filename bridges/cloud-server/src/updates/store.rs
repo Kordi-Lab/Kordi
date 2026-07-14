@@ -369,9 +369,17 @@ impl ReleaseStoreBackend for MinioReleaseStore {
         if !response.status().is_success() {
             return Err(ReleaseStoreError::Unavailable);
         }
-        response
-            .content_length()
-            .ok_or(ReleaseStoreError::Unavailable)
+        let content_lengths = response.headers().get_all(reqwest::header::CONTENT_LENGTH);
+        let mut values = content_lengths.iter();
+        let value = values.next().ok_or(ReleaseStoreError::Unavailable)?;
+        if values.next().is_some() {
+            return Err(ReleaseStoreError::Unavailable);
+        }
+        let value = value.to_str().map_err(|_| ReleaseStoreError::Unavailable)?;
+        if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(ReleaseStoreError::Unavailable);
+        }
+        value.parse().map_err(|_| ReleaseStoreError::Unavailable)
     }
 
     async fn stream_object(&self, key: &str) -> Result<ReleaseObjectStream, ReleaseStoreError> {

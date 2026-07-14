@@ -8,14 +8,82 @@ use base64::Engine;
 use bytes::Bytes;
 use futures_util::{stream, Stream, StreamExt};
 use sha2::{Digest, Sha256};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 
 use super::model::{ChannelPointer, ReleaseAsset, ReleaseManifest};
 use super::store::{
-    collect_bounded_metadata, ReleaseCatalogStore, ReleaseObjectStream, ReleaseStoreBackend,
-    ReleaseStoreConfig, ReleaseStoreError, MAX_RELEASE_METADATA_BYTES,
+    collect_bounded_metadata, MinioReleaseStore, ReleaseCatalogStore, ReleaseObjectStream,
+    ReleaseStoreBackend, ReleaseStoreConfig, ReleaseStoreError, MAX_RELEASE_METADATA_BYTES,
 };
 
 const VERSION: &str = "0.0.1-beta.6";
+
+async fn minio_head_object_with_response(
+    response: &'static [u8],
+) -> Result<u64, ReleaseStoreError> {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0_u8; 4096];
+        let bytes_read = socket.read(&mut request).await.unwrap();
+        assert!(request[..bytes_read].starts_with(b"HEAD "));
+        socket.write_all(response).await.unwrap();
+    });
+    let store = MinioReleaseStore::new(ReleaseStoreConfig {
+        endpoint: format!("http://{address}").parse().unwrap(),
+        region: "us-east-1".to_string(),
+        bucket: "kordi-releases".to_string(),
+        access_key: "test-access-key".to_string(),
+        secret_key: "test-secret-key".to_string(),
+    })
+    .unwrap();
+
+    let result = store.head_object("test-object").await;
+    server.await.unwrap();
+    result
+}
+
+#[tokio::test]
+async fn minio_head_object_reads_the_content_length_header() {
+    let response = b"HTTP/1.1 200 OK\r\nContent-Length: 1333\r\nConnection: close\r\n\r\n";
+
+    assert_eq!(
+        minio_head_object_with_response(response).await.unwrap(),
+        1333
+    );
+}
+
+#[tokio::test]
+async fn minio_head_object_rejects_a_missing_content_length_header() {
+    let response = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n";
+
+    assert_eq!(
+        minio_head_object_with_response(response).await.unwrap_err(),
+        ReleaseStoreError::Unavailable
+    );
+}
+
+#[tokio::test]
+async fn minio_head_object_rejects_a_malformed_content_length_header() {
+    let response = b"HTTP/1.1 200 OK\r\nContent-Length: not-a-number\r\nConnection: close\r\n\r\n";
+
+    assert_eq!(
+        minio_head_object_with_response(response).await.unwrap_err(),
+        ReleaseStoreError::Unavailable
+    );
+}
+
+#[tokio::test]
+async fn minio_head_object_rejects_duplicate_content_length_headers() {
+    let response = b"HTTP/1.1 200 OK\r\nContent-Length: 1333\r\nContent-Length: 1333\r\nConnection: close\r\n\r\n";
+
+    assert_eq!(
+        minio_head_object_with_response(response).await.unwrap_err(),
+        ReleaseStoreError::Unavailable
+    );
+}
 
 #[tokio::test]
 async fn metadata_stream_stops_as_soon_as_the_limit_is_exceeded() {
