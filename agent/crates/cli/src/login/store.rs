@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::{LazyLock, Mutex};
 
-const AUTH_STORE_VERSION: u32 = 2;
+const AUTH_STORE_VERSION: u32 = 3;
 
 static AUTH_STORE_PROCESS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -13,6 +13,8 @@ pub(super) struct AuthStore {
     pub(super) last_provider: Option<String>,
     #[serde(default)]
     pub(super) active_auth_methods: HashMap<String, ProviderAuthMethod>,
+    #[serde(default)]
+    pub(super) active_env_auth_methods: HashMap<String, ProviderAuthMethod>,
     #[serde(default)]
     pub(super) active_auth_profiles: HashMap<String, String>,
     #[serde(default)]
@@ -369,6 +371,10 @@ pub(super) fn stored_auth_profile_by_id<'a>(
 pub fn active_auth_method(provider: &str) -> Option<ProviderAuthMethod> {
     let store = load_auth();
     let normalized = normalized_auth_provider(provider);
+    if let Some(method) = store.active_env_auth_methods.get(&normalized).copied() {
+        return Some(method);
+    }
+
     if let Some(active_profile_id) = store.active_auth_profiles.get(&normalized)
         && let Some(profile) = store.profiles.get(&normalized).and_then(|profiles| {
             profiles
@@ -411,6 +417,7 @@ pub fn set_active_auth_profile(provider: &str, profile_id: &str) -> Result<bool>
     store
         .active_auth_methods
         .insert(normalized.clone(), profile.method);
+    store.active_env_auth_methods.remove(&normalized);
     store.last_provider = Some(normalized);
     save_auth(&store)?;
     Ok(true)
@@ -474,11 +481,18 @@ fn legacy_provider_and_method(
 fn repair_active_auth_selections(store: &mut AuthStore) {
     let mut providers = store.profiles.keys().cloned().collect::<Vec<_>>();
     providers.extend(store.active_auth_methods.keys().cloned());
+    providers.extend(store.active_env_auth_methods.keys().cloned());
     providers.extend(store.active_auth_profiles.keys().cloned());
     providers.sort();
     providers.dedup();
 
     for provider in providers {
+        if store.active_env_auth_methods.contains_key(&provider) {
+            store.active_auth_methods.remove(&provider);
+            store.active_auth_profiles.remove(&provider);
+            continue;
+        }
+
         let selected = if let Some(active_profile_id) = store.active_auth_profiles.get(&provider) {
             store.profiles.get(&provider).and_then(|profiles| {
                 profiles
@@ -579,12 +593,13 @@ pub fn remove_auth(provider: &str) -> Result<bool> {
     let mut store = load_auth();
     let normalized = normalized_auth_provider(provider);
     let removed_profiles = store.profiles.remove(&normalized).is_some();
+    let removed_env_selection = store.active_env_auth_methods.remove(&normalized).is_some();
     let removed_config = if normalized == "github-copilot" {
         store.provider_configs.remove("github-copilot").is_some()
     } else {
         false
     };
-    let removed = removed_profiles || removed_config;
+    let removed = removed_profiles || removed_config || removed_env_selection;
     if removed {
         store.active_auth_methods.remove(&normalized);
         store.active_auth_profiles.remove(&normalized);
@@ -632,6 +647,7 @@ impl std::fmt::Debug for AuthStore {
             .field("version", &self.version)
             .field("last_provider", &self.last_provider)
             .field("active_auth_methods", &self.active_auth_methods)
+            .field("active_env_auth_methods", &self.active_env_auth_methods)
             .field("active_auth_profiles", &self.active_auth_profiles)
             .field("providers", &provider_names)
             .finish()
@@ -824,6 +840,7 @@ pub fn save_api_key(provider: &str, key: String) -> Result<()> {
     store
         .active_auth_methods
         .insert(normalized.clone(), ProviderAuthMethod::ApiKey);
+    store.active_env_auth_methods.remove(&normalized);
     store.active_auth_profiles.insert(normalized, profile_id);
     save_auth(&store)
 }
@@ -865,6 +882,7 @@ pub(super) fn save_oauth_state(
     store
         .active_auth_methods
         .insert(normalized.clone(), ProviderAuthMethod::OAuth);
+    store.active_env_auth_methods.remove(&normalized);
     store.active_auth_profiles.insert(normalized, profile_id);
     save_auth(&store)
 }
@@ -1048,6 +1066,7 @@ mod tests {
         let store = AuthStore {
             last_provider: Some("openai".to_string()),
             active_auth_methods: HashMap::new(),
+            active_env_auth_methods: HashMap::new(),
             active_auth_profiles: HashMap::new(),
             profiles: HashMap::from([(
                 "openai".to_string(),
@@ -1079,6 +1098,7 @@ mod tests {
                 "anthropic".to_string(),
                 ProviderAuthMethod::OAuth,
             )]),
+            active_env_auth_methods: HashMap::new(),
             active_auth_profiles: HashMap::from([(
                 "anthropic".to_string(),
                 "anthropic-oauth-profile".to_string(),
@@ -1209,6 +1229,7 @@ mod tests {
         save_auth(&AuthStore {
             last_provider: Some("openai".to_string()),
             active_auth_methods: HashMap::from([("openai".to_string(), ProviderAuthMethod::OAuth)]),
+            active_env_auth_methods: HashMap::new(),
             active_auth_profiles: HashMap::new(),
             profiles: HashMap::new(),
             provider_configs: HashMap::from([(

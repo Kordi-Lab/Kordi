@@ -5,6 +5,7 @@ use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::settings::{ProviderOverride, Settings};
 use kordi_provider::Provider;
 use kordi_provider::anthropic::AnthropicProvider;
+use kordi_provider::anthropic::capabilities as anthropic_capabilities;
 use kordi_provider::google::GoogleProvider;
 use kordi_provider::openai::OpenAiProvider;
 use kordi_provider::registry::{ApiType, Model, ModelInput, ModelRegistry};
@@ -350,10 +351,6 @@ fn supports_xhigh(model: &Model) -> bool {
     ]
     .iter()
     .any(|needle| id.contains(needle))
-        || id.contains("claude-opus-4-6")
-        || id.contains("claude-opus-4.6")
-        || id.contains("claude-opus-4-7")
-        || id.contains("claude-opus-4.7")
         || (id.contains("deepseek")
             && (id.contains("v4-pro") || id.contains("v4pro") || id.contains("v4/pro")))
 }
@@ -384,6 +381,13 @@ pub(crate) fn thinking_levels_for_model(
             kordi_provider::openai::capabilities::OpenAiAuthRoute::Api
         };
         return kordi_provider::openai::capabilities::thinking_levels(&model.id, route);
+    }
+
+    if model.reasoning
+        && login::normalize_provider_for_model_selection(&model.provider) == "anthropic"
+    {
+        return anthropic_capabilities::thinking_levels(&model.id)
+            .unwrap_or(&STANDARD_THINKING_LEVELS);
     }
 
     match thinking_control_mode_for_model(model) {
@@ -437,6 +441,13 @@ pub(crate) fn effective_thinking_level_for_model(
         return effective;
     }
 
+    if model.reasoning
+        && login::normalize_provider_for_model_selection(&model.provider) == "anthropic"
+        && let Some(effective) = anthropic_capabilities::clamp_thinking_level(&model.id, requested)
+    {
+        return effective;
+    }
+
     let levels = thinking_levels_for_model(model, auth_method);
     if levels.contains(&requested) {
         requested
@@ -457,14 +468,14 @@ pub(crate) fn request_thinking_value(
     requested: ThinkingLevel,
 ) -> Option<String> {
     let effective = effective_thinking_level_for_model(model, auth_method, requested);
+    let normalized_provider = login::normalize_provider_for_model_selection(&model.provider);
+    let forwards_explicit_off = model.reasoning
+        && (normalized_provider == "openai"
+            || (normalized_provider == "anthropic"
+                && anthropic_capabilities::capabilities_for_model(&model.id).is_some()));
     match effective {
         ThinkingLevel::Default => None,
-        ThinkingLevel::Off
-            if !model.reasoning
-                || login::normalize_provider_for_model_selection(&model.provider) != "openai" =>
-        {
-            None
-        }
+        ThinkingLevel::Off if !forwards_explicit_off => None,
         other => Some(other.as_str().to_string()),
     }
 }
@@ -537,6 +548,7 @@ mod tests {
         default_base_url_for_model, default_base_url_for_model_with_settings,
         effective_thinking_level_for_model, request_thinking_value, resolve_or_synthesize_model,
         resolve_or_synthesize_model_with_settings, resolve_runtime_config_with_settings,
+        synthesize_model_candidate, thinking_levels_for_model,
     };
     use kordi_core::agent_session::ThinkingLevel;
     use kordi_core::settings::{ProviderOverride, Settings};
@@ -629,24 +641,167 @@ mod tests {
             request_thinking_value(gpt_55, None, ThinkingLevel::Max).as_deref(),
             Some("xhigh")
         );
+    }
 
-        let claude = registry
-            .list()
-            .iter()
-            .find(|model| model.provider == "anthropic" && model.reasoning)
-            .unwrap();
+    #[test]
+    fn opus_4_8_exposes_native_xhigh_max_and_explicit_off() {
+        let registry = ModelRegistry::new();
+        let model = registry.find("anthropic", "claude-opus-4-8").unwrap();
+
         assert_eq!(
-            request_thinking_value(claude, None, ThinkingLevel::Off),
-            None
+            request_thinking_value(model, None, ThinkingLevel::Off).as_deref(),
+            Some("off")
         );
         assert_eq!(
-            effective_thinking_level_for_model(claude, None, ThinkingLevel::Max),
+            thinking_levels_for_model(model, None),
+            &[
+                ThinkingLevel::Off,
+                ThinkingLevel::Minimal,
+                ThinkingLevel::Low,
+                ThinkingLevel::Medium,
+                ThinkingLevel::High,
+                ThinkingLevel::XHigh,
+                ThinkingLevel::Max,
+            ]
+        );
+        assert_eq!(
+            effective_thinking_level_for_model(model, None, ThinkingLevel::Max),
+            ThinkingLevel::Max
+        );
+    }
+
+    #[test]
+    fn opus_4_6_supports_max_without_xhigh() {
+        let registry = ModelRegistry::new();
+        let model = registry.find("anthropic", "claude-opus-4-6").unwrap();
+        let levels = thinking_levels_for_model(model, None);
+
+        assert!(levels.contains(&ThinkingLevel::Max));
+        assert!(!levels.contains(&ThinkingLevel::XHigh));
+        assert_eq!(
+            effective_thinking_level_for_model(model, None, ThinkingLevel::XHigh),
             ThinkingLevel::High
         );
         assert_eq!(
-            request_thinking_value(claude, None, ThinkingLevel::Max).as_deref(),
-            Some("high")
+            effective_thinking_level_for_model(model, None, ThinkingLevel::Max),
+            ThinkingLevel::Max
         );
+    }
+
+    #[test]
+    fn sonnet_5_exposes_native_xhigh_and_max() {
+        let registry = ModelRegistry::new();
+        let model = registry.find("anthropic", "claude-sonnet-5").unwrap();
+        let levels = thinking_levels_for_model(model, None);
+
+        assert!(levels.contains(&ThinkingLevel::XHigh));
+        assert!(levels.contains(&ThinkingLevel::Max));
+    }
+
+    #[test]
+    fn fable_hides_off_but_preserves_explicit_off() {
+        let registry = ModelRegistry::new();
+        let model = registry.find("anthropic", "claude-fable-5").unwrap();
+        let levels = thinking_levels_for_model(model, None);
+
+        assert!(!levels.contains(&ThinkingLevel::Off));
+        assert!(levels.contains(&ThinkingLevel::XHigh));
+        assert!(levels.contains(&ThinkingLevel::Max));
+        assert_eq!(
+            effective_thinking_level_for_model(model, None, ThinkingLevel::Off),
+            ThinkingLevel::Off
+        );
+        assert_eq!(
+            request_thinking_value(model, None, ThinkingLevel::Off).as_deref(),
+            Some("off")
+        );
+    }
+
+    #[test]
+    fn budget_claude_models_expose_standard_levels_and_clamp_max() {
+        let registry = ModelRegistry::new();
+        let model = registry.find("anthropic", "claude-haiku-4-5").unwrap();
+
+        assert_eq!(
+            thinking_levels_for_model(model, None),
+            &[
+                ThinkingLevel::Off,
+                ThinkingLevel::Minimal,
+                ThinkingLevel::Low,
+                ThinkingLevel::Medium,
+                ThinkingLevel::High,
+            ]
+        );
+        assert_eq!(
+            effective_thinking_level_for_model(model, None, ThinkingLevel::Max),
+            ThinkingLevel::High
+        );
+    }
+
+    #[test]
+    fn unknown_claude_models_keep_conservative_thinking_controls() {
+        let registry = ModelRegistry::new();
+        let model =
+            resolve_or_synthesize_model(&registry, "anthropic", "claude-unknown-live-model");
+        assert!(model.reasoning);
+
+        assert_eq!(
+            thinking_levels_for_model(&model, None),
+            &[
+                ThinkingLevel::Off,
+                ThinkingLevel::Minimal,
+                ThinkingLevel::Low,
+                ThinkingLevel::Medium,
+                ThinkingLevel::High,
+            ]
+        );
+        assert_eq!(
+            effective_thinking_level_for_model(&model, None, ThinkingLevel::Max),
+            ThinkingLevel::High
+        );
+        assert_eq!(
+            request_thinking_value(&model, None, ThinkingLevel::Off),
+            None
+        );
+    }
+
+    #[test]
+    fn unknown_anthropic_ids_ignore_cross_provider_xhigh_markers() {
+        let registry = ModelRegistry::new();
+
+        for model_id in ["claude-gpt-5.5", "claude-deepseek-v4-pro"] {
+            let model = synthesize_model_candidate(&registry, "anthropic", model_id);
+            assert_eq!(model.id, model_id);
+            assert_eq!(model.provider, "anthropic");
+            assert!(model.reasoning);
+
+            assert_eq!(
+                effective_thinking_level_for_model(&model, None, ThinkingLevel::XHigh),
+                ThinkingLevel::High,
+                "{model_id}"
+            );
+            assert_eq!(
+                effective_thinking_level_for_model(&model, None, ThinkingLevel::Max),
+                ThinkingLevel::High,
+                "{model_id}"
+            );
+            assert_eq!(
+                thinking_levels_for_model(&model, None),
+                &[
+                    ThinkingLevel::Off,
+                    ThinkingLevel::Minimal,
+                    ThinkingLevel::Low,
+                    ThinkingLevel::Medium,
+                    ThinkingLevel::High,
+                ],
+                "{model_id}"
+            );
+            assert_eq!(
+                request_thinking_value(&model, None, ThinkingLevel::Off),
+                None,
+                "{model_id}"
+            );
+        }
     }
 
     #[test]

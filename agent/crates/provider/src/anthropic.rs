@@ -1,6 +1,8 @@
+pub mod capabilities;
 mod events;
 
 use async_trait::async_trait;
+use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::error::{KordiError, KordiResult};
 use reqwest::Client;
 use serde_json::{Value, json};
@@ -11,6 +13,10 @@ use crate::retry::with_retry;
 use crate::transforms::convert_messages_for_anthropic;
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
 
+use capabilities::{
+    ClaudeThinkingMode, ThinkingOffBehavior, adaptive_effort, capabilities_for_model,
+    clamp_thinking_level,
+};
 use events::{AnthropicEventState, sse_error_message};
 use kordi_core::types::CacheMetricsSource;
 
@@ -73,66 +79,7 @@ impl Provider for AnthropicProvider {
         let (tools, hosted_web_search) =
             build_anthropic_tools(&request.tools, &request.extra_tool_schemas);
 
-        let mut body = json!({
-            "model": request.model,
-            "messages": messages,
-            "max_tokens": request.max_tokens.unwrap_or(16384),
-            "stream": true,
-        });
-
-        if is_oauth {
-            let mut system_blocks = vec![system_text_block(
-                "You are Claude Code, Anthropic's official CLI for Claude.",
-            )];
-            if !request.system_prompt.is_empty() {
-                system_blocks.push(system_text_block(&request.system_prompt));
-            }
-            body["system"] = json!(system_blocks);
-        } else if !request.system_prompt.is_empty() {
-            body["system"] = json!([system_text_block(&request.system_prompt)]);
-        }
-
-        if !tools.is_empty() {
-            body["tools"] = json!(tools);
-        }
-
-        if let Some(ref thinking) = request.thinking
-            && thinking.as_str() != "default"
-        {
-            if supports_adaptive_thinking(&request.model) {
-                let effort = match thinking.as_str() {
-                    "minimal" | "low" => "low",
-                    "medium" => "medium",
-                    "high" => "high",
-                    "xhigh" => {
-                        if request.model.contains("opus-4-6") {
-                            "max"
-                        } else {
-                            "high"
-                        }
-                    }
-                    _ => "medium",
-                };
-                body["thinking"] = json!({ "type": "adaptive" });
-                body["output_config"] = json!({ "effort": effort });
-            } else {
-                let budget = match thinking.as_str() {
-                    "minimal" => 1024,
-                    "low" => 2048,
-                    "medium" => 8192,
-                    "high" => 16384,
-                    "xhigh" => 32768,
-                    _ => 8192,
-                };
-                body["thinking"] = json!({
-                    "type": "enabled",
-                    "budget_tokens": budget,
-                });
-                if request.max_tokens.unwrap_or(0) < (budget as u32 + 4096) {
-                    body["max_tokens"] = json!(budget + 4096);
-                }
-            }
-        }
+        let body = build_anthropic_request_body(&request, options.auth_mode, messages, tools);
 
         let response = with_retry(
             options.max_retries,
@@ -298,6 +245,90 @@ fn build_anthropic_tools(tools: &[Value], extra_tool_schemas: &[Value]) -> (Vec<
     (converted, hosted_web_search)
 }
 
+fn build_anthropic_request_body(
+    request: &CompletionRequest,
+    auth_mode: ProviderAuthMode,
+    messages: Vec<Value>,
+    tools: Vec<Value>,
+) -> Value {
+    let max_tokens = request.max_tokens.unwrap_or(16_384);
+    let mut body = json!({
+        "model": request.model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "stream": true,
+    });
+
+    if matches!(auth_mode, ProviderAuthMode::OAuth) {
+        let mut system_blocks = vec![system_text_block(
+            "You are Claude Code, Anthropic's official CLI for Claude.",
+        )];
+        if !request.system_prompt.is_empty() {
+            system_blocks.push(system_text_block(&request.system_prompt));
+        }
+        body["system"] = json!(system_blocks);
+    } else if !request.system_prompt.is_empty() {
+        body["system"] = json!([system_text_block(&request.system_prompt)]);
+    }
+
+    if !tools.is_empty() {
+        body["tools"] = json!(tools);
+    }
+
+    let Some(thinking) = request.thinking.as_deref() else {
+        return body;
+    };
+    if thinking == "default" {
+        return body;
+    }
+
+    let requested = ThinkingLevel::parse(thinking).unwrap_or(ThinkingLevel::Medium);
+    let capabilities = capabilities_for_model(&request.model);
+    if requested == ThinkingLevel::Off {
+        if capabilities
+            .is_some_and(|capabilities| capabilities.thinking_off == ThinkingOffBehavior::Disabled)
+        {
+            body["thinking"] = json!({ "type": "disabled" });
+        }
+        return body;
+    }
+
+    let effective = clamp_thinking_level(&request.model, requested).unwrap_or(match requested {
+        ThinkingLevel::XHigh | ThinkingLevel::Max => ThinkingLevel::High,
+        other => other,
+    });
+
+    if capabilities
+        .is_some_and(|capabilities| capabilities.thinking_mode == ClaudeThinkingMode::Adaptive)
+    {
+        if let Some(effort) = adaptive_effort(&request.model, effective) {
+            body["thinking"] = json!({
+                "type": "adaptive",
+                "display": "summarized",
+            });
+            body["output_config"] = json!({ "effort": effort });
+        }
+        return body;
+    }
+
+    let budget: u32 = match effective {
+        ThinkingLevel::Minimal => 1_024,
+        ThinkingLevel::Low => 2_048,
+        ThinkingLevel::Medium => 8_192,
+        ThinkingLevel::High | ThinkingLevel::XHigh | ThinkingLevel::Max => 16_384,
+        ThinkingLevel::Off | ThinkingLevel::Default => return body,
+    };
+    body["thinking"] = json!({
+        "type": "enabled",
+        "budget_tokens": budget,
+    });
+    if max_tokens < budget + 4_096 {
+        body["max_tokens"] = json!(budget + 4_096);
+    }
+
+    body
+}
+
 fn anthropic_beta_header(hosted_web_search: bool) -> &'static str {
     if hosted_web_search {
         "fine-grained-tool-streaming-2025-05-14,web-search-2025-03-05"
@@ -381,19 +412,130 @@ fn apply_cache_control_to_last_user_message(messages: &mut [Value]) {
     }
 }
 
-fn supports_adaptive_thinking(model: &str) -> bool {
-    model.contains("claude-opus-4-6") || model.contains("claude-sonnet-4-6")
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        CacheMetricsSource, ProviderAuthMode, anthropic_beta_header, anthropic_oauth_beta_header,
-        apply_cache_control_to_last_user_message, build_anthropic_tools,
-        cache_metrics_source_for_auth_mode, next_sse_block_delimiter, sse_block_event_name,
-        system_text_block,
+        CacheMetricsSource, CompletionRequest, ProviderAuthMode, anthropic_beta_header,
+        anthropic_oauth_beta_header, apply_cache_control_to_last_user_message,
+        build_anthropic_request_body, build_anthropic_tools, cache_metrics_source_for_auth_mode,
+        next_sse_block_delimiter, sse_block_event_name, system_text_block,
     };
     use serde_json::json;
+
+    fn completion_request(model: &str, thinking: Option<&str>) -> CompletionRequest {
+        CompletionRequest {
+            system_prompt: "Be precise".to_string(),
+            messages: vec![json!({"role": "user", "content": "hello"})],
+            tools: Vec::new(),
+            extra_tool_schemas: Vec::new(),
+            model: model.to_string(),
+            max_tokens: Some(16_384),
+            stream: true,
+            thinking: thinking.map(ToString::to_string),
+        }
+    }
+
+    fn request_body(
+        model: &str,
+        thinking: Option<&str>,
+        auth_mode: ProviderAuthMode,
+    ) -> serde_json::Value {
+        let request = completion_request(model, thinking);
+        build_anthropic_request_body(&request, auth_mode, request.messages.clone(), Vec::new())
+    }
+
+    #[test]
+    fn adaptive_models_emit_summarized_thinking_and_model_correct_effort() {
+        for (model, thinking, expected_effort) in [
+            ("claude-opus-4-6", "xhigh", "high"),
+            ("claude-opus-4-6", "max", "max"),
+            ("claude-opus-4-7", "xhigh", "xhigh"),
+            ("claude-opus-4-7", "max", "max"),
+            ("claude-opus-4-8", "xhigh", "xhigh"),
+            ("claude-opus-4-8", "max", "max"),
+            ("claude-sonnet-4-6", "max", "max"),
+            ("claude-sonnet-5", "xhigh", "xhigh"),
+            ("claude-sonnet-5", "max", "max"),
+            ("claude-fable-5", "xhigh", "xhigh"),
+            ("claude-fable-5", "max", "max"),
+        ] {
+            let body = request_body(model, Some(thinking), ProviderAuthMode::ApiKey);
+            assert_eq!(
+                body["thinking"],
+                json!({"type": "adaptive", "display": "summarized"}),
+                "{model}/{thinking}"
+            );
+            assert_eq!(
+                body["output_config"],
+                json!({"effort": expected_effort}),
+                "{model}/{thinking}"
+            );
+        }
+    }
+
+    #[test]
+    fn current_models_with_sampling_restrictions_never_add_temperature() {
+        for model in [
+            "claude-fable-5",
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-sonnet-5",
+        ] {
+            let body = request_body(model, Some("xhigh"), ProviderAuthMode::ApiKey);
+            assert!(body.get("temperature").is_none(), "{model}");
+        }
+    }
+
+    #[test]
+    fn explicit_off_uses_each_models_disabled_or_omitted_contract() {
+        let opus = request_body("claude-opus-4-8", Some("off"), ProviderAuthMode::ApiKey);
+        assert_eq!(opus["thinking"], json!({"type": "disabled"}));
+        assert!(opus.get("output_config").is_none());
+
+        let fable = request_body("claude-fable-5", Some("off"), ProviderAuthMode::ApiKey);
+        assert!(fable.get("thinking").is_none());
+        assert!(fable.get("output_config").is_none());
+
+        let unknown = request_body(
+            "claude-unknown-live-id",
+            Some("off"),
+            ProviderAuthMode::ApiKey,
+        );
+        assert!(unknown.get("thinking").is_none());
+        assert!(unknown.get("output_config").is_none());
+    }
+
+    #[test]
+    fn budget_and_unknown_models_keep_conservative_budget_thinking() {
+        for (model, thinking) in [
+            ("claude-opus-4-5", "max"),
+            ("claude-unknown-live-id", "xhigh"),
+        ] {
+            let body = request_body(model, Some(thinking), ProviderAuthMode::ApiKey);
+            assert_eq!(
+                body["thinking"],
+                json!({"type": "enabled", "budget_tokens": 16_384}),
+                "{model}"
+            );
+            assert_eq!(body["max_tokens"], 20_480, "{model}");
+            assert!(body.get("output_config").is_none(), "{model}");
+        }
+    }
+
+    #[test]
+    fn oauth_identity_is_prepended_without_changing_api_key_system_blocks() {
+        let oauth = request_body("claude-opus-4-8", Some("default"), ProviderAuthMode::OAuth);
+        assert_eq!(
+            oauth["system"][0]["text"],
+            "You are Claude Code, Anthropic's official CLI for Claude."
+        );
+        assert_eq!(oauth["system"][1]["text"], "Be precise");
+
+        let api_key = request_body("claude-opus-4-8", Some("default"), ProviderAuthMode::ApiKey);
+        assert_eq!(api_key["system"].as_array().map(Vec::len), Some(1));
+        assert_eq!(api_key["system"][0]["text"], "Be precise");
+        assert!(api_key.get("thinking").is_none());
+    }
 
     #[test]
     fn anthropic_tools_prefer_hosted_web_search_over_custom_function() {

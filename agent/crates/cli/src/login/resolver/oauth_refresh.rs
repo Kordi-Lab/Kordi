@@ -103,12 +103,24 @@ fn resolve_env_provider_auth(
 ) -> Option<ResolvedProviderAuth> {
     let normalized = normalize_provider_for_model_selection(provider);
     match (normalized.as_str(), method) {
-        ("anthropic", ProviderAuthMethod::ApiKey) => std::env::var("ANTHROPIC_API_KEY")
+        ("anthropic", ProviderAuthMethod::OAuth) => std::env::var("ANTHROPIC_OAUTH_TOKEN")
             .ok()
-            .filter(|val| !val.is_empty())
+            .filter(|val| !val.trim().is_empty())
             .map(|val| ResolvedProviderAuth {
                 source: AuthSource::EnvVar,
-                credential_provider: normalized.clone(),
+                credential_provider: provider_storage_key(&normalized, method),
+                method,
+                credential: val,
+                account_id: None,
+                account_label: None,
+                authority: None,
+            }),
+        ("anthropic", ProviderAuthMethod::ApiKey) => std::env::var("ANTHROPIC_API_KEY")
+            .ok()
+            .filter(|val| !val.trim().is_empty())
+            .map(|val| ResolvedProviderAuth {
+                source: AuthSource::EnvVar,
+                credential_provider: provider_storage_key(&normalized, method),
                 method,
                 credential: val,
                 account_id: None,
@@ -211,16 +223,27 @@ pub fn resolve_provider_auth(provider: &str) -> Option<ResolvedProviderAuth> {
     }
 
     let store = load_auth();
+    if let Some(method) = store.active_env_auth_methods.get(&normalized).copied()
+        && let Some(auth) = resolve_env_provider_auth(&normalized, method)
+    {
+        return Some(auth);
+    }
+
     let explicit_active_profile = store.active_auth_profiles.get(&normalized).cloned();
     let explicit_active_method = store.active_auth_methods.get(&normalized).copied();
     if let Some(profile_id) = explicit_active_profile.as_deref() {
         let profile = stored_auth_profile_by_id(&store, &normalized, profile_id)?;
         return resolve_stored_profile_auth(&normalized, profile);
     }
-    if let Some(method) = explicit_active_method
-        && let Some(auth) = resolve_env_provider_auth(&normalized, method)
-    {
-        return Some(auth);
+    if let Some(method) = explicit_active_method {
+        if let Some(profile) = stored_auth_profile_for_method(&store, &normalized, method)
+            && let Some(auth) = resolve_stored_profile_auth(&normalized, profile)
+        {
+            return Some(auth);
+        }
+        if let Some(auth) = resolve_env_provider_auth(&normalized, method) {
+            return Some(auth);
+        }
     }
 
     let preferred_methods = match active_auth_method(&normalized) {
@@ -239,7 +262,7 @@ pub fn resolve_provider_auth(provider: &str) -> Option<ResolvedProviderAuth> {
         }
     }
 
-    [ProviderAuthMethod::ApiKey, ProviderAuthMethod::OAuth]
+    [ProviderAuthMethod::OAuth, ProviderAuthMethod::ApiKey]
         .into_iter()
         .find_map(|method| resolve_env_provider_auth(&normalized, method))
 }
@@ -651,6 +674,146 @@ mod tests {
             unsafe { std::env::set_var(key, value) };
             Self { key, old }
         }
+
+        fn set_value(key: &'static str, value: &str) -> Self {
+            let old = std::env::var_os(key);
+            unsafe { std::env::set_var(key, value) };
+            Self { key, old }
+        }
+
+        fn unset(key: &'static str) -> Self {
+            let old = std::env::var_os(key);
+            unsafe { std::env::remove_var(key) };
+            Self { key, old }
+        }
+    }
+
+    #[test]
+    fn anthropic_environment_defaults_to_oauth_and_allows_explicit_api_key_choice() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set("HOME", home.path());
+        let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
+        let _storage_root = EnvVarGuard::unset("KORDI_STORAGE_ROOT");
+        let _app_data_dir = EnvVarGuard::unset("APP_DATA_DIR");
+        let _oauth = EnvVarGuard::set_value("ANTHROPIC_OAUTH_TOKEN", "env-oauth-token");
+        let _api_key = EnvVarGuard::set_value("ANTHROPIC_API_KEY", "env-api-key");
+
+        let automatic = resolve_provider_auth("anthropic").expect("automatic Anthropic auth");
+        assert_eq!(automatic.source, crate::login::resolver::AuthSource::EnvVar);
+        assert_eq!(automatic.method, ProviderAuthMethod::OAuth);
+        assert_eq!(automatic.credential_provider, "anthropic-oauth");
+        assert_eq!(automatic.credential, "env-oauth-token");
+
+        let explicit = resolve_provider_auth_choice("anthropic", "env:api-key")
+            .expect("explicit Anthropic API key");
+        assert_eq!(explicit.source, crate::login::resolver::AuthSource::EnvVar);
+        assert_eq!(explicit.method, ProviderAuthMethod::ApiKey);
+        assert_eq!(explicit.credential_provider, "anthropic");
+        assert_eq!(explicit.credential, "env-api-key");
+    }
+
+    #[test]
+    fn explicit_anthropic_environment_choice_persists_across_auth_store_reload() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set("HOME", home.path());
+        let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
+        let _storage_root = EnvVarGuard::unset("KORDI_STORAGE_ROOT");
+        let _app_data_dir = EnvVarGuard::unset("APP_DATA_DIR");
+        let _oauth = EnvVarGuard::set_value("ANTHROPIC_OAUTH_TOKEN", "env-oauth-token");
+        let _api_key = EnvVarGuard::set_value("ANTHROPIC_API_KEY", "env-api-key");
+
+        assert!(
+            crate::login::set_active_auth_choice("anthropic", "env:api-key")
+                .expect("persist environment API-key choice")
+        );
+
+        let resolved = resolve_provider_auth("anthropic").expect("persisted Anthropic auth");
+        assert_eq!(resolved.source, crate::login::resolver::AuthSource::EnvVar);
+        assert_eq!(resolved.method, ProviderAuthMethod::ApiKey);
+        assert_eq!(resolved.credential, "env-api-key");
+
+        let summaries = crate::login::provider_auth_option_summaries("anthropic");
+        assert!(summaries.iter().any(|summary| {
+            summary.active
+                && summary.source == crate::login::resolver::AuthSource::EnvVar
+                && summary.method == ProviderAuthMethod::ApiKey
+        }));
+    }
+
+    #[test]
+    fn explicit_saved_anthropic_profiles_win_over_both_environment_credentials() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set("HOME", home.path());
+        let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
+        let _storage_root = EnvVarGuard::unset("KORDI_STORAGE_ROOT");
+        let _app_data_dir = EnvVarGuard::unset("APP_DATA_DIR");
+        let _oauth = EnvVarGuard::set_value("ANTHROPIC_OAUTH_TOKEN", "env-oauth-token");
+        let _api_key = EnvVarGuard::set_value("ANTHROPIC_API_KEY", "env-api-key");
+
+        let api_profile = AuthProfile {
+            id: "saved-api".to_string(),
+            method: ProviderAuthMethod::ApiKey,
+            created_at_ms: Some(10),
+            updated_at_ms: Some(10),
+            entry: AuthEntry::ApiKey {
+                key: "saved-api-key".to_string(),
+            },
+        };
+        let oauth_profile = AuthProfile {
+            id: "saved-oauth".to_string(),
+            method: ProviderAuthMethod::OAuth,
+            created_at_ms: Some(20),
+            updated_at_ms: Some(20),
+            entry: AuthEntry::OAuth {
+                access: "saved-oauth-token".to_string(),
+                refresh: String::new(),
+                expires: i64::MAX,
+                extra: serde_json::json!({}),
+            },
+        };
+
+        for (profile_id, expected_method, expected_credential) in [
+            ("saved-api", ProviderAuthMethod::ApiKey, "saved-api-key"),
+            (
+                "saved-oauth",
+                ProviderAuthMethod::OAuth,
+                "saved-oauth-token",
+            ),
+        ] {
+            save_auth(&AuthStore {
+                last_provider: Some("anthropic".to_string()),
+                active_auth_methods: HashMap::from([("anthropic".to_string(), expected_method)]),
+                active_auth_profiles: HashMap::from([(
+                    "anthropic".to_string(),
+                    profile_id.to_string(),
+                )]),
+                profiles: HashMap::from([(
+                    "anthropic".to_string(),
+                    vec![api_profile.clone(), oauth_profile.clone()],
+                )]),
+                ..AuthStore::default()
+            })
+            .expect("save Anthropic profiles");
+
+            let resolved = resolve_provider_auth("anthropic").expect("saved Anthropic auth");
+            assert_eq!(
+                resolved.source,
+                crate::login::resolver::AuthSource::KordiAuth
+            );
+            assert_eq!(resolved.method, expected_method);
+            assert_eq!(resolved.credential, expected_credential);
+        }
+
+        let explicit_environment = resolve_provider_auth_choice("anthropic", "env:api-key")
+            .expect("explicit environment API key");
+        assert_eq!(
+            explicit_environment.source,
+            crate::login::resolver::AuthSource::EnvVar
+        );
+        assert_eq!(explicit_environment.credential, "env-api-key");
     }
 
     impl Drop for EnvVarGuard {

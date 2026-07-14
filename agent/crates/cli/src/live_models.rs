@@ -209,17 +209,26 @@ pub fn merge_live_model_ids_with_settings(
     static_models: &[Model],
     live_ids: Vec<String>,
 ) -> Vec<Model> {
+    let case_insensitive_dedup =
+        login::normalize_provider_for_model_selection(provider) == "anthropic";
+    let dedup_key = |model_id: &str| {
+        if case_insensitive_dedup {
+            model_id.to_ascii_lowercase()
+        } else {
+            model_id.to_string()
+        }
+    };
     let mut seen = HashSet::new();
     let mut merged = Vec::new();
 
     for model in static_models {
-        if seen.insert(model.id.clone()) {
+        if seen.insert(dedup_key(&model.id)) {
             merged.push(model.clone());
         }
     }
 
     for model_id in sanitize_model_ids_for_provider(settings, provider, live_ids) {
-        if !seen.insert(model_id.clone()) {
+        if !seen.insert(dedup_key(&model_id)) {
             continue;
         }
         merged.push(runtime_model::synthesize_model_candidate_with_settings(
@@ -227,7 +236,11 @@ pub fn merge_live_model_ids_with_settings(
         ));
     }
 
-    merged.sort_by(|left, right| left.id.cmp(&right.id));
+    merged.sort_by(|left, right| {
+        login::model_catalog_rank(provider, &left.id)
+            .cmp(&login::model_catalog_rank(provider, &right.id))
+            .then_with(|| left.id.cmp(&right.id))
+    });
     merged
 }
 
@@ -441,6 +454,42 @@ fn looks_like_embedding_model_id(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kordi_provider::anthropic::capabilities::ANTHROPIC_SUBSCRIPTION_MODEL_IDS;
+    use kordi_provider::registry::ApiType;
+    use std::sync::Mutex;
+
+    fn env_lock() -> &'static Mutex<()> {
+        crate::login::auth_test_env_lock()
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        old: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+            let old = std::env::var_os(key);
+            unsafe { std::env::set_var(key, value) };
+            Self { key, old }
+        }
+
+        fn unset(key: &'static str) -> Self {
+            let old = std::env::var_os(key);
+            unsafe { std::env::remove_var(key) };
+            Self { key, old }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.old {
+                unsafe { std::env::set_var(self.key, value) };
+            } else {
+                unsafe { std::env::remove_var(self.key) };
+            }
+        }
+    }
 
     #[test]
     fn merge_live_model_ids_preserves_static_and_synthesizes_new_ids() {
@@ -466,6 +515,119 @@ mod tests {
             .expect("live model synthesized");
         assert_eq!(live.provider, "openai");
         assert_eq!(live.name, "gpt-5.5");
+    }
+
+    #[test]
+    fn merge_live_anthropic_models_keeps_curated_order_before_unknown_ids() {
+        let registry = ModelRegistry::new();
+        let static_models = registry
+            .list()
+            .iter()
+            .filter(|model| model.provider == "anthropic")
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(static_models.len(), ANTHROPIC_SUBSCRIPTION_MODEL_IDS.len());
+
+        let legacy_live_id = "claude-3-5-haiku-20241022";
+        let merged = merge_live_model_ids(
+            &registry,
+            "anthropic",
+            &static_models,
+            vec![
+                "claude-opus-4-8".to_string(),
+                "claude-opus-4-8".to_string(),
+                "CLAUDE-OPUS-4-8".to_string(),
+                "claude-fable-5".to_string(),
+                legacy_live_id.to_string(),
+                legacy_live_id.to_string(),
+            ],
+        );
+        let merged_ids = merged
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(merged.len(), ANTHROPIC_SUBSCRIPTION_MODEL_IDS.len() + 1);
+        assert_eq!(
+            &merged_ids[..ANTHROPIC_SUBSCRIPTION_MODEL_IDS.len()],
+            ANTHROPIC_SUBSCRIPTION_MODEL_IDS
+        );
+        assert_eq!(merged_ids.last(), Some(&legacy_live_id));
+        let legacy = merged.last().expect("legacy live model synthesized");
+        assert_eq!(legacy.provider, "anthropic");
+        assert!(matches!(legacy.api, ApiType::AnthropicMessages));
+        assert_eq!(
+            merged_ids
+                .iter()
+                .filter(|model_id| model_id.eq_ignore_ascii_case("claude-opus-4-8"))
+                .count(),
+            1
+        );
+        assert!(merged_ids.contains(&"claude-opus-4-8"));
+    }
+
+    #[test]
+    fn anthropic_oauth_live_legacy_model_is_shown_and_selectable() {
+        let _lock = env_lock().lock().expect("env lock");
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home_guard = EnvVarGuard::set_path("HOME", home.path());
+        let _anthropic_api_key = EnvVarGuard::unset("ANTHROPIC_API_KEY");
+        let _anthropic_oauth_token = EnvVarGuard::unset("ANTHROPIC_OAUTH_TOKEN");
+        let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
+        let _storage_root = EnvVarGuard::unset("KORDI_STORAGE_ROOT");
+        let _app_data_dir = EnvVarGuard::unset("APP_DATA_DIR");
+        login::save_oauth_credentials(
+            "anthropic",
+            &crate::oauth::OAuthCredentials {
+                access: "anthropic-oauth-access".to_string(),
+                refresh: String::new(),
+                expires: i64::MAX,
+                extra: serde_json::json!({"accountId": "acct_test"}),
+            },
+        )
+        .expect("save Anthropic OAuth");
+
+        let settings = Settings::default();
+        let registry = ModelRegistry::new();
+        let static_models = registry
+            .list()
+            .iter()
+            .filter(|model| model.provider == "anthropic")
+            .cloned()
+            .collect::<Vec<_>>();
+        let auth_mode_static_models = login::model_candidates_for_provider_auth_mode(
+            &registry,
+            &settings,
+            "anthropic",
+            &static_models,
+        );
+        assert_eq!(
+            auth_mode_static_models
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>(),
+            ANTHROPIC_SUBSCRIPTION_MODEL_IDS
+        );
+
+        let legacy_live_id = "claude-3-7-sonnet-20250219";
+        let merged = merge_live_model_ids_with_settings(
+            &registry,
+            &settings,
+            "anthropic",
+            &auth_mode_static_models,
+            vec![legacy_live_id.to_string()],
+        );
+        let legacy = merged
+            .iter()
+            .find(|model| model.id == legacy_live_id)
+            .expect("legacy live model shown");
+        assert_eq!(legacy.provider, "anthropic");
+        assert!(matches!(legacy.api, ApiType::AnthropicMessages));
+        assert!(login::model_id_allowed_for_active_auth(
+            &settings,
+            "anthropic",
+            legacy_live_id
+        ));
     }
 
     #[test]
@@ -528,6 +690,13 @@ mod tests {
             !merged
                 .iter()
                 .any(|model| model.id == "text-embedding-nomic-embed-text-v1.5")
+        );
+        assert_eq!(
+            merged
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>(),
+            ["NousResearch/Hermes-3-Llama", "qwen3-coder-30b"]
         );
     }
 }

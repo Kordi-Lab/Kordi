@@ -15,6 +15,7 @@ const CALLBACK_PORT: u16 = 53692;
 const CALLBACK_PATH: &str = "/callback";
 const SCOPES: &str = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 const CLAUDE_CODE_USER_AGENT: &str = "claude-cli/2.1.75";
+const TOKEN_EXPIRY_SAFETY_MS: i64 = 5 * 60 * 1000;
 
 // ── Token response ──────────────────────────────────────────────────
 
@@ -52,15 +53,23 @@ pub async fn login_anthropic(callbacks: OAuthCallbacks) -> Result<OAuthCredentia
         scopes = url_encode(SCOPES),
     );
 
-    // Tell the UI about the URL.
-    (callbacks.on_auth)(auth_url);
+    let OAuthCallbacks {
+        on_auth,
+        on_manual_input,
+        on_progress,
+        ..
+    } = callbacks;
 
-    if let Some(ref on_progress) = callbacks.on_progress {
+    // Bind the callback listener before publishing a URL that can redirect to it.
+    let server = start_then_notify(
+        || start_callback_server(CALLBACK_PORT, CALLBACK_PATH),
+        move || on_auth(auth_url),
+    )
+    .await?;
+
+    if let Some(ref on_progress) = on_progress {
         on_progress("Waiting for browser authentication…".into());
     }
-
-    // Start local callback server.
-    let server = start_callback_server(CALLBACK_PORT, CALLBACK_PATH).await?;
 
     // Race: browser callback vs manual paste.
     let CallbackServerParts {
@@ -68,7 +77,7 @@ pub async fn login_anthropic(callbacks: OAuthCallbacks) -> Result<OAuthCredentia
         cancel_tx,
     } = server.into_parts();
     let mut cancel_tx = Some(cancel_tx);
-    let params = match callbacks.on_manual_input {
+    let params = match on_manual_input {
         Some(mut manual_rx) => loop {
             tokio::select! {
                 result = &mut result_rx => {
@@ -80,16 +89,14 @@ pub async fn login_anthropic(callbacks: OAuthCallbacks) -> Result<OAuthCredentia
                         anyhow::bail!("Manual input cancelled");
                     }
 
-                    let parsed = parse_authorization_input(&raw);
-                    if let Some(code) = parsed.code {
+                    if let Some(params) = validate_manual_authorization_input(&raw, &state)? {
                         if let Some(cancel_tx) = cancel_tx.take() {
                             let _ = cancel_tx.send(());
                         }
-                        let parsed_state = parsed.state.unwrap_or_else(|| state.clone());
-                        break CallbackParams { code, state: parsed_state };
+                        break params;
                     }
 
-                    if let Some(ref on_progress) = callbacks.on_progress {
+                    if let Some(ref on_progress) = on_progress {
                         on_progress(
                             "Could not parse the pasted callback yet. Paste the full redirect URL or the authorization code.".into(),
                         );
@@ -101,8 +108,9 @@ pub async fn login_anthropic(callbacks: OAuthCallbacks) -> Result<OAuthCredentia
             .await
             .map_err(|_| anyhow::anyhow!("Callback channel closed"))??,
     };
+    let params = validate_callback_state(params, &state)?;
 
-    if let Some(ref on_progress) = callbacks.on_progress {
+    if let Some(ref on_progress) = on_progress {
         on_progress("Exchanging authorization code for tokens…".into());
     }
 
@@ -123,11 +131,7 @@ pub async fn refresh_anthropic_token(refresh_token: &str) -> Result<OAuthCredent
         .header("Accept", "application/json")
         .header("User-Agent", CLAUDE_CODE_USER_AGENT)
         .header("x-app", "cli")
-        .json(&serde_json::json!({
-            "grant_type": "refresh_token",
-            "client_id": CLIENT_ID,
-            "refresh_token": refresh_token,
-        }))
+        .json(&refresh_token_body(refresh_token))
         .send()
         .await
         .context("Failed to send refresh request to Anthropic")?;
@@ -147,12 +151,73 @@ pub async fn refresh_anthropic_token(refresh_token: &str) -> Result<OAuthCredent
     Ok(OAuthCredentials {
         access: token.access_token,
         refresh: token.refresh_token,
-        expires: now_ms + token.expires_in * 1000,
+        expires: buffered_expiry_ms(now_ms, token.expires_in),
         extra: serde_json::Value::Null,
     })
 }
 
 // ── Internals ───────────────────────────────────────────────────────
+
+async fn start_then_notify<Start, StartFuture, Notify, Server>(
+    start: Start,
+    notify: Notify,
+) -> Result<Server>
+where
+    Start: FnOnce() -> StartFuture,
+    StartFuture: std::future::Future<Output = Result<Server>>,
+    Notify: FnOnce(),
+{
+    let server = start().await?;
+    notify();
+    Ok(server)
+}
+
+fn validate_callback_state(params: CallbackParams, expected_state: &str) -> Result<CallbackParams> {
+    if params.state != expected_state {
+        anyhow::bail!("Anthropic OAuth state mismatch");
+    }
+    Ok(params)
+}
+
+fn validate_manual_authorization_input(
+    input: &str,
+    expected_state: &str,
+) -> Result<Option<CallbackParams>> {
+    let parsed = parse_authorization_input(input);
+    let Some(code) = parsed.code else {
+        return Ok(None);
+    };
+    let state = if parsed.is_bare_code {
+        expected_state.to_string()
+    } else {
+        parsed.state.unwrap_or_default()
+    };
+    validate_callback_state(CallbackParams { code, state }, expected_state).map(Some)
+}
+
+fn buffered_expiry_ms(now_ms: i64, expires_in_seconds: i64) -> i64 {
+    let lifetime_ms = expires_in_seconds.saturating_mul(1000);
+    now_ms.saturating_add(lifetime_ms.saturating_sub(TOKEN_EXPIRY_SAFETY_MS).max(0))
+}
+
+fn authorization_code_body(code: &str, state: &str, verifier: &str) -> serde_json::Value {
+    serde_json::json!({
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "code": code,
+        "state": state,
+        "redirect_uri": REDIRECT_URI,
+        "code_verifier": verifier,
+    })
+}
+
+fn refresh_token_body(refresh_token: &str) -> serde_json::Value {
+    serde_json::json!({
+        "grant_type": "refresh_token",
+        "client_id": CLIENT_ID,
+        "refresh_token": refresh_token,
+    })
+}
 
 async fn exchange_code(code: &str, state: &str, verifier: &str) -> Result<OAuthCredentials> {
     // Anthropic expects a JSON body (not form-encoded) for code exchange.
@@ -167,14 +232,7 @@ async fn exchange_code(code: &str, state: &str, verifier: &str) -> Result<OAuthC
         .header("Accept", "application/json")
         .header("User-Agent", CLAUDE_CODE_USER_AGENT)
         .header("x-app", "cli")
-        .json(&serde_json::json!({
-            "grant_type": "authorization_code",
-            "client_id": CLIENT_ID,
-            "code": code,
-            "state": state,
-            "redirect_uri": REDIRECT_URI,
-            "code_verifier": verifier,
-        }))
+        .json(&authorization_code_body(code, state, verifier))
         .send()
         .await
         .context("Failed to send token exchange request to Anthropic")?;
@@ -194,7 +252,7 @@ async fn exchange_code(code: &str, state: &str, verifier: &str) -> Result<OAuthC
     Ok(OAuthCredentials {
         access: token.access_token,
         refresh: token.refresh_token,
-        expires: now_ms + token.expires_in * 1000,
+        expires: buffered_expiry_ms(now_ms, token.expires_in),
         extra: serde_json::Value::Null,
     })
 }
@@ -204,6 +262,7 @@ async fn exchange_code(code: &str, state: &str, verifier: &str) -> Result<OAuthC
 struct ParsedInput {
     code: Option<String>,
     state: Option<String>,
+    is_bare_code: bool,
 }
 
 fn parse_authorization_input(input: &str) -> ParsedInput {
@@ -212,6 +271,7 @@ fn parse_authorization_input(input: &str) -> ParsedInput {
         return ParsedInput {
             code: None,
             state: None,
+            is_bare_code: false,
         };
     }
     if let Ok(url) = url::Url::parse(value) {
@@ -224,7 +284,11 @@ fn parse_authorization_input(input: &str) -> ParsedInput {
             .find(|(k, _)| k == "state")
             .map(|(_, v)| v.to_string());
         if code.is_some() {
-            return ParsedInput { code, state };
+            return ParsedInput {
+                code,
+                state,
+                is_bare_code: false,
+            };
         }
     }
     if value.contains('#') {
@@ -232,6 +296,7 @@ fn parse_authorization_input(input: &str) -> ParsedInput {
         return ParsedInput {
             code: parts.first().map(|s| s.to_string()),
             state: parts.get(1).map(|s| s.to_string()),
+            is_bare_code: false,
         };
     }
     if value.contains("code=") {
@@ -243,11 +308,13 @@ fn parse_authorization_input(input: &str) -> ParsedInput {
         return ParsedInput {
             code: pairs.get("code").cloned(),
             state: pairs.get("state").cloned(),
+            is_bare_code: false,
         };
     }
     ParsedInput {
         code: Some(value.to_string()),
         state: None,
+        is_bare_code: true,
     }
 }
 
@@ -266,4 +333,112 @@ fn url_encode(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn callback_state_must_match_the_generated_state() {
+        let matching = CallbackParams {
+            code: "auth-code".to_string(),
+            state: "expected-state".to_string(),
+        };
+        assert!(validate_callback_state(matching, "expected-state").is_ok());
+
+        let mismatched = CallbackParams {
+            code: "auth-code".to_string(),
+            state: "wrong-state".to_string(),
+        };
+        let error = validate_callback_state(mismatched, "expected-state").unwrap_err();
+        assert_eq!(error.to_string(), "Anthropic OAuth state mismatch");
+    }
+
+    #[test]
+    fn token_expiry_reserves_five_minutes_without_going_backwards() {
+        assert_eq!(buffered_expiry_ms(1_000_000, 3_600), 4_300_000);
+        assert_eq!(buffered_expiry_ms(1_000_000, 120), 1_000_000);
+        assert_eq!(buffered_expiry_ms(1_000_000, -1), 1_000_000);
+    }
+
+    #[test]
+    fn refresh_body_does_not_send_scope() {
+        let body = refresh_token_body("refresh-token");
+        assert_eq!(body["grant_type"], "refresh_token");
+        assert_eq!(body["client_id"], CLIENT_ID);
+        assert_eq!(body["refresh_token"], "refresh-token");
+        assert_eq!(body.as_object().map(serde_json::Map::len), Some(3));
+        assert!(body.get("scope").is_none());
+    }
+
+    #[test]
+    fn authorization_code_body_keeps_state_and_pkce_verifier() {
+        let body = authorization_code_body("auth-code", "expected-state", "pkce-verifier");
+        assert_eq!(body["grant_type"], "authorization_code");
+        assert_eq!(body["code"], "auth-code");
+        assert_eq!(body["state"], "expected-state");
+        assert_eq!(body["code_verifier"], "pkce-verifier");
+    }
+
+    #[tokio::test]
+    async fn callback_listener_starts_before_authorization_is_notified() {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let start_events = Arc::clone(&events);
+        let notify_events = Arc::clone(&events);
+
+        let server = start_then_notify(
+            move || async move {
+                start_events.lock().unwrap().push("listener-bound");
+                Ok::<_, anyhow::Error>("server")
+            },
+            move || {
+                notify_events.lock().unwrap().push("authorization-notified");
+            },
+        )
+        .await
+        .expect("start and notify");
+
+        assert_eq!(server, "server");
+        assert_eq!(
+            *events.lock().unwrap(),
+            vec!["listener-bound", "authorization-notified"]
+        );
+    }
+
+    #[test]
+    fn manual_authorization_input_preserves_only_supplied_state() {
+        let bare = parse_authorization_input("bare-code");
+        assert_eq!(bare.code.as_deref(), Some("bare-code"));
+        assert_eq!(bare.state, None);
+
+        let url = parse_authorization_input(
+            "http://localhost:53692/callback?code=url-code&state=url-state",
+        );
+        assert_eq!(url.code.as_deref(), Some("url-code"));
+        assert_eq!(url.state.as_deref(), Some("url-state"));
+
+        let pair = parse_authorization_input("pair-code#pair-state");
+        assert_eq!(pair.code.as_deref(), Some("pair-code"));
+        assert_eq!(pair.state.as_deref(), Some("pair-state"));
+    }
+
+    #[test]
+    fn manual_callback_validation_pairs_only_bare_codes_with_local_state() {
+        let bare = validate_manual_authorization_input("bare-code", "expected-state")
+            .expect("bare code is valid")
+            .expect("callback params");
+        assert_eq!(bare.code, "bare-code");
+        assert_eq!(bare.state, "expected-state");
+
+        for input in [
+            "http://localhost:53692/callback?code=url-code&state=wrong-state",
+            "pair-code#wrong-state",
+            "http://localhost:53692/callback?code=missing-state",
+        ] {
+            let error = validate_manual_authorization_input(input, "expected-state").unwrap_err();
+            assert_eq!(error.to_string(), "Anthropic OAuth state mismatch");
+        }
+    }
 }

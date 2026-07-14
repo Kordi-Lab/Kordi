@@ -63,10 +63,11 @@ pub fn set_active_auth_choice(provider: &str, choice: &str) -> Result<bool> {
     };
 
     let mut store = load_auth();
-    store
-        .active_auth_methods
-        .insert(normalized.clone(), auth.method);
+    store.active_auth_methods.remove(&normalized);
     store.active_auth_profiles.remove(&normalized);
+    store
+        .active_env_auth_methods
+        .insert(normalized.clone(), auth.method);
     store.last_provider = Some(normalized);
     save_auth(&store)?;
     Ok(true)
