@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { composerAttachmentItemFromStoredPath, composerConfigTargetSessionId } from '../src/features/chat/useComposerInputActions';
+import { localAgentComposerConfigTargetSessionId } from '../src/pages/ChatsPage';
 
 test('composer config routing does not target canonical Cloud direct or group sessions', () => {
   assert.equal(composerConfigTargetSessionId({
@@ -68,4 +69,18 @@ test('composer config routing still targets local chat and project sessions', ()
     activeProjectSessionId: 'project-session',
     desktopActiveSessionId: 'local-agent-session',
   }), 'project-session');
+});
+
+test('local agent composer config targets the canonical runtime session when available', () => {
+  assert.equal(localAgentComposerConfigTargetSessionId({
+    id: 'visible-self-agent-conversation',
+    canonicalSessionId: 'session:self-agent:canonical-runtime',
+  }), 'session:self-agent:canonical-runtime');
+});
+
+test('local agent composer config falls back to the visible conversation id', () => {
+  assert.equal(localAgentComposerConfigTargetSessionId({
+    id: 'visible-self-agent-conversation',
+    canonicalSessionId: '   ',
+  }), 'visible-self-agent-conversation');
 });

@@ -140,6 +140,12 @@ export function shouldUseCompactModelRouteMenu(conversation: Pick<Conversation, 
   return type === 'person' || type === 'group' || directness.includes('group');
 }
 
+export function localAgentComposerConfigTargetSessionId(
+  conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>,
+): string | null {
+  return conversation.canonicalSessionId?.trim() || conversation.id.trim() || null;
+}
+
 export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
   if (!status) return null;
   if (status.state === 'syncing') {
@@ -1176,6 +1182,7 @@ export function ChatsPage({
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
+  const activeLocalAgentConfigTargetSessionId = localAgentComposerConfigTargetSessionId(activeConv);
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
   const activeConversationIsGroupFork = isGroupForkSession(activeConv);
   const activeConversationUsesCloudPins = Boolean(
@@ -1247,6 +1254,9 @@ export function ChatsPage({
   const companionConversationHasBridgeTransport = companionConversation?.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local') ?? false;
   const companionConversationIsBridgeAgent = Boolean(companionPaneKind === 'agent' && companionConversationHasBridgeTransport);
   const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationIsBridgeAgent;
+  const companionLocalAgentConfigTargetSessionId = companionConversation
+    ? localAgentComposerConfigTargetSessionId(companionConversation)
+    : null;
   const toggleCompanionComposerSelector = (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => {
     setCompanionOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
   };
@@ -2033,17 +2043,17 @@ export function ChatsPage({
                           onToggleSelector={toggleCompanionComposerSelector}
                           onSelectValue={(scope, type, value) => {
                             setCompanionOpenComposerSelector(null);
-                            void selectComposerValue(scope, type, value, companionConversation.id);
+                            void selectComposerValue(scope, type, value, companionLocalAgentConfigTargetSessionId);
                           }}
                           authLabel={composerAuthLabel}
                           authOptions={composerAuthOptions}
                           onSelectAuthChoice={(scope, providerId, choice) => {
                             setCompanionOpenComposerSelector(null);
-                            void selectComposerAuthChoice(scope, providerId, choice, companionConversation.id);
+                            void selectComposerAuthChoice(scope, providerId, choice, companionLocalAgentConfigTargetSessionId);
                           }}
                           onSelectProviderChoice={(scope, option) => {
                             setCompanionOpenComposerSelector(null);
-                            void selectComposerProviderChoice(scope, option, companionConversation.id);
+                            void selectComposerProviderChoice(scope, option, companionLocalAgentConfigTargetSessionId);
                           }}
                           providerOptions={composerProviderOptions}
                           modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}
@@ -2884,15 +2894,15 @@ export function ChatsPage({
                   openSelector={openComposerSelector}
                   onToggleSelector={toggleComposerSelector}
                   onSelectValue={(scope, type, value) => {
-                    void selectComposerValue(scope, type, value);
+                    void selectComposerValue(scope, type, value, activeLocalAgentConfigTargetSessionId);
                   }}
                   authLabel={composerAuthLabel}
                   authOptions={composerAuthOptions}
                   onSelectAuthChoice={(scope, providerId, choice) => {
-                    void selectComposerAuthChoice(scope, providerId, choice);
+                    void selectComposerAuthChoice(scope, providerId, choice, activeLocalAgentConfigTargetSessionId);
                   }}
                   onSelectProviderChoice={(scope, option) => {
-                    void selectComposerProviderChoice(scope, option);
+                    void selectComposerProviderChoice(scope, option, activeLocalAgentConfigTargetSessionId);
                   }}
                   providerOptions={composerProviderOptions}
                   modelOptions={chatModelOptions && chatModelOptions.length > 0 ? chatModelOptions : undefined}

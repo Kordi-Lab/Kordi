@@ -614,11 +614,8 @@ pub async fn desktop_chat_update_session_config(
     thinking: Option<String>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
-    let target_session_id = if session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
-        TRANSIENT_LOCAL_DRAFT_SESSION_ID.to_string()
-    } else {
-        ensure_loaded_session(&manager, &cwd, Some(session_id)).await?
-    };
+    let target_session_id =
+        ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
     if target_session_id != TRANSIENT_LOCAL_DRAFT_SESSION_ID
         && session_has_running_turn(&manager, &target_session_id).await
     {
