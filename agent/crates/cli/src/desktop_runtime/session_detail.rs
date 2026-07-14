@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::{Local, TimeZone};
 use kordi_core::agent_session::ThinkingLevel;
+use kordi_core::settings::Settings;
 use kordi_monitor::{
     CacheMonitorTextInput, ContextResolutionInput, ContextWindowStatus, RequestCacheMetrics,
     SessionCacheMetricsSource, latest_request_metrics_for_session, render_cache_monitor_text,
@@ -174,6 +175,12 @@ pub(super) fn build_agent_profile_from_setup(
                 .map(|path| path.display().to_string()),
         )
         .collect::<Vec<_>>();
+    let settings = Settings::load_merged(&setup.tool_ctx.cwd);
+    let (default_provider, default_model) = agent_profile_default_route(
+        &setup.model.provider,
+        &setup.model.id,
+        login::preferred_startup_provider_and_model(&settings),
+    );
 
     DesktopChatAgentProfile {
         label: infer_agent_label(&setup.tool_ctx.cwd),
@@ -182,8 +189,8 @@ pub(super) fn build_agent_profile_from_setup(
         loaded_tools,
         loaded_plugins,
         identity_files: collect_agent_identity_files(&setup.tool_ctx.cwd),
-        default_provider: setup.model.provider.clone(),
-        default_model: setup.model.id.clone(),
+        default_provider,
+        default_model,
         workspace_root: setup.tool_ctx.cwd.display().to_string(),
         last_activities: vec![
             format!("Workspace: {}", setup.tool_ctx.cwd.display()),
@@ -191,6 +198,14 @@ pub(super) fn build_agent_profile_from_setup(
             format!("Thinking: {}", setup.thinking_level),
         ],
     }
+}
+
+fn agent_profile_default_route(
+    current_provider: &str,
+    current_model: &str,
+    preferred: Option<(String, String)>,
+) -> (String, String) {
+    preferred.unwrap_or_else(|| (current_provider.to_string(), current_model.to_string()))
 }
 
 pub(super) fn build_summary_from_setup(
@@ -494,6 +509,26 @@ mod tests {
         assert_eq!(
             infer_agent_label(std::path::Path::new("/tmp/any-project")),
             "Kordi"
+        );
+    }
+
+    #[test]
+    fn agent_profile_prefers_root_default_over_current_session_model() {
+        assert_eq!(
+            agent_profile_default_route(
+                "openai",
+                "gpt-5.4",
+                Some(("openai".to_string(), "gpt-5.6-sol".to_string())),
+            ),
+            ("openai".to_string(), "gpt-5.6-sol".to_string()),
+        );
+    }
+
+    #[test]
+    fn agent_profile_falls_back_to_current_route_without_a_preference() {
+        assert_eq!(
+            agent_profile_default_route("ollama", "qwen3", None),
+            ("ollama".to_string(), "qwen3".to_string()),
         );
     }
 }
