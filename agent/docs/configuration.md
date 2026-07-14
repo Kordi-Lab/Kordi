@@ -127,7 +127,7 @@ Default LLM provider. Values: `anthropic`, `openai`, `google`, `groq`, `xai`, `o
 Default model ID. Can also be set via `--model` CLI flag.
 
 #### `default_thinking`
-Default thinking level: `off`, `low`, `medium`, `high`. Controls extended thinking for supported models.
+Default thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Controls extended thinking for supported models; Kordi limits the selectable levels to those supported by the active model and authentication route.
 
 #### `compaction`
 Automatic context compaction when approaching the model's context window limit.
