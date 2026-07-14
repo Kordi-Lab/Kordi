@@ -83,7 +83,7 @@ struct Cli {
     #[arg(long)]
     list_templates: bool,
 
-    /// Thinking level: off, low, medium, high
+    /// Thinking level: off, minimal, low, medium, high, xhigh, max
     #[arg(long)]
     thinking: Option<String>,
 

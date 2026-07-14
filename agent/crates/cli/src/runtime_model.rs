@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::settings::{ProviderOverride, Settings};
 use kordi_provider::Provider;
 use kordi_provider::anthropic::AnthropicProvider;
@@ -238,6 +239,41 @@ pub(crate) fn provider_for_model(model: &Model) -> Arc<dyn Provider> {
     }
 }
 
+pub(crate) fn effective_openai_thinking_level(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+    requested: ThinkingLevel,
+) -> Option<ThinkingLevel> {
+    if login::normalize_provider_for_model_selection(&model.provider) != "openai" {
+        return None;
+    }
+    if !model.reasoning {
+        return Some(ThinkingLevel::Off);
+    }
+    let route = if auth_method == Some(login::ProviderAuthMethod::OAuth) {
+        kordi_provider::openai::capabilities::OpenAiAuthRoute::CodexOAuth
+    } else {
+        kordi_provider::openai::capabilities::OpenAiAuthRoute::Api
+    };
+    Some(kordi_provider::openai::capabilities::clamp_thinking_level(
+        &model.id, route, requested,
+    ))
+}
+
+pub(crate) fn request_thinking_value(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+    requested: ThinkingLevel,
+) -> Option<String> {
+    let effective =
+        effective_openai_thinking_level(model, auth_method, requested).unwrap_or(requested);
+    match effective {
+        ThinkingLevel::Default => None,
+        ThinkingLevel::Off if !model.reasoning => None,
+        other => Some(other.as_str().to_string()),
+    }
+}
+
 pub(crate) fn runtime_headers_for_provider(provider_name: &str) -> HashMap<String, String> {
     if provider_name == "github-copilot" {
         login::github_copilot_runtime_headers()
@@ -304,9 +340,10 @@ pub(crate) fn resolve_runtime_config_with_settings(
 mod tests {
     use super::{
         default_base_url_for_model, default_base_url_for_model_with_settings,
-        resolve_or_synthesize_model, resolve_or_synthesize_model_with_settings,
-        resolve_runtime_config_with_settings,
+        request_thinking_value, resolve_or_synthesize_model,
+        resolve_or_synthesize_model_with_settings, resolve_runtime_config_with_settings,
     };
+    use kordi_core::agent_session::ThinkingLevel;
     use kordi_core::settings::{ProviderOverride, Settings};
     use kordi_provider::registry::{ApiType, ModelRegistry};
     use std::collections::HashMap;
@@ -373,6 +410,30 @@ mod tests {
         let openai_named_local_model =
             resolve_or_synthesize_model(&registry, "lm-studio", "gpt-5.4");
         assert_eq!(openai_named_local_model.provider, "lm-studio");
+    }
+
+    #[test]
+    fn request_thinking_preserves_off_and_clamps_supported_openai_levels() {
+        let registry = ModelRegistry::new();
+        let gpt_56 = registry.find("openai", "gpt-5.6-luna").unwrap();
+        assert_eq!(
+            request_thinking_value(gpt_56, None, ThinkingLevel::Off).as_deref(),
+            Some("off")
+        );
+        assert_eq!(
+            request_thinking_value(gpt_56, None, ThinkingLevel::Default),
+            None
+        );
+        assert_eq!(
+            request_thinking_value(gpt_56, None, ThinkingLevel::Max).as_deref(),
+            Some("max")
+        );
+
+        let gpt_55 = registry.find("openai", "gpt-5.5").unwrap();
+        assert_eq!(
+            request_thinking_value(gpt_55, None, ThinkingLevel::Max).as_deref(),
+            Some("xhigh")
+        );
     }
 
     #[test]

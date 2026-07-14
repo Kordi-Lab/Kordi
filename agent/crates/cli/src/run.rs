@@ -63,8 +63,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             .as_ref()
             .map(|(provider, _)| provider.as_str()))
         .or(settings.default_provider.as_deref());
-    let (provider_name, model_id, _thinking_override) =
-        parse_model_arg(provider_input, model_input);
+    let (provider_name, model_id, thinking_override) = parse_model_arg(provider_input, model_input);
 
     let agents_md = load_agents_md(&cwd);
     let base_prompt = cli
@@ -94,6 +93,21 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         .unwrap_or_else(|| runtime.api_key.clone());
     let base_url = runtime.base_url.clone();
     let headers = runtime.headers.clone();
+    let resumed_thinking =
+        kordi_session::context::active_path_explicit_thinking_level(&conn, &session_id)
+            .ok()
+            .flatten();
+    let requested_thinking = thinking_override.as_deref().or(cli.thinking.as_deref());
+    let selected_thinking = crate::session_bootstrap::resolve_thinking_level(
+        requested_thinking,
+        resumed_thinking,
+        settings.default_thinking.as_deref(),
+    );
+    let request_thinking = crate::runtime_model::request_thinking_value(
+        &model,
+        auth.as_ref().map(|auth| auth.method),
+        selected_thinking,
+    );
 
     auto_install_missing_packages(&cwd, &settings);
 
@@ -219,7 +233,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         },
         tool_registry,
         tool_ctx,
-        thinking: None,
+        thinking: request_thinking,
         retry_enabled: settings.retry.enabled,
         retry_max_retries: settings.retry.max_retries,
         retry_base_delay_ms: settings.retry.base_delay_ms,

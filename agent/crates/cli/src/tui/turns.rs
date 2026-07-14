@@ -1,5 +1,5 @@
 use anyhow::Result;
-use kordi_core::agent_session::PromptOptions;
+use kordi_core::agent_session::{PromptOptions, ThinkingLevel};
 use kordi_tui::tui::{TuiCommand, TuiNoteLevel, TuiSubmission};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -191,11 +191,12 @@ impl TuiController {
                 execution_mode: self.session_setup.tool_ctx.execution_mode,
                 request_approval: self.session_setup.tool_ctx.request_approval.clone(),
             },
-            thinking: if self.session_setup.thinking_level == "off" {
-                None
-            } else {
-                Some(self.session_setup.thinking_level.clone())
-            },
+            thinking: crate::runtime_model::request_thinking_value(
+                &self.session_setup.model,
+                self.session_setup.auth.as_ref().map(|auth| auth.method),
+                ThinkingLevel::parse(&self.session_setup.thinking_level)
+                    .unwrap_or(ThinkingLevel::Off),
+            ),
             retry_enabled: self.session_setup.retry_enabled,
             retry_max_retries: self.session_setup.retry_max_retries,
             retry_base_delay_ms: self.session_setup.retry_base_delay_ms,

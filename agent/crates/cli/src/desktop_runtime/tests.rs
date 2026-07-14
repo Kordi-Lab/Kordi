@@ -145,6 +145,23 @@ async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd
         .map(|option| option.value.as_str())
         .collect::<Vec<_>>();
 
+    assert_eq!(
+        values
+            .iter()
+            .copied()
+            .filter(|value| value.starts_with("openai/"))
+            .collect::<Vec<_>>(),
+        vec![
+            "openai/gpt-5.6-luna",
+            "openai/gpt-5.6-sol",
+            "openai/gpt-5.6-terra",
+            "openai/gpt-5.5",
+            "openai/gpt-5.4-mini",
+            "openai/gpt-5.4",
+            "openai/gpt-5.3-codex-spark",
+        ]
+    );
+
     assert!(values.contains(&"openai/gpt-5.5"));
     assert!(!values.contains(&"openai/gpt-5"));
     assert!(!values.contains(&"openai/gpt-4o-mini"));
@@ -399,6 +416,14 @@ fn non_reasoning_models_do_not_send_thinking_controls() {
     assert_eq!(
         request_thinking_for_model("medium", &reasoning_model).as_deref(),
         Some("medium")
+    );
+    assert_eq!(
+        request_thinking_for_model("off", &reasoning_model).as_deref(),
+        Some("off")
+    );
+    assert_eq!(
+        request_thinking_for_model("default", &reasoning_model),
+        None
     );
 }
 

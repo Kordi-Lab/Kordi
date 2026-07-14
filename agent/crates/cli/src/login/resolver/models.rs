@@ -11,6 +11,17 @@ const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
     "gpt-5.3-codex-spark",
 ];
 
+pub fn model_catalog_rank(provider: &str, model_id: &str) -> usize {
+    if normalize_provider_for_model_selection(provider) == "openai" {
+        OPENAI_CODEX_OAUTH_MODEL_IDS
+            .iter()
+            .position(|id| id.eq_ignore_ascii_case(model_id))
+            .unwrap_or(usize::MAX)
+    } else {
+        usize::MAX
+    }
+}
+
 const ANTHROPIC_OAUTH_MODEL_IDS: &[&str] = &[
     "claude-opus-4-7",
     "claude-opus-4-6",

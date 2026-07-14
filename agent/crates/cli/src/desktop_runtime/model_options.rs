@@ -307,13 +307,10 @@ pub(super) fn effective_thinking_for_model_with_auth(
     model: &Model,
     auth_method: Option<login::ProviderAuthMethod>,
 ) -> ThinkingLevel {
-    if model.reasoning && login::normalize_provider_for_model_selection(&model.provider) == "openai"
+    if let Some(effective) =
+        crate::runtime_model::effective_openai_thinking_level(model, auth_method, requested)
     {
-        return openai_capabilities::clamp_thinking_level(
-            &model.id,
-            openai_auth_route(auth_method),
-            requested,
-        );
+        return effective;
     }
 
     let levels = available_thinking_levels_for_model(model, auth_method);
@@ -348,12 +345,7 @@ pub(super) fn request_thinking_for_model_with_auth(
 ) -> Option<String> {
     let requested = ThinkingLevel::parse(thinking_level).unwrap_or(ThinkingLevel::Off);
     let effective = effective_thinking_for_model_with_auth(requested, model, auth_method);
-    match effective {
-        ThinkingLevel::Off | ThinkingLevel::Default => None,
-        other => other
-            .reasoning_enabled()
-            .then(|| other.as_str().to_string()),
-    }
+    crate::runtime_model::request_thinking_value(model, auth_method, effective)
 }
 
 fn desktop_model_option_from_model(
@@ -413,9 +405,10 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
         }
     }
     models.sort_by(|left, right| {
-        left.provider
-            .cmp(&right.provider)
-            .then_with(|| left.id.cmp(&right.id))
+        left.provider.cmp(&right.provider).then_with(|| {
+            login::model_catalog_rank(&left.provider, &left.id)
+                .cmp(&login::model_catalog_rank(&right.provider, &right.id))
+        })
     });
 
     let options = models

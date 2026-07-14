@@ -194,7 +194,14 @@ impl TuiController {
                 value: format!("{}/{}", model.provider, model.id),
             })
             .collect();
-        items.sort_by(|a, b| a.label.cmp(&b.label));
+        items.sort_by(|a, b| {
+            let (a_provider, a_model) = a.value.split_once('/').unwrap_or(("", &a.value));
+            let (b_provider, b_model) = b.value.split_once('/').unwrap_or(("", &b.value));
+            a_provider.cmp(b_provider).then_with(|| {
+                crate::login::model_catalog_rank(a_provider, a_model)
+                    .cmp(&crate::login::model_catalog_rank(b_provider, b_model))
+            })
+        });
 
         self.send_command(TuiCommand::OpenSelectMenu {
             menu_id: "model".to_string(),
@@ -280,10 +287,6 @@ impl TuiController {
             id: model.id.clone(),
             reasoning: model.reasoning,
         });
-        if let Some(level) = thinking_override {
-            self.session_setup.thinking_level = level.as_str().to_string();
-            self.runtime_host.session_mut().set_thinking_level(level);
-        }
         self.runtime_host
             .runtime_mut()
             .set_model(Some(RuntimeModelRef {
@@ -297,6 +300,19 @@ impl TuiController {
         self.session_setup.api_key = runtime.api_key.clone();
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers = runtime.headers.clone();
+        let requested = thinking_override.unwrap_or_else(|| {
+            ThinkingLevel::parse(&self.session_setup.thinking_level).unwrap_or(ThinkingLevel::Off)
+        });
+        let effective = crate::runtime_model::effective_openai_thinking_level(
+            &self.session_setup.model,
+            self.session_setup.auth.as_ref().map(|auth| auth.method),
+            requested,
+        )
+        .unwrap_or(requested);
+        self.session_setup.thinking_level = effective.as_str().to_string();
+        self.runtime_host
+            .session_mut()
+            .set_thinking_level(effective);
         self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
@@ -305,8 +321,8 @@ impl TuiController {
             headers: runtime.headers,
             enabled: true,
         });
-        let status = if let Some(level) = thinking_override {
-            format!("Model: {display} • thinking: {}", level.as_str())
+        let status = if thinking_override.is_some() || effective != requested {
+            format!("Model: {display} • thinking: {}", effective.as_str())
         } else {
             format!("Model: {display}")
         };

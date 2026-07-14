@@ -31,7 +31,7 @@ pub use resolver::{
     AuthSource, ProviderAuthOptionSummary, ResolvedProviderAuth, add_cached_github_copilot_models,
     auth_source, authenticated_model_candidates, authenticated_providers,
     authenticated_providers_for_settings, available_model_for_provider,
-    model_candidates_for_provider_auth_mode, model_id_allowed_for_active_auth,
+    model_candidates_for_provider_auth_mode, model_catalog_rank, model_id_allowed_for_active_auth,
     preferred_available_model_for_provider, preferred_startup_provider_and_model,
     provider_auth_option_summaries, provider_auth_status_summary, provider_configured_for_settings,
     provider_model_selection_detail, resolve_provider_auth, resolve_provider_auth_choice,

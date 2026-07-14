@@ -36,6 +36,7 @@ const MAX_LEVELS: [ThinkingLevel; 7] = [
 pub enum OpenAiAuthRoute {
     Api,
     CodexOAuth,
+    Compatible,
 }
 
 fn normalized_model_id(model_id: &str) -> String {
@@ -109,6 +110,16 @@ pub fn reasoning_effort(
     route: OpenAiAuthRoute,
     thinking: &str,
 ) -> Option<&'static str> {
+    if route == OpenAiAuthRoute::Compatible {
+        return match thinking {
+            "default" => None,
+            "off" => Some("none"),
+            "low" | "minimal" => Some("low"),
+            "medium" => Some("medium"),
+            "high" | "xhigh" | "max" => Some("high"),
+            _ => Some("medium"),
+        };
+    }
     let requested = ThinkingLevel::parse(thinking).unwrap_or(ThinkingLevel::Medium);
     let effective = clamp_thinking_level(model_id, route, requested);
     match effective {
