@@ -146,14 +146,21 @@ mod tests {
     }
 
     #[test]
-    fn gpt_55_minimal_is_oauth_only() {
-        assert!(
-            !thinking_levels("gpt-5.5", OpenAiAuthRoute::Api).contains(&ThinkingLevel::Minimal)
+    fn current_models_match_the_route_specific_thinking_matrix() {
+        let values = |model, route| {
+            thinking_levels(model, route)
+                .iter()
+                .map(|level| level.as_str())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            values("gpt-5.5", OpenAiAuthRoute::Api),
+            ["off", "low", "medium", "high", "xhigh"]
         );
-        assert!(
-            thinking_levels("gpt-5.5", OpenAiAuthRoute::CodexOAuth)
-                .contains(&ThinkingLevel::Minimal)
-        );
+        let oauth_levels = ["off", "minimal", "low", "medium", "high", "xhigh"];
+        for model in ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"] {
+            assert_eq!(values(model, OpenAiAuthRoute::CodexOAuth), oauth_levels);
+        }
     }
 
     #[test]
