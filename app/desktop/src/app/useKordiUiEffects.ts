@@ -49,6 +49,17 @@ type UseKordiUiEffectsArgs = {
   filteredProjectSlashCommandsLength: number;
 };
 
+export function composerSelectorEventIsInsideControls(
+  target: EventTarget | null,
+  composerControls: HTMLDivElement | null,
+) {
+  if (!(target instanceof Node)) return false;
+  if (composerControls?.contains(target)) return true;
+
+  const targetElement = target instanceof Element ? target : target.parentElement;
+  return Boolean(targetElement?.closest('.app-composer-model-menu-layer'));
+}
+
 export function useKordiUiEffects({
   isNativeShell,
   desktopChatState,
@@ -129,7 +140,7 @@ export function useKordiUiEffects({
     if (!openComposerSelector) return;
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (composerControlsRef.current?.contains(event.target as Node)) return;
+      if (composerSelectorEventIsInsideControls(event.target, composerControlsRef.current)) return;
       setOpenComposerSelector(null);
     };
 
