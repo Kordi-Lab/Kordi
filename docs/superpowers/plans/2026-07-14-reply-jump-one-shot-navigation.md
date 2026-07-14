@@ -393,3 +393,34 @@ git diff --check origin/main...HEAD
 ```
 
 Expected: the worktree is clean; branch history contains the design, plan, and fix commits; the diff is limited to the approved documentation, implementation, and tests; no whitespace errors are reported.
+
+### Task 4: Harden request ownership after pre-merge review
+
+**Files:**
+- Modify: `app/desktop/src/features/chat/VirtualTranscript.tsx`
+- Modify: `app/desktop/src/pages/ChatsPage.tsx`
+- Modify: `app/desktop/tests/virtualTranscript.test.tsx`
+- Modify: `app/desktop/tests/panelAgentSessionParity.test.ts`
+
+- [ ] **Step 1: Add failing remount and session-switch regressions**
+
+Add behavioral coverage proving that:
+
+- an acknowledged request does not replay after its transcript unmounts and remounts;
+- a request from session A cannot highlight a colliding message ID in session B;
+- a missing session-A target cannot trigger older-page loading in session B;
+- returning to session A can still complete a pending request.
+
+Run the focused suites and confirm these cases fail against the original PR head for the expected lifecycle reasons.
+
+- [ ] **Step 2: Carry and enforce request ownership**
+
+Add `sessionKey` to `VirtualTranscriptNavigationRequest`. Treat the request as active only when its source session matches the `sessionKey` rendered by `VirtualTranscript`. Use that scoped request for target discovery, older-page loading, request identity, scrolling, and completion.
+
+- [ ] **Step 3: Acknowledge completion nonce-safely**
+
+Add an `onNavigationHandled` callback to `VirtualTranscript`. Invoke it with the handled request after the mounted-target callback. In `ChatsPage`, use functional state updates that clear main or companion request state only when session key, nonce, and trimmed message ID all match the handled request.
+
+- [ ] **Step 4: Re-run review and the complete verification gate**
+
+Run the focused regressions, desktop unit suite, type checking, linting, production build, and bundle budget. Re-review the final base-to-head diff before merging.

@@ -4,7 +4,7 @@
 
 One click on a reply indicator in a Cloud group transcript must produce one centered jump and one brief highlight. The current virtual transcript keeps the click's navigation request in React state indefinitely. Later Cloud synchronization rerenders recreate the inline completion callback, rerun the navigation layout effect, and reapply the highlight for the same request.
 
-This change will make a virtual-transcript navigation request one-shot by request identity, keep off-page loading behavior intact, remove the duplicate immediate navigation path, and apply the same lifecycle to the main and companion transcripts.
+This change will make a virtual-transcript navigation request one-shot by request identity, keep off-page loading behavior intact, remove the duplicate immediate navigation path, and apply the same lifecycle to the main and companion transcripts. Requests also carry their originating session and are acknowledged after completion so a conditional transcript remount cannot replay them.
 
 ## Evidence and Root Cause
 
@@ -25,6 +25,8 @@ The navigation path was introduced with variable-height transcript virtualizatio
 5. Main and companion transcript instances handle requests independently.
 6. Reply jumps use one navigation path rather than an immediate DOM attempt followed by virtualizer completion.
 7. Existing virtualization, scroll anchoring, highlight styling, and reduced-motion behavior remain unchanged.
+8. A handled request remains consumed if its transcript unmounts and remounts.
+9. A request can neither navigate nor load older pages in a different session.
 
 ## Non-goals
 
@@ -48,6 +50,8 @@ The session key prevents a request handled in one session scope from being treat
 
 The navigation layout effect will return without scrolling or invoking the callback when the current identity matches the handled identity.
 
+The request object itself carries its source `sessionKey`. `VirtualTranscript` treats a request as active only when that source key matches the currently rendered session. This prevents a request retained by `ChatsPage` from being reinterpreted after a main or companion session switch.
+
 ### 2. Target discovery and older-page loading
 
 Request consumption will not occur while `navigationTargetIndex` is negative. The existing older-page loading effect remains responsible for requesting earlier pages, keyed by the session, nonce, message ID, item count, and oldest item key.
@@ -67,7 +71,13 @@ If a newer nonce replaces the request before the frame runs, effect cleanup canc
 
 The stable callback reduces unnecessary navigation-effect churn. It is defense in depth; the one-shot identity guard remains the correctness boundary because other dependencies may still change.
 
-### 4. Single navigation path
+### 4. Nonce-safe completion acknowledgment
+
+After the mounted-target callback runs, `VirtualTranscript` reports the complete handled request (`sessionKey`, `nonce`, and message ID) to `ChatsPage`. Main and companion state use functional updates to clear only an exact match. A late acknowledgment therefore cannot clear a newer click.
+
+The local handled-identity ref still guards rerenders before the parent clear commits. Clearing the parent request is what keeps the operation consumed across conditional unmounts, companion-side moves, and later remounts.
+
+### 5. Single navigation path
 
 The main and companion click handlers will continue resolving the correct message ID, incrementing the nonce, and storing their respective navigation requests. They will stop calling `navigateToTranscriptMessage(...)` immediately.
 
@@ -89,6 +99,8 @@ Both main and companion panes use the shared `ChatSessionPane` and `VirtualTrans
 - If transcript data changes after a request is handled, the same identity remains ignored.
 - A new nonce for the same message is a distinct request and receives one new completion callback.
 - Separate `VirtualTranscript` component instances keep independent handled-request refs, so main and companion panes cannot consume each other's requests.
+- A request whose source session differs from the rendered session is ignored by both target discovery and older-page loading.
+- Completion clears only the matching parent request, so a newer nonce is never erased by an older callback.
 
 ## Testing
 
@@ -102,6 +114,8 @@ Extend `app/desktop/tests/virtualTranscript.test.tsx` so its harness accepts `on
 - a new nonce for the same message invokes exactly one additional callback;
 - an off-page target loads older data and invokes the callback exactly once after mounting;
 - two transcript instances with main and companion session keys handle their requests independently and do not replay them on rerender.
+- an acknowledged request does not replay after the transcript unmounts and remounts;
+- a request does not match a colliding message ID or trigger older-page loading in another session.
 
 The first regression test must fail against current `origin/main` by observing multiple callback invocations for one nonce before production code is changed.
 
@@ -146,4 +160,6 @@ In a Cloud group while normal synchronization remains active:
 - Off-page targets still load and mount before completion.
 - Main and companion navigation remain independent.
 - Click handlers no longer invoke both immediate and virtualizer-ready navigation paths.
+- Handled requests are cleared nonce-safely and remain consumed across transcript remounts.
+- Foreign-session requests cannot navigate or fetch transcript pages.
 - Focused regression tests, the desktop unit suite, type checking, linting, and the web build pass.
