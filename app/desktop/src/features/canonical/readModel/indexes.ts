@@ -125,10 +125,21 @@ function childMessageSortPosition(
   visitingMessageIds.add(message.id);
   const parentPosition = childMessageSortPosition(parentMessage, rawMessageById, messageSortById, visitingMessageIds);
   visitingMessageIds.delete(message.id);
-  const position = {
-    sortAtMs: parentPosition.sortAtMs,
-    sequenceNum: parentPosition.sequenceNum + CHILD_MESSAGE_SEQUENCE_OFFSET,
-  };
+  const isAlreadyAfterParent = basePosition.sortAtMs > parentPosition.sortAtMs
+    || (
+      basePosition.sortAtMs === parentPosition.sortAtMs
+      && basePosition.sequenceNum > parentPosition.sequenceNum
+    );
+  // Parent links express causality and reply attribution, not transcript
+  // placement. Preserve the child's real chronological position whenever it
+  // is already after the parent; only clamp genuine clock drift so a response
+  // cannot render before the request that caused it.
+  const position = isAlreadyAfterParent
+    ? basePosition
+    : {
+        sortAtMs: parentPosition.sortAtMs,
+        sequenceNum: parentPosition.sequenceNum + CHILD_MESSAGE_SEQUENCE_OFFSET,
+      };
   messageSortById.set(message.id, position);
   return position;
 }
@@ -354,7 +365,11 @@ function selfAgentMirrorDuplicateIds(messages: CanonicalSessionMessage[]) {
   const duplicateIds = new Set<string>();
   const preferredKeys = new Map<string, Set<string>>();
   for (const message of messages) {
-    if (message.sourceTransport !== 'canonical-fork-snapshot' && message.sourceTransport !== 'desktop-chat') continue;
+    if (
+      message.sourceTransport !== 'canonical-fork-snapshot'
+      && message.sourceTransport !== 'desktop-chat'
+      && message.sourceTransport !== 'desktop-chat-ui'
+    ) continue;
     const key = selfAgentMirrorDuplicateKey(message);
     if (!key) continue;
     const transports = preferredKeys.get(key) ?? new Set<string>();
@@ -500,29 +515,63 @@ function localOwnedAgentRuntimeDuplicateIds(messages: CanonicalSessionMessage[])
 }
 
 function noProviderRuntimeDuplicateIds(messages: CanonicalSessionMessage[]) {
-  const syntheticRequestIds = new Set(
-    messages.flatMap((message) => {
-      if (message.sourceTransport !== 'desktop-chat-ui') return [];
-      if (message.messageKind !== 'agent-turn') return [];
-      if (message.status !== 'failed') return [];
-      const content = contentRecord(message.content);
-      if (!isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail))) return [];
-      return [message.parentMessageId, stringValue(content.replyToMessageId), stringValue(content.requestId)]
-        .filter((value): value is string => Boolean(value?.trim()))
-        .map((value) => value.trim());
-    }),
-  );
-  if (syntheticRequestIds.size === 0) return new Set<string>();
-  return new Set(messages.flatMap((message) => {
-    if (message.sourceTransport !== 'desktop-chat') return [];
-    if (message.messageKind !== 'agent-turn') return [];
+  const requestIdsForMessage = (message: CanonicalSessionMessage) => {
     const content = contentRecord(message.content);
-    if (!isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail))) return [];
-    const requestIds = [message.parentMessageId, stringValue(content.replyToMessageId), stringValue(content.requestId)]
+    return [message.parentMessageId, stringValue(content.replyToMessageId), stringValue(content.requestId)]
       .filter((value): value is string => Boolean(value?.trim()))
       .map((value) => value.trim());
-    return requestIds.some((requestId) => syntheticRequestIds.has(requestId)) ? [message.id] : [];
-  }));
+  };
+  const syntheticFailureIdsByRequestId = new Map<string, Set<string>>();
+  for (const message of messages) {
+    if (message.sourceTransport !== 'desktop-chat-ui') continue;
+    if (message.messageKind !== 'agent-turn' || message.status !== 'failed') continue;
+    const content = contentRecord(message.content);
+    if (!isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail))) continue;
+    for (const requestId of requestIdsForMessage(message)) {
+      const failureIds = syntheticFailureIdsByRequestId.get(requestId) ?? new Set<string>();
+      failureIds.add(message.id);
+      syntheticFailureIdsByRequestId.set(requestId, failureIds);
+    }
+  }
+  const syntheticRequestIds = new Set(syntheticFailureIdsByRequestId.keys());
+  if (syntheticRequestIds.size === 0) return new Set<string>();
+
+  const duplicateIds = new Set<string>();
+  for (const message of messages) {
+    if (message.sourceTransport === 'desktop-chat' && message.messageKind === 'agent-turn') {
+      const content = contentRecord(message.content);
+      if (isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail))) {
+        if (requestIdsForMessage(message).some((requestId) => syntheticRequestIds.has(requestId))) {
+          duplicateIds.add(message.id);
+        }
+      }
+    }
+
+    if (message.messageKind !== 'agent-turn') continue;
+    if (message.senderRole !== 'owned-agent' && message.senderRole !== 'external-agent') continue;
+    const content = contentRecord(message.content);
+    const status = message.status.trim().toLowerCase();
+    const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+    const isUnsuccessful = status === 'draft'
+      || status === 'sending'
+      || status === 'processing'
+      || status === 'failed'
+      || status === 'cancelled'
+      || status === 'cancelling'
+      || deliveryState === 'sending'
+      || deliveryState === 'processing'
+      || deliveryState === 'failed'
+      || deliveryState === 'cancelled'
+      || deliveryState === 'processing_failed';
+    const errorText = message.contentText || stringValue(content.error) || stringValue(content.detail);
+    if (isUnsuccessful || !message.contentText.trim() || isCloudAgentNoProviderConfiguredError(errorText)) continue;
+    for (const requestId of requestIdsForMessage(message)) {
+      for (const failureId of syntheticFailureIdsByRequestId.get(requestId) ?? []) {
+        duplicateIds.add(failureId);
+      }
+    }
+  }
+  return duplicateIds;
 }
 
 function bridgeRelayAgentFanoutDuplicateIds(messages: CanonicalSessionMessage[]) {

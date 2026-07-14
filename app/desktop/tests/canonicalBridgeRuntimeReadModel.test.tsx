@@ -101,6 +101,60 @@ test('canonical group conversation title stays on first message when synced clou
   assert.equal((conversation?.metadata as { customName?: string } | undefined)?.customName, '1111');
 });
 
+test('canonical group quote replies stay at their chronological position instead of moving beside old history', () => {
+  const sessionId = 'session:group:chronological-replies';
+  const quotedMessageId = 'msg:quoted-agent-history';
+  const readModel = createCanonicalSessionReadModel({
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 5_000,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:peer', kind: 'human', displayName: 'Peer', source: 'cloud', avatarKey: 'peer', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:peer', kind: 'agent', displayName: "Peer's Kordi", source: 'cloud', ownerIdentityId: 'human:peer', avatarKey: 'agent-peer', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'Cloud group',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { groupId: sessionId, createdFrom: 'cloud-group-sync' },
+      createdAtMs: 1,
+      updatedAtMs: 5_000,
+      lastMessageAtMs: 5_000,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:peer', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'agent:peer', role: 'external-agent', state: 'active', addedByIdentityId: 'human:peer', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: quotedMessageId, sessionId, senderIdentityId: 'agent:peer', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Old agent answer', content: { sender: "Peer's Kordi", timeLabel: '05:26', deliveryState: 'complete' }, parentMessageId: null, status: 'complete', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'cloud-group-agent', sourceEventId: 'cloud-group-agent:old' },
+      { id: 'msg:later-history', sessionId, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: 'Old later message', content: { sender: 'Peer', timeLabel: '05:27' }, parentMessageId: null, status: 'received', sequenceNum: 2, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-group:later' },
+      { id: 'msg:new-reply', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Test replying', content: { sender: 'Me', timeLabel: '06:16', replyToMessageId: quotedMessageId, messageAction: { kind: 'quote', schemaVersion: 1, source: { sourceMessageId: quotedMessageId, sourceSessionId: sessionId, sourceMessageKind: 'agent-turn', senderLabel: "Peer's Kordi", textPreview: 'Old agent answer', timeLabel: '05:26', attachmentCount: 0, createdAtMs: 1_000 } } }, parentMessageId: quotedMessageId, status: 'delivered', sequenceNum: 3, createdAtMs: 5_000, updatedAtMs: 5_000, contentHash: null, sourceTransport: 'cloud-group-ui', sourceEventId: 'cloud-group-ui:new-reply' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  } as never);
+
+  assert.deepEqual(readModel.messages(sessionId).map((message) => message.id), [
+    quotedMessageId,
+    'msg:later-history',
+    'msg:new-reply',
+  ]);
+});
+
 test('canonical read model keeps shared bridge transcript with local owned-agent tool details', () => {
   const sessionId = 'session:bridge:humans:shared';
   const canonicalState = {

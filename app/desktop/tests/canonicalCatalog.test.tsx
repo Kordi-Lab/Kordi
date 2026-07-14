@@ -123,6 +123,27 @@ test('an older page prepends without replacing the existing ready tail', () => {
   assert.equal(store.hasOlderBySessionId['session:one'], false);
 });
 
+test('an empty terminal page clears stale has-older state without deleting loaded rows', () => {
+  let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
+  store = mergeCanonicalMessagePage(store, {
+    sessionId: 'session:one',
+    messages: [message('m2', 'session:one', 2), message('m3', 'session:one', 3)],
+    oldestSequenceNum: 2,
+    newestSequenceNum: 3,
+    hasOlder: true,
+  });
+  store = mergeCanonicalMessagePage(store, {
+    sessionId: 'session:one',
+    messages: [],
+    oldestSequenceNum: null,
+    newestSequenceNum: null,
+    hasOlder: false,
+  });
+
+  assert.deepEqual(store.messagesBySessionId['session:one']?.map((item) => item.id), ['m2', 'm3']);
+  assert.equal(store.hasOlderBySessionId['session:one'], false);
+});
+
 test('local readable message deltas keep catalog counts and latest rows current', () => {
   let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
   const currentState = canonicalStateFromStore(store);

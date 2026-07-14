@@ -321,6 +321,122 @@ test('remote images without a completed local preview render a quiet loading til
   assert.doesNotMatch(markup, />Screenshot 2026-05-20\.png</);
 });
 
+test('a stale persisted preview path falls back to the Cloud attachment bytes', async () => {
+  const installedDom = installDom();
+  const originalFetch = globalThis.fetch;
+  const originalCreateObjectUrl = URL.createObjectURL;
+  const originalRevokeObjectUrl = URL.revokeObjectURL;
+  let root: Root | null = null;
+  const sessionBackend: SessionStorageBackend = {
+    async load() {
+      return { token: 'token', accountId: 'account', expiresAt: '2099-01-01T00:00:00.000Z' };
+    },
+    async save() {},
+    async clear() {},
+  };
+
+  try {
+    resetCloudAttachmentPreviewLoader();
+    __setSessionBackendForTests(sessionBackend);
+    globalThis.fetch = async () => new Response(new Blob(['recovered-image']), { status: 200 });
+    URL.createObjectURL = () => 'blob:recovered-cloud-preview';
+    URL.revokeObjectURL = () => {};
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    const staleMessage: Message = {
+      role: 'user',
+      text: '',
+      time: '08:58',
+      attachments: [{
+        kind: 'image',
+        name: 'Screenshot 2026-07-07.png',
+        sizeBytes: 429_724,
+        attachmentId: 'att_stale_local_path',
+        localPath: '/old-instance/tmp/attachments/screenshot.png',
+        previewUrl: 'https://asset.localhost/old-instance/screenshot.png',
+        mimeType: 'image/png',
+      }],
+    };
+    await act(async () => root?.render(createElement(AttachmentPreview, { msg: staleMessage })));
+    await flushReactUpdates();
+
+    const staleImage = host.querySelector<HTMLImageElement>('[data-attachment-image-card="true"] img');
+    assert.equal(staleImage?.getAttribute('src'), 'https://asset.localhost/old-instance/screenshot.png');
+    await act(async () => staleImage?.dispatchEvent(new installedDom.dom.window.Event('error')));
+    await flushReactUpdates();
+
+    const recoveredImage = host.querySelector<HTMLImageElement>('[data-attachment-image-card="true"] img');
+    assert.equal(recoveredImage?.getAttribute('src'), 'blob:recovered-cloud-preview');
+    await act(async () => recoveredImage?.dispatchEvent(new installedDom.dom.window.Event('load')));
+    assert.equal(host.querySelector('[data-attachment-image-loading="true"]'), null);
+  } finally {
+    if (root) await act(async () => root?.unmount());
+    resetCloudAttachmentPreviewLoader();
+    __setSessionBackendForTests(null);
+    globalThis.fetch = originalFetch;
+    URL.createObjectURL = originalCreateObjectUrl;
+    URL.revokeObjectURL = originalRevokeObjectUrl;
+    installedDom.restore();
+  }
+});
+
+test('a failed stale-path recovery stops loading and exposes attachment actions', async () => {
+  const installedDom = installDom();
+  const originalFetch = globalThis.fetch;
+  let root: Root | null = null;
+  const sessionBackend: SessionStorageBackend = {
+    async load() {
+      return { token: 'token', accountId: 'account', expiresAt: '2099-01-01T00:00:00.000Z' };
+    },
+    async save() {},
+    async clear() {},
+  };
+
+  try {
+    resetCloudAttachmentPreviewLoader();
+    __setSessionBackendForTests(sessionBackend);
+    globalThis.fetch = async () => { throw new Error('attachment no longer exists'); };
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    const missingMessage: Message = {
+      role: 'user',
+      text: '',
+      time: '08:58',
+      attachments: [{
+        kind: 'image',
+        name: 'Missing screenshot.png',
+        sizeBytes: 429_724,
+        attachmentId: 'att_missing_preview',
+        previewAttachmentId: 'att_missing_preview',
+        localPath: '/old-instance/tmp/attachments/missing.png',
+        previewUrl: 'https://asset.localhost/old-instance/missing.png',
+        mimeType: 'image/png',
+      }],
+    };
+    await act(async () => root?.render(createElement(AttachmentPreview, { msg: missingMessage })));
+    await flushReactUpdates();
+
+    const staleImage = host.querySelector<HTMLImageElement>('[data-attachment-image-card="true"] img');
+    assert.ok(staleImage);
+    await act(async () => staleImage.dispatchEvent(new installedDom.dom.window.Event('error')));
+    await flushReactUpdates();
+
+    assert.ok(host.querySelector('[data-attachment-image-unavailable="true"]'));
+    assert.equal(host.querySelector('[data-attachment-image-loading="true"]'), null);
+    assert.match(host.textContent ?? '', /Preview unavailable/);
+  } finally {
+    if (root) await act(async () => root?.unmount());
+    resetCloudAttachmentPreviewLoader();
+    __setSessionBackendForTests(null);
+    globalThis.fetch = originalFetch;
+    installedDom.restore();
+  }
+});
+
 test('attachment image cards release remote preview leases on cleanup and image failure', () => {
   const source = readFileSync(
     new URL('../src/kordi-app/components/transcriptAttachments.tsx', import.meta.url),

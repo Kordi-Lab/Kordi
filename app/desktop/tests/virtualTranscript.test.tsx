@@ -204,6 +204,33 @@ test('a cold session aligns its tail when the first transcript page replaces loa
   assert.ok(view.host.querySelector('[data-message-id="ready-99"]'));
 });
 
+test('a two-row catalog preview hydrates into the chronological transcript tail', async () => {
+  const view = await render(transcript({
+    items: rows('ready-', 98, 2),
+    sessionKey: 'catalog-preview',
+  }));
+
+  await view.rerender(transcript({
+    items: rows('ready-', 0, 100),
+    sessionKey: 'catalog-preview',
+  }));
+
+  assert.ok(view.host.querySelector('[data-message-id="ready-99"]'));
+  const mountedRows = [...view.host.querySelectorAll<HTMLElement>('[data-transcript-window-item]')]
+    .map((node) => ({
+      id: node.querySelector<HTMLElement>('[data-message-id]')?.dataset.messageId ?? '',
+      start: Number.parseFloat(node.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0'),
+    }))
+    .sort((left, right) => left.start - right.start);
+  assert.ok(mountedRows.length > 0);
+  assert.deepEqual(
+    mountedRows.map((row) => row.id),
+    [...mountedRows].map((row) => row.id).sort((left, right) => (
+      Number(left.slice('ready-'.length)) - Number(right.slice('ready-'.length))
+    )),
+  );
+});
+
 test('a 900px row is measured before following short rows are positioned', async () => {
   const items = [{ id: 'tall', height: 900 }, ...rows('short-', 0, 30, 40)];
   const view = await render(transcript({ items }));

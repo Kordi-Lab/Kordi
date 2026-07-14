@@ -35,6 +35,7 @@ import type {
   DesktopBridgeSessionParticipant,
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
+  MessageActionMetadata,
 } from '@/kordi-app/types';
 import {
   applyCanonicalProfileIdentityDelta,
@@ -134,6 +135,7 @@ import {
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
 import {
+  cloudDirectMessageAction,
   cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
@@ -318,6 +320,31 @@ export function cloudGroupAgentProcessingSlotForResponse(
     const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
     return message.status === 'processing' || deliveryState === 'processing';
   }) ?? null;
+}
+
+export function cloudGroupIncomingMessageAlreadyApplied(
+  existingMessage: CanonicalSessionMessage | null,
+  incomingDeliveryState?: string | null,
+): boolean {
+  if (!existingMessage) return false;
+  const incomingState = cleanText(incomingDeliveryState).toLowerCase();
+  const incomingIsTerminal = Boolean(incomingState)
+    && !['sending', 'processing'].includes(incomingState);
+  if (!incomingIsTerminal) return true;
+
+  const content = objectContent(existingMessage.content);
+  const existingDeliveryState = cleanText(
+    typeof content.deliveryState === 'string' ? content.deliveryState : null,
+  ).toLowerCase();
+  const existingStatus = existingMessage.status.trim().toLowerCase();
+  const existingIsPending = ['sending', 'processing'].includes(existingStatus)
+    || ['sending', 'processing'].includes(existingDeliveryState);
+  if (existingIsPending) return false;
+
+  // The offline tier is a local timeout hint, not a terminal Cloud response.
+  // A later owner response must still replace it.
+  if (existingMessage.sourceTransport === 'cloud-group-agent-offline') return false;
+  return true;
 }
 
 export type CloudGroupAgentCancelRole = 'sender' | 'agent owner' | 'participant';
@@ -1532,6 +1559,7 @@ type CloudSelfAgentRestoreMessage = {
   text: string;
   createdAtMs: number;
   responseRequestId: string | null;
+  messageAction: MessageActionMetadata | null;
 };
 
 function isSharedCloudSessionId(sessionId: string): boolean {
@@ -1565,7 +1593,7 @@ function normalizeCloudSelfAgentRestoreMessage(
   if (!sessionId || isSharedCloudSessionId(sessionId)) return null;
   const response = parseCloudAgentResponse(message.body);
   if (!response && (parseCloudAgentCancel(message.body) || (isGroupControl ?? Boolean(parseCloudGroupControl(message.body))))) return null;
-  const text = cleanText(response?.text ?? message.body);
+  const text = cleanText(response?.text ?? cloudDirectMessageDisplayText(message.body));
   if (!text) return null;
   return {
     message,
@@ -1574,6 +1602,7 @@ function normalizeCloudSelfAgentRestoreMessage(
     text,
     createdAtMs: cloudSelfAgentCreatedAtMs(message),
     responseRequestId: response?.requestId ?? null,
+    messageAction: response ? null : cloudDirectMessageAction(message.body),
   };
 }
 
@@ -1701,7 +1730,7 @@ export function planCloudSelfAgentCanonicalSync({
   };
 
   for (const restoreMessage of normalizedMessages) {
-    const { message, sessionId, role, text, createdAtMs, responseRequestId } = restoreMessage;
+    const { message, sessionId, role, text, createdAtMs, responseRequestId, messageAction } = restoreMessage;
     const sourceTransport = forkSnapshotCloudMessageIds.has(message.messageId)
       ? 'canonical-fork-snapshot'
       : 'cloud-self-agent';
@@ -1754,7 +1783,12 @@ export function planCloudSelfAgentCanonicalSync({
       userTextByCloudMessageId.set(message.messageId, text);
       requestLocalMessageIdByCloudMessageId.set(message.messageId, canonicalMessageId);
     }
-    const parentMessageId = responseRequestId ? requestLocalMessageIdByCloudMessageId.get(responseRequestId) ?? null : null;
+    const quoteSourceMessageId = messageAction?.kind === 'quote'
+      ? cleanText(messageAction.source.sourceMessageId)
+      : null;
+    const parentMessageId = responseRequestId
+      ? requestLocalMessageIdByCloudMessageId.get(responseRequestId) ?? null
+      : quoteSourceMessageId;
     const title = cleanText(userTextByCloudMessageId.get(responseRequestId ?? message.messageId))
       || cleanText(existingSessionById.get(sessionId)?.title)
       || 'My Kordi';
@@ -1767,7 +1801,14 @@ export function planCloudSelfAgentCanonicalSync({
       senderRole: responseRequestId ? 'owned-agent' : 'user',
       messageKind: responseRequestId ? 'agent-turn' : 'text',
       contentText: text,
-      content: responseRequestId ? { cloudRequestMessageId: responseRequestId } : null,
+      content: responseRequestId
+        ? { cloudRequestMessageId: responseRequestId }
+        : messageAction
+          ? {
+              messageAction,
+              ...(quoteSourceMessageId ? { replyToMessageId: quoteSourceMessageId } : {}),
+            }
+          : null,
       parentMessageId,
       status: responseRequestId ? 'complete' : 'sent',
       createdAtMs,
@@ -2981,19 +3022,22 @@ export function useCloudBridgeState({
       setCanonicalSessionState(nextState);
       return;
     }
-    // Round-trip guard: when the local agent owner broadcasts their own
-    // agent response envelope, it returns via cloud polling. The mention
-    // handler already wrote the canonical row in place of the processing
-    // row (using processingMessageId), so envelope.message.id (a fresh
-    // `msg:cloud-agent:<turnId>`) won't match the existing row — without
-    // this guard, the receive-side block would write a second row and we'd
-    // be back to the duplicate state. Treat the request as already handled
-    // when this envelope is our own agent's response AND a processing row
-    // exists locally for the same request.
+    // When the local agent owner broadcasts a response, the fresh Cloud
+    // envelope id differs from the stable processing-slot id. Match that slot
+    // here so a processing replay remains idempotent and a terminal replay can
+    // replace it in place instead of creating a duplicate row.
     const isOwnAgentResponseRoundTrip = envelope.message
       && envelope.message.senderKind === 'agent'
       && envelope.message.senderAccountId === account.accountId
       && Boolean((envelope.message.replyToMessageId || envelope.message.requestId)?.trim());
+    const senderIsAgent = envelope.message.senderKind === 'agent';
+    const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
+    const messageReplyToId = envelope.message.replyToMessageId?.trim()
+      || envelope.message.requestId?.trim()
+      || null;
+    const agentDeliveryState = senderIsAgent
+      ? (envelope.message.deliveryState?.trim() || (isCloudAgentProcessingPlaceholderText(envelope.message.text) ? 'processing' : 'complete'))
+      : null;
     const ownAgentProcessingId = isOwnAgentResponseRoundTrip
       ? `msg:cloud-agent-processing:${(envelope.message!.replyToMessageId || envelope.message!.requestId || '').trim()}:${account.accountId}`
       : null;
@@ -3004,16 +3048,13 @@ export function useCloudBridgeState({
         candidate.id === envelope.message?.id
         || (ownAgentProcessingId !== null && candidate.id === ownAgentProcessingId)
       )) ?? null;
-    const messageAlreadyExists = Boolean(existingCloudGroupMessage);
-
-    const senderIsAgent = envelope.message.senderKind === 'agent';
-    const senderIdentityId = senderIsAgent ? `agent:cloud:${envelope.message.senderAccountId}` : senderHumanIdentityId;
-    const messageReplyToId = envelope.message.replyToMessageId?.trim()
-      || envelope.message.requestId?.trim()
-      || null;
-    const agentDeliveryState = senderIsAgent
-      ? (envelope.message.deliveryState?.trim() || (isCloudAgentProcessingPlaceholderText(envelope.message.text) ? 'processing' : 'complete'))
-      : null;
+    // A stable processing slot is the row that a terminal agent envelope must
+    // replace. Treating that placeholder as an already-applied terminal event
+    // drops the reply during cold sync and leaves only the disappearing spinner.
+    const messageAlreadyExists = cloudGroupIncomingMessageAlreadyApplied(
+      existingCloudGroupMessage,
+      agentDeliveryState,
+    );
     if (senderIsAgent) {
       const owner = participantByAccount.get(envelope.message.senderAccountId);
       const senderIdentity = await upsertCanonicalIdentityFast({

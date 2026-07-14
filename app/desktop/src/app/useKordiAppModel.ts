@@ -1212,6 +1212,9 @@ export function useKordiAppModel({
   });
 
   const cloudAwareDisplayedContacts = cloudSession.account ? cloudContacts : displayedContacts;
+  const activeTranscriptLastMessage = activeNav === 'projects'
+    ? activeProjectLastMessage
+    : activeLastMessage;
 
   useKordiUiEffects({
     isNativeShell,
@@ -1245,6 +1248,10 @@ export function useKordiAppModel({
     shouldAutoFollowChatRef,
     activeConvMessagesLength: activeConv.messages.length,
     activeLastMessageTime: activeLastMessage?.time,
+    activeTranscriptLastMessageIsOwn: Boolean(
+      activeTranscriptLastMessage
+      && (activeTranscriptLastMessage.isOwnMessage ?? activeTranscriptLastMessage.role === 'user')
+    ),
     activeProjectSessionIdValue: activeProjectSession.id,
     activeProjectSessionMessagesLength: activeProjectSession.messages.length,
     activeProjectLastMessageTime: activeProjectLastMessage?.time,
