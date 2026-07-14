@@ -14,12 +14,16 @@ pub struct ProviderAuthOptionSummary {
 
 fn env_auth_methods_for_provider(provider: &str) -> Vec<ProviderAuthMethod> {
     match normalize_provider_for_model_selection(provider).as_str() {
-        "anthropic" => std::env::var("ANTHROPIC_API_KEY")
-            .map(|value| !value.trim().is_empty())
-            .unwrap_or(false)
-            .then_some(ProviderAuthMethod::ApiKey)
-            .into_iter()
-            .collect(),
+        "anthropic" => {
+            let mut methods = Vec::new();
+            if env_value_is_set("ANTHROPIC_OAUTH_TOKEN") {
+                methods.push(ProviderAuthMethod::OAuth);
+            }
+            if env_value_is_set("ANTHROPIC_API_KEY") {
+                methods.push(ProviderAuthMethod::ApiKey);
+            }
+            methods
+        }
         "openai" | "openai-codex" => std::env::var("OPENAI_API_KEY")
             .map(|value| !value.trim().is_empty())
             .unwrap_or(false)
@@ -60,12 +64,16 @@ fn env_auth_methods_for_provider(provider: &str) -> Vec<ProviderAuthMethod> {
     }
 }
 
+fn env_value_is_set(key: &str) -> bool {
+    std::env::var(key)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
 pub fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuthOptionSummary> {
     let normalized = normalize_provider_for_model_selection(provider);
-    let active_method = active_auth_method(&normalized);
     let store = load_auth();
     let explicit_active_method = store.active_auth_methods.get(&normalized).copied();
-    let has_explicit_active_profile = store.active_auth_profiles.contains_key(&normalized);
     let mut options = stored_auth_profiles(&normalized)
         .into_iter()
         .map(|profile| ProviderAuthOptionSummary {
@@ -81,10 +89,12 @@ pub fn provider_auth_option_summaries(provider: &str) -> Vec<ProviderAuthOptionS
         .collect::<Vec<_>>();
 
     let stored_methods = stored_auth_methods(&normalized);
-    for method in env_auth_methods_for_provider(&normalized) {
-        let active = active_method == Some(method)
-            && (stored_methods.is_empty()
-                || (explicit_active_method == Some(method) && !has_explicit_active_profile));
+    let env_methods = env_auth_methods_for_provider(&normalized);
+    let active_method = active_auth_method(&normalized)
+        .or_else(|| explicit_active_method.filter(|method| env_methods.contains(method)))
+        .or_else(|| env_methods.first().copied());
+    for method in env_methods {
+        let active = stored_methods.is_empty() && active_method == Some(method);
         options.push(ProviderAuthOptionSummary {
             profile_id: None,
             method,
@@ -197,7 +207,11 @@ pub fn provider_model_selection_detail(provider: &str) -> String {
 
 pub fn provider_auth_status_summary(provider: &str) -> String {
     let (has_oauth, has_api_key) = auth_methods_for_provider(provider);
-    let active = active_auth_method(provider);
+    let active = provider_auth_option_summaries(provider)
+        .into_iter()
+        .find(|summary| summary.active)
+        .map(|summary| summary.method)
+        .or_else(|| active_auth_method(provider));
     let base = if has_oauth && has_api_key {
         "[OAuth + API key configured]".to_string()
     } else if has_oauth {
@@ -380,6 +394,40 @@ mod tests {
             unsafe { std::env::set_var(key, value) };
             Self { key, old }
         }
+
+        fn unset(key: &'static str) -> Self {
+            let old = std::env::var_os(key);
+            unsafe { std::env::remove_var(key) };
+            Self { key, old }
+        }
+    }
+
+    #[test]
+    fn anthropic_environment_options_report_oauth_precedence_and_both_methods() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set_path("HOME", home.path());
+        let _auth_path = EnvVarGuard::unset("KORDI_AUTH_PATH");
+        let _storage_root = EnvVarGuard::unset("KORDI_STORAGE_ROOT");
+        let _app_data_dir = EnvVarGuard::unset("APP_DATA_DIR");
+        let _oauth = EnvVarGuard::set_value("ANTHROPIC_OAUTH_TOKEN", "env-oauth-token");
+        let _api_key = EnvVarGuard::set_value("ANTHROPIC_API_KEY", "env-api-key");
+
+        let summaries = provider_auth_option_summaries("anthropic");
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].source, AuthSource::EnvVar);
+        assert_eq!(summaries[0].method, ProviderAuthMethod::OAuth);
+        assert!(summaries[0].active);
+        assert_eq!(summaries[1].source, AuthSource::EnvVar);
+        assert_eq!(summaries[1].method, ProviderAuthMethod::ApiKey);
+        assert!(!summaries[1].active);
+        assert_eq!(
+            provider_auth_status_summary("anthropic"),
+            "[OAuth + API key configured] • active: OAuth"
+        );
+        let detail = provider_model_selection_detail("anthropic");
+        assert!(detail.contains("active: OAuth (env)"));
+        assert!(detail.contains("API key (env)"));
     }
 
     impl Drop for EnvVarGuard {
