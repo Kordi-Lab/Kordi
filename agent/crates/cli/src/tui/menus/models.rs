@@ -668,7 +668,7 @@ mod tests {
 
         let (mut controller, mut command_rx) = build_test_controller(tempdir.path().to_path_buf());
         controller
-            .handle_model_selection_command(Some("gpt-4o"))
+            .handle_model_selection_command(Some("gpt-5.6-sol"))
             .expect("handle model selection");
 
         let commands = drain_commands(&mut command_rx);
@@ -800,8 +800,8 @@ mod tests {
 
         Settings {
             models: Some(vec![ModelOverride {
-                id: "gpt-4o".to_string(),
-                name: Some("gpt-4o".to_string()),
+                id: "gpt-5.6-sol".to_string(),
+                name: Some("gpt-5.6-sol".to_string()),
                 provider: "openrouter".to_string(),
                 api: Some("openai-completions".to_string()),
                 base_url: Some("https://openrouter.ai/api/v1".to_string()),
@@ -817,11 +817,11 @@ mod tests {
 
         let (mut controller, mut command_rx) = build_test_controller(tempdir.path().to_path_buf());
         assert_eq!(
-            controller.matching_model_providers("gpt-4o"),
+            controller.matching_model_providers("gpt-5.6-sol"),
             vec!["openai".to_string(), "openrouter".to_string()]
         );
         controller
-            .handle_model_selection_command(Some("gpt-4o"))
+            .handle_model_selection_command(Some("gpt-5.6-sol"))
             .expect("handle model selection");
 
         let commands = drain_commands(&mut command_rx);
@@ -839,10 +839,10 @@ mod tests {
             .expect("provider chooser menu");
 
         assert_eq!(menu.0, MODEL_PROVIDER_MENU_ID);
-        assert_eq!(menu.1, "Select provider for 'gpt-4o'");
+        assert_eq!(menu.1, "Select provider for 'gpt-5.6-sol'");
         assert_eq!(
             controller.pending_model_provider_search.as_deref(),
-            Some("gpt-4o")
+            Some("gpt-5.6-sol")
         );
         assert_eq!(
             menu.2
