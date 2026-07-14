@@ -146,7 +146,7 @@ impl TuiController {
             ),
             "thinking" => (
                 "Thinking level",
-                vec!["off", "low", "medium", "high", "xhigh"],
+                vec!["off", "low", "medium", "high", "xhigh", "max"],
             ),
             "execution-mode" => ("Execution mode", vec!["safety", "yolo"]),
             "compaction-enabled" => ("Auto-compact", vec!["true", "false"]),

@@ -4,8 +4,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
-  ComposerModelControls,
-  fallbackComposerThinkingValue,
+    ComposerModelControls,
+    composerThinkingLabel,
+    fallbackComposerThinkingValue,
 } from '../src/kordi-app/components';
 
 test('composer defaults to medium thinking when the selected model supports effort levels', () => {
@@ -15,6 +16,12 @@ test('composer defaults to medium thinking when the selected model supports effo
 
 test('composer shows default thinking for models without thinking effort controls', () => {
   assert.equal(fallbackComposerThinkingValue(['off'], 'default'), 'default');
+});
+
+test('composer labels max and falls back through the nearest high effort', () => {
+  assert.equal(composerThinkingLabel('max'), 'Max');
+  assert.equal(fallbackComposerThinkingValue(['off', 'high', 'xhigh'], 'max'), 'xhigh');
+  assert.equal(fallbackComposerThinkingValue(['off', 'high'], 'max'), 'high');
 });
 
 test('composer model controls display medium instead of off for default selection on effort models', () => {

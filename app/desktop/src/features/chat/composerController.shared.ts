@@ -87,6 +87,9 @@ export function formatThinkingSelectionLabel(value: string) {
     case 'xhigh':
     case 'extrahigh':
       return 'Extra High';
+    case 'max':
+    case 'maximum':
+      return 'Max';
     default:
       return value;
   }

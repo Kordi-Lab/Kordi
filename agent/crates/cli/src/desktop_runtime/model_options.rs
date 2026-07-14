@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow, bail};
 use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::settings::Settings;
+use kordi_provider::openai::capabilities::{self as openai_capabilities, OpenAiAuthRoute};
 use kordi_provider::registry::{Model, ModelRegistry};
 use std::collections::HashMap;
 use std::path::Path;
@@ -232,7 +233,23 @@ fn thinking_control_mode_for_model(model: &Model) -> ThinkingControlMode {
     }
 }
 
-fn available_thinking_levels_for_model(model: &Model) -> &'static [ThinkingLevel] {
+fn openai_auth_route(method: Option<login::ProviderAuthMethod>) -> OpenAiAuthRoute {
+    if method == Some(login::ProviderAuthMethod::OAuth) {
+        OpenAiAuthRoute::CodexOAuth
+    } else {
+        OpenAiAuthRoute::Api
+    }
+}
+
+fn available_thinking_levels_for_model(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> &'static [ThinkingLevel] {
+    if model.reasoning && login::normalize_provider_for_model_selection(&model.provider) == "openai"
+    {
+        return openai_capabilities::thinking_levels(&model.id, openai_auth_route(auth_method));
+    }
+
     match thinking_control_mode_for_model(model) {
         ThinkingControlMode::OffOnly => &OFF_ONLY_THINKING_LEVELS,
         ThinkingControlMode::DefaultOnly => &DEFAULT_ONLY_THINKING_LEVELS,
@@ -243,7 +260,14 @@ fn available_thinking_levels_for_model(model: &Model) -> &'static [ThinkingLevel
 }
 
 pub fn desktop_thinking_levels_for_model(model: &Model) -> Vec<String> {
-    available_thinking_levels_for_model(model)
+    desktop_thinking_levels_for_model_with_auth(model, None)
+}
+
+pub(super) fn desktop_thinking_levels_for_model_with_auth(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> Vec<String> {
+    available_thinking_levels_for_model(model, auth_method)
         .iter()
         .map(|level| level.as_str().to_string())
         .collect()
@@ -260,7 +284,10 @@ pub fn desktop_thinking_levels_for_model_id(
     let model = crate::runtime_model::resolve_or_synthesize_model_with_settings(
         &registry, settings, provider, model_id,
     );
-    desktop_thinking_levels_for_model(&model)
+    let auth_method = login::resolve_provider_auth(provider)
+        .map(|auth| auth.method)
+        .or_else(|| login::active_auth_method(provider));
+    desktop_thinking_levels_for_model_with_auth(&model, auth_method)
 }
 
 fn fallback_thinking_for_levels(levels: &[ThinkingLevel]) -> ThinkingLevel {
@@ -279,9 +306,30 @@ pub(super) fn effective_thinking_for_model(
     requested: ThinkingLevel,
     model: &Model,
 ) -> ThinkingLevel {
-    let levels = available_thinking_levels_for_model(model);
+    effective_thinking_for_model_with_auth(requested, model, None)
+}
+
+pub(super) fn effective_thinking_for_model_with_auth(
+    requested: ThinkingLevel,
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> ThinkingLevel {
+    if model.reasoning && login::normalize_provider_for_model_selection(&model.provider) == "openai"
+    {
+        return openai_capabilities::clamp_thinking_level(
+            &model.id,
+            openai_auth_route(auth_method),
+            requested,
+        );
+    }
+
+    let levels = available_thinking_levels_for_model(model, auth_method);
     if levels.contains(&requested) {
         requested
+    } else if requested == ThinkingLevel::Max && levels.contains(&ThinkingLevel::XHigh) {
+        ThinkingLevel::XHigh
+    } else if requested == ThinkingLevel::Max && levels.contains(&ThinkingLevel::High) {
+        ThinkingLevel::High
     } else if requested == ThinkingLevel::XHigh && levels.contains(&ThinkingLevel::High) {
         ThinkingLevel::High
     } else {
@@ -291,14 +339,26 @@ pub(super) fn effective_thinking_for_model(
 
 pub(super) fn normalize_setup_thinking(setup: &mut SessionRuntimeSetup) {
     let requested = ThinkingLevel::parse(&setup.thinking_level).unwrap_or(ThinkingLevel::Off);
-    setup.thinking_level = effective_thinking_for_model(requested, &setup.model)
-        .as_str()
-        .to_string();
+    setup.thinking_level = effective_thinking_for_model_with_auth(
+        requested,
+        &setup.model,
+        setup.auth.as_ref().map(|auth| auth.method),
+    )
+    .as_str()
+    .to_string();
 }
 
 pub(super) fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<String> {
+    request_thinking_for_model_with_auth(thinking_level, model, None)
+}
+
+pub(super) fn request_thinking_for_model_with_auth(
+    thinking_level: &str,
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> Option<String> {
     let requested = ThinkingLevel::parse(thinking_level).unwrap_or(ThinkingLevel::Off);
-    let effective = effective_thinking_for_model(requested, model);
+    let effective = effective_thinking_for_model_with_auth(requested, model, auth_method);
     match effective {
         ThinkingLevel::Off | ThinkingLevel::Default => None,
         other => other
@@ -307,7 +367,10 @@ pub(super) fn request_thinking_for_model(thinking_level: &str, model: &Model) ->
     }
 }
 
-fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
+fn desktop_model_option_from_model(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> DesktopChatModelOption {
     DesktopChatModelOption {
         provider: model.provider.clone(),
         provider_label: login::provider_display_name(&model.provider).into_owned(),
@@ -318,7 +381,7 @@ fn desktop_model_option_from_model(model: &Model) -> DesktopChatModelOption {
             login::provider_display_name(&model.provider),
             model.name
         ),
-        thinking_levels: desktop_thinking_levels_for_model(model),
+        thinking_levels: desktop_thinking_levels_for_model_with_auth(model, auth_method),
     }
 }
 
@@ -368,7 +431,12 @@ pub async fn authenticated_model_options(cwd: &std::path::Path) -> Vec<DesktopCh
 
     let options = models
         .iter()
-        .map(desktop_model_option_from_model)
+        .map(|model| {
+            let auth_method = login::resolve_provider_auth(&model.provider)
+                .map(|auth| auth.method)
+                .or_else(|| login::active_auth_method(&model.provider));
+            desktop_model_option_from_model(model, auth_method)
+        })
         .collect::<Vec<_>>();
 
     if !options.is_empty()

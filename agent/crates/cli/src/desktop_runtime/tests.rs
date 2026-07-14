@@ -429,6 +429,44 @@ fn xhigh_is_exposed_only_for_supported_model_families() {
 }
 
 #[test]
+fn openai_thinking_levels_follow_model_and_auth_route() {
+    let gpt_56 = test_model("openai", "gpt-5.6-luna", true);
+    for method in [
+        login::ProviderAuthMethod::ApiKey,
+        login::ProviderAuthMethod::OAuth,
+    ] {
+        assert_eq!(
+            model_options::desktop_thinking_levels_for_model_with_auth(&gpt_56, Some(method)),
+            vec!["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        );
+    }
+
+    let gpt_55 = test_model("openai", "gpt-5.5", true);
+    assert_eq!(
+        model_options::desktop_thinking_levels_for_model_with_auth(
+            &gpt_55,
+            Some(login::ProviderAuthMethod::ApiKey),
+        ),
+        vec!["off", "low", "medium", "high", "xhigh"]
+    );
+    assert_eq!(
+        model_options::desktop_thinking_levels_for_model_with_auth(
+            &gpt_55,
+            Some(login::ProviderAuthMethod::OAuth),
+        ),
+        vec!["off", "minimal", "low", "medium", "high", "xhigh"]
+    );
+    assert_eq!(
+        model_options::effective_thinking_for_model_with_auth(
+            ThinkingLevel::Max,
+            &gpt_55,
+            Some(login::ProviderAuthMethod::OAuth),
+        ),
+        ThinkingLevel::XHigh
+    );
+}
+
+#[test]
 fn local_thinking_models_expose_only_documented_controls() {
     let qwen3 = test_model("ollama", "qwen3:30b", false);
     assert_eq!(desktop_thinking_levels_for_model(&qwen3), vec!["default"]);

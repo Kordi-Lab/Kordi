@@ -11,12 +11,13 @@ use crate::login;
 use crate::session_bootstrap::SessionRuntimeSetup;
 use crate::session_info::collect_session_info_summary;
 
+use super::model_options::desktop_thinking_levels_for_model_with_auth;
 use super::{
     DesktopChatAgentProfile, DesktopChatContextWindowStatus, DesktopChatMessage,
     DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopSessionArtifact,
-    attachment_summary_from_metadata, desktop_thinking_levels_for_model, load_project_info,
-    load_session_messages, repair_session_title_from_history, session_activity_label,
-    session_title_from_messages, truncate_chars,
+    attachment_summary_from_metadata, load_project_info, load_session_messages,
+    repair_session_title_from_history, session_activity_label, session_title_from_messages,
+    truncate_chars,
 };
 
 fn discover_workspace_root(cwd: &std::path::Path) -> std::path::PathBuf {
@@ -264,7 +265,10 @@ pub(super) fn build_detail_from_setup(
         model_label: setup.model.id.clone(),
         thinking: setup.thinking_level.clone(),
         thinking_label: thinking_label(&setup.thinking_level),
-        thinking_levels: desktop_thinking_levels_for_model(&setup.model),
+        thinking_levels: desktop_thinking_levels_for_model_with_auth(
+            &setup.model,
+            setup.auth.as_ref().map(|auth| auth.method),
+        ),
         updated_at_label,
         message_count: messages.len(),
         draft: !setup.session_created,
@@ -482,6 +486,7 @@ mod tests {
     #[test]
     fn thinking_label_formats_xhigh() {
         assert_eq!(thinking_label("xhigh"), "Extra High");
+        assert_eq!(thinking_label("max"), "Max");
     }
 
     #[test]
