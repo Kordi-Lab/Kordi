@@ -227,7 +227,11 @@ pub fn merge_live_model_ids_with_settings(
         ));
     }
 
-    merged.sort_by(|left, right| left.id.cmp(&right.id));
+    merged.sort_by(|left, right| {
+        login::model_catalog_rank(provider, &left.id)
+            .cmp(&login::model_catalog_rank(provider, &right.id))
+            .then_with(|| left.id.cmp(&right.id))
+    });
     merged
 }
 
@@ -441,6 +445,8 @@ fn looks_like_embedding_model_id(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kordi_provider::anthropic::capabilities::ANTHROPIC_SUBSCRIPTION_MODEL_IDS;
+    use kordi_provider::registry::ApiType;
 
     #[test]
     fn merge_live_model_ids_preserves_static_and_synthesizes_new_ids() {
@@ -466,6 +472,46 @@ mod tests {
             .expect("live model synthesized");
         assert_eq!(live.provider, "openai");
         assert_eq!(live.name, "gpt-5.5");
+    }
+
+    #[test]
+    fn merge_live_anthropic_models_keeps_curated_order_before_unknown_ids() {
+        let registry = ModelRegistry::new();
+        let static_models = registry
+            .list()
+            .iter()
+            .filter(|model| model.provider == "anthropic")
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(static_models.len(), ANTHROPIC_SUBSCRIPTION_MODEL_IDS.len());
+
+        let legacy_live_id = "claude-3-5-haiku-20241022";
+        let merged = merge_live_model_ids(
+            &registry,
+            "anthropic",
+            &static_models,
+            vec![
+                "claude-opus-4-8".to_string(),
+                "claude-opus-4-8".to_string(),
+                "claude-fable-5".to_string(),
+                legacy_live_id.to_string(),
+                legacy_live_id.to_string(),
+            ],
+        );
+        let merged_ids = merged
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(merged.len(), ANTHROPIC_SUBSCRIPTION_MODEL_IDS.len() + 1);
+        assert_eq!(
+            &merged_ids[..ANTHROPIC_SUBSCRIPTION_MODEL_IDS.len()],
+            ANTHROPIC_SUBSCRIPTION_MODEL_IDS
+        );
+        assert_eq!(merged_ids.last(), Some(&legacy_live_id));
+        let legacy = merged.last().expect("legacy live model synthesized");
+        assert_eq!(legacy.provider, "anthropic");
+        assert!(matches!(legacy.api, ApiType::AnthropicMessages));
     }
 
     #[test]
@@ -528,6 +574,13 @@ mod tests {
             !merged
                 .iter()
                 .any(|model| model.id == "text-embedding-nomic-embed-text-v1.5")
+        );
+        assert_eq!(
+            merged
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>(),
+            ["NousResearch/Hermes-3-Llama", "qwen3-coder-30b"]
         );
     }
 }

@@ -1,4 +1,7 @@
 use super::*;
+use kordi_provider::anthropic::capabilities::{
+    ANTHROPIC_SUBSCRIPTION_MODEL_IDS, DEFAULT_ANTHROPIC_MODEL_ID,
+};
 use std::collections::HashSet;
 
 const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
@@ -12,26 +15,16 @@ const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
 ];
 
 pub fn model_catalog_rank(provider: &str, model_id: &str) -> usize {
-    if normalize_provider_for_model_selection(provider) == "openai" {
-        OPENAI_CODEX_OAUTH_MODEL_IDS
-            .iter()
-            .position(|id| id.eq_ignore_ascii_case(model_id))
-            .unwrap_or(usize::MAX)
-    } else {
-        usize::MAX
-    }
+    let model_ids = match normalize_provider_for_model_selection(provider).as_str() {
+        "openai" => OPENAI_CODEX_OAUTH_MODEL_IDS,
+        "anthropic" => ANTHROPIC_SUBSCRIPTION_MODEL_IDS,
+        _ => return usize::MAX,
+    };
+    model_ids
+        .iter()
+        .position(|id| id.eq_ignore_ascii_case(model_id))
+        .unwrap_or(usize::MAX)
 }
-
-const ANTHROPIC_OAUTH_MODEL_IDS: &[&str] = &[
-    "claude-opus-4-7",
-    "claude-opus-4-6",
-    "claude-sonnet-4-6",
-    "claude-opus-4-20260115",
-    "claude-sonnet-4-20260115",
-    "claude-opus-4-20250514",
-    "claude-sonnet-4-20250514",
-    "claude-3-7-sonnet-20250219",
-];
 
 fn active_oauth_model_ids_for_provider(
     settings: &Settings,
@@ -51,7 +44,7 @@ fn active_oauth_model_ids_for_provider(
 
     match normalized.as_str() {
         "openai" => Some(OPENAI_CODEX_OAUTH_MODEL_IDS),
-        "anthropic" => Some(ANTHROPIC_OAUTH_MODEL_IDS),
+        "anthropic" => Some(ANTHROPIC_SUBSCRIPTION_MODEL_IDS),
         _ => None,
     }
 }
@@ -190,7 +183,7 @@ fn provider_prefixed_model_arg(provider: &str, model: &str) -> String {
 
 fn preferred_model_for_provider(provider: &str) -> Option<String> {
     match provider {
-        "anthropic" => Some("claude-opus-4-6".to_string()),
+        "anthropic" => Some(DEFAULT_ANTHROPIC_MODEL_ID.to_string()),
         "openai" | "openai-codex" => {
             Some(kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID.to_string())
         }
@@ -286,6 +279,9 @@ mod tests {
     use crate::login::ProviderAuthMethod;
     use crate::login::store::{AuthEntry, AuthProfile, AuthStore, save_auth};
     use kordi_core::settings::{ProviderOverride, Settings};
+    use kordi_provider::anthropic::capabilities::{
+        ANTHROPIC_SUBSCRIPTION_MODEL_IDS, DEFAULT_ANTHROPIC_MODEL_ID,
+    };
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -360,12 +356,25 @@ mod tests {
             .collect()
     }
 
-    fn isolated_auth_env() -> (tempfile::TempDir, EnvVarGuard, EnvVarGuard, EnvVarGuard) {
+    fn isolated_auth_env() -> (
+        tempfile::TempDir,
+        EnvVarGuard,
+        EnvVarGuard,
+        EnvVarGuard,
+        EnvVarGuard,
+    ) {
         let home = tempfile::tempdir().expect("home tempdir");
         let home_guard = EnvVarGuard::set_path("HOME", home.path());
         let openai_env = EnvVarGuard::unset("OPENAI_API_KEY");
         let anthropic_env = EnvVarGuard::unset("ANTHROPIC_API_KEY");
-        (home, home_guard, openai_env, anthropic_env)
+        let anthropic_oauth_env = EnvVarGuard::unset("ANTHROPIC_OAUTH_TOKEN");
+        (
+            home,
+            home_guard,
+            openai_env,
+            anthropic_env,
+            anthropic_oauth_env,
+        )
     }
 
     fn lm_studio_settings(default_model: &str) -> Settings {
@@ -410,7 +419,8 @@ mod tests {
     #[test]
     fn openai_codex_oauth_candidates_exclude_platform_only_models() {
         let _lock = env_lock().lock().expect("env lock");
-        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
+            isolated_auth_env();
         save_single_auth("openai-codex", ProviderAuthMethod::OAuth);
 
         let model_ids = model_ids_for_provider("openai");
@@ -448,7 +458,8 @@ mod tests {
     #[test]
     fn openai_api_key_candidates_keep_platform_models() {
         let _lock = env_lock().lock().expect("env lock");
-        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
+            isolated_auth_env();
         save_single_auth("openai", ProviderAuthMethod::ApiKey);
 
         let model_ids = model_ids_for_provider("openai");
@@ -463,42 +474,104 @@ mod tests {
     }
 
     #[test]
-    fn anthropic_oauth_candidates_exclude_api_only_models() {
+    fn anthropic_oauth_candidates_follow_shared_subscription_catalog() {
         let _lock = env_lock().lock().expect("env lock");
-        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
+            isolated_auth_env();
         save_single_auth("anthropic", ProviderAuthMethod::OAuth);
 
         let model_ids = model_ids_for_provider("anthropic");
 
-        assert!(model_ids.contains(&"claude-opus-4-7".to_string()));
-        assert!(model_ids.contains(&"claude-opus-4-6".to_string()));
-        assert!(model_ids.contains(&"claude-sonnet-4-6".to_string()));
-        assert!(model_id_allowed_for_active_auth(
-            &Settings::default(),
-            "anthropic",
-            "claude-opus-4-7"
-        ));
-        assert!(!model_ids.contains(&"claude-3-5-haiku-20241022".to_string()));
-        assert!(!model_ids.contains(&"claude-haiku-4-20260115".to_string()));
+        assert_eq!(
+            model_ids,
+            ANTHROPIC_SUBSCRIPTION_MODEL_IDS
+                .iter()
+                .map(|id| (*id).to_string())
+                .collect::<Vec<_>>()
+        );
+        for model_id in ANTHROPIC_SUBSCRIPTION_MODEL_IDS {
+            assert!(model_id_allowed_for_active_auth(
+                &Settings::default(),
+                "anthropic",
+                model_id
+            ));
+        }
+        for removed_model_id in [
+            "claude-3-5-haiku-20241022",
+            "claude-haiku-4-20260115",
+            "claude-opus-4-20260115",
+        ] {
+            assert!(!model_id_allowed_for_active_auth(
+                &Settings::default(),
+                "anthropic",
+                removed_model_id
+            ));
+        }
+        assert_eq!(
+            available_model_for_provider(
+                &Settings::default(),
+                "anthropic",
+                Some("claude-sonnet-5")
+            ),
+            Some("claude-sonnet-5".to_string())
+        );
+        assert_eq!(
+            available_model_for_provider(
+                &Settings::default(),
+                "anthropic",
+                Some("claude-3-5-haiku-20241022")
+            ),
+            Some(DEFAULT_ANTHROPIC_MODEL_ID.to_string())
+        );
+        assert_eq!(
+            available_model_for_provider(
+                &Settings::default(),
+                "anthropic",
+                Some("claude-unsupported-live-id")
+            ),
+            Some(DEFAULT_ANTHROPIC_MODEL_ID.to_string())
+        );
     }
 
     #[test]
-    fn anthropic_api_key_candidates_keep_platform_models() {
+    fn anthropic_api_key_candidates_follow_shared_registry_and_default() {
         let _lock = env_lock().lock().expect("env lock");
-        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
+            isolated_auth_env();
         save_single_auth("anthropic", ProviderAuthMethod::ApiKey);
 
         let model_ids = model_ids_for_provider("anthropic");
 
-        assert!(model_ids.contains(&"claude-3-5-haiku-20241022".to_string()));
-        assert!(model_ids.contains(&"claude-haiku-4-20260115".to_string()));
-        assert!(model_ids.contains(&"claude-opus-4-6".to_string()));
+        assert_eq!(
+            model_ids,
+            ANTHROPIC_SUBSCRIPTION_MODEL_IDS
+                .iter()
+                .map(|id| (*id).to_string())
+                .collect::<Vec<_>>()
+        );
+        assert!(!model_ids.contains(&"claude-3-5-haiku-20241022".to_string()));
+        assert!(!model_ids.contains(&"claude-haiku-4-20260115".to_string()));
+        assert_eq!(
+            available_model_for_provider(&Settings::default(), "anthropic", None),
+            Some(DEFAULT_ANTHROPIC_MODEL_ID.to_string())
+        );
+    }
+
+    #[test]
+    fn anthropic_catalog_rank_uses_shared_subscription_order() {
+        assert_eq!(model_catalog_rank("anthropic", "claude-opus-4-8"), 9);
+        assert_eq!(
+            model_catalog_rank("anthropic", "claude-unknown-live-id"),
+            usize::MAX
+        );
+        assert_eq!(model_catalog_rank("google", "claude-opus-4-8"), usize::MAX);
     }
 
     #[test]
     fn startup_fallback_uses_codex_compatible_model_when_openai_oauth_is_active() {
         let _lock = env_lock().lock().expect("env lock");
-        let (_home, _home_guard, _openai_env, _anthropic_env) = isolated_auth_env();
+        let (_home, _home_guard, _openai_env, _anthropic_env, _anthropic_oauth_env) =
+            isolated_auth_env();
         save_single_auth("openai-codex", ProviderAuthMethod::OAuth);
         let settings = Settings {
             default_provider: Some("openai".to_string()),
