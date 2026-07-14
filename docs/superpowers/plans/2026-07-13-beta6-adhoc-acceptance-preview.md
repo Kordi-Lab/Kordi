@@ -1181,16 +1181,27 @@ RELEASE_WORKTREE="$HOME/.config/superpowers/worktrees/kordi/beta6-adhoc-release-
 ARTIFACT_ROOT="$HOME/.cache/kordi/releases/0.0.1-beta.6-adhoc-${MERGE_COMMIT:0:8}"
 cd "$RELEASE_WORKTREE"
 PUB_DATE="$(jq -r .pubDate "$ARTIFACT_ROOT/release-beta6/release.json")"
-NORMAL_BEFORE_STATUS="$(curl -sS -o /tmp/kordi-normal-before.json -w '%{http_code}' \
+NORMAL_BEFORE_BODY="$(mktemp /tmp/kordi-normal-beta-before.XXXXXX)"
+STABLE_BEFORE_BODY="$(mktemp /tmp/kordi-stable-route-before.XXXXXX)"
+ACCEPTANCE_BEFORE_BODY="$(mktemp /tmp/kordi-acceptance-before.XXXXXX)"
+NORMAL_BEFORE_STATUS="$(curl -sS -o "$NORMAL_BEFORE_BODY" -w '%{http_code}' \
   https://coordinar.io/updates/desktop/darwin/aarch64/0.0.1-beta.5.1)"
-STABLE_BEFORE_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+STABLE_BEFORE_STATUS="$(curl -sS -o "$STABLE_BEFORE_BODY" -w '%{http_code}' \
   https://coordinar.io/updates/releases/latest/Kordi.dmg)"
-ACCEPTANCE_BEFORE_STATUS="$(curl -sS -o /tmp/kordi-acceptance-before.json -w '%{http_code}' \
+STABLE_BEFORE_SHA256=""
+if [ "$STABLE_BEFORE_STATUS" = 200 ]; then
+  STABLE_BEFORE_SHA256="$(shasum -a 256 "$STABLE_BEFORE_BODY" | awk '{print $1}')"
+  printf 'stable route before: HTTP 200, SHA-256 %s\n' "$STABLE_BEFORE_SHA256"
+else
+  printf 'stable route before: HTTP %s; response captured without a SHA-256 invariant\n' \
+    "$STABLE_BEFORE_STATUS"
+fi
+ACCEPTANCE_BEFORE_STATUS="$(curl -sS -o "$ACCEPTANCE_BEFORE_BODY" -w '%{http_code}' \
   https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1)"
 test "$ACCEPTANCE_BEFORE_STATUS" = 204
 ```
 
-Expected before preview: normal beta and stable DMG preserve their prior status; acceptance is 204/unpublished.
+Expected before preview: normal beta and stable-route response bytes/status are captured, a 200 stable response has a recorded SHA-256, and acceptance is 204/unpublished.
 
 - [ ] **Step 2: Start the two-hop loopback-only MinIO tunnel**
 
@@ -1264,16 +1275,31 @@ curl -fsS https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-b
 '
 test "$(curl -sS -o /dev/null -w '%{http_code}' \
   https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.6)" = 204
-NORMAL_AFTER_STATUS="$(curl -sS -o /tmp/kordi-normal-after.json -w '%{http_code}' \
+NORMAL_AFTER_BODY="$(mktemp /tmp/kordi-normal-beta-after.XXXXXX)"
+STABLE_AFTER_BODY="$(mktemp /tmp/kordi-stable-route-after.XXXXXX)"
+NORMAL_AFTER_STATUS="$(curl -sS -o "$NORMAL_AFTER_BODY" -w '%{http_code}' \
   https://coordinar.io/updates/desktop/darwin/aarch64/0.0.1-beta.5.1)"
-STABLE_AFTER_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+STABLE_AFTER_STATUS="$(curl -sS -o "$STABLE_AFTER_BODY" -w '%{http_code}' \
   https://coordinar.io/updates/releases/latest/Kordi.dmg)"
 test "$NORMAL_AFTER_STATUS" = "$NORMAL_BEFORE_STATUS"
 test "$STABLE_AFTER_STATUS" = "$STABLE_BEFORE_STATUS"
-cmp /tmp/kordi-normal-before.json /tmp/kordi-normal-after.json
+cmp "$NORMAL_BEFORE_BODY" "$NORMAL_AFTER_BODY"
+printf 'normal beta pointer invariant: HTTP %s and response bytes unchanged\n' "$NORMAL_AFTER_STATUS"
+if [ "$STABLE_AFTER_STATUS" = 200 ]; then
+  STABLE_AFTER_SHA256="$(shasum -a 256 "$STABLE_AFTER_BODY" | awk '{print $1}')"
+  test -n "$STABLE_BEFORE_SHA256"
+  test "$STABLE_AFTER_SHA256" = "$STABLE_BEFORE_SHA256"
+  cmp "$STABLE_BEFORE_BODY" "$STABLE_AFTER_BODY"
+  printf 'stable route invariant: HTTP 200, SHA-256 %s, and response bytes unchanged\n' \
+    "$STABLE_AFTER_SHA256"
+else
+  printf 'stable route invariant: HTTP status remained %s\n' "$STABLE_AFTER_STATUS"
+fi
+rm -f "$NORMAL_BEFORE_BODY" "$NORMAL_AFTER_BODY" \
+  "$STABLE_BEFORE_BODY" "$STABLE_AFTER_BODY" "$ACCEPTANCE_BEFORE_BODY"
 ```
 
-Expected: beta.5.1 receives beta.6 only from acceptance; equal beta.6 receives 204; normal beta and stable manual download retain their pre-publication state.
+Expected: beta.5.1 receives beta.6 only from acceptance; equal beta.6 receives 204; normal beta retains identical status and bytes; the stable route retains its status and, when it is 200, its exact SHA-256 and bytes.
 
 - [ ] **Step 6: Remove credentials from the process**
 
@@ -1443,15 +1469,19 @@ the expected automatic beta.6 update and relaunch flow
 a stop/report instruction if a second security override appears
 ```
 
-Confirm all of the following remain absent:
+Confirm the beta.6 tag and GitHub release remain absent:
 
 ```bash
 test -z "$(git tag -l V0.0.1.beta6)"
-test "$(gh release view V0.0.1.beta6 --repo Kordi-AI/Kordi >/dev/null 2>&1; echo $?)" != 0
-test "$(curl -sS -o /dev/null -w '%{http_code}' https://coordinar.io/updates/releases/latest/Kordi.dmg)" != 200
+if gh release view V0.0.1.beta6 --repo Kordi-AI/Kordi >/dev/null 2>&1; then
+  printf 'unexpected public beta.6 GitHub release\n' >&2
+  exit 1
+fi
 ```
 
-Expected: invited testers have the bootstrap and evidence, acceptance remains live, and no public beta pointer, stable beta.6 DMG, tag, or GitHub release exists.
+Attach the recorded Task 9 evidence that the normal-beta pointer response status and bytes were unchanged and that the stable route retained its prior status plus exact SHA-256/bytes when it returned 200. The stable route may already exist; do not treat its presence as a beta.6 publication signal.
+
+Expected: invited testers have the bootstrap and evidence, acceptance remains live, no beta.6 tag or GitHub release exists, and the Task 9 comparisons prove that neither the normal-beta pointer response nor the pre-existing stable route changed during preview publication.
 
 ### Task 11: Final audit and handoff
 
