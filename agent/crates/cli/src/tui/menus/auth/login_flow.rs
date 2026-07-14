@@ -6,19 +6,18 @@ use super::dialogs::{
 use super::*;
 
 impl TuiController {
-    fn normalize_current_openai_thinking(&mut self) {
+    fn normalize_current_thinking(&mut self) {
         let requested =
             ThinkingLevel::parse(&self.session_setup.thinking_level).unwrap_or(ThinkingLevel::Off);
-        if let Some(effective) = crate::runtime_model::effective_openai_thinking_level(
+        let effective = crate::runtime_model::effective_thinking_level_for_model(
             &self.session_setup.model,
             self.session_setup.auth.as_ref().map(|auth| auth.method),
             requested,
-        ) {
-            self.session_setup.thinking_level = effective.as_str().to_string();
-            self.runtime_host
-                .session_mut()
-                .set_thinking_level(effective);
-        }
+        );
+        self.session_setup.thinking_level = effective.as_str().to_string();
+        self.runtime_host
+            .session_mut()
+            .set_thinking_level(effective);
     }
 
     pub(crate) fn apply_selected_auth_to_current_session(
@@ -45,7 +44,7 @@ impl TuiController {
         self.session_setup.api_key = runtime.api_key.clone();
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers = runtime.headers.clone();
-        self.normalize_current_openai_thinking();
+        self.normalize_current_thinking();
         self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),
@@ -82,7 +81,7 @@ impl TuiController {
         self.session_setup.api_key.clear();
         self.session_setup.base_url = runtime.base_url.clone();
         self.session_setup.headers = runtime.headers.clone();
-        self.normalize_current_openai_thinking();
+        self.normalize_current_thinking();
         self.session_setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
             provider: self.session_setup.provider.clone(),
             model: self.session_setup.model.clone(),

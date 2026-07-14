@@ -11,22 +11,10 @@ fn thinking_level_menu_values(
     model: &kordi_provider::registry::Model,
     auth_method: Option<crate::login::ProviderAuthMethod>,
 ) -> Vec<&'static str> {
-    if crate::login::normalize_provider_for_model_selection(&model.provider) == "openai" {
-        if !model.reasoning {
-            return vec!["off"];
-        }
-        let route = if auth_method == Some(crate::login::ProviderAuthMethod::OAuth) {
-            kordi_provider::openai::capabilities::OpenAiAuthRoute::CodexOAuth
-        } else {
-            kordi_provider::openai::capabilities::OpenAiAuthRoute::Api
-        };
-        return kordi_provider::openai::capabilities::thinking_levels(&model.id, route)
-            .iter()
-            .map(|level| level.as_str())
-            .collect();
-    }
-
-    vec!["off", "low", "medium", "high", "xhigh"]
+    crate::runtime_model::thinking_levels_for_model(model, auth_method)
+        .iter()
+        .map(|level| level.as_str())
+        .collect()
 }
 
 #[cfg(test)]

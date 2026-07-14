@@ -303,12 +303,11 @@ impl TuiController {
         let requested = thinking_override.unwrap_or_else(|| {
             ThinkingLevel::parse(&self.session_setup.thinking_level).unwrap_or(ThinkingLevel::Off)
         });
-        let effective = crate::runtime_model::effective_openai_thinking_level(
+        let effective = crate::runtime_model::effective_thinking_level_for_model(
             &self.session_setup.model,
             self.session_setup.auth.as_ref().map(|auth| auth.method),
             requested,
-        )
-        .unwrap_or(requested);
+        );
         self.session_setup.thinking_level = effective.as_str().to_string();
         self.runtime_host
             .session_mut()
@@ -499,6 +498,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
+    use kordi_core::agent_session::ThinkingLevel;
     use kordi_core::agent_session_runtime::{
         AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost,
     };
@@ -867,5 +867,26 @@ mod tests {
         assert!(menu.2[1].detail.as_deref().is_some_and(|detail| {
             detail.contains("active: API key") && detail.contains("saved ")
         }));
+    }
+
+    #[test]
+    fn model_selection_clamps_thinking_for_non_openai_destinations() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let (mut controller, _command_rx) = build_test_controller(tempdir.path().to_path_buf());
+        controller.session_setup.thinking_level = ThinkingLevel::Max.as_str().to_string();
+        let mut anthropic = test_model();
+        anthropic.id = "claude-sonnet-test".to_string();
+        anthropic.name = anthropic.id.clone();
+        anthropic.provider = "anthropic".to_string();
+        anthropic.api = ApiType::AnthropicMessages;
+        anthropic.reasoning = true;
+
+        controller.apply_model_selection_with_auth(anthropic, None, None);
+
+        assert_eq!(controller.session_setup.thinking_level, "high");
+        assert_eq!(
+            controller.runtime_host.session().thinking_level(),
+            ThinkingLevel::High
+        );
     }
 }

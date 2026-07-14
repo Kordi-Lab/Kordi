@@ -239,6 +239,174 @@ pub(crate) fn provider_for_model(model: &Model) -> Arc<dyn Provider> {
     }
 }
 
+const OFF_ONLY_THINKING_LEVELS: [ThinkingLevel; 1] = [ThinkingLevel::Off];
+const DEFAULT_ONLY_THINKING_LEVELS: [ThinkingLevel; 1] = [ThinkingLevel::Default];
+const LOCAL_EFFORT_THINKING_LEVELS: [ThinkingLevel; 3] = [
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+];
+const STANDARD_THINKING_LEVELS: [ThinkingLevel; 5] = [
+    ThinkingLevel::Off,
+    ThinkingLevel::Minimal,
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+];
+const XHIGH_THINKING_LEVELS: [ThinkingLevel; 6] = [
+    ThinkingLevel::Off,
+    ThinkingLevel::Minimal,
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+    ThinkingLevel::XHigh,
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ThinkingControlMode {
+    OffOnly,
+    DefaultOnly,
+    LocalEffort,
+    Standard,
+    XHigh,
+}
+
+fn normalized_model_capability_id(model: &Model) -> String {
+    [
+        model.provider.as_str(),
+        model.id.as_str(),
+        model.name.as_str(),
+    ]
+    .join("/")
+    .to_ascii_lowercase()
+    .replace([' ', '_'], "-")
+}
+
+fn is_ollama_model(model: &Model) -> bool {
+    login::normalize_provider_for_model_selection(&model.provider) == "ollama"
+}
+
+fn local_model_matches_any(model: &Model, needles: &[&str]) -> bool {
+    let id = normalized_model_capability_id(model);
+    needles.iter().any(|needle| id.contains(needle))
+}
+
+fn local_model_supports_effort_levels(model: &Model) -> bool {
+    is_ollama_model(model) && local_model_matches_any(model, &["gpt-oss", "gptoss"])
+}
+
+fn local_model_supports_default_thinking(model: &Model) -> bool {
+    local_model_matches_any(
+        model,
+        &[
+            "thinking",
+            "reasoning",
+            "reasoner",
+            "qwen3",
+            "qwen-3",
+            "qwq",
+            "deepseek-r1",
+            "deepseek-v3.1",
+            "deepseek-v3-1",
+            "deepseek-v31",
+            "gemma-3n",
+            "gemma3n",
+            "gemma-4",
+            "gemma4",
+            "magistral",
+            "phi-4-reasoning",
+            "phi4-reasoning",
+            "seed-oss",
+            "seedoss",
+            "glm-z1",
+            "glmz1",
+        ],
+    ) || (!is_ollama_model(model) && local_model_matches_any(model, &["gpt-oss", "gptoss"]))
+        || model.reasoning
+}
+
+fn local_thinking_control_mode(model: &Model) -> Option<ThinkingControlMode> {
+    if !login::is_local_openai_provider(&model.provider) {
+        return None;
+    }
+
+    if local_model_supports_effort_levels(model) {
+        Some(ThinkingControlMode::LocalEffort)
+    } else if local_model_supports_default_thinking(model) {
+        Some(ThinkingControlMode::DefaultOnly)
+    } else {
+        Some(ThinkingControlMode::OffOnly)
+    }
+}
+
+fn supports_xhigh(model: &Model) -> bool {
+    if !model.reasoning || login::is_local_openai_provider(&model.provider) {
+        return false;
+    }
+
+    let id = normalized_model_capability_id(model);
+    [
+        "gpt-5.2", "gpt-5-2", "gpt-5.3", "gpt-5-3", "gpt-5.4", "gpt-5-4", "gpt-5.5", "gpt-5-5",
+    ]
+    .iter()
+    .any(|needle| id.contains(needle))
+        || id.contains("claude-opus-4-6")
+        || id.contains("claude-opus-4.6")
+        || id.contains("claude-opus-4-7")
+        || id.contains("claude-opus-4.7")
+        || (id.contains("deepseek")
+            && (id.contains("v4-pro") || id.contains("v4pro") || id.contains("v4/pro")))
+}
+
+fn thinking_control_mode_for_model(model: &Model) -> ThinkingControlMode {
+    if let Some(mode) = local_thinking_control_mode(model) {
+        return mode;
+    }
+
+    if !model.reasoning {
+        ThinkingControlMode::OffOnly
+    } else if supports_xhigh(model) {
+        ThinkingControlMode::XHigh
+    } else {
+        ThinkingControlMode::Standard
+    }
+}
+
+pub(crate) fn thinking_levels_for_model(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+) -> &'static [ThinkingLevel] {
+    if model.reasoning && login::normalize_provider_for_model_selection(&model.provider) == "openai"
+    {
+        let route = if auth_method == Some(login::ProviderAuthMethod::OAuth) {
+            kordi_provider::openai::capabilities::OpenAiAuthRoute::CodexOAuth
+        } else {
+            kordi_provider::openai::capabilities::OpenAiAuthRoute::Api
+        };
+        return kordi_provider::openai::capabilities::thinking_levels(&model.id, route);
+    }
+
+    match thinking_control_mode_for_model(model) {
+        ThinkingControlMode::OffOnly => &OFF_ONLY_THINKING_LEVELS,
+        ThinkingControlMode::DefaultOnly => &DEFAULT_ONLY_THINKING_LEVELS,
+        ThinkingControlMode::LocalEffort => &LOCAL_EFFORT_THINKING_LEVELS,
+        ThinkingControlMode::Standard => &STANDARD_THINKING_LEVELS,
+        ThinkingControlMode::XHigh => &XHIGH_THINKING_LEVELS,
+    }
+}
+
+fn fallback_thinking_for_levels(levels: &[ThinkingLevel]) -> ThinkingLevel {
+    if levels.contains(&ThinkingLevel::Off) {
+        ThinkingLevel::Off
+    } else if levels.contains(&ThinkingLevel::Default) {
+        ThinkingLevel::Default
+    } else if levels.contains(&ThinkingLevel::Medium) {
+        ThinkingLevel::Medium
+    } else {
+        levels.first().copied().unwrap_or(ThinkingLevel::Off)
+    }
+}
+
 pub(crate) fn effective_openai_thinking_level(
     model: &Model,
     auth_method: Option<login::ProviderAuthMethod>,
@@ -260,13 +428,35 @@ pub(crate) fn effective_openai_thinking_level(
     ))
 }
 
+pub(crate) fn effective_thinking_level_for_model(
+    model: &Model,
+    auth_method: Option<login::ProviderAuthMethod>,
+    requested: ThinkingLevel,
+) -> ThinkingLevel {
+    if let Some(effective) = effective_openai_thinking_level(model, auth_method, requested) {
+        return effective;
+    }
+
+    let levels = thinking_levels_for_model(model, auth_method);
+    if levels.contains(&requested) {
+        requested
+    } else if requested == ThinkingLevel::Max && levels.contains(&ThinkingLevel::XHigh) {
+        ThinkingLevel::XHigh
+    } else if matches!(requested, ThinkingLevel::Max | ThinkingLevel::XHigh)
+        && levels.contains(&ThinkingLevel::High)
+    {
+        ThinkingLevel::High
+    } else {
+        fallback_thinking_for_levels(levels)
+    }
+}
+
 pub(crate) fn request_thinking_value(
     model: &Model,
     auth_method: Option<login::ProviderAuthMethod>,
     requested: ThinkingLevel,
 ) -> Option<String> {
-    let effective =
-        effective_openai_thinking_level(model, auth_method, requested).unwrap_or(requested);
+    let effective = effective_thinking_level_for_model(model, auth_method, requested);
     match effective {
         ThinkingLevel::Default => None,
         ThinkingLevel::Off
@@ -345,7 +535,7 @@ pub(crate) fn resolve_runtime_config_with_settings(
 mod tests {
     use super::{
         default_base_url_for_model, default_base_url_for_model_with_settings,
-        request_thinking_value, resolve_or_synthesize_model,
+        effective_thinking_level_for_model, request_thinking_value, resolve_or_synthesize_model,
         resolve_or_synthesize_model_with_settings, resolve_runtime_config_with_settings,
     };
     use kordi_core::agent_session::ThinkingLevel;
@@ -448,6 +638,14 @@ mod tests {
         assert_eq!(
             request_thinking_value(claude, None, ThinkingLevel::Off),
             None
+        );
+        assert_eq!(
+            effective_thinking_level_for_model(claude, None, ThinkingLevel::Max),
+            ThinkingLevel::High
+        );
+        assert_eq!(
+            request_thinking_value(claude, None, ThinkingLevel::Max).as_deref(),
+            Some("high")
         );
     }
 

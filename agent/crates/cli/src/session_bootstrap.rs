@@ -542,12 +542,11 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let (provider_name, model_id, thinking_override) = parse_model_arg(provider_input, model_input);
 
     let requested_thinking = thinking_override.as_deref().or(entry.thinking.as_deref());
-    let thinking_level = resolve_thinking_level(
+    let requested_thinking_level = resolve_thinking_level(
         requested_thinking,
         resumed_thinking_level,
         settings.default_thinking.as_deref(),
     );
-    let thinking_str = thinking_level.as_str();
 
     let agents_md = load_agents_md(&effective_cwd);
 
@@ -576,6 +575,12 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let api_key = runtime.api_key.clone();
     let base_url = runtime.base_url.clone();
     let headers = runtime.headers.clone();
+    let thinking_level = crate::runtime_model::effective_thinking_level_for_model(
+        &model,
+        auth.as_ref().map(|auth| auth.method),
+        requested_thinking_level,
+    );
+    let thinking_str = thinking_level.as_str();
 
     auto_install_missing_packages(&effective_cwd, &settings);
 

@@ -152,12 +152,17 @@ impl TuiController {
                 }
             }
 
-            let thinking_level = crate::session_bootstrap::resolve_thinking_level(
+            let requested_thinking_level = crate::session_bootstrap::resolve_thinking_level(
                 None,
                 context::active_path_explicit_thinking_level(&self.session_setup.conn, session_id)
                     .ok()
                     .flatten(),
                 settings.default_thinking.as_deref(),
+            );
+            let thinking_level = crate::runtime_model::effective_thinking_level_for_model(
+                &self.session_setup.model,
+                self.session_setup.auth.as_ref().map(|auth| auth.method),
+                requested_thinking_level,
             );
             self.session_setup.thinking_level = thinking_level.as_str().to_string();
             self.runtime_host
@@ -224,6 +229,7 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::Utc;
+    use kordi_core::agent_session::ThinkingLevel;
     use kordi_core::agent_session_runtime::{
         AgentSessionRuntimeBootstrap, AgentSessionRuntimeHost,
     };
@@ -511,5 +517,51 @@ mod tests {
                 .any(|command| matches!(command, TuiCommand::SetInput(text) if text.is_empty()))
         );
         assert!(commands.iter().any(|command| matches!(command, TuiCommand::SetStatusLine(text) if text == "Resumed session")));
+    }
+
+    #[tokio::test]
+    async fn handle_resume_session_clamps_restored_thinking_to_model_capabilities() {
+        let (mut controller, _command_rx, _tempdir) = build_test_controller();
+        let cwd = controller.session_setup.tool_ctx.cwd.display().to_string();
+        let session_id =
+            store::create_session(&controller.session_setup.conn, &cwd).expect("create session");
+        let model_change_id = EntryId::generate();
+        let model_change = SessionEntry::ModelChange {
+            base: EntryBase {
+                id: model_change_id.clone(),
+                parent_id: None,
+                timestamp: Utc::now(),
+            },
+            provider: "openai".to_string(),
+            model_id: "gpt-5.5".to_string(),
+        };
+        store::append_entry(&controller.session_setup.conn, &session_id, &model_change)
+            .expect("append model change");
+        let thinking_change = SessionEntry::ThinkingLevelChange {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: Some(model_change_id),
+                timestamp: Utc::now(),
+            },
+            thinking_level: ThinkingLevel::Max,
+        };
+        store::append_entry(
+            &controller.session_setup.conn,
+            &session_id,
+            &thinking_change,
+        )
+        .expect("append thinking change");
+
+        controller
+            .handle_resume_session(&session_id)
+            .await
+            .expect("resume session");
+
+        assert_eq!(controller.session_setup.model.id, "gpt-5.5");
+        assert_eq!(controller.session_setup.thinking_level, "xhigh");
+        assert_eq!(
+            controller.runtime_host.session().thinking_level(),
+            ThinkingLevel::XHigh
+        );
     }
 }
