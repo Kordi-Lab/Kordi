@@ -2,13 +2,13 @@ use super::*;
 use std::collections::HashSet;
 
 const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
-    "gpt-5.3-codex-spark",
-    "gpt-5.4",
-    "gpt-5.4-mini",
-    "gpt-5.5",
     "gpt-5.6-luna",
     "gpt-5.6-sol",
     "gpt-5.6-terra",
+    "gpt-5.5",
+    "gpt-5.4-mini",
+    "gpt-5.4",
+    "gpt-5.3-codex-spark",
 ];
 
 const ANTHROPIC_OAUTH_MODEL_IDS: &[&str] = &[
@@ -180,16 +180,7 @@ fn provider_prefixed_model_arg(provider: &str, model: &str) -> String {
 fn preferred_model_for_provider(provider: &str) -> Option<String> {
     match provider {
         "anthropic" => Some("claude-opus-4-6".to_string()),
-        "openai" | "openai-codex" => {
-            if resolve_provider_auth("openai")
-                .as_ref()
-                .is_some_and(|auth| matches!(auth.method, ProviderAuthMethod::OAuth))
-            {
-                Some("gpt-5.5".to_string())
-            } else {
-                Some("gpt-5.4".to_string())
-            }
-        }
+        "openai" | "openai-codex" => Some("gpt-5.5".to_string()),
         "google" => Some("gemini-3.1-pro".to_string()),
         "github-copilot" => {
             let cached = github_copilot_cached_models();
@@ -414,13 +405,13 @@ mod tests {
         assert_eq!(
             model_ids,
             [
-                "gpt-5.3-codex-spark",
-                "gpt-5.4",
-                "gpt-5.4-mini",
-                "gpt-5.5",
                 "gpt-5.6-luna",
                 "gpt-5.6-sol",
                 "gpt-5.6-terra",
+                "gpt-5.5",
+                "gpt-5.4-mini",
+                "gpt-5.4",
+                "gpt-5.3-codex-spark",
             ]
         );
         assert!(!model_ids.contains(&"gpt-5.6".to_string()));
@@ -444,6 +435,10 @@ mod tests {
         assert!(model_ids.contains(&"gpt-4o-mini".to_string()));
         assert!(model_ids.contains(&"gpt-5".to_string()));
         assert!(model_ids.contains(&"gpt-5.5".to_string()));
+        assert_eq!(
+            available_model_for_provider(&Settings::default(), "openai", None),
+            Some("gpt-5.5".to_string()),
+        );
     }
 
     #[test]

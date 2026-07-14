@@ -8,13 +8,13 @@ Keep Kordi's OpenAI model catalog, thinking controls, and serialized reasoning e
 
 Codex OAuth advertises, in order:
 
-1. `gpt-5.3-codex-spark`
-2. `gpt-5.4`
-3. `gpt-5.4-mini`
+1. `gpt-5.6-luna`
+2. `gpt-5.6-sol`
+3. `gpt-5.6-terra`
 4. `gpt-5.5`
-5. `gpt-5.6-luna`
-6. `gpt-5.6-sol`
-7. `gpt-5.6-terra`
+5. `gpt-5.4-mini`
+6. `gpt-5.4`
+7. `gpt-5.3-codex-spark`
 
 The direct OpenAI registry adds the three GPT-5.6 variants. It does not add a bare `gpt-5.6` alias. The default model remains `gpt-5.5`, and a saved OAuth model removed from the catalog falls back through the existing preferred-model path.
 

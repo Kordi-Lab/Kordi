@@ -1,11 +1,11 @@
 export const composerModelOptions = [
-  'GPT-5.3-Codex-Spark',
-  'GPT-5.4',
-  'GPT-5.4-Mini',
-  'GPT-5.5',
   'GPT-5.6-Luna',
   'GPT-5.6-Sol',
   'GPT-5.6-Terra',
+  'GPT-5.5',
+  'GPT-5.4-Mini',
+  'GPT-5.4',
+  'GPT-5.3-Codex-Spark',
 ] as const;
 
 export const composerModeOptions = {
