@@ -145,22 +145,121 @@ Beta.6 is an acceptance-only, ad-hoc-signed external-test preview. It is not App
 
 Use `--release-profile adhoc-preview --channel acceptance`. The publisher rejects every other ad-hoc channel combination. Beta.6 immutable objects are never replaced or promoted to beta. The next Developer ID-signed and notarized release is beta.7; publish beta.7 to acceptance first so preview clients update into a bundle whose embedded endpoint returns them to normal beta.
 
-The bootstrap and preview remain Tauri updater-signed even though their macOS bundles use the ad-hoc identity. Build them into separate target directories with the product API base unset:
+The bootstrap and preview remain Tauri updater-signed even though their macOS bundles use the ad-hoc identity. Except for the two persistent tunnel commands in their labeled terminals, run every operator block below in the same protected release shell so the cleanup trap, updater key, exact publication date, and metadata digests remain in scope. Define the source commit and artifact roots before building:
 
 ```bash
+set -euo pipefail
+set +x
 unset VITE_KORDI_CLOUD_API_BASE
+unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY
+unset APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
+unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+RELEASE_COMMIT="$(git rev-parse HEAD)"
+ARTIFACT_ROOT="$HOME/.cache/kordi/releases/0.0.1-beta.6-adhoc-${RELEASE_COMMIT:0:8}"
+PREVIEW_BUILD_ROOT="$HOME/.cache/kordi/releases/beta6-adhoc"
+BOOTSTRAP_BUILD_ROOT="$HOME/.cache/kordi/releases/beta51-bootstrap"
+TAURI_SECRET_DIR=
+PUBLISHER_SECRET_DIR=
+
+cleanup_preview_release() {
+  unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  unset KORDI_RELEASE_PUBLISHER_ACCESS_KEY KORDI_RELEASE_PUBLISHER_SECRET_KEY
+  unset KORDI_RELEASE_S3_ENDPOINT KORDI_RELEASE_S3_BUCKET KORDI_RELEASE_S3_REGION
+  if test -n "${TAURI_SECRET_DIR:-}"; then rm -rf -- "$TAURI_SECRET_DIR"; fi
+  if test -n "${PUBLISHER_SECRET_DIR:-}"; then rm -rf -- "$PUBLISHER_SECRET_DIR"; fi
+}
+trap cleanup_preview_release EXIT
+install -d -m 700 "$ARTIFACT_ROOT" "$PREVIEW_BUILD_ROOT" "$BOOTSTRAP_BUILD_ROOT"
+```
+
+Load only the two Tauri updater-signing secrets. No Apple credential or Developer ID identity is loaded in this preview flow: do not access a `kordi-apple-*` secret, import a p12, or create a signing keychain for this profile.
+
+```bash
+TAURI_SECRET_DIR="$(mktemp -d /tmp/kordi-tauri-preview.XXXXXX)"
+chmod 700 "$TAURI_SECRET_DIR"
+gcloud secrets versions access latest \
+  --secret kordi-tauri-updater-private-key \
+  --project hai-gcp-representation \
+  --out-file "$TAURI_SECRET_DIR/private-key" --quiet
+gcloud secrets versions access latest \
+  --secret kordi-tauri-updater-private-key-password \
+  --project hai-gcp-representation \
+  --out-file "$TAURI_SECRET_DIR/password" --quiet
+export TAURI_SIGNING_PRIVATE_KEY="$(<"$TAURI_SECRET_DIR/private-key")"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(<"$TAURI_SECRET_DIR/password")"
+test -n "$TAURI_SIGNING_PRIVATE_KEY"
+test -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+```
+
+Keep those variables loaded through the local prerequisite check, publisher dry run, network publication, and rollback restoration. Build the two literal acceptance targets:
+
+```bash
 CARGO_TARGET_DIR="$HOME/.cache/kordi/releases/beta6-adhoc" \
   pnpm --dir app/desktop tauri:build:cloud:adhoc-preview
 CARGO_TARGET_DIR="$HOME/.cache/kordi/releases/beta51-bootstrap" \
   pnpm --dir app/desktop tauri:build:cloud:adhoc-bootstrap
 ```
 
-Stage the verified beta.6 app, DMG, updater archive, and updater signature under the release root, then record the exact source commit and publication time:
+Stage those outputs into the exact paths consumed by the publisher and the invited-tester handoff. Removing only the staged app first makes repeated staging immune to stale bundle files:
 
 ```bash
-RELEASE_COMMIT="$(git rev-parse HEAD)"
-ARTIFACT_ROOT="$HOME/.cache/kordi/releases/0.0.1-beta.6-adhoc-${RELEASE_COMMIT:0:8}"
-PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+install -d -m 700 \
+  "$ARTIFACT_ROOT/target-beta6/release/bundle/macos" \
+  "$ARTIFACT_ROOT/release-beta6" \
+  "$ARTIFACT_ROOT/bootstrap"
+rm -rf -- "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app"
+ditto \
+  "$PREVIEW_BUILD_ROOT/release/bundle/macos/Kordi.app" \
+  "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app"
+cp \
+  "$PREVIEW_BUILD_ROOT/release/bundle/dmg/Kordi_0.0.1-beta.6_aarch64.dmg" \
+  "$ARTIFACT_ROOT/release-beta6/Kordi_0.0.1-beta.6_aarch64.dmg"
+cp \
+  "$PREVIEW_BUILD_ROOT/release/bundle/macos/Kordi.app.tar.gz" \
+  "$ARTIFACT_ROOT/release-beta6/Kordi.app.tar.gz"
+cp \
+  "$PREVIEW_BUILD_ROOT/release/bundle/macos/Kordi.app.tar.gz.sig" \
+  "$ARTIFACT_ROOT/release-beta6/Kordi.app.tar.gz.sig"
+cp \
+  "$BOOTSTRAP_BUILD_ROOT/release/bundle/dmg/Kordi_0.0.1-beta.5.1_aarch64.dmg" \
+  "$ARTIFACT_ROOT/bootstrap/Kordi_0.0.1-beta.5.1_aarch64.dmg"
+test -e "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app"
+test -s "$ARTIFACT_ROOT/release-beta6/Kordi_0.0.1-beta.6_aarch64.dmg"
+test -s "$ARTIFACT_ROOT/release-beta6/Kordi.app.tar.gz"
+test -s "$ARTIFACT_ROOT/release-beta6/Kordi.app.tar.gz.sig"
+test -s "$ARTIFACT_ROOT/bootstrap/Kordi_0.0.1-beta.5.1_aarch64.dmg"
+```
+
+Run the ad-hoc prerequisite gate locally, then generate and preserve the release metadata without contacting storage. Reuse an existing valid beta.6 `pubDate` when repeating the run; otherwise create it once. The dry run and every later publication must use this same value:
+
+```bash
+pnpm --dir app/desktop release:prerequisites -- \
+  --release-profile adhoc-preview \
+  --expected-commit "$RELEASE_COMMIT" \
+  --app-bundle "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app"
+if test -s "$ARTIFACT_ROOT/release-beta6/release.json"; then
+  PUB_DATE="$(jq -er 'select(.version == "0.0.1-beta.6") | .pubDate' \
+    "$ARTIFACT_ROOT/release-beta6/release.json")"
+else
+  PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+pnpm release:publish-desktop -- \
+  --release-profile adhoc-preview \
+  --release-dir "$ARTIFACT_ROOT/release-beta6" \
+  --app-bundle "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app" \
+  --version 0.0.1-beta.6 \
+  --channel acceptance \
+  --expected-commit "$RELEASE_COMMIT" \
+  --pub-date "$PUB_DATE" \
+  --dry-run
+test -s "$ARTIFACT_ROOT/release-beta6/release.json"
+test -s "$ARTIFACT_ROOT/release-beta6/channel-acceptance-latest.json"
+RELEASE_JSON_SHA256="$(shasum -a 256 \
+  "$ARTIFACT_ROOT/release-beta6/release.json" | awk '{print $1}')"
+ACCEPTANCE_POINTER_SHA256="$(shasum -a 256 \
+  "$ARTIFACT_ROOT/release-beta6/channel-acceptance-latest.json" | awk '{print $1}')"
+printf 'release.json sha256: %s\nacceptance pointer sha256: %s\n' \
+  "$RELEASE_JSON_SHA256" "$ACCEPTANCE_POINTER_SHA256"
 ```
 
 For publication, expose MinIO only through a temporary loopback tunnel. On the product VM, forward the in-cluster service to VM loopback; from the operator machine, forward that VM loopback port locally:
@@ -174,25 +273,26 @@ gcloud compute ssh --zone "us-central1-a" "kordi-product" \
   --project "hai-gcp-representation" -- -N -L 9900:127.0.0.1:9900
 ```
 
-Load publisher credentials from protected temporary files without printing them, then publish acceptance first. The script uploads immutable objects conditionally, verifies their unauthenticated product-domain GET and HEAD routes, writes the channel pointer last, and rolls the pointer back if post-promotion verification fails:
+Load publisher credentials from protected temporary files without printing them, then publish acceptance first. This extends the existing cleanup trap rather than replacing it. The script uploads immutable objects conditionally, verifies their unauthenticated product-domain GET and HEAD routes, writes the channel pointer last, and rolls the pointer back if post-promotion verification fails:
 
 ```bash
-SECRET_DIR="$(mktemp -d /tmp/kordi-release-publisher.XXXXXX)"
-chmod 700 "$SECRET_DIR"
-trap 'rm -rf "$SECRET_DIR"' EXIT
+PUBLISHER_SECRET_DIR="$(mktemp -d /tmp/kordi-release-publisher.XXXXXX)"
+chmod 700 "$PUBLISHER_SECRET_DIR"
 gcloud secrets versions access latest \
   --secret kordi-release-publisher-access-key \
   --project hai-gcp-representation \
-  --out-file "$SECRET_DIR/access" --quiet
+  --out-file "$PUBLISHER_SECRET_DIR/access" --quiet
 gcloud secrets versions access latest \
   --secret kordi-release-publisher-secret-key \
   --project hai-gcp-representation \
-  --out-file "$SECRET_DIR/secret" --quiet
-export KORDI_RELEASE_PUBLISHER_ACCESS_KEY="$(<"$SECRET_DIR/access")"
-export KORDI_RELEASE_PUBLISHER_SECRET_KEY="$(<"$SECRET_DIR/secret")"
+  --out-file "$PUBLISHER_SECRET_DIR/secret" --quiet
+export KORDI_RELEASE_PUBLISHER_ACCESS_KEY="$(<"$PUBLISHER_SECRET_DIR/access")"
+export KORDI_RELEASE_PUBLISHER_SECRET_KEY="$(<"$PUBLISHER_SECRET_DIR/secret")"
 export KORDI_RELEASE_S3_ENDPOINT=http://127.0.0.1:9900
 export KORDI_RELEASE_S3_BUCKET=kordi-releases
 export KORDI_RELEASE_S3_REGION=us-east-1
+test -n "$KORDI_RELEASE_PUBLISHER_ACCESS_KEY"
+test -n "$KORDI_RELEASE_PUBLISHER_SECRET_KEY"
 
 pnpm release:publish-desktop -- \
   --release-profile adhoc-preview \
@@ -202,22 +302,64 @@ pnpm release:publish-desktop -- \
   --channel acceptance \
   --expected-commit "$RELEASE_COMMIT" \
   --pub-date "$PUB_DATE"
+
+assert_preview_metadata_unchanged() {
+  test "$(shasum -a 256 "$ARTIFACT_ROOT/release-beta6/release.json" | awk '{print $1}')" \
+    = "$RELEASE_JSON_SHA256"
+  test "$(shasum -a 256 \
+    "$ARTIFACT_ROOT/release-beta6/channel-acceptance-latest.json" | awk '{print $1}')" \
+    = "$ACCEPTANCE_POINTER_SHA256"
+}
+verify_acceptance_manifest() {
+  curl -fsS \
+    https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1 \
+    | jq -e --slurpfile release "$ARTIFACT_ROOT/release-beta6/release.json" '
+        $release[0] as $local
+        | .version == $local.version
+          and .pub_date == $local.pubDate
+          and .notes == $local.notes
+          and .url == ("https://coordinar.io/updates/releases/" +
+            $local.version + "/" + $local.platforms["darwin-aarch64"].fileName)
+          and .signature == $local.platforms["darwin-aarch64"].signature
+      '
+}
+assert_preview_metadata_unchanged
+verify_acceptance_manifest
 ```
 
-Keep acceptance live while external testers are enrolled. Before sending invitations, rehearse rollback by clearing the pointer and verifying that beta.5.1 receives HTTP 204:
+Keep acceptance live while external testers are enrolled. Before sending invitations, rehearse rollback by clearing the pointer, verifying that beta.5.1 receives HTTP 204, and then restoring the exact locally recorded metadata:
 
 ```bash
 pnpm release:clear-desktop-acceptance
 test "$(curl -sS -o /dev/null -w '%{http_code}' \
   https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1)" = 204
-```
+PUB_DATE="$(jq -r .pubDate "$ARTIFACT_ROOT/release-beta6/release.json")"
+test -n "$PUB_DATE"
+test "$PUB_DATE" != null
+pnpm release:publish-desktop -- \
+  --release-profile adhoc-preview \
+  --release-dir "$ARTIFACT_ROOT/release-beta6" \
+  --app-bundle "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app" \
+  --version 0.0.1-beta.6 \
+  --channel acceptance \
+  --expected-commit "$RELEASE_COMMIT" \
+  --pub-date "$PUB_DATE"
+assert_preview_metadata_unchanged
+verify_acceptance_manifest
 
-Then rerun the exact publisher command above and verify beta.5.1 receives beta.6 again before sending invitations:
-
-```bash
-curl -fsS \
-  https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1 \
-  | jq -e '.version == "0.0.1-beta.6"'
+TAURI_SECRET_DIR_TO_REMOVE="$TAURI_SECRET_DIR"
+PUBLISHER_SECRET_DIR_TO_REMOVE="$PUBLISHER_SECRET_DIR"
+cleanup_preview_release
+trap - EXIT
+test ! -e "$TAURI_SECRET_DIR_TO_REMOVE"
+test ! -e "$PUBLISHER_SECRET_DIR_TO_REMOVE"
+test -z "${TAURI_SIGNING_PRIVATE_KEY+x}"
+test -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD+x}"
+test -z "${KORDI_RELEASE_PUBLISHER_ACCESS_KEY+x}"
+test -z "${KORDI_RELEASE_PUBLISHER_SECRET_KEY+x}"
+test -z "${KORDI_RELEASE_S3_ENDPOINT+x}"
+test -z "${KORDI_RELEASE_S3_BUCKET+x}"
+test -z "${KORDI_RELEASE_S3_REGION+x}"
 ```
 
 Send the beta.5.1 bootstrap DMG directly only to the invited testers. On a normally secured macOS arm64 test machine, exercise browser quarantine, install beta.5.1 manually, approve only that app through **Open Anyway**, confirm the beta.6 update once, and verify Tauri signature validation, installation, automatic relaunch, the reported beta.6 version, and preservation of account, Keychain, session, cache, draft, and preference markers. Stop the preview if the update requires disabling a macOS security control or a second manual approval.
