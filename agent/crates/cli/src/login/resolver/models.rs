@@ -191,7 +191,9 @@ fn provider_prefixed_model_arg(provider: &str, model: &str) -> String {
 fn preferred_model_for_provider(provider: &str) -> Option<String> {
     match provider {
         "anthropic" => Some("claude-opus-4-6".to_string()),
-        "openai" | "openai-codex" => Some("gpt-5.5".to_string()),
+        "openai" | "openai-codex" => {
+            Some(kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID.to_string())
+        }
         "google" => Some("gemini-3.1-pro".to_string()),
         "github-copilot" => {
             let cached = github_copilot_cached_models();
@@ -239,7 +241,7 @@ pub fn preferred_startup_provider_and_model(
     }
 
     // Otherwise prefer OpenAI first when it is authenticated, so the app's
-    // startup default follows the active OpenAI auth path (ChatGPT OAuth prefers gpt-5.5).
+    // startup default follows the active OpenAI auth path.
     let openai_preferred = preferred_model_for_provider("openai");
     if let Some(model) =
         resolve_available_model_for_provider(settings, "openai", openai_preferred.as_deref())
@@ -431,7 +433,7 @@ mod tests {
         assert!(!model_ids.contains(&"gpt-5-mini".to_string()));
         assert_eq!(
             available_model_for_provider(&Settings::default(), "openai", Some("gpt-5")),
-            Some("gpt-5.5".to_string()),
+            Some("gpt-5.6-sol".to_string()),
         );
         assert_eq!(
             available_model_for_provider(&Settings::default(), "openai", Some("gpt-5.4")),
@@ -439,7 +441,7 @@ mod tests {
         );
         assert_eq!(
             available_model_for_provider(&Settings::default(), "openai", Some("gpt-5.2")),
-            Some("gpt-5.5".to_string()),
+            Some("gpt-5.6-sol".to_string()),
         );
     }
 
@@ -456,7 +458,7 @@ mod tests {
         assert!(model_ids.contains(&"gpt-5.5".to_string()));
         assert_eq!(
             available_model_for_provider(&Settings::default(), "openai", None),
-            Some("gpt-5.5".to_string()),
+            Some("gpt-5.6-sol".to_string()),
         );
     }
 
@@ -506,7 +508,17 @@ mod tests {
 
         assert_eq!(
             preferred_startup_provider_and_model(&settings),
-            Some(("openai".to_string(), "gpt-5.5".to_string())),
+            Some(("openai".to_string(), "gpt-5.6-sol".to_string())),
+        );
+
+        let explicit_settings = Settings {
+            default_provider: Some("openai".to_string()),
+            default_model: Some("gpt-5.4".to_string()),
+            ..Settings::default()
+        };
+        assert_eq!(
+            preferred_startup_provider_and_model(&explicit_settings),
+            Some(("openai".to_string(), "gpt-5.4".to_string())),
         );
     }
 }

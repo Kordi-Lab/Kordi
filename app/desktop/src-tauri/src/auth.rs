@@ -345,11 +345,7 @@ pub fn desktop_cloud_provider_auth_snapshot_payload(
         None => kordi_cli::login::resolve_provider_auth(provider)
             .ok_or_else(|| format!("Could not resolve local auth for {provider}"))?,
     };
-    let model = model
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("gpt-5.5");
+    let model = cloud_provider_auth_snapshot_model(model.as_deref());
 
     let (provider, auth_choice, payload) = match auth.method {
         kordi_cli::login::ProviderAuthMethod::ApiKey => (
@@ -385,6 +381,14 @@ pub fn desktop_cloud_provider_auth_snapshot_payload(
         "authChoice": auth_choice,
         "payload": payload,
     }))
+}
+
+fn cloud_provider_auth_snapshot_model(model: Option<&str>) -> String {
+    model
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID)
+        .to_string()
 }
 
 #[tauri::command]
@@ -674,4 +678,18 @@ pub async fn desktop_cancel_auth_attempt(
         state.succeeded = false;
     });
     snapshot_attempt(&attempt.snapshot)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cloud_provider_auth_snapshot_model;
+
+    #[test]
+    fn cloud_auth_snapshot_uses_root_openai_default() {
+        assert_eq!(cloud_provider_auth_snapshot_model(None), "gpt-5.6-sol");
+        assert_eq!(
+            cloud_provider_auth_snapshot_model(Some("gpt-5.4")),
+            "gpt-5.4"
+        );
+    }
 }

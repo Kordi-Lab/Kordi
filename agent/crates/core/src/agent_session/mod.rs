@@ -29,7 +29,7 @@ pub use messages::{
     AssistantMessage, ContentPart, CustomMessage, ImageContent, SessionMessage, TextContent,
     ToolResultMessage, UserMessage, UserMessageContent,
 };
-pub use model_arg::parse_model_arg;
+pub use model_arg::{DEFAULT_OPENAI_MODEL_ID, parse_model_arg};
 pub use models::{ModelRef, ScopedModel, SessionStartEvent, ThinkingLevel};
 pub use print::{PrintTurnResult, PrintTurnStopReason, ThinPrintSession};
 pub use provider::messages_to_provider;
