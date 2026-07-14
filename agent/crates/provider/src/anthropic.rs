@@ -1,3 +1,4 @@
+pub mod capabilities;
 mod events;
 
 use async_trait::async_trait;
