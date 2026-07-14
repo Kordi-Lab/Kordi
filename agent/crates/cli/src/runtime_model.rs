@@ -385,9 +385,9 @@ pub(crate) fn thinking_levels_for_model(
 
     if model.reasoning
         && login::normalize_provider_for_model_selection(&model.provider) == "anthropic"
-        && let Some(levels) = anthropic_capabilities::thinking_levels(&model.id)
     {
-        return levels;
+        return anthropic_capabilities::thinking_levels(&model.id)
+            .unwrap_or(&STANDARD_THINKING_LEVELS);
     }
 
     match thinking_control_mode_for_model(model) {
@@ -548,7 +548,7 @@ mod tests {
         default_base_url_for_model, default_base_url_for_model_with_settings,
         effective_thinking_level_for_model, request_thinking_value, resolve_or_synthesize_model,
         resolve_or_synthesize_model_with_settings, resolve_runtime_config_with_settings,
-        thinking_levels_for_model,
+        synthesize_model_candidate, thinking_levels_for_model,
     };
     use kordi_core::agent_session::ThinkingLevel;
     use kordi_core::settings::{ProviderOverride, Settings};
@@ -763,6 +763,45 @@ mod tests {
             request_thinking_value(&model, None, ThinkingLevel::Off),
             None
         );
+    }
+
+    #[test]
+    fn unknown_anthropic_ids_ignore_cross_provider_xhigh_markers() {
+        let registry = ModelRegistry::new();
+
+        for model_id in ["claude-gpt-5.5", "claude-deepseek-v4-pro"] {
+            let model = synthesize_model_candidate(&registry, "anthropic", model_id);
+            assert_eq!(model.id, model_id);
+            assert_eq!(model.provider, "anthropic");
+            assert!(model.reasoning);
+
+            assert_eq!(
+                effective_thinking_level_for_model(&model, None, ThinkingLevel::XHigh),
+                ThinkingLevel::High,
+                "{model_id}"
+            );
+            assert_eq!(
+                effective_thinking_level_for_model(&model, None, ThinkingLevel::Max),
+                ThinkingLevel::High,
+                "{model_id}"
+            );
+            assert_eq!(
+                thinking_levels_for_model(&model, None),
+                &[
+                    ThinkingLevel::Off,
+                    ThinkingLevel::Minimal,
+                    ThinkingLevel::Low,
+                    ThinkingLevel::Medium,
+                    ThinkingLevel::High,
+                ],
+                "{model_id}"
+            );
+            assert_eq!(
+                request_thinking_value(&model, None, ThinkingLevel::Off),
+                None,
+                "{model_id}"
+            );
+        }
     }
 
     #[test]
