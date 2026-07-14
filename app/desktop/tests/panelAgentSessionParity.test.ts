@@ -87,10 +87,12 @@ test('side-panel Agent model controls use independent menu state and target the 
 
   assert.match(source, /const \[companionOpenComposerSelector, setCompanionOpenComposerSelector\]/, 'side-panel model selector should not share the main composer open state');
   assert.match(source, /toggleCompanionComposerSelector/, 'side-panel model selector should have its own toggle handler');
+  assert.match(source, /const companionLocalAgentConfigTargetSessionId = companionConversation[\s\S]*localAgentComposerConfigTargetSessionId\(companionConversation\)/, 'side-panel model controls should resolve the canonical runtime session when available');
   assert.match(side, /openSelector=\{companionOpenComposerSelector\}/, 'side-panel model controls should read side-panel selector state');
   assert.match(side, /onToggleSelector=\{toggleCompanionComposerSelector\}/, 'side-panel model controls should toggle side-panel selector state');
-  assert.match(side, /selectComposerValue\(scope, type, value, companionConversation\.id\)/, 'side-panel model changes should target the side-panel session id');
-  assert.match(side, /selectComposerProviderChoice\(scope, option, companionConversation\.id\)/, 'side-panel provider changes should target the side-panel session id');
+  assert.match(side, /selectComposerValue\(scope, type, value, companionLocalAgentConfigTargetSessionId\)/, 'side-panel model changes should target the side-panel canonical runtime session');
+  assert.match(side, /selectComposerAuthChoice\(scope, providerId, choice, companionLocalAgentConfigTargetSessionId\)/, 'side-panel auth changes should target the side-panel canonical runtime session');
+  assert.match(side, /selectComposerProviderChoice\(scope, option, companionLocalAgentConfigTargetSessionId\)/, 'side-panel provider changes should target the side-panel canonical runtime session');
   assert.doesNotMatch(side, /openSelector=\{openComposerSelector\}/, 'side-panel model controls must not share the main composer popover state');
 });
 
