@@ -26,6 +26,7 @@ import {
 export type VirtualTranscriptNavigationRequest = {
   id: string;
   nonce: number;
+  sessionKey: string;
 };
 
 export type VirtualTranscriptProps<Item> = {
@@ -40,6 +41,7 @@ export type VirtualTranscriptProps<Item> = {
   navigationRequest?: VirtualTranscriptNavigationRequest | null;
   findNavigationIndex?: (item: Item, messageId: string, index: number) => boolean;
   onNavigationReady?: (messageId: string) => void;
+  onNavigationHandled?: (request: VirtualTranscriptNavigationRequest) => void;
   hasOlder?: boolean;
   onLoadOlder?: () => Promise<void> | void;
   olderLoadingLabel?: ReactNode;
@@ -61,6 +63,7 @@ export function VirtualTranscript<Item>({
   navigationRequest,
   findNavigationIndex,
   onNavigationReady,
+  onNavigationHandled,
   hasOlder = false,
   onLoadOlder,
   olderLoadingLabel = 'Loading earlier messages…',
@@ -76,6 +79,7 @@ export function VirtualTranscript<Item>({
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
   const mountedRef = useRef(true);
   const alignedSessionRef = useRef<{ sessionKey: string; itemCount: number } | null>(null);
+  const handledNavigationRequestRef = useRef<string | null>(null);
 
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
     internalScrollRef.current = node;
@@ -103,13 +107,17 @@ export function VirtualTranscript<Item>({
     useFlushSync: false,
   });
 
+  const scopedNavigationRequest = navigationRequest?.sessionKey === sessionKey
+    ? navigationRequest
+    : null;
+
   const navigationTargetIndex = useMemo(() => {
-    const id = navigationRequest?.id.trim() ?? '';
+    const id = scopedNavigationRequest?.id.trim() ?? '';
     if (!id) return -1;
     return items.findIndex((item, index) => (
       findNavigationIndex?.(item, id, index) ?? String(getItemKey(item, index)) === id
     ));
-  }, [findNavigationIndex, getItemKey, items, navigationRequest?.id]);
+  }, [findNavigationIndex, getItemKey, items, scopedNavigationRequest?.id]);
 
   const oldestItemKey = items.length > 0 ? String(getItemKey(items[0]!, 0)) : 'empty';
 
@@ -138,11 +146,11 @@ export function VirtualTranscript<Item>({
   }, [hasOlder, onLoadOlder]);
 
   useEffect(() => {
-    const request = navigationRequest;
+    const request = scopedNavigationRequest;
     if (!request || navigationTargetIndex >= 0 || !hasOlder || !onLoadOlder) return;
-    const signature = `${sessionKey}:${request.nonce}:${request.id}:${items.length}:${oldestItemKey}`;
+    const signature = `${request.sessionKey}:${request.nonce}:${request.id}:${items.length}:${oldestItemKey}`;
     void requestOlder(signature);
-  }, [hasOlder, items.length, navigationRequest, navigationTargetIndex, oldestItemKey, onLoadOlder, requestOlder, sessionKey]);
+  }, [hasOlder, items.length, navigationTargetIndex, oldestItemKey, onLoadOlder, requestOlder, scopedNavigationRequest]);
 
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     onScroll?.(event);
@@ -165,11 +173,18 @@ export function VirtualTranscript<Item>({
   }, [items.length, sessionKey, virtualizer]);
 
   useLayoutEffect(() => {
-    if (!navigationRequest || navigationTargetIndex < 0) return undefined;
+    const request = scopedNavigationRequest;
+    if (!request || navigationTargetIndex < 0) return undefined;
+    const requestIdentity = JSON.stringify([request.sessionKey, request.nonce, request.id.trim()]);
+    if (handledNavigationRequestRef.current === requestIdentity) return undefined;
     virtualizer.scrollToIndex(navigationTargetIndex, { align: 'center' });
-    const frameId = window.requestAnimationFrame(() => onNavigationReady?.(navigationRequest.id));
+    const frameId = window.requestAnimationFrame(() => {
+      handledNavigationRequestRef.current = requestIdentity;
+      onNavigationReady?.(request.id);
+      onNavigationHandled?.(request);
+    });
     return () => window.cancelAnimationFrame(frameId);
-  }, [navigationRequest, navigationTargetIndex, onNavigationReady, virtualizer]);
+  }, [navigationTargetIndex, onNavigationHandled, onNavigationReady, scopedNavigationRequest, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
 

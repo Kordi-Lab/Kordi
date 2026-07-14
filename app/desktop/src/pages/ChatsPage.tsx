@@ -82,7 +82,10 @@ import {
   transcriptWindowMessageIdentity,
   transcriptWindowMessageMatchesId,
 } from '@/features/chat/transcriptWindowing';
-import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
+import {
+  VirtualTranscript,
+  type VirtualTranscriptNavigationRequest,
+} from '@/features/chat/VirtualTranscript';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { resolveTranscriptMessageIdForSource } from '@/features/chat/messageNavigation';
@@ -374,10 +377,16 @@ function ChatComposerShell({ children }: ChatComposerShellProps) {
   return <>{children}</>;
 }
 
-type TranscriptNavigationRequest = {
-  id: string;
-  nonce: number;
-};
+type TranscriptNavigationRequest = VirtualTranscriptNavigationRequest;
+
+function sameTranscriptNavigationRequest(
+  current: TranscriptNavigationRequest,
+  handled: TranscriptNavigationRequest,
+) {
+  return current.sessionKey === handled.sessionKey
+    && current.nonce === handled.nonce
+    && current.id.trim() === handled.id.trim();
+}
 
 type ChatSessionPaneProps = {
   sessionKey: string;
@@ -391,6 +400,7 @@ type ChatSessionPaneProps = {
   hasOlderMessages?: boolean;
   onLoadOlderMessages?: () => Promise<void> | void;
   navigationRequest?: TranscriptNavigationRequest | null;
+  onNavigationHandled?: (request: TranscriptNavigationRequest) => void;
   emptyState?: ReactNode;
   composer: ReactNode;
   queuedMessages?: QueuedDesktopChatMessage[];
@@ -449,6 +459,7 @@ function ChatSessionPane({
   hasOlderMessages = false,
   onLoadOlderMessages,
   navigationRequest,
+  onNavigationHandled,
   emptyState,
   composer,
   queuedMessages = [],
@@ -508,6 +519,9 @@ function ChatSessionPane({
     originalIndex: originalIndexByMessageKey.get(transcriptWindowMessageIdentity(message, index)) ?? index,
   })), [attributedTranscript.messages, originalIndexByMessageKey]);
   const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
+  const handleNavigationReady = useCallback((messageId: string) => {
+    navigateToTranscriptMessage(messageId, scrollRef);
+  }, [scrollRef]);
 
   return (
     <>
@@ -518,12 +532,13 @@ function ChatSessionPane({
         scrollClassName={scrollClassName}
         onScroll={() => onTranscriptScroll?.()}
         navigationRequest={navigationRequest}
+        onNavigationHandled={onNavigationHandled}
         findNavigationIndex={(entry, messageId) => transcriptWindowMessageMatchesId(
           entry.message,
           messageId,
           entry.originalIndex,
         )}
-        onNavigationReady={(messageId) => navigateToTranscriptMessage(messageId, scrollRef)}
+        onNavigationReady={handleNavigationReady}
         hasOlder={hasOlderMessages}
         onLoadOlder={onLoadOlderMessages}
         getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
@@ -1175,6 +1190,16 @@ export function ChatsPage({
   const [mainTranscriptNavigationRequest, setMainTranscriptNavigationRequest] = useState<TranscriptNavigationRequest | null>(null);
   const [companionTranscriptNavigationRequest, setCompanionTranscriptNavigationRequest] = useState<TranscriptNavigationRequest | null>(null);
   const transcriptNavigationNonceRef = useRef(0);
+  const handleMainTranscriptNavigationHandled = useCallback((handled: TranscriptNavigationRequest) => {
+    setMainTranscriptNavigationRequest((current) => (
+      current && sameTranscriptNavigationRequest(current, handled) ? null : current
+    ));
+  }, []);
+  const handleCompanionTranscriptNavigationHandled = useCallback((handled: TranscriptNavigationRequest) => {
+    setCompanionTranscriptNavigationRequest((current) => (
+      current && sameTranscriptNavigationRequest(current, handled) ? null : current
+    ));
+  }, []);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const companionTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const companionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -1442,9 +1467,8 @@ export function ChatsPage({
       : messageId;
     const resolvedMessageId = targetMessageId || messageId;
     transcriptNavigationNonceRef.current += 1;
-    setMainTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
-    navigateToTranscriptMessage(resolvedMessageId, chatTranscriptScrollRef);
-  }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
+    setMainTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current, sessionKey: activeConv.id });
+  }, [activeConv.id, attributedTranscriptMessages]);
   const handleOpenPinnedMessage = useCallback(() => {
     if (!pinnedMessageId) return;
     handleNavigateToTranscriptMessage(pinnedMessage ? chatMessageActionId(pinnedMessage) : pinnedMessageId);
@@ -1521,14 +1545,14 @@ export function ChatsPage({
     );
   }, [companionConversation, companionTranscriptLiveTurn]);
   const handleNavigateToCompanionTranscriptMessage = useCallback((messageId: string, sourceMessage?: MessageSourceReference) => {
+    if (!companionConversation) return;
     const targetMessageId = sourceMessage
       ? resolveTranscriptMessageIdForSource(sourceMessage, companionTranscriptMessages)
       : messageId;
     const resolvedMessageId = targetMessageId || messageId;
     transcriptNavigationNonceRef.current += 1;
-    setCompanionTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
-    navigateToTranscriptMessage(resolvedMessageId, companionTranscriptScrollRef);
-  }, [companionTranscriptMessages]);
+    setCompanionTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current, sessionKey: companionConversation.id });
+  }, [companionConversation, companionTranscriptMessages]);
   const attributedCompanionTranscriptLiveTurn = companionTranscriptLiveTurn;
   const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
   const companionLiveTurnIsRunning = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);
@@ -1890,6 +1914,7 @@ export function ChatsPage({
           ? () => onLoadOlderCanonicalSessionMessages(companionConversation.canonicalSessionId ?? companionConversation.id)
           : undefined}
         navigationRequest={companionTranscriptNavigationRequest}
+        onNavigationHandled={handleCompanionTranscriptNavigationHandled}
         densityMode={chatTranscriptDensityMode(companionConversation)}
         queuedMessages={queuedDesktopMessagesBySession[companionConversation.id] ?? []}
         onEditQueuedMessage={onEditQueuedMessage}
@@ -2616,6 +2641,7 @@ export function ChatsPage({
           ? () => onLoadOlderCanonicalSessionMessages(activeConv.canonicalSessionId ?? activeConv.id)
           : undefined}
         navigationRequest={mainTranscriptNavigationRequest}
+        onNavigationHandled={handleMainTranscriptNavigationHandled}
         densityMode={chatTranscriptDensityMode(activeConv)}
         onTranscriptScroll={onTranscriptScroll}
         queuedMessages={queuedDesktopMessages}

@@ -22,8 +22,14 @@ function installDom() {
   target.Event = dom.window.Event;
   target.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
   target.IS_REACT_ACT_ENVIRONMENT = true;
-  target.requestAnimationFrame = (callback: FrameRequestCallback) => setTimeout(() => callback(Date.now()), 0);
-  target.cancelAnimationFrame = (id: number) => clearTimeout(id);
+  const requestAnimationFrame = (callback: FrameRequestCallback) => (
+    dom.window.setTimeout(() => callback(Date.now()), 0)
+  );
+  const cancelAnimationFrame = (id: number) => dom.window.clearTimeout(id);
+  target.requestAnimationFrame = requestAnimationFrame;
+  target.cancelAnimationFrame = cancelAnimationFrame;
+  dom.window.requestAnimationFrame = requestAnimationFrame;
+  dom.window.cancelAnimationFrame = cancelAnimationFrame;
 
   Object.defineProperties(dom.window.HTMLElement.prototype, {
     clientHeight: {
@@ -116,21 +122,29 @@ function rows(prefix: string, start: number, count: number, height = 50): Row[] 
 function transcript(props: {
   items: readonly Row[];
   sessionKey?: string;
-  navigationRequest?: { id: string; nonce: number } | null;
+  navigationRequest?: { id: string; nonce: number; sessionKey?: string } | null;
+  onNavigationReady?: (messageId: string) => void;
+  onNavigationHandled?: (request: { id: string; nonce: number; sessionKey: string }) => void;
   hasOlder?: boolean;
   onLoadOlder?: () => Promise<void> | void;
 }) {
+  const sessionKey = props.sessionKey ?? 'session:one';
+  const navigationRequest = props.navigationRequest
+    ? { ...props.navigationRequest, sessionKey: props.navigationRequest.sessionKey ?? sessionKey }
+    : props.navigationRequest;
   return (
     <VirtualTranscript
       items={props.items}
-      sessionKey={props.sessionKey ?? 'session:one'}
+      sessionKey={sessionKey}
       getItemKey={(item) => item.id}
       renderItem={(item) => (
         <div data-message-id={item.id} data-test-row-height={item.height}>{item.id}</div>
       )}
       scrollStyle={{ height: 600 }}
-      navigationRequest={props.navigationRequest}
+      navigationRequest={navigationRequest}
       findNavigationIndex={(item, id) => item.id === id}
+      onNavigationReady={props.onNavigationReady}
+      onNavigationHandled={props.onNavigationHandled}
       hasOlder={props.hasOlder}
       onLoadOlder={props.onLoadOlder}
     />
@@ -237,12 +251,14 @@ test('prepending an older page preserves the first visible message and pixel off
 
 test('jump-to-message loads older pages until the target exists and then mounts it', async () => {
   let loadCount = 0;
+  const readyIds: string[] = [];
   function Harness() {
     const [items, setItems] = React.useState(() => rows('m', 900, 100));
     const [hasOlder, setHasOlder] = React.useState(true);
     return transcript({
       items,
       navigationRequest: { id: 'm850', nonce: 1 },
+      onNavigationReady: (id) => readyIds.push(id),
       hasOlder,
       onLoadOlder: async () => {
         loadCount += 1;
@@ -254,10 +270,184 @@ test('jump-to-message loads older pages until the target exists and then mounts 
 
   const view = await render(<Harness />);
   await flush();
+  await view.rerender(<Harness />);
 
   assert.equal(loadCount, 1);
+  assert.deepEqual(readyIds, ['m850']);
   assert.ok(view.host.querySelector('[data-message-id="m850"]'));
   assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+});
+
+test('a handled navigation request stays one-shot across transcript rerenders', async () => {
+  const readyIds: string[] = [];
+  const initialItems = rows('m', 0, 20);
+  const request = { id: 'm10', nonce: 1 };
+  const view = await render(transcript({
+    items: initialItems,
+    navigationRequest: request,
+    onNavigationReady: (id) => readyIds.push(id),
+  }));
+
+  assert.deepEqual(readyIds, ['m10']);
+
+  await view.rerender(transcript({
+    items: [...initialItems],
+    navigationRequest: { ...request },
+    onNavigationReady: (id) => readyIds.push(id),
+  }));
+  await view.rerender(transcript({
+    items: [...initialItems, { id: 'm20', height: 75 }],
+    navigationRequest: { ...request },
+    onNavigationReady: (id) => readyIds.push(id),
+  }));
+
+  assert.deepEqual(readyIds, ['m10']);
+});
+
+test('a new navigation nonce handles the same message exactly one more time', async () => {
+  const readyIds: string[] = [];
+  const items = rows('m', 0, 20);
+  const view = await render(transcript({
+    items,
+    navigationRequest: { id: 'm10', nonce: 1 },
+    onNavigationReady: (id) => readyIds.push(id),
+  }));
+
+  await view.rerender(transcript({
+    items: [...items],
+    navigationRequest: { id: 'm10', nonce: 2 },
+    onNavigationReady: (id) => readyIds.push(id),
+  }));
+  await view.rerender(transcript({
+    items: [...items],
+    navigationRequest: { id: 'm10', nonce: 2 },
+    onNavigationReady: (id) => readyIds.push(id),
+  }));
+
+  assert.deepEqual(readyIds, ['m10', 'm10']);
+});
+
+test('main and companion transcript requests remain independently one-shot', async () => {
+  const mainReady: string[] = [];
+  const companionReady: string[] = [];
+  const mainItems = rows('main-', 0, 20);
+  const companionItems = rows('companion-', 0, 20);
+  const pair = () => (
+    <>
+      {transcript({
+        items: [...mainItems],
+        sessionKey: 'main-session',
+        navigationRequest: { id: 'main-10', nonce: 1 },
+        onNavigationReady: (id) => mainReady.push(id),
+      })}
+      {transcript({
+        items: [...companionItems],
+        sessionKey: 'companion-session',
+        navigationRequest: { id: 'companion-10', nonce: 2 },
+        onNavigationReady: (id) => companionReady.push(id),
+      })}
+    </>
+  );
+  const view = await render(pair());
+
+  await view.rerender(pair());
+
+  assert.deepEqual(mainReady, ['main-10']);
+  assert.deepEqual(companionReady, ['companion-10']);
+});
+
+test('a handled navigation request stays consumed after the transcript remounts', async () => {
+  const readyIds: string[] = [];
+  const request = { id: 'm10', nonce: 1, sessionKey: 'session:one' };
+  let setVisible: React.Dispatch<React.SetStateAction<boolean>> | null = null;
+
+  function Harness() {
+    const [visible, updateVisible] = React.useState(true);
+    const [navigationRequest, setNavigationRequest] = React.useState<typeof request | null>(request);
+    setVisible = updateVisible;
+    if (!visible) return null;
+    return transcript({
+      items: rows('m', 0, 20),
+      navigationRequest,
+      onNavigationReady: (id) => readyIds.push(id),
+      onNavigationHandled: (handled) => {
+        setNavigationRequest((current) => (
+          current
+          && current.id === handled.id
+          && current.nonce === handled.nonce
+          && current.sessionKey === handled.sessionKey
+            ? null
+            : current
+        ));
+      },
+    });
+  }
+
+  const view = await render(<Harness />);
+  assert.deepEqual(readyIds, ['m10']);
+
+  await act(async () => setVisible?.(false));
+  await flush();
+  await act(async () => setVisible?.(true));
+  await flush();
+
+  assert.deepEqual(readyIds, ['m10']);
+  assert.ok(view.host.querySelector('[data-message-id="m10"]'));
+});
+
+test('a navigation request cannot replay against a different session with a colliding target id', async () => {
+  const readyIds: string[] = [];
+  const request = { id: 'shared', nonce: 1, sessionKey: 'session:a' };
+  const view = await render(transcript({
+    items: [{ id: 'shared', height: 50 }],
+    sessionKey: 'session:a',
+    navigationRequest: request,
+    onNavigationReady: (id) => readyIds.push(id),
+  }));
+
+  await view.rerender(transcript({
+    items: [{ id: 'shared', height: 50 }],
+    sessionKey: 'session:b',
+    navigationRequest: request,
+    onNavigationReady: (id) => readyIds.push(id),
+  }));
+
+  assert.deepEqual(readyIds, ['shared']);
+});
+
+test('a navigation request cannot load older pages for a different session', async () => {
+  let loadCount = 0;
+  const readyIds: string[] = [];
+  const request = { id: 'shared', nonce: 1, sessionKey: 'session:a' };
+  const view = await render(transcript({
+    items: rows('b-', 0, 20),
+    sessionKey: 'session:b',
+    hasOlder: true,
+    onLoadOlder: () => { loadCount += 1; },
+  }));
+  const baselineLoadCount = loadCount;
+
+  await view.rerender(transcript({
+    items: rows('b-', 0, 20),
+    sessionKey: 'session:b',
+    navigationRequest: request,
+    onNavigationReady: (id) => readyIds.push(id),
+    hasOlder: true,
+    onLoadOlder: () => { loadCount += 1; },
+  }));
+
+  assert.equal(loadCount, baselineLoadCount);
+  assert.deepEqual(readyIds, []);
+
+  await view.rerender(transcript({
+    items: [{ id: 'shared', height: 50 }],
+    sessionKey: 'session:a',
+    navigationRequest: request,
+    onNavigationReady: (id) => readyIds.push(id),
+    hasOlder: false,
+  }));
+
+  assert.deepEqual(readyIds, ['shared']);
 });
 
 test('a 1,000-message transcript mounts at most 60 row nodes', async () => {
