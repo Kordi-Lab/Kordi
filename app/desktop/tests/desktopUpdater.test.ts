@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  KORDI_MANUAL_UPDATE_URL,
   createDesktopUpdaterController,
+  manualUpdateUrlForVersion,
   type DesktopUpdaterAdapter,
   type DesktopUpdaterDownloadEvent,
   type DesktopUpdaterUpdate,
 } from '../src/features/updates/desktopUpdater';
+
+const BETA6_MANUAL_UPDATE_URL =
+  'https://coordinar.io/updates/releases/0.0.1-beta.6/Kordi_0.0.1-beta.6_aarch64.dmg';
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -47,6 +50,24 @@ function fakeAdapter(update: DesktopUpdaterUpdate | null): DesktopUpdaterAdapter
   };
 }
 
+test('manual fallback is product-origin and version-immutable', () => {
+  assert.equal(manualUpdateUrlForVersion('0.0.1-beta.6'), BETA6_MANUAL_UPDATE_URL);
+  assert.equal(
+    manualUpdateUrlForVersion('10.20.30-beta.4'),
+    'https://coordinar.io/updates/releases/10.20.30-beta.4/Kordi_10.20.30-beta.4_aarch64.dmg',
+  );
+  for (const value of [
+    undefined,
+    '',
+    'latest',
+    '../beta.6',
+    '0.0.1-beta.06',
+    'https://evil.invalid/x',
+  ]) {
+    assert.equal(manualUpdateUrlForVersion(value), undefined);
+  }
+});
+
 test('outside Tauri the controller stays idle without importing or checking plugins', async () => {
   const adapter = fakeAdapter(fakeUpdate());
   const controller = createDesktopUpdaterController({
@@ -70,7 +91,20 @@ test('an available update retains the exact checked resource', async () => {
   assert.equal(state.status, 'available');
   assert.equal(state.currentVersion, '0.0.1-beta.5.1');
   assert.equal(state.latestVersion, '0.0.1-beta.6');
+  assert.equal(state.manualDownloadUrl, BETA6_MANUAL_UPDATE_URL);
   assert.equal(controller.getCheckedUpdate(), update);
+});
+
+test('an invalid update version never becomes a manual download URL', async () => {
+  const controller = createDesktopUpdaterController({
+    adapter: fakeAdapter(fakeUpdate({ version: 'https://evil.invalid/x' })),
+    isTauriRuntime: () => true,
+  });
+
+  const state = await controller.check();
+
+  assert.equal(state.status, 'available');
+  assert.equal(state.manualDownloadUrl, undefined);
 });
 
 test('confirm downloads once, reports progress, installs, and relaunches only after success', async () => {
@@ -105,7 +139,7 @@ test('confirm downloads once, reports progress, installs, and relaunches only af
     notes: 'Signed beta.6 update',
     receivedBytes: 35,
     totalBytes: 100,
-    manualDownloadUrl: KORDI_MANUAL_UPDATE_URL,
+    manualDownloadUrl: BETA6_MANUAL_UPDATE_URL,
   });
 
   onEvent?.({ event: 'Finished' });
@@ -135,12 +169,30 @@ test('signature or install failure never relaunches and retry reuses the checked
   await assert.rejects(controller.install(), /signature verification failed/);
   assert.equal(adapter.relaunchCalls, 0);
   assert.equal(controller.getState().status, 'failed');
-  assert.equal(controller.getState().manualDownloadUrl, KORDI_MANUAL_UPDATE_URL);
+  assert.equal(controller.getState().manualDownloadUrl, BETA6_MANUAL_UPDATE_URL);
 
   await controller.retry();
   assert.equal(attempts, 2);
   assert.equal(adapter.checkCalls, 1);
   assert.equal(adapter.relaunchCalls, 1);
+});
+
+test('an uninformative install failure uses verified-update fallback copy', async () => {
+  const update = fakeUpdate({
+    async downloadAndInstall() {
+      throw new Error('');
+    },
+  });
+  const controller = createDesktopUpdaterController({
+    adapter: fakeAdapter(update),
+    isTauriRuntime: () => true,
+  });
+  await controller.check();
+
+  await assert.rejects(controller.install());
+
+  assert.equal(controller.getState().status, 'failed');
+  assert.equal(controller.getState().error, 'Unable to install the verified Kordi update.');
 });
 
 test('check failures stay quiet and disposing closes the held updater resource', async () => {

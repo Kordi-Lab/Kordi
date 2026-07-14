@@ -4,10 +4,17 @@ import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import {
+  RELEASE_PROFILES,
+  assertProductionSigningIdentity,
+  verifyMacAppSignature,
+} from '../../../scripts/lib/macos-release-signing.mjs';
+
 const SIGNING_ENV_NAMES = [
   'TAURI_SIGNING_PRIVATE_KEY',
   'TAURI_SIGNING_PRIVATE_KEY_PASSWORD',
 ];
+const RELEASE_PROFILE_VALUES = Object.values(RELEASE_PROFILES);
 
 function defaultRun(command, args = []) {
   const result = spawnSync(command, args, {
@@ -35,6 +42,13 @@ function requireNonEmptyEnvironment(env, name) {
   }
 }
 
+function requireReleaseProfile(profile) {
+  if (!RELEASE_PROFILE_VALUES.includes(profile)) {
+    throw new Error('Release profile must be production or adhoc-preview');
+  }
+  return profile;
+}
+
 export function redactReleaseText(value, env = process.env) {
   let redacted = String(value ?? '');
   for (const [name, secret] of Object.entries(env)) {
@@ -59,6 +73,9 @@ export function checkReleasePrerequisites(options, dependencies = {}) {
     sourceOnly = false,
     appBundle,
   } = options ?? {};
+  const releaseProfile = requireReleaseProfile(
+    options?.releaseProfile ?? RELEASE_PROFILES.PRODUCTION,
+  );
   const env = dependencies.env ?? process.env;
   const run = dependencies.run ?? defaultRun;
 
@@ -86,6 +103,7 @@ export function checkReleasePrerequisites(options, dependencies = {}) {
     return {
       commit: head,
       sourceOnly: true,
+      releaseProfile,
       signingIdentityAvailable: false,
       codesignVerified: false,
       gatekeeperVerified: false,
@@ -99,44 +117,38 @@ export function checkReleasePrerequisites(options, dependencies = {}) {
     throw new Error('--app-bundle is required for artifact verification');
   }
 
-  const identities = requireSuccessful(
-    run('security', ['find-identity', '-v', '-p', 'codesigning']),
-    'Unable to inspect macOS signing identities',
-  );
-  const identityOutput = `${identities.stdout}\n${identities.stderr}`;
-  const validIdentityCount = identityOutput.match(/(\d+) valid identities found/i);
-  if (!/Developer ID Application:/i.test(identityOutput)
-      || !validIdentityCount
-      || Number(validIdentityCount[1]) < 1) {
-    throw new Error('A valid Developer ID Application signing identity is required');
-  }
-
-  requireSuccessful(
-    run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appBundle]),
-    'codesign verification failed for the application bundle',
-  );
-  requireSuccessful(
-    run('spctl', ['--assess', '--type', 'execute', '--verbose=2', appBundle]),
-    'Gatekeeper assessment failed for the application bundle',
-  );
+  const identity = releaseProfile === RELEASE_PROFILES.PRODUCTION
+    ? assertProductionSigningIdentity(run)
+    : { signingIdentityAvailable: false };
+  const signature = verifyMacAppSignature({
+    run,
+    appBundle,
+    profile: releaseProfile,
+  });
 
   return {
     commit: head,
     sourceOnly: false,
-    signingIdentityAvailable: true,
-    codesignVerified: true,
-    gatekeeperVerified: true,
+    releaseProfile,
+    signingIdentityAvailable: identity.signingIdentityAvailable,
+    codesignVerified: signature.codesignVerified,
+    gatekeeperVerified: signature.gatekeeperVerified,
   };
 }
 
 export function parseReleasePrerequisiteArguments(argv) {
-  const options = { sourceOnly: false };
+  const options = {
+    sourceOnly: false,
+    releaseProfile: RELEASE_PROFILES.PRODUCTION,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--') {
       continue;
     } else if (argument === '--source-only') {
       options.sourceOnly = true;
+    } else if (argument === '--release-profile') {
+      options.releaseProfile = requireReleaseProfile(argv[index += 1]);
     } else if (argument === '--expected-commit') {
       options.expectedCommit = argv[index += 1];
     } else if (argument === '--app-bundle') {
@@ -151,7 +163,11 @@ export function parseReleasePrerequisiteArguments(argv) {
 export function runReleasePrerequisiteCli(argv = process.argv.slice(2)) {
   try {
     const result = checkReleasePrerequisites(parseReleasePrerequisiteArguments(argv));
-    const mode = result.sourceOnly ? 'source-only' : 'signed artifact';
+    const mode = result.sourceOnly
+      ? 'source-only'
+      : result.releaseProfile === RELEASE_PROFILES.ADHOC_PREVIEW
+        ? 'ad-hoc preview artifact'
+        : 'production artifact';
     console.log(`[kordi] Release prerequisites passed for ${result.commit} (${mode}).`);
     return 0;
   } catch (error) {

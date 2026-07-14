@@ -60,18 +60,18 @@ This command:
 
 ## Hosted Desktop beta releases
 
-Hosted Desktop beta releases use two different version strings:
+Signed Hosted Desktop beta releases use two different version strings:
 
-- App/package version: `0.0.1-beta.N` (for example `0.0.1-beta.6`)
-- Git tag and GitHub prerelease: `V0.0.1.betaN` (for example `V0.0.1.beta6`)
+- App/package version: `0.0.1-beta.N`
+- Git tag and GitHub prerelease: `V0.0.1.betaN`
 
-The current updater bootstrap release is `0.0.1-beta.6` / `V0.0.1.beta6`. Keep the Cloud deployment's legacy metadata fallback on beta.5 until the validated beta channel pointer has been promoted; the signed channel catalog becomes authoritative after promotion.
+The ad-hoc beta.6 preview is an explicit exception to the signed-release tag and GitHub-prerelease convention. Its acceptance-only procedure is documented below. The next signed production release is beta.7.
 
 Use a clean release branch/worktree from the latest `origin/main`. Do not release from a dirty local development worktree.
 
 ### Signed desktop release prerequisites
 
-The beta.6 updater uses a Tauri minisign key and a notarized Developer ID build. The private Tauri key, its password, and Apple signing/notary material must be stored in GCP Secret Manager. Only the Tauri public key is committed in `app/desktop/src-tauri/tauri.conf.json`.
+Production beta.7 and later updater releases use a Tauri minisign key and a notarized Developer ID build. The private Tauri key, its password, and Apple signing/notary material must be stored in GCP Secret Manager. Only the Tauri public key is committed in `app/desktop/src-tauri/tauri.conf.json`.
 
 The production secret names are:
 
@@ -125,7 +125,7 @@ Kordi.app.tar.gz
 Kordi.app.tar.gz.sig
 ```
 
-Pass the corresponding `Kordi.app` bundle separately. The publisher checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `coordinar.io` product origin. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
+Pass the corresponding `Kordi.app` bundle separately. By default, the publisher uses the production profile and checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `coordinar.io` product origin. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
 
 ```bash
 RELEASE_COMMIT="$(git rev-parse HEAD)"
@@ -139,6 +139,129 @@ pnpm release:publish-desktop -- \
   --dry-run
 ```
 
+### Beta.6 ad-hoc external-test preview
+
+Beta.6 is an acceptance-only, ad-hoc-signed external-test preview. It is not Apple-signed, notarized, tagged, mirrored to a public GitHub release, or promoted to `desktop/channels/beta/latest.json`. Invited testers install beta.5.1 manually once and use Apple's per-app **Open Anyway** flow. Do not disable Gatekeeper or remove quarantine attributes.
+
+Use `--release-profile adhoc-preview --channel acceptance`. The publisher rejects every other ad-hoc channel combination. Beta.6 immutable objects are never replaced or promoted to beta. The next Developer ID-signed and notarized release is beta.7; publish beta.7 to acceptance first so preview clients update into a bundle whose embedded endpoint returns them to normal beta.
+
+The bootstrap and preview remain Tauri updater-signed even though their macOS bundles use the ad-hoc identity. Except for the two persistent tunnel commands in their labeled terminals, run every operator block below in the same protected release shell so the cleanup trap, updater key, exact publication date, and metadata digests remain in scope. Define the source commit and artifact roots before building:
+
+```bash
+set -euo pipefail
+set +x
+unset VITE_KORDI_CLOUD_API_BASE
+unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY
+unset APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
+unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+RELEASE_COMMIT="$(git rev-parse HEAD)"
+ARTIFACT_ROOT="$HOME/.cache/kordi/releases/0.0.1-beta.6-adhoc-${RELEASE_COMMIT:0:8}"
+PREVIEW_BUILD_ROOT="$HOME/.cache/kordi/releases/beta6-adhoc"
+BOOTSTRAP_BUILD_ROOT="$HOME/.cache/kordi/releases/beta51-bootstrap"
+TAURI_SECRET_DIR=
+PUBLISHER_SECRET_DIR=
+
+cleanup_preview_release() {
+  unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  unset KORDI_RELEASE_PUBLISHER_ACCESS_KEY KORDI_RELEASE_PUBLISHER_SECRET_KEY
+  unset KORDI_RELEASE_S3_ENDPOINT KORDI_RELEASE_S3_BUCKET KORDI_RELEASE_S3_REGION
+  if test -n "${TAURI_SECRET_DIR:-}"; then rm -rf -- "$TAURI_SECRET_DIR"; fi
+  if test -n "${PUBLISHER_SECRET_DIR:-}"; then rm -rf -- "$PUBLISHER_SECRET_DIR"; fi
+}
+trap cleanup_preview_release EXIT
+install -d -m 700 "$ARTIFACT_ROOT" "$PREVIEW_BUILD_ROOT" "$BOOTSTRAP_BUILD_ROOT"
+```
+
+Load only the two Tauri updater-signing secrets. No Apple credential or Developer ID identity is loaded in this preview flow: do not access a `kordi-apple-*` secret, import a p12, or create a signing keychain for this profile.
+
+```bash
+TAURI_SECRET_DIR="$(mktemp -d /tmp/kordi-tauri-preview.XXXXXX)"
+chmod 700 "$TAURI_SECRET_DIR"
+gcloud secrets versions access latest \
+  --secret kordi-tauri-updater-private-key \
+  --project hai-gcp-representation \
+  --out-file "$TAURI_SECRET_DIR/private-key" --quiet
+gcloud secrets versions access latest \
+  --secret kordi-tauri-updater-private-key-password \
+  --project hai-gcp-representation \
+  --out-file "$TAURI_SECRET_DIR/password" --quiet
+export TAURI_SIGNING_PRIVATE_KEY="$(<"$TAURI_SECRET_DIR/private-key")"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(<"$TAURI_SECRET_DIR/password")"
+test -n "$TAURI_SIGNING_PRIVATE_KEY"
+test -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+```
+
+Keep those variables loaded through the local prerequisite check, publisher dry run, network publication, and rollback restoration. Build the two literal acceptance targets:
+
+```bash
+CARGO_TARGET_DIR="$HOME/.cache/kordi/releases/beta6-adhoc" \
+  pnpm --dir app/desktop tauri:build:cloud:adhoc-preview
+CARGO_TARGET_DIR="$HOME/.cache/kordi/releases/beta51-bootstrap" \
+  pnpm --dir app/desktop tauri:build:cloud:adhoc-bootstrap
+```
+
+Stage those outputs into the exact paths consumed by the publisher and the invited-tester handoff. Removing only the staged app first makes repeated staging immune to stale bundle files:
+
+```bash
+install -d -m 700 \
+  "$ARTIFACT_ROOT/target-beta6/release/bundle/macos" \
+  "$ARTIFACT_ROOT/release-beta6" \
+  "$ARTIFACT_ROOT/bootstrap"
+rm -rf -- "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app"
+ditto \
+  "$PREVIEW_BUILD_ROOT/release/bundle/macos/Kordi.app" \
+  "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app"
+cp \
+  "$PREVIEW_BUILD_ROOT/release/bundle/dmg/Kordi_0.0.1-beta.6_aarch64.dmg" \
+  "$ARTIFACT_ROOT/release-beta6/Kordi_0.0.1-beta.6_aarch64.dmg"
+cp \
+  "$PREVIEW_BUILD_ROOT/release/bundle/macos/Kordi.app.tar.gz" \
+  "$ARTIFACT_ROOT/release-beta6/Kordi.app.tar.gz"
+cp \
+  "$PREVIEW_BUILD_ROOT/release/bundle/macos/Kordi.app.tar.gz.sig" \
+  "$ARTIFACT_ROOT/release-beta6/Kordi.app.tar.gz.sig"
+cp \
+  "$BOOTSTRAP_BUILD_ROOT/release/bundle/dmg/Kordi_0.0.1-beta.5.1_aarch64.dmg" \
+  "$ARTIFACT_ROOT/bootstrap/Kordi_0.0.1-beta.5.1_aarch64.dmg"
+test -e "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app"
+test -s "$ARTIFACT_ROOT/release-beta6/Kordi_0.0.1-beta.6_aarch64.dmg"
+test -s "$ARTIFACT_ROOT/release-beta6/Kordi.app.tar.gz"
+test -s "$ARTIFACT_ROOT/release-beta6/Kordi.app.tar.gz.sig"
+test -s "$ARTIFACT_ROOT/bootstrap/Kordi_0.0.1-beta.5.1_aarch64.dmg"
+```
+
+Run the ad-hoc prerequisite gate locally, then generate and preserve the release metadata without contacting storage. Reuse an existing valid beta.6 `pubDate` when repeating the run; otherwise create it once. The dry run and every later publication must use this same value:
+
+```bash
+pnpm --dir app/desktop release:prerequisites -- \
+  --release-profile adhoc-preview \
+  --expected-commit "$RELEASE_COMMIT" \
+  --app-bundle "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app"
+if test -s "$ARTIFACT_ROOT/release-beta6/release.json"; then
+  PUB_DATE="$(jq -er 'select(.version == "0.0.1-beta.6") | .pubDate' \
+    "$ARTIFACT_ROOT/release-beta6/release.json")"
+else
+  PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+pnpm release:publish-desktop -- \
+  --release-profile adhoc-preview \
+  --release-dir "$ARTIFACT_ROOT/release-beta6" \
+  --app-bundle "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app" \
+  --version 0.0.1-beta.6 \
+  --channel acceptance \
+  --expected-commit "$RELEASE_COMMIT" \
+  --pub-date "$PUB_DATE" \
+  --dry-run
+test -s "$ARTIFACT_ROOT/release-beta6/release.json"
+test -s "$ARTIFACT_ROOT/release-beta6/channel-acceptance-latest.json"
+RELEASE_JSON_SHA256="$(shasum -a 256 \
+  "$ARTIFACT_ROOT/release-beta6/release.json" | awk '{print $1}')"
+ACCEPTANCE_POINTER_SHA256="$(shasum -a 256 \
+  "$ARTIFACT_ROOT/release-beta6/channel-acceptance-latest.json" | awk '{print $1}')"
+printf 'release.json sha256: %s\nacceptance pointer sha256: %s\n' \
+  "$RELEASE_JSON_SHA256" "$ACCEPTANCE_POINTER_SHA256"
+```
+
 For publication, expose MinIO only through a temporary loopback tunnel. On the product VM, forward the in-cluster service to VM loopback; from the operator machine, forward that VM loopback port locally:
 
 ```bash
@@ -150,36 +273,98 @@ gcloud compute ssh --zone "us-central1-a" "kordi-product" \
   --project "hai-gcp-representation" -- -N -L 9900:127.0.0.1:9900
 ```
 
-Load publisher credentials from protected temporary files without printing them, then publish acceptance first. The script uploads immutable objects conditionally, verifies their unauthenticated product-domain GET and HEAD routes, writes the channel pointer last, and rolls the pointer back if post-promotion verification fails:
+Load publisher credentials from protected temporary files without printing them, then publish acceptance first. This extends the existing cleanup trap rather than replacing it. The script uploads immutable objects conditionally, verifies their unauthenticated product-domain GET and HEAD routes, writes the channel pointer last, and rolls the pointer back if post-promotion verification fails:
 
 ```bash
-SECRET_DIR="$(mktemp -d /tmp/kordi-release-publisher.XXXXXX)"
-chmod 700 "$SECRET_DIR"
-trap 'rm -rf "$SECRET_DIR"' EXIT
+PUBLISHER_SECRET_DIR="$(mktemp -d /tmp/kordi-release-publisher.XXXXXX)"
+chmod 700 "$PUBLISHER_SECRET_DIR"
 gcloud secrets versions access latest \
   --secret kordi-release-publisher-access-key \
   --project hai-gcp-representation \
-  --out-file "$SECRET_DIR/access" --quiet
+  --out-file "$PUBLISHER_SECRET_DIR/access" --quiet
 gcloud secrets versions access latest \
   --secret kordi-release-publisher-secret-key \
   --project hai-gcp-representation \
-  --out-file "$SECRET_DIR/secret" --quiet
-export KORDI_RELEASE_PUBLISHER_ACCESS_KEY="$(<"$SECRET_DIR/access")"
-export KORDI_RELEASE_PUBLISHER_SECRET_KEY="$(<"$SECRET_DIR/secret")"
+  --out-file "$PUBLISHER_SECRET_DIR/secret" --quiet
+export KORDI_RELEASE_PUBLISHER_ACCESS_KEY="$(<"$PUBLISHER_SECRET_DIR/access")"
+export KORDI_RELEASE_PUBLISHER_SECRET_KEY="$(<"$PUBLISHER_SECRET_DIR/secret")"
 export KORDI_RELEASE_S3_ENDPOINT=http://127.0.0.1:9900
 export KORDI_RELEASE_S3_BUCKET=kordi-releases
 export KORDI_RELEASE_S3_REGION=us-east-1
+test -n "$KORDI_RELEASE_PUBLISHER_ACCESS_KEY"
+test -n "$KORDI_RELEASE_PUBLISHER_SECRET_KEY"
 
 pnpm release:publish-desktop -- \
-  --release-dir /protected/kordi-beta.N \
-  --app-bundle /protected/kordi-beta.N/Kordi.app \
-  --version 0.0.1-beta.N \
+  --release-profile adhoc-preview \
+  --release-dir "$ARTIFACT_ROOT/release-beta6" \
+  --app-bundle "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app" \
+  --version 0.0.1-beta.6 \
   --channel acceptance \
   --expected-commit "$RELEASE_COMMIT" \
-  --pub-date 2026-07-13T00:00:00Z
+  --pub-date "$PUB_DATE"
+
+assert_preview_metadata_unchanged() {
+  test "$(shasum -a 256 "$ARTIFACT_ROOT/release-beta6/release.json" | awk '{print $1}')" \
+    = "$RELEASE_JSON_SHA256"
+  test "$(shasum -a 256 \
+    "$ARTIFACT_ROOT/release-beta6/channel-acceptance-latest.json" | awk '{print $1}')" \
+    = "$ACCEPTANCE_POINTER_SHA256"
+}
+verify_acceptance_manifest() {
+  curl -fsS \
+    https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1 \
+    | jq -e --slurpfile release "$ARTIFACT_ROOT/release-beta6/release.json" '
+        $release[0] as $local
+        | .version == $local.version
+          and .pub_date == $local.pubDate
+          and .notes == $local.notes
+          and .url == ("https://coordinar.io/updates/releases/" +
+            $local.version + "/" + $local.platforms["darwin-aarch64"].fileName)
+          and .signature == $local.platforms["darwin-aarch64"].signature
+      '
+}
+assert_preview_metadata_unchanged
+verify_acceptance_manifest
 ```
 
-Promote `--channel beta` only after acceptance installation, automatic relaunch, state preservation, and the one-time manual upgrade path have passed. Never copy the private updater key, its password, publisher credentials, or internal MinIO URLs into release notes or logs.
+Keep acceptance live while external testers are enrolled. Before sending invitations, rehearse rollback by clearing the pointer, verifying that beta.5.1 receives HTTP 204, and then restoring the exact locally recorded metadata:
+
+```bash
+pnpm release:clear-desktop-acceptance
+test "$(curl -sS -o /dev/null -w '%{http_code}' \
+  https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1)" = 204
+PUB_DATE="$(jq -r .pubDate "$ARTIFACT_ROOT/release-beta6/release.json")"
+test -n "$PUB_DATE"
+test "$PUB_DATE" != null
+pnpm release:publish-desktop -- \
+  --release-profile adhoc-preview \
+  --release-dir "$ARTIFACT_ROOT/release-beta6" \
+  --app-bundle "$ARTIFACT_ROOT/target-beta6/release/bundle/macos/Kordi.app" \
+  --version 0.0.1-beta.6 \
+  --channel acceptance \
+  --expected-commit "$RELEASE_COMMIT" \
+  --pub-date "$PUB_DATE"
+assert_preview_metadata_unchanged
+verify_acceptance_manifest
+
+TAURI_SECRET_DIR_TO_REMOVE="$TAURI_SECRET_DIR"
+PUBLISHER_SECRET_DIR_TO_REMOVE="$PUBLISHER_SECRET_DIR"
+cleanup_preview_release
+trap - EXIT
+test ! -e "$TAURI_SECRET_DIR_TO_REMOVE"
+test ! -e "$PUBLISHER_SECRET_DIR_TO_REMOVE"
+test -z "${TAURI_SIGNING_PRIVATE_KEY+x}"
+test -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD+x}"
+test -z "${KORDI_RELEASE_PUBLISHER_ACCESS_KEY+x}"
+test -z "${KORDI_RELEASE_PUBLISHER_SECRET_KEY+x}"
+test -z "${KORDI_RELEASE_S3_ENDPOINT+x}"
+test -z "${KORDI_RELEASE_S3_BUCKET+x}"
+test -z "${KORDI_RELEASE_S3_REGION+x}"
+```
+
+Send the beta.5.1 bootstrap DMG directly only to the invited testers. On a normally secured macOS arm64 test machine, exercise browser quarantine, install beta.5.1 manually, approve only that app through **Open Anyway**, confirm the beta.6 update once, and verify Tauri signature validation, installation, automatic relaunch, the reported beta.6 version, and preservation of account, Keychain, session, cache, draft, and preference markers. Stop the preview if the update requires disabling a macOS security control or a second manual approval.
+
+Never promote or replace the immutable beta.6 preview objects. Never create the `V0.0.1.beta6` production tag or public GitHub release, and never move the normal beta pointer or stable manual-download pointer to beta.6. When beta.7 is ready, publish its Developer ID-signed and notarized artifact to acceptance first, verify beta.6 upgrades to beta.7, and confirm the beta.7 bundle embeds the normal beta updater endpoint. Then clear acceptance and promote beta.7 through the signed production procedure below. Never copy the private updater key, its password, publisher credentials, or internal MinIO URLs into release notes or logs.
 
 ### Version metadata to bump
 
@@ -202,7 +387,7 @@ pnpm --dir app/desktop exec node --test tests/releaseVersion.test.mjs
 
 ### Hosted backend deploy
 
-The updater implementation PR must be merged before any production deployment, artifact build, channel publication, tag, or prerelease. Fetch `origin/main`, record the merge commit, and use that exact commit for every remaining step:
+For beta.7 and later, the updater implementation PR must be merged before any production deployment, artifact build, channel publication, tag, or prerelease. Fetch `origin/main`, record the merge commit, and use that exact commit for every remaining step:
 
 ```bash
 git fetch origin main
@@ -244,7 +429,7 @@ unset VITE_KORDI_CLOUD_API_BASE
 pnpm --dir app/desktop tauri:build:cloud:dmg
 ```
 
-The build runs the release secret guard, prepares sidecars, signs/notarizes the app, creates both the Tauri updater archive/signature and DMG, and verifies that the DMG contains `Kordi.app` plus an `/Applications` drag target. Do not continue unless the output directory contains `Kordi.app`, `Kordi.app.tar.gz`, `Kordi.app.tar.gz.sig`, and `Kordi_0.0.1-beta.6_aarch64.dmg`, and the production prerequisite gate passes against the exact merge commit.
+The build runs the release secret guard, prepares sidecars, signs/notarizes the app, creates both the Tauri updater archive/signature and DMG, and verifies that the DMG contains `Kordi.app` plus an `/Applications` drag target. Do not continue unless the output directory contains `Kordi.app`, `Kordi.app.tar.gz`, `Kordi.app.tar.gz.sig`, and `Kordi_0.0.1-beta.N_aarch64.dmg`, and the production prerequisite gate passes against the exact merge commit.
 
 ### Required artifact privacy scan
 
@@ -286,29 +471,23 @@ Confirm the DMG still contains the product API origin:
 strings "$DMG" | rg 'https://coordinar\.io|coordinar\.io'
 ```
 
-### Acceptance, promotion, and release
+### Signed acceptance, promotion, and release (beta.7 and later)
 
-1. Publish the verified immutable beta.6 objects to `--channel acceptance`. The publisher validates the prior channel snapshot, uses ETag compare-and-swap conditions, reads back exact pointer bytes, and re-verifies product-domain endpoints. A failed verification restores only the pointer it wrote and re-verifies the restored public state.
-2. Build an internal `0.0.1-beta.5.1` acceptance package from the merge commit. Its embedded updater key must equal beta.6 and its only endpoint override must be `https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}`. On a disposable macOS user, seed account/session/cache/preference markers; confirm once; verify signed download, installation, automatic relaunch, beta.6 version, and preservation of all markers.
+1. Publish the verified immutable `0.0.1-beta.N` objects to `--channel acceptance` with the default production release profile. The publisher validates the prior channel snapshot, uses ETag compare-and-swap conditions, reads back exact pointer bytes, and re-verifies product-domain endpoints. A failed verification restores only the pointer it wrote and re-verifies the restored public state.
+2. On a disposable macOS user following acceptance, seed account/session/cache/preference markers; confirm once; verify the signed download, installation, automatic relaunch, new version, normal-beta endpoint embedded in the installed bundle, and preservation of all markers. For beta.7, this test must include migration from the ad-hoc beta.6 preview before acceptance is cleared.
 3. Copy the updater archive, change one byte, and verify the Tauri signature check rejects the copy while the installed app remains runnable. Never upload the tampered copy.
-4. On a separate beta.5 installation, use the update confirmation to open the product-domain manual DMG. Verify beta.5 never starts its native installer, then drag beta.6 to Applications once and confirm login, keychain, canonical sessions, caches, and preferences remain intact.
-5. Mark the acceptance channel unpublished with its strict compare-and-swap tombstone, then verify it while retaining immutable objects:
+4. On a separate installation of the prior production beta, use the update confirmation to open the product-domain manual DMG. Verify the old app never starts its native installer, then drag the new version to Applications once and confirm login, Keychain, canonical sessions, caches, and preferences remain intact.
+5. After all acceptance clients have migrated, mark the acceptance channel unpublished with its strict compare-and-swap tombstone and verify HTTP 204 for a client on the prior acceptance version while retaining immutable objects. Do not clear acceptance while beta.6 preview testers still need beta.7.
+6. Publish the same immutable signed release to `--channel beta`. Verify legacy metadata contains the new version plus the manual `coordinar.io` URL and no `downloadUrl`; supported older clients receive the signed manifest; current, newer, and unsupported clients receive 204; anonymous DMG GET/HEAD and updater archive GET/HEAD match recorded sizes and SHA-256 values.
+7. Exercise rollback with an explicit expected-current-version guard. The command replaces the beta pointer with an unpublished tombstone only if its ETag and version still match, verifies updater 204, stable-DMG 404, and safe legacy metadata, and restores/re-verifies the release if those checks fail. Then promote the release again and repeat the endpoint matrix:
 
    ```bash
-   pnpm release:clear-desktop-acceptance
-   test "$(curl -sS -o /dev/null -w '%{http_code}' \
-     https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1)" = 204
-   ```
-
-6. Publish the same immutable release to `--channel beta`. Verify beta.5 legacy metadata contains beta.6 plus the manual `coordinar.io` URL and no `downloadUrl`; beta.5.1 receives the signed beta.6 manifest; beta.6, beta.7, and unsupported clients receive 204; anonymous DMG GET/HEAD and updater archive GET/HEAD match recorded sizes and SHA-256 values.
-7. For this first signed release, exercise rollback to the beta.5 environment fallback with an explicit expected-current-version guard. The command replaces the beta.6 pointer with an unpublished tombstone only if its ETag and version still match, verifies updater 204, stable-DMG 404, and safe legacy metadata, and restores/re-verifies beta.6 if those checks fail. Then promote beta.6 again and repeat the endpoint matrix:
-
-   ```bash
+   RELEASE_VERSION=0.0.1-beta.N
    pnpm release:rollback-desktop-beta -- \
-     --expected-current-version 0.0.1-beta.6
+     --expected-current-version "$RELEASE_VERSION"
    ```
 
-8. Only after promotion passes, create annotated tag `V0.0.1.beta6` at `RELEASE_COMMIT`, push it, and create the GitHub prerelease mirror. Include the merge commit, artifact hashes/sizes, deployed image tag, backup identifier, schema/health results, endpoint matrix, acceptance evidence, and rollback pointer digest.
+8. Only after promotion passes, create the annotated `V0.0.1.betaN` tag at `RELEASE_COMMIT`, push it, and create the GitHub prerelease mirror. Include the merge commit, artifact hashes/sizes, deployed image tag, backup identifier, schema/health results, endpoint matrix, acceptance evidence, and rollback pointer digest.
 
 ## Validation before release
 

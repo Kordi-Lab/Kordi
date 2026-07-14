@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kordi",
+  "identifier": "io.kordi.cloud",
+  "version": "0.0.1-beta.5.1",
+  "bundle": { "macOS": { "signingIdentity": "-" } },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}"
+      ]
+    }
+  }
+}

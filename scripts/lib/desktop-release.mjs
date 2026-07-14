@@ -22,6 +22,10 @@ import {
   mountDmg,
   validateDmgVolumeLayout,
 } from '../../app/desktop/scripts/assert-macos-dmg-release.mjs';
+import {
+  assertProductionSigningIdentity,
+  verifyMacAppSignature,
+} from './macos-release-signing.mjs';
 
 export const PRODUCT_ORIGIN = 'https://coordinar.io';
 export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
@@ -185,12 +189,19 @@ function validateOptions(options) {
   const appBundle = resolve(requireString(options?.appBundle, '--app-bundle'));
   const version = requireString(options?.version, '--version');
   const channel = requireString(options?.channel, '--channel');
+  const releaseProfile = options?.releaseProfile ?? 'production';
   const expectedCommit = requireString(options?.expectedCommit, '--expected-commit');
   const pubDate = options?.pubDate === undefined
     ? new Date().toISOString()
     : requireString(options.pubDate, '--pub-date');
   if (!VERSION_PATTERN.test(version)) throw new Error('Release version must be a beta semantic version');
   if (!SAFE_CHANNELS.has(channel)) throw new Error('Release channel must be beta or acceptance');
+  if (!['production', 'adhoc-preview'].includes(releaseProfile)) {
+    throw new Error('Release profile must be production or adhoc-preview');
+  }
+  if (releaseProfile === 'adhoc-preview' && channel !== 'acceptance') {
+    throw new Error('Ad-hoc preview releases may publish only to acceptance');
+  }
   if (!/^[0-9a-f]{40}$/.test(expectedCommit)) throw new Error('Expected commit must be a full lowercase Git commit SHA');
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(pubDate) || Number.isNaN(Date.parse(pubDate))) {
     throw new Error('Publication date must be an RFC 3339 UTC timestamp');
@@ -200,6 +211,7 @@ function validateOptions(options) {
     appBundle,
     version,
     channel,
+    releaseProfile,
     expectedCommit,
     pubDate,
     dryRun: options?.dryRun === true,
@@ -225,7 +237,11 @@ export async function prepareDesktopRelease(options, dependencies = {}) {
   const signature = signatureBytes.toString('utf8').trim();
   assertSignatureShape(signature);
 
-  const verifier = dependencies.verifier ?? createProductionVerifier();
+  const verifier = dependencies.verifier ?? (
+    normalized.releaseProfile === 'adhoc-preview'
+      ? createAdhocPreviewVerifier()
+      : createProductionVerifier()
+  );
   if (!verifier || typeof verifier.verify !== 'function') {
     throw new Error('A local release verifier is required');
   }
@@ -250,12 +266,18 @@ export async function prepareDesktopRelease(options, dependencies = {}) {
   const updaterDigest = sha256(updaterBytes);
   const signatureDigest = sha256(signatureBytes);
 
+  const notes = normalized.releaseProfile === 'adhoc-preview'
+    ? `Kordi ${normalized.version} ad-hoc external-test preview`
+    : `Kordi ${normalized.version}`;
+  const changelogUrl = normalized.releaseProfile === 'adhoc-preview'
+    ? `https://github.com/Kordi-AI/Kordi/commit/${normalized.expectedCommit}`
+    : `https://github.com/Kordi-AI/Kordi/releases/tag/V${normalized.version.replace(/-beta\./, '.beta')}`;
   const release = {
     schemaVersion: 1,
     version: normalized.version,
-    notes: `Kordi ${normalized.version}`,
+    notes,
     pubDate: normalized.pubDate,
-    changelogUrl: `https://github.com/Kordi-AI/Kordi/releases/tag/V${normalized.version.replace(/-beta\./, '.beta')}`,
+    changelogUrl,
     manual: {
       objectKey: manualKey,
       fileName: manualName,
@@ -1006,19 +1028,69 @@ async function assertVersionParity(repoRoot, version) {
   if (failed) throw new Error(`${failed[1]} does not match release version ${version}`);
 }
 
-function assertAppVersion(run, appBundle, version) {
-  const result = requireRun(
-    run,
-    'plutil',
-    ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', join(appBundle, 'Contents', 'Info.plist')],
-    'Unable to read Kordi.app version',
-  );
-  if (result.stdout.trim() !== version) throw new Error('Kordi.app version does not match release version');
+async function assertAcceptanceConfigParity(repoRoot) {
+  const tauriRoot = join(repoRoot, 'app', 'desktop', 'src-tauri');
+  const [target, bootstrap] = await Promise.all([
+    readFile(join(tauriRoot, 'tauri.cloud.acceptance.conf.json'), 'utf8').then(JSON.parse),
+    readFile(join(tauriRoot, 'tauri.cloud.acceptance-bootstrap.conf.json'), 'utf8').then(JSON.parse),
+  ]);
+  const endpoint = 'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+  for (const config of [target, bootstrap]) {
+    if (
+      config.productName !== 'Kordi'
+      || config.identifier !== 'io.kordi.cloud'
+      || config.bundle?.macOS?.signingIdentity !== '-'
+      || config.plugins?.updater?.pubkey !== undefined
+      || JSON.stringify(config.plugins?.updater?.endpoints) !== JSON.stringify([endpoint])
+    ) {
+      throw new Error('Acceptance Tauri configuration does not match the ad-hoc preview contract');
+    }
+  }
+  if (target.version !== undefined || bootstrap.version !== '0.0.1-beta.5.1') {
+    throw new Error('Acceptance Tauri versions do not match the preview contract');
+  }
 }
 
-function assertSignedApp(run, appBundle) {
-  requireRun(run, 'codesign', ['--verify', '--deep', '--strict', '--verbose=2', appBundle], 'codesign verification failed');
-  requireRun(run, 'spctl', ['--assess', '--type', 'execute', '--verbose=2', appBundle], 'Gatekeeper assessment failed');
+export function assertAppBundleContract(run, appBundle, {
+  version,
+  identifier = 'io.kordi.cloud',
+  releaseProfile,
+}) {
+  const plist = (key) => requireRun(
+    run,
+    'plutil',
+    ['-extract', key, 'raw', '-o', '-', join(appBundle, 'Contents', 'Info.plist')],
+    `Unable to read Kordi.app ${key}`,
+  ).stdout.trim();
+  if (plist('CFBundleShortVersionString') !== version) {
+    throw new Error('Kordi.app version does not match release version');
+  }
+  if (plist('CFBundleIdentifier') !== identifier) {
+    throw new Error('Kordi.app identifier does not match the Cloud product identifier');
+  }
+  const trust = verifyMacAppSignature({ run, appBundle, profile: releaseProfile });
+  const acceptanceEndpoint =
+    'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+  const productionEndpoint =
+    'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
+  const endpoint = releaseProfile === 'adhoc-preview' ? acceptanceEndpoint : productionEndpoint;
+  const forbiddenEndpoint = releaseProfile === 'adhoc-preview' ? productionEndpoint : acceptanceEndpoint;
+  requireRun(
+    run,
+    'rg',
+    ['--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F', endpoint, appBundle],
+    'Application bundle does not contain the updater endpoint required by its release profile',
+  );
+  const forbidden = run('rg', [
+    '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F', forbiddenEndpoint, appBundle,
+  ]);
+  if (forbidden?.status === 0) {
+    throw new Error('Application bundle violates updater endpoint profile isolation');
+  }
+  if (forbidden?.status !== 1) {
+    throw new Error('Unable to inspect application bundle updater-endpoint profile isolation');
+  }
+  return trust;
 }
 
 export function releaseTreeScanArguments(root) {
@@ -1053,7 +1125,7 @@ async function findAppBundle(root, depth = 0) {
   return null;
 }
 
-async function inspectUpdaterArchive(run, updaterPath, version) {
+async function inspectUpdaterArchive(run, updaterPath, version, verifyBundle) {
   const listing = requireRun(run, 'tar', ['-tzf', updaterPath], 'Unable to inspect Tauri updater archive').stdout;
   for (const entry of listing.split(/\r?\n/).filter(Boolean)) {
     if (entry.startsWith('/') || entry.split('/').includes('..')) {
@@ -1065,15 +1137,22 @@ async function inspectUpdaterArchive(run, updaterPath, version) {
     requireRun(run, 'tar', ['-xzf', updaterPath, '-C', extractDir], 'Unable to extract Tauri updater archive');
     const archivedApp = await findAppBundle(extractDir);
     if (!archivedApp) throw new Error('Tauri updater archive does not contain Kordi.app');
-    assertAppVersion(run, archivedApp, version);
-    assertSignedApp(run, archivedApp);
-    scanReleaseTree(run, archivedApp);
+    await verifyBundle(archivedApp, version);
   } finally {
     await rm(extractDir, { recursive: true, force: true });
   }
 }
 
-export function createProductionVerifier({ repoRoot = REPO_ROOT, run = defaultRun, env = process.env } = {}) {
+function createArtifactVerifier({
+  releaseProfile,
+  repoRoot = REPO_ROOT,
+  run = defaultRun,
+  env = process.env,
+  mountDmgImpl = mountDmg,
+  detachDmgImpl = detachDmg,
+  validateDmgVolumeLayoutImpl = validateDmgVolumeLayout,
+  inspectUpdaterArchiveImpl = inspectUpdaterArchive,
+}) {
   return {
     async verify(input) {
       const status = requireRun(run, 'git', ['status', '--porcelain=v1', '--untracked-files=all'], 'Unable to inspect release worktree', { cwd: repoRoot });
@@ -1081,33 +1160,42 @@ export function createProductionVerifier({ repoRoot = REPO_ROOT, run = defaultRu
       const head = requireRun(run, 'git', ['rev-parse', 'HEAD'], 'Unable to read release commit', { cwd: repoRoot }).stdout.trim();
       if (head !== input.expectedCommit) throw new Error('Current commit does not match expected release commit');
       await assertVersionParity(repoRoot, input.version);
+      if (releaseProfile === 'adhoc-preview') await assertAcceptanceConfigParity(repoRoot);
 
       if (!(env.TAURI_SIGNING_PRIVATE_KEY ?? '').trim() || !(env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? '').trim()) {
         throw new Error('Tauri updater signing key and password are required');
       }
-      const identities = requireRun(run, 'security', ['find-identity', '-v', '-p', 'codesigning'], 'Unable to inspect macOS signing identities');
-      const identityOutput = `${identities.stdout}\n${identities.stderr}`;
-      const count = identityOutput.match(/(\d+) valid identities found/i);
-      if (!/Developer ID Application:/i.test(identityOutput) || !count || Number(count[1]) < 1) {
-        throw new Error('A valid Developer ID Application signing identity is required');
-      }
+      if (releaseProfile === 'production') assertProductionSigningIdentity(run);
 
       verifyTauriUpdaterSignature(input.updaterBytes, input.signature, input.updaterPublicKey);
-      assertAppVersion(run, input.appBundle, input.version);
-      assertSignedApp(run, input.appBundle);
-      scanReleaseTree(run, input.appBundle);
-      await inspectUpdaterArchive(run, input.updaterPath, input.version);
+      const verifyBundle = (appBundle) => {
+        assertAppBundleContract(run, appBundle, {
+          version: input.version,
+          identifier: 'io.kordi.cloud',
+          releaseProfile,
+        });
+        scanReleaseTree(run, appBundle);
+      };
+      verifyBundle(input.appBundle);
+      await inspectUpdaterArchiveImpl(run, input.updaterPath, input.version, verifyBundle);
 
-      const mounted = mountDmg(input.manualPath);
+      const mounted = mountDmgImpl(input.manualPath);
       try {
-        validateDmgVolumeLayout(mounted.mountPoint, { appName: 'Kordi' });
+        validateDmgVolumeLayoutImpl(mounted.mountPoint, { appName: 'Kordi' });
         const mountedApp = join(mounted.mountPoint, 'Kordi.app');
-        assertAppVersion(run, mountedApp, input.version);
-        assertSignedApp(run, mountedApp);
+        verifyBundle(mountedApp);
         scanReleaseTree(run, mounted.mountPoint);
       } finally {
-        detachDmg(mounted.device);
+        detachDmgImpl(mounted.device);
       }
     },
   };
+}
+
+export function createProductionVerifier(options = {}) {
+  return createArtifactVerifier({ ...options, releaseProfile: 'production' });
+}
+
+export function createAdhocPreviewVerifier(options = {}) {
+  return createArtifactVerifier({ ...options, releaseProfile: 'adhoc-preview' });
 }
