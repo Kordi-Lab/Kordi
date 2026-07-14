@@ -89,7 +89,7 @@ impl OpenAiProvider {
             body["tools"] = json!(convert_tools_for_codex(&request.tools));
         }
         if let Some(ref thinking) = request.thinking
-            && let Some(effort) = codex_reasoning_effort(thinking.as_str())
+            && let Some(effort) = codex_reasoning_effort(&request.model, thinking.as_str())
         {
             body["reasoning"] = json!({
                 "effort": effort,

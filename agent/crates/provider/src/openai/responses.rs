@@ -135,7 +135,11 @@ fn build_responses_request_body(request: &CompletionRequest, messages: Vec<Value
         body["max_output_tokens"] = json!(max_tokens);
     }
     if let Some(ref thinking) = request.thinking
-        && let Some(effort) = responses_reasoning_effort(thinking.as_str())
+        && let Some(effort) = super::capabilities::reasoning_effort(
+            &request.model,
+            super::capabilities::OpenAiAuthRoute::Api,
+            thinking.as_str(),
+        )
     {
         body["reasoning"] = json!({
             "effort": effort,
@@ -149,17 +153,6 @@ fn build_responses_request_body(request: &CompletionRequest, messages: Vec<Value
     }
 
     body
-}
-
-fn responses_reasoning_effort(thinking: &str) -> Option<&'static str> {
-    match thinking {
-        "default" => None,
-        "off" => Some("none"),
-        "low" | "minimal" => Some("low"),
-        "medium" => Some("medium"),
-        "high" | "xhigh" => Some("high"),
-        _ => Some("medium"),
-    }
 }
 
 fn normalize_call_id(id: &str) -> &str {
@@ -676,5 +669,13 @@ mod tests {
         request.thinking = Some("default".to_string());
         let body = build_responses_request_body(&request, vec![]);
         assert!(body.get("reasoning").is_none());
+    }
+
+    #[test]
+    fn responses_body_preserves_gpt_56_max_reasoning() {
+        let mut request = completion_request("gpt-5.6-terra");
+        request.thinking = Some("max".to_string());
+        let body = build_responses_request_body(&request, vec![]);
+        assert_eq!(body["reasoning"]["effort"], "max");
     }
 }
