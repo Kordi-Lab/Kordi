@@ -328,5 +328,9 @@ mod tests {
         request.thinking = Some("minimal".to_string());
         let body = build_codex_request_body(&request);
         assert_eq!(body["reasoning"]["effort"], "low");
+
+        request.thinking = Some("off".to_string());
+        let body = build_codex_request_body(&request);
+        assert_eq!(body["reasoning"]["effort"], "none");
     }
 }

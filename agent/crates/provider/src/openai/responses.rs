@@ -669,6 +669,10 @@ mod tests {
         request.thinking = Some("default".to_string());
         let body = build_responses_request_body(&request, vec![]);
         assert!(body.get("reasoning").is_none());
+
+        request.thinking = Some("off".to_string());
+        let body = build_responses_request_body(&request, vec![]);
+        assert_eq!(body["reasoning"]["effort"], "none");
     }
 
     #[test]
