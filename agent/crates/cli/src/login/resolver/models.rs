@@ -2,16 +2,13 @@ use super::*;
 use std::collections::HashSet;
 
 const OPENAI_CODEX_OAUTH_MODEL_IDS: &[&str] = &[
-    "gpt-5.5",
-    "gpt-5.4-mini",
-    "gpt-5.4",
     "gpt-5.3-codex-spark",
-    "gpt-5.3-codex",
-    "gpt-5.2-codex",
-    "gpt-5.2",
-    "gpt-5.1-codex-mini",
-    "gpt-5.1-codex-max",
-    "gpt-5.1",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.5",
+    "gpt-5.6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
 ];
 
 const ANTHROPIC_OAUTH_MODEL_IDS: &[&str] = &[
@@ -414,8 +411,19 @@ mod tests {
 
         let model_ids = model_ids_for_provider("openai");
 
-        assert!(model_ids.contains(&"gpt-5.5".to_string()));
-        assert!(model_ids.contains(&"gpt-5.4".to_string()));
+        assert_eq!(
+            model_ids,
+            [
+                "gpt-5.3-codex-spark",
+                "gpt-5.4",
+                "gpt-5.4-mini",
+                "gpt-5.5",
+                "gpt-5.6-luna",
+                "gpt-5.6-sol",
+                "gpt-5.6-terra",
+            ]
+        );
+        assert!(!model_ids.contains(&"gpt-5.6".to_string()));
         assert!(!model_ids.contains(&"gpt-4o-mini".to_string()));
         assert!(!model_ids.contains(&"gpt-5".to_string()));
         assert!(!model_ids.contains(&"gpt-5-mini".to_string()));

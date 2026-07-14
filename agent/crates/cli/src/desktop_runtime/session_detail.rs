@@ -458,6 +458,7 @@ pub(crate) fn thinking_label(value: &str) -> String {
         Some(ThinkingLevel::Medium) => "Medium".to_string(),
         Some(ThinkingLevel::High) => "High".to_string(),
         Some(ThinkingLevel::XHigh) => "Extra High".to_string(),
+        Some(ThinkingLevel::Max) => "Max".to_string(),
         None => value.to_string(),
     }
 }
