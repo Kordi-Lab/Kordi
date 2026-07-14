@@ -508,6 +508,9 @@ function ChatSessionPane({
     originalIndex: originalIndexByMessageKey.get(transcriptWindowMessageIdentity(message, index)) ?? index,
   })), [attributedTranscript.messages, originalIndexByMessageKey]);
   const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
+  const handleNavigationReady = useCallback((messageId: string) => {
+    navigateToTranscriptMessage(messageId, scrollRef);
+  }, [scrollRef]);
 
   return (
     <>
@@ -523,7 +526,7 @@ function ChatSessionPane({
           messageId,
           entry.originalIndex,
         )}
-        onNavigationReady={(messageId) => navigateToTranscriptMessage(messageId, scrollRef)}
+        onNavigationReady={handleNavigationReady}
         hasOlder={hasOlderMessages}
         onLoadOlder={onLoadOlderMessages}
         getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
@@ -1443,8 +1446,7 @@ export function ChatsPage({
     const resolvedMessageId = targetMessageId || messageId;
     transcriptNavigationNonceRef.current += 1;
     setMainTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
-    navigateToTranscriptMessage(resolvedMessageId, chatTranscriptScrollRef);
-  }, [attributedTranscriptMessages, chatTranscriptScrollRef]);
+  }, [attributedTranscriptMessages]);
   const handleOpenPinnedMessage = useCallback(() => {
     if (!pinnedMessageId) return;
     handleNavigateToTranscriptMessage(pinnedMessage ? chatMessageActionId(pinnedMessage) : pinnedMessageId);
@@ -1527,7 +1529,6 @@ export function ChatsPage({
     const resolvedMessageId = targetMessageId || messageId;
     transcriptNavigationNonceRef.current += 1;
     setCompanionTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current });
-    navigateToTranscriptMessage(resolvedMessageId, companionTranscriptScrollRef);
   }, [companionTranscriptMessages]);
   const attributedCompanionTranscriptLiveTurn = companionTranscriptLiveTurn;
   const shouldRenderCompanionLiveTurn = Boolean(attributedCompanionTranscriptLiveTurn && !attributedCompanionTranscriptLiveTurn.completed);

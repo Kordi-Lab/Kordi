@@ -76,6 +76,7 @@ export function VirtualTranscript<Item>({
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
   const mountedRef = useRef(true);
   const alignedSessionRef = useRef<{ sessionKey: string; itemCount: number } | null>(null);
+  const handledNavigationRequestRef = useRef<string | null>(null);
 
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
     internalScrollRef.current = node;
@@ -165,11 +166,17 @@ export function VirtualTranscript<Item>({
   }, [items.length, sessionKey, virtualizer]);
 
   useLayoutEffect(() => {
-    if (!navigationRequest || navigationTargetIndex < 0) return undefined;
+    const request = navigationRequest;
+    if (!request || navigationTargetIndex < 0) return undefined;
+    const requestIdentity = JSON.stringify([sessionKey, request.nonce, request.id.trim()]);
+    if (handledNavigationRequestRef.current === requestIdentity) return undefined;
     virtualizer.scrollToIndex(navigationTargetIndex, { align: 'center' });
-    const frameId = window.requestAnimationFrame(() => onNavigationReady?.(navigationRequest.id));
+    const frameId = window.requestAnimationFrame(() => {
+      handledNavigationRequestRef.current = requestIdentity;
+      onNavigationReady?.(request.id);
+    });
     return () => window.cancelAnimationFrame(frameId);
-  }, [navigationRequest, navigationTargetIndex, onNavigationReady, virtualizer]);
+  }, [navigationRequest, navigationTargetIndex, onNavigationReady, sessionKey, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
 

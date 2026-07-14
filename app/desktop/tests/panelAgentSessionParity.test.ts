@@ -194,7 +194,16 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
 
   assert.match(source, /type TranscriptNavigationRequest/, 'jumps into windowed transcripts should use an explicit navigation request');
   assert.match(pane, /findNavigationIndex=\{\(entry, messageId\)/, 'ChatSessionPane should resolve jump targets against loaded messages');
-  assert.match(pane, /onNavigationReady=\{\(messageId\) => navigateToTranscriptMessage\(messageId, scrollRef\)\}/, 'the mounted target should retain highlighting and centered navigation');
+  assert.match(
+    pane,
+    /const handleNavigationReady = useCallback\([\s\S]*navigateToTranscriptMessage\(messageId, scrollRef\)[\s\S]*\[scrollRef\]\);/,
+    'the shared pane should expose a stable mounted-target navigation callback',
+  );
+  assert.match(
+    pane,
+    /onNavigationReady=\{handleNavigationReady\}/,
+    'the mounted target should retain highlighting and centered navigation',
+  );
   assert.match(virtual, /if \(!request \|\| navigationTargetIndex >= 0 \|\| !hasOlder \|\| !onLoadOlder\) return;/, 'already-loaded targets should not fetch older pages');
   assert.match(virtual, /void requestOlder\(signature\)/, 'missing targets should request older pages');
   assert.match(virtual, /virtualizer\.scrollToIndex\(navigationTargetIndex/, 'found targets should move into the mounted range');
