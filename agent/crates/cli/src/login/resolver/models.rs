@@ -422,6 +422,14 @@ mod tests {
             available_model_for_provider(&Settings::default(), "openai", Some("gpt-5")),
             Some("gpt-5.5".to_string()),
         );
+        assert_eq!(
+            available_model_for_provider(&Settings::default(), "openai", Some("gpt-5.4")),
+            Some("gpt-5.4".to_string()),
+        );
+        assert_eq!(
+            available_model_for_provider(&Settings::default(), "openai", Some("gpt-5.2")),
+            Some("gpt-5.5".to_string()),
+        );
     }
 
     #[test]

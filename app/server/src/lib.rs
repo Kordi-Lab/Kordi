@@ -1194,6 +1194,11 @@ mod tests {
     use tokio::sync::Notify;
     use tower::util::ServiceExt;
 
+    #[test]
+    fn max_thinking_level_maps_to_cli_value() {
+        assert_eq!(protocol_thinking_level(&ThinkingLevel::Max), "max");
+    }
+
     #[derive(Clone)]
     struct FakeBridgesStatusProvider {
         response: std::result::Result<BridgesStatusResponse, String>,
