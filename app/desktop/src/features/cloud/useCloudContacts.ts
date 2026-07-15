@@ -43,10 +43,15 @@ export type CloudContactsSnapshot = {
   requests: CloudContactRequest[];
 };
 
-type CloudContactsStoreSnapshot = CloudContactsSnapshot & {
+export type CloudContactsStoreSnapshot = CloudContactsSnapshot & {
   loading: boolean;
   error: string | null;
   initialLoadSettled: boolean;
+};
+
+export type CloudContactsSnapshotState = {
+  accountId: string | null;
+  snapshot: CloudContactsStoreSnapshot;
 };
 
 type CloudContactsStore = {
@@ -69,6 +74,14 @@ const EMPTY_CLOUD_CONTACTS_SNAPSHOT: CloudContactsStoreSnapshot = {
   initialLoadSettled: true,
 };
 const cloudContactStores = new Map<string, CloudContactsStore>();
+
+export function selectCloudContactsSnapshotForAccount(
+  state: CloudContactsSnapshotState,
+  accountId: string | null,
+  fallback: CloudContactsStoreSnapshot,
+): CloudContactsStoreSnapshot {
+  return state.accountId === accountId ? state.snapshot : fallback;
+}
 
 export function mergeCloudContactRequestSnapshot(
   snapshot: CloudContactsSnapshot,
@@ -326,15 +339,27 @@ function startCloudContactsStore(store: CloudContactsStore, client: CloudAuthCli
 export function useCloudContacts(account: CloudAccount | null): UseCloudContactsResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const store = account ? cloudContactsStoreFor(account.accountId) : null;
-  const [snapshot, setSnapshot] = useState<CloudContactsStoreSnapshot>(() => store?.snapshot ?? EMPTY_CLOUD_CONTACTS_SNAPSHOT);
+  const [snapshotState, setSnapshotState] = useState<CloudContactsSnapshotState>(() => ({
+    accountId: store?.accountId ?? null,
+    snapshot: store?.snapshot ?? EMPTY_CLOUD_CONTACTS_SNAPSHOT,
+  }));
+  const snapshot = selectCloudContactsSnapshotForAccount(
+    snapshotState,
+    store?.accountId ?? null,
+    store?.snapshot ?? EMPTY_CLOUD_CONTACTS_SNAPSHOT,
+  );
 
   useEffect(() => {
     if (!store || !account) {
-      setSnapshot(EMPTY_CLOUD_CONTACTS_SNAPSHOT);
+      setSnapshotState({ accountId: null, snapshot: EMPTY_CLOUD_CONTACTS_SNAPSHOT });
       return;
     }
-    setSnapshot(store.snapshot);
-    const listener = () => setSnapshot(store.snapshot);
+    const publishSnapshot = () => setSnapshotState({
+      accountId: store.accountId,
+      snapshot: store.snapshot,
+    });
+    publishSnapshot();
+    const listener = () => publishSnapshot();
     store.listeners.add(listener);
     startCloudContactsStore(store, client);
     return () => {

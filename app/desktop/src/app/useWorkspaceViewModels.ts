@@ -302,6 +302,7 @@ type UseWorkspaceViewModelsArgs = {
   cloudSessionActivity?: CloudSessionActivityStore;
   cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
   cloudPresence?: CloudPresenceStore;
+  cloudUnreadReady?: boolean;
 };
 
 export function useWorkspaceViewModels({
@@ -332,10 +333,14 @@ export function useWorkspaceViewModels({
   cloudSessionActivity = EMPTY_CLOUD_SESSION_ACTIVITY,
   cloudAgentDefinitionsById = {},
   cloudPresence = {},
+  cloudUnreadReady = true,
 }: UseWorkspaceViewModelsArgs) {
   const canonicalReadModel = useMemo(
-    () => createCanonicalSessionReadModel(canonicalSessionState, { summaries: canonicalSessionSummaries }),
-    [canonicalSessionState, canonicalSessionSummaries],
+    () => createCanonicalSessionReadModel(canonicalSessionState, {
+      summaries: canonicalSessionSummaries,
+      cloudUnreadReady,
+    }),
+    [canonicalSessionState, canonicalSessionSummaries, cloudUnreadReady],
   );
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
   const desktopLiveTurnsForViewModelRef = useRef({

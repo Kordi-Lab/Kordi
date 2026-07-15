@@ -139,10 +139,43 @@ function messagePeerId(accountId: string, message: CloudMessage, eventPeerId?: s
   return null;
 }
 
+function latestCloudReceiptAt(
+  current: string | null,
+  incoming: string | null,
+): string | null {
+  if (!current) return incoming;
+  if (!incoming) return current;
+  const currentMs = Date.parse(current);
+  const incomingMs = Date.parse(incoming);
+  if (Number.isFinite(currentMs) && Number.isFinite(incomingMs)) {
+    return incomingMs >= currentMs ? incoming : current;
+  }
+  return incoming.localeCompare(current) >= 0 ? incoming : current;
+}
+
+export function mergeCloudMessageMonotonicState(
+  current: CloudMessage,
+  incoming: CloudMessage,
+): CloudMessage {
+  return {
+    ...current,
+    ...incoming,
+    // Delivery and read receipts only move forward. Historical sync events can
+    // predate the authoritative latest-message snapshot and therefore carry
+    // null receipt values that must not make an already-read message unread.
+    deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
+    readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
+  };
+}
+
 function upsertMessage(messages: CloudMessage[], nextMessage: CloudMessage): CloudMessage[] {
   const index = messages.findIndex((message) => message.messageId === nextMessage.messageId);
   const merged = index >= 0
-    ? [...messages.slice(0, index), { ...messages[index], ...nextMessage }, ...messages.slice(index + 1)]
+    ? [
+      ...messages.slice(0, index),
+      mergeCloudMessageMonotonicState(messages[index]!, nextMessage),
+      ...messages.slice(index + 1),
+    ]
     : [...messages, nextMessage];
   return merged.sort((left, right) => (
     left.createdAt.localeCompare(right.createdAt)

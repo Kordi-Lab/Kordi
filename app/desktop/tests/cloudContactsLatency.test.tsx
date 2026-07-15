@@ -12,6 +12,7 @@ import {
   mergeCloudContactRequestSnapshot,
   mergeCloudContactSummarySnapshot,
   removeCloudContactRequestSnapshot,
+  selectCloudContactsSnapshotForAccount,
   shouldShowCloudContactsLoading,
   shouldRefreshCloudContactsForWsSubject,
 } from '../src/features/cloud/useCloudContacts';
@@ -129,6 +130,34 @@ test('background cloud contact refreshes do not show loading over existing rows'
   assert.equal(shouldShowCloudContactsLoading({ contacts: [], requests: [], initialLoadSettled: false }), true);
   assert.equal(shouldShowCloudContactsLoading({ contacts: [summary()], requests: [], initialLoadSettled: true }), false);
   assert.equal(shouldShowCloudContactsLoading({ contacts: [], requests: [request()], initialLoadSettled: true }), false);
+});
+
+test('an account switch never exposes the previous account contact snapshot', () => {
+  const accountASnapshot = {
+    contacts: [summary({ accountId: 'acct_a_peer' })],
+    requests: [],
+    loading: false,
+    error: null,
+    initialLoadSettled: true,
+  };
+  const accountBSnapshot = {
+    contacts: [summary({ accountId: 'acct_b_peer' })],
+    requests: [],
+    loading: true,
+    error: null,
+    initialLoadSettled: false,
+  };
+
+  assert.equal(selectCloudContactsSnapshotForAccount(
+    { accountId: 'acct_a', snapshot: accountASnapshot },
+    'acct_b',
+    accountBSnapshot,
+  ), accountBSnapshot);
+  assert.equal(selectCloudContactsSnapshotForAccount(
+    { accountId: 'acct_a', snapshot: accountASnapshot },
+    'acct_a',
+    accountBSnapshot,
+  ), accountASnapshot);
 });
 
 test('shouldRefreshCloudContactsForWsSubject refreshes contact request notices and contact changes', () => {

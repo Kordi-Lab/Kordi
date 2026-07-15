@@ -330,11 +330,15 @@ export type CanonicalSessionReadModel = {
 
 export function createCanonicalSessionReadModel(
   canonicalState: CanonicalSessionState | null,
-  options: { summaries?: CanonicalSessionSummary[] } = {},
+  options: {
+    summaries?: CanonicalSessionSummary[];
+    cloudUnreadReady?: boolean;
+  } = {},
 ): CanonicalSessionReadModel | null {
   if (!canonicalState) return null;
 
   const indexes = buildCanonicalIndexes(canonicalState);
+  const cloudUnreadReady = options.cloudUnreadReady ?? true;
   const summaryBySessionId = new Map((options.summaries ?? []).map((summary) => [summary.sessionId, summary]));
   const sessionActivityAtMs = (session: CanonicalSessionState['sessions'][number]) => (
     indexes.latestActivityMessageBySessionId.get(session.id)?.createdAtMs
@@ -410,10 +414,12 @@ export function createCanonicalSessionReadModel(
       const bridgeTarget = directBridgeTarget ?? bridgeTargetForSession(session, rawCanonicalParticipants, indexes);
       const inheritedBridgeTarget = !directBridgeTarget && Boolean(bridgeTarget);
 
-      const scopedUnread = conversation.bridgeUnreadByParentSessionId
-        ? conversation.bridgeUnreadByParentSessionId[sessionId] ?? 0
-        : conversation.unread ?? 0;
-      const canonicalUnread = unreadCountForSession(session);
+      const scopedUnread = cloudUnreadReady
+        ? conversation.bridgeUnreadByParentSessionId
+          ? conversation.bridgeUnreadByParentSessionId[sessionId] ?? 0
+          : conversation.unread ?? 0
+        : 0;
+      const canonicalUnread = cloudUnreadReady ? unreadCountForSession(session) : 0;
       const unread = canonicalUnread === 0 && hasSelfReadLatestMessage(sessionId) ? 0 : Math.max(scopedUnread, canonicalUnread);
       const taskActivities = this.taskActivities(sessionId);
 

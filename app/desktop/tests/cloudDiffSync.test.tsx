@@ -12,6 +12,7 @@ import {
   cloudSyncCursorStorageKey,
   loadCloudSessionVisibility,
   loadCloudSyncCursor,
+  mergeCloudMessageMonotonicState,
   saveCloudSessionVisibility,
   saveCloudSyncCursor,
   syncCloudDiffOnce,
@@ -55,6 +56,42 @@ test('applyCloudSyncEventsToMessagesByPeer upserts messages idempotently by mess
   const twice = applyCloudSyncEventsToMessagesByPeer('acct_me', once, [event]);
 
   assert.deepEqual(twice, { acct_peer: [incoming] });
+});
+
+test('historical message upserts cannot regress authoritative delivery and read receipts', () => {
+  const authoritative: CloudMessage = {
+    ...incoming,
+    deliveredAt: '2026-05-13T00:02:00Z',
+    readAt: '2026-05-13T00:03:00Z',
+  };
+  const staleEvent: CloudSyncEvent = {
+    eventId: '9',
+    eventType: 'message.upsert',
+    peerAccountId: 'acct_peer',
+    messageId: incoming.messageId,
+    payload: {
+      message: {
+        ...incoming,
+        deliveredAt: null,
+        readAt: null,
+      },
+    },
+    occurredAt: '2026-05-13T00:00:00Z',
+  };
+
+  const result = applyCloudSyncEventsToMessagesByPeer(
+    'acct_me',
+    { acct_peer: [authoritative] },
+    [staleEvent],
+  );
+
+  assert.equal(result.acct_peer?.[0]?.deliveredAt, authoritative.deliveredAt);
+  assert.equal(result.acct_peer?.[0]?.readAt, authoritative.readAt);
+  assert.equal(mergeCloudMessageMonotonicState(authoritative, {
+    ...incoming,
+    deliveredAt: '2026-05-13T00:01:00Z',
+    readAt: '2026-05-13T00:01:30Z',
+  }).readAt, authoritative.readAt);
 });
 
 test('message diff events preserve bounded previews but discard local original-file state', () => {
