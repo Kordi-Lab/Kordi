@@ -168,3 +168,20 @@ export function mergeMappedSessionMessagesCache(
     [sessionId]: nextMessages,
   };
 }
+
+export function appendMappedSessionMessageToCache(
+  current: Record<string, Message[]>,
+  sessionId: string,
+  message: Message,
+) {
+  const existingMessages = current[sessionId];
+  if (!existingMessages) return current;
+  if (message.id && existingMessages.some((existing) => existing.id === message.id)) {
+    return current;
+  }
+
+  return {
+    ...current,
+    [sessionId]: [...existingMessages, message],
+  };
+}
