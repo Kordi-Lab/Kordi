@@ -11,10 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Kordi-AI/Kordi/actions/workflows/ci.yml"><img src="https://github.com/Kordi-AI/Kordi/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <a href="https://github.com/Kordi-AI/Kordi/releases"><img src="https://img.shields.io/badge/release-beta-111111?style=flat-square" alt="Beta releases"></a>
-  <img src="https://img.shields.io/badge/status-beta-111111?style=flat-square" alt="Beta">
   <img src="https://img.shields.io/badge/platform-macOS-111111?style=flat-square" alt="macOS">
+  <img src="https://img.shields.io/badge/desktop-Tauri%20%2B%20React-111111?style=flat-square" alt="Tauri and React">
 </p>
 
 <p align="center">
