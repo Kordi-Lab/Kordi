@@ -200,8 +200,8 @@ export function AuthProviderDetail({
 
   return (
     <div
-      className="relative z-10 block min-h-0 w-full min-w-0 max-w-none self-stretch pr-1 pointer-events-auto"
-      style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
+      className="relative z-10 block min-h-0 w-full min-w-0 self-stretch pr-1 pointer-events-auto"
+      style={{ WebkitAppRegion: 'no-drag' as const }}
     >
       <div className="grid min-h-0 w-full gap-3.5 pb-6">
         {error && (
@@ -273,7 +273,7 @@ export function AuthProviderDetail({
               <DetailSection title="Advanced">
                 <DetailRow
                   title="Remove saved access"
-                  detail="Delete saved accounts and keys for this provider from Kordi's shared auth store. Environment variables are not removed here."
+                  detail="Saved access is reused after relaunch on this device, but is not copied to another device; sign in or add the key there. Delete it from Kordi's shared desktop and terminal auth store here. Environment variables are not removed."
                   trailing={
                     confirmRemoveAll ? (
                       <>

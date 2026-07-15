@@ -622,6 +622,19 @@ pub fn auth_path() -> PathBuf {
     config::auth_path(&global_settings.storage)
 }
 
+// Public for the desktop library target; unused by the standalone CLI binary.
+#[allow(dead_code)]
+pub fn validate_auth_store() -> Result<()> {
+    let path = auth_path();
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&path)?;
+    serde_json::from_str::<AuthStore>(&content)?;
+    Ok(())
+}
+
 pub(super) fn load_auth() -> AuthStore {
     let path = auth_path();
     let mut store = if path.exists() {
@@ -1011,7 +1024,7 @@ mod tests {
     use super::{
         AUTH_STORE_VERSION, AuthEntry, AuthProfile, AuthStore, ProviderConfigRecord, load_auth,
         save_api_key, save_auth, save_oauth_state, stored_auth_entry_for_method,
-        stored_auth_methods_for_store, stored_auth_profiles,
+        stored_auth_methods_for_store, stored_auth_profiles, validate_auth_store,
     };
     use crate::login::ProviderAuthMethod;
     use serde_json::json;
@@ -1088,6 +1101,37 @@ mod tests {
         let rendered = format!("{store:?}");
         assert!(rendered.contains("openai"));
         assert!(!rendered.contains("api-secret"));
+    }
+
+    #[test]
+    fn auth_store_validation_rejects_malformed_persisted_credentials() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set_path("HOME", home.path());
+        let path = super::auth_path();
+        std::fs::create_dir_all(path.parent().expect("auth parent")).expect("create auth parent");
+        std::fs::write(&path, "{ malformed auth").expect("write malformed auth");
+
+        assert!(validate_auth_store().is_err());
+    }
+
+    #[test]
+    fn saved_api_key_is_hydrated_from_disk_after_store_reload() {
+        let _lock = env_lock().lock().unwrap();
+        let home = tempfile::tempdir().expect("home tempdir");
+        let _home = EnvVarGuard::set_path("HOME", home.path());
+
+        save_api_key("openrouter", "persisted-test-key".to_string()).expect("save API key");
+
+        let reloaded = load_auth();
+        assert!(matches!(
+            stored_auth_entry_for_method(
+                &reloaded,
+                "openrouter",
+                ProviderAuthMethod::ApiKey,
+            ),
+            Some(AuthEntry::ApiKey { key }) if key == "persisted-test-key"
+        ));
     }
 
     #[test]

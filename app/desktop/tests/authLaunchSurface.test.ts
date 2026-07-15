@@ -66,6 +66,26 @@ test('provider gate uses a flat cool light surface without modal board chrome', 
   assert.match(gateLightRule, /box-shadow:\s*none/);
 });
 
+test('every onboarding provider detail stays on the same flat cool app canvas', () => {
+  const authPage = readAuthSource('AuthPage.tsx');
+  const shellPages = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const detailRouteStart = authPage.indexOf('app-auth-gate-shell app-auth-provider-detail-shell');
+  const pickerRouteStart = authPage.indexOf('app-auth-gate-shell flex', detailRouteStart);
+  const detailRoute = authPage.slice(detailRouteStart, pickerRouteStart);
+
+  assert.ok(detailRouteStart >= 0 && pickerRouteStart > detailRouteStart);
+  assert.match(detailRoute, /items-start justify-center/);
+  assert.match(detailRoute, /max-w-\[820px\]/);
+  assert.match(detailRoute, /max-w-3xl/);
+  assert.match(detailRoute, /rounded-none border-0 bg-transparent/);
+  assert.doesNotMatch(detailRoute, /app-modal-panel/);
+  assert.doesNotMatch(detailRoute, /bg-\[linear-gradient/);
+  assert.doesNotMatch(detailRoute, /app-shadow-float/);
+  assert.match(shellPages, /\.app-auth-provider-detail-shell \.app-auth-detail-section/);
+  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-auth-provider-detail-shell \.app-auth-detail-section/);
+});
+
 test('inline auth popup uses direct handoff copy without authentication status chips', () => {
   const authPopup = readFileSync(new URL('../src/AuthPopup.tsx', import.meta.url), 'utf8');
 
@@ -112,7 +132,13 @@ test('provider detail view keeps a persistent back control without nesting setti
     settingsDetailContentStart,
     authPage.indexOf('  return (', settingsDetailContentStart),
   );
-  assert.match(settingsDetailContentBlock, /const settingsDetailContent = showDetailPage \? \(\s*<div className="min-h-0 w-full min-w-0 max-w-none pb-6"[\s\S]*\{content\}[\s\S]*<\/div>\s*\) : \(/);
+  const settingsDetailColumnBlock = settingsDetailContentBlock.slice(
+    0,
+    settingsDetailContentBlock.indexOf('  ) : ('),
+  );
+  assert.match(settingsDetailContentBlock, /data-auth-provider-detail-column[\s\S]*max-w-3xl[\s\S]*\{detailHeader\}[\s\S]*\{content\}/);
+  assert.doesNotMatch(settingsDetailColumnBlock, /max-w-none/);
+  assert.doesNotMatch(settingsDetailColumnBlock, /maxWidth/);
   assert.doesNotMatch(settingsDetailContentBlock, /ScrollArea/);
   assert.match(authPage, /showDetailPage[\s\S]*detailHeader[\s\S]*ScrollArea className="min-h-0 flex-1/);
   assert.match(providerDetail, /className="grid min-h-0 w-full gap-3\.5 pb-6"/);
@@ -152,7 +178,7 @@ test('auth provider list does not highlight a provider before explicit selection
 test('login from the first-run gate opens the auth page without routing into settings', () => {
   const uiState = readFileSync(new URL('../src/features/auth/useDesktopAuthUiState.ts', import.meta.url), 'utf8');
 
-  assert.match(uiState, /const shouldStayOnAuthGate = !startupGateSatisfied && !isAuthGateDismissed/);
+  assert.match(uiState, /const shouldStayOnAuthGate = !startupGateSatisfied && !isAuthGateResolvedForSession/);
   assert.match(uiState, /if \(!shouldStayOnAuthGate\) \{\s*openAuthSettings\(\);\s*\}/);
 });
 

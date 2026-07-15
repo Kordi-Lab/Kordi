@@ -200,7 +200,18 @@ fn auth_option_detail(
     (!parts.is_empty()).then(|| parts.join(" • "))
 }
 
-fn build_auth_state() -> DesktopAuthState {
+fn ensure_auth_store_readable() -> Result<(), String> {
+    let auth_path = kordi_cli::login::auth_path();
+    kordi_cli::login::validate_auth_store().map_err(|error| {
+        format!(
+            "Unable to read saved authentication from {}: {error}",
+            auth_path.display()
+        )
+    })
+}
+
+fn build_auth_state() -> Result<DesktopAuthState, String> {
+    ensure_auth_store_readable()?;
     let settings = kordi_core::settings::Settings::load_global();
     let provider_entries = kordi_cli::login::known_providers()
         .iter()
@@ -292,11 +303,11 @@ fn build_auth_state() -> DesktopAuthState {
         .map(|(provider, _)| provider)
         .collect::<Vec<_>>();
 
-    DesktopAuthState {
+    Ok(DesktopAuthState {
         auth_path: kordi_cli::login::auth_path().display().to_string(),
         has_any_auth,
         providers,
-    }
+    })
 }
 
 fn snapshot_attempt(
@@ -318,7 +329,7 @@ fn update_attempt(
 }
 
 #[tauri::command]
-pub fn desktop_auth_state() -> DesktopAuthState {
+pub fn desktop_auth_state() -> Result<DesktopAuthState, String> {
     build_auth_state()
 }
 
@@ -328,6 +339,7 @@ pub fn desktop_cloud_provider_auth_snapshot_payload(
     auth_choice: Option<String>,
     model: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    ensure_auth_store_readable()?;
     let provider = provider
         .as_deref()
         .map(str::trim)
@@ -393,6 +405,7 @@ fn cloud_provider_auth_snapshot_model(model: Option<&str>) -> String {
 
 #[tauri::command]
 pub fn desktop_save_api_key(provider: String, key: String) -> Result<DesktopAuthState, String> {
+    ensure_auth_store_readable()?;
     let provider = kordi_cli::login::provider_api_key_variant(&provider).unwrap_or(&provider);
     if key.trim().is_empty() {
         return Err("API key cannot be empty".to_string());
@@ -400,7 +413,7 @@ pub fn desktop_save_api_key(provider: String, key: String) -> Result<DesktopAuth
     kordi_cli::login::save_api_key(provider, key.trim().to_string())
         .map_err(|err| err.to_string())?;
     kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
-    Ok(build_auth_state())
+    build_auth_state()
 }
 
 #[tauri::command]
@@ -445,14 +458,15 @@ pub fn desktop_set_local_provider_port(
 
     settings.save_global().map_err(|err| err.to_string())?;
     kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
-    Ok(build_auth_state())
+    build_auth_state()
 }
 
 #[tauri::command]
 pub fn desktop_logout(provider: String) -> Result<DesktopAuthState, String> {
+    ensure_auth_store_readable()?;
     kordi_cli::login::remove_auth(&provider).map_err(|err| err.to_string())?;
     kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
-    Ok(build_auth_state())
+    build_auth_state()
 }
 
 #[tauri::command]
@@ -460,13 +474,14 @@ pub fn desktop_remove_auth_profile(
     provider: String,
     profile_id: String,
 ) -> Result<DesktopAuthState, String> {
+    ensure_auth_store_readable()?;
     let removed = kordi_cli::login::remove_auth_profile(&provider, &profile_id)
         .map_err(|err| err.to_string())?;
     if !removed {
         return Err(format!("Unknown auth profile for {provider}"));
     }
     kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
-    Ok(build_auth_state())
+    build_auth_state()
 }
 
 #[tauri::command]
@@ -474,13 +489,14 @@ pub fn desktop_set_active_auth_profile(
     provider: String,
     profile_id: String,
 ) -> Result<DesktopAuthState, String> {
+    ensure_auth_store_readable()?;
     let selected = kordi_cli::login::set_active_auth_profile(&provider, &profile_id)
         .map_err(|err| err.to_string())?;
     if !selected {
         return Err(format!("Unknown auth profile for {provider}"));
     }
     kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
-    Ok(build_auth_state())
+    build_auth_state()
 }
 
 #[tauri::command]
@@ -488,13 +504,14 @@ pub fn desktop_set_active_auth_choice(
     provider: String,
     choice: String,
 ) -> Result<DesktopAuthState, String> {
+    ensure_auth_store_readable()?;
     let selected = kordi_cli::login::set_active_auth_choice(&provider, &choice)
         .map_err(|err| err.to_string())?;
     if !selected {
         return Err(format!("Unknown auth choice for {provider}: {choice}"));
     }
     kordi_cli::desktop_runtime::clear_desktop_model_options_cache();
-    Ok(build_auth_state())
+    build_auth_state()
 }
 
 #[tauri::command]
@@ -503,6 +520,7 @@ pub async fn desktop_start_oauth_login(
     authority: Option<String>,
     manager: State<'_, DesktopAuthManager>,
 ) -> Result<DesktopAuthAttemptSnapshot, String> {
+    ensure_auth_store_readable()?;
     let provider = kordi_cli::login::provider_oauth_variant(&provider)
         .unwrap_or(&provider)
         .to_string();

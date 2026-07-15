@@ -181,6 +181,7 @@
 .bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section,
 .bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
 .bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section,
+.bridge-app.theme-light .app-auth-provider-detail-shell .app-auth-detail-section,
 .bridge-app.theme-light .app-settings-page .app-settings-surface,
 .bridge-app.theme-light .app-settings-page .app-settings-control,
 .bridge-app.theme-light .app-settings-page .app-settings-toggle,
@@ -199,7 +200,8 @@
 }
 
 .bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
-.bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section {
+.bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section,
+.bridge-app.theme-light .app-auth-provider-detail-shell .app-auth-detail-section {
   background: linear-gradient(180deg, rgba(248, 251, 255, 0.88) 0%, rgba(241, 247, 255, 0.78) 100%);
   border-color: rgba(37, 99, 235, 0.12);
 }

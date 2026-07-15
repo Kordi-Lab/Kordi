@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, ExternalLink, LoaderCircle, LogIn, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { broadcastDesktopAuthUpdated } from '@/features/auth/desktopAuthSync';
 import { AuthFlowSteps, type AuthFlowStep } from '@/kordi-app/auth/AuthFlowSteps';
 import type { DesktopAuthAttemptSnapshot, DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
 import {
@@ -44,14 +45,6 @@ async function closePopupWindow(embedded = false, onRequestClose?: () => void) {
   window.close();
 }
 
-function notifyAuthUpdated() {
-  try {
-    const channel = new BroadcastChannel('kordi-auth');
-    channel.postMessage({ type: 'auth-updated', at: Date.now() });
-    channel.close();
-  } catch {}
-}
-
 function authPopupTitle(provider: DesktopAuthProvider | null, providerId: string, mode: 'oauth' | 'api-key') {
   if (providerId === 'anthropic' && mode === 'oauth') return 'Claude subscription';
   if (providerId === 'anthropic' && mode === 'api-key') return 'Anthropic API key';
@@ -64,16 +57,16 @@ function authPopupTitle(provider: DesktopAuthProvider | null, providerId: string
 
 function authPopupDescription(providerId: string, mode: 'oauth' | 'api-key') {
   if (providerId === 'anthropic' && mode === 'oauth') {
-    return 'Sign in with the Claude subscription account you already use. Kordi will save it for both desktop and terminal sessions.';
+    return 'Sign in with the Claude subscription account you already use. Kordi will save it on this device for future desktop and terminal sessions.';
   }
   if (providerId === 'anthropic' && mode === 'api-key') {
     return 'Paste an Anthropic API key for billed API usage, scripting, and automation.';
   }
   if (providerId === 'openai-codex' && mode === 'oauth') {
-    return 'Sign in with your ChatGPT account here. Kordi will save it and refresh Settings automatically.';
+    return 'Sign in with your ChatGPT account here. Kordi will save it on this device and refresh Settings automatically.';
   }
   if (providerId === 'openai' && mode === 'api-key') {
-    return 'Paste your OpenAI API key and Kordi will save it in the shared auth store used by desktop and terminal sessions.';
+    return 'Paste your OpenAI API key and Kordi will reuse it on this device for future desktop and terminal sessions.';
   }
   if (providerId === 'lm-studio' && mode === 'api-key') {
     return 'The default LM Studio local server does not need a key. Paste one only if you enabled API-key protection in LM Studio.';
@@ -82,8 +75,8 @@ function authPopupDescription(providerId: string, mode: 'oauth' | 'api-key') {
     return 'The default Ollama local server does not need a key. Paste one only if your Ollama-compatible endpoint requires authorization.';
   }
   return mode === 'oauth'
-    ? 'Finish browser sign-in here. Kordi will save the result and refresh Settings automatically.'
-    : 'Paste the API key here and Kordi will save it in the shared auth store used by desktop and terminal sessions.';
+    ? 'Finish browser sign-in here. Kordi will save the result on this device and refresh Settings automatically.'
+    : 'Paste the API key here and Kordi will reuse it on this device for future desktop and terminal sessions.';
 }
 
 function authPopupPrimaryActionLabel(providerId: string, mode: 'oauth' | 'api-key') {
@@ -244,9 +237,7 @@ export default function AuthPopup({
   useEffect(() => {
     if (!authAttempt?.completed || !authAttempt.succeeded) return;
 
-    if (!embedded) {
-      notifyAuthUpdated();
-    }
+    broadcastDesktopAuthUpdated('oauth-completed');
     onAuthUpdated?.();
 
     if (embedded) {
@@ -309,9 +300,7 @@ export default function AuthPopup({
       setIsSubmitting(true);
       const nextState = await saveDesktopApiKey(provider.id, apiKeyDraft.trim());
       setAuthState(nextState);
-      if (!embedded) {
-        notifyAuthUpdated();
-      }
+      broadcastDesktopAuthUpdated('api-key-saved');
       await Promise.resolve(onAuthUpdated?.());
       if (enterChat && onEnterChat) {
         await Promise.resolve(onEnterChat());
