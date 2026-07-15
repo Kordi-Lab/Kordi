@@ -659,6 +659,56 @@ test('ready rows remain visible while an older page is loading', async () => {
   await act(async () => resolveLoad?.());
 });
 
+test('disabling canonical paging clears an in-flight earlier-message loader', async () => {
+  let resolveLoad: (() => void) | null = null;
+  const loading = new Promise<void>((resolve) => { resolveLoad = resolve; });
+  const items = rows('runtime-', 0, 8);
+  const view = await render(transcript({
+    items,
+    sessionKey: 'runtime-session',
+    navigationRequest: { id: 'older-message', nonce: 1 },
+    hasOlder: true,
+    onLoadOlder: () => loading,
+  }));
+
+  assert.ok(view.host.querySelector('[data-transcript-older-loading="true"]'));
+
+  await view.rerender(transcript({
+    items,
+    sessionKey: 'runtime-session',
+    hasOlder: false,
+  }));
+
+  const loaderStayedVisible = Boolean(view.host.querySelector('[data-transcript-older-loading="true"]'));
+  await act(async () => resolveLoad?.());
+  assert.equal(loaderStayedVisible, false);
+});
+
+test('switching sessions clears an earlier-message loader owned by the previous session', async () => {
+  let resolveLoad: (() => void) | null = null;
+  const loading = new Promise<void>((resolve) => { resolveLoad = resolve; });
+  const view = await render(transcript({
+    items: rows('old-', 0, 8),
+    sessionKey: 'old-session',
+    navigationRequest: { id: 'older-message', nonce: 1 },
+    hasOlder: true,
+    onLoadOlder: () => loading,
+  }));
+
+  assert.ok(view.host.querySelector('[data-transcript-older-loading="true"]'));
+
+  await view.rerender(transcript({
+    items: rows('new-', 0, 8),
+    sessionKey: 'new-session',
+    hasOlder: false,
+  }));
+
+  const loaderFollowedSessionSwitch = Boolean(view.host.querySelector('[data-transcript-older-loading="true"]'));
+  await act(async () => resolveLoad?.());
+  assert.equal(loaderFollowedSessionSwitch, false);
+  assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+});
+
 test('a transcript with canonical paging disabled never shows the earlier-message loader', async () => {
   let loadCount = 0;
   const view = await render(transcript({
