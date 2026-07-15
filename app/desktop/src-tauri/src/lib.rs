@@ -7,6 +7,7 @@ mod cloud_account_paths;
 mod cloud_oauth_loopback;
 mod cloud_session;
 mod project;
+mod system_proxy;
 #[cfg(test)]
 mod test_support;
 mod workspace;
@@ -247,6 +248,8 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 }
 
 pub fn run() {
+    system_proxy::install_native_proxy_environment();
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

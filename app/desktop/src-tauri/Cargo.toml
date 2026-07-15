@@ -40,3 +40,12 @@ curve25519-dalek = "4"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 chacha20poly1305 = "0.10"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+system-configuration = "0.7"
+
+[dev-dependencies]
+# The Tauri updater uses reqwest 0.13 while the rest of the native runtime uses
+# the workspace's reqwest 0.12. Keep the proxy integration test covering both.
+reqwest-updater-stack = { package = "reqwest", version = "0.13", default-features = false, features = ["blocking"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
