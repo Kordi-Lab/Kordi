@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 
 #[cfg(test)]
@@ -146,9 +146,12 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     // Acquire the write reservation before reading the current version. Without
     // this boundary, two connections opening a new database can both observe
     // the same version and race the DDL and schema_version insertions below.
-    let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
-    apply_migrations(&transaction)?;
-    transaction.commit()?;
+    let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+        .context("acquiring the session schema migration write lock")?;
+    apply_migrations(&transaction).context("applying session schema migrations")?;
+    transaction
+        .commit()
+        .context("committing session schema migrations")?;
     Ok(())
 }
 
@@ -331,6 +334,42 @@ mod tests {
     }
 
     #[test]
+    fn initialized_file_database_reopens_without_reapplying_migrations() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("sessions.db");
+
+        let session_id = {
+            let conn = crate::store::open_db(&db_path).unwrap();
+            let journal_mode: String = conn
+                .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+                .unwrap();
+            let foreign_keys: i64 = conn
+                .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+                .unwrap();
+            let busy_timeout_ms: i64 = conn
+                .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+                .unwrap();
+
+            assert!(journal_mode.eq_ignore_ascii_case("wal"));
+            assert_eq!(foreign_keys, 1);
+            assert_eq!(busy_timeout_ms, 5_000);
+            crate::store::create_session(&conn, "/tmp/kordi").unwrap()
+        };
+
+        let conn = crate::store::open_db(&db_path).unwrap();
+        assert_eq!(get_version(&conn).unwrap(), CURRENT_VERSION);
+        let applied_versions: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(applied_versions, i64::from(CURRENT_VERSION));
+
+        let restored = crate::store::get_session(&conn, &session_id)
+            .unwrap()
+            .expect("session data should survive an idempotent reopen");
+        assert_eq!(restored.cwd, "/tmp/kordi");
+    }
+
+    #[test]
     fn failed_migration_rolls_back_the_entire_sequence() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(SCHEMA_V1).unwrap();
@@ -343,7 +382,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(init_schema(&conn).is_err());
+        let error = init_schema(&conn).unwrap_err();
+        let error_chain = format!("{error:#}");
+        assert!(error_chain.contains("applying session schema migrations"));
+        assert!(error_chain.contains("duplicate column name: session_scope"));
         assert_eq!(get_version(&conn).unwrap(), 1);
 
         let columns = table_columns(&conn, "sessions").unwrap();
@@ -423,5 +465,9 @@ mod tests {
             .unwrap();
         assert_eq!(applied_versions, i64::from(CURRENT_VERSION));
         assert_eq!(distinct_versions, i64::from(CURRENT_VERSION));
+        let integrity_check: String = conn
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(integrity_check, "ok");
     }
 }
