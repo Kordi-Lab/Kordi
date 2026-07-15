@@ -26,6 +26,7 @@ import {
   cloudAgentRuntimeSessionId,
 } from '../src/features/cloud/cloudAgentRuntime';
 import { buildCloudBridgeHost, cloudMessageToBridgeMessage } from '../src/features/cloud/cloudBridgeState';
+import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 
 const account: CloudAccount = {
@@ -309,6 +310,30 @@ test('cloud agent mentions keep the current request native and sync prior cloud 
         toAccountId: 'acct_me',
         body: encodeCloudAgentResponse({ requestId: 'msg_remote_request', text: 'I can help.' }),
         createdAt: '2026-05-11T10:02:00Z',
+        direction: 'incoming',
+      },
+      {
+        ...request,
+        messageId: 'msg_forwarded_peer',
+        fromAccountId: 'acct_peer',
+        toAccountId: 'acct_me',
+        body: encodeCloudDirectMessageEnvelope({
+          schemaVersion: 1,
+          kind: 'message',
+          text: '@MyKordi copied request',
+          messageAction: {
+            schemaVersion: 1,
+            kind: 'forward',
+            source: {
+              sourceSessionId: 'session:source',
+              sourceMessageId: 'msg:source',
+              senderLabel: 'Shuyheretest',
+              textPreview: '@MyKordi copied request',
+              attachmentCount: 0,
+            },
+          },
+        }),
+        createdAt: '2026-05-11T10:02:30Z',
         direction: 'incoming',
       },
       request,

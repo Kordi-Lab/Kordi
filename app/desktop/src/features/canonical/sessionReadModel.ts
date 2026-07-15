@@ -75,6 +75,91 @@ function sameAgentResponseText(left: string, right: string) {
     || comparableAgentResponseText(leftTrimmed) === comparableAgentResponseText(rightTrimmed);
 }
 
+function runtimeTranscriptAnchorKey(message: Message) {
+  const text = messageResponseText(message).replace(/\s+/gu, ' ').trim().toLowerCase();
+  if (!text) return null;
+  return [message.role, message.time.trim(), text].join('\u0000');
+}
+
+function mergeCanonicalHistoryIntoRuntime(
+  canonicalMessages: Message[],
+  runtimeMessages: Message[],
+) {
+  const runtimeMessageIds = new Set(runtimeMessages.flatMap((message) => (
+    [message.id, message.entryId].filter((value): value is string => Boolean(value?.trim()))
+  )));
+
+  const canonicalIndexesById = new Map<string, number>();
+  const canonicalIndexesByAnchor = new Map<string, number[]>();
+  canonicalMessages.forEach((message, canonicalIndex) => {
+    if (message.messageAction?.kind === 'forward') return;
+    for (const id of [message.id, message.entryId]) {
+      if (id?.trim()) canonicalIndexesById.set(id, canonicalIndex);
+    }
+    const anchorKey = runtimeTranscriptAnchorKey(message);
+    if (!anchorKey) return;
+    const indexes = canonicalIndexesByAnchor.get(anchorKey);
+    if (indexes) indexes.push(canonicalIndex);
+    else canonicalIndexesByAnchor.set(anchorKey, [canonicalIndex]);
+  });
+
+  const usedCanonicalIndexes = new Set<number>();
+  let lastCanonicalIndex = -1;
+  const runtimeAnchorIndexes = runtimeMessages.map((message) => {
+    const stableMatch = [message.id, message.entryId]
+      .map((id) => id?.trim() ? canonicalIndexesById.get(id) : undefined)
+      .find((index) => index !== undefined && !usedCanonicalIndexes.has(index));
+    const anchorKey = runtimeTranscriptAnchorKey(message);
+    const candidates = anchorKey ? canonicalIndexesByAnchor.get(anchorKey) ?? [] : [];
+    const canonicalIndex = stableMatch
+      ?? candidates.find((index) => index > lastCanonicalIndex && !usedCanonicalIndexes.has(index))
+      ?? candidates.find((index) => !usedCanonicalIndexes.has(index))
+      ?? null;
+    if (canonicalIndex === null) return null;
+    usedCanonicalIndexes.add(canonicalIndex);
+    if (canonicalIndex > lastCanonicalIndex) lastCanonicalIndex = canonicalIndex;
+    return canonicalIndex;
+  });
+
+  const overlayMessages = canonicalMessages
+    .map((message, canonicalIndex) => ({ message, canonicalIndex }))
+    .filter(({ message, canonicalIndex }) => (
+      !usedCanonicalIndexes.has(canonicalIndex)
+      && ![message.id, message.entryId].some((value) => Boolean(value && runtimeMessageIds.has(value)))
+    ));
+  if (overlayMessages.length === 0) return runtimeMessages;
+  if (runtimeMessages.length === 0) return overlayMessages.map(({ message }) => message);
+
+  const canonicalBeforeRuntimeIndex = Array.from(
+    { length: runtimeMessages.length + 1 },
+    () => [] as Message[],
+  );
+  for (const { message, canonicalIndex } of overlayMessages) {
+    const nextAnchorIndex = runtimeAnchorIndexes.findIndex((anchorIndex) => (
+      anchorIndex !== null && anchorIndex > canonicalIndex
+    ));
+    if (nextAnchorIndex >= 0) {
+      canonicalBeforeRuntimeIndex[nextAnchorIndex].push(message);
+      continue;
+    }
+
+    let lastEarlierRuntimeIndex = -1;
+    runtimeAnchorIndexes.forEach((anchorIndex, runtimeIndex) => {
+      if (anchorIndex !== null && anchorIndex < canonicalIndex) lastEarlierRuntimeIndex = runtimeIndex;
+    });
+    const firstUnmatchedRuntimeIndex = runtimeAnchorIndexes.findIndex((anchorIndex, runtimeIndex) => (
+      runtimeIndex > lastEarlierRuntimeIndex && anchorIndex === null
+    ));
+    const targetIndex = firstUnmatchedRuntimeIndex >= 0 ? firstUnmatchedRuntimeIndex : runtimeMessages.length;
+    canonicalBeforeRuntimeIndex[targetIndex].push(message);
+  }
+
+  return runtimeMessages.flatMap((message, runtimeIndex) => [
+    ...canonicalBeforeRuntimeIndex[runtimeIndex],
+    message,
+  ]).concat(canonicalBeforeRuntimeIndex[runtimeMessages.length]);
+}
+
 function comparableToolSignature(message: Message) {
   const tools = message.turn?.tools ?? [];
   if (tools.length === 0) return null;
@@ -400,7 +485,7 @@ export function createCanonicalSessionReadModel(
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
       const messages = conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
-        ? conversation.messages
+        ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
         : (isBridgePersonSession || isBridgeSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
         ? isChatCreatedDirectAgent
           ? canonicalMessages

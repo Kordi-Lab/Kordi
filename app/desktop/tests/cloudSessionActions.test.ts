@@ -343,9 +343,12 @@ test('cloud group terminal hosted-agent responses clear timeout placeholders and
 
 test('cloud group hosted-agent metadata targets the owner runtime even when text is not My Kordi', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
-  assert.match(source, /targetCloudAgentOwnerAccountId === account\.accountId/);
-  assert.match(source, /targetCloudAgentId\.startsWith\('cloud_agent_'\)/);
-  assert.match(source, /groupMessageTargetsOwnedHostedCloudAgent[\s\S]*cloudMessageMentionsLocalAgent/);
+  assert.match(source, /export function cloudGroupMessageTargetsLocalAgent/);
+  assert.match(source, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
+  assert.match(source, /message\.targetCloudAgentOwnerAccountId\) === account\.accountId/);
+  assert.match(source, /message\.targetCloudAgentId\)\.startsWith\('cloud_agent_'\)/);
+  assert.match(source, /targetsOwnedHostedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
+  assert.match(source, /cloudGroupMessageTargetsLocalAgent\(envelope\.message, account\)/);
   assert.match(source, /targetCloudAgentId: envelope\.message!\.targetCloudAgentId/);
 });
 

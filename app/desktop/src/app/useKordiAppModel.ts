@@ -995,6 +995,15 @@ export function useKordiAppModel({
     const senderIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
     const sources = forwardDialog?.sources ?? [];
     if (!senderIdentityId || sources.length === 0) return;
+    const destinationConversation = chatConversations.find((conversation) => (
+      conversation.id === destination.conversationId
+      || conversation.id === destination.id
+      || conversation.canonicalSessionId === destination.id
+    )) ?? null;
+    if (!destinationConversation) {
+      setDesktopChatError('Forward destination is no longer available.');
+      return;
+    }
     const drafts = createForwardedMessageDrafts({ sources, caption });
     const now = Date.now();
     setForwardDialog(null);
@@ -1024,11 +1033,6 @@ export function useKordiAppModel({
       });
       return;
     }
-    const destinationConversation = chatConversations.find((conversation) => (
-      conversation.id === destination.conversationId
-      || conversation.id === destination.id
-      || conversation.canonicalSessionId === destination.id
-    )) ?? null;
     void (async () => {
       let lastForwardMessageId: string | null = null;
       for (const [index, draft] of drafts.entries()) {
@@ -1054,7 +1058,7 @@ export function useKordiAppModel({
           sourceEventId: `desktop-forward:${destination.id}:${source.sourceMessageId}:${now}:${index}`,
         });
         setCanonicalSessionState(nextState);
-        if (destinationConversation && sendCloudGroupControl && cloudSession.account) {
+        if (sendCloudGroupControl && cloudSession.account) {
           const groupScope = {
             canonicalSessionId: destination.id,
             participantSpaceId: destinationConversation.participantSpaceId,
@@ -1097,7 +1101,7 @@ export function useKordiAppModel({
         }
       }
       revealForwardedMessageInDestination({
-        destinationConversationId: destination.id,
+        destinationConversationId: destination.conversationId,
         forwardedMessageId: lastForwardMessageId,
         setActiveConversationId: setActiveConvId,
         revealMessage: (messageId) => navigateToTranscriptMessageOrScrollBottom(messageId, chatTranscriptScrollRef),

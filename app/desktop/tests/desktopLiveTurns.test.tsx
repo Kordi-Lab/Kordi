@@ -6,6 +6,7 @@ import {
   buildCompletedDesktopAssistantMessage,
   desktopAssistantMessageMatchesTurn,
   mergeDesktopTurnSnapshot,
+  shouldConfirmCompletedDesktopTurnTranscript,
   shouldPollDesktopLiveTurn,
   suppressIncompleteLiveTurnEcho,
 } from '../src/features/chat/desktopLiveTurns';
@@ -97,6 +98,26 @@ test('desktop assistant message matching accepts completed turn text, thinking, 
 
   assert.equal(desktopAssistantMessageMatchesTurn(message, completedTurn), true);
   assert.equal(desktopAssistantMessageMatchesTurn({ ...message, text: 'different answer' }, completedTurn), false);
+});
+
+test('visible completed plain-text turns confirm persisted history before the live row is removed', () => {
+  const completed = turn({
+    status: 'complete',
+    assistantText: 'Persisted reply',
+    completed: true,
+    succeeded: true,
+    transcriptRefreshRequired: false,
+  });
+
+  assert.equal(shouldConfirmCompletedDesktopTurnTranscript(completed, true), true);
+  assert.equal(shouldConfirmCompletedDesktopTurnTranscript(completed, false), false);
+  assert.equal(shouldConfirmCompletedDesktopTurnTranscript(turn({
+    status: 'failed',
+    completed: true,
+    succeeded: false,
+    error: 'provider failed',
+    transcriptRefreshRequired: true,
+  }), true), false);
 });
 
 test('completed desktop assistant messages fall back to error text and failed status', () => {

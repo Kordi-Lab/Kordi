@@ -7,7 +7,10 @@ const cloudBridgeStateSource = () => readFileSync(new URL('../src/features/cloud
 test('cloud group replay persists messages with compact canonical writes instead of full state reloads', () => {
   const source = cloudBridgeStateSource();
   const replayStart = source.indexOf('const messageRequest = {');
-  const replayEnd = source.indexOf('const groupMessageIsOwn = envelope.message.senderAccountId === account.accountId;', replayStart);
+  const replayEnd = source.indexOf(
+    'const groupMessageMentionsLocalAgent = cloudGroupMessageTargetsLocalAgent(envelope.message, account);',
+    replayStart,
+  );
   assert.notEqual(replayStart, -1, 'expected cloud group replay message request block');
   assert.notEqual(replayEnd, -1, 'expected cloud group replay block end');
   const replayBlock = source.slice(replayStart, replayEnd);

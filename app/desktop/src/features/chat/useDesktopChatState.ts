@@ -18,9 +18,9 @@ import {
   desktopStateIncludesCompletedTurn,
   liveTurnSnapshotChanged,
   mergeDesktopTurnSnapshot,
+  shouldConfirmCompletedDesktopTurnTranscript,
   shouldPollDesktopLiveTurn,
   suppressIncompleteLiveTurnEcho,
-  turnHasHistoricalArtifacts,
 } from './desktopLiveTurns';
 import { loadQueuedDesktopMessagesBySession, saveQueuedDesktopMessagesBySession } from './queuedDesktopMessages';
 
@@ -460,7 +460,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
 
         const turnFailed = !nextTurn.succeeded && nextTurn.status !== 'cancelled';
 
-        if (isVisibleCompletedSession && !turnFailed && (nextTurn.transcriptRefreshRequired || turnHasHistoricalArtifacts(nextTurn))) {
+        if (shouldConfirmCompletedDesktopTurnTranscript(nextTurn, isVisibleCompletedSession)) {
           try {
             await refreshCompletedDesktopTurnTranscript(nextTurn);
             removeLiveTurnSnapshot(nextTurn.sessionId);
