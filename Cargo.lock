@@ -2811,10 +2811,13 @@ dependencies = [
  "kordi-tools",
  "rand 0.8.6",
  "reqwest 0.12.28",
+ "reqwest 0.13.2",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",
+ "system-configuration",
  "tauri",
  "tauri-build",
  "tauri-plugin-process",
@@ -4503,6 +4506,7 @@ checksum = "ab3f43e3283ab1488b624b44b0e988d0acea0b3214e694730a055cb6b2efa801"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -5569,6 +5573,27 @@ dependencies = [
  "serde_derive",
  "thiserror 2.0.18",
  "walkdir",
+]
+
+[[package]]
+name = "system-configuration"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a13f3d0daba03132c0aa9767f98351b3488edc2c100cda2d2ec2b04f3d8d3c8b"
+dependencies = [
+ "bitflags 2.11.1",
+ "core-foundation 0.9.4",
+ "system-configuration-sys",
+]
+
+[[package]]
+name = "system-configuration-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
 ]
 
 [[package]]
