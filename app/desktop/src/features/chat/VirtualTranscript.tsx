@@ -180,9 +180,15 @@ export function VirtualTranscript<Item>({
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
   }, [alignViewportToTail]);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    cancelTailAlignment();
+  useEffect(() => {
+    // React Strict Mode intentionally runs an extra setup/cleanup cycle in
+    // development. Re-arm the ref during setup so a history request that
+    // completes after that cycle can still clear its loading state.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cancelTailAlignment();
+    };
   }, [cancelTailAlignment]);
 
   useLayoutEffect(() => {

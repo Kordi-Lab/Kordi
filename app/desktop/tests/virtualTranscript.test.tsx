@@ -725,3 +725,20 @@ test('a transcript with canonical paging disabled never shows the earlier-messag
   assert.equal(loadCount, 0);
   assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
 });
+
+test('strict mode clears the earlier-message loader after the request finishes', async () => {
+  const view = await render(
+    <React.StrictMode>
+      {transcript({
+        items: rows('strict-', 0, 8),
+        sessionKey: 'strict-session',
+        navigationRequest: { id: 'older-message', nonce: 1 },
+        hasOlder: true,
+        onLoadOlder: async () => undefined,
+      })}
+    </React.StrictMode>,
+  );
+  await flush();
+
+  assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+});
