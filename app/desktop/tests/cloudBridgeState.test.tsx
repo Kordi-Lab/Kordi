@@ -486,13 +486,17 @@ test('cloud unread badge reconciliation waits for authoritative startup message 
   assert.match(source, /setPublishedCloudUnreadContextKey\([\s\S]*cloudUnreadContextKey/);
 });
 
-test('cloud startup performs one coordinated full snapshot after contacts settle', () => {
+test('cloud startup snapshots latest messages before catch-up and publishes after final reconciliation', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
   assert.match(source, /if \(!contacts\.initialLoadSettled\) return;/);
-  assert.match(source, /startupFullSnapshotContextRef\.current !== cloudUnreadContextKey[\s\S]*refreshCloudBridgeMessages\(\)/);
-  assert.doesNotMatch(source, /syncCloudBridgeDiff\(\{\s*settleInitialMessages:\s*false/);
-  assert.match(source, /markCloudUnreadReadiness\(loaded\.complete \? 'ready' : 'error', generation, bootstrapPeerKey\)/);
+  assert.match(source, /startupFullSnapshotContextRef\.current !== cloudUnreadContextKey[\s\S]*bootstrapCloudBridgeMessages\(\)/);
+  assert.match(
+    source,
+    /request\.mode === 'bootstrap'[\s\S]*refreshCloudBridgeMessagesOnce\(generation, false\)[\s\S]*syncCloudBridgeDiffOnceForGeneration\(generation, false\)[\s\S]*refreshCloudBridgeMessagesOnce\(generation, true\)/,
+  );
+  assert.match(source, /client\.listMessages\(session\.token, peerId, CLOUD_MESSAGE_SNAPSHOT_LIMIT\)/);
+  assert.match(source, /if \(settleUnreadReadiness\) \{[\s\S]*markCloudUnreadReadiness\(loaded\.complete \? 'ready' : 'error', generation, bootstrapPeerKey\)/);
   assert.doesNotMatch(source, /syncCloudBridgeDiffOnceForGeneration[\s\S]{0,5000}markCloudUnreadReadiness\('ready'/);
 });
 
@@ -500,7 +504,7 @@ test('normal Cloud events request diff sync instead of full snapshots', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
   const fullRefreshCalls = source.match(/void refreshCloudBridgeMessages\(\)/g) ?? [];
 
-  assert.equal(fullRefreshCalls.length, 1, 'only the post-contact startup path should request a full message snapshot');
+  assert.equal(fullRefreshCalls.length, 0, 'normal events and startup should use their coordinated sync entry points');
   assert.match(source, /lastCloudFocusRefreshAtRef\.current = now;\s*void syncCloudBridgeDiff\(\)/);
   assert.match(source, /markSessionMessagesRead[\s\S]*void syncCloudBridgeDiff\(\)/);
 });
@@ -690,6 +694,27 @@ test('cloud message refresh snapshots preserve locally merged newer messages', (
   );
 
   assert.deepEqual(merged.acct_peer?.map((item) => item.messageId), ['msg_hello', 'msg_sent']);
+});
+
+test('cloud message snapshot merges cannot clear established read receipts', () => {
+  const authoritative: CloudMessage = {
+    ...message,
+    deliveredAt: '2026-05-11T10:01:00Z',
+    readAt: '2026-05-11T10:02:00Z',
+  };
+  const merged = mergeCloudMessagesByPeerSnapshot(
+    { acct_peer: [authoritative] },
+    {
+      acct_peer: [{
+        ...authoritative,
+        deliveredAt: null,
+        readAt: null,
+      }],
+    },
+  );
+
+  assert.equal(merged.acct_peer?.[0]?.deliveredAt, authoritative.deliveredAt);
+  assert.equal(merged.acct_peer?.[0]?.readAt, authoritative.readAt);
 });
 
 test('cloud message snapshot merges preserve unchanged peer and message identities', () => {

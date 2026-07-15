@@ -158,7 +158,14 @@ import {
 } from './cloudGroupOutbox';
 import { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
 import { CloudProfileIdentityAdoptionCoordinator, CloudSyncCoordinator } from './cloudSyncCoordinator';
-import { loadCloudSessionVisibility, removeCloudSessionMessages, saveCloudSessionVisibility, syncCloudDiffOnce, type CloudSessionPinsById } from './cloudDiffSync';
+import {
+  loadCloudSessionVisibility,
+  mergeCloudMessageMonotonicState,
+  removeCloudSessionMessages,
+  saveCloudSessionVisibility,
+  syncCloudDiffOnce,
+  type CloudSessionPinsById,
+} from './cloudDiffSync';
 import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
   cloneCloudSessionActivityForFork,
@@ -180,6 +187,8 @@ export const CLOUD_AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
 export const CLOUD_MESSAGES_REFRESH_MS = 500;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 45_000;
 
+const CLOUD_MESSAGE_SNAPSHOT_LIMIT = 500;
+
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
 
 export type CloudUnreadReadinessStatus = 'pending' | 'ready' | 'error';
@@ -190,7 +199,7 @@ export type CloudUnreadReadinessSnapshot = {
 };
 
 type PendingCloudSyncRequest = {
-  mode: 'diff' | 'full';
+  mode: 'diff' | 'full' | 'bootstrap';
   settleInitialMessages: boolean;
 };
 
@@ -1253,7 +1262,7 @@ export function mergeCloudMessagesByPeerSnapshot(
         byMessageId.set(message.messageId, message);
         continue;
       }
-      const candidate = { ...previous, ...message };
+      const candidate = mergeCloudMessageMonotonicState(previous, message);
       byMessageId.set(message.messageId, cloudMessagesEqual(previous, candidate) ? previous : candidate);
     }
     const messages = [...byMessageId.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
@@ -2648,20 +2657,28 @@ export function useCloudBridgeState({
     ));
   }, [account?.accountId, cloudSyncCoordinator]);
 
-  const refreshCloudBridgeMessagesOnce = useCallback(async (generation: number) => {
+  const refreshCloudBridgeMessagesOnce = useCallback(async (
+    generation: number,
+    settleUnreadReadiness: boolean = true,
+  ) => {
     if (!cloudSyncCoordinator.isCurrentGeneration(generation)) return;
     const retainedPeerIds = Object.keys(messagesByPeerRef.current);
     const initialPeerIds = [...new Set([...bootstrapPeerIdsRef.current, ...retainedPeerIds])];
     if (!account || initialPeerIds.length === 0) {
       if (!cloudSyncCoordinator.isCurrentGeneration(generation)) return;
+      messagesByPeerRef.current = {};
       setMessagesByPeer((current) => (Object.keys(current).length === 0 ? current : {}));
-      markCloudUnreadReadiness('ready', generation, bootstrapPeerKey);
+      if (settleUnreadReadiness) {
+        markCloudUnreadReadiness('ready', generation, bootstrapPeerKey);
+      }
       return;
     }
     const session = await loadSession();
     if (!cloudSyncCoordinator.isCurrentGeneration(generation)) return;
     if (!session?.token) {
-      markCloudUnreadReadiness('error', generation, bootstrapPeerKey);
+      if (settleUnreadReadiness) {
+        markCloudUnreadReadiness('error', generation, bootstrapPeerKey);
+      }
       return;
     }
 
@@ -2669,15 +2686,23 @@ export function useCloudBridgeState({
       accountId: account.accountId,
       initialPeerIds,
       existingMessagesByPeer: messagesByPeerRef.current,
-      listMessages: async (peerId) => (await client.listMessages(session.token, peerId)).map(cloudMessageMetadataOnly),
+      listMessages: async (peerId) => (
+        await client.listMessages(session.token, peerId, CLOUD_MESSAGE_SNAPSHOT_LIMIT)
+      ).map(cloudMessageMetadataOnly),
     });
 
     if (cancelledRef.current || !cloudSyncCoordinator.isCurrentGeneration(generation)) return;
+    messagesByPeerRef.current = mergeCloudMessagesByPeerSnapshot(
+      messagesByPeerRef.current,
+      loaded.messagesByPeer,
+    );
     setMessagesByPeer((current) => {
       const merged = mergeCloudMessagesByPeerSnapshot(current, loaded.messagesByPeer);
       return cloudMessagesByPeerEqual(current, merged) ? current : merged;
     });
-    markCloudUnreadReadiness(loaded.complete ? 'ready' : 'error', generation, bootstrapPeerKey);
+    if (settleUnreadReadiness) {
+      markCloudUnreadReadiness(loaded.complete ? 'ready' : 'error', generation, bootstrapPeerKey);
+    }
   }, [account, bootstrapPeerKey, client, cloudSyncCoordinator, markCloudUnreadReadiness]);
 
   const syncCloudBridgeDiffOnceForGeneration = useCallback(async (
@@ -2731,11 +2756,15 @@ export function useCloudBridgeState({
     if (cancelledRef.current || !cloudSyncCoordinator.isCurrentGeneration(generation)) return;
     if (fallbackRequired) {
       await Promise.all([
-        refreshCloudBridgeMessagesOnce(generation),
+        refreshCloudBridgeMessagesOnce(generation, settleInitialMessages),
         refreshCloudAgents(generation),
       ]);
       return;
     }
+    messagesByPeerRef.current = mergeCloudMessagesByPeerSnapshot(
+      messagesByPeerRef.current,
+      messagesByPeer,
+    );
     setMessagesByPeer((current) => {
       const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer);
       return cloudMessagesByPeerEqual(current, merged) ? current : merged;
@@ -2759,13 +2788,20 @@ export function useCloudBridgeState({
     pendingCloudSyncRequestRef.current = null;
     if (!request) return;
     try {
-      if (request.mode === 'full') {
+      if (request.mode === 'bootstrap') {
+        // Establish the newest server state before replaying historical events,
+        // keep unread badges hidden throughout catch-up, and publish only after
+        // a final authoritative snapshot has reconciled cross-device reads.
+        await refreshCloudBridgeMessagesOnce(generation, false);
+        await syncCloudBridgeDiffOnceForGeneration(generation, false);
+        await refreshCloudBridgeMessagesOnce(generation, true);
+      } else if (request.mode === 'full') {
         await refreshCloudBridgeMessagesOnce(generation);
       } else {
         await syncCloudBridgeDiffOnceForGeneration(generation, request.settleInitialMessages);
       }
     } catch (error) {
-      if (request.mode === 'full' || request.settleInitialMessages) {
+      if (request.mode !== 'diff' || request.settleInitialMessages) {
         markCloudUnreadReadiness('error', generation, bootstrapPeerKey);
       }
       throw error;
@@ -2774,12 +2810,17 @@ export function useCloudBridgeState({
 
   const requestCloudSync = useCallback((request: PendingCloudSyncRequest) => {
     const pending = pendingCloudSyncRequestRef.current;
+    const mode = pending?.mode === 'bootstrap' || request.mode === 'bootstrap'
+      ? 'bootstrap'
+      : pending?.mode === 'full' || request.mode === 'full'
+        ? 'full'
+        : 'diff';
     const nextRequest = {
-      mode: pending?.mode === 'full' || request.mode === 'full' ? 'full' : 'diff',
+      mode,
       settleInitialMessages: Boolean(pending?.settleInitialMessages || request.settleInitialMessages),
     } satisfies PendingCloudSyncRequest;
     pendingCloudSyncRequestRef.current = nextRequest;
-    if (nextRequest.mode === 'full') {
+    if (nextRequest.mode !== 'diff') {
       markCloudUnreadReadiness(
         'pending',
         cloudSyncCoordinator.currentGeneration(),
@@ -2791,6 +2832,11 @@ export function useCloudBridgeState({
 
   const refreshCloudBridgeMessages = useCallback(() => requestCloudSync({
     mode: 'full',
+    settleInitialMessages: true,
+  }), [requestCloudSync]);
+
+  const bootstrapCloudBridgeMessages = useCallback(() => requestCloudSync({
+    mode: 'bootstrap',
     settleInitialMessages: true,
   }), [requestCloudSync]);
 
@@ -2819,7 +2865,7 @@ export function useCloudBridgeState({
     if (startupFullSnapshotContextRef.current !== cloudUnreadContextKey) {
       startupFullSnapshotContextRef.current = cloudUnreadContextKey;
       void refreshCloudAgents(cloudSyncCoordinator.currentGeneration());
-      void refreshCloudBridgeMessages().catch(() => {
+      void bootstrapCloudBridgeMessages().catch(() => {
         if (startupFullSnapshotContextRef.current === cloudUnreadContextKey) {
           startupFullSnapshotContextRef.current = null;
         }
@@ -2829,7 +2875,7 @@ export function useCloudBridgeState({
       void syncCloudBridgeDiff();
     }, CLOUD_MESSAGES_REFRESH_MS);
     return () => window.clearInterval(interval);
-  }, [account, cloudSyncCoordinator, cloudUnreadContextKey, contacts.initialLoadSettled, refreshCloudAgents, refreshCloudBridgeMessages, syncCloudBridgeDiff]);
+  }, [account, bootstrapCloudBridgeMessages, cloudSyncCoordinator, cloudUnreadContextKey, contacts.initialLoadSettled, refreshCloudAgents, syncCloudBridgeDiff]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState || !setCanonicalSessionState) {
