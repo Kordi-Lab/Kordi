@@ -3,11 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Bring people and AI agents into the same conversation.</strong>
-</p>
-
-<p align="center">
-  Kordi is a macOS-first collaboration workspace where people and their agents share chats, context, and work.
+  Kordi is an AI-native collaboration workspace for humans and their agents.
 </p>
 
 <p align="center">
