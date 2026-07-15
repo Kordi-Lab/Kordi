@@ -1,5 +1,6 @@
 .app-auth-settings-page .app-auth-provider-list,
-.app-auth-settings-page .app-auth-detail-section {
+.app-auth-settings-page .app-auth-detail-section,
+.app-auth-provider-detail-shell .app-auth-detail-section {
   border-color: color-mix(in oklab, var(--app-divider) 58%, transparent);
   background: color-mix(in oklab, var(--app-card-bg) 58%, transparent);
   box-shadow: none;

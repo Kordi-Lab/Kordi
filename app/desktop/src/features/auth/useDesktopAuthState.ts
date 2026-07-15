@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { DesktopAuthState } from '@/kordi-app/types';
 import {
@@ -7,6 +7,13 @@ import {
   removeDesktopAuthProfile,
   setDesktopActiveAuthChoice,
 } from '@/lib/desktop';
+import {
+  DESKTOP_AUTH_CHANNEL_NAME,
+  broadcastDesktopAuthUpdated,
+  createDesktopAuthSyncGuard,
+  isDesktopAuthUpdateFromAnotherSource,
+  type DesktopAuthUpdateReason,
+} from './desktopAuthSync';
 
 type UseDesktopAuthStateArgs = {
   isNativeShell: boolean;
@@ -17,6 +24,11 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
   const [isDesktopAuthLoading, setIsDesktopAuthLoading] = useState(isNativeShell);
   const [desktopAuthError, setDesktopAuthError] = useState<string | null>(null);
   const [activeLoginProviderId, setActiveLoginProviderId] = useState<string | null>(null);
+  const authSyncGuardRef = useRef<ReturnType<typeof createDesktopAuthSyncGuard> | null>(null);
+  if (!authSyncGuardRef.current) {
+    authSyncGuardRef.current = createDesktopAuthSyncGuard();
+  }
+  const authSyncGuard = authSyncGuardRef.current;
 
   const clearDesktopAuthError = useCallback(() => {
     setDesktopAuthError(null);
@@ -27,57 +39,73 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
     setDesktopAuthError(null);
   }, []);
 
+  const loadDesktopAuthState = useCallback(async (isCancelled: () => boolean = () => false) => {
+    const refreshToken = authSyncGuard.beginRefresh();
+
+    try {
+      const nextState = await fetchDesktopAuthState();
+      if (isCancelled() || !authSyncGuard.canApplyRefresh(refreshToken)) return;
+      setDesktopAuthState(nextState);
+      setDesktopAuthError(null);
+    } catch (error) {
+      if (isCancelled() || !authSyncGuard.canApplyRefresh(refreshToken)) return;
+      setDesktopAuthError(error instanceof Error ? error.message : 'Unable to load desktop auth');
+    }
+  }, [authSyncGuard]);
+
   const refreshDesktopAuth = useCallback(async () => {
-    const nextState = await fetchDesktopAuthState();
-    setDesktopAuthState(nextState);
-    setDesktopAuthError(null);
-  }, []);
+    await loadDesktopAuthState();
+  }, [loadDesktopAuthState]);
+
+  const runDesktopAuthMutation = useCallback(async (
+    operation: () => Promise<DesktopAuthState>,
+    fallbackError: string,
+    reason: DesktopAuthUpdateReason,
+  ) => {
+    authSyncGuard.beginMutation();
+    try {
+      setDesktopAuthError(null);
+      const nextState = await operation();
+      setDesktopAuthState(nextState);
+      setDesktopAuthError(null);
+      broadcastDesktopAuthUpdated(reason);
+    } catch (error) {
+      setDesktopAuthError(error instanceof Error ? error.message : fallbackError);
+    } finally {
+      authSyncGuard.finishMutation();
+    }
+  }, [authSyncGuard]);
 
   const handleLogoutProvider = useCallback(async (providerId: string) => {
-    try {
-      setDesktopAuthError(null);
-      const nextState = await logoutDesktopProvider(providerId);
-      setDesktopAuthState(nextState);
-    } catch (error) {
-      setDesktopAuthError(error instanceof Error ? error.message : 'Unable to log out provider');
-    }
-  }, []);
+    await runDesktopAuthMutation(
+      () => logoutDesktopProvider(providerId),
+      'Unable to log out provider',
+      'provider-logout',
+    );
+  }, [runDesktopAuthMutation]);
 
   const handleSelectAuthChoice = useCallback(async (providerId: string, choice: string) => {
-    try {
-      setDesktopAuthError(null);
-      const nextState = await setDesktopActiveAuthChoice(providerId, choice);
-      setDesktopAuthState(nextState);
-    } catch (error) {
-      setDesktopAuthError(error instanceof Error ? error.message : 'Unable to select auth option');
-    }
-  }, []);
+    await runDesktopAuthMutation(
+      () => setDesktopActiveAuthChoice(providerId, choice),
+      'Unable to select auth option',
+      'active-choice-changed',
+    );
+  }, [runDesktopAuthMutation]);
 
   const handleRemoveAuthProfile = useCallback(async (providerId: string, profileId: string) => {
-    try {
-      setDesktopAuthError(null);
-      const nextState = await removeDesktopAuthProfile(providerId, profileId);
-      setDesktopAuthState(nextState);
-    } catch (error) {
-      setDesktopAuthError(error instanceof Error ? error.message : 'Unable to remove saved auth');
-    }
-  }, []);
+    await runDesktopAuthMutation(
+      () => removeDesktopAuthProfile(providerId, profileId),
+      'Unable to remove saved auth',
+      'profile-removed',
+    );
+  }, [runDesktopAuthMutation]);
 
   useEffect(() => {
     if (!isNativeShell) return;
 
     let cancelled = false;
     setIsDesktopAuthLoading(true);
-    fetchDesktopAuthState()
-      .then((state) => {
-        if (cancelled) return;
-        setDesktopAuthState(state);
-        setDesktopAuthError(null);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setDesktopAuthError(error instanceof Error ? error.message : 'Unable to load desktop auth');
-      })
+    void loadDesktopAuthState(() => cancelled)
       .finally(() => {
         if (!cancelled) {
           setIsDesktopAuthLoading(false);
@@ -87,27 +115,37 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
     return () => {
       cancelled = true;
     };
-  }, [isNativeShell]);
+  }, [isNativeShell, loadDesktopAuthState]);
 
   useEffect(() => {
-    const channel = new BroadcastChannel('kordi-auth');
+    if (!isNativeShell) return;
+
     const refresh = () => {
       void refreshDesktopAuth();
     };
-
-    channel.onmessage = (event) => {
-      if (event.data?.type === 'auth-updated') {
-        refresh();
+    let channel: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel(DESKTOP_AUTH_CHANNEL_NAME);
+      } catch {
+        // Focus-driven refresh remains available in restricted webviews.
       }
-    };
+    }
+
+    if (channel) {
+      channel.onmessage = (event) => {
+        if (!isDesktopAuthUpdateFromAnotherSource(event.data)) return;
+        refresh();
+      };
+    }
 
     window.addEventListener('focus', refresh);
 
     return () => {
       window.removeEventListener('focus', refresh);
-      channel.close();
+      channel?.close();
     };
-  }, [refreshDesktopAuth]);
+  }, [isNativeShell, refreshDesktopAuth]);
 
   return {
     desktopAuthState,

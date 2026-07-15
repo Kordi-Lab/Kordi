@@ -172,7 +172,13 @@ export function AuthPage({
   ) : null;
 
   const settingsDetailContent = showDetailPage ? (
-    <div className="min-h-0 w-full min-w-0 max-w-none pb-6" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
+    <div
+      data-auth-provider-detail-column
+      className="min-h-0 w-full min-w-0 max-w-3xl pb-6"
+    >
+      {detailHeader}
+      {content}
+    </div>
   ) : (
     <div className="flex min-h-0 w-full min-w-0 max-w-none flex-1 flex-col overflow-hidden" style={{ width: '100%', maxWidth: '100%' }}>{content}</div>
   );
@@ -200,11 +206,11 @@ export function AuthPage({
     >
       {showHero ? (
         showDetailPage ? (
-          <div className="app-modal-panel flex h-full min-h-0 w-full justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(150deg,rgba(37,99,235,0.07),rgba(15,23,42,0.16)_48%,rgba(15,23,42,0.22))] px-5 py-5 shadow-[var(--app-shadow-float)]">
-            <div className="flex min-h-0 w-full max-w-[780px] flex-col">
-              {detailHeader}
+          <div className="app-auth-gate-shell app-auth-provider-detail-shell flex h-full min-h-0 w-full items-start justify-center overflow-hidden rounded-none border-0 bg-transparent px-8 py-8 shadow-none">
+            <div className="flex min-h-0 w-full max-w-[820px] flex-col">
+              <div className="w-full max-w-3xl">{detailHeader}</div>
               <ScrollArea className="min-h-0 flex-1 pr-2">
-                <div className="min-h-0 w-full">{content}</div>
+                <div className="min-h-0 w-full max-w-3xl pb-6">{content}</div>
               </ScrollArea>
             </div>
           </div>
@@ -251,7 +257,6 @@ export function AuthPage({
             </div>
           ) : null}
 
-          {detailHeader}
           {settingsDetailContent}
         </div>
       )}

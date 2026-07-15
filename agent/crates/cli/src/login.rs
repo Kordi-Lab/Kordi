@@ -46,6 +46,11 @@ pub use store::{
     save_github_copilot_config, set_active_auth_profile, stored_auth_methods, stored_auth_profiles,
 };
 
+// The desktop crate consumes this through the library target; the CLI binary
+// compiles the same module without calling it directly.
+#[allow(unused_imports)]
+pub use store::validate_auth_store;
+
 #[allow(dead_code)]
 pub fn remove_auth_profile(provider: &str, profile_id: &str) -> Result<bool> {
     store::remove_auth_profile(provider, profile_id)

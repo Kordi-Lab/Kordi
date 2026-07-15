@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, NavId } from '@/kordi-app/types';
@@ -16,6 +16,41 @@ type UseDesktopAuthUiStateArgs = {
   clearDesktopAuthError: () => void;
   openAuthSurface?: () => void;
 };
+
+type DesktopAuthGateVisibilityArgs = Pick<UseDesktopAuthUiStateArgs,
+  | 'activeNav'
+  | 'activeSettingsSectionId'
+  | 'desktopAuthState'
+  | 'isDesktopAuthLoading'
+  | 'isNativeShell'
+  | 'startupGateSatisfied'
+> & {
+  isAuthGateResolvedForSession: boolean;
+};
+
+export function resolveAuthGateForSession(
+  isResolvedForSession: boolean,
+  startupGateSatisfied: boolean,
+) {
+  return isResolvedForSession || startupGateSatisfied;
+}
+
+export function shouldShowDesktopAuthGate({
+  activeNav,
+  activeSettingsSectionId,
+  desktopAuthState,
+  isAuthGateResolvedForSession,
+  isDesktopAuthLoading,
+  isNativeShell,
+  startupGateSatisfied,
+}: DesktopAuthGateVisibilityArgs) {
+  return isNativeShell
+    && !isDesktopAuthLoading
+    && desktopAuthState !== null
+    && !startupGateSatisfied
+    && !(activeNav === 'settings' && activeSettingsSectionId === 'auth')
+    && !isAuthGateResolvedForSession;
+}
 
 export function useDesktopAuthUiState({
   isNativeShell,
@@ -36,10 +71,10 @@ export function useDesktopAuthUiState({
     authority?: string;
     requireAuthority?: boolean;
   } | null>(null);
-  const [isAuthGateDismissed, setIsAuthGateDismissed] = useState(false);
+  const [isAuthGateResolvedForSession, setIsAuthGateResolvedForSession] = useState(false);
 
   const openAuthSettings = useCallback(() => {
-    setIsAuthGateDismissed(true);
+    setIsAuthGateResolvedForSession(true);
     if (openAuthSurface) {
       openAuthSurface();
     } else {
@@ -54,7 +89,7 @@ export function useDesktopAuthUiState({
     mode: 'oauth' | 'api-key',
     options?: { authority?: string; requireAuthority?: boolean },
   ) => {
-    const shouldStayOnAuthGate = !startupGateSatisfied && !isAuthGateDismissed;
+    const shouldStayOnAuthGate = !startupGateSatisfied && !isAuthGateResolvedForSession;
 
     if (!shouldStayOnAuthGate) {
       openAuthSettings();
@@ -69,30 +104,30 @@ export function useDesktopAuthUiState({
       authority: options?.authority,
       requireAuthority: options?.requireAuthority,
     });
-  }, [clearDesktopAuthError, isAuthGateDismissed, openAuthSettings, setActiveLoginProviderId, startupGateSatisfied]);
+  }, [clearDesktopAuthError, isAuthGateResolvedForSession, openAuthSettings, setActiveLoginProviderId, startupGateSatisfied]);
 
   const handleCloseInlineAuthDialog = useCallback(() => {
     setInlineAuthDialog(null);
   }, []);
 
   const dismissAuthGate = useCallback(() => {
-    setIsAuthGateDismissed(true);
+    setIsAuthGateResolvedForSession(true);
   }, []);
 
   useEffect(() => {
-    if (startupGateSatisfied) {
-      setIsAuthGateDismissed(false);
-    }
+    if (!startupGateSatisfied) return;
+    setIsAuthGateResolvedForSession((current) => resolveAuthGateForSession(current, true));
   }, [startupGateSatisfied]);
 
-  const showAuthGate = useMemo(() => (
-    isNativeShell
-      && !isDesktopAuthLoading
-      && desktopAuthState !== null
-      && !startupGateSatisfied
-      && !(activeNav === 'settings' && activeSettingsSectionId === 'auth')
-      && !isAuthGateDismissed
-  ), [activeNav, activeSettingsSectionId, desktopAuthState, isAuthGateDismissed, isDesktopAuthLoading, isNativeShell, startupGateSatisfied]);
+  const showAuthGate = shouldShowDesktopAuthGate({
+    activeNav,
+    activeSettingsSectionId,
+    desktopAuthState,
+    isAuthGateResolvedForSession,
+    isDesktopAuthLoading,
+    isNativeShell,
+    startupGateSatisfied,
+  });
 
   return {
     inlineAuthDialog,
