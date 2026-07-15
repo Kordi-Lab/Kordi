@@ -848,7 +848,7 @@ export async function rollbackDesktopBetaChannel(options, dependencies = {}) {
         cause: new AggregateError([error, rollbackError]),
       });
     }
-    throw new Error(`Beta rollback verification failed; the beta.6 pointer was restored: ${error.message}`, {
+    throw new Error(`Beta rollback verification failed; the ${previous.version} pointer was restored: ${error.message}`, {
       cause: error,
     });
   }
