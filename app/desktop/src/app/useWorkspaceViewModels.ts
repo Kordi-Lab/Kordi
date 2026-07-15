@@ -444,6 +444,7 @@ export function useWorkspaceViewModels({
     return sessionSummaries.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
       const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
+      const cachedMessages = cachedChatSessionMessages[session.id];
       const activeMessages = isActiveSession
         ? preferLatestMessages(
             mapDesktopMessages(
@@ -455,7 +456,7 @@ export function useWorkspaceViewModels({
             Boolean(desktopLiveTurnsForViewModel[session.id]),
             desktopLiveTurnsForViewModel[session.id],
           )
-        : cachedChatSessionMessages[session.id] ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
+        : cachedMessages ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
       const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
       const statusIndicator = buildSessionStatusIndicator({
         unreadCount,
@@ -472,6 +473,8 @@ export function useWorkspaceViewModels({
         id: session.id,
         canonicalSessionId: session.id,
         localSessionCwd: isActiveSession ? desktopChatState.activeSession.cwd : null,
+        desktopRuntimeBacked: true,
+        desktopRuntimeTranscriptLoaded: isActiveSession || Boolean(cachedMessages),
         name: session.title,
         type: 'owned-agent' as const,
         subtitle: buildConversationPreview(messages, session.subtitle),
@@ -604,7 +607,7 @@ export function useWorkspaceViewModels({
     });
     const canonicalSessionId = selected.canonicalSessionId ?? selected.id;
     const hydration = canonicalHydrationBySessionId[canonicalSessionId];
-    if (hydration !== 'cold' && hydration !== 'loading') return selected;
+    if (selected.desktopRuntimeBacked || (hydration !== 'cold' && hydration !== 'loading')) return selected;
     return {
       ...selected,
       subtitle: 'Loading chat history…',

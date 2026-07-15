@@ -142,6 +142,10 @@ export type Conversation = {
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
   localSessionCwd?: string | null;
+  /** The native desktop chat runtime owns this transcript; canonical history is a secondary mirror. */
+  desktopRuntimeBacked?: boolean;
+  /** The native runtime transcript has been loaded and is authoritative for this render. */
+  desktopRuntimeTranscriptLoaded?: boolean;
   name: string;
   type: ConversationType;
   subtitle: string;

@@ -12,6 +12,7 @@ import type {
   QueuedDesktopChatMessage,
 } from '../src/kordi-app/types';
 import {
+  appendMappedSessionMessageToCache,
   mergeLatestDesktopChatState,
   mergeMappedSessionMessagesCache,
   pruneDesktopLiveTurnsByKnownSessions,
@@ -228,4 +229,27 @@ test('mergeMappedSessionMessagesCache preserves longer cached transcript while a
 
   const replaced = mergeMappedSessionMessagesCache({ 'session-a': existing }, 'session-a', mapped, false);
   assert.equal(replaced['session-a'], mapped);
+});
+
+test('completed turn appends to a hydrated cache even when that session is not the desktop active session', () => {
+  const existing: Message[] = [
+    { id: 'msg-user', role: 'user', text: 'hello', time: '10:00' },
+  ];
+  const failedReply: Message = {
+    id: 'msg-provider-error',
+    role: 'owned-agent',
+    text: 'Provider error',
+    time: '10:01',
+  };
+  const current = {
+    'session-a': [{ role: 'user' as const, text: 'another session', time: '09:59' }],
+    'session-visible': existing,
+  };
+
+  const appended = appendMappedSessionMessageToCache(current, 'session-visible', failedReply);
+  assert.deepEqual(appended['session-visible'], [...existing, failedReply]);
+  assert.equal(appended['session-a'], current['session-a']);
+
+  const deduped = appendMappedSessionMessageToCache(appended, 'session-visible', failedReply);
+  assert.equal(deduped, appended);
 });

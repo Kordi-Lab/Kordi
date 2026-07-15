@@ -11,12 +11,18 @@ test('completed live turn appends historical reply before removing live snapshot
   const body = source.slice(functionStart, functionEnd);
 
   const firstAppend = body.indexOf('setDesktopChatState((current) => {');
-  const firstRemove = body.indexOf('removeLiveTurnSnapshot(turn.sessionId, turn.id)');
+  const firstCacheAppend = body.indexOf('appendMappedSessionMessageToCache(');
+  const completedMessageRemove = body.lastIndexOf('removeLiveTurnSnapshot(turn.sessionId, turn.id)');
   assert.notEqual(firstAppend, -1);
-  assert.notEqual(firstRemove, -1);
+  assert.notEqual(firstCacheAppend, -1);
+  assert.notEqual(completedMessageRemove, -1);
   assert.ok(
-    firstAppend < firstRemove,
+    firstAppend < completedMessageRemove,
     'the completed assistant message should be queued before live snapshot removal so the transcript never renders without either row',
+  );
+  assert.ok(
+    firstCacheAppend < completedMessageRemove,
+    'the completed assistant message should reach a hydrated inactive-session cache before the live row is removed',
   );
   assert.match(
     body,

@@ -79,6 +79,7 @@ export function VirtualTranscript<Item>({
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const loadAttemptSignatureRef = useRef<string | null>(null);
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const olderLoadGenerationRef = useRef(0);
   const mountedRef = useRef(true);
   const alignedSessionRef = useRef<{
     sessionKey: string;
@@ -123,6 +124,10 @@ export function VirtualTranscript<Item>({
   const scopedNavigationRequest = navigationRequest?.sessionKey === sessionKey
     ? navigationRequest
     : null;
+  const pagingEnabled = hasOlder && Boolean(onLoadOlder);
+  const olderLoadScopeRef = useRef({ sessionKey, pagingEnabled });
+  const committedOlderLoadScopeRef = useRef({ sessionKey, pagingEnabled });
+  olderLoadScopeRef.current = { sessionKey, pagingEnabled };
 
   const navigationTargetIndex = useMemo(() => {
     const id = scopedNavigationRequest?.id.trim() ?? '';
@@ -175,30 +180,64 @@ export function VirtualTranscript<Item>({
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
   }, [alignViewportToTail]);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    cancelTailAlignment();
+  useEffect(() => {
+    // React Strict Mode intentionally runs an extra setup/cleanup cycle in
+    // development. Re-arm the ref during setup so a history request that
+    // completes after that cycle can still clear its loading state.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cancelTailAlignment();
+    };
   }, [cancelTailAlignment]);
 
+  useLayoutEffect(() => {
+    const previousScope = committedOlderLoadScopeRef.current;
+    if (previousScope.sessionKey === sessionKey && previousScope.pagingEnabled === pagingEnabled) return;
+    committedOlderLoadScopeRef.current = { sessionKey, pagingEnabled };
+    // A request can begin against a canonical catalog shell just before the
+    // native runtime transcript arrives. Detach that request when its session
+    // changes or paging becomes unavailable so its sticky loading label cannot
+    // follow the user into another chat.
+    olderLoadGenerationRef.current += 1;
+    loadAttemptSignatureRef.current = null;
+    olderLoadPromiseRef.current = null;
+    setIsLoadingOlder(false);
+  }, [pagingEnabled, sessionKey]);
+
   const requestOlder = useCallback((signature?: string) => {
-    if (!hasOlder || !onLoadOlder) return null;
+    const currentScope = olderLoadScopeRef.current;
+    if (
+      !pagingEnabled
+      || !onLoadOlder
+      || !currentScope.pagingEnabled
+      || currentScope.sessionKey !== sessionKey
+    ) return null;
     if (signature && loadAttemptSignatureRef.current === signature) return olderLoadPromiseRef.current;
     if (olderLoadPromiseRef.current) return olderLoadPromiseRef.current;
     if (signature) loadAttemptSignatureRef.current = signature;
     setIsLoadingOlder(true);
+    const generation = olderLoadGenerationRef.current;
     let succeeded = false;
-    const request = Promise.resolve(onLoadOlder())
+    let loadResult: Promise<void> | void;
+    try {
+      loadResult = onLoadOlder();
+    } catch (error) {
+      loadResult = Promise.reject(error);
+    }
+    const request = Promise.resolve(loadResult)
       .then(() => { succeeded = true; })
       .catch(() => undefined)
       .then(() => undefined)
       .finally(() => {
-        if (olderLoadPromiseRef.current === request) olderLoadPromiseRef.current = null;
+        if (olderLoadGenerationRef.current !== generation || olderLoadPromiseRef.current !== request) return;
+        olderLoadPromiseRef.current = null;
         if (!succeeded && loadAttemptSignatureRef.current === signature) loadAttemptSignatureRef.current = null;
         if (mountedRef.current) setIsLoadingOlder(false);
       });
     olderLoadPromiseRef.current = request;
     return request;
-  }, [hasOlder, onLoadOlder]);
+  }, [onLoadOlder, pagingEnabled, sessionKey]);
 
   useEffect(() => {
     const request = scopedNavigationRequest;

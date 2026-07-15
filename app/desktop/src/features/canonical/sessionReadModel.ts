@@ -38,6 +38,8 @@ type CanonicalConversationLike = {
   taskActivities?: SessionTaskActivity[];
   canonicalContextSnapshotCount?: number;
   canonicalPresenceSummary?: string;
+  desktopRuntimeBacked?: boolean;
+  desktopRuntimeTranscriptLoaded?: boolean;
   canonicalParticipants?: ConversationParticipant[];
   bridgeTarget?: ConversationBridgeTarget | null;
   bridgeUnreadByParentSessionId?: Record<string, number>;
@@ -397,7 +399,9 @@ export function createCanonicalSessionReadModel(
       const isBridgeSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
-      const messages = (isBridgePersonSession || isBridgeSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
+      const messages = conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
+        ? conversation.messages
+        : (isBridgePersonSession || isBridgeSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
         ? isChatCreatedDirectAgent
           ? canonicalMessages
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)

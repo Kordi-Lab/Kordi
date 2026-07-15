@@ -5,6 +5,7 @@ import { fetchDesktopChatState, fetchDesktopChatTurnState } from '@/lib/desktop'
 import { formatDesktopClockTime } from '@/lib/time';
 
 import {
+  appendMappedSessionMessageToCache,
   mergeLatestDesktopChatState,
   mergeMappedSessionMessagesCache,
   pruneDesktopLiveTurnsByKnownSessions,
@@ -377,9 +378,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       };
     });
 
-    window.setTimeout(() => removeLiveTurnSnapshot(turn.sessionId, turn.id), 180);
-
     if (!completedMessage) {
+      window.setTimeout(() => removeLiveTurnSnapshot(turn.sessionId, turn.id), 180);
       if (!isBackgroundSession) {
         clearUnreadForSession(turn.sessionId);
       }
@@ -396,20 +396,24 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
       clearUnreadForSession(turn.sessionId);
     }
 
-    setCachedChatSessionMessages((current) => {
-      if (!isBackgroundSession || !current[turn.sessionId]) return current;
-      return {
-        ...current,
-        [turn.sessionId]: [...current[turn.sessionId], mappedMessage],
-      };
-    });
-    setCachedProjectSessionMessages((current) => {
-      if (!isBackgroundSession || !current[turn.sessionId]) return current;
-      return {
-        ...current,
-        [turn.sessionId]: [...current[turn.sessionId], mappedMessage],
-      };
-    });
+    // The visible conversation can temporarily differ from
+    // desktopChatState.activeSession while selection/refresh work settles. In
+    // that foreground-but-inactive state, the active transcript update above
+    // cannot append the completed row, and treating it as foreground used to
+    // skip the cache update too. Commit the completed response/error into any
+    // hydrated cache before removing the live row so one source always owns the
+    // visible replacement.
+    setCachedChatSessionMessages((current) => appendMappedSessionMessageToCache(
+      current,
+      turn.sessionId,
+      mappedMessage,
+    ));
+    setCachedProjectSessionMessages((current) => appendMappedSessionMessageToCache(
+      current,
+      turn.sessionId,
+      mappedMessage,
+    ));
+    window.setTimeout(() => removeLiveTurnSnapshot(turn.sessionId, turn.id), 180);
   }, [clearUnreadForSession, incrementUnreadForSession, mapDesktopMessages, removeLiveTurnSnapshot]);
 
   const watchDesktopLiveTurn = useCallback(

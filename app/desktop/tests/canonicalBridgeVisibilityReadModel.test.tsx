@@ -640,7 +640,7 @@ test('canonical read model suppresses local agent runtime user echo after bridge
       { sessionId, identityId: 'human:bob', role: 'delegate', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
     ],
     messages: [
-      { id: 'msg:ui', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi  show me the diskusage', content: { sender: 'Me', timeLabel: '17:30' }, status: 'sent', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'desktop-chat-ui:shared-local-agent:1000' },
+      { id: 'msg:ui', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@MyKordi  show me the diskusage', content: { sender: 'Me', timeLabel: '17:30', deliveryState: 'sending' }, status: 'sending', sequenceNum: 1, createdAtMs: 1_000, updatedAtMs: 1_000, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'desktop-chat-ui:shared-local-agent:1000' },
       { id: 'msg:runtime-user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: '@Kordi  show me the diskusage', content: { sender: 'You', timeLabel: '17:30' }, status: 'sent', sequenceNum: 2, createdAtMs: 1_023, updatedAtMs: 1_023, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-chat:shared-local-agent:2:1023:user:hash' },
       { id: 'msg:agent', sessionId, senderIdentityId: 'agent:local', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'disk usage result', content: { sender: 'Kordi', timeLabel: '17:30' }, status: 'sent', sequenceNum: 3, createdAtMs: 2_000, updatedAtMs: 2_000, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-chat:shared-local-agent:3:assistant:turn' },
     ],
@@ -656,6 +656,8 @@ test('canonical read model suppresses local agent runtime user echo after bridge
     conversations[0]?.messages.map((message) => message.text || message.turn?.assistantText),
     ['@MyKordi  show me the diskusage', 'disk usage result'],
   );
+  assert.equal(conversations[0]?.messages[0]?.statusChips?.includes('sending') ?? false, false);
+  assert.deepEqual(conversations[0]?.messages[0]?.replyAliasIds, ['msg:runtime-user']);
 });
 
 test('canonical read model strips remote external-agent tool details from canonical messages', () => {

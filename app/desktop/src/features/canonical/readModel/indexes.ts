@@ -223,9 +223,12 @@ function hasMessageInCreatedAtRange(
   return start < messages.length && messages[start].createdAtMs <= endMs;
 }
 
-function localAgentRuntimeUserEchoIds(messages: CanonicalSessionMessage[]) {
-  const echoIds = new Set<string>();
-  const bridgeUiMentionsByKey = new Map<string, CanonicalSessionMessage[]>();
+function localAgentRuntimeUserEchoMatches(messages: CanonicalSessionMessage[]) {
+  const runtimeEchoIds = new Set<string>();
+  const confirmedUiIds = new Set<string>();
+  const matchedUiIds = new Set<string>();
+  const runtimeReplyAliasIdsByUiId = new Map<string, string[]>();
+  const bridgeUiMessagesByKey = new Map<string, CanonicalSessionMessage[]>();
   const duplicateKey = (message: CanonicalSessionMessage) => [
     message.sessionId,
     message.senderIdentityId,
@@ -236,22 +239,32 @@ function localAgentRuntimeUserEchoIds(messages: CanonicalSessionMessage[]) {
     if (
       message.sourceTransport !== 'desktop-chat-ui'
       || message.senderRole !== 'user'
-      || !message.contentText.trim().startsWith('@')
     ) continue;
     const key = duplicateKey(message);
     if (key.endsWith('\u0000')) continue;
-    pushMapArray(bridgeUiMentionsByKey, key, message);
+    pushMapArray(bridgeUiMessagesByKey, key, message);
   }
   for (const message of messages) {
     if (message.sourceTransport !== 'desktop-chat' || message.senderRole !== 'user') continue;
     const normalizedText = normalizedLeadingMentionText(message.contentText);
     if (!normalizedText) continue;
-    const candidates = bridgeUiMentionsByKey.get(duplicateKey(message));
-    if (hasMessageInCreatedAtRange(candidates, message.createdAtMs - 5_000, message.createdAtMs + 5_000)) {
-      echoIds.add(message.id);
-    }
+    const candidate = messagesInCreatedAtRange(
+      bridgeUiMessagesByKey.get(duplicateKey(message)),
+      message.createdAtMs - 5_000,
+      message.createdAtMs + 5_000,
+    )
+      .filter((uiMessage) => !matchedUiIds.has(uiMessage.id))
+      .sort((left, right) => (
+        Math.abs(left.createdAtMs - message.createdAtMs) - Math.abs(right.createdAtMs - message.createdAtMs)
+        || right.sequenceNum - left.sequenceNum
+      ))[0];
+    if (!candidate) continue;
+    runtimeEchoIds.add(message.id);
+    confirmedUiIds.add(candidate.id);
+    matchedUiIds.add(candidate.id);
+    pushMapArray(runtimeReplyAliasIdsByUiId, candidate.id, message.id);
   }
-  return echoIds;
+  return { runtimeEchoIds, confirmedUiIds, runtimeReplyAliasIdsByUiId };
 }
 
 function ownedAgentRuntimeRichness(message: CanonicalSessionMessage) {
@@ -982,7 +995,9 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     );
     const seenJoinEventKeys = new Set<string>();
     const suppressedBridgeUiEchoIds = bridgeUiOptimisticEchoIds(sortedMessages);
-    const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoIds(sortedMessages);
+    const localAgentRuntimeUserEchoes = localAgentRuntimeUserEchoMatches(sortedMessages);
+    const suppressedLocalRuntimeEchoIds = localAgentRuntimeUserEchoes.runtimeEchoIds;
+    const confirmedLocalAgentUiMessageIds = localAgentRuntimeUserEchoes.confirmedUiIds;
     const suppressedLocalRuntimeDuplicateIds = localOwnedAgentRuntimeDuplicateIds(sortedMessages);
     const suppressedBridgeRelayAgentFanoutDuplicateIds = bridgeRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedNoProviderRuntimeDuplicateIds = noProviderRuntimeDuplicateIds(sortedMessages);
@@ -1023,7 +1038,17 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         || suppressedAgedBridgeProcessingPlaceholderIds.has(message.id)
         || suppressedPendingDelegationRawProcessingPlaceholderIds.has(message.id)
       ) return [];
-      const content = contentRecord(message.content);
+      const displaySourceMessage: CanonicalSessionMessage = confirmedLocalAgentUiMessageIds.has(message.id)
+        ? {
+            ...message,
+            status: 'sent',
+            content: {
+              ...contentRecord(message.content),
+              deliveryState: 'sent',
+            },
+          }
+        : message;
+      const content = contentRecord(displaySourceMessage.content);
       if (stringValue(content.kind) === 'delegation-join-event') {
         const key = [
           stringValue(content.targetKind) ?? 'target',
@@ -1047,17 +1072,21 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         return [];
       }
       const mapped = mapCanonicalMessage(
-        message,
+        displaySourceMessage,
         identityById,
         canonicalState.profile.humanIdentityId,
         { senderIdentityIdByMessageId, visibleReplyTargetByMessageId },
       );
       if (!mapped) return [];
-      const displayMessage = mapped.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
-        ? { ...mapped, statusChips: ['failed'] }
-        : inheritedDesktopForkSnapshot(sessionById.get(sessionId), message)
-          ? { ...mapped, isForkSnapshot: true }
-          : mapped;
+      const runtimeReplyAliasIds = localAgentRuntimeUserEchoes.runtimeReplyAliasIdsByUiId.get(message.id) ?? [];
+      const mappedWithRuntimeAliases = runtimeReplyAliasIds.length > 0
+        ? { ...mapped, replyAliasIds: [...new Set([...(mapped.replyAliasIds ?? []), ...runtimeReplyAliasIds])] }
+        : mapped;
+      const displayMessage = mappedWithRuntimeAliases.role === 'user' && failedDelegationRequestMessageIds.has(message.id)
+        ? { ...mappedWithRuntimeAliases, statusChips: ['failed'] }
+        : inheritedDesktopForkSnapshot(sessionById.get(sessionId), displaySourceMessage)
+          ? { ...mappedWithRuntimeAliases, isForkSnapshot: true }
+          : mappedWithRuntimeAliases;
       return [{
         message: displayMessage,
         ...(messageSortById.get(message.id) ?? messageSortPosition(message)),
