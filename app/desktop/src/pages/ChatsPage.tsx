@@ -519,6 +519,26 @@ function ChatSessionPane({
     originalIndex: originalIndexByMessageKey.get(transcriptWindowMessageIdentity(message, index)) ?? index,
   })), [attributedTranscript.messages, originalIndexByMessageKey]);
   const attributedLiveTurn = attributedTranscript.liveTurn ?? liveTurn;
+  const liveTurnTailKey = shouldRenderLiveTurn && attributedLiveTurn ? [
+    attributedLiveTurn.id,
+    attributedLiveTurn.status,
+    attributedLiveTurn.completed ? 'complete' : 'active',
+    attributedLiveTurn.prompt.length,
+    attributedLiveTurn.message.length,
+    attributedLiveTurn.assistantText.length,
+    attributedLiveTurn.thinkingText.length,
+    attributedLiveTurn.tools.map((tool) => [
+      tool.id,
+      tool.status,
+      tool.arguments.length,
+      tool.liveOutput.length,
+      tool.resultText?.length ?? 0,
+      tool.detail?.length ?? 0,
+    ].join(':')).join(','),
+  ].join(':') : 'no-live-turn';
+  const transcriptTailKey = `${liveTurnTailKey}|${queuedMessages.map((message) => (
+    `${message.id}:${message.text.length}:${message.attachments.length}`
+  )).join(',')}`;
   const handleNavigationReady = useCallback((messageId: string) => {
     navigateToTranscriptMessage(messageId, scrollRef);
   }, [scrollRef]);
@@ -593,6 +613,7 @@ function ChatSessionPane({
           </div>
         )}
         emptyState={!shouldRenderLiveTurn ? emptyState : null}
+        tailKey={transcriptTailKey}
         tail={(
           <div className="space-y-1">
             {shouldRenderLiveTurn && attributedLiveTurn ? (
