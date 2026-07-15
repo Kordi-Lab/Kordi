@@ -658,3 +658,20 @@ test('ready rows remain visible while an older page is loading', async () => {
   assert.ok(view.host.querySelector('[data-transcript-older-loading="true"]'));
   await act(async () => resolveLoad?.());
 });
+
+test('a transcript with canonical paging disabled never shows the earlier-message loader', async () => {
+  let loadCount = 0;
+  const view = await render(transcript({
+    items: rows('m', 0, 8),
+    hasOlder: false,
+    onLoadOlder: () => { loadCount += 1; },
+  }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
+  assert.ok(viewport);
+
+  await act(async () => viewport.scrollTo({ top: 0 }));
+  await flush();
+
+  assert.equal(loadCount, 0);
+  assert.equal(view.host.querySelector('[data-transcript-older-loading="true"]'), null);
+});

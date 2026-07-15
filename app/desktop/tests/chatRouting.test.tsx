@@ -141,6 +141,112 @@ test('workspace active conversation shows loading copy for an empty selected can
   assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
 });
 
+test('workspace keeps a desktop runtime transcript visible while canonical hydration is loading', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: true,
+      isDesktopChatLoading: false,
+      desktopChatState: {
+        activeSessionId: 'local-runtime-session',
+        sessions: [{
+          id: 'local-runtime-session',
+          title: 'Runtime chat',
+          subtitle: 'Runtime transcript',
+          updatedAtLabel: '14:53',
+          messageCount: 2,
+          draft: false,
+        }],
+        activeSession: {
+          id: 'local-runtime-session',
+          cwd: '/tmp/kordi',
+          title: 'Runtime chat',
+          subtitle: 'Runtime transcript',
+          updatedAtLabel: '14:53',
+          messageCount: 2,
+          draft: false,
+          project: null,
+          reflectionLessonArtifacts: [],
+          messages: [
+            { role: 'user', text: 'hihi', timeLabel: '14:52' },
+            { role: 'assistant', text: 'Hi! How can I help?', timeLabel: '14:53' },
+          ],
+        },
+        localAgent: { label: 'My Kordi' },
+      } as never,
+      desktopBridgeState: null,
+      canonicalSessionState: {
+        storagePath: '/tmp/canonical.sqlite3',
+        profile: {
+          id: 'profile:me',
+          displayName: 'Me',
+          humanIdentityId: 'human:me',
+          activeAgentIdentityId: 'agent:me',
+          storageRoot: '/tmp',
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+        identities: [
+          { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', createdAtMs: 1, updatedAtMs: 1 },
+          { id: 'agent:me', kind: 'agent', displayName: 'My Kordi', source: 'local', ownerIdentityId: 'human:me', createdAtMs: 1, updatedAtMs: 1 },
+        ],
+        sessions: [{
+          id: 'local-runtime-session',
+          kind: 'self-agent',
+          title: 'Runtime chat',
+          status: 'active',
+          createdByIdentityId: 'human:me',
+          primaryIdentityId: 'agent:me',
+          createdAtMs: 1,
+          updatedAtMs: 2,
+          lastMessageAtMs: 2,
+        }],
+        participants: [
+          { sessionId: 'local-runtime-session', identityId: 'human:me', role: 'self', state: 'active', addedAtMs: 1 },
+          { sessionId: 'local-runtime-session', identityId: 'agent:me', role: 'delegate', state: 'active', addedAtMs: 1 },
+        ],
+        messages: [],
+        delegatedExchanges: [],
+        presence: [],
+        contextSnapshots: [],
+      } as never,
+      canonicalHydrationBySessionId: { 'local-runtime-session': 'loading' },
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [],
+      projectSelectedSessionIds: {},
+      activeNav: 'chats',
+      activeConvId: 'local-runtime-session',
+      activeProjectId: '',
+      activeProjectSessionId: 'draft:project-chat',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: {},
+      mapDesktopMessages: (_sessionId, messages) => messages.map((message) => ({
+        role: message.role === 'assistant' ? 'owned-agent' : 'user',
+        text: message.text,
+        time: message.timeLabel,
+      })),
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  assert.equal(viewModels?.activeConv.desktopRuntimeBacked, true);
+  assert.deepEqual(viewModels?.activeConv.messages.map((message) => message.text), [
+    'hihi',
+    'Hi! How can I help?',
+  ]);
+  assert.notEqual(viewModels?.activeConv.subtitle, 'Loading chat history…');
+});
+
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
   const localConversation = {
     id: 'local-newer',

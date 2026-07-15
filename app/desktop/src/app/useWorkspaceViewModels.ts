@@ -467,6 +467,7 @@ export function useWorkspaceViewModels({
         id: session.id,
         canonicalSessionId: session.id,
         localSessionCwd: isActiveSession ? desktopChatState.activeSession.cwd : null,
+        desktopRuntimeBacked: true,
         name: session.title,
         type: 'owned-agent' as const,
         subtitle: buildConversationPreview(messages, session.subtitle),
@@ -599,7 +600,7 @@ export function useWorkspaceViewModels({
     });
     const canonicalSessionId = selected.canonicalSessionId ?? selected.id;
     const hydration = canonicalHydrationBySessionId[canonicalSessionId];
-    if (hydration !== 'cold' && hydration !== 'loading') return selected;
+    if (selected.desktopRuntimeBacked || (hydration !== 'cold' && hydration !== 'loading')) return selected;
     return {
       ...selected,
       subtitle: 'Loading chat history…',

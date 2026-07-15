@@ -807,6 +807,13 @@ export function chatSideAgentConversationForOpenRequest(
   return candidates.find((conversation) => conversation.id === requestedConversationId) ?? null;
 }
 
+export function canonicalHistorySessionIdForConversation(
+  conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'desktopRuntimeBacked'>,
+) {
+  if (conversation.desktopRuntimeBacked) return null;
+  return conversation.canonicalSessionId ?? conversation.id;
+}
+
 export function parseAskAgentTriggerCommand(text: string) {
   const trimmed = text.trimStart();
   const match = trimmed.match(/^\/ask(?:\s+([\s\S]*))?$/i);
@@ -1230,6 +1237,7 @@ export function ChatsPage({
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
+  const activeCanonicalHistorySessionId = canonicalHistorySessionIdForConversation(activeConv);
   const activeLocalAgentConfigTargetSessionId = localAgentComposerConfigTargetSessionId(activeConv);
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
   const activeConversationIsGroupFork = isGroupForkSession(activeConv);
@@ -1292,6 +1300,9 @@ export function ChatsPage({
   const selectedCompanionConversation = companionCandidates.find((conversation) => conversation.id === selectedCompanionConversationId) ?? null;
   const suggestedSideAgentConversation = selectedCompanionConversation ?? suggestedCompanionConversation;
   const companionConversation = chatSideAgentConversationForOpenRequest(openSideAgentConversationId, companionCandidates);
+  const companionCanonicalHistorySessionId = companionConversation
+    ? canonicalHistorySessionIdForConversation(companionConversation)
+    : null;
   const showCompanionPane = Boolean(companionConversation && !isCompanionFolded);
   const showCompanionDetailRail = showRightDetailRail && Boolean(companionConversation);
   const companionDraftText = companionConversation ? companionDrafts[companionConversation.id] ?? '' : '';
@@ -1930,9 +1941,9 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderCompanionLiveTurn}
         scrollRef={companionTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3 py-5"
-        hasOlderMessages={Boolean(canonicalHasOlderBySessionId[companionConversation.canonicalSessionId ?? companionConversation.id])}
-        onLoadOlderMessages={onLoadOlderCanonicalSessionMessages
-          ? () => onLoadOlderCanonicalSessionMessages(companionConversation.canonicalSessionId ?? companionConversation.id)
+        hasOlderMessages={Boolean(companionCanonicalHistorySessionId && canonicalHasOlderBySessionId[companionCanonicalHistorySessionId])}
+        onLoadOlderMessages={companionCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
+          ? () => onLoadOlderCanonicalSessionMessages(companionCanonicalHistorySessionId)
           : undefined}
         navigationRequest={companionTranscriptNavigationRequest}
         onNavigationHandled={handleCompanionTranscriptNavigationHandled}
@@ -2657,9 +2668,9 @@ export function ChatsPage({
         shouldRenderLiveTurn={shouldRenderLiveTurn}
         scrollRef={chatTranscriptScrollRef}
         scrollClassName="min-h-0 flex-1 overflow-x-hidden overscroll-contain px-3.5 py-5 sm:px-4"
-        hasOlderMessages={Boolean(canonicalHasOlderBySessionId[activeConv.canonicalSessionId ?? activeConv.id])}
-        onLoadOlderMessages={onLoadOlderCanonicalSessionMessages
-          ? () => onLoadOlderCanonicalSessionMessages(activeConv.canonicalSessionId ?? activeConv.id)
+        hasOlderMessages={Boolean(activeCanonicalHistorySessionId && canonicalHasOlderBySessionId[activeCanonicalHistorySessionId])}
+        onLoadOlderMessages={activeCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
+          ? () => onLoadOlderCanonicalSessionMessages(activeCanonicalHistorySessionId)
           : undefined}
         navigationRequest={mainTranscriptNavigationRequest}
         onNavigationHandled={handleMainTranscriptNavigationHandled}

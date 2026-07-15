@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ChatsPage } from '../src/pages/ChatsPage';
+import { canonicalHistorySessionIdForConversation, ChatsPage } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
 
 const activeConv: Conversation = {
@@ -86,6 +86,18 @@ function renderChatsPage(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as any));
 }
+
+test('desktop runtime chats skip canonical history pagination while canonical-only chats retain it', () => {
+  assert.equal(canonicalHistorySessionIdForConversation({
+    id: 'local-runtime-session',
+    canonicalSessionId: 'local-runtime-session',
+    desktopRuntimeBacked: true,
+  }), null);
+  assert.equal(canonicalHistorySessionIdForConversation({
+    id: 'cloud-row',
+    canonicalSessionId: 'session:direct-person:me:alice',
+  }), 'session:direct-person:me:alice');
+});
 
 test('chat page renders message selection action bar', () => {
   const markup = renderChatsPage({
