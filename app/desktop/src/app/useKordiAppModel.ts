@@ -891,6 +891,7 @@ export function useKordiAppModel({
     cloudSessionActivity,
     cloudAgentDefinitionsById,
     cloudPresence: cloudPresence.snapshot,
+    cloudUnreadReady: initialMessagesSettled,
   });
 
   const onReplyMessage = useCallback((message: Message) => {

@@ -5,6 +5,7 @@ import { test } from 'node:test';
 
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
 import { cloudGroupAgentConversationId } from '../src/features/cloud/cloudGroupMessages';
+import type { Message } from '../src/kordi-app/types';
 
 test('canonical group unread honors persisted self read marker at latest message', () => {
   const sessionId = 'session:group:read-room';
@@ -51,6 +52,56 @@ test('canonical group unread honors persisted self read marker at latest message
 
   const conversation = readModel.buildChatConversations([], (messages, fallback) => messages.at(-1)?.text ?? fallback ?? '')[0];
   assert.equal(conversation?.unread, 0);
+});
+
+test('canonical Cloud unread remains masked until the account snapshot is ready', () => {
+  const sessionId = 'session:group:startup-unread';
+  const state = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: {
+      id: 'profile:me',
+      displayName: 'Me',
+      humanIdentityId: 'human:me',
+      activeAgentIdentityId: null,
+      storageRoot: '/tmp',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'human:bob', kind: 'human', displayName: 'Bob', source: 'cloud', avatarKey: 'bob', createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [{
+      id: sessionId,
+      kind: 'group',
+      title: 'Startup room',
+      status: 'active',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: null,
+      relationshipIdentityId: null,
+      metadata: { cloudUnreadCount: 99, groupId: 'group:startup-unread' },
+      createdAtMs: 1,
+      updatedAtMs: 2,
+      lastMessageAtMs: 2,
+    }],
+    participants: [
+      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+      { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
+    ],
+    messages: [
+      { id: 'msg:unread', sessionId, senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'cached unread', content: { sender: 'Bob', timeLabel: '13:11' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-group:startup' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  } as never;
+
+  const pendingModel = createCanonicalSessionReadModel(state, { cloudUnreadReady: false });
+  const readyModel = createCanonicalSessionReadModel(state, { cloudUnreadReady: true });
+  const subtitle = (messages: Message[], fallback?: string) => messages.at(-1)?.text ?? fallback ?? '';
+
+  assert.equal(pendingModel?.buildChatConversations([], subtitle)[0]?.unread, 0);
+  assert.equal(readyModel?.buildChatConversations([], subtitle)[0]?.unread, 99);
 });
 
 test('canonical group conversation title stays on first message when synced cloud group name changes', () => {

@@ -38,7 +38,14 @@ import {
   mergeCloudMessagesByPeerSnapshot,
   markCloudMessagesReadLocally,
   loadCloudMessagesByPeerUntilStable,
-  cloudInitialMessagesSettledForPeerKey,
+  cloudAccountGenerationKey,
+  cloudBridgePreviousStateForContext,
+  cloudMessagesAuthoritativeForContext,
+  cloudUnreadReadinessContextKey,
+  cloudUnreadReadyForContext,
+  cloudUnreadStatusForContext,
+  suppressCloudBridgeUnreadCounts,
+  transitionCloudUnreadReadiness,
   cloudSessionForksByIdEqual,
   shouldRunLocalCloudAgentForCloudMessage,
   cloudAgentResponseExistsForRequest,
@@ -435,7 +442,8 @@ test('cloud agent runtime routes fall back to current composer route for unconfi
 test('cloud bridge state loads the asynchronous cache without treating it as authoritative', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /if \(!initialMessagesSettled\) return \{\};[\s\S]*removeCloudSessionMessages\(account\.accountId, next, sessionId\)/);
+  assert.match(source, /let next = currentAccountMessagesByPeer;[\s\S]*removeCloudSessionMessages\(account\.accountId, next, sessionId\)/);
+  assert.match(source, /initialMessagesSettled \? routed : suppressCloudBridgeUnreadCounts\(routed\)/);
   assert.match(source, /defaultCloudMessageCache\(\)/);
   assert.match(source, /cloudMessageCache\.load\(accountId\)\.then/);
   assert.match(source, /hydratedMessagesCacheAccountRef\.current === account\.accountId/);
@@ -472,18 +480,20 @@ test('cloud unread badge reconciliation waits for authoritative startup message 
 
   assert.match(
     effectGuard,
-    /!initialMessagesSettled/,
+    /!canonicalSessionState[\s\S]*!authoritativeMessagesReady[\s\S]*!cloudUnreadContextKey/,
     'cached Cloud messages must not persist unread badges until the first authoritative server sync settles',
   );
+  assert.match(source, /setPublishedCloudUnreadContextKey\([\s\S]*cloudUnreadContextKey/);
 });
 
 test('cloud startup performs one coordinated full snapshot after contacts settle', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
 
   assert.match(source, /if \(!contacts\.initialLoadSettled\) return;/);
-  assert.match(source, /startupFullSnapshotAccountRef\.current !== account\.accountId[\s\S]*refreshCloudBridgeMessages\(\)/);
+  assert.match(source, /startupFullSnapshotContextRef\.current !== cloudUnreadContextKey[\s\S]*refreshCloudBridgeMessages\(\)/);
   assert.doesNotMatch(source, /syncCloudBridgeDiff\(\{\s*settleInitialMessages:\s*false/);
-  assert.match(source, /if \(settleInitialMessages\) setInitialMessagesSettledPeerKey\(bootstrapPeerKey\)/);
+  assert.match(source, /markCloudUnreadReadiness\(loaded\.complete \? 'ready' : 'error', generation, bootstrapPeerKey\)/);
+  assert.doesNotMatch(source, /syncCloudBridgeDiffOnceForGeneration[\s\S]{0,5000}markCloudUnreadReadiness\('ready'/);
 });
 
 test('normal Cloud events request diff sync instead of full snapshots', () => {
@@ -1907,20 +1917,109 @@ test('cloud bootstrap peers include the signed-in account for private self-agent
   assert.deepEqual(cloudBootstrapPeerIds(account, ['acct_peer'], []), ['acct_me', 'acct_peer']);
 });
 
-test('cloud initial message readiness waits for the post-contact peer set', () => {
-  assert.equal(cloudInitialMessagesSettledForPeerKey({
-    accountReady: true,
-    contactsSettled: true,
-    currentPeerKey: 'acct_me|acct_peer',
-    settledPeerKey: 'acct_me',
-  }), false);
+test('cloud unread readiness is scoped to account, generation, peer set, and publication', () => {
+  const peerKey = 'acct_me|acct_peer';
+  const contextKey = cloudUnreadReadinessContextKey(account.accountId, 4, peerKey);
+  const readiness = { status: 'ready' as const, contextKey };
 
-  assert.equal(cloudInitialMessagesSettledForPeerKey({
-    accountReady: true,
+  assert.equal(cloudMessagesAuthoritativeForContext({
+    accountId: account.accountId,
     contactsSettled: true,
-    currentPeerKey: 'acct_me|acct_peer',
-    settledPeerKey: 'acct_me|acct_peer',
+    generation: 4,
+    peerKey,
+    readiness,
   }), true);
+
+  assert.equal(cloudUnreadReadyForContext({
+    accountId: account.accountId,
+    contactsSettled: true,
+    generation: 4,
+    peerKey,
+    readiness,
+    publishedContextKey: null,
+  }), false, 'message readiness alone must not expose unread before canonical publication');
+
+  assert.equal(cloudUnreadReadyForContext({
+    accountId: account.accountId,
+    contactsSettled: true,
+    generation: 4,
+    peerKey,
+    readiness,
+    publishedContextKey: contextKey,
+  }), true);
+
+  for (const mismatch of [
+    { accountId: 'acct_other', generation: 4, peerKey },
+    { accountId: account.accountId, generation: 5, peerKey },
+    { accountId: account.accountId, generation: 4, peerKey: `${peerKey}|acct_discovered` },
+  ]) {
+    assert.equal(cloudMessagesAuthoritativeForContext({
+      ...mismatch,
+      contactsSettled: true,
+      readiness,
+    }), false);
+  }
+
+  assert.equal(cloudMessagesAuthoritativeForContext({
+    accountId: account.accountId,
+    contactsSettled: true,
+    generation: 4,
+    peerKey,
+    readiness: { status: 'error', contextKey },
+  }), false);
+  assert.equal(cloudUnreadStatusForContext({
+    accountId: account.accountId,
+    contactsSettled: true,
+    generation: 4,
+    peerKey,
+    readiness: { status: 'error', contextKey },
+    publishedContextKey: null,
+  }), 'error');
+});
+
+test('established unread readiness survives same-context refresh errors but not a new context', () => {
+  const readyKey = cloudUnreadReadinessContextKey(account.accountId, 2, 'acct_me|acct_peer');
+  const ready = { status: 'ready' as const, contextKey: readyKey };
+  assert.equal(transitionCloudUnreadReadiness(ready, 'pending', readyKey), ready);
+  assert.equal(transitionCloudUnreadReadiness(ready, 'error', readyKey), ready);
+
+  const expandedKey = cloudUnreadReadinessContextKey(
+    account.accountId,
+    2,
+    'acct_me|acct_peer|acct_discovered',
+  );
+  assert.deepEqual(transitionCloudUnreadReadiness(ready, 'pending', expandedKey), {
+    status: 'pending',
+    contextKey: expandedKey,
+  });
+});
+
+test('pending unread masks badges while preserving same-account cached transcripts', () => {
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [message] },
+  });
+  assert.equal(state.conversations[0]?.unreadCount, 1);
+
+  const currentContextKey = cloudAccountGenerationKey(account.accountId, 3);
+  assert.equal(
+    cloudBridgePreviousStateForContext(state, currentContextKey, currentContextKey),
+    state,
+  );
+  assert.equal(
+    cloudBridgePreviousStateForContext(
+      state,
+      currentContextKey,
+      cloudAccountGenerationKey('acct_other', 4),
+    ),
+    null,
+  );
+
+  const masked = suppressCloudBridgeUnreadCounts(state);
+  assert.notEqual(masked, state);
+  assert.equal(masked?.conversations[0]?.unreadCount, 0);
+  assert.equal(masked?.conversations[0]?.messages, state.conversations[0]?.messages);
 });
 
 test('cloud initial message sync follows group peer discovery until stable', async () => {
