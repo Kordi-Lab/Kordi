@@ -9,6 +9,7 @@ type Row = { id: string; height: number };
 
 let VirtualTranscript: typeof import('../src/features/chat/VirtualTranscript').VirtualTranscript;
 let root: Root | null = null;
+let triggerObservedResize: ((element: Element) => number) | null = null;
 
 function installDom() {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
@@ -48,8 +49,9 @@ function installDom() {
       configurable: true,
       get(this: HTMLElement) {
         const measuredChild = this.querySelector<HTMLElement>('[data-test-row-height]');
-        return Number.parseFloat(measuredChild?.dataset.testRowHeight ?? '')
+        return Number.parseFloat(this.dataset.testRowHeight ?? '')
           || Number.parseFloat(this.style.height)
+          || Number.parseFloat(measuredChild?.dataset.testRowHeight ?? '')
           || 0;
       },
     },
@@ -63,7 +65,10 @@ function installDom() {
       configurable: true,
       get(this: HTMLElement) {
         const container = this.querySelector<HTMLElement>('[data-virtual-transcript-size]');
-        return Number.parseFloat(container?.style.height ?? '') || this.clientHeight;
+        const tail = this.querySelector<HTMLElement>('[data-test-transcript-tail]');
+        const contentHeight = (Number.parseFloat(container?.style.height ?? '') || 0)
+          + (tail?.offsetHeight ?? 0);
+        return Math.max(contentHeight, this.clientHeight);
       },
     },
   });
@@ -82,20 +87,25 @@ function installDom() {
 
     constructor(callback: ResizeObserverCallback) {
       this.callback = callback;
+      resizeObservers.add(this);
+    }
+
+    notify(element: Element) {
+      if (!this.observed.has(element) || !element.isConnected) return;
+      const targetElement = element as HTMLElement;
+      this.callback([{
+        target: element,
+        borderBoxSize: [{
+          blockSize: targetElement.offsetHeight,
+          inlineSize: targetElement.offsetWidth,
+        }],
+      } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
     }
 
     observe(element: Element) {
       this.observed.add(element);
-      const targetElement = element as HTMLElement;
       queueMicrotask(() => {
-        if (!this.observed.has(element) || !element.isConnected) return;
-        this.callback([{
-          target: element,
-          borderBoxSize: [{
-            blockSize: targetElement.offsetHeight,
-            inlineSize: targetElement.offsetWidth,
-          }],
-        } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+        this.notify(element);
       });
     }
 
@@ -105,8 +115,20 @@ function installDom() {
 
     disconnect() {
       this.observed.clear();
+      resizeObservers.delete(this);
     }
   }
+
+  const resizeObservers = new Set<DeterministicResizeObserver>();
+  triggerObservedResize = (element) => {
+    let notified = 0;
+    for (const observer of resizeObservers) {
+      if (!observer.observed.has(element)) continue;
+      observer.notify(element);
+      notified += 1;
+    }
+    return notified;
+  };
 
   target.ResizeObserver = DeterministicResizeObserver;
   (dom.window as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver = DeterministicResizeObserver as unknown as typeof ResizeObserver;
@@ -127,6 +149,8 @@ function transcript(props: {
   onNavigationHandled?: (request: { id: string; nonce: number; sessionKey: string }) => void;
   hasOlder?: boolean;
   onLoadOlder?: () => Promise<void> | void;
+  tailHeight?: number;
+  tailKey?: string;
 }) {
   const sessionKey = props.sessionKey ?? 'session:one';
   const navigationRequest = props.navigationRequest
@@ -147,6 +171,10 @@ function transcript(props: {
       onNavigationHandled={props.onNavigationHandled}
       hasOlder={props.hasOlder}
       onLoadOlder={props.onLoadOlder}
+      tailKey={props.tailKey}
+      tail={props.tailHeight ? (
+        <div data-test-transcript-tail data-test-row-height={props.tailHeight}>tail</div>
+      ) : null}
     />
   );
 }
@@ -229,6 +257,137 @@ test('a two-row catalog preview hydrates into the chronological transcript tail'
       Number(left.slice('ready-'.length)) - Number(right.slice('ready-'.length))
     )),
   );
+});
+
+test('appending the latest message while pinned to the tail keeps the full row visible', async () => {
+  const initialItems = rows('message-', 0, 20, 50);
+  const view = await render(transcript({ items: initialItems, sessionKey: 'tail-follow' }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
+  assert.ok(viewport);
+
+  await view.rerender(transcript({
+    items: [...initialItems, { id: 'message-20', height: 140 }],
+    sessionKey: 'tail-follow',
+  }));
+
+  const latestRow = view.host.querySelector<HTMLElement>('[data-message-id="message-20"]')
+    ?.closest<HTMLElement>('[data-transcript-window-item]');
+  assert.ok(latestRow, 'the appended latest row should be mounted');
+  const latestStart = Number.parseFloat(
+    latestRow.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? '0',
+  );
+  assert.ok(
+    latestStart + latestRow.offsetHeight <= viewport.scrollTop + viewport.clientHeight,
+    `latest row ended at ${latestStart + latestRow.offsetHeight}px but the viewport ended at ${viewport.scrollTop + viewport.clientHeight}px`,
+  );
+  assert.ok(
+    viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1,
+    'the transcript should remain pinned to the bottom after an append',
+  );
+});
+
+test('appending queued or live tail content keeps the complete tail visible', async () => {
+  const initialItems = rows('tail-message-', 0, 20, 50);
+  const view = await render(transcript({
+    items: initialItems,
+    sessionKey: 'dynamic-tail',
+    tailKey: 'empty',
+  }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
+  assert.ok(viewport);
+
+  await view.rerender(transcript({
+    items: initialItems,
+    sessionKey: 'dynamic-tail',
+    tailHeight: 140,
+    tailKey: 'queued-message',
+  }));
+
+  assert.ok(
+    viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1,
+    'a newly queued or live row should not remain clipped below the viewport',
+  );
+});
+
+test('shrinking the transcript viewport keeps the complete tail visible', async () => {
+  const view = await render(transcript({
+    items: rows('resize-message-', 0, 20, 50),
+    sessionKey: 'resized-viewport',
+  }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
+  assert.ok(viewport);
+  await flush();
+  const previousScrollTop = viewport.scrollTop;
+
+  await act(async () => {
+    viewport.style.height = '480px';
+    assert.ok((triggerObservedResize?.(viewport) ?? 0) > 0);
+  });
+  await flush();
+
+  assert.ok(viewport.scrollTop > previousScrollTop);
+  assert.ok(
+    viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1,
+    'a shorter viewport should preserve the transcript tail above the composer',
+  );
+});
+
+test('a measurement scroll event cannot cancel the pending tail correction', async () => {
+  const initialItems = rows('webkit-', 0, 20, 50);
+  const view = await render(transcript({ items: initialItems, sessionKey: 'webkit-tail-follow' }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
+  assert.ok(viewport);
+
+  const originalRequestAnimationFrame = window.requestAnimationFrame;
+  const scheduledFrames: FrameRequestCallback[] = [];
+  window.requestAnimationFrame = (callback: FrameRequestCallback) => {
+    scheduledFrames.push(callback);
+    return 10_000 + scheduledFrames.length;
+  };
+
+  try {
+    await view.rerender(transcript({
+      items: [...initialItems, { id: 'webkit-20', height: 140 }],
+      sessionKey: 'webkit-tail-follow',
+    }));
+
+    const sizer = view.host.querySelector<HTMLElement>('[data-virtual-transcript-size]');
+    assert.ok(sizer);
+    await act(async () => {
+      sizer.style.height = `${Number.parseFloat(sizer.style.height) + 50}px`;
+      viewport.dispatchEvent(new window.Event('scroll'));
+    });
+
+    await act(async () => {
+      for (const callback of scheduledFrames.splice(0)) callback(Date.now());
+    });
+    await flush();
+
+    assert.ok(
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1,
+      'the scheduled correction should win over the layout-induced scroll event',
+    );
+  } finally {
+    window.requestAnimationFrame = originalRequestAnimationFrame;
+  }
+});
+
+test('appending a message does not pull a reader away from older history', async () => {
+  const initialItems = rows('history-', 0, 100, 50);
+  const view = await render(transcript({ items: initialItems, sessionKey: 'history-reader' }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
+  assert.ok(viewport);
+
+  await act(async () => viewport.scrollTo({ top: 1_000 }));
+  await flush();
+  const previousScrollTop = viewport.scrollTop;
+
+  await view.rerender(transcript({
+    items: [...initialItems, { id: 'history-100', height: 140 }],
+    sessionKey: 'history-reader',
+  }));
+
+  assert.equal(viewport.scrollTop, previousScrollTop);
 });
 
 test('a 900px row is measured before following short rows are positioned', async () => {

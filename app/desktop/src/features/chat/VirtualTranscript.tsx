@@ -47,6 +47,7 @@ export type VirtualTranscriptProps<Item> = {
   olderLoadingLabel?: ReactNode;
   emptyState?: ReactNode;
   tail?: ReactNode;
+  tailKey?: string | number;
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
 };
@@ -69,6 +70,7 @@ export function VirtualTranscript<Item>({
   olderLoadingLabel = 'Loading earlier messages…',
   emptyState,
   tail,
+  tailKey,
   estimateSize,
   gap = 4,
 }: VirtualTranscriptProps<Item>) {
@@ -82,8 +84,14 @@ export function VirtualTranscript<Item>({
     sessionKey: string;
     itemCount: number;
     lastItemKey: string;
+    tailKey: string;
+    totalSize: number;
+    viewportSize: number;
   } | null>(null);
   const viewportWasAtTailRef = useRef(true);
+  const tailAlignmentActiveRef = useRef(false);
+  const tailAlignmentFrameRef = useRef<number | null>(null);
+  const tailAlignmentTargetRef = useRef<number | null>(null);
   const handledNavigationRequestRef = useRef<string | null>(null);
 
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
@@ -126,10 +134,51 @@ export function VirtualTranscript<Item>({
 
   const oldestItemKey = items.length > 0 ? String(getItemKey(items[0]!, 0)) : 'empty';
   const newestItemKey = items.length > 0 ? String(getItemKey(items[items.length - 1]!, items.length - 1)) : 'empty';
+  const normalizedTailKey = String(tailKey ?? '');
+  const totalSize = virtualizer.getTotalSize();
+  const viewportSize = virtualizer.scrollRect?.height ?? 0;
+
+  const cancelTailAlignment = useCallback(() => {
+    tailAlignmentActiveRef.current = false;
+    tailAlignmentTargetRef.current = null;
+    if (tailAlignmentFrameRef.current !== null) {
+      window.cancelAnimationFrame(tailAlignmentFrameRef.current);
+      tailAlignmentFrameRef.current = null;
+    }
+  }, []);
+
+  const alignViewportToTail = useCallback(() => {
+    const element = internalScrollRef.current;
+    if (!element) return;
+    const target = Math.max(0, element.scrollHeight - element.clientHeight);
+    tailAlignmentTargetRef.current = target;
+    element.scrollTop = target;
+    viewportWasAtTailRef.current = true;
+  }, []);
+
+  const scheduleTailAlignment = useCallback(() => {
+    if (tailAlignmentFrameRef.current !== null) {
+      window.cancelAnimationFrame(tailAlignmentFrameRef.current);
+    }
+    tailAlignmentActiveRef.current = true;
+    alignViewportToTail();
+    let framesRemaining = 4;
+    const settle = () => {
+      tailAlignmentFrameRef.current = null;
+      if (!tailAlignmentActiveRef.current) return;
+      alignViewportToTail();
+      framesRemaining -= 1;
+      if (framesRemaining > 0) {
+        tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
+      }
+    };
+    tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
+  }, [alignViewportToTail]);
 
   useEffect(() => () => {
     mountedRef.current = false;
-  }, []);
+    cancelTailAlignment();
+  }, [cancelTailAlignment]);
 
   const requestOlder = useCallback((signature?: string) => {
     if (!hasOlder || !onLoadOlder) return null;
@@ -161,17 +210,22 @@ export function VirtualTranscript<Item>({
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
     const distanceFromTail = element.scrollHeight - (element.scrollTop + element.clientHeight);
-    viewportWasAtTailRef.current = distanceFromTail <= Math.max(4, gap);
+    const isAtTail = distanceFromTail <= Math.max(4, gap);
+    const matchesAlignmentTarget = tailAlignmentActiveRef.current
+      && tailAlignmentTargetRef.current !== null
+      && Math.abs(element.scrollTop - tailAlignmentTargetRef.current) <= 1;
+    if (isAtTail) {
+      viewportWasAtTailRef.current = true;
+    } else if (!matchesAlignmentTarget) {
+      viewportWasAtTailRef.current = false;
+      cancelTailAlignment();
+    }
     onScroll?.(event);
     if (element.scrollTop > Math.max(160, element.clientHeight * 0.25)) return;
     void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
-  }, [gap, items.length, oldestItemKey, onScroll, requestOlder, sessionKey]);
+  }, [cancelTailAlignment, gap, items.length, oldestItemKey, onScroll, requestOlder, sessionKey]);
 
   useLayoutEffect(() => {
-    if (items.length === 0) {
-      if (alignedSessionRef.current?.sessionKey !== sessionKey) alignedSessionRef.current = null;
-      return;
-    }
     const aligned = alignedSessionRef.current;
     const firstPageReplacedLoadingCopy = Boolean(
       aligned
@@ -186,25 +240,62 @@ export function VirtualTranscript<Item>({
       && newestItemKey === aligned.lastItemKey
       && viewportWasAtTailRef.current,
     );
+    const latestItemAppended = Boolean(
+      aligned
+      && aligned.sessionKey === sessionKey
+      && items.length > aligned.itemCount
+      && newestItemKey !== aligned.lastItemKey
+      && (viewportWasAtTailRef.current || tailAlignmentActiveRef.current),
+    );
+    const tailContentChanged = Boolean(
+      aligned
+      && aligned.sessionKey === sessionKey
+      && normalizedTailKey !== aligned.tailKey
+      && (viewportWasAtTailRef.current || tailAlignmentActiveRef.current),
+    );
+    const measuredSizeChanged = Boolean(
+      aligned
+      && aligned.sessionKey === sessionKey
+      && totalSize !== aligned.totalSize
+      && (viewportWasAtTailRef.current || tailAlignmentActiveRef.current),
+    );
+    const viewportSizeChanged = Boolean(
+      aligned
+      && aligned.sessionKey === sessionKey
+      && viewportSize !== aligned.viewportSize
+      && (viewportWasAtTailRef.current || tailAlignmentActiveRef.current),
+    );
     const shouldAlign = aligned?.sessionKey !== sessionKey
       || firstPageReplacedLoadingCopy
-      || catalogPreviewHydrated;
+      || catalogPreviewHydrated
+      || latestItemAppended
+      || tailContentChanged
+      || measuredSizeChanged
+      || viewportSizeChanged;
     alignedSessionRef.current = {
       sessionKey,
       itemCount: items.length,
       lastItemKey: newestItemKey,
+      tailKey: normalizedTailKey,
+      totalSize,
+      viewportSize,
     };
     if (shouldAlign) {
       viewportWasAtTailRef.current = true;
-      virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
+      tailAlignmentActiveRef.current = true;
+      if (items.length > 0) {
+        virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
+      }
+      scheduleTailAlignment();
     }
-  }, [items.length, newestItemKey, sessionKey, virtualizer]);
+  }, [items.length, newestItemKey, normalizedTailKey, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   useLayoutEffect(() => {
     const request = scopedNavigationRequest;
     if (!request || navigationTargetIndex < 0) return undefined;
     const requestIdentity = JSON.stringify([request.sessionKey, request.nonce, request.id.trim()]);
     if (handledNavigationRequestRef.current === requestIdentity) return undefined;
+    cancelTailAlignment();
     virtualizer.scrollToIndex(navigationTargetIndex, { align: 'center' });
     const frameId = window.requestAnimationFrame(() => {
       handledNavigationRequestRef.current = requestIdentity;
@@ -212,7 +303,7 @@ export function VirtualTranscript<Item>({
       onNavigationHandled?.(request);
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, [navigationTargetIndex, onNavigationHandled, onNavigationReady, scopedNavigationRequest, virtualizer]);
+  }, [cancelTailAlignment, navigationTargetIndex, onNavigationHandled, onNavigationReady, scopedNavigationRequest, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
 
@@ -235,6 +326,9 @@ export function VirtualTranscript<Item>({
       className={scrollClassName}
       style={scrollStyle}
       onScroll={handleScroll}
+      onWheelCapture={cancelTailAlignment}
+      onPointerDownCapture={cancelTailAlignment}
+      onTouchStartCapture={cancelTailAlignment}
       data-virtual-transcript-scroll="true"
     >
       {isLoadingOlder ? (
@@ -250,7 +344,7 @@ export function VirtualTranscript<Item>({
         <div
           data-virtual-transcript-size="true"
           className="relative w-full"
-          style={{ height: virtualizer.getTotalSize() }}
+          style={{ height: totalSize }}
         >
           {virtualItems.map((virtualItem) => {
             const item = items[virtualItem.index];
