@@ -81,7 +81,30 @@ function runtimeTranscriptAnchorKey(message: Message) {
   return [message.role, message.time.trim(), text].join('\u0000');
 }
 
-function mergeCanonicalHistoryIntoRuntime(
+function firstIndexGreaterThan(sortedValues: readonly number[], target: number) {
+  let low = 0;
+  let high = sortedValues.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (sortedValues[middle] <= target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function firstUnusedCanonicalIndex(
+  candidates: readonly number[],
+  startIndex: number,
+  usedCanonicalIndexes: ReadonlySet<number>,
+) {
+  for (let index = startIndex; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    if (!usedCanonicalIndexes.has(candidate)) return { candidate, nextCursor: index + 1 };
+  }
+  return null;
+}
+
+export function mergeCanonicalHistoryIntoRuntime(
   canonicalMessages: Message[],
   runtimeMessages: Message[],
 ) {
@@ -104,16 +127,37 @@ function mergeCanonicalHistoryIntoRuntime(
   });
 
   const usedCanonicalIndexes = new Set<number>();
+  const fallbackCursorByAnchor = new Map<string, number>();
   let lastCanonicalIndex = -1;
   const runtimeAnchorIndexes = runtimeMessages.map((message) => {
-    const stableMatch = [message.id, message.entryId]
-      .map((id) => id?.trim() ? canonicalIndexesById.get(id) : undefined)
-      .find((index) => index !== undefined && !usedCanonicalIndexes.has(index));
+    let stableMatch: number | undefined;
+    for (const id of [message.id, message.entryId]) {
+      const canonicalIndex = id?.trim() ? canonicalIndexesById.get(id) : undefined;
+      if (canonicalIndex !== undefined && !usedCanonicalIndexes.has(canonicalIndex)) {
+        stableMatch = canonicalIndex;
+        break;
+      }
+    }
     const anchorKey = runtimeTranscriptAnchorKey(message);
     const candidates = anchorKey ? canonicalIndexesByAnchor.get(anchorKey) ?? [] : [];
+    const preferredMatch = stableMatch === undefined
+      ? firstUnusedCanonicalIndex(
+          candidates,
+          firstIndexGreaterThan(candidates, lastCanonicalIndex),
+          usedCanonicalIndexes,
+        )
+      : null;
+    const fallbackMatch = stableMatch !== undefined || preferredMatch || !anchorKey
+      ? null
+      : firstUnusedCanonicalIndex(
+          candidates,
+          fallbackCursorByAnchor.get(anchorKey) ?? 0,
+          usedCanonicalIndexes,
+        );
+    if (anchorKey && fallbackMatch) fallbackCursorByAnchor.set(anchorKey, fallbackMatch.nextCursor);
     const canonicalIndex = stableMatch
-      ?? candidates.find((index) => index > lastCanonicalIndex && !usedCanonicalIndexes.has(index))
-      ?? candidates.find((index) => !usedCanonicalIndexes.has(index))
+      ?? preferredMatch?.candidate
+      ?? fallbackMatch?.candidate
       ?? null;
     if (canonicalIndex === null) return null;
     usedCanonicalIndexes.add(canonicalIndex);
@@ -134,23 +178,34 @@ function mergeCanonicalHistoryIntoRuntime(
     { length: runtimeMessages.length + 1 },
     () => [] as Message[],
   );
+  const matchedAnchors = runtimeAnchorIndexes.flatMap((canonicalIndex, runtimeIndex) => (
+    canonicalIndex === null ? [] : [{ canonicalIndex, runtimeIndex }]
+  )).sort((left, right) => left.canonicalIndex - right.canonicalIndex);
+  const matchedCanonicalIndexes = matchedAnchors.map((anchor) => anchor.canonicalIndex);
+  const prefixLatestRuntimeIndex = matchedAnchors.map((anchor) => anchor.runtimeIndex);
+  for (let index = 1; index < prefixLatestRuntimeIndex.length; index += 1) {
+    prefixLatestRuntimeIndex[index] = Math.max(prefixLatestRuntimeIndex[index - 1], prefixLatestRuntimeIndex[index]);
+  }
+  const suffixEarliestRuntimeIndex = matchedAnchors.map((anchor) => anchor.runtimeIndex);
+  for (let index = suffixEarliestRuntimeIndex.length - 2; index >= 0; index -= 1) {
+    suffixEarliestRuntimeIndex[index] = Math.min(suffixEarliestRuntimeIndex[index], suffixEarliestRuntimeIndex[index + 1]);
+  }
+  const unmatchedRuntimeIndexes = runtimeAnchorIndexes.flatMap((canonicalIndex, runtimeIndex) => (
+    canonicalIndex === null ? [runtimeIndex] : []
+  ));
   for (const { message, canonicalIndex } of overlayMessages) {
-    const nextAnchorIndex = runtimeAnchorIndexes.findIndex((anchorIndex) => (
-      anchorIndex !== null && anchorIndex > canonicalIndex
-    ));
-    if (nextAnchorIndex >= 0) {
-      canonicalBeforeRuntimeIndex[nextAnchorIndex].push(message);
+    const nextAnchorPosition = firstIndexGreaterThan(matchedCanonicalIndexes, canonicalIndex);
+    const nextRuntimeIndex = suffixEarliestRuntimeIndex[nextAnchorPosition];
+    if (nextRuntimeIndex !== undefined) {
+      canonicalBeforeRuntimeIndex[nextRuntimeIndex].push(message);
       continue;
     }
 
-    let lastEarlierRuntimeIndex = -1;
-    runtimeAnchorIndexes.forEach((anchorIndex, runtimeIndex) => {
-      if (anchorIndex !== null && anchorIndex < canonicalIndex) lastEarlierRuntimeIndex = runtimeIndex;
-    });
-    const firstUnmatchedRuntimeIndex = runtimeAnchorIndexes.findIndex((anchorIndex, runtimeIndex) => (
-      runtimeIndex > lastEarlierRuntimeIndex && anchorIndex === null
-    ));
-    const targetIndex = firstUnmatchedRuntimeIndex >= 0 ? firstUnmatchedRuntimeIndex : runtimeMessages.length;
+    const lastEarlierRuntimeIndex = nextAnchorPosition > 0
+      ? prefixLatestRuntimeIndex[nextAnchorPosition - 1]
+      : -1;
+    const unmatchedPosition = firstIndexGreaterThan(unmatchedRuntimeIndexes, lastEarlierRuntimeIndex);
+    const targetIndex = unmatchedRuntimeIndexes[unmatchedPosition] ?? runtimeMessages.length;
     canonicalBeforeRuntimeIndex[targetIndex].push(message);
   }
 
