@@ -78,7 +78,12 @@ export function VirtualTranscript<Item>({
   const loadAttemptSignatureRef = useRef<string | null>(null);
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
   const mountedRef = useRef(true);
-  const alignedSessionRef = useRef<{ sessionKey: string; itemCount: number } | null>(null);
+  const alignedSessionRef = useRef<{
+    sessionKey: string;
+    itemCount: number;
+    lastItemKey: string;
+  } | null>(null);
+  const viewportWasAtTailRef = useRef(true);
   const handledNavigationRequestRef = useRef<string | null>(null);
 
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
@@ -120,6 +125,7 @@ export function VirtualTranscript<Item>({
   }, [findNavigationIndex, getItemKey, items, scopedNavigationRequest?.id]);
 
   const oldestItemKey = items.length > 0 ? String(getItemKey(items[0]!, 0)) : 'empty';
+  const newestItemKey = items.length > 0 ? String(getItemKey(items[items.length - 1]!, items.length - 1)) : 'empty';
 
   useEffect(() => () => {
     mountedRef.current = false;
@@ -153,11 +159,13 @@ export function VirtualTranscript<Item>({
   }, [hasOlder, items.length, navigationTargetIndex, oldestItemKey, onLoadOlder, requestOlder, scopedNavigationRequest]);
 
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
-    onScroll?.(event);
     const element = event.currentTarget;
+    const distanceFromTail = element.scrollHeight - (element.scrollTop + element.clientHeight);
+    viewportWasAtTailRef.current = distanceFromTail <= Math.max(4, gap);
+    onScroll?.(event);
     if (element.scrollTop > Math.max(160, element.clientHeight * 0.25)) return;
     void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
-  }, [items.length, oldestItemKey, onScroll, requestOlder, sessionKey]);
+  }, [gap, items.length, oldestItemKey, onScroll, requestOlder, sessionKey]);
 
   useLayoutEffect(() => {
     if (items.length === 0) {
@@ -165,12 +173,32 @@ export function VirtualTranscript<Item>({
       return;
     }
     const aligned = alignedSessionRef.current;
+    const firstPageReplacedLoadingCopy = Boolean(
+      aligned
+      && aligned.sessionKey === sessionKey
+      && aligned.itemCount <= 1
+      && items.length > aligned.itemCount,
+    );
+    const catalogPreviewHydrated = Boolean(
+      aligned
+      && aligned.sessionKey === sessionKey
+      && items.length > aligned.itemCount
+      && newestItemKey === aligned.lastItemKey
+      && viewportWasAtTailRef.current,
+    );
     const shouldAlign = aligned?.sessionKey !== sessionKey
-      || (aligned.itemCount <= 1 && items.length > aligned.itemCount);
-    if (!shouldAlign) return;
-    alignedSessionRef.current = { sessionKey, itemCount: items.length };
-    virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
-  }, [items.length, sessionKey, virtualizer]);
+      || firstPageReplacedLoadingCopy
+      || catalogPreviewHydrated;
+    alignedSessionRef.current = {
+      sessionKey,
+      itemCount: items.length,
+      lastItemKey: newestItemKey,
+    };
+    if (shouldAlign) {
+      viewportWasAtTailRef.current = true;
+      virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
+    }
+  }, [items.length, newestItemKey, sessionKey, virtualizer]);
 
   useLayoutEffect(() => {
     const request = scopedNavigationRequest;

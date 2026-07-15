@@ -5,7 +5,10 @@ import { test } from 'node:test';
 import { shouldUseCloudSessionAction } from '../src/app/useKordiAppModelHelpers';
 import { buildCanonicalIndexes } from '../src/features/canonical/readModel/indexes';
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
-import { canonicalNoProviderFailedAgentMessageRequest, shouldUseNoProviderSelfAgentShortcut } from '../src/features/chat/messageActions/chatMessages';
+import {
+  canonicalNoProviderFailedAgentMessageRequest,
+  shouldUseNoProviderSelfAgentShortcut,
+} from '../src/features/chat/messageActions/chatMessages';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
@@ -31,7 +34,7 @@ test('local cloud self-agent no-provider errors become failed agent replies in c
       { id: 'agent:me', kind: 'agent', displayName: 'Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: null, agentId: 'local-agent', avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
     ],
     sessions: [
-      { id: 'session-cloud-self', kind: 'self-agent', title: 'My agent', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'session-cloud-self', kind: 'self-agent', title: 'My agent', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 1 },
     ],
     participants: [],
     messages: [],
@@ -202,7 +205,7 @@ test('cloud self-agent sends with no configured auth skip local runtime to avoid
     profile: { id: 'profile:me', humanIdentityId: 'human:me' },
     identities: [],
     sessions: [
-      { id: 'session-cloud-self', kind: 'self-agent', title: 'My agent', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'session-cloud-self', kind: 'self-agent', title: 'My agent', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 1 },
     ],
     participants: [],
     messages: [],
@@ -255,6 +258,34 @@ test('synthetic no-provider replies suppress duplicate imported desktop runtime 
   const messages = buildCanonicalIndexes(baseState).canonicalMessagesBySessionId.get('session-cloud-self') ?? [];
   assert.equal(messages.filter((message) => message.role === 'owned-agent').length, 1);
   assert.equal(messages.find((message) => message.role === 'owned-agent')?.turn?.error, 'No provider configured yet.');
+});
+
+test('Cloud self-agent reconciliation hides the local mirror and obsolete no-provider failure', () => {
+  const sessionId = 'session:self-agent:reconciled';
+  const state: CanonicalSessionState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: { id: 'profile:me', humanIdentityId: 'human:me' },
+    identities: [
+      { id: 'human:me', kind: 'human', displayName: 'Me', ownerIdentityId: null, source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: 'acct_me', agentId: null, avatarKey: null, profileImageUrl: null, metadata: {}, createdAtMs: 1, updatedAtMs: 1 },
+      { id: 'agent:me', kind: 'agent', displayName: 'My Kordi', ownerIdentityId: 'human:me', source: 'local', sourceHostId: null, bridgeNodeId: null, humanId: null, agentId: 'cloud-self:acct_me', avatarKey: null, profileImageUrl: null, metadata: { cloudSelfAgent: true }, createdAtMs: 1, updatedAtMs: 1 },
+    ],
+    sessions: [
+      { id: sessionId, kind: 'self-agent', title: 'My Kordi', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 12 },
+    ],
+    participants: [],
+    messages: [
+      { id: 'msg:user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'test', content: {}, parentMessageId: null, delegatedExchangeId: null, status: 'sent', sequenceNum: 1, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'desktop-chat-ui:user' },
+      { id: 'msg:no-provider:msg:user', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: '', content: { deliveryState: 'failed', error: 'No provider configured yet.', requestId: 'msg:user', replyToMessageId: 'msg:user' }, parentMessageId: 'msg:user', delegatedExchangeId: null, status: 'failed', sequenceNum: 2, createdAtMs: 11, updatedAtMs: 11, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'desktop-chat-ui-no-provider:msg:user' },
+      { id: 'msg:cloud:self:request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'test', content: {}, parentMessageId: null, delegatedExchangeId: null, status: 'sent', sequenceNum: 3, createdAtMs: 10, updatedAtMs: 10, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-request' },
+      { id: 'msg:cloud:self:response', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Received.', content: { cloudRequestMessageId: 'cloud-request' }, parentMessageId: 'msg:user', delegatedExchangeId: null, status: 'complete', sequenceNum: 4, createdAtMs: 12, updatedAtMs: 12, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-response' },
+    ],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  };
+
+  const messages = buildCanonicalIndexes(state).canonicalMessagesBySessionId.get(sessionId) ?? [];
+  assert.deepEqual(messages.map((message) => message.id), ['msg:user', 'msg:cloud:self:response']);
 });
 
 test('cloud group read state is driven by cloud metadata, not transient local unread increments', () => {

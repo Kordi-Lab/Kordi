@@ -434,6 +434,25 @@ function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   );
 }
 
+function AttachmentImageUnavailableSurface({ attachment }: { attachment: MessageAttachment }) {
+  return (
+    <div
+      data-attachment-image-unavailable="true"
+      className="app-attachment-image-fallback flex h-full min-h-28 aspect-[4/3] items-center gap-3 rounded-[15px] bg-black/[0.045] px-3 py-2.5"
+      role="status"
+    >
+      <div className="app-attachment-image-fallback-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.06]">
+        <Image className="h-4 w-4" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="app-attachment-image-fallback-title truncate text-[12px] font-medium">{displayAttachmentName(attachment.name, attachment.kind)}</div>
+        <div className="app-attachment-image-fallback-name mt-0.5 text-[10px] font-medium">Preview unavailable</div>
+      </div>
+      <AttachmentActions attachment={attachment} />
+    </div>
+  );
+}
+
 export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onContextMenu }: {
   attachment: MessageAttachment;
   previewUrl: string;
@@ -493,68 +512,81 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
   ) => void;
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
 }) {
-  const [previewFailed, setPreviewFailed] = useState(false);
   const attachmentId = recoverableAttachmentId(attachment);
   const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => attachmentId ? recoveredAttachmentPreviewUrls.get(attachmentId) ?? null : null);
   const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(null);
+  const [failedPreviewUrls, setFailedPreviewUrls] = useState<string[]>([]);
+  const [previewUnavailable, setPreviewUnavailable] = useState(false);
   const previewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
-  const previewUrl = recoveredPreviewUrl ?? remotePreviewUrl ?? attachmentPreviewUrl(attachment);
+  const directPreviewUrl = attachmentPreviewUrl(attachment);
+  const usableRecoveredPreviewUrl = recoveredPreviewUrl && !failedPreviewUrls.includes(recoveredPreviewUrl) ? recoveredPreviewUrl : null;
+  const usableRemotePreviewUrl = remotePreviewUrl && !failedPreviewUrls.includes(remotePreviewUrl) ? remotePreviewUrl : null;
+  const usableDirectPreviewUrl = directPreviewUrl && !failedPreviewUrls.includes(directPreviewUrl) ? directPreviewUrl : null;
+  const previewUrl = usableRecoveredPreviewUrl ?? usableRemotePreviewUrl ?? usableDirectPreviewUrl;
   const [imageLoaded, setImageLoaded] = useState(() => Boolean(previewUrl?.startsWith('data:image/')));
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
-  const showImage = Boolean(previewUrl && !previewFailed);
+  const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
   const showOriginalAction = showImage && isLargeAttachment(attachment);
 
   useEffect(() => {
-    if (recoveredPreviewUrl || attachmentPreviewUrl(attachment) || previewFailed || attachment.kind !== 'image' || !attachmentId) return;
+    if (usableRecoveredPreviewUrl || usableRemotePreviewUrl || usableDirectPreviewUrl || previewUnavailable || attachment.kind !== 'image' || !attachmentId) return;
     const controller = new AbortController();
-    void loadSession()
-      .then(async (session) => {
-        if (!session?.token || controller.signal.aborted) return null;
-        if (!attachment.previewAttachmentId) {
-          const recoveredPreview = await recoverAttachmentPreviewOnce(attachment);
-          if (controller.signal.aborted) return null;
-          if (recoveredPreview) {
-            setRecoveredPreviewUrl(recoveredPreview);
-            if (recoveredPreview.startsWith('data:image/')) setImageLoaded(true);
-            return null;
-          }
-        }
-        return loadVisibleCloudAttachmentPreview({
-          token: session.token,
-          client: defaultCloudAuthClient(),
-          attachment: {
-            attachmentId: attachment.attachmentId ?? '',
-            previewAttachmentId: attachment.previewAttachmentId ?? null,
-            kind: 'image',
-          },
-          signal: controller.signal,
-        });
-      })
-      .then((nextPreviewLease) => {
-        if (!nextPreviewLease) return;
-        if (controller.signal.aborted) {
-          nextPreviewLease.release();
+    void (async () => {
+      const session = await loadSession();
+      if (!session?.token || controller.signal.aborted) {
+        if (!controller.signal.aborted) setPreviewUnavailable(true);
+        return;
+      }
+      if (!attachment.previewAttachmentId) {
+        const recoveredPreview = await recoverAttachmentPreviewOnce(attachment);
+        if (controller.signal.aborted) return;
+        if (recoveredPreview) {
+          setRecoveredPreviewUrl(recoveredPreview);
+          setPreviewUnavailable(false);
           return;
         }
-        previewLeaseRef.current?.release();
-        previewLeaseRef.current = nextPreviewLease;
-        setRemotePreviewUrl(nextPreviewLease.previewUrl);
-      })
+      }
+      const nextPreviewLease = await loadVisibleCloudAttachmentPreview({
+        token: session.token,
+        client: defaultCloudAuthClient(),
+        attachment: {
+          attachmentId: attachment.attachmentId ?? '',
+          previewAttachmentId: attachment.previewAttachmentId ?? null,
+          kind: 'image',
+        },
+        signal: controller.signal,
+      });
+      if (!nextPreviewLease) {
+        setPreviewUnavailable(true);
+        return;
+      }
+      if (controller.signal.aborted) {
+        nextPreviewLease.release();
+        return;
+      }
+      previewLeaseRef.current?.release();
+      previewLeaseRef.current = nextPreviewLease;
+      setRemotePreviewUrl(nextPreviewLease.previewUrl);
+      setPreviewUnavailable(false);
+    })()
       .catch((error) => {
         if (!controller.signal.aborted && (!(error instanceof Error) || error.name !== 'AbortError')) {
-          setPreviewFailed(true);
+          setPreviewUnavailable(true);
         }
       });
+    return () => controller.abort();
+  }, [attachment, attachmentId, previewUnavailable, usableDirectPreviewUrl, usableRecoveredPreviewUrl, usableRemotePreviewUrl]);
+
+  useEffect(() => {
     return () => {
-      controller.abort();
       previewLeaseRef.current?.release();
       previewLeaseRef.current = null;
     };
-  }, [attachment, attachmentId, previewFailed, recoveredPreviewUrl]);
+  }, []);
 
   useEffect(() => {
-    if (previewUrl?.startsWith('data:image/')) setImageLoaded(true);
+    setImageLoaded(Boolean(previewUrl?.startsWith('data:image/')));
   }, [previewUrl]);
 
   return (
@@ -589,13 +621,21 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
             )}
             onLoad={() => setImageLoaded(true)}
             onError={() => {
+              if (previewUrl) {
+                setFailedPreviewUrls((current) => current.includes(previewUrl) ? current : [...current, previewUrl]);
+              }
+              setImageLoaded(false);
               previewLeaseRef.current?.release();
               previewLeaseRef.current = null;
               setRemotePreviewUrl(null);
-              setPreviewFailed(true);
+              if (!attachmentId || (previewUrl !== directPreviewUrl && previewUrl !== recoveredPreviewUrl)) {
+                setPreviewUnavailable(true);
+              }
             }}
           />
         </button>
+      ) : previewUnavailable ? (
+        <AttachmentImageUnavailableSurface attachment={attachment} />
       ) : (
         <AttachmentImageLoadingSurface />
       )}

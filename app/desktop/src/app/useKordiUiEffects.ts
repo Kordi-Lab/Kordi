@@ -37,6 +37,7 @@ type UseKordiUiEffectsArgs = {
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
   activeConvMessagesLength: number;
   activeLastMessageTime?: string;
+  activeTranscriptLastMessageIsOwn: boolean;
   activeProjectSessionIdValue: string;
   activeProjectSessionMessagesLength: number;
   activeProjectLastMessageTime?: string;
@@ -58,6 +59,24 @@ export function composerSelectorEventIsInsideControls(
 
   const targetElement = target instanceof Element ? target : target.parentElement;
   return Boolean(targetElement?.closest('.app-composer-model-menu-layer'));
+}
+
+export function shouldFollowTranscriptUpdate({
+  followRequested,
+  latestMessageIsOwn,
+  previousDistanceFromBottom,
+  currentDistanceFromBottom,
+}: {
+  followRequested: boolean;
+  latestMessageIsOwn: boolean;
+  previousDistanceFromBottom: number;
+  currentDistanceFromBottom: number;
+}) {
+  return followRequested && (
+    latestMessageIsOwn
+    || previousDistanceFromBottom < 180
+    || currentDistanceFromBottom < 240
+  );
 }
 
 export function useKordiUiEffects({
@@ -92,6 +111,7 @@ export function useKordiUiEffects({
   shouldAutoFollowChatRef,
   activeConvMessagesLength,
   activeLastMessageTime,
+  activeTranscriptLastMessageIsOwn,
   activeProjectSessionIdValue,
   activeProjectSessionMessagesLength,
   activeProjectLastMessageTime,
@@ -231,9 +251,13 @@ export function useKordiUiEffects({
     }
 
     const currentDistanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    const wasNearBottomBeforeUpdate = previousDistanceFromBottom < 180;
     const isNearBottomNow = currentDistanceFromBottom < 240;
-    const shouldFollow = shouldAutoFollowChatRef.current && (wasNearBottomBeforeUpdate || isNearBottomNow);
+    const shouldFollow = shouldFollowTranscriptUpdate({
+      followRequested: shouldAutoFollowChatRef.current,
+      latestMessageIsOwn: activeTranscriptLastMessageIsOwn,
+      previousDistanceFromBottom,
+      currentDistanceFromBottom,
+    });
 
     if (shouldFollow) {
       container.scrollTop = container.scrollHeight;
@@ -251,6 +275,7 @@ export function useKordiUiEffects({
     activeConvId,
     activeConvMessagesLength,
     activeLastMessageTime,
+    activeTranscriptLastMessageIsOwn,
     activeProjectSessionIdValue,
     activeProjectSessionMessagesLength,
     activeProjectLastMessageTime,

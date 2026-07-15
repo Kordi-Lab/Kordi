@@ -28,6 +28,7 @@ import {
   cloudGroupAgentCancelledNoticeRequest,
   cloudGroupAgentProcessingMessageForRequest,
   cloudGroupAgentProcessingSlotForResponse,
+  cloudGroupIncomingMessageAlreadyApplied,
   optimisticCloudAgentCancelMessage,
   cloudSelfAgentDerivedSyncedStatusBySessionId,
   planCloudSelfAgentSync,
@@ -1241,6 +1242,55 @@ test('cloud self-agent canonical sync restores fork lineage metadata', () => {
       forkedFromSessionId: 'parent-session',
       forkedFromMessageId: 'msg:cloud:self:parent-agent',
     },
+  });
+});
+
+test('cloud self-agent canonical sync decodes direct reply envelopes and preserves quote metadata', () => {
+  const sessionId = 'session:self-agent:quoted';
+  const source = {
+    sourceSessionId: sessionId,
+    sourceMessageId: 'msg:source-agent',
+    sourceMessageKind: 'agent-turn',
+    senderLabel: 'My Kordi',
+    textPreview: 'Earlier answer',
+    attachmentCount: 0,
+    timeLabel: '06:24',
+  };
+  const userMessage: CloudMessage = {
+    messageId: 'msg_quoted_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: 'follow up',
+      messageAction: { schemaVersion: 1, kind: 'quote', source },
+    }),
+    createdAt: '2026-05-16T08:41:27.120Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId,
+  };
+  const state = {
+    sessions: [],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages: [userMessage], state });
+  const restored = plan.messageRequests[0];
+  assert.equal(restored?.contentText, 'follow up');
+  assert.equal(restored?.parentMessageId, source.sourceMessageId);
+  assert.deepEqual((restored?.content as { messageAction?: unknown } | null)?.messageAction, {
+    schemaVersion: 1,
+    kind: 'quote',
+    source,
   });
 });
 
@@ -3078,6 +3128,36 @@ test('cloud group terminal responses reuse an existing peer processing slot', ()
     )?.id,
     processing.id,
   );
+});
+
+test('cloud group terminal envelopes replace a synced processing slot', () => {
+  const processing = {
+    id: 'msg:cloud-agent-processing:msg_request:acct_me',
+    sessionId: 'session:group',
+    senderIdentityId: 'agent:cloud:acct_me',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: 'processing...',
+    content: { requestId: 'msg_request', deliveryState: 'processing' },
+    parentMessageId: 'msg_request',
+    status: 'processing',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    sourceTransport: 'cloud-group-agent',
+  } as CanonicalSessionMessage;
+  const complete = {
+    ...processing,
+    contentText: '收到：111 👋',
+    content: { requestId: 'msg_request', deliveryState: 'complete' },
+    status: 'sent',
+  } as CanonicalSessionMessage;
+
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(null, 'complete'), false);
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(processing, 'processing'), true);
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(processing, 'complete'), false);
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(processing, 'failed'), false);
+  assert.equal(cloudGroupIncomingMessageAlreadyApplied(complete, 'complete'), true);
 });
 
 test('cloud group cancel notices record sender or agent owner role', () => {

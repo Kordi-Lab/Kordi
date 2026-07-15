@@ -13,7 +13,7 @@ import {
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
-import { resolveCloudMessageAttachments, uploadCloudFiles } from './cloudAttachments';
+import { cloudMessageAttachmentToMessageAttachment, uploadCloudFiles } from './cloudAttachments';
 import { loadSession } from './session';
 
 const POLL_FALLBACK_MS = 20_000;
@@ -27,6 +27,43 @@ export type UseCloudConversationResult = {
   refresh(): Promise<void>;
 };
 
+function mergeCloudConversationAttachments(
+  current: CloudMessage['attachments'],
+  incoming: CloudMessage['attachments'],
+): CloudMessage['attachments'] {
+  if (incoming === undefined) return current;
+  const currentById = new Map((current ?? []).map((attachment) => [attachment.attachmentId, attachment]));
+  return incoming.map((attachment) => {
+    const previous = currentById.get(attachment.attachmentId);
+    return {
+      ...previous,
+      ...attachment,
+      localPath: attachment.localPath ?? previous?.localPath ?? null,
+    };
+  });
+}
+
+export function mergeCloudConversationSnapshot(
+  current: readonly CloudMessage[],
+  incoming: readonly CloudMessage[],
+): CloudMessage[] {
+  const byMessageId = new Map(current.map((message) => [message.messageId, message]));
+  for (const message of incoming) {
+    const previous = byMessageId.get(message.messageId);
+    byMessageId.set(message.messageId, previous
+      ? {
+          ...previous,
+          ...message,
+          attachments: mergeCloudConversationAttachments(previous.attachments, message.attachments),
+        }
+      : message);
+  }
+  return [...byMessageId.values()].sort((left, right) => (
+    left.createdAt.localeCompare(right.createdAt)
+    || left.messageId.localeCompare(right.messageId)
+  ));
+}
+
 export function useCloudConversation(
   account: CloudAccount | null,
   peerAccountId: string | null,
@@ -37,7 +74,8 @@ export function useCloudConversation(
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
-  const tokenRef = useRef<string | null>(null);
+  const conversationKey = account && peerAccountId ? `${account.accountId}\u001f${peerAccountId}` : '';
+  const conversationKeyRef = useRef(conversationKey);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -46,17 +84,17 @@ export function useCloudConversation(
     };
   }, []);
 
+  useEffect(() => {
+    conversationKeyRef.current = conversationKey;
+    setMessages([]);
+    setLoading(false);
+    setError(null);
+  }, [conversationKey]);
+
   // Merge an incoming message into the list, dedupe by messageId,
   // and keep the list sorted by created_at.
   const mergeMessage = useCallback((msg: CloudMessage) => {
-    setMessages((prev) => {
-      if (prev.some((existing) => existing.messageId === msg.messageId)) {
-        return prev;
-      }
-      const next = [...prev, msg];
-      next.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      return next;
-    });
+    setMessages((previous) => mergeCloudConversationSnapshot(previous, [msg]));
   }, []);
 
   const fetchMessages = useCallback(async () => {
@@ -64,28 +102,28 @@ export function useCloudConversation(
       setMessages([]);
       return;
     }
+    const requestConversationKey = conversationKey;
     const session = await loadSession();
-    tokenRef.current = session?.token ?? null;
-    if (!session?.token) return;
+    if (!session?.token || conversationKeyRef.current !== requestConversationKey) return;
     setLoading(true);
     setError(null);
     try {
       const list = await client.listMessages(session.token, peerAccountId);
-      const resolvedList = await Promise.all(list.map(async (message) => ({
+      const resolvedList = list.map((message) => ({
         ...message,
         attachments: message.attachments?.length
-          ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+          ? message.attachments.map(cloudMessageAttachmentToMessageAttachment)
           : [],
-      })));
-      if (cancelledRef.current) return;
-      setMessages(resolvedList);
+      }));
+      if (cancelledRef.current || conversationKeyRef.current !== requestConversationKey) return;
+      setMessages((current) => mergeCloudConversationSnapshot(current, resolvedList));
     } catch (err) {
-      if (cancelledRef.current) return;
+      if (cancelledRef.current || conversationKeyRef.current !== requestConversationKey) return;
       setError(err instanceof Error ? err.message : 'Failed to load messages');
     } finally {
-      if (!cancelledRef.current) setLoading(false);
+      if (!cancelledRef.current && conversationKeyRef.current === requestConversationKey) setLoading(false);
     }
-  }, [account, peerAccountId, client]);
+  }, [account, peerAccountId, client, conversationKey]);
 
   // Initial fetch + safety-net poll fallback (in case the WS drops).
   useEffect(() => {
@@ -124,24 +162,21 @@ export function useCloudConversation(
           // Only messages in *this* conversation
           if (from !== peerAccountId && to !== peerAccountId) return;
           const direction = to === account.accountId ? 'incoming' : 'outgoing';
-          void (async () => {
-            const session = await loadSession();
-            const attachments = Array.isArray(payload.attachments) && session?.token
-              ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: payload.attachments })
-              : Array.isArray(payload.attachments) ? payload.attachments : [];
-            mergeMessage({
-              messageId: payload.message_id,
-              fromAccountId: from,
-              toAccountId: to,
-              body: payload.body,
-              createdAt: payload.created_at,
-              deliveredAt: null,
-              readAt: null,
-              direction,
-              attachments,
-              sessionId: typeof payload.session_id === 'string' ? payload.session_id : null,
-            });
-          })();
+          const attachments = Array.isArray(payload.attachments)
+            ? payload.attachments.map(cloudMessageAttachmentToMessageAttachment)
+            : [];
+          mergeMessage({
+            messageId: payload.message_id,
+            fromAccountId: from,
+            toAccountId: to,
+            body: payload.body,
+            createdAt: payload.created_at,
+            deliveredAt: null,
+            readAt: null,
+            direction,
+            attachments,
+            sessionId: typeof payload.session_id === 'string' ? payload.session_id : null,
+          });
         } catch (err) {
           // eslint-disable-next-line no-console
           console.warn('[cloud-ws] frame parse failed', err);

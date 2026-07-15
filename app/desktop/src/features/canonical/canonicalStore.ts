@@ -112,9 +112,10 @@ export function mergeCanonicalMessagePage(store: CanonicalStore, page: Canonical
     },
     hasOlderBySessionId: {
       ...store.hasOlderBySessionId,
-      [sessionId]: page.messages.length === 0 && existing.length > 0
-        ? (store.hasOlderBySessionId[sessionId] ?? page.hasOlder)
-        : page.hasOlder,
+      // An empty page is the authoritative end-of-history result. Keep the
+      // already-loaded rows, but clear stale pagination state so a viewport at
+      // the top cannot request the same empty page forever.
+      [sessionId]: page.hasOlder,
     },
   };
 }
