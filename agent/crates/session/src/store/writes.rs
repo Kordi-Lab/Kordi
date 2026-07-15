@@ -1,10 +1,15 @@
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use kordi_core::types::SessionEntry;
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, ErrorCode, params};
+use std::thread;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use crate::schema;
+
+const SESSION_DB_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+const SESSION_DB_BUSY_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Open or create the sessions database.
 pub(super) fn open_db(path: &std::path::Path) -> Result<Connection> {
@@ -12,9 +17,37 @@ pub(super) fn open_db(path: &std::path::Path) -> Result<Connection> {
         std::fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(path)?;
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-    schema::init_schema(&conn)?;
+    conn.busy_timeout(SESSION_DB_BUSY_TIMEOUT)
+        .context("configuring the session database busy timeout")?;
+    conn.execute_batch("PRAGMA foreign_keys=ON;")
+        .context("enabling session database foreign keys")?;
+    enable_wal_mode(&conn)?;
+    schema::init_schema(&conn).context("initializing the session database schema")?;
     Ok(conn)
+}
+
+fn enable_wal_mode(conn: &Connection) -> Result<()> {
+    let deadline = Instant::now() + SESSION_DB_BUSY_TIMEOUT;
+    loop {
+        match conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get::<_, String>(0)) {
+            Ok(mode) if mode.eq_ignore_ascii_case("wal") => return Ok(()),
+            Ok(mode) => bail!("SQLite refused WAL mode and kept journal mode {mode}"),
+            Err(error) if is_database_contention(&error) && Instant::now() < deadline => {
+                // SQLite can return SQLITE_BUSY immediately while another new
+                // connection is changing journal mode, without invoking the
+                // configured busy handler. Retry within the same bounded wait.
+                thread::sleep(SESSION_DB_BUSY_RETRY_INTERVAL);
+            }
+            Err(error) => return Err(error).context("enabling session database WAL mode"),
+        }
+    }
+}
+
+fn is_database_contention(error: &rusqlite::Error) -> bool {
+    matches!(
+        error.sqlite_error_code(),
+        Some(ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked)
+    )
 }
 
 /// Open an in-memory database (for testing).
