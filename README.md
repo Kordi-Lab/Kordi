@@ -1,102 +1,126 @@
-# Kordi
+<p align="center">
+  <img src=".github/assets/kordi-title.png" width="920" alt="Kordi — Building AI-Native Supercollaboration">
+</p>
 
-Kordi is the desktop product for account-based chats, contacts, groups, and hosted agent execution.
+<p align="center">
+  <strong>Bring people and AI agents into the same conversation.</strong>
+</p>
 
-Primary product pieces:
+<p align="center">
+  Kordi is a macOS-first collaboration workspace where people and their agents share chats, context, and work.
+</p>
 
-- `app/desktop` — macOS desktop application (React + Tauri)
-- `bridges/cloud-server` — hosted API for auth, contacts, chats, sync, read state, and update manifests
-- `bridges/cloud-agent-runner` — hosted agent runner and sandbox execution
-- `agent` — agent/runtime source used by hosted runner integration and internal developer workflows
-- `shared` — shared protocol/type surfaces
+<p align="center">
+  <a href="https://github.com/Kordi-AI/Kordi/actions/workflows/ci.yml"><img src="https://github.com/Kordi-AI/Kordi/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/Kordi-AI/Kordi/releases"><img src="https://img.shields.io/badge/release-beta-111111?style=flat-square" alt="Beta releases"></a>
+  <img src="https://img.shields.io/badge/status-beta-111111?style=flat-square" alt="Beta">
+  <img src="https://img.shields.io/badge/platform-macOS-111111?style=flat-square" alt="macOS">
+</p>
 
-Production API:
+<p align="center">
+  <a href="#why-kordi">Why Kordi</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#how-kordi-works">Architecture</a> ·
+  <a href="#development">Development</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-```text
-https://coordinar.io
+---
+
+## Why Kordi
+
+AI assistants are usually designed as private, one-person tools. Collaboration is not. Real work happens in shared conversations—with teammates, decisions, context, and different agents that can help at the right moment.
+
+Kordi treats AI as a participant in the conversation. People can chat one-to-one or in groups, bring personal agents into the same shared space, and keep the experience synchronized through a native desktop app.
+
+| | |
+| --- | --- |
+| **People and agents, together**<br>Invite an agent into the conversation instead of moving the conversation into a separate AI tool. | **Familiar social primitives**<br>Accounts, contacts, direct chats, groups, unread state, and synchronized history. |
+| **Agent-native groups**<br>Mention your own Kordi agent—or another participant's agent—inside the group where the context already lives. | **Hosted continuity**<br>A hosted API and agent runner keep collaboration and execution available beyond one local process. |
+
+## Quick start
+
+### Try the beta
+
+Kordi is under active development. macOS beta builds are published on the [Releases page](https://github.com/Kordi-AI/Kordi/releases).
+
+### Run from source
+
+You will need:
+
+- macOS with the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) installed
+- Node.js 22+
+- pnpm 10.29.3+
+- a Rust toolchain installed with [`rustup`](https://rustup.rs/)
+
+```bash
+git clone https://github.com/Kordi-AI/Kordi.git
+cd Kordi
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-For development or QA, do **not** use the production server for destructive or load-style testing. Use an operator-provided public test hosted API base, or host your own compatible hosted server:
+Kordi opens in account login mode and uses the production hosted API at `https://coordinar.io` by default.
 
-```text
-<PUBLIC_TEST_CLOUD_API_BASE>
+> [!IMPORTANT]
+> Do not run destructive, load, or throwaway multi-account tests against production. Point development and QA builds at an operator-provided test API or a compatible self-hosted API:
+>
+> ```bash
+> VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
+> ```
+
+For multi-user testing and troubleshooting, see [Run Kordi Desktop](docs/run-cloud-desktop.md).
+
+## How Kordi works
+
+```mermaid
+flowchart LR
+    desktop["Kordi Desktop<br/>React + Tauri"] --> api["Hosted API"]
+    api --> social["Accounts, contacts,<br/>chats, groups & sync"]
+    api --> runner["Hosted agent runner"]
+    runner --> execution["Sandbox, model loop,<br/>tools & artifacts"]
 ```
 
-## Repository layout
+The repository contains the complete product stack:
 
 ```text
 kordi/
-  app/
-    desktop/               # React + Tauri desktop app
-  agent/                   # Agent/runtime source
-  bridges/
-    cloud-server/          # Hosted API
-    cloud-agent-runner/    # Hosted runner/sandbox
-  shared/                  # Shared Rust/TypeScript contracts
-  docs/                    # Product, development, release docs
+  app/desktop/                 # React + Tauri desktop application
+  bridges/cloud-server/        # Auth, chat, sync, and runner coordination API
+  bridges/cloud-agent-runner/  # Hosted agent execution and sandboxing
+  agent/                       # Shared agent/runtime internals
+  shared/                      # Cross-process Rust and TypeScript contracts
+  docs/                        # Architecture, development, and release guides
 ```
 
-## Prerequisites
+Read [Architecture](docs/architecture.md) for the boundaries between the desktop app, hosted services, runner, and shared runtime.
 
-- Node.js 20+
-- `pnpm` 10+
-- Rust toolchain (`rustup`)
+## Development
 
-Install dependencies once:
+Install dependencies once with `pnpm install --frozen-lockfile`, then use the root command surface:
 
-```bash
-cd /path/to/kordi
-pnpm install
-```
+| Task | Command |
+| --- | --- |
+| Start Kordi Desktop | `pnpm dev` |
+| Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev:cloud:multi -- --users user1,user2` |
+| Build the desktop package | `pnpm build:desktop` |
+| Build the web UI | `pnpm build:web` |
+| Lint and typecheck | `pnpm lint && pnpm typecheck:web` |
+| Check the Rust workspace | `pnpm check:rust` |
+| Run the common validation suite | `pnpm check` |
 
-## Development commands
+### Documentation
 
-| Task | Command | Description |
-|------|---------|-------------|
-| Start desktop | `pnpm dev` | Opens the desktop app. Defaults to the production origin unless `VITE_KORDI_CLOUD_API_BASE` is set. |
-| Start desktop explicitly | `pnpm dev:cloud` | Same product path as `pnpm dev`. |
-| Start multiple users | `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev:cloud:multi -- --users user1,user2` | Multi-window sync/contact/group testing against a test or self-hosted API. |
-| Build desktop | `pnpm build:desktop` | Builds the desktop package. |
-| Build web UI | `pnpm build:web` | Builds the browser-targeted frontend bundle. |
-| Lint desktop app | `pnpm lint` | Runs the desktop frontend linter. |
-| Check Rust workspace | `pnpm check:rust` | Verifies Rust crates. |
-| Common validation | `pnpm check` | Runs the standard lint + typecheck + Rust validation pass. |
+| Guide | What it covers |
+| --- | --- |
+| [Run Kordi Desktop](docs/run-cloud-desktop.md) | Local startup, API selection, multi-user testing, and troubleshooting |
+| [Development commands](docs/development.md) | Full command map and package-specific workflows |
+| [Architecture](docs/architecture.md) | Product topology and layer responsibilities |
+| [Hosted cloud guide](docs/hosted-cloud-developer-guide.md) | Hosted testing, deployment, and redaction rules |
+| [Release guide](docs/release.md) | Desktop packaging and release responsibilities |
 
-## Responsibilities by directory
+## Contributing
 
-### `app/desktop`
+Contributions start with a GitHub issue and land through a reviewed pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch workflow, validation commands, and PR checklist.
 
-Owns the product UI, native Tauri shell, desktop packaging, account/login surface, chats, contacts, groups, and sync integration.
-
-See [app/desktop/README.md](app/desktop/README.md).
-
-### `bridges/cloud-server`
-
-Owns the hosted API used by the desktop product: account auth, contacts, direct/group messages, read state, sync, provider-auth snapshots, update manifests, and runner coordination.
-
-### `bridges/cloud-agent-runner`
-
-Owns hosted fallback execution, model loop integration, sandbox tool policy, and artifact export.
-
-### `agent`
-
-Owns agent/runtime internals shared with hosted runner integration and internal local developer workflows.
-
-### `shared`
-
-Owns Rust/TypeScript contracts that cross process or package boundaries.
-
-## Documentation map
-
-- [docs/development.md](docs/development.md) — development command map
-- [docs/run-cloud-desktop.md](docs/run-cloud-desktop.md) — Kordi Desktop quick start
-- [docs/hosted-cloud-developer-guide.md](docs/hosted-cloud-developer-guide.md) — Hosted testing/deployment guidance and redaction rules
-- [docs/cloud-edition.md](docs/cloud-edition.md) — hosted architecture and runtime notes
-- [docs/release.md](docs/release.md) — packaging and release responsibilities
-- [app/desktop/README.md](app/desktop/README.md) — desktop app responsibilities and entrypoints
-
-## Notes
-
-- Production builds use `https://coordinar.io` as the product hosted API origin.
-- Hosted/dev runs must set `VITE_KORDI_CLOUD_API_BASE` explicitly, for example `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted server.
-- Do not commit auth tokens, provider tokens, account secrets, database credentials, or private operator infrastructure details.
+Kordi currently targets macOS and is in beta. Product behavior, hosted interfaces, and contributor workflows may evolve as the project approaches a stable release.
