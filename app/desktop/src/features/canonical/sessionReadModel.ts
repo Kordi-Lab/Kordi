@@ -60,7 +60,9 @@ type CanonicalConversationLike = {
 };
 
 function messageResponseText(message: Message) {
-  return (message.turn?.assistantText ?? message.text).trim();
+  return message.turn?.assistantText.trim()
+    || message.turn?.error?.trim()
+    || message.text.trim();
 }
 
 function comparableAgentResponseText(value: string) {
@@ -73,6 +75,146 @@ function sameAgentResponseText(left: string, right: string) {
   if (!leftTrimmed || !rightTrimmed) return false;
   return leftTrimmed === rightTrimmed
     || comparableAgentResponseText(leftTrimmed) === comparableAgentResponseText(rightTrimmed);
+}
+
+function runtimeTranscriptAnchorKey(message: Message) {
+  const text = messageResponseText(message).replace(/\s+/gu, ' ').trim().toLowerCase();
+  if (!text) return null;
+  return [message.role, message.time.trim(), text].join('\u0000');
+}
+
+function firstIndexGreaterThan(sortedValues: readonly number[], target: number) {
+  let low = 0;
+  let high = sortedValues.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (sortedValues[middle] <= target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function firstUnusedCanonicalIndex(
+  candidates: readonly number[],
+  startIndex: number,
+  usedCanonicalIndexes: ReadonlySet<number>,
+) {
+  for (let index = startIndex; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    if (!usedCanonicalIndexes.has(candidate)) return { candidate, nextCursor: index + 1 };
+  }
+  return null;
+}
+
+export function mergeCanonicalHistoryIntoRuntime(
+  canonicalMessages: Message[],
+  runtimeMessages: Message[],
+) {
+  const runtimeMessageIds = new Set(runtimeMessages.flatMap((message) => (
+    [message.id, message.entryId].filter((value): value is string => Boolean(value?.trim()))
+  )));
+
+  const canonicalIndexesById = new Map<string, number>();
+  const canonicalIndexesByAnchor = new Map<string, number[]>();
+  canonicalMessages.forEach((message, canonicalIndex) => {
+    if (message.messageAction?.kind === 'forward') return;
+    for (const id of [message.id, message.entryId]) {
+      if (id?.trim()) canonicalIndexesById.set(id, canonicalIndex);
+    }
+    const anchorKey = runtimeTranscriptAnchorKey(message);
+    if (!anchorKey) return;
+    const indexes = canonicalIndexesByAnchor.get(anchorKey);
+    if (indexes) indexes.push(canonicalIndex);
+    else canonicalIndexesByAnchor.set(anchorKey, [canonicalIndex]);
+  });
+
+  const usedCanonicalIndexes = new Set<number>();
+  const fallbackCursorByAnchor = new Map<string, number>();
+  let lastCanonicalIndex = -1;
+  const runtimeAnchorIndexes = runtimeMessages.map((message) => {
+    let stableMatch: number | undefined;
+    for (const id of [message.id, message.entryId]) {
+      const canonicalIndex = id?.trim() ? canonicalIndexesById.get(id) : undefined;
+      if (canonicalIndex !== undefined && !usedCanonicalIndexes.has(canonicalIndex)) {
+        stableMatch = canonicalIndex;
+        break;
+      }
+    }
+    const anchorKey = runtimeTranscriptAnchorKey(message);
+    const candidates = anchorKey ? canonicalIndexesByAnchor.get(anchorKey) ?? [] : [];
+    const preferredMatch = stableMatch === undefined
+      ? firstUnusedCanonicalIndex(
+          candidates,
+          firstIndexGreaterThan(candidates, lastCanonicalIndex),
+          usedCanonicalIndexes,
+        )
+      : null;
+    const fallbackMatch = stableMatch !== undefined || preferredMatch || !anchorKey
+      ? null
+      : firstUnusedCanonicalIndex(
+          candidates,
+          fallbackCursorByAnchor.get(anchorKey) ?? 0,
+          usedCanonicalIndexes,
+        );
+    if (anchorKey && fallbackMatch) fallbackCursorByAnchor.set(anchorKey, fallbackMatch.nextCursor);
+    const canonicalIndex = stableMatch
+      ?? preferredMatch?.candidate
+      ?? fallbackMatch?.candidate
+      ?? null;
+    if (canonicalIndex === null) return null;
+    usedCanonicalIndexes.add(canonicalIndex);
+    if (canonicalIndex > lastCanonicalIndex) lastCanonicalIndex = canonicalIndex;
+    return canonicalIndex;
+  });
+
+  const overlayMessages = canonicalMessages
+    .map((message, canonicalIndex) => ({ message, canonicalIndex }))
+    .filter(({ message, canonicalIndex }) => (
+      !usedCanonicalIndexes.has(canonicalIndex)
+      && ![message.id, message.entryId].some((value) => Boolean(value && runtimeMessageIds.has(value)))
+    ));
+  if (overlayMessages.length === 0) return runtimeMessages;
+  if (runtimeMessages.length === 0) return overlayMessages.map(({ message }) => message);
+
+  const canonicalBeforeRuntimeIndex = Array.from(
+    { length: runtimeMessages.length + 1 },
+    () => [] as Message[],
+  );
+  const matchedAnchors = runtimeAnchorIndexes.flatMap((canonicalIndex, runtimeIndex) => (
+    canonicalIndex === null ? [] : [{ canonicalIndex, runtimeIndex }]
+  )).sort((left, right) => left.canonicalIndex - right.canonicalIndex);
+  const matchedCanonicalIndexes = matchedAnchors.map((anchor) => anchor.canonicalIndex);
+  const prefixLatestRuntimeIndex = matchedAnchors.map((anchor) => anchor.runtimeIndex);
+  for (let index = 1; index < prefixLatestRuntimeIndex.length; index += 1) {
+    prefixLatestRuntimeIndex[index] = Math.max(prefixLatestRuntimeIndex[index - 1], prefixLatestRuntimeIndex[index]);
+  }
+  const suffixEarliestRuntimeIndex = matchedAnchors.map((anchor) => anchor.runtimeIndex);
+  for (let index = suffixEarliestRuntimeIndex.length - 2; index >= 0; index -= 1) {
+    suffixEarliestRuntimeIndex[index] = Math.min(suffixEarliestRuntimeIndex[index], suffixEarliestRuntimeIndex[index + 1]);
+  }
+  const unmatchedRuntimeIndexes = runtimeAnchorIndexes.flatMap((canonicalIndex, runtimeIndex) => (
+    canonicalIndex === null ? [runtimeIndex] : []
+  ));
+  for (const { message, canonicalIndex } of overlayMessages) {
+    const nextAnchorPosition = firstIndexGreaterThan(matchedCanonicalIndexes, canonicalIndex);
+    const nextRuntimeIndex = suffixEarliestRuntimeIndex[nextAnchorPosition];
+    if (nextRuntimeIndex !== undefined) {
+      canonicalBeforeRuntimeIndex[nextRuntimeIndex].push(message);
+      continue;
+    }
+
+    const lastEarlierRuntimeIndex = nextAnchorPosition > 0
+      ? prefixLatestRuntimeIndex[nextAnchorPosition - 1]
+      : -1;
+    const unmatchedPosition = firstIndexGreaterThan(unmatchedRuntimeIndexes, lastEarlierRuntimeIndex);
+    const targetIndex = unmatchedRuntimeIndexes[unmatchedPosition] ?? runtimeMessages.length;
+    canonicalBeforeRuntimeIndex[targetIndex].push(message);
+  }
+
+  return runtimeMessages.flatMap((message, runtimeIndex) => [
+    ...canonicalBeforeRuntimeIndex[runtimeIndex],
+    message,
+  ]).concat(canonicalBeforeRuntimeIndex[runtimeMessages.length]);
 }
 
 function comparableToolSignature(message: Message) {
@@ -400,7 +542,7 @@ export function createCanonicalSessionReadModel(
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
       const messages = conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
-        ? conversation.messages
+        ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
         : (isBridgePersonSession || isBridgeSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
         ? isChatCreatedDirectAgent
           ? canonicalMessages

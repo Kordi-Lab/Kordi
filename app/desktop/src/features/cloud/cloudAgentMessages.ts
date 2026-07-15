@@ -1,4 +1,6 @@
 import type { CloudAccount, CloudMessage } from './authClient';
+import { cloudMessageActionAllowsAgentContext } from './cloudAgentTriggerPolicy';
+import { cloudDirectMessageAction, cloudDirectMessageDisplayText } from './cloudDirectMessages';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
 
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
@@ -269,7 +271,7 @@ export function cloudAgentNativeContextMessagesFromDirectCloudSession({
   localAgentName = 'My Kordi',
   peerAgentName = "Peer's Kordi",
 }: {
-  messages: CloudMessage[];
+  messages: readonly CloudMessage[];
   requestMessage: CloudMessage;
   localAccountId: string;
   localHumanName?: string;
@@ -282,8 +284,9 @@ export function cloudAgentNativeContextMessagesFromDirectCloudSession({
   return sorted
     .filter((message) => message.messageId !== requestMessage.messageId)
     .filter((message) => cloudMessageCreatedAtMs(message) <= requestCreatedAtMs)
+    .filter((message) => cloudMessageActionAllowsAgentContext(cloudDirectMessageAction(message.body)))
     .flatMap((message) => {
-      const text = cloudContextMessageText(message);
+      const text = cloudContextMessageText({ ...message, body: cloudDirectMessageDisplayText(message.body) });
       if (!text) return [];
       const isLocal = message.fromAccountId === localAccountId;
       const isAgentResponse = Boolean(parseCloudAgentResponse(message.body));

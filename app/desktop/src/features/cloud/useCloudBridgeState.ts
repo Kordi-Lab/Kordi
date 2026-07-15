@@ -141,6 +141,7 @@ import {
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
   cloudDirectMessageTargetsOwnedHostedCloudAgent,
 } from './cloudDirectMessages';
+import { cloudMessageActionAllowsAgentContext, cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 import {
   uploadComposerAttachments,
   cloudMessageAttachmentToMessageAttachment,
@@ -945,6 +946,7 @@ export function shouldRunLocalCloudAgentForCloudMessage({
   if (peerId === account.accountId) return false;
   if (message.fromAccountId !== account.accountId && message.toAccountId !== account.accountId) return false;
   if ((isGroupControl ?? Boolean(parseCloudGroupControl(message.body))) || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) return false;
+  if (!cloudMessageActionAllowsAgentTrigger(cloudDirectMessageAction(message.body))) return false;
   const targetsHostedCloudAgent = cloudDirectMessageTargetsOwnedHostedCloudAgent(message.body, account.accountId);
   if (!targetsHostedCloudAgent && !cloudMessageMentionsLocalAgent(message.body, account, {
     allowFirstPerson: message.fromAccountId === account.accountId,
@@ -977,11 +979,13 @@ function cloudFallbackHistoryLine({
   ownerAccountId: string;
 }): string | null {
   if (isGroupControl || parseCloudAgentCancel(message.body)) return null;
+  if (!cloudMessageActionAllowsAgentContext(cloudDirectMessageAction(message.body))) return null;
   const agentResponse = parseCloudAgentResponse(message.body);
+  const displayBody = cloudDirectMessageDisplayText(message.body);
   const text = agentResponse?.text
-    ?? (message.fromAccountId === account.accountId && cloudMessageMentionsContactAgent(message, contact)
-      ? promptTextForCloudAgentMention(message.body)
-      : message.body);
+    ?? (message.fromAccountId === account.accountId && cloudMessageMentionsContactAgent({ ...message, body: displayBody }, contact)
+      ? promptTextForCloudAgentMention(displayBody)
+      : displayBody);
   const cleanText = text.trim();
   if (!cleanText) return null;
   const peerName = cloudFallbackHistoryParticipantName(contact, ownerAccountId);
@@ -1008,7 +1012,7 @@ function cloudFallbackRunPromptForMessage({
   peerMessages: readonly CloudMessage[];
   groupControlMessageIds: ReadonlySet<string>;
 }): string {
-  const currentPrompt = promptTextForCloudAgentMention(message.body);
+  const currentPrompt = promptTextForCloudAgentMention(cloudDirectMessageDisplayText(message.body));
   const requestIndex = peerMessages.findIndex((candidate) => candidate.messageId === message.messageId);
   const previousMessages = (requestIndex >= 0 ? peerMessages.slice(0, requestIndex) : peerMessages)
     .filter((candidate) => candidate.messageId !== message.messageId);
@@ -1029,6 +1033,7 @@ function cloudFallbackRunPromptForMessage({
 function cloudGroupFallbackHistoryLine(envelope: CloudGroupControlEnvelope): string | null {
   if (envelope.kind !== 'group-message' || !envelope.message) return null;
   const message = envelope.message;
+  if (!cloudMessageActionAllowsAgentContext(message.messageAction)) return null;
   if (message.deliveryState === 'processing' || isCloudAgentProcessingPlaceholderText(message.text)) return null;
   const text = message.senderKind === 'agent' ? message.text.trim() : promptTextForCloudAgentMention(message.text).trim();
   if (!text) return null;
@@ -1060,6 +1065,7 @@ function cloudGroupFallbackRunPromptForMessage({
       if (envelope.message.id === requestMessageId) return [];
       if (envelope.message.createdAtMs > requestCreatedAtMs) return [];
       if (envelope.message.forkSnapshot === true) return [];
+      if (!cloudMessageActionAllowsAgentContext(envelope.message.messageAction)) return [];
       if (seenMessageIds.has(envelope.message.id)) return [];
       seenMessageIds.add(envelope.message.id);
       const line = cloudGroupFallbackHistoryLine(envelope);
@@ -1114,6 +1120,7 @@ export function cloudFallbackRunClaimsForMessages({
       const groupEnvelope = groupRowByWireMessageId.get(message.messageId)?.envelope;
       if (groupEnvelope?.kind === 'group-message' && groupEnvelope.message?.senderAccountId === account.accountId) {
         const groupMessage = groupEnvelope.message;
+        if (!cloudMessageActionAllowsAgentTrigger(groupMessage.messageAction)) continue;
         const groupRequestMessage = { ...message, body: groupMessage.text };
         if (!cloudMessageMentionsContactAgent(groupRequestMessage, contact)) continue;
         const alreadyTerminal = terminalGroupResponseKeys.has(`${groupEnvelope.groupId}\u0000${ownerAccountId}\u0000${groupMessage.id}`);
@@ -1135,6 +1142,7 @@ export function cloudFallbackRunClaimsForMessages({
         continue;
       }
       if (groupEnvelope || parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
+      if (!cloudMessageActionAllowsAgentTrigger(cloudDirectMessageAction(message.body))) continue;
       const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
       const targetsHostedCloudAgent = targetCloudAgentId && cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body) === ownerAccountId;
       if (!targetsHostedCloudAgent && !cloudMessageMentionsContactAgent(message, contact)) continue;
@@ -1148,12 +1156,9 @@ export function cloudFallbackRunClaimsForMessages({
         prompt: cloudFallbackRunPromptForMessage({
           account,
           contact,
-          message: { ...message, body: cloudDirectMessageDisplayText(message.body) },
+          message,
           ownerAccountId,
-          peerMessages: peerMessages.map((peerMessage) => ({
-            ...peerMessage,
-            body: cloudDirectMessageDisplayText(peerMessage.body),
-          })),
+          peerMessages,
           groupControlMessageIds,
         }),
         idempotencyKey: `cloud-agent-fallback:${message.messageId}:${ownerAccountId}`,
@@ -1169,7 +1174,23 @@ function isCloudAgentProcessingPlaceholderText(text: string): boolean {
   return /^processing[.\s…]*$/iu.test(text.trim());
 }
 
-function cloudGroupNativeContextMessages({
+export function cloudGroupMessageTargetsLocalAgent(
+  message: NonNullable<CloudGroupControlEnvelope['message']>,
+  account: CloudAccount,
+): boolean {
+  if (message.forkSnapshot === true || !cloudMessageActionAllowsAgentTrigger(message.messageAction)) return false;
+  const targetsOwnedHostedCloudAgent = Boolean(
+    cleanText(message.targetCloudAgentId).startsWith('cloud_agent_')
+    && cleanText(message.targetCloudAgentOwnerAccountId) === account.accountId,
+  );
+  return targetsOwnedHostedCloudAgent || cloudMessageMentionsLocalAgent(
+    message.text,
+    account,
+    { allowFirstPerson: message.senderAccountId === account.accountId },
+  );
+}
+
+export function cloudGroupNativeContextMessages({
   groupRows,
   groupId,
   requestMessageId,
@@ -1186,6 +1207,7 @@ function cloudGroupNativeContextMessages({
     if (message.id === requestMessageId) return [];
     if (message.createdAtMs > requestCreatedAtMs) return [];
     if (message.forkSnapshot === true) return [];
+    if (!cloudMessageActionAllowsAgentContext(message.messageAction)) return [];
     if (message.deliveryState === 'processing' || isCloudAgentProcessingPlaceholderText(message.text)) return [];
     const text = message.text.trim();
     if (!text) return [];
@@ -3482,21 +3504,7 @@ export function useCloudBridgeState({
       }
     }
 
-    const groupMessageIsOwn = envelope.message.senderAccountId === account.accountId;
-    const targetCloudAgentId = cleanText(envelope.message.targetCloudAgentId);
-    const targetCloudAgentOwnerAccountId = cleanText(envelope.message.targetCloudAgentOwnerAccountId);
-    const groupMessageTargetsOwnedHostedCloudAgent = Boolean(
-      targetCloudAgentId.startsWith('cloud_agent_')
-      && targetCloudAgentOwnerAccountId === account.accountId,
-    );
-    const groupMessageMentionsLocalAgent = envelope.message.forkSnapshot === true ? false : (
-      groupMessageTargetsOwnedHostedCloudAgent
-      || cloudMessageMentionsLocalAgent(
-        envelope.message.text,
-        account,
-        { allowFirstPerson: groupMessageIsOwn },
-      )
-    );
+    const groupMessageMentionsLocalAgent = cloudGroupMessageTargetsLocalAgent(envelope.message, account);
     if (
       !senderIsAgent
       && groupMessageMentionsLocalAgent
@@ -4292,13 +4300,12 @@ export function useCloudBridgeState({
           const activitySessionId = message.sessionId ?? cloudSessionIdForBridgeSend(account.accountId, peerId, `cloud:${peerId}`);
           const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
           const directDisplayMessage = { ...message, body: cloudDirectMessageDisplayText(message.body) };
-          const directDisplayMessages = messages.map((peerMessage) => ({ ...peerMessage, body: cloudDirectMessageDisplayText(peerMessage.body) }));
           const prompt = promptTextForCloudAgentMention(directDisplayMessage.body);
           const contextMessages = [
             ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[targetCloudAgentId ?? ''] ?? null),
             ...cloudAgentNativeContextMessagesFromDirectCloudSession({
-              messages: directDisplayMessages,
-              requestMessage: directDisplayMessage,
+              messages,
+              requestMessage: message,
               localAccountId: account.accountId,
               localHumanName: account.displayName || account.primaryEmail || 'Me',
               peerHumanName,

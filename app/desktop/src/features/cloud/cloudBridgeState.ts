@@ -49,6 +49,7 @@ import {
   cloudDirectMessageTargetCloudAgentName,
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
 } from './cloudDirectMessages';
+import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 
 const CLOUD_SERVER_LABEL = 'kordi.cloud';
 export const CLOUD_DIRECT_AGENT_OFFLINE_TIMEOUT_MS = 15_000;
@@ -249,7 +250,7 @@ export function cloudMessageToBridgeMessage(
   const displayText = agentResponse?.text ?? cloudDirectMessageDisplayText(message.body);
   const isOwn = message.fromAccountId === account.accountId;
   const displayBody = cloudDirectMessageDisplayText(message.body);
-  const agentRequestId = !agentResponse && (
+  const agentRequestId = !agentResponse && cloudMessageActionAllowsAgentTrigger(directMessageAction) && (
     Boolean(cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body))
     || cloudMessageMentionsLocalAgent(displayBody, account, { allowFirstPerson: isOwn })
     || cloudMessageMentionsContactAgent({ ...message, body: displayBody }, contact)
@@ -605,6 +606,7 @@ export function buildCloudBridgeConversation({
   for (const message of messages) {
     if (cloudMessageIsGroupControl(message, groupControlMessageIds)) continue;
     if (parseCloudAgentResponse(message.body) || parseCloudAgentCancel(message.body)) continue;
+    if (!cloudMessageActionAllowsAgentTrigger(cloudDirectMessageAction(message.body))) continue;
     const displayBody = cloudDirectMessageDisplayText(message.body);
     const directTargetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
     const directTargetOwnerAccountId = directTargetCloudAgentId

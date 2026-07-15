@@ -8,10 +8,10 @@ import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActi
 import { activeConversationForSelection, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
 import { restoredCloudSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
-import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+import { createCanonicalSessionReadModel, mergeCanonicalHistoryIntoRuntime } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import type { CanonicalSessionState } from '../src/kordi-app/types';
+import type { CanonicalSessionState, Message } from '../src/kordi-app/types';
 
 test('canonical hydration strips persisted derived cloud unread counts', () => {
   const state: CanonicalSessionState = {
@@ -240,6 +240,36 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
             sourceEventId: 'old-agent',
           },
           {
+            id: 'msg:forward:display-only',
+            sessionId: 'local-runtime-session',
+            senderIdentityId: 'human:me',
+            senderRole: 'user',
+            messageKind: 'text',
+            contentText: '@MyKordi forwarded context',
+            content: {
+              sender: 'Me',
+              timeLabel: '14:51',
+              messageAction: {
+                schemaVersion: 1,
+                kind: 'forward',
+                source: {
+                  sourceSessionId: 'session:source',
+                  sourceMessageId: 'msg:source',
+                  senderLabel: 'Me',
+                  textPreview: '@MyKordi forwarded context',
+                  attachmentCount: 0,
+                },
+              },
+            },
+            status: 'sent',
+            sequenceNum: 3,
+            createdAtMs: 3,
+            updatedAtMs: 3,
+            contentHash: null,
+            sourceTransport: 'desktop-forward',
+            sourceEventId: 'desktop-forward:display-only',
+          },
+          {
             id: 'msg:ui:stale-sending',
             sessionId: 'local-runtime-session',
             senderIdentityId: 'human:me',
@@ -248,12 +278,67 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
             contentText: 'hihi',
             content: { sender: 'Me', timeLabel: '14:52', deliveryState: 'sending' },
             status: 'sending',
-            sequenceNum: 3,
-            createdAtMs: 3,
-            updatedAtMs: 3,
+            sequenceNum: 4,
+            createdAtMs: 4,
+            updatedAtMs: 4,
             contentHash: null,
             sourceTransport: 'desktop-chat-ui',
             sourceEventId: 'desktop-chat-ui:local-runtime-session:3',
+          },
+          {
+            id: 'msg:runtime:assistant-response',
+            sessionId: 'local-runtime-session',
+            senderIdentityId: 'agent:me',
+            senderRole: 'owned-agent',
+            messageKind: 'agent-turn',
+            contentText: 'Hi! How can I help?',
+            content: { sender: 'My Kordi', timeLabel: '14:53', deliveryState: 'complete' },
+            status: 'complete',
+            sequenceNum: 5,
+            createdAtMs: 5,
+            updatedAtMs: 5,
+            contentHash: null,
+            sourceTransport: 'desktop-chat',
+            sourceEventId: 'desktop-chat:local-runtime-session:4',
+          },
+          {
+            id: 'msg:ui:no-provider-user',
+            sessionId: 'local-runtime-session',
+            senderIdentityId: 'human:me',
+            senderRole: 'user',
+            messageKind: 'text',
+            contentText: 'offline hi',
+            content: { sender: 'Me', timeLabel: '14:54', deliveryState: 'sent' },
+            status: 'sent',
+            sequenceNum: 6,
+            createdAtMs: 6,
+            updatedAtMs: 6,
+            contentHash: null,
+            sourceTransport: 'desktop-chat-ui',
+            sourceEventId: 'desktop-chat-ui:local-runtime-session:5',
+          },
+          {
+            id: 'msg:ui:no-provider-error',
+            sessionId: 'local-runtime-session',
+            senderIdentityId: 'agent:me',
+            senderRole: 'owned-agent',
+            messageKind: 'agent-turn',
+            contentText: '',
+            content: {
+              sender: 'My Kordi',
+              timeLabel: '14:54',
+              deliveryState: 'failed',
+              error: 'No provider configured yet.',
+              replyToMessageId: 'msg:ui:no-provider-user',
+            },
+            parentMessageId: 'msg:ui:no-provider-user',
+            status: 'failed',
+            sequenceNum: 7,
+            createdAtMs: 7,
+            updatedAtMs: 7,
+            contentHash: null,
+            sourceTransport: 'desktop-chat-ui',
+            sourceEventId: 'desktop-chat-ui:local-runtime-session:6',
           },
         ],
         delegatedExchanges: [],
@@ -290,11 +375,63 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
 
   assert.equal(viewModels?.activeConv.desktopRuntimeBacked, true);
   assert.equal(viewModels?.activeConv.desktopRuntimeTranscriptLoaded, true);
-  assert.deepEqual(viewModels?.activeConv.messages.map((message) => message.text), [
+  assert.deepEqual(viewModels?.activeConv.messages.map((message) => message.turn?.assistantText || message.turn?.error || message.text), [
+    'older question',
+    'older answer',
+    '@MyKordi forwarded context',
     'hihi',
     'Hi! How can I help?',
+    'offline hi',
+    'No provider configured yet.',
   ]);
   assert.notEqual(viewModels?.activeConv.subtitle, 'Loading chat history…');
+});
+
+test('runtime transcript reconciliation renders one failure when canonical and desktop rows encode it differently', () => {
+  const failure = 'ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.';
+  const canonicalFailure: Message = {
+    id: 'canonical-provider-failure',
+    role: 'owned-agent',
+    text: '',
+    time: '17:30',
+    turn: {
+      id: 'canonical-turn:provider-failure',
+      sessionId: 'session:test',
+      prompt: '',
+      status: 'complete',
+      message: 'Complete',
+      assistantText: failure,
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: true,
+      error: null,
+    },
+  };
+  const runtimeFailure: Message = {
+    id: 'runtime-provider-failure',
+    role: 'owned-agent',
+    text: failure,
+    time: '17:30',
+    turn: {
+      id: 'runtime-turn:provider-failure',
+      sessionId: 'session:test',
+      prompt: '',
+      status: 'failed',
+      message: 'Request failed',
+      assistantText: '',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: false,
+      error: failure,
+    },
+  };
+
+  const merged = mergeCanonicalHistoryIntoRuntime([canonicalFailure], [runtimeFailure]);
+
+  assert.deepEqual(merged.map((message) => message.id), ['runtime-provider-failure']);
+  assert.equal(shouldUseCanonicalMessages([runtimeFailure], [canonicalFailure]), false);
 });
 
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
@@ -839,6 +976,26 @@ test('restored Cloud self-agent messages are sent as native context for continue
         completed: true,
         succeeded: true,
         error: null,
+      },
+    },
+    {
+      id: 'msg:cloud:self:legacy-forward',
+      role: 'user',
+      sender: 'Me',
+      senderType: 'human',
+      text: '@MyKordi this copied mention is display-only',
+      time: '14:32',
+      isOwnMessage: true,
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'forward',
+        source: {
+          sourceSessionId: 'session:source',
+          sourceMessageId: 'msg:source',
+          senderLabel: 'Me',
+          textPreview: '@MyKordi this copied mention is display-only',
+          attachmentCount: 0,
+        },
       },
     },
     {

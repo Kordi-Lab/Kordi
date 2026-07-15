@@ -590,6 +590,7 @@ function cloudSelfAgentMessageId(message: Message): string | null {
 
 export function restoredCloudSelfAgentContextMessages(messages: readonly Message[]): DesktopChatContextMessage[] {
   return messages.flatMap((message) => {
+    if (message.messageAction?.kind === 'forward') return [];
     const id = cloudSelfAgentMessageId(message);
     const text = messageContextText(message);
     if (!id || !text) return [];

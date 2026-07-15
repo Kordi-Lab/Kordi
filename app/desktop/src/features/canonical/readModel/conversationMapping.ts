@@ -13,7 +13,9 @@ import { stringValue } from './messageMapping';
 export type ConversationSubtitleBuilder = (messages: Message[], fallback?: string) => string;
 
 function messageResponseText(message: Message) {
-  return (message.turn?.assistantText ?? message.text).trim();
+  return message.turn?.assistantText.trim()
+    || message.turn?.error?.trim()
+    || message.text.trim();
 }
 
 function normalizedMessageResponseText(message: Message) {

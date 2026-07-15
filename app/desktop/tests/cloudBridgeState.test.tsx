@@ -17,7 +17,7 @@ import {
 } from '../src/features/cloud/cloudBridgeState';
 import { mapBridgeConversationToViewModel } from '../src/features/bridge/transcript';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
-import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
+import { encodeCloudDirectMessageEnvelope, parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { cloudGroupForkPayloadFromSessionMetadata, cloudGroupParticipantsWithProfiles, encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { sharedCloudAgentMentionCandidatesForConversation } from '../src/features/chat/messageActions/mentions';
@@ -29,6 +29,8 @@ import {
   cloudGroupAgentProcessingMessageForRequest,
   cloudGroupAgentProcessingSlotForResponse,
   cloudGroupIncomingMessageAlreadyApplied,
+  cloudGroupMessageTargetsLocalAgent,
+  cloudGroupNativeContextMessages,
   optimisticCloudAgentCancelMessage,
   cloudSelfAgentDerivedSyncedStatusBySessionId,
   planCloudSelfAgentSync,
@@ -54,6 +56,7 @@ import {
   cloudFallbackRunClaimsForMessages,
 } from '../src/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
+import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
 import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
 import type { CanonicalSessionMessage, CanonicalSessionState, DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 
@@ -79,14 +82,14 @@ test('direct Cloud forwarded envelopes survive bridge transcript mapping', () =>
     sourceSessionId: 'session:source',
     sourceMessageId: 'msg:source',
     senderLabel: 'Peer Person',
-    textPreview: 'Original message',
+    textPreview: '@MyKordi test',
     attachmentCount: 0,
     timeLabel: '10:42',
   };
   const body = encodeCloudDirectMessageEnvelope({
     schemaVersion: 1,
     kind: 'message',
-    text: 'Original message',
+    text: '@MyKordi test',
     messageAction: {
       schemaVersion: 1,
       kind: 'forward',
@@ -117,8 +120,121 @@ test('direct Cloud forwarded envelopes survive bridge transcript mapping', () =>
   }, undefined, 'Kordi');
 
   assert.equal(bridgeMessage.messageAction?.kind, 'forward');
+  assert.equal(bridgeMessage.requestId, null);
   assert.equal(view.messages[0]?.messageAction?.kind, 'forward');
   assert.equal(view.messages[0]?.messageAction?.source.senderLabel, 'Peer Person');
+});
+
+test('forwarded mentions stay inert across direct execution and pending UI', () => {
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: '@KordiProjectDriver test',
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'forward',
+      source: {
+        sourceSessionId: 'session:source',
+        sourceMessageId: 'msg:source',
+        senderLabel: 'Shu Yang',
+        textPreview: '@KordiProjectDriver test',
+        attachmentCount: 0,
+      },
+    },
+    targetCloudAgentId: 'cloud_agent_project',
+    targetCloudAgentName: 'Kordi Project Driver',
+    targetCloudAgentOwnerAccountId: account.accountId,
+  });
+  const forwardedMessage: CloudMessage = {
+    messageId: 'msg_forwarded_agent_mention',
+    fromAccountId: 'acct_peer',
+    toAccountId: account.accountId,
+    body,
+    createdAt: new Date().toISOString(),
+    deliveredAt: null,
+    readAt: null,
+    direction: 'incoming',
+    sessionId: cloudDirectPersonSessionId(account.accountId, 'acct_peer'),
+    attachments: [],
+  };
+
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: forwardedMessage,
+    peerMessages: [forwardedMessage],
+  }), false);
+
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [forwardedMessage] },
+    activeConversationId: cloudBridgeConversationId('acct_peer', 'person'),
+  });
+  assert.equal(state.conversations[0]?.awaitingReply, false);
+  assert.equal(state.conversations[0]?.outreach, null);
+  assert.equal(state.conversations[0]?.messages.length, 1);
+
+  const outgoingBody = encodeCloudDirectMessageEnvelope({
+    ...parseCloudDirectMessageEnvelope(body)!,
+    targetCloudAgentOwnerAccountId: 'acct_peer',
+  });
+  const outgoingForward = {
+    ...forwardedMessage,
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body: outgoingBody,
+    direction: 'outgoing' as const,
+  };
+  const nextRequest = {
+    ...outgoingForward,
+    messageId: 'msg_after_forward',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '@PeerPersonKordi answer only this',
+      targetCloudAgentId: 'cloud_agent_project',
+      targetCloudAgentName: 'Peer Person Kordi',
+      targetCloudAgentOwnerAccountId: 'acct_peer',
+    }),
+    createdAt: new Date(Date.now() + 1_000).toISOString(),
+  };
+  const claims = cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [outgoingForward, nextRequest] },
+  });
+  assert.equal(claims.length, 1);
+  assert.match(claims[0]?.prompt ?? '', /answer only this/);
+  assert.doesNotMatch(claims[0]?.prompt ?? '', /KordiProjectDriver test/);
+});
+
+test('forwarded group mentions never target a local agent', () => {
+  const forwardedAction = {
+    schemaVersion: 1 as const,
+    kind: 'forward' as const,
+    source: {
+      sourceSessionId: 'session:source',
+      sourceMessageId: 'msg:source',
+      senderLabel: 'Shu Yang',
+      textPreview: '@MyKordi test',
+      attachmentCount: 0,
+    },
+  };
+  assert.equal(cloudGroupMessageTargetsLocalAgent({
+    id: 'msg:forwarded',
+    senderAccountId: account.accountId,
+    text: '@MyKordi test',
+    createdAtMs: Date.now(),
+    messageAction: forwardedAction,
+  }, account), false);
+  assert.equal(cloudGroupMessageTargetsLocalAgent({
+    id: 'msg:quoted',
+    senderAccountId: account.accountId,
+    text: '@MyKordi test',
+    createdAtMs: Date.now(),
+    messageAction: { ...forwardedAction, kind: 'quote' },
+  }, account), true);
 });
 
 test('direct Cloud hosted shared-agent requests and responses keep the shared agent display name', () => {
@@ -3094,6 +3210,86 @@ test('cloud outgoing group remote-agent mentions produce Cloud fallback run clai
     prompt: 'Group chat history:\nThree Person: hii every one\n\nCurrent request:\nsay hello to everyone',
     idempotencyKey: 'cloud-agent-fallback-group:session:group:one:msg:ui:group_request:acct_peer',
   }]);
+});
+
+test('cloud forwarded group mentions do not produce fallback run claims', () => {
+  const groupId = 'session:group:forwarded';
+  const participants = [
+    { accountId: 'acct_me', displayName: 'Me Cloud', avatarUrl: null, role: 'admin' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' as const },
+  ];
+  const requestBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId,
+    groupSpaceId: groupId,
+    groupTitle: null,
+    createdByAccountId: 'acct_me',
+    actor: participants[0],
+    participants,
+    message: {
+      id: 'msg:ui:group_forwarded_request',
+      senderAccountId: 'acct_me',
+      text: '@PeerPersonKordi test',
+      createdAtMs: 2_000,
+      senderKind: 'human',
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'forward',
+        source: {
+          sourceSessionId: 'session:source',
+          sourceMessageId: 'msg:source',
+          senderLabel: 'Shu Yang',
+          textPreview: '@PeerPersonKordi test',
+          attachmentCount: 0,
+        },
+      },
+    },
+  });
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_group_forwarded_cloud_row',
+    fromAccountId: 'acct_me',
+    toAccountId: 'acct_peer',
+    body: requestBody,
+    direction: 'outgoing',
+    sessionId: groupId,
+  };
+  const nextRequest: CloudMessage = {
+    ...request,
+    messageId: 'msg_group_after_forward_cloud_row',
+    body: encodeCloudGroupControl({
+      kind: 'group-message',
+      groupId,
+      groupSpaceId: groupId,
+      groupTitle: null,
+      createdByAccountId: 'acct_me',
+      actor: participants[0],
+      participants,
+      message: {
+        id: 'msg:ui:group_after_forward_request',
+        senderAccountId: 'acct_me',
+        text: '@PeerPersonKordi answer only this',
+        createdAtMs: 3_000,
+        senderKind: 'human',
+      },
+    }),
+  };
+
+  const claims = cloudFallbackRunClaimsForMessages({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request, nextRequest] },
+  });
+  assert.equal(claims.length, 1);
+  assert.match(claims[0]?.prompt ?? '', /answer only this/);
+  assert.doesNotMatch(claims[0]?.prompt ?? '', /PeerPersonKordi test/);
+  const index = buildCloudMessageIndex(account.accountId, { acct_peer: [request, nextRequest] });
+  assert.deepEqual(cloudGroupNativeContextMessages({
+    groupRows: index.groupRows,
+    groupId,
+    requestMessageId: 'msg:ui:group_after_forward_request',
+    requestCreatedAtMs: 3_000,
+  }), []);
 });
 
 test('cloud outgoing remote-agent mention claims include prior direct chat history', () => {

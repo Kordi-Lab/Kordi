@@ -108,6 +108,25 @@ export function turnHasHistoricalArtifacts(turn: DesktopChatTurnSnapshot) {
   return turn.thinkingText.trim().length > 0 || turn.tools.length > 0;
 }
 
+export function shouldConfirmCompletedDesktopTurnTranscript(
+  turn: DesktopChatTurnSnapshot,
+  isVisibleSession: boolean,
+) {
+  if (!isVisibleSession) return false;
+  const turnFailed = !turn.succeeded && turn.status !== 'cancelled';
+  if (turnFailed) return false;
+
+  // A completed plain-text response still needs the same persisted-history
+  // handoff as a tool/thinking turn. The visible canonical conversation can be
+  // ahead of desktopChatState after forwarding or rapid session selection, and
+  // its inactive-session cache may not exist yet. Confirming the runtime row
+  // before removing the live snapshot prevents the reply from flashing and
+  // then disappearing in that state.
+  return turn.succeeded
+    || Boolean(turn.transcriptRefreshRequired)
+    || turnHasHistoricalArtifacts(turn);
+}
+
 export function desktopAssistantMessageMatchesTurn(message: DesktopChatMessage, turn: DesktopChatTurnSnapshot) {
   if (message.role !== 'assistant') return false;
   const turnText = liveTurnResponseText(turn);

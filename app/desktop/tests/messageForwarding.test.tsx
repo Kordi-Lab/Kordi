@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -72,6 +73,25 @@ test('revealForwardedMessageInDestination can switch and fall back to bottom for
   });
 
   assert.deepEqual(calls, ['select:bridge:cloud-person:peer', 'latest']);
+});
+
+test('forward confirmation requires an existing destination, appends there, and opens it without creating a session', () => {
+  const modelSource = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const start = modelSource.indexOf('const handleConfirmForwardMessage = useCallback');
+  const end = modelSource.indexOf('  const activeConvMentionScope = useMemo', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const body = modelSource.slice(start, end);
+
+  assert.match(body, /const destinationConversation = chatConversations\.find/);
+  assert.match(body, /if \(!destinationConversation\)/);
+  assert.match(body, /appendCanonicalMessage\(/);
+  assert.match(body, /sendCloudBridgeMessage\(directCloudConversationId/);
+  assert.match(body, /revealForwardedMessageInDestination/);
+  assert.doesNotMatch(body, /openOrCreateCanonicalSession/);
+  assert.doesNotMatch(body, /createDesktopChatSession/);
+  assert.doesNotMatch(body, /generatedSelfAgentSessionId/);
+  assert.doesNotMatch(body, /startDesktopChatMessage/);
 });
 
 test('createForwardedMessageDrafts keeps multi-forward sources in input order and ignores caption', () => {
