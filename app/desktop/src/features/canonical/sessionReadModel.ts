@@ -60,7 +60,9 @@ type CanonicalConversationLike = {
 };
 
 function messageResponseText(message: Message) {
-  return (message.turn?.assistantText ?? message.text).trim();
+  return message.turn?.assistantText.trim()
+    || message.turn?.error?.trim()
+    || message.text.trim();
 }
 
 function comparableAgentResponseText(value: string) {

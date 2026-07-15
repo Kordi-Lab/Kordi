@@ -8,10 +8,10 @@ import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActi
 import { activeConversationForSelection, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
 import { restoredCloudSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
-import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+import { createCanonicalSessionReadModel, mergeCanonicalHistoryIntoRuntime } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import type { CanonicalSessionState } from '../src/kordi-app/types';
+import type { CanonicalSessionState, Message } from '../src/kordi-app/types';
 
 test('canonical hydration strips persisted derived cloud unread counts', () => {
   const state: CanonicalSessionState = {
@@ -385,6 +385,53 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
     'No provider configured yet.',
   ]);
   assert.notEqual(viewModels?.activeConv.subtitle, 'Loading chat history…');
+});
+
+test('runtime transcript reconciliation renders one failure when canonical and desktop rows encode it differently', () => {
+  const failure = 'ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.';
+  const canonicalFailure: Message = {
+    id: 'canonical-provider-failure',
+    role: 'owned-agent',
+    text: '',
+    time: '17:30',
+    turn: {
+      id: 'canonical-turn:provider-failure',
+      sessionId: 'session:test',
+      prompt: '',
+      status: 'complete',
+      message: 'Complete',
+      assistantText: failure,
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: true,
+      error: null,
+    },
+  };
+  const runtimeFailure: Message = {
+    id: 'runtime-provider-failure',
+    role: 'owned-agent',
+    text: failure,
+    time: '17:30',
+    turn: {
+      id: 'runtime-turn:provider-failure',
+      sessionId: 'session:test',
+      prompt: '',
+      status: 'failed',
+      message: 'Request failed',
+      assistantText: '',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: false,
+      error: failure,
+    },
+  };
+
+  const merged = mergeCanonicalHistoryIntoRuntime([canonicalFailure], [runtimeFailure]);
+
+  assert.deepEqual(merged.map((message) => message.id), ['runtime-provider-failure']);
+  assert.equal(shouldUseCanonicalMessages([runtimeFailure], [canonicalFailure]), false);
 });
 
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
