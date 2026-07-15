@@ -19,7 +19,7 @@ Do not use the production server for destructive, load, or throwaway multi-accou
 ## Prerequisites
 
 - macOS development machine with Tauri prerequisites installed.
-- Node.js 20+ and `pnpm` 10+.
+- Node.js 22+ and `pnpm` 10.29.3+.
 - Rust toolchain from `rustup`.
 - A reachable hosted API.
 
