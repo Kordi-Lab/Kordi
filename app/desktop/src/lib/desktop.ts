@@ -102,7 +102,7 @@ export function installDesktopUpdate(): Promise<void> {
   return desktopUpdaterController.install();
 }
 
-export function retryDesktopUpdate(): Promise<void> {
+export function retryDesktopUpdate(): Promise<void | DesktopUpdaterState> {
   return desktopUpdaterController.retry();
 }
 
