@@ -3,13 +3,18 @@ import { createPortal } from 'react-dom';
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   Check,
+  CheckCircle2,
   ChevronDown,
+  CircleAlert,
   RefreshCw,
   Copy,
+  Download,
   MoreHorizontal,
   Plus,
   Search,
   Settings,
+  Sparkles,
+  X,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -204,7 +209,7 @@ type WorkspaceSidebarProps = {
   onCreateChatSession: () => void;
   onCheckForUpdates?: () => Promise<DesktopUpdaterState>;
   onInstallUpdate?: () => Promise<void>;
-  onRetryUpdate?: () => Promise<void>;
+  onRetryUpdate?: () => Promise<void | DesktopUpdaterState>;
   onSubscribeToUpdate?: (listener: (state: DesktopUpdaterState) => void) => () => void;
   onOpenUpdateUrl?: (url: string) => Promise<void> | void;
   chatSearch: string;
@@ -276,6 +281,12 @@ function formatUpdateBytes(bytes: number) {
 }
 
 function desktopUpdateStatusMessage(state: DesktopUpdaterState) {
+  if (state.status === 'checking') return 'Checking for Kordi updates…';
+  if (state.status === 'up-to-date') {
+    return state.currentVersion
+      ? `Version ${state.currentVersion}`
+      : 'Latest version installed';
+  }
   if (state.status === 'downloading') {
     const received = formatUpdateBytes(state.receivedBytes ?? 0);
     const total = typeof state.totalBytes === 'number' ? ` of ${formatUpdateBytes(state.totalBytes)}` : '';
@@ -285,6 +296,36 @@ function desktopUpdateStatusMessage(state: DesktopUpdaterState) {
   if (state.status === 'relaunching') return 'Relaunching Kordi…';
   if (state.status === 'failed') return state.error || 'Unable to install the verified update.';
   return null;
+}
+
+function desktopUpdateDialogTitle(state: DesktopUpdaterState) {
+  if (state.status === 'checking') return 'Checking for updates';
+  if (state.status === 'up-to-date') return 'Kordi is up to date';
+  if (state.status === 'downloading') return 'Downloading update';
+  if (state.status === 'installing') return 'Installing update';
+  if (state.status === 'relaunching') return 'Relaunching Kordi';
+  if (state.status === 'failed' && state.failureStage === 'check') return 'Couldn’t check for updates';
+  if (state.status === 'failed') return 'Update failed';
+  return 'Update available';
+}
+
+export function desktopUpdateButtonPresentation(
+  state: DesktopUpdaterState,
+  isCheckPending = false,
+) {
+  const isChecking = state.status === 'checking' || isCheckPending;
+  return {
+    disabled: isChecking,
+    isSpinning: isChecking,
+    title: isChecking
+      ? 'Checking for updates…'
+      : state.status === 'available'
+        ? `Kordi ${state.latestVersion ?? 'update'} is available`
+        : state.status === 'failed'
+          ? 'Open update details'
+          : 'Check for updates',
+    ariaLabel: isChecking ? 'Checking for Kordi updates' : 'Check for Kordi updates',
+  };
 }
 
 export type CloudProfileRow = { label: string; value: string; copyable?: boolean };
@@ -622,6 +663,8 @@ export function WorkspaceSidebar({
   const setCloudAccountDialogTab = setControlledCloudAccountDialogTab ?? setLocalCloudAccountDialogTab;
   const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
   const updateButtonRef = useRef<HTMLButtonElement | null>(null);
+  const updatePopoverRef = useRef<HTMLDivElement | null>(null);
+  const updateCheckPromiseRef = useRef<Promise<DesktopUpdaterState> | null>(null);
   const profilePopoverRef = useRef<HTMLDivElement | null>(null);
   // Computed each time the popover opens, so the surface anchors to the avatar's
   // actual on-screen position (not just a fixed bottom-left offset).
@@ -669,9 +712,11 @@ export function WorkspaceSidebar({
   }, [isProfileCardOpen]);
   const [chatCreateAnchor, setChatCreateAnchor] = useState<ChatCreatePopoverAnchor | null>(null);
   const [updateState, setUpdateState] = useState<DesktopUpdaterState>({ status: 'idle' });
+  const updateStateRef = useRef<DesktopUpdaterState>({ status: 'idle' });
   const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
   const [updateConfirmAnchor, setUpdateConfirmAnchor] = useState<{ left: number; top: number } | null>(null);
   const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(false);
+  const updateButtonPresentation = desktopUpdateButtonPresentation(updateState, isUpdateCheckPending);
   const [isGroupDetailsDialogOpen, setIsGroupDetailsDialogOpen] = useState(false);
   const [groupDetailsAnchor, setGroupDetailsAnchor] = useState<GroupManagementPopoverAnchor | null>(null);
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<string | null>(initialSelectedParticipantSpaceId);
@@ -707,36 +752,66 @@ export function WorkspaceSidebar({
     setCloudAccountDialogTab(tab);
   };
 
-  useEffect(() => {
-    if (!onSubscribeToUpdate) return;
-    return onSubscribeToUpdate(setUpdateState);
-  }, [onSubscribeToUpdate]);
+  const applyUpdateState = useCallback((nextState: DesktopUpdaterState) => {
+    updateStateRef.current = nextState;
+    setUpdateState(nextState);
+  }, []);
 
   useEffect(() => {
-    if (!onCheckForUpdates) return;
-    let cancelled = false;
+    if (!onSubscribeToUpdate) return;
+    return onSubscribeToUpdate(applyUpdateState);
+  }, [applyUpdateState, onSubscribeToUpdate]);
+
+  const runUpdateCheck = useCallback((showResult: boolean) => {
+    if (!isNativeShell || !onCheckForUpdates) {
+      return Promise.resolve<DesktopUpdaterState>({ status: 'idle' });
+    }
+    if (showResult) setIsUpdateConfirmOpen(true);
+    if (updateCheckPromiseRef.current) return updateCheckPromiseRef.current;
+
     setIsUpdateCheckPending(true);
-    void onCheckForUpdates()
+    applyUpdateState({
+      ...updateStateRef.current,
+      status: 'checking',
+      error: undefined,
+      failureStage: undefined,
+    });
+
+    const pending = onCheckForUpdates()
       .then((result) => {
-        if (cancelled) return;
-        setUpdateState(result);
+        applyUpdateState(result);
+        return result;
       })
-      .catch(() => {
-        if (!cancelled) setUpdateState({ status: 'idle' });
+      .catch((error) => {
+        const failed: DesktopUpdaterState = {
+          ...updateStateRef.current,
+          status: 'failed',
+          failureStage: 'check',
+          error: error instanceof Error && error.message.trim()
+            ? error.message
+            : 'Unable to check for Kordi updates. Check your connection and try again.',
+        };
+        applyUpdateState(failed);
+        return failed;
       })
       .finally(() => {
-        if (!cancelled) setIsUpdateCheckPending(false);
+        if (updateCheckPromiseRef.current === pending) updateCheckPromiseRef.current = null;
+        setIsUpdateCheckPending(false);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [onCheckForUpdates]);
+    updateCheckPromiseRef.current = pending;
+    return pending;
+  }, [applyUpdateState, isNativeShell, onCheckForUpdates]);
+
+  useEffect(() => {
+    if (!isNativeShell || !onCheckForUpdates) return;
+    void runUpdateCheck(false);
+  }, [isNativeShell, onCheckForUpdates, runUpdateCheck]);
 
   const measureUpdateConfirmAnchor = () => {
     const trigger = updateButtonRef.current;
     if (!trigger || typeof window === 'undefined') return;
     const rect = trigger.getBoundingClientRect();
-    const popoverWidth = 288;
+    const popoverWidth = updateState.status === 'checking' ? 232 : 288;
     setUpdateConfirmAnchor({
       left: Math.max(12, Math.min(rect.right - popoverWidth, window.innerWidth - popoverWidth - 12)),
       top: rect.bottom + 8,
@@ -753,16 +828,65 @@ export function WorkspaceSidebar({
     return () => {
       window.removeEventListener('resize', measureUpdateConfirmAnchor);
     };
+  }, [isUpdateConfirmOpen, updateState.status]);
+
+  useEffect(() => {
+    if (!isUpdateConfirmOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (updatePopoverRef.current?.contains(target)) return;
+      if (updateButtonRef.current?.contains(target)) return;
+      setIsUpdateConfirmOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsUpdateConfirmOpen(false);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [isUpdateConfirmOpen]);
 
+  useEffect(() => {
+    if (!isUpdateConfirmOpen || updateState.status !== 'up-to-date') return;
+    const timer = window.setTimeout(() => setIsUpdateConfirmOpen(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [isUpdateConfirmOpen, updateState.status]);
+
+  const handleUpdateButtonClick = () => {
+    if (updateState.status === 'checking' || isUpdateCheckPending) return;
+    if (isUpdateConfirmOpen) {
+      setIsUpdateConfirmOpen(false);
+      return;
+    }
+    if (updateState.status === 'idle' || updateState.status === 'up-to-date') {
+      void runUpdateCheck(true);
+      return;
+    }
+    setIsUpdateConfirmOpen(true);
+  };
+
   const handleConfirmUpdate = async () => {
+    if (updateState.status === 'failed' && updateState.failureStage === 'check') {
+      await runUpdateCheck(true);
+      return;
+    }
     const action = updateState.status === 'failed' ? (onRetryUpdate ?? onInstallUpdate) : onInstallUpdate;
     if (!action) return;
     try {
-      await action();
+      const result = await action();
+      if (result) applyUpdateState(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to install update';
-      setUpdateState((current) => ({ ...current, status: 'failed', error: message }));
+      applyUpdateState({
+        ...updateStateRef.current,
+        status: 'failed',
+        failureStage: 'install',
+        error: message,
+      });
     }
   };
 
@@ -1670,29 +1794,35 @@ export function WorkspaceSidebar({
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      {updateState.status === 'available'
-                        || updateState.status === 'downloading'
-                        || updateState.status === 'installing'
-                        || updateState.status === 'relaunching'
-                        || updateState.status === 'failed' ? (
+                      {isNativeShell && onCheckForUpdates ? (
                         <button
                           ref={updateButtonRef}
                           type="button"
-                          onClick={() => {
-                            measureUpdateConfirmAnchor();
-                            setIsUpdateConfirmOpen((open) => !open);
-                          }}
+                          onClick={handleUpdateButtonClick}
+                          disabled={updateButtonPresentation.disabled}
+                          data-update-status={updateState.status}
                           className={cn(
                             'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-full p-0 transition',
                             'border border-slate-300/70 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.12)] hover:bg-slate-50',
+                            updateState.status === 'up-to-date' && 'border-emerald-300/70 bg-emerald-50 text-emerald-700',
+                            updateState.status === 'available' && 'border-blue-300/70 bg-blue-50 text-blue-700',
+                            updateState.status === 'failed' && 'border-rose-300/70 bg-rose-50 text-rose-700',
+                            (updateState.status === 'checking' || isUpdateCheckPending) && 'cursor-wait opacity-80',
                           )}
-                          title={`Kordi ${updateState.latestVersion ?? 'update'} is available`}
-                          aria-label="Check for Kordi updates"
+                          title={isUpdateConfirmOpen ? undefined : updateButtonPresentation.title}
+                          aria-label={updateButtonPresentation.ariaLabel}
                           aria-expanded={isUpdateConfirmOpen}
                         >
-                          <RefreshCw className="h-[18px] w-[18px] stroke-[3]" aria-hidden="true" />
+                          <RefreshCw
+                            className={cn(
+                              'h-[17px] w-[17px] stroke-[2.7]',
+                              updateButtonPresentation.isSpinning && 'animate-spin',
+                            )}
+                            aria-hidden="true"
+                          />
                         </button>
-                      ) : isUpdateCheckPending ? (
+                      ) : null}
+                      {updateState.status === 'checking' ? (
                         <span className="sr-only" role="status">Checking for Kordi updates</span>
                       ) : null}
                       <button
@@ -1985,70 +2115,173 @@ export function WorkspaceSidebar({
 
       {isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' ? createPortal(
         <div
+          ref={updatePopoverRef}
           role="dialog"
-          aria-label="Confirm Kordi update"
+          aria-label="Kordi update status"
           style={{
             position: 'fixed',
             left: updateConfirmAnchor.left,
             top: updateConfirmAnchor.top,
             zIndex: 180,
           }}
-          className="app-popover w-[18rem] rounded-[18px] border px-3 py-3 text-foreground shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+          className={cn(
+            'app-popover app-update-popover overflow-hidden border text-foreground',
+            updateState.status === 'checking'
+              ? 'w-[14.5rem] rounded-[14px] px-3 py-2.5'
+              : 'w-[18rem] rounded-[16px] p-3.5',
+          )}
         >
-          <div className="text-[13px] font-semibold text-slate-100">
-            {updateState.status === 'failed' ? 'Update failed' : 'Update available'}
-          </div>
-          <div className="mt-1 text-[11px] leading-5 text-slate-400">
-            {updateState.notes || `Kordi ${updateState.latestVersion ?? 'update'} is available.`}
-          </div>
-          <div className="mt-2 rounded-[12px] bg-white/[0.05] px-2.5 py-2 text-[10.5px] leading-4 text-slate-300">
-            Click Update now to download, verify, install, and relaunch Kordi automatically.
-          </div>
-          {desktopUpdateStatusMessage(updateState) ? (
+          {updateState.status === 'checking' ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center justify-center gap-2.5"
+            >
+              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500/[0.08] text-blue-500">
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              </div>
+              <div className="app-update-popover-title text-[12px] font-medium tracking-[-0.01em]">
+                Checking for updates
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-3">
+              <div className={cn(
+                'mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full',
+                updateState.status === 'failed'
+                  ? 'bg-rose-500/10 text-rose-300'
+                  : updateState.status === 'up-to-date'
+                    ? 'bg-emerald-500/10 text-emerald-300'
+                    : 'bg-blue-500/10 text-blue-300',
+              )}>
+                {updateState.status === 'up-to-date' ? <CheckCircle2 className="h-[18px] w-[18px]" aria-hidden="true" /> : null}
+                {updateState.status === 'failed' ? <CircleAlert className="h-[18px] w-[18px]" aria-hidden="true" /> : null}
+                {updateState.status === 'available' ? <Sparkles className="h-[18px] w-[18px]" aria-hidden="true" /> : null}
+                {updateState.status === 'downloading' ? <Download className="h-[18px] w-[18px]" aria-hidden="true" /> : null}
+                {updateState.status === 'installing' || updateState.status === 'relaunching' ? (
+                  <RefreshCw className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
+                ) : null}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="app-update-popover-title text-[12.5px] font-semibold tracking-[-0.01em]">
+                  {desktopUpdateDialogTitle(updateState)}
+                </div>
+                <div className="app-update-popover-copy mt-0.5 text-[11px] leading-[1.125rem]">
+                  {updateState.status === 'up-to-date' ? desktopUpdateStatusMessage(updateState) : null}
+                  {updateState.status === 'available' ? (updateState.notes || `Kordi ${updateState.latestVersion ?? 'update'} is available.`) : null}
+                  {updateState.status === 'failed' && updateState.failureStage === 'check'
+                    ? 'The update server could not be reached. Your current app is unaffected.'
+                    : null}
+                  {updateState.status === 'failed' && updateState.failureStage !== 'check'
+                    ? `Kordi ${updateState.latestVersion ?? 'update'} could not be installed.`
+                    : null}
+                  {updateState.status === 'downloading' ? 'Downloading and verifying the update.' : null}
+                  {updateState.status === 'installing' ? 'Finishing installation before Kordi relaunches.' : null}
+                  {updateState.status === 'relaunching' ? 'The verified update is installed.' : null}
+                </div>
+              </div>
+              {updateState.status !== 'downloading'
+                && updateState.status !== 'installing'
+                && updateState.status !== 'relaunching' ? (
+                <button
+                  type="button"
+                  className="app-update-popover-close grid h-6 w-6 shrink-0 place-items-center rounded-full transition"
+                  aria-label="Close update status"
+                  onClick={() => setIsUpdateConfirmOpen(false)}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+          )}
+
+          {updateState.status === 'available' ? (
+            <div className="app-update-popover-note mt-2.5 rounded-[10px] px-2.5 py-2 text-[10.5px] leading-4">
+              Click Update now to download, verify, install, and relaunch Kordi automatically.
+            </div>
+          ) : null}
+
+          {updateState.status === 'failed' || updateState.status === 'downloading' || updateState.status === 'installing' || updateState.status === 'relaunching' ? (
             <div
               role="status"
               className={cn(
-                'mt-2 rounded-[12px] px-2.5 py-2 text-[10.5px] leading-4',
+                'mt-2.5 rounded-[10px] px-2.5 py-2 text-[10.5px] leading-4',
                 updateState.status === 'failed' ? 'bg-rose-500/10 text-rose-200' : 'bg-blue-500/10 text-blue-200',
               )}
             >
               {desktopUpdateStatusMessage(updateState)}
             </div>
           ) : null}
-          <div className="mt-3 flex justify-end gap-2">
-            {updateState.status === 'failed' && updateState.manualDownloadUrl ? (
-              <button
-                type="button"
-                className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
-                onClick={() => { void onOpenUpdateUrl?.(updateState.manualDownloadUrl!); }}
-              >
-                Download manually
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
-              onClick={() => setIsUpdateConfirmOpen(false)}
-            >
-              Not now
-            </button>
-            <button
-              type="button"
-              className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={updateState.status === 'downloading' || updateState.status === 'installing' || updateState.status === 'relaunching' || !onInstallUpdate}
-              onClick={() => { void handleConfirmUpdate(); }}
-            >
-              {updateState.status === 'failed'
-                ? 'Retry'
-                : updateState.status === 'downloading'
-                  ? 'Downloading…'
-                  : updateState.status === 'installing'
-                    ? 'Installing…'
-                    : updateState.status === 'relaunching'
-                      ? 'Relaunching…'
+
+          {updateState.status === 'downloading' && typeof updateState.totalBytes === 'number' && updateState.totalBytes > 0 ? (
+            <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/[0.07]" aria-hidden="true">
+              <div
+                className="h-full rounded-full bg-blue-400 transition-[width]"
+                style={{ width: `${Math.min(100, ((updateState.receivedBytes ?? 0) / updateState.totalBytes) * 100)}%` }}
+              />
+            </div>
+          ) : null}
+
+          {updateState.status === 'up-to-date' ? (
+            <div className="app-update-popover-meta mt-2.5 flex items-center gap-1.5 text-[10.5px]">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+              Checked just now
+            </div>
+          ) : null}
+
+          {updateState.status === 'available'
+            || updateState.status === 'failed'
+            || updateState.status === 'downloading'
+            || updateState.status === 'installing'
+            || updateState.status === 'relaunching' ? (
+            <div className="mt-3 flex items-center justify-end gap-2">
+              {updateState.status === 'failed' && updateState.manualDownloadUrl ? (
+                <button
+                  type="button"
+                  className="mr-auto rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                  onClick={() => { void onOpenUpdateUrl?.(updateState.manualDownloadUrl!); }}
+                >
+                  Download manually
+                </button>
+              ) : null}
+              {updateState.status === 'available' || updateState.status === 'failed' ? (
+                <>
+                  {updateState.status === 'available' || updateState.failureStage !== 'check' ? (
+                    <button
+                      type="button"
+                      className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                      onClick={() => setIsUpdateConfirmOpen(false)}
+                    >
+                      Not now
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={updateState.status === 'available' ? !onInstallUpdate : false}
+                    onClick={() => { void handleConfirmUpdate(); }}
+                  >
+                    {updateState.status === 'failed'
+                      ? updateState.failureStage === 'check' ? 'Try again' : 'Retry'
                       : 'Update now'}
-            </button>
-          </div>
+                  </button>
+                </>
+              ) : null}
+              {updateState.status === 'downloading' || updateState.status === 'installing' || updateState.status === 'relaunching' ? (
+                <button
+                  type="button"
+                  className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 opacity-60"
+                  disabled
+                >
+                  {updateState.status === 'downloading'
+                    ? 'Downloading…'
+                    : updateState.status === 'installing'
+                      ? 'Installing…'
+                      : 'Relaunching…'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>,
         document.querySelector('.bridge-app') ?? document.body,
       ) : null}

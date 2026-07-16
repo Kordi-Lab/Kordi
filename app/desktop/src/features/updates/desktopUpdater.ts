@@ -23,11 +23,14 @@ export type DesktopUpdaterUpdate = {
 
 export type DesktopUpdaterAdapter = {
   check(): Promise<DesktopUpdaterUpdate | null>;
+  currentVersion?(): Promise<string>;
   relaunch(): Promise<void>;
 };
 
 export type DesktopUpdaterStatus =
   | 'idle'
+  | 'checking'
+  | 'up-to-date'
   | 'available'
   | 'downloading'
   | 'installing'
@@ -43,6 +46,7 @@ export type DesktopUpdaterState = {
   totalBytes?: number;
   error?: string;
   manualDownloadUrl?: string;
+  failureStage?: 'check' | 'install';
 };
 
 type DesktopUpdaterControllerOptions = {
@@ -54,6 +58,12 @@ function errorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message;
   if (typeof error === 'string' && error.trim()) return error;
   return 'Unable to install the verified Kordi update.';
+}
+
+function checkErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return 'Unable to check for Kordi updates. Check your connection and try again.';
 }
 
 function stateForUpdate(
@@ -74,6 +84,7 @@ function stateForUpdate(
 export function createDesktopUpdaterController(options: DesktopUpdaterControllerOptions) {
   let state: DesktopUpdaterState = { status: 'idle' };
   let checkedUpdate: DesktopUpdaterUpdate | null = null;
+  let checkPromise: Promise<DesktopUpdaterState> | null = null;
   let installPromise: Promise<void> | null = null;
   const listeners = new Set<(nextState: DesktopUpdaterState) => void>();
 
@@ -88,26 +99,61 @@ export function createDesktopUpdaterController(options: DesktopUpdaterController
     if (previous?.close) await previous.close();
   };
 
-  const check = async () => {
+  const readCurrentVersion = async () => {
+    try {
+      const version = await options.adapter.currentVersion?.();
+      return version?.trim() || state.currentVersion;
+    } catch {
+      return state.currentVersion;
+    }
+  };
+
+  const check = () => {
+    if (checkPromise) return checkPromise;
     if (!options.isTauriRuntime()) {
       publish({ status: 'idle' });
-      return state;
+      return Promise.resolve(state);
     }
-    try {
-      await closeCheckedUpdate();
-      const update = await options.adapter.check();
-      if (!update) {
-        publish({ status: 'idle' });
+    if (installPromise) return Promise.resolve(state);
+
+    const previousState = state;
+    publish({
+      status: 'checking',
+      currentVersion: previousState.currentVersion,
+    });
+
+    checkPromise = (async () => {
+      const currentVersionPromise = readCurrentVersion();
+      try {
+        await closeCheckedUpdate();
+        const update = await options.adapter.check();
+        if (!update) {
+          publish({
+            status: 'up-to-date',
+            currentVersion: await currentVersionPromise,
+          });
+          return state;
+        }
+        checkedUpdate = update;
+        publish(stateForUpdate('available', update));
         return state;
+      } catch (error) {
+        checkedUpdate = null;
+        publish({
+          status: 'failed',
+          currentVersion: (await currentVersionPromise) ?? previousState.currentVersion,
+          ...(previousState.latestVersion ? { latestVersion: previousState.latestVersion } : {}),
+          ...(previousState.manualDownloadUrl ? { manualDownloadUrl: previousState.manualDownloadUrl } : {}),
+          failureStage: 'check',
+          error: checkErrorMessage(error),
+        });
+        return state;
+      } finally {
+        checkPromise = null;
       }
-      checkedUpdate = update;
-      publish(stateForUpdate('available', update));
-      return state;
-    } catch {
-      checkedUpdate = null;
-      publish({ status: 'idle' });
-      return state;
-    }
+    })();
+
+    return checkPromise;
   };
 
   const install = () => {
@@ -152,6 +198,7 @@ export function createDesktopUpdaterController(options: DesktopUpdaterController
         publish(stateForUpdate('failed', update, {
           receivedBytes,
           totalBytes: state.totalBytes,
+          failureStage: 'install',
           error: errorMessage(error),
         }));
         throw error;
@@ -165,7 +212,10 @@ export function createDesktopUpdaterController(options: DesktopUpdaterController
   return {
     check,
     install,
-    retry: install,
+    retry() {
+      if (state.status === 'failed' && state.failureStage === 'check') return check();
+      return install();
+    },
     getState: () => state,
     getCheckedUpdate: () => checkedUpdate,
     subscribe(listener: (nextState: DesktopUpdaterState) => void) {
@@ -187,6 +237,10 @@ export const tauriDesktopUpdaterAdapter: DesktopUpdaterAdapter = {
   async check() {
     const updater = await import('@tauri-apps/plugin-updater');
     return updater.check();
+  },
+  async currentVersion() {
+    const app = await import('@tauri-apps/api/app');
+    return app.getVersion();
   },
   async relaunch() {
     const processPlugin = await import('@tauri-apps/plugin-process');

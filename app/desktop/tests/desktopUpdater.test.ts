@@ -47,6 +47,9 @@ function fakeAdapter(update: DesktopUpdaterUpdate | null): DesktopUpdaterAdapter
     async relaunch() {
       this.relaunchCalls += 1;
     },
+    async currentVersion() {
+      return update?.currentVersion ?? '0.0.1-beta.7';
+    },
   };
 }
 
@@ -93,6 +96,100 @@ test('an available update retains the exact checked resource', async () => {
   assert.equal(state.latestVersion, '0.0.1-beta.6');
   assert.equal(state.manualDownloadUrl, BETA6_MANUAL_UPDATE_URL);
   assert.equal(controller.getCheckedUpdate(), update);
+});
+
+test('concurrent checks share one request and publish checking then up-to-date', async () => {
+  const result = deferred<DesktopUpdaterUpdate | null>();
+  let checkCalls = 0;
+  const controller = createDesktopUpdaterController({
+    adapter: {
+      async check() {
+        checkCalls += 1;
+        return result.promise;
+      },
+      async currentVersion() {
+        return '0.0.1-beta.7';
+      },
+      async relaunch() {},
+    },
+    isTauriRuntime: () => true,
+  });
+  const states: string[] = [];
+  controller.subscribe((state) => states.push(state.status));
+
+  const first = controller.check();
+  const second = controller.check();
+
+  assert.equal(first, second);
+  await Promise.resolve();
+  assert.equal(checkCalls, 1);
+  assert.equal(controller.getState().status, 'checking');
+
+  result.resolve(null);
+  assert.deepEqual(await first, {
+    status: 'up-to-date',
+    currentVersion: '0.0.1-beta.7',
+  });
+  assert.deepEqual(states, ['checking', 'up-to-date']);
+});
+
+test('a failed check stays visible and retry performs a new check', async () => {
+  let checkCalls = 0;
+  const controller = createDesktopUpdaterController({
+    adapter: {
+      async check() {
+        checkCalls += 1;
+        if (checkCalls === 1) throw new Error('update service offline');
+        return null;
+      },
+      async currentVersion() {
+        return '0.0.1-beta.7';
+      },
+      async relaunch() {},
+    },
+    isTauriRuntime: () => true,
+  });
+
+  assert.deepEqual(await controller.check(), {
+    status: 'failed',
+    currentVersion: '0.0.1-beta.7',
+    failureStage: 'check',
+    error: 'update service offline',
+  });
+
+  const retried = await controller.retry();
+  assert.equal(checkCalls, 2);
+  assert.deepEqual(retried, {
+    status: 'up-to-date',
+    currentVersion: '0.0.1-beta.7',
+  });
+});
+
+test('a failed recheck preserves the known manual-download recovery', async () => {
+  const update = fakeUpdate();
+  let checkCalls = 0;
+  const controller = createDesktopUpdaterController({
+    adapter: {
+      async check() {
+        checkCalls += 1;
+        if (checkCalls === 1) return update;
+        throw new Error('temporary network failure');
+      },
+      async currentVersion() {
+        return update.currentVersion;
+      },
+      async relaunch() {},
+    },
+    isTauriRuntime: () => true,
+  });
+
+  await controller.check();
+  const failed = await controller.check();
+
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.failureStage, 'check');
+  assert.equal(failed.latestVersion, update.version);
+  assert.equal(failed.manualDownloadUrl, BETA6_MANUAL_UPDATE_URL);
 });
 
 test('an invalid update version never becomes a manual download URL', async () => {
@@ -195,7 +292,7 @@ test('an uninformative install failure uses verified-update fallback copy', asyn
   assert.equal(controller.getState().error, 'Unable to install the verified Kordi update.');
 });
 
-test('check failures stay quiet and disposing closes the held updater resource', async () => {
+test('disposing closes the held updater resource', async () => {
   let closeCalls = 0;
   const update = fakeUpdate({ async close() { closeCalls += 1; } });
   const adapter = fakeAdapter(update);
@@ -204,11 +301,4 @@ test('check failures stay quiet and disposing closes the held updater resource',
   await controller.dispose();
   assert.equal(closeCalls, 1);
   assert.equal(controller.getCheckedUpdate(), null);
-
-  const failingAdapter: DesktopUpdaterAdapter = {
-    async check() { throw new Error('offline'); },
-    async relaunch() { throw new Error('must not run'); },
-  };
-  const quiet = createDesktopUpdaterController({ adapter: failingAdapter, isTauriRuntime: () => true });
-  assert.equal((await quiet.check()).status, 'idle');
 });
