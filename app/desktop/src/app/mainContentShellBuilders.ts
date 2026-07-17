@@ -188,6 +188,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     desktopSessionRenameDraft: args.desktopSessionRenameDraft,
     setDesktopSessionRenameDraft: args.setDesktopSessionRenameDraft,
     onRenameDesktopSession: args.handleRenameDesktopSession,
+    onRenameChatSession: args.handleRenameChatSession,
     chatTranscriptScrollRef: args.chatTranscriptScrollRef,
     canonicalHasOlderBySessionId: args.canonicalHasOlderBySessionId,
     onLoadOlderCanonicalSessionMessages: args.loadOlderCanonicalSessionMessages,
