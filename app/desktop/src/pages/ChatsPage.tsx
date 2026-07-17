@@ -96,6 +96,7 @@ import { navigateToTranscriptMessage, scrollTranscriptToBottom } from '@/kordi-a
 import { buildForkLineage, isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
+import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 
@@ -154,6 +155,22 @@ export function localAgentComposerConfigTargetSessionId(
   conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>,
 ): string | null {
   return conversation.canonicalSessionId?.trim() || conversation.id.trim() || null;
+}
+
+export function selfAgentSessionIdForTitleRename(
+  conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'type'>,
+): string | null {
+  if (conversation.type !== 'owned-agent') return null;
+  const sessionId = conversation.canonicalSessionId?.trim() || conversation.id.trim();
+  if (
+    !sessionId
+    || sessionId === LOCAL_DRAFT_CHAT_CONVERSATION_ID
+    || sessionId.startsWith('draft:')
+    || isCloudAgentRuntimeSessionId(sessionId)
+  ) {
+    return null;
+  }
+  return sessionId;
 }
 
 export function cloudSelfAgentSyncStatusLabel(status?: Pick<CloudSelfAgentSyncStatus, 'state' | 'pendingCount' | 'message'> | null) {
@@ -1013,6 +1030,7 @@ type ChatsPageProps = {
   desktopSessionRenameDraft: string;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   onRenameDesktopSession: (baselineName: string) => Promise<void>;
+  onRenameChatSession: (sessionId: string, title: string) => Promise<void>;
   chatTranscriptScrollRef: RefObject<HTMLDivElement | null>;
   canonicalHasOlderBySessionId?: Record<string, boolean>;
   onLoadOlderCanonicalSessionMessages?: (sessionId: string) => Promise<void>;
@@ -1111,6 +1129,7 @@ export function ChatsPage({
   desktopSessionRenameDraft,
   setDesktopSessionRenameDraft,
   onRenameDesktopSession,
+  onRenameChatSession,
   chatTranscriptScrollRef,
   canonicalHasOlderBySessionId = {},
   onLoadOlderCanonicalSessionMessages,
@@ -1193,6 +1212,12 @@ export function ChatsPage({
   const activeConvHasBridgeTransport = activeConv.bridges.some((bridge) => bridge.trim().toLowerCase() !== 'local');
   const activeSessionSubtitle = chatHeaderSubtitle(activeConv);
   const activeCloudSelfAgentSyncLabel = cloudSelfAgentSyncStatusLabel(cloudSelfAgentSyncStatus);
+  const activeSelfAgentSessionId = selfAgentSessionIdForTitleRename(activeConv);
+  const activeSelfAgentSessionIsDraft = activeConv.id === LOCAL_DRAFT_CHAT_CONVERSATION_ID
+    || activeConv.canonicalSessionId === LOCAL_DRAFT_CHAT_CONVERSATION_ID;
+  const canRenameActiveSelfAgentSession = isNativeShell
+    && activeConv.type === 'owned-agent'
+    && (Boolean(activeSelfAgentSessionId) || activeSelfAgentSessionIsDraft);
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
@@ -2502,6 +2527,33 @@ export function ChatsPage({
     return `minmax(280px, ${splitLeftFraction}fr)${ownDetailColumn} 10px minmax(280px, ${1 - splitLeftFraction}fr)${companionDetailColumn}`;
   })();
 
+  const commitActiveSelfAgentSessionTitle = async () => {
+    const baselineName = activeConv.name;
+    const nextTitle = desktopSessionRenameDraft.trim();
+    if (!canRenameActiveSelfAgentSession || !nextTitle) {
+      setDesktopSessionRenameDraft(baselineName);
+      setIsEditingDesktopSessionTitle(false);
+      return;
+    }
+    if (nextTitle === baselineName.trim()) {
+      setIsEditingDesktopSessionTitle(false);
+      return;
+    }
+    if (activeSelfAgentSessionId) {
+      await onRenameChatSession(activeSelfAgentSessionId, nextTitle);
+      setDesktopSessionRenameDraft(nextTitle);
+      setIsEditingDesktopSessionTitle(false);
+      return;
+    }
+    await onRenameDesktopSession(baselineName);
+  };
+
+  const beginActiveSelfAgentSessionTitleRename = () => {
+    if (!canRenameActiveSelfAgentSession) return;
+    setDesktopSessionRenameDraft(activeConv.name);
+    setIsEditingDesktopSessionTitle(true);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div
@@ -2543,7 +2595,7 @@ export function ChatsPage({
           )}
           <div className="min-w-0 flex-1">
             <div className="app-page-header-title-row mb-1 flex min-w-0 items-center gap-1.5 text-white">
-              {isNativeShell ? (
+              {canRenameActiveSelfAgentSession ? (
                 isEditingDesktopSessionTitle ? (
                   <input
                     value={desktopSessionRenameDraft}
@@ -2560,7 +2612,7 @@ export function ChatsPage({
                       }
                     }}
                     onBlur={() => {
-                      void onRenameDesktopSession(activeConv.name);
+                      void commitActiveSelfAgentSessionTitle();
                     }}
                     autoFocus
                     data-kordi-window-drag="false"
@@ -2568,17 +2620,25 @@ export function ChatsPage({
                     placeholder="Session name"
                   />
                 ) : (
-                  <h2
-                    onDoubleClick={() => {
-                      if (activeConversationIsBridge) return;
-                      setDesktopSessionRenameDraft(activeConv.name);
-                      setIsEditingDesktopSessionTitle(true);
-                    }}
-                    className="min-w-0 max-w-[18rem] truncate rounded-lg px-1 py-0.5 text-left text-[17px] font-semibold leading-6 text-white transition hover:bg-white/5"
-                    data-kordi-window-drag="false"
-                    title={activeConv.name}
-                  >
-                    {activeConv.name}
+                  <h2 className="min-w-0 max-w-[18rem] text-[17px] font-semibold leading-6">
+                    <button
+                      type="button"
+                      onDoubleClick={beginActiveSelfAgentSessionTitleRename}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        beginActiveSelfAgentSessionTitleRename();
+                      }}
+                      className="block w-full truncate rounded-lg px-1 py-0.5 text-left text-white transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                      data-chat-session-title-rename="true"
+                      data-session-title-rename-trigger="double-click"
+                      data-session-id={activeSelfAgentSessionId ?? activeConv.id}
+                      data-kordi-window-drag="false"
+                      aria-label={`Rename session ${activeConv.name}`}
+                      title="Double-click to rename session"
+                    >
+                      {activeConv.name}
+                    </button>
                   </h2>
                 )
               ) : (
