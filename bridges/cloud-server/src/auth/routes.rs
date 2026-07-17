@@ -3919,6 +3919,16 @@ mod cloud_session_title_policy_tests {
             &title("auto", 3, 30),
         ));
     }
+
+    #[test]
+    fn equal_manual_versions_use_the_same_actor_tie_break_as_clients() {
+        let mut existing = title("manual", 3, 30);
+        existing.updated_by_account_id = "acct_z".to_string();
+        let mut incoming = title("manual", 3, 30);
+        incoming.updated_by_account_id = "acct_a".to_string();
+        assert!(incoming_cloud_session_title_wins(&existing, &incoming));
+        assert!(!incoming_cloud_session_title_wins(&incoming, &existing));
+    }
 }
 
 async fn select_cloud_session_title(

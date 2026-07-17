@@ -1736,7 +1736,35 @@ test('cloud self-agent title restore applies manual-over-auto precedence in both
     cloudTitlesBySessionId: { [sessionId]: cloudManualTitle },
   });
   assert.equal(remoteManualPlan.sessionRequests[0]?.title, cloudManualTitle.title);
-  assert.equal((remoteManualPlan.sessionRequests[0]?.metadata as Record<string, unknown>).sessionTitleSource, 'manual');
+  const remoteManualMetadata = remoteManualPlan.sessionRequests[0]?.metadata as Record<string, unknown>;
+  assert.equal(remoteManualMetadata.sessionTitleSource, 'manual');
+  assert.equal(remoteManualMetadata.sessionTitleUpdatedByAccountId, account.accountId);
+
+  const equalVersionServerWinnerPlan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [userMessage],
+    state: {
+      ...baseState,
+      sessions: [{
+        id: sessionId,
+        kind: 'self-agent',
+        title: 'Unsynchronized equal-time edit',
+        status: 'active',
+        createdByIdentityId: 'human:acct_me',
+        primaryIdentityId: 'agent:cloud-self:acct_me',
+        metadata: { sessionTitleSource: 'manual', sessionTitleRevision: 3, sessionTitleUpdatedAtMs: 300 },
+        createdAtMs: 1,
+        updatedAtMs: 300,
+      }],
+    } as CanonicalSessionState,
+    cloudTitlesBySessionId: { [sessionId]: cloudManualTitle },
+  });
+  assert.equal(equalVersionServerWinnerPlan.sessionRequests[0]?.title, cloudManualTitle.title);
+  assert.equal(
+    (equalVersionServerWinnerPlan.sessionRequests[0]?.metadata as Record<string, unknown>)
+      .sessionTitleUpdatedByAccountId,
+    account.accountId,
+  );
 
   const localManualPlan = planCloudSelfAgentCanonicalSync({
     account,

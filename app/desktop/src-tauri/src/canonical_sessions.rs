@@ -266,12 +266,30 @@ fn title_metadata_i64(metadata: &Map<String, Value>, key: &str) -> i64 {
         .unwrap_or_default()
 }
 
+fn title_metadata_string(metadata: &Map<String, Value>, key: &str) -> Option<String> {
+    metadata
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn incoming_title_actor_wins(existing: Option<&str>, incoming: Option<&str>) -> bool {
+    match (existing, incoming) {
+        (Some(existing), Some(incoming)) => incoming < existing,
+        (None, Some(_)) => true,
+        _ => false,
+    }
+}
+
 fn copy_title_metadata(target: &mut Map<String, Value>, source: &Map<String, Value>, kind: &str) {
     for key in [
         "sessionTitleSource",
         "sessionTitleRevision",
         "sessionTitlePolicyVersion",
         "sessionTitleUpdatedAtMs",
+        "sessionTitleUpdatedByAccountId",
         "sessionTitleGeneratedFromMessageId",
     ] {
         if let Some(value) = source.get(key) {
@@ -381,6 +399,8 @@ fn reconcile_session_title_metadata(
     };
     let incoming_revision = title_metadata_i64(&next_metadata, "sessionTitleRevision");
     let incoming_updated_at = title_metadata_i64(&next_metadata, "sessionTitleUpdatedAtMs");
+    let incoming_updated_by =
+        title_metadata_string(&next_metadata, "sessionTitleUpdatedByAccountId");
 
     let Some(existing_session) = existing_session else {
         let revision = if incoming_source == "placeholder" {
@@ -420,6 +440,8 @@ fn reconcile_session_title_metadata(
     };
     let existing_revision = title_metadata_i64(&existing_metadata, "sessionTitleRevision");
     let existing_updated_at = title_metadata_i64(&existing_metadata, "sessionTitleUpdatedAtMs");
+    let existing_updated_by =
+        title_metadata_string(&existing_metadata, "sessionTitleUpdatedByAccountId");
     let incoming_is_explicit = incoming_explicit_source.is_some();
     let incoming_wins = if !incoming_is_explicit {
         if matches!(kind, "self-agent" | "project") {
@@ -439,12 +461,16 @@ fn reconcile_session_title_metadata(
                     (incoming_revision > existing_revision && incoming_revision <= 2)
                         || canonical_title_is_placeholder(kind, &existing_session.title)
                 }
-                "manual" | "imported" | "external" => {
+                "manual" | "imported" | "external" | "legacy" => {
                     incoming_updated_at > existing_updated_at
                         || (incoming_updated_at == existing_updated_at
-                            && incoming_revision > existing_revision)
+                            && (incoming_revision > existing_revision
+                                || (incoming_revision == existing_revision
+                                    && incoming_title_actor_wins(
+                                        existing_updated_by.as_deref(),
+                                        incoming_updated_by.as_deref(),
+                                    ))))
                 }
-                "legacy" => canonical_title_is_placeholder(kind, &existing_session.title),
                 _ => canonical_title_is_placeholder(kind, &existing_session.title),
             },
         }

@@ -189,8 +189,18 @@ export function titleSourcePrecedence(source: SessionTitleSource) {
 }
 
 export function incomingSessionTitleWins(
-  existing: { titleSource: SessionTitleSource; titleRevision: number; updatedAtMs: number },
-  incoming: { titleSource: SessionTitleSource; titleRevision: number; updatedAtMs: number },
+  existing: {
+    titleSource: SessionTitleSource;
+    titleRevision: number;
+    updatedAtMs: number;
+    updatedByAccountId?: string | null;
+  },
+  incoming: {
+    titleSource: SessionTitleSource;
+    titleRevision: number;
+    updatedAtMs: number;
+    updatedByAccountId?: string | null;
+  },
 ) {
   const existingRank = titleSourcePrecedence(existing.titleSource);
   const incomingRank = titleSourcePrecedence(incoming.titleSource);
@@ -199,9 +209,14 @@ export function incomingSessionTitleWins(
     return incoming.titleRevision > existing.titleRevision && incoming.titleRevision <= 2;
   }
   if (['manual', 'imported', 'external', 'legacy'].includes(incoming.titleSource)) {
+    const existingActor = existing.updatedByAccountId?.trim() ?? '';
+    const incomingActor = incoming.updatedByAccountId?.trim() ?? '';
     return incoming.updatedAtMs > existing.updatedAtMs
       || (incoming.updatedAtMs === existing.updatedAtMs
-        && incoming.titleRevision > existing.titleRevision);
+        && (incoming.titleRevision > existing.titleRevision
+          || (incoming.titleRevision === existing.titleRevision
+            && Boolean(incomingActor)
+            && (!existingActor || incomingActor < existingActor))));
   }
   return false;
 }

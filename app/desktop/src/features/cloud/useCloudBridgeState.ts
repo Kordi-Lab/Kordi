@@ -1831,6 +1831,7 @@ export function planCloudSelfAgentCanonicalSync({
       sessionTitleRevision: cloudTitle.titleRevision,
       sessionTitlePolicyVersion: cloudTitle.titlePolicyVersion,
       sessionTitleUpdatedAtMs: cloudTitle.updatedAtMs,
+      sessionTitleUpdatedByAccountId: cloudTitle.updatedByAccountId,
       ...(cloudTitle.titleGeneratedFromMessageId
         ? { sessionTitleGeneratedFromMessageId: cloudTitle.titleGeneratedFromMessageId }
         : {}),
@@ -1847,9 +1848,17 @@ export function planCloudSelfAgentCanonicalSync({
       const plannedRevision = typeof plannedMetadata.sessionTitleRevision === 'number'
         ? plannedMetadata.sessionTitleRevision
         : 0;
+      const plannedUpdatedByAccountId = typeof plannedMetadata.sessionTitleUpdatedByAccountId === 'string'
+        ? plannedMetadata.sessionTitleUpdatedByAccountId
+        : null;
       const cloudWinsPlanned = Boolean(cloudTitle)
         && incomingSessionTitleWins(
-          { titleSource: plannedSource, titleRevision: plannedRevision, updatedAtMs: plannedUpdatedAtMs },
+          {
+            titleSource: plannedSource,
+            titleRevision: plannedRevision,
+            updatedAtMs: plannedUpdatedAtMs,
+            updatedByAccountId: plannedUpdatedByAccountId,
+          },
           cloudTitle,
         );
       if (cloudWinsPlanned || (generatedTitle && plannedSource === 'placeholder')) {
@@ -1875,9 +1884,17 @@ export function planCloudSelfAgentCanonicalSync({
     const existingRevision = typeof existingMetadata.sessionTitleRevision === 'number'
       ? existingMetadata.sessionTitleRevision
       : 0;
+    const existingUpdatedByAccountId = typeof existingMetadata.sessionTitleUpdatedByAccountId === 'string'
+      ? existingMetadata.sessionTitleUpdatedByAccountId
+      : null;
     const cloudWinsExisting = Boolean(cloudTitle)
       && incomingSessionTitleWins(
-        { titleSource: existingSource, titleRevision: existingRevision, updatedAtMs: existingUpdatedAtMs },
+        {
+          titleSource: existingSource,
+          titleRevision: existingRevision,
+          updatedAtMs: existingUpdatedAtMs,
+          updatedByAccountId: existingUpdatedByAccountId,
+        },
         cloudTitle,
       );
     const shouldUpdateExistingTitle = cloudWinsExisting
@@ -4740,10 +4757,13 @@ export function useCloudBridgeState({
       const titleGeneratedFromMessageId = typeof metadata.sessionTitleGeneratedFromMessageId === 'string'
         ? metadata.sessionTitleGeneratedFromMessageId.trim() || null
         : null;
+      const updatedByAccountId = typeof metadata.sessionTitleUpdatedByAccountId === 'string'
+        ? metadata.sessionTitleUpdatedByAccountId.trim() || null
+        : null;
       const remote = cloudSessionTitlesById[canonicalSession.id];
       if (remote) {
         const remoteWins = incomingSessionTitleWins(
-          { titleSource, titleRevision, updatedAtMs },
+          { titleSource, titleRevision, updatedAtMs, updatedByAccountId },
           remote,
         );
         const identical = remote.title === canonicalSession.title

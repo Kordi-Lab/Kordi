@@ -30,6 +30,9 @@ fn manual_title_metadata(session: &CanonicalSession, updated_at_ms: i64) -> Resu
         "sessionTitleUpdatedAtMs".to_string(),
         Value::from(updated_at_ms),
     );
+    // Cloud assigns the authoritative actor after accepting this edit. A new
+    // local rename must not inherit the actor from an older synchronized edit.
+    metadata.remove("sessionTitleUpdatedByAccountId");
     serde_json::to_string(&Value::Object(metadata)).map_err(|err| err.to_string())
 }
 

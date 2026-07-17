@@ -75,6 +75,18 @@ test('title metadata distinguishes persisted sources from placeholders and raw i
     { titleSource: 'auto', titleRevision: 1, updatedAtMs: 20 },
     { titleSource: 'auto', titleRevision: 2, updatedAtMs: 10 },
   ), true);
+  assert.equal(incomingSessionTitleWins(
+    { titleSource: 'manual', titleRevision: 3, updatedAtMs: 30, updatedByAccountId: 'acct_z' },
+    { titleSource: 'manual', titleRevision: 3, updatedAtMs: 30, updatedByAccountId: 'acct_a' },
+  ), true);
+  assert.equal(incomingSessionTitleWins(
+    { titleSource: 'manual', titleRevision: 3, updatedAtMs: 30, updatedByAccountId: 'acct_a' },
+    { titleSource: 'manual', titleRevision: 3, updatedAtMs: 30, updatedByAccountId: 'acct_z' },
+  ), false);
+  assert.equal(incomingSessionTitleWins(
+    { titleSource: 'manual', titleRevision: 3, updatedAtMs: 30 },
+    { titleSource: 'manual', titleRevision: 3, updatedAtMs: 30, updatedByAccountId: 'acct_server' },
+  ), true);
 });
 
 test('authoritative manual titles survive even when their text resembles a greeting', () => {

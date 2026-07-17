@@ -428,16 +428,6 @@ async fn handle_submit_turn(
         .as_deref()
         .map(str::trim)
         .filter(|title| !title.is_empty());
-    if let Some(title) = requested_title {
-        store::set_session_name(&conn, &session_id, Some(title))
-            .with_context(|| format!("setting session title for {}", session_id))
-            .map_err(AppError::internal)?;
-    } else if let Some(title) = kordi_session::naming::derive_session_title(&request.input) {
-        store::set_auto_session_name(&conn, &session_id, &title, None)
-            .with_context(|| format!("automatically naming session {}", session_id))
-            .map_err(AppError::internal)?;
-    }
-
     let turn_id = Uuid::new_v4().to_string();
     {
         let mut active_turns = state.active_turns.lock().await;
@@ -446,6 +436,18 @@ async fn handle_submit_turn(
                 "turn {} is already running for session {}",
                 existing.turn_id, session_id
             )));
+        }
+        // Reserve the turn before changing title metadata. A request rejected
+        // as concurrent must not rename the session from text that will never
+        // be appended to its history or consume its one automatic refinement.
+        if let Some(title) = requested_title {
+            store::set_session_name(&conn, &session_id, Some(title))
+                .with_context(|| format!("setting session title for {}", session_id))
+                .map_err(AppError::internal)?;
+        } else if let Some(title) = kordi_session::naming::derive_session_title(&request.input) {
+            store::set_auto_session_name(&conn, &session_id, &title, None)
+                .with_context(|| format!("automatically naming session {}", session_id))
+                .map_err(AppError::internal)?;
         }
         active_turns.insert(
             session_id.clone(),
@@ -1680,7 +1682,7 @@ mod tests {
         let db_path = temp.path().join("sessions.db");
         let conn = store::open_db(&db_path).expect("open db");
         let cwd_str = cwd.display().to_string();
-        let session_id = create_session_with_message(&conn, &cwd_str, "Alpha", "ready");
+        let session_id = store::create_session(&conn, &cwd_str).expect("create session");
         let gate = Arc::new(Notify::new());
         let executor = FakeTurnExecutor {
             calls: Arc::new(Mutex::new(Vec::new())),
@@ -1689,12 +1691,29 @@ mod tests {
 
         let app = test_server(cwd, db_path, Ok(sample_bridges_status()), executor.clone());
 
-        let first = submit_turn_request(&app, &session_id, "First turn").await;
+        let first = submit_turn_request(
+            &app,
+            &session_id,
+            "diagnose memory leak in the Node process",
+        )
+        .await;
         assert_eq!(first.status(), StatusCode::ACCEPTED);
         wait_for_turn_calls(&executor, 1).await;
+        let accepted_title = store::get_session(&conn, &session_id)
+            .expect("read accepted session")
+            .expect("accepted session exists");
+        assert_eq!(accepted_title.title_source, store::SessionTitleSource::Auto);
+        assert_eq!(accepted_title.title_revision, 1);
 
-        let second = submit_turn_request(&app, &session_id, "Second turn").await;
+        let second =
+            submit_turn_request(&app, &session_id, "plan the release validation changes").await;
         assert_eq!(second.status(), StatusCode::CONFLICT);
+        let rejected_title = store::get_session(&conn, &session_id)
+            .expect("read rejected session")
+            .expect("rejected session exists");
+        assert_eq!(rejected_title.name, accepted_title.name);
+        assert_eq!(rejected_title.title_source, accepted_title.title_source);
+        assert_eq!(rejected_title.title_revision, accepted_title.title_revision);
 
         gate.notify_waiters();
     }
