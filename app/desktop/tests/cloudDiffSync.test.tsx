@@ -8,6 +8,7 @@ import {
   applyCloudSyncEventsToSessionActivity,
   applyCloudSyncEventsToSessionForks,
   applyCloudSyncEventsToSessionPins,
+  applyCloudSyncEventsToSessionTitles,
   cloudSessionVisibilityStorageKey,
   cloudSyncCursorStorageKey,
   loadCloudSessionVisibility,
@@ -41,6 +42,33 @@ const incoming: CloudMessage = {
   readAt: null,
   direction: 'incoming',
 };
+
+test('session title sync events restore explicit source and revision metadata', () => {
+  const titles = applyCloudSyncEventsToSessionTitles({}, [{
+    eventId: '12',
+    eventType: 'session.title.updated',
+    peerAccountId: 'session:self-agent:one',
+    messageId: 'msg_seed',
+    payload: {
+      sessionTitle: {
+        sessionId: 'session:self-agent:one',
+        title: 'Diagnose high Node CPU',
+        titleSource: 'manual',
+        titleRevision: 3,
+        titlePolicyVersion: 1,
+        titleGeneratedFromMessageId: 'msg_seed',
+        updatedAtMs: 123,
+        updatedByAccountId: 'acct_me',
+        updatedAt: '2026-07-16T00:00:00Z',
+      },
+    },
+    occurredAt: '2026-07-16T00:00:00Z',
+  }]);
+
+  assert.equal(titles['session:self-agent:one']?.title, 'Diagnose high Node CPU');
+  assert.equal(titles['session:self-agent:one']?.titleSource, 'manual');
+  assert.equal(titles['session:self-agent:one']?.titleRevision, 3);
+});
 
 test('applyCloudSyncEventsToMessagesByPeer upserts messages idempotently by messageId', () => {
   const event: CloudSyncEvent = {

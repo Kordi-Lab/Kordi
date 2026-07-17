@@ -37,7 +37,7 @@ export const contacts: Contact[] = [
     bridges: ['Alpha'],
     status: 'Owned',
     discoverableOn: ['Alpha'],
-    detail: 'My default assistant for direct chat, routing, and everyday tasks.',
+    detail: 'My default assistant for agent conversations, routing, and everyday tasks.',
     owner: 'Me',
   },
   {

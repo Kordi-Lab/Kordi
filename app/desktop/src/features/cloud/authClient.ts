@@ -241,6 +241,23 @@ export type CloudSessionPin = {
   updatedAt: string | null;
 };
 
+export type CloudSessionTitle = {
+  sessionId: string;
+  title: string;
+  titleSource: 'placeholder' | 'auto' | 'imported' | 'external' | 'legacy' | 'manual';
+  titleRevision: number;
+  titlePolicyVersion: number;
+  titleGeneratedFromMessageId: string | null;
+  updatedAtMs: number;
+  updatedByAccountId: string;
+  updatedAt: string;
+};
+
+export type UpdateCloudSessionTitleInput = Pick<
+  CloudSessionTitle,
+  'title' | 'titleSource' | 'titleRevision' | 'titlePolicyVersion' | 'titleGeneratedFromMessageId' | 'updatedAtMs'
+>;
+
 export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
   participantAccountIds: string[];
   clientUpdatedAt?: string | null;
@@ -929,6 +946,20 @@ export class CloudAuthClient {
     );
     if (!response?.pin) throw new Error('Empty response from cloud server.');
     return response.pin;
+  }
+
+  async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> {
+    const response = await this.send<{ sessionTitle: CloudSessionTitle }>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/title`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
+      },
+      'Could not synchronize the session title.',
+    );
+    if (!response?.sessionTitle) throw new Error('Empty response from cloud server.');
+    return response.sessionTitle;
   }
 
   async hideCloudSession(token: string, sessionId: string): Promise<void> {

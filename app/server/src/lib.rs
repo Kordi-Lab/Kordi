@@ -423,14 +423,18 @@ async fn handle_submit_turn(
         )));
     }
 
-    if let Some(title) = request
+    let requested_title = request
         .title
         .as_deref()
         .map(str::trim)
-        .filter(|title| !title.is_empty())
-    {
+        .filter(|title| !title.is_empty());
+    if let Some(title) = requested_title {
         store::set_session_name(&conn, &session_id, Some(title))
             .with_context(|| format!("setting session title for {}", session_id))
+            .map_err(AppError::internal)?;
+    } else if let Some(title) = kordi_session::naming::derive_session_title(&request.input) {
+        store::set_auto_session_name(&conn, &session_id, &title, None)
+            .with_context(|| format!("automatically naming session {}", session_id))
             .map_err(AppError::internal)?;
     }
 
@@ -548,8 +552,24 @@ fn session_summary_from_row(
     let title = row
         .name
         .clone()
-        .or_else(|| preview.clone())
-        .unwrap_or_else(|| fallback_session_title(&row.session_id));
+        .filter(|name| {
+            !kordi_session::naming::is_raw_session_identifier(name, &row.session_id)
+                && !kordi_session::naming::is_explicit_placeholder_session_title(name)
+                && row.title_source != store::SessionTitleSource::Placeholder
+                && (!matches!(
+                    row.title_source,
+                    store::SessionTitleSource::Auto | store::SessionTitleSource::Legacy
+                ) || !kordi_session::naming::is_placeholder_or_weak_legacy_title(
+                    name,
+                    &row.session_id,
+                ))
+        })
+        .or_else(|| {
+            preview
+                .as_deref()
+                .and_then(kordi_session::naming::derive_session_title)
+        })
+        .unwrap_or_else(|| fallback_session_title(row));
 
     Ok(SessionSummary {
         session_id: row.session_id.clone(),
@@ -1043,9 +1063,14 @@ fn parse_client_kind(value: Option<&str>) -> ClientKind {
     }
 }
 
-fn fallback_session_title(session_id: &str) -> String {
-    let short = session_id.chars().take(8).collect::<String>();
-    format!("Session {short}")
+fn fallback_session_title(row: &store::SessionRow) -> String {
+    if row.entry_count <= 0 {
+        return "New chat".to_string();
+    }
+    let date = chrono::DateTime::parse_from_rfc3339(&row.created_at)
+        .map(|value| value.format("%b %-d").to_string())
+        .unwrap_or_else(|_| "recently".to_string());
+    format!("Chat with My Kordi · {date}")
 }
 
 fn workspace_root_name(cwd: &Path) -> String {

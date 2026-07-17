@@ -10,6 +10,7 @@ import {
   loadVisibleCloudAttachmentPreview,
   resetCloudAttachmentPreviewLoader,
   recoverCloudAttachmentPreview,
+  resolveForwardAttachmentItems,
   resolveCloudMessageAttachments,
   uploadCloudFiles,
   uploadComposerAttachments,
@@ -543,6 +544,77 @@ test('resolveCloudMessageAttachments leaves large files for manual download', as
   assert.equal(downloaded, false);
   assert.equal(result[0]?.localPath, null);
   assert.equal(result[0]?.attachmentId, 'att_large');
+});
+
+test('resolveForwardAttachmentItems reuses a local image path without downloading it', async () => {
+  const result = await resolveForwardAttachmentItems({
+    token: 'kordi_cs_xyz',
+    client: {
+      async downloadAttachmentContent() {
+        throw new Error('local forwarding should not download');
+      },
+    },
+    attachments: [{
+      attachmentId: 'att_local_forward',
+      name: 'local.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      localPath: '/tmp/local.png',
+    }],
+  });
+
+  assert.equal(result[0]?.id, 'att_local_forward');
+  assert.equal(result[0]?.path, '/tmp/local.png');
+});
+
+test('resolveForwardAttachmentItems downloads a remote image even when its size is unknown', async () => {
+  const downloaded: string[] = [];
+  const stored: string[] = [];
+  const result = await resolveForwardAttachmentItems({
+    token: 'kordi_cs_xyz',
+    client: {
+      async downloadAttachmentContent(_token: string, attachmentId: string) {
+        downloaded.push(attachmentId);
+        return new Blob([new Uint8Array([9, 8, 7])], { type: 'image/png' });
+      },
+    },
+    attachments: [{
+      attachmentId: 'att_remote_forward_unknown_size',
+      name: 'remote.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: null,
+    }],
+    storeAttachment: async (name) => {
+      stored.push(name);
+      return '/tmp/forward-cache/remote.png';
+    },
+  });
+
+  assert.deepEqual(downloaded, ['att_remote_forward_unknown_size']);
+  assert.deepEqual(stored, ['remote.png']);
+  assert.equal(result[0]?.path, '/tmp/forward-cache/remote.png');
+});
+
+test('resolveForwardAttachmentItems reports an unavailable original instead of sending a placeholder', async () => {
+  await assert.rejects(
+    resolveForwardAttachmentItems({
+      token: 'kordi_cs_xyz',
+      client: {
+        async downloadAttachmentContent() {
+          throw new Error('not reachable');
+        },
+      },
+      attachments: [{
+        attachmentId: 'att_missing_forward',
+        name: 'missing.png',
+        kind: 'image',
+        mimeType: 'image/png',
+      }],
+      storeAttachment: async () => '/tmp/never-used.png',
+    }),
+    /Unable to forward “missing\.png”/,
+  );
 });
 
 test('uploadCloudFiles stores browser file attachments locally so direct chat sender previews immediately', async () => {

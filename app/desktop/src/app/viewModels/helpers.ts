@@ -1,5 +1,6 @@
 import { isBridgeAgentRuntime } from '@/features/bridge/runtime';
 import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/sessionResolver';
+import { deriveSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import { firstPersonPossessiveLabel, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type {
   CanonicalSessionState,
@@ -12,6 +13,7 @@ import type {
   Message,
   SessionStatusIndicator,
 } from '@/kordi-app/types';
+import { CHAT_KIND_LABELS, chatKindDescriptionLabel, sessionIdChatKindLabel } from '@/features/chat/sessionKindLabels';
 
 export function canExposeBridgePerson(peer: DesktopBridgePeer) {
   return Boolean(
@@ -232,11 +234,19 @@ function participantDisplayName(participants: string[]) {
 }
 
 function firstUserSentence(messages: Message[]) {
+  for (const message of messages.filter((candidate) => candidate.role === 'user')) {
+    const title = deriveSessionTitle(message.text);
+    if (title) return title;
+  }
+  return undefined;
+}
+
+function legacyFirstUserSentence(messages: Message[]) {
   const firstUserMessage = messages.find((message) => message.role === 'user' && message.text.trim().length > 0);
-  const text = firstUserMessage?.text.replace(/\s+/g, ' ').trim();
+  const text = firstUserMessage?.text.replace(/\s+/gu, ' ').trim();
   if (!text) return undefined;
   const sentenceMatch = /^(.+?[.!?。！？])(?:\s|$)/u.exec(text);
-  return sentenceMatch?.[1] ?? text.split(/[\n\r]/)[0] ?? text;
+  return sentenceMatch?.[1] ?? text.split(/[\n\r]/u)[0] ?? text;
 }
 
 function localOwnedAgentDisplayName(value?: string | null) {
@@ -276,11 +286,11 @@ function looksLikeSessionId(value: string) {
 export function formatSessionIdSubtitle(value?: string | null) {
   const trimmed = value?.trim() ?? '';
   if (!trimmed) return '';
-  if (/^session id:/i.test(trimmed)) return 'Direct chat';
-  if (trimmed.startsWith('session:group:')) return 'Group';
-  if (trimmed.startsWith('session:direct-agent:')) return 'Agent chat';
-  if (trimmed.startsWith('session:direct-person:')) return 'Direct chat';
-  return looksLikeSessionId(trimmed) ? 'Direct chat' : trimmed;
+  const kindLabel = sessionIdChatKindLabel(trimmed);
+  if (kindLabel) return kindLabel;
+  const descriptionLabel = chatKindDescriptionLabel(trimmed);
+  if (descriptionLabel) return descriptionLabel;
+  return looksLikeSessionId(trimmed) ? CHAT_KIND_LABELS.unknown : trimmed;
 }
 
 export function conversationDisplayName(conversation: Pick<Conversation, 'id' | 'canonicalSessionId' | 'name' | 'participants' | 'messages'>) {
@@ -289,7 +299,13 @@ export function conversationDisplayName(conversation: Pick<Conversation, 'id' | 
     return conversation.name;
   }
 
-  const titleFromMessage = firstUserSentence(conversation.messages);
+  const usesTopicPolicy = conversation.id.startsWith('session:self-agent:')
+    || conversation.id.startsWith('session:project:')
+    || conversation.id.startsWith('session:fork:')
+    || conversation.id.startsWith('draft:');
+  const titleFromMessage = usesTopicPolicy
+    ? firstUserSentence(conversation.messages)
+    : legacyFirstUserSentence(conversation.messages);
   if (titleFromMessage) {
     return titleFromMessage;
   }

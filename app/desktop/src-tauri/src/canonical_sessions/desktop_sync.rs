@@ -594,6 +594,57 @@ fn metadata_with_fork(
     Ok(combined)
 }
 
+fn metadata_with_runtime_title(
+    mut base: serde_json::Value,
+    runtime_conn: Option<&rusqlite::Connection>,
+    session_id: &str,
+) -> serde_json::Value {
+    let Some(row) = runtime_conn.and_then(|conn| {
+        kordi_session::store::get_session(conn, session_id)
+            .ok()
+            .flatten()
+    }) else {
+        return base;
+    };
+    let Some(object) = base.as_object_mut() else {
+        return base;
+    };
+    object.insert(
+        "sessionTitleSource".to_string(),
+        serde_json::Value::String(row.title_source.as_str().to_string()),
+    );
+    object.insert(
+        "titleSource".to_string(),
+        serde_json::Value::String(row.title_source.as_str().to_string()),
+    );
+    object.insert(
+        "sessionTitleRevision".to_string(),
+        serde_json::Value::from(row.title_revision),
+    );
+    object.insert(
+        "sessionTitlePolicyVersion".to_string(),
+        serde_json::Value::from(row.title_policy_version),
+    );
+    if let Some(entry_id) = row.title_generated_from_entry_id {
+        object.insert(
+            "sessionTitleGeneratedFromMessageId".to_string(),
+            serde_json::Value::String(entry_id),
+        );
+    }
+    if let Some(updated_at_ms) = row
+        .title_updated_at
+        .as_deref()
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.timestamp_millis())
+    {
+        object.insert(
+            "sessionTitleUpdatedAtMs".to_string(),
+            serde_json::Value::from(updated_at_ms),
+        );
+    }
+    base
+}
+
 pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> Result<(), String> {
     let conn = open_db()?;
     let human_identity_id = local_profile_human_identity_id(&conn, "You")?;
@@ -603,6 +654,11 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         &state.local_agent.label,
         &state.local_agent.workspace_root,
     )?;
+    let runtime_settings = kordi_core::settings::Settings::load_global();
+    let runtime_conn = kordi_session::store::open_db(&kordi_core::config::session_db_path(
+        &runtime_settings.storage,
+    ))
+    .ok();
 
     for summary in state
         .sessions
@@ -614,12 +670,16 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         }
         let metadata = metadata_with_fork(
             &conn,
-            serde_json::json!({
-                "source": "desktop-chat-summary",
-                "subtitle": summary.subtitle,
-                "updatedAtLabel": summary.updated_at_label,
-                "messageCount": summary.message_count,
-            }),
+            metadata_with_runtime_title(
+                serde_json::json!({
+                    "source": "desktop-chat-summary",
+                    "subtitle": summary.subtitle,
+                    "updatedAtLabel": summary.updated_at_label,
+                    "messageCount": summary.message_count,
+                }),
+                runtime_conn.as_ref(),
+                &summary.id,
+            ),
             summary.forked_from_session_id.as_deref(),
             summary.forked_from_message_id.as_deref(),
         )?;
@@ -649,13 +709,17 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         {
             let metadata = metadata_with_fork(
                 &conn,
-                serde_json::json!({
-                    "source": "desktop-project-summary",
-                    "projectRoot": project.root,
-                    "subtitle": summary.subtitle,
-                    "updatedAtLabel": summary.updated_at_label,
-                    "messageCount": summary.message_count,
-                }),
+                metadata_with_runtime_title(
+                    serde_json::json!({
+                        "source": "desktop-project-summary",
+                        "projectRoot": project.root,
+                        "subtitle": summary.subtitle,
+                        "updatedAtLabel": summary.updated_at_label,
+                        "messageCount": summary.message_count,
+                    }),
+                    runtime_conn.as_ref(),
+                    &summary.id,
+                ),
                 summary.forked_from_session_id.as_deref(),
                 summary.forked_from_message_id.as_deref(),
             )?;
@@ -695,17 +759,21 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         if should_update_desktop_session_shell(&conn, &active.id)? {
             let metadata = metadata_with_fork(
                 &conn,
-                serde_json::json!({
-                    "source": "desktop-chat-detail",
-                    "provider": active.provider,
-                    "providerLabel": active.provider_label,
-                    "model": active.model,
-                    "modelLabel": active.model_label,
-                    "thinking": active.thinking,
-                    "thinkingLabel": active.thinking_label,
-                    "projectRoot": project_root,
-                    "workspaceRoot": workspace_root,
-                }),
+                metadata_with_runtime_title(
+                    serde_json::json!({
+                        "source": "desktop-chat-detail",
+                        "provider": active.provider,
+                        "providerLabel": active.provider_label,
+                        "model": active.model,
+                        "modelLabel": active.model_label,
+                        "thinking": active.thinking,
+                        "thinkingLabel": active.thinking_label,
+                        "projectRoot": project_root,
+                        "workspaceRoot": workspace_root,
+                    }),
+                    runtime_conn.as_ref(),
+                    &active.id,
+                ),
                 active.forked_from_session_id.as_deref(),
                 active.forked_from_message_id.as_deref(),
             )?;

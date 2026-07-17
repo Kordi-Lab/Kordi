@@ -1,4 +1,4 @@
-import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
+import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, mergeCloudSessionActivity, normalizeCloudSessionActivitySnapshot, type CloudSessionActivityStore } from './cloudSessionActivity';
@@ -14,6 +14,7 @@ export type CloudSessionVisibilityState = {
 };
 
 export type CloudSessionPinsById = Record<string, CloudSessionPin>;
+export type CloudSessionTitlesById = Record<string, CloudSessionTitle>;
 
 export function cloudSyncCursorStorageKey(accountId: string): string {
   return `${CLOUD_SYNC_CURSOR_PREFIX}${accountId.trim()}`;
@@ -410,6 +411,45 @@ export function applyCloudSyncEventsToSessionPins(
   return next;
 }
 
+function normalizeCloudSessionTitle(value: unknown): CloudSessionTitle | null {
+  const record = objectRecord(value);
+  if (!record) return null;
+  const sessionId = cleanText(record.sessionId);
+  const title = cleanText(record.title);
+  const titleSource = cleanText(record.titleSource).toLowerCase();
+  if (!sessionId || !title || !['placeholder', 'auto', 'imported', 'external', 'legacy', 'manual'].includes(titleSource)) return null;
+  const titleRevision = typeof record.titleRevision === 'number' ? record.titleRevision : Number(record.titleRevision);
+  const titlePolicyVersion = typeof record.titlePolicyVersion === 'number' ? record.titlePolicyVersion : Number(record.titlePolicyVersion);
+  const updatedAtMs = typeof record.updatedAtMs === 'number' ? record.updatedAtMs : Number(record.updatedAtMs);
+  if (![titleRevision, titlePolicyVersion, updatedAtMs].every(Number.isFinite)) return null;
+  return {
+    sessionId,
+    title,
+    titleSource: titleSource as CloudSessionTitle['titleSource'],
+    titleRevision,
+    titlePolicyVersion,
+    titleGeneratedFromMessageId: cleanText(record.titleGeneratedFromMessageId) || null,
+    updatedAtMs,
+    updatedByAccountId: cleanText(record.updatedByAccountId),
+    updatedAt: cleanText(record.updatedAt),
+  };
+}
+
+export function applyCloudSyncEventsToSessionTitles(
+  current: CloudSessionTitlesById,
+  events: CloudSyncEvent[],
+): CloudSessionTitlesById {
+  let next = current;
+  for (const event of events) {
+    if (event.eventType !== 'session.title.updated') continue;
+    const payload = objectRecord(event.payload);
+    const sessionTitle = normalizeCloudSessionTitle(payload?.sessionTitle);
+    if (!sessionTitle) continue;
+    next = { ...next, [sessionTitle.sessionId]: sessionTitle };
+  }
+  return next;
+}
+
 export function applyCloudSyncEventsToSessionActivity(
   current: CloudSessionActivityStore,
   events: CloudSyncEvent[],
@@ -443,6 +483,7 @@ export type SyncCloudDiffOnceInput = {
   sessionActivity?: CloudSessionActivityStore;
   sessionForksById?: Record<string, CloudSessionForkSummary>;
   sessionPinsById?: CloudSessionPinsById;
+  sessionTitlesById?: CloudSessionTitlesById;
   cloudAgentsById?: Record<string, CloudAgentDefinition>;
   hiddenSessionIds?: ReadonlySet<string>;
   deletedSessionIds?: ReadonlySet<string>;
@@ -456,6 +497,7 @@ export type SyncCloudDiffOnceResult = {
   sessionActivity: CloudSessionActivityStore;
   sessionForksById: Record<string, CloudSessionForkSummary>;
   sessionPinsById: CloudSessionPinsById;
+  sessionTitlesById: CloudSessionTitlesById;
   cloudAgentsById: Record<string, CloudAgentDefinition>;
   hiddenSessionIds: Set<string>;
   deletedSessionIds: Set<string>;
@@ -481,12 +523,12 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   try {
     response = await input.fetchEvents(previousCursor);
   } catch {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, cloudAgentsById: input.cloudAgentsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, sessionTitlesById: input.sessionTitlesById ?? {}, cloudAgentsById: input.cloudAgentsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const nextCursor = normalizeCursor(response.cursor);
   if (cursorWentBackwards(previousCursor, nextCursor)) {
-    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, cloudAgentsById: input.cloudAgentsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
+    return { messagesByPeer: input.messagesByPeer, sessionActivity: input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY, sessionForksById: input.sessionForksById ?? {}, sessionPinsById: input.sessionPinsById ?? {}, sessionTitlesById: input.sessionTitlesById ?? {}, cloudAgentsById: input.cloudAgentsById ?? {}, hiddenSessionIds: initialHiddenSessionIds, deletedSessionIds: initialDeletedSessionIds, cursor: previousCursor, fallbackRequired: true, hasMore: false };
   }
 
   const events = response.events ?? [];
@@ -507,9 +549,10 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
   );
   const sessionForksById = applyCloudSyncEventsToSessionForks(input.sessionForksById ?? {}, events);
   const sessionPinsById = applyCloudSyncEventsToSessionPins(input.sessionPinsById ?? {}, events);
+  const sessionTitlesById = applyCloudSyncEventsToSessionTitles(input.sessionTitlesById ?? {}, events);
   const cloudAgentsById = applyCloudAgentSyncEvents(input.cloudAgentsById ?? {}, events);
   if (!input.shouldSaveCursor || input.shouldSaveCursor()) {
     saveCloudSyncCursor(input.accountId, nextCursor, storage);
   }
-  return { messagesByPeer, sessionActivity, sessionForksById, sessionPinsById, cloudAgentsById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
+  return { messagesByPeer, sessionActivity, sessionForksById, sessionPinsById, sessionTitlesById, cloudAgentsById, hiddenSessionIds: visibility.hiddenSessionIds, deletedSessionIds: visibility.deletedSessionIds, cursor: nextCursor, fallbackRequired: false, hasMore: Boolean(response.hasMore) };
 }

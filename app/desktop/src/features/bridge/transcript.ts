@@ -591,12 +591,12 @@ export function mapBridgeConversationToViewModel(
     subtitle: outreachPrefix
       ? `${outreachPrefix}${conversation.projectName ? ` • ${conversation.projectName}` : ''} • ${conversation.subtitle || conversation.outreach?.requestText || 'Waiting for reply'}`
       : conversation.projectName
-        ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')}`
-        : (conversation.subtitle || (isPersonChat ? 'Direct human chat' : 'Remote agent thread')),
+        ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Person chat' : 'Remote agent chat')}`
+        : (conversation.subtitle || (isPersonChat ? 'Person chat' : 'Remote agent chat')),
     unread: conversation.unreadCount,
     bridges: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
     trust: 'Bridge',
-    directness: isCloudSelfAgent ? 'Direct chat' : outreachPrefix ?? (isPersonChat ? 'Direct person chat' : 'Agent thread'),
+    directness: isCloudSelfAgent ? 'Agent chat' : outreachPrefix ?? (isPersonChat ? 'Person chat' : 'Agent chat'),
     participants: isCloudSelfAgent
       ? ['Me', localBridgeAgentLabel]
       : isAgent

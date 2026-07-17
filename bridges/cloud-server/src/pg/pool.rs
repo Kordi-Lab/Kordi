@@ -187,6 +187,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "cloud message idempotency",
         sql: include_str!("../../migrations/0032_cloud_message_idempotency.sql"),
     },
+    EmbeddedMigration {
+        version: 33,
+        description: "cloud session title metadata",
+        sql: include_str!("../../migrations/0033_cloud_session_titles.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

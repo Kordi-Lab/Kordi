@@ -302,3 +302,122 @@ fn test_list_sessions_orders_by_last_message_timestamp_not_metadata_updates() {
 
     assert_eq!(ordered_ids, vec![newer_session_id, older_session_id]);
 }
+
+#[test]
+fn session_title_precedence_keeps_manual_and_imported_names_stable() {
+    let conn = open_memory().unwrap();
+    let session_id = create_session(&conn, "/tmp/test").unwrap();
+
+    assert!(set_auto_session_name(&conn, &session_id, "Release plan", Some("entry-1")).unwrap());
+    let automatic = get_session(&conn, &session_id).unwrap().unwrap();
+    assert_eq!(automatic.name.as_deref(), Some("Release plan"));
+    assert_eq!(automatic.title_source, SessionTitleSource::Auto);
+    assert_eq!(automatic.title_revision, 1);
+
+    set_session_name(&conn, &session_id, Some("My release checklist")).unwrap();
+    assert!(
+        !set_auto_session_name(
+            &conn,
+            &session_id,
+            "Different automatic name",
+            Some("entry-2")
+        )
+        .unwrap()
+    );
+    let manual = get_session(&conn, &session_id).unwrap().unwrap();
+    assert_eq!(manual.name.as_deref(), Some("My release checklist"));
+    assert_eq!(manual.title_source, SessionTitleSource::Manual);
+
+    let imported_id = create_session(&conn, "/tmp/test").unwrap();
+    assert!(
+        set_session_title(
+            &conn,
+            &imported_id,
+            Some("Imported investigation"),
+            SessionTitleSource::Imported,
+            None,
+        )
+        .unwrap()
+    );
+    assert!(!set_auto_session_name(&conn, &imported_id, "Automatic replacement", None).unwrap());
+    assert_eq!(
+        get_session(&conn, &imported_id)
+            .unwrap()
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Imported investigation")
+    );
+}
+
+#[test]
+fn automatic_title_allows_only_one_refinement() {
+    let conn = open_memory().unwrap();
+    let session_id = create_session(&conn, "/tmp/test").unwrap();
+
+    assert!(set_auto_session_name(&conn, &session_id, "Node CPU", Some("entry-1")).unwrap());
+    assert!(
+        set_auto_session_name(
+            &conn,
+            &session_id,
+            "Diagnose high Node CPU",
+            Some("entry-2"),
+        )
+        .unwrap()
+    );
+    assert!(
+        !set_auto_session_name(&conn, &session_id, "Third moving title", Some("entry-3"),).unwrap()
+    );
+
+    let row = get_session(&conn, &session_id).unwrap().unwrap();
+    assert_eq!(row.name.as_deref(), Some("Diagnose high Node CPU"));
+    assert_eq!(row.title_revision, 2);
+}
+
+#[test]
+fn known_legacy_auto_title_can_be_backfilled_without_replacing_other_legacy_titles() {
+    let conn = open_memory().unwrap();
+    let generated_id = create_session(&conn, "/tmp/test").unwrap();
+    conn.execute(
+        "UPDATE sessions
+         SET name = 'which model are you', title_source = 'legacy', title_revision = 1
+         WHERE session_id = ?1",
+        rusqlite::params![generated_id],
+    )
+    .unwrap();
+
+    assert!(
+        set_session_title(
+            &conn,
+            &generated_id,
+            None,
+            SessionTitleSource::Placeholder,
+            None,
+        )
+        .unwrap()
+    );
+    assert!(
+        set_auto_session_name(&conn, &generated_id, "Model and identity", Some("entry-1")).unwrap()
+    );
+    let generated = get_session(&conn, &generated_id).unwrap().unwrap();
+    assert_eq!(generated.name.as_deref(), Some("Model and identity"));
+    assert_eq!(generated.title_source, SessionTitleSource::Auto);
+
+    let preserved_id = create_session(&conn, "/tmp/test").unwrap();
+    conn.execute(
+        "UPDATE sessions
+         SET name = 'Release validation plan', title_source = 'legacy', title_revision = 1
+         WHERE session_id = ?1",
+        rusqlite::params![preserved_id],
+    )
+    .unwrap();
+    assert!(!set_auto_session_name(&conn, &preserved_id, "Automatic replacement", None).unwrap());
+    assert_eq!(
+        get_session(&conn, &preserved_id)
+            .unwrap()
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("Release validation plan")
+    );
+}

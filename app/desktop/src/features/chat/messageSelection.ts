@@ -1,4 +1,4 @@
-import type { MessageActionSource } from './messageActionMetadata';
+import type { ForwardMessageSource } from './messageActionMetadata';
 
 const MESSAGE_SELECTION_DRAG_THRESHOLD_PX = 6;
 
@@ -17,10 +17,10 @@ export function hasMessageSelectionDragExceededThreshold(
 
 export type MessageSelectionState = {
   conversationId: string;
-  sourcesByMessageId: Map<string, MessageActionSource>;
+  sourcesByMessageId: Map<string, ForwardMessageSource>;
 };
 
-export function formatSelectedMessagesForCopy(sources: readonly MessageActionSource[]) {
+export function formatSelectedMessagesForCopy(sources: readonly ForwardMessageSource[]) {
   return sources
     .map((source) => {
       const sender = source.senderLabel.trim() || 'Unknown sender';
@@ -36,12 +36,12 @@ export function formatSelectedMessagesForCopy(sources: readonly MessageActionSou
 export function setMessageSelectionSource(
   current: MessageSelectionState | null,
   conversationId: string,
-  source: MessageActionSource,
+  source: ForwardMessageSource,
   selected: boolean,
 ): MessageSelectionState | null {
   const nextMap = current?.conversationId === conversationId
     ? new Map(current.sourcesByMessageId)
-    : new Map<string, MessageActionSource>();
+    : new Map<string, ForwardMessageSource>();
 
   if (selected) {
     nextMap.set(source.sourceMessageId, source);
@@ -56,7 +56,7 @@ export function setMessageSelectionSource(
 export function toggleMessageSelectionSource(
   current: MessageSelectionState | null,
   conversationId: string,
-  source: MessageActionSource,
+  source: ForwardMessageSource,
 ): MessageSelectionState | null {
   const currentlySelected = current?.conversationId === conversationId
     && current.sourcesByMessageId.has(source.sourceMessageId);

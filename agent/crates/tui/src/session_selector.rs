@@ -22,9 +22,24 @@ impl SessionSelector {
         let items: Vec<SelectItem> = sessions
             .iter()
             .map(|s| {
-                let label = s.name.clone().unwrap_or_else(|| {
-                    format!("Session {}", &s.session_id[..8.min(s.session_id.len())])
-                });
+                let label = s
+                    .name
+                    .clone()
+                    .filter(|name| {
+                        !kordi_session::naming::is_raw_session_identifier(name, &s.session_id)
+                            && !kordi_session::naming::is_explicit_placeholder_session_title(name)
+                            && s.title_source
+                                != kordi_session::store::SessionTitleSource::Placeholder
+                            && (!matches!(
+                                s.title_source,
+                                kordi_session::store::SessionTitleSource::Auto
+                                    | kordi_session::store::SessionTitleSource::Legacy
+                            ) || !kordi_session::naming::is_placeholder_or_weak_legacy_title(
+                                name,
+                                &s.session_id,
+                            ))
+                    })
+                    .unwrap_or_else(|| "New chat".to_string());
                 let detail = format!(
                     "{} entries · updated {}",
                     s.entry_count,
@@ -112,6 +127,11 @@ mod tests {
                 created_at: "2026-03-30T10:00:00Z".into(),
                 updated_at: "2026-03-31T15:30:00Z".into(),
                 name: Some("refactor-tui".into()),
+                title_source: kordi_session::store::SessionTitleSource::Manual,
+                title_revision: 1,
+                title_policy_version: 1,
+                title_generated_from_entry_id: None,
+                title_updated_at: Some("2026-03-31T15:30:00Z".into()),
                 leaf_id: Some("abc123".into()),
                 entry_count: 42,
                 parent_session_id: None,
@@ -125,6 +145,11 @@ mod tests {
                 created_at: "2026-03-29T08:00:00Z".into(),
                 updated_at: "2026-03-30T12:00:00Z".into(),
                 name: None,
+                title_source: kordi_session::store::SessionTitleSource::Placeholder,
+                title_revision: 0,
+                title_policy_version: 1,
+                title_generated_from_entry_id: None,
+                title_updated_at: None,
                 leaf_id: Some("def456".into()),
                 entry_count: 7,
                 parent_session_id: None,

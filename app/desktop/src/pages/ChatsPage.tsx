@@ -37,6 +37,7 @@ import type { CloudSessionPin } from '@/features/cloud/authClient';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
+import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
@@ -114,13 +115,17 @@ function scheduleTranscriptScrollToBottom<T extends HTMLElement>(scrollRef: RefO
 const GENERIC_CHAT_HEADER_SUBTITLES = new Set([
   'agent chat',
   'bridge',
+  'chat',
   'cloud',
   'direct chat',
   'direct person chat',
+  'person chat',
+  'draft',
   'draft session',
   'external agent',
   'group',
   'group chat',
+  'forked chat',
   'human',
   'local',
   'my agent',
@@ -867,7 +872,7 @@ export function buildAskAgentSessionReferenceContextMessage(conversation: Conver
 }
 
 function companionLabel(conversation: Conversation) {
-  return conversationPaneKind(conversation) === 'agent' ? 'Agent chat' : 'Human chat';
+  return conversationChatKindLabel(conversation);
 }
 
 function conversationPaneKind(conversation: Conversation): 'human' | 'agent' | null {

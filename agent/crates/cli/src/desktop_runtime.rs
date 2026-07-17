@@ -36,8 +36,8 @@ use model_options::{
     resolve_model_candidate,
 };
 use session_catalog::{
-    load_project_info, open_sessions_db, project_group_id, repair_session_title_from_history,
-    runtime_cwd_for_session, session_activity_label, session_row_display_name,
+    fallback_session_display_title, load_project_info, open_sessions_db, project_group_id,
+    repair_session_title_from_history, runtime_cwd_for_session, session_activity_label,
     session_title_from_messages, session_title_from_seed, truncate_chars,
 };
 use session_detail::{
@@ -816,6 +816,21 @@ impl DesktopRuntimeSession {
         Ok(())
     }
 
+    pub fn set_auto_name(&mut self, requested_name: &str) -> Result<()> {
+        let name = requested_name.trim();
+        if name.is_empty() {
+            return Ok(());
+        }
+        ensure_session_row_created(&mut self.setup)?;
+        kordi_session::store::set_auto_session_name(
+            &self.setup.conn,
+            &self.setup.session_id,
+            name,
+            None,
+        )?;
+        Ok(())
+    }
+
     pub fn materialize_session(&mut self) -> Result<()> {
         ensure_session_row_created(&mut self.setup)
     }
@@ -889,8 +904,13 @@ impl DesktopRuntimeSession {
 
         ensure_session_row_created(&mut self.setup)?;
         let session_title_seed = if prompt.is_empty() {
-            attachment_summary_from_metadata(&attachment_metadata)
-                .unwrap_or_else(|| prompt_text.clone())
+            kordi_session::naming::attachment_session_title(
+                attachment_metadata.len(),
+                attachment_metadata
+                    .iter()
+                    .any(|attachment| attachment.kind == "image"),
+            )
+            .unwrap_or_else(|| prompt_text.clone())
         } else {
             prompt.clone()
         };
@@ -1174,14 +1194,26 @@ fn maybe_name_session_from_prompt(
     let Some(row) = kordi_session::store::get_session(conn, session_id)? else {
         return Ok(());
     };
-    if session_row_display_name(&row).is_some() {
+    let can_backfill_legacy = row.title_source == kordi_session::store::SessionTitleSource::Legacy
+        && row
+            .name
+            .as_deref()
+            .is_some_and(kordi_session::naming::is_known_legacy_auto_title);
+    if (!matches!(
+        row.title_source,
+        kordi_session::store::SessionTitleSource::Placeholder
+            | kordi_session::store::SessionTitleSource::Auto
+    ) && !can_backfill_legacy)
+        || (row.title_source == kordi_session::store::SessionTitleSource::Auto
+            && row.title_revision >= 2)
+    {
         return Ok(());
     }
 
     let Some(title) = session_title_from_seed(prompt) else {
         return Ok(());
     };
-    kordi_session::store::set_session_name(conn, session_id, Some(&title))?;
+    kordi_session::store::set_auto_session_name(conn, session_id, &title, None)?;
     Ok(())
 }
 

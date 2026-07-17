@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
+import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { CloudAccountSettingsDialog, type CloudAccountSettingsConfig, type CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { navAccentClasses, navItems } from '@/kordi-app/data';
@@ -32,6 +33,7 @@ import type {
   ChatChannel,
   Contact,
   ContactClass,
+  Conversation,
   ConversationType,
   NavId,
   ParticipantSpaceViewModel,
@@ -101,9 +103,20 @@ export function participantSpaceSessionRowTitle(title: string) {
   return trimmed.startsWith('#') ? trimmed : `# ${trimmed}`;
 }
 
-export function participantSpaceSessionIdLabel(session: { id?: string | null; canonicalSessionId?: string | null }) {
+export function participantSpaceSessionIdLabel(session: {
+  id?: string | null;
+  canonicalSessionId?: string | null;
+  conversation?: Partial<Pick<Conversation, 'id' | 'canonicalSessionId' | 'type' | 'directness'>>;
+}) {
   const sessionId = (session.id || session.canonicalSessionId || '').trim();
   if (!sessionId || sessionId === 'draft:local-chat' || sessionId.startsWith('draft:')) return '';
+  if (session.conversation) {
+    return conversationChatKindLabel({
+      ...session.conversation,
+      id: session.id ?? session.conversation.id,
+      canonicalSessionId: session.canonicalSessionId ?? session.conversation.canonicalSessionId,
+    });
+  }
   return formatSessionIdSubtitle(sessionId);
 }
 
@@ -1987,9 +2000,6 @@ export function WorkspaceSidebar({
                                               {session.summary}
                                             </div>
                                           ) : null}
-                                          <div className={cn('mt-px truncate font-mono text-[10px] leading-[0.95rem]', isActiveSession ? 'text-slate-400' : 'text-slate-600')} title={session.id}>
-                                            id {session.id}
-                                          </div>
                                         </div>
                                       </button>
                                     );

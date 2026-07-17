@@ -1,4 +1,5 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import type { MessageAttachment } from '@/kordi-app/types';
 import { readDesktopChatAttachment, storeDesktopChatAttachment } from '@/lib/desktop';
 import type {
   CloudAuthClient,
@@ -393,12 +394,14 @@ export async function resolveCloudMessageAttachments({
   client,
   attachments,
   autoDownloadMaxBytes = CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES,
+  downloadUnknownSizes = false,
   storeAttachment = storeDesktopChatAttachment,
 }: {
   token: string;
   client: Pick<CloudAuthClient, 'downloadAttachmentContent'>;
   attachments: CloudMessageAttachment[];
   autoDownloadMaxBytes?: number;
+  downloadUnknownSizes?: boolean;
   storeAttachment?: (name: string, data: number[]) => Promise<string>;
 }) {
   const resolved = [];
@@ -410,8 +413,8 @@ export async function resolveCloudMessageAttachments({
       continue;
     }
     const shouldAutoDownload = typeof mapped.sizeBytes === 'number'
-      && mapped.sizeBytes >= 0
-      && mapped.sizeBytes <= autoDownloadMaxBytes;
+      ? mapped.sizeBytes >= 0 && mapped.sizeBytes <= autoDownloadMaxBytes
+      : downloadUnknownSizes;
     if (!shouldAutoDownload) {
       resolved.push(mapped);
       continue;
@@ -429,6 +432,75 @@ export async function resolveCloudMessageAttachments({
     } catch {
       resolved.push(mapped);
     }
+  }
+  return resolved;
+}
+
+export async function resolveForwardAttachmentItems({
+  token,
+  client,
+  attachments,
+  storeAttachment = storeDesktopChatAttachment,
+}: {
+  token: string;
+  client: Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+  attachments: MessageAttachment[];
+  storeAttachment?: (name: string, data: number[]) => Promise<string>;
+}): Promise<AttachmentItem[]> {
+  const remoteAttachments = attachments.flatMap((attachment) => {
+    if (attachment.localPath?.trim()) return [];
+    const attachmentId = attachment.attachmentId?.trim();
+    if (!attachmentId) return [];
+    return [{
+      attachmentId,
+      previewAttachmentId: attachment.previewAttachmentId ?? null,
+      name: attachment.name,
+      kind: attachment.kind,
+      mimeType: attachment.mimeType ?? null,
+      sizeBytes: attachment.sizeBytes ?? null,
+      downloadUrl: attachment.downloadUrl ?? null,
+      previewUrl: attachment.previewUrl ?? null,
+      localPath: null,
+    } satisfies CloudMessageAttachment];
+  });
+  const resolvedRemoteAttachments = remoteAttachments.length > 0
+    ? await resolveCloudMessageAttachments({
+        token,
+        client,
+        attachments: remoteAttachments,
+        autoDownloadMaxBytes: Number.MAX_SAFE_INTEGER,
+        downloadUnknownSizes: true,
+        storeAttachment,
+      })
+    : [];
+  const resolvedPathByAttachmentId = new Map(
+    resolvedRemoteAttachments.flatMap((attachment) => {
+      const attachmentId = attachment.attachmentId?.trim();
+      const localPath = attachment.localPath?.trim();
+      return attachmentId && localPath ? [[attachmentId, localPath] as const] : [];
+    }),
+  );
+  const unresolved: MessageAttachment[] = [];
+  const resolved = attachments.flatMap((attachment, index) => {
+    const attachmentId = attachment.attachmentId?.trim() || '';
+    const path = attachment.localPath?.trim() || resolvedPathByAttachmentId.get(attachmentId) || '';
+    if (!path) {
+      unresolved.push(attachment);
+      return [];
+    }
+    return [{
+      ...attachment,
+      ...(attachmentId ? { attachmentId } : {}),
+      localPath: path,
+      id: attachmentId || `forward-attachment:${index}:${attachment.name}`,
+      path,
+    } satisfies AttachmentItem];
+  });
+  if (unresolved.length > 0) {
+    const subject = unresolved.length === 1
+      ? `“${unresolved[0]!.name}”`
+      : `${unresolved.length} attachments`;
+    throw new Error(`Unable to forward ${subject} because the original file could not be downloaded.`);
   }
   return resolved;
 }

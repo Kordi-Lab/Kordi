@@ -65,9 +65,9 @@ For a test or self-hosted server, register callback URLs for that server's publi
 <PUBLIC_TEST_CLOUD_API_BASE>/v1/cloud/auth/oauth/github/callback
 ```
 
-## Contacts and direct chat
+## Contacts and person chats
 
-Contacts are rendered in the existing chat UI. Direct chat uses the hosted message API and maps server `delivered_at` / `read_at` into desktop delivery chips.
+Contacts are rendered in the existing chat UI. Person chats use the hosted message API and map server `delivered_at` / `read_at` into desktop delivery chips.
 
 ## Groups
 

@@ -437,6 +437,104 @@ fn manual_title_metadata_survives_session_shell_upsert() {
 }
 
 #[test]
+fn self_agent_title_reconciliation_marks_new_auto_titles_and_preserves_legacy_titles() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:title-policy", "Me", "human");
+    let agent = seed_identity(&conn, "agent:title-policy", "Kordi", "agent");
+    let request = |id: &str, title: &str| OpenCanonicalSessionRequest {
+        id: Some(id.to_string()),
+        kind: "self-agent".to_string(),
+        title: Some(title.to_string()),
+        status: Some("active".to_string()),
+        created_by_identity_id: creator.id.clone(),
+        primary_identity_id: Some(agent.id.clone()),
+        project_id: None,
+        project_name: None,
+        relationship_identity_id: None,
+        participant_identity_ids: vec![agent.id.clone()],
+        metadata: Some(serde_json::json!({ "source": "test" })),
+    };
+
+    let automatic = open_or_create_session_in_db(
+        &conn,
+        request("session:self-agent:new-auto", "Release readiness review"),
+    )
+    .expect("create automatic title");
+    assert_eq!(
+        automatic
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("sessionTitleSource"))
+            .and_then(|value| value.as_str()),
+        Some("auto")
+    );
+
+    open_or_create_session_in_db(
+        &conn,
+        request("session:self-agent:legacy", "Verified legacy title"),
+    )
+    .expect("create legacy fixture");
+    conn.execute(
+        "UPDATE sessions SET metadata_json = '{}' WHERE id = 'session:self-agent:legacy'",
+        [],
+    )
+    .expect("simulate pre-policy metadata");
+    open_or_create_session_in_db(
+        &conn,
+        request("session:self-agent:legacy", "Replacement automatic title"),
+    )
+    .expect("reconcile legacy title");
+    let legacy = select_session(&conn, "session:self-agent:legacy")
+        .expect("read legacy session")
+        .expect("legacy session exists");
+    assert_eq!(legacy.title, "Verified legacy title");
+    assert_eq!(
+        legacy
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("sessionTitleSource"))
+            .and_then(|value| value.as_str()),
+        Some("legacy")
+    );
+
+    open_or_create_session_in_db(
+        &conn,
+        request(
+            "session:self-agent:known-legacy-auto",
+            "which model are you",
+        ),
+    )
+    .expect("create known legacy automatic fixture");
+    conn.execute(
+        "UPDATE sessions
+         SET title = 'which model are you',
+             metadata_json = '{\"sessionTitleSource\":\"legacy\",\"titleSource\":\"legacy\",\"sessionTitleRevision\":1}'
+         WHERE id = 'session:self-agent:known-legacy-auto'",
+        [],
+    )
+    .expect("simulate migrated known automatic title");
+    let mut mapped_request = request("session:self-agent:known-legacy-auto", "Model and identity");
+    mapped_request.metadata = Some(serde_json::json!({
+        "sessionTitleSource": "auto",
+        "titleSource": "auto",
+        "sessionTitleRevision": 1,
+        "sessionTitlePolicyVersion": 1,
+        "sessionTitleUpdatedAtMs": 10,
+    }));
+    let mapped = open_or_create_session_in_db(&conn, mapped_request)
+        .expect("backfill known legacy automatic title");
+    assert_eq!(mapped.title, "Model and identity");
+    assert_eq!(
+        mapped
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("sessionTitleSource"))
+            .and_then(|value| value.as_str()),
+        Some("auto")
+    );
+}
+
+#[test]
 fn cloud_profile_identity_adoption_migrates_local_self_to_stable_account_id() {
     let mut conn = test_conn();
     let old_local_human_id =
@@ -797,10 +895,15 @@ fn cloud_profile_identity_adoption_rolls_back_all_mutations_when_profile_update_
         )
         .expect("session after failed adoption");
     assert_eq!(created_by_identity_id, old_local_human_id);
+    let metadata =
+        serde_json::from_str::<serde_json::Value>(&metadata_json).expect("session metadata");
     assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&metadata_json).expect("session metadata"),
-        serde_json::json!({ "adminIdentityIds": [old_local_human_id] })
+        metadata["adminIdentityIds"],
+        serde_json::json!([old_local_human_id])
     );
+    assert_eq!(metadata["sessionTitleSource"], "auto");
+    assert_eq!(metadata["sessionTitlePolicyVersion"], 1);
+    assert!(!metadata_json.contains("acct_atomic"));
 
     let old_self_participant_count: i64 = conn
         .query_row(
