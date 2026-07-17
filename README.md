@@ -16,6 +16,7 @@
   <a href="#why-kordi">Why Kordi</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-kordi-works">Architecture</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="#development">Development</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -112,6 +113,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 | [Development commands](docs/development.md) | Full command map and package-specific workflows |
 | [Architecture](docs/architecture.md) | Product topology and layer responsibilities |
 | [Hosted cloud guide](docs/hosted-cloud-developer-guide.md) | Hosted testing, deployment, and redaction rules |
+| [Changelog](CHANGELOG.md) | User-facing changes since the latest beta release |
 | [Release guide](docs/release.md) | Desktop packaging and release responsibilities |
 
 ## Contributing
