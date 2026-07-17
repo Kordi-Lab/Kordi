@@ -1547,6 +1547,7 @@ export function useKordiAppModel({
     acceptChatMentionTarget,
     acceptProjectMentionTarget,
     handleSendChatMessage,
+    handleRetryChatMessage,
     handleSendProjectMessage,
     handleStopDesktopChatTurn,
     handleStopBridgeAgentRequest,
@@ -2588,6 +2589,7 @@ export function useKordiAppModel({
     wrappedStopDesktopChatTurn,
     wrappedSendProjectMessage,
     wrappedSendChatMessage,
+    wrappedRetryChatMessage,
   } = useKordiShellViewModel({
     themeMode: settingsUi.resolvedThemeMode,
     lastBridgePollAt,
@@ -2603,6 +2605,7 @@ export function useKordiAppModel({
     handleStopDesktopChatTurn,
     handleSendProjectMessage,
     handleSendChatMessage: handleSendChatMessageWithQuoteClear,
+    handleRetryChatMessage,
   });
   const setChatComposerTextForSession = useCallback((sessionId: string, value: string) => {
     composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, value));
@@ -2865,6 +2868,7 @@ export function useKordiAppModel({
     handleStopBridgeAgentRequest,
     handleSendProjectMessage: wrappedSendProjectMessage,
     handleSendChatMessage: wrappedSendChatMessage,
+    handleRetryChatMessage: wrappedRetryChatMessage,
     handleForkChatMessage,
     showChatDetailRail,
     activeDetailTab,

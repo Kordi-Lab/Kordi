@@ -80,4 +80,9 @@ test('messageDeliveryVisual keeps transient and failure states distinct', () => 
     tone: 'red',
     label: 'Sending failed',
   });
+  assert.deepEqual(messageDeliveryVisual('partial'), {
+    glyph: 'exclamation',
+    tone: 'red',
+    label: 'Partially delivered',
+  });
 });

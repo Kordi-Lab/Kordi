@@ -2,7 +2,10 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
-import type { SendCloudGroupControlInput } from '@/features/cloud/useCloudBridgeState';
+import type {
+  SendCloudBridgeMessageOptions,
+  SendCloudGroupControlInput,
+} from '@/features/cloud/useCloudBridgeState';
 import type { ComposerDraftState } from './composerDrafts';
 import type {
   CanonicalSessionState,
@@ -98,7 +101,12 @@ export type UseComposerControllerArgs = {
   setDesktopLiveTurnsBySession: Dispatch<SetStateAction<Record<string, DesktopChatTurnSnapshot>>>;
   setDesktopBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   setCloudBridgeState?: Dispatch<SetStateAction<DesktopBridgeState | null>>;
-  sendCloudBridgeMessage?: (conversationId: string, text: string, attachments?: AttachmentItem[]) => Promise<void>;
+  sendCloudBridgeMessage?: (
+    conversationId: string,
+    text: string,
+    attachments?: AttachmentItem[],
+    options?: SendCloudBridgeMessageOptions,
+  ) => Promise<void>;
   sendCloudGroupControl?: (input: SendCloudGroupControlInput) => Promise<void>;
   cancelCloudBridgeAgentRequest?: (conversationId: string, requestId: string) => Promise<void>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;

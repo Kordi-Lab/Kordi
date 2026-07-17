@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
-import type { ComposerScope, Conversation, DesktopChatState, ResolvedThemeMode } from '@/kordi-app/types';
+import type { ComposerScope, Conversation, DesktopChatState, Message, ResolvedThemeMode } from '@/kordi-app/types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
@@ -22,6 +22,7 @@ type UseKordiShellViewModelArgs = {
   handleStopDesktopChatTurn: () => Promise<void> | void;
   handleSendProjectMessage: (draftOverride?: string) => Promise<void> | void;
   handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => Promise<void> | void;
+  handleRetryChatMessage: (message: Message) => Promise<void> | void;
 };
 
 export function useKordiShellViewModel({
@@ -39,6 +40,7 @@ export function useKordiShellViewModel({
   handleStopDesktopChatTurn,
   handleSendProjectMessage,
   handleSendChatMessage,
+  handleRetryChatMessage,
 }: UseKordiShellViewModelArgs) {
   const lastBridgePollAtLabel = useMemo(
     () => (lastBridgePollAt ? formatDesktopClockTime(lastBridgePollAt, { includeSeconds: true }) : null),
@@ -88,6 +90,10 @@ export function useKordiShellViewModel({
     void handleSendChatMessage(draftOverride, targetSessionId, contextMessages);
   }, [handleSendChatMessage]);
 
+  const wrappedRetryChatMessage = useCallback((message: Message) => {
+    void handleRetryChatMessage(message);
+  }, [handleRetryChatMessage]);
+
   return {
     rootThemeClass,
     lastBridgePollAtLabel,
@@ -104,5 +110,6 @@ export function useKordiShellViewModel({
     wrappedStopDesktopChatTurn,
     wrappedSendProjectMessage,
     wrappedSendChatMessage,
+    wrappedRetryChatMessage,
   };
 }

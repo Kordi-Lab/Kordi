@@ -772,6 +772,7 @@ function MessageBubbleView({
   onOpenForkSession,
   onReplyMessage,
   onForwardMessage,
+  onRetryMessage,
   onOpenMessageDetail,
   onSelectMessage,
   onRequestPinMessage,
@@ -801,6 +802,7 @@ function MessageBubbleView({
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onRetryMessage?: (message: Message) => void;
   onOpenMessageDetail?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;
@@ -1350,7 +1352,15 @@ function MessageBubbleView({
           ) : (
             <>
               <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
-                {hasAttachments ? <AttachmentPreview msg={msg} /> : null}
+                {hasAttachments ? (
+                  <AttachmentPreview
+                    msg={msg}
+                    imageDeliveryStatus={hasOnlyImageAttachments && isOwnHumanMessage ? deliveryStatus : null}
+                    onRetryImage={hasOnlyImageAttachments && isOwnHumanMessage && deliveryVisual?.tone === 'red' && onRetryMessage
+                      ? () => onRetryMessage(msg)
+                      : undefined}
+                  />
+                ) : null}
                 {hasText ? <div className="whitespace-pre-wrap break-words">{renderTextWithMentionPills(msg.text, msg.mentions)}</div> : null}
               </div>
               {!hasOnlyImageAttachments ? (
@@ -1368,7 +1378,7 @@ function MessageBubbleView({
         ) : (
           <>
             <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
-              {hasAttachments ? <AttachmentPreview msg={msg} /> : null}
+              {hasAttachments ? <AttachmentPreview msg={msg} imageDeliveryStatus={null} /> : null}
               {hasText ? <MarkdownContent text={msg.text} /> : null}
             </div>
             {(msg.statusChips?.length || footerDetail) ? (
@@ -1434,6 +1444,7 @@ export const MessageBubble = memo(
     && previous.onOpenForkSession === next.onOpenForkSession
     && previous.onReplyMessage === next.onReplyMessage
     && previous.onForwardMessage === next.onForwardMessage
+    && previous.onRetryMessage === next.onRetryMessage
     && previous.onOpenMessageDetail === next.onOpenMessageDetail
     && previous.onSelectMessage === next.onSelectMessage
     && previous.onRequestPinMessage === next.onRequestPinMessage

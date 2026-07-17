@@ -23,15 +23,18 @@ test('plain cloud group messages send through cloud group transport instead of f
 
 test('active composer sends prefer Cloud group routing before direct Cloud bridge routing', () => {
   const source = chatMessagesSource();
-  const activeStart = source.indexOf('return useCallback(async (draftOverride?');
+  const activeStart = source.indexOf('const handleSendChatMessage = useCallback(async (');
   assert.notEqual(activeStart, -1, 'expected active composer send handler');
   const activeEnd = source.indexOf('const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);', activeStart);
   assert.notEqual(activeEnd, -1, 'expected local-send section after bridge routing');
   const bridgeRoutingSection = source.slice(activeStart, activeEnd);
 
-  const directCloudBranch = bridgeRoutingSection.indexOf('if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId))');
-  const mentionGroupBranch = bridgeRoutingSection.indexOf('if (activeConversationUsesBridgeRouting && shouldRouteMentionThroughCloudGroup({');
-  const plainGroupSend = bridgeRoutingSection.indexOf("kind: 'group-message'", mentionGroupBranch + 1);
+  const normalSendStart = bridgeRoutingSection.indexOf('if (activeLocalTurnShouldDelayChatSend({');
+  assert.notEqual(normalSendStart, -1, 'expected normal send path after retry handling');
+  const normalSendSection = bridgeRoutingSection.slice(normalSendStart);
+  const directCloudBranch = normalSendSection.indexOf('if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId))');
+  const mentionGroupBranch = normalSendSection.indexOf('if (activeConversationUsesBridgeRouting && shouldRouteMentionThroughCloudGroup({');
+  const plainGroupSend = normalSendSection.indexOf("kind: 'group-message'", mentionGroupBranch + 1);
 
   assert.notEqual(directCloudBranch, -1, 'expected direct Cloud bridge branch');
   assert.notEqual(mentionGroupBranch, -1, 'expected Cloud group mention branch');
@@ -70,7 +73,7 @@ test('outbox delivery persistence mutates the exact canonical message without lo
   );
   assert.match(persistence, /cloudGroupOutboxDeliveryStatus\(entry\)/);
   assert.match(persistence, /await updateCanonicalMessageDelivery\(\{[\s\S]*?messageId:\s*entry\.canonicalMessageId,[\s\S]*?sessionId:\s*entry\.sessionId,/);
-  assert.doesNotMatch(persistence, /if \(!delta\) return;/, 'a missing native row still acknowledges the terminal outbox entry');
+  assert.match(persistence, /if \(!delta\) return;/, 'a missing native row must keep the terminal outbox entry for replay');
   assert.match(persistence, /canonicalSessionStateRef\.current\s*=\s*mergeCanonicalMessageDeliveryDelta\(/);
   assert.match(persistence, /setCanonicalSessionState\?\.\(\(current\) =>\s*mergeCanonicalMessageDeliveryDelta\(current, delta\)\s*\)/);
   assert.doesNotMatch(persistence, /fetchCanonicalSessionMessages/);
@@ -78,6 +81,38 @@ test('outbox delivery persistence mutates the exact canonical message without lo
   assert.doesNotMatch(persistence, /upsertCanonicalMessageFast/);
   assert.equal((persistence.match(/setCanonicalSessionState\?\.\(/g) ?? []).length, 1);
   const nativeUpdate = persistence.indexOf('await updateCanonicalMessageDelivery');
+  const missingCanonicalGuard = persistence.indexOf('if (!delta) return;');
   const acknowledgement = persistence.lastIndexOf('await cloudGroupOutbox?.acknowledgeCanonicalDelivery');
   assert.ok(nativeUpdate >= 0 && acknowledgement > nativeUpdate, 'native persistence must succeed before terminal acknowledgement');
+  assert.ok(
+    missingCanonicalGuard > nativeUpdate && acknowledgement > missingCanonicalGuard,
+    'the outbox must remain durable when the canonical row is not available yet',
+  );
+});
+
+test('cloud group image sends persist local sources before starting upload', () => {
+  const source = cloudBridgeSource();
+  const start = source.indexOf('const sendCloudGroupControl = useCallback');
+  const end = source.indexOf('\n\n  const refreshCloudSessionActivity', start);
+  assert.notEqual(start, -1, 'expected the cloud group send closure');
+  assert.notEqual(end, -1, 'expected the next closure after cloud group sending');
+  const groupSend = source.slice(start, end);
+
+  const enqueue = groupSend.indexOf('await cloudGroupOutbox.enqueue(outboxEntry)');
+  const firstUpload = groupSend.indexOf('uploadComposerAttachments');
+  assert.match(groupSend, /pendingAttachments:\s*cloudGroupOutboxAttachmentSources\(input\.attachments \?\? \[\]\)/);
+  assert.ok(enqueue >= 0 && firstUpload > enqueue, 'attachment upload must not begin before the local source is durable');
+  assert.match(groupSend, /prepareCloudGroupOutboxEntryAttachments\(/);
+  assert.match(groupSend, /clientMessageId,/);
+});
+
+test('group send failures upsert a durable failed canonical row with retry recipients', () => {
+  const source = chatMessagesSource();
+  assert.match(source, /function persistCanonicalGroupMessageFailure[\s\S]*await upsertCanonicalMessage\(request\);/);
+  assert.match(source, /deliveryState:\s*'failed'/);
+  assert.match(source, /exhaustedRecipientIds:/);
+  assert.ok(
+    (source.match(/await persistCanonicalGroupMessageFailure\(/g) ?? []).length >= 3,
+    'targeted, mentioned, and normal group sends must all persist terminal failures',
+  );
 });

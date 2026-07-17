@@ -9,10 +9,14 @@ import {
   bridgeAttachmentTransportFields,
   failedPreparedCanonicalUserMessage,
   markOptimisticBridgeMessageFailed,
+  markOptimisticBridgeMessageSending,
   markOptimisticCanonicalMessageFailed,
+  markOptimisticCanonicalMessageSending,
   prepareCanonicalUserMessage,
+  retryAttachmentItemsFromMessage,
   toOptimisticAttachments,
 } from '../src/features/chat/messageActions/optimistic';
+import { failedCanonicalGroupMessageRequest } from '../src/features/chat/messageActions/chatMessages';
 import type { CanonicalSessionState, DesktopChatState } from '../src/kordi-app/types';
 
 const imageAttachment = {
@@ -50,6 +54,35 @@ test('optimistic attachments keep local paths so the sender sees image previews 
     localPath: '/tmp/pi-clipboard-1.png',
     sizeBytes: 4096,
   }]);
+});
+
+test('failed message attachments can be rebuilt for a retry only while local files remain available', () => {
+  assert.deepEqual(retryAttachmentItemsFromMessage({
+    id: 'msg-1',
+    role: 'user',
+    text: '',
+    time: '12:31',
+    attachments: [{
+      kind: 'image',
+      name: 'Screenshot 1.png',
+      localPath: '/tmp/pi-clipboard-1.png',
+      mimeType: 'image/png',
+    }],
+  }), [{
+    id: 'msg-1:0:/tmp/pi-clipboard-1.png',
+    path: '/tmp/pi-clipboard-1.png',
+    kind: 'image',
+    name: 'Screenshot 1.png',
+    localPath: '/tmp/pi-clipboard-1.png',
+    mimeType: 'image/png',
+  }]);
+  assert.equal(retryAttachmentItemsFromMessage({
+    id: 'msg-2',
+    role: 'user',
+    text: '',
+    time: '12:32',
+    attachments: [{ kind: 'image', name: 'Missing.png', localPath: null }],
+  }), null);
 });
 
 test('canonical attachment mapping preserves local paths for image previews', () => {
@@ -175,6 +208,82 @@ test('canonical optimistic bridge messages can be marked failed for visible send
   assert.equal(message?.status, 'failed');
   assert.equal((message?.content as { deliveryState?: string }).deliveryState, 'failed');
   assert.equal((message?.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
+});
+
+test('retry returns failed direct and canonical messages to sending without creating a duplicate', () => {
+  const bridgeState = appendOptimisticBridgeMessage({
+    configPath: '/tmp/config.json',
+    legacyConfigPath: '/tmp/legacy.json',
+    conversationsPath: '/tmp/conversations.sqlite3',
+    activeHostId: 'host-1',
+    hosts: [],
+    localServer: { running: false },
+    conversations: [{
+      id: 'bridge:host-1:peer-1:person',
+      hostId: 'host-1',
+      peerNodeId: 'peer-1',
+      peerRuntime: 'person',
+      title: 'Peer',
+      subtitle: 'Peer',
+      unreadCount: 0,
+      updatedAtMs: 1,
+      updatedAtLabel: '12:00',
+      awaitingReply: false,
+      peerTyping: false,
+      messages: [],
+    }],
+  }, 'bridge:host-1:peer-1:person', '', '12:31', 'pending-1', [imageAttachment]);
+  const failedBridgeState = markOptimisticBridgeMessageFailed(
+    bridgeState,
+    'bridge:host-1:peer-1:person',
+    'pending-1',
+    'offline',
+  );
+  const retryingBridgeState = markOptimisticBridgeMessageSending(
+    failedBridgeState,
+    'bridge:host-1:peer-1:person',
+    'pending-1',
+  );
+  assert.equal(retryingBridgeState?.conversations[0]?.messages.length, 1);
+  assert.equal(retryingBridgeState?.conversations[0]?.messages[0]?.deliveryState, 'sending');
+  assert.equal(retryingBridgeState?.conversations[0]?.messages[0]?.detail, undefined);
+
+  const canonicalState = {
+    sessions: [{ id: 'session-1', updatedAtMs: 1, lastMessageAtMs: 1 }],
+    messages: [{
+      id: 'msg-1',
+      sessionId: 'session-1',
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: '',
+      content: { deliveryState: 'failed', exhaustedRecipientIds: ['acct_a'] },
+      parentMessageId: null,
+      delegatedExchangeId: null,
+      status: 'failed',
+      sequenceNum: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      contentHash: null,
+      sourceTransport: 'cloud-group-ui',
+      sourceEventId: 'cloud-group-ui:session-1:1',
+    }],
+  } as unknown as CanonicalSessionState;
+  const retryingCanonicalState = markOptimisticCanonicalMessageSending(
+    canonicalState,
+    'session-1',
+    'msg-1',
+    ['acct_a'],
+  );
+  assert.equal(retryingCanonicalState?.messages.length, 1);
+  assert.equal(retryingCanonicalState?.messages[0]?.status, 'sending');
+  assert.deepEqual(retryingCanonicalState?.messages[0]?.content, {
+    deliveryState: 'sending',
+    exhaustedRecipientIds: [],
+    deliveredRecipientIds: [],
+    pendingRecipientIds: ['acct_a'],
+    detail: undefined,
+  });
 });
 
 
@@ -338,6 +447,38 @@ test('failed prepared canonical bridge messages preserve attachment-only sends f
   assert.equal((failed?.request.content as { deliveryState?: string }).deliveryState, 'failed');
   assert.equal((failed?.request.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
   assert.equal(((failed?.request.content as { attachments?: Array<{ localPath?: string }> }).attachments ?? [])[0]?.localPath, '/tmp/pi-clipboard-1.png');
+});
+
+test('failed canonical group messages persist attachment recovery and exhausted recipients', () => {
+  const prepared = prepareCanonicalUserMessage(
+    'session-1',
+    'human:me',
+    '',
+    [imageAttachment],
+    '12:31',
+    'cloud-group-ui',
+    'sending',
+  );
+
+  const failed = failedCanonicalGroupMessageRequest(
+    prepared,
+    'Attachment upload failed.',
+    [' acct_a ', 'acct_b', 'acct_a'],
+  );
+  const content = failed?.content as {
+    attachments?: Array<{ localPath?: string }>;
+    deliveryState?: string;
+    detail?: string;
+    pendingRecipientIds?: string[];
+    exhaustedRecipientIds?: string[];
+  };
+
+  assert.equal(failed?.status, 'failed');
+  assert.equal(content.deliveryState, 'failed');
+  assert.equal(content.detail, 'Attachment upload failed.');
+  assert.deepEqual(content.pendingRecipientIds, []);
+  assert.deepEqual(content.exhaustedRecipientIds, ['acct_a', 'acct_b']);
+  assert.equal(content.attachments?.[0]?.localPath, '/tmp/pi-clipboard-1.png');
 });
 
 

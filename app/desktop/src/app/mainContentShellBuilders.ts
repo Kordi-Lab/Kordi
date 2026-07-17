@@ -259,6 +259,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       ? () => args.handleAddBridgeContact(activeBridgeContactTarget.hostId, activeBridgeContactTarget.nodeId)
       : undefined,
     onSendChatMessage: args.handleSendChatMessage,
+    onRetryChatMessage: args.handleRetryChatMessage,
     onCreateAgentSession: args.handleCreateSideAgentSession,
     onForkChatMessage: args.handleForkChatMessage,
     onSelectSession: args.handleSelectChatSession,

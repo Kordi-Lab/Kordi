@@ -277,6 +277,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       composerAuthLabelChat: args.composerAuthLabelChat,
       composerAuthOptionsChat: args.composerAuthOptionsChat,
       handleSendChatMessage: args.handleSendChatMessage,
+      handleRetryChatMessage: args.handleRetryChatMessage,
       handleForkChatMessage: args.handleForkChatMessage,
       activeBridgeConversationHost: args.activeBridgeConversationHost,
       activeBridgeConversation: args.activeBridgeConversation,

@@ -66,6 +66,7 @@ import {
   type CloudAgentRunClaimInput,
   type CloudMessage,
   type CloudPublicProfile,
+  type SendCloudMessageAttachmentInput,
   type CloudSessionForkSummary,
   type CloudSessionPin,
   type CloudSessionTitle,
@@ -103,6 +104,8 @@ import {
 } from './cloudAgentRuntime';
 import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
 import {
+  cloudGroupAttachmentReferences,
+  cloudGroupControlWithAttachmentReferences,
   cloudGroupAgentConversationId,
   cloudGroupAgentMentionResponseState,
   cloudGroupAgentRequestingNoticeMessage,
@@ -163,8 +166,10 @@ import type { CloudAgentDefinition, SharedCloudAgentSummary } from './cloudAgent
 import { cloudMessageMetadataOnly, defaultCloudMessageCache } from './cloudMessageCache';
 import {
   CloudGroupOutbox,
+  cloudGroupOutboxNextWakeAtMs,
   cloudGroupOutboxDeliveryStatus,
   defaultCloudGroupOutboxPersistence,
+  type CloudGroupOutboxAttachmentSource,
   type CloudGroupOutboxEntry,
 } from './cloudGroupOutbox';
 import { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
@@ -202,6 +207,41 @@ export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 45_000;
 const CLOUD_MESSAGE_SNAPSHOT_LIMIT = 500;
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
+
+export function cloudGroupOutboxAttachmentSources(
+  attachments: readonly AttachmentItem[],
+): CloudGroupOutboxAttachmentSource[] {
+  return attachments.map((attachment) => ({
+    id: attachment.id,
+    path: attachment.path,
+    name: attachment.name,
+    kind: attachment.kind,
+    formatLabel: attachment.formatLabel ?? null,
+    mimeType: attachment.mimeType ?? null,
+    sizeBytes: attachment.sizeBytes ?? null,
+  }));
+}
+
+export async function prepareCloudGroupOutboxEntryAttachments({
+  outbox,
+  entry,
+  upload,
+}: {
+  outbox: CloudGroupOutbox;
+  entry: CloudGroupOutboxEntry;
+  upload: (attachments: CloudGroupOutboxAttachmentSource[]) => Promise<SendCloudMessageAttachmentInput[]>;
+}): Promise<CloudGroupOutboxEntry> {
+  const pendingAttachments = entry.pendingAttachments ?? [];
+  if (pendingAttachments.length === 0) return entry;
+  const attachments = await upload(pendingAttachments);
+  const envelope = cloudGroupControlWithAttachmentReferences(entry.envelope, attachments);
+  const prepared = await outbox.completeAttachmentUpload(entry.canonicalMessageId, {
+    envelope,
+    attachments,
+  });
+  if (!prepared) throw new Error('Cloud group outbox entry disappeared during attachment upload.');
+  return prepared;
+}
 
 export type CloudUnreadReadinessStatus = 'pending' | 'ready' | 'error';
 
@@ -2184,6 +2224,11 @@ export type SendCloudGroupControlInput = {
   fork?: CloudGroupControlEnvelope['fork'];
   message?: CloudGroupControlEnvelope['message'];
   attachments?: AttachmentItem[];
+  retryFailed?: boolean;
+};
+
+export type SendCloudBridgeMessageOptions = {
+  clientMessageId?: string | null;
 };
 
 export type UseCloudBridgeStateResult = {
@@ -2191,7 +2236,12 @@ export type UseCloudBridgeStateResult = {
   setCloudBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   mergedBridgeState: DesktopBridgeState | null;
   prepareCloudForwardAttachments(attachments: MessageAttachment[]): Promise<AttachmentItem[]>;
-  sendCloudBridgeMessage(conversationId: string, text: string, attachments?: AttachmentItem[]): Promise<void>;
+  sendCloudBridgeMessage(
+    conversationId: string,
+    text: string,
+    attachments?: AttachmentItem[],
+    options?: SendCloudBridgeMessageOptions,
+  ): Promise<void>;
   sendCloudGroupControl(input: SendCloudGroupControlInput): Promise<void>;
   recordCloudSessionFork(input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }): Promise<void>;
   updateCloudSessionPin(input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }): Promise<CloudSessionPin>;
@@ -4016,13 +4066,12 @@ export function useCloudBridgeState({
       sessionId: entry.sessionId,
       ...delivery,
     });
-    if (delta) {
-      canonicalSessionStateRef.current = mergeCanonicalMessageDeliveryDelta(
-        canonicalSessionStateRef.current,
-        delta,
-      );
-      setCanonicalSessionState?.((current) => mergeCanonicalMessageDeliveryDelta(current, delta));
-    }
+    if (!delta) return;
+    canonicalSessionStateRef.current = mergeCanonicalMessageDeliveryDelta(
+      canonicalSessionStateRef.current,
+      delta,
+    );
+    setCanonicalSessionState?.((current) => mergeCanonicalMessageDeliveryDelta(current, delta));
     await cloudGroupOutbox?.acknowledgeCanonicalDelivery(entry.canonicalMessageId);
   }, [cloudGroupOutbox, setCanonicalSessionState]);
 
@@ -4036,11 +4085,10 @@ export function useCloudBridgeState({
       if (cancelled) return;
       if (retryTimer !== null) window.clearTimeout(retryTimer);
       retryTimer = null;
-      const nextAttemptAtMs = cloudGroupOutbox.entries()
-        .filter((entry) => entry.pendingRecipientIds.length > 0)
-        .reduce((earliest, entry) => Math.min(earliest, entry.nextAttemptAtMs), Number.POSITIVE_INFINITY);
-      if (!Number.isFinite(nextAttemptAtMs)) return;
-      retryTimer = window.setTimeout(() => { void drain(); }, Math.max(0, nextAttemptAtMs - Date.now()));
+      const nowMs = Date.now();
+      const nextWakeAtMs = cloudGroupOutboxNextWakeAtMs(cloudGroupOutbox.entries(), nowMs);
+      if (nextWakeAtMs === null) return;
+      retryTimer = window.setTimeout(() => { void drain(); }, Math.max(0, nextWakeAtMs - nowMs));
     };
 
     const drain = async () => {
@@ -4049,13 +4097,28 @@ export function useCloudBridgeState({
       let sentAny = false;
       const sessionPromise = loadSession();
       try {
+        const preparedEntries = new Map<string, Promise<CloudGroupOutboxEntry>>();
         const outcomes = await cloudGroupOutbox.deliverDue(async ({ recipientId, clientMessageId, entry }) => {
           const session = await sessionPromise;
           if (!session?.token) throw new Error('Not signed in.');
-          const message = await client.sendMessage(session.token, recipientId, entry.envelope, {
-            sessionId: entry.sessionId,
-            attachments: entry.attachments,
-            clientCreatedAt: entry.clientCreatedAt,
+          let preparedEntry = preparedEntries.get(entry.canonicalMessageId);
+          if (!preparedEntry) {
+            preparedEntry = prepareCloudGroupOutboxEntryAttachments({
+              outbox: cloudGroupOutbox,
+              entry,
+              upload: (attachments) => uploadComposerAttachments({
+                token: session.token,
+                client,
+                attachments,
+              }),
+            });
+            preparedEntries.set(entry.canonicalMessageId, preparedEntry);
+          }
+          const ready = await preparedEntry;
+          const message = await client.sendMessage(session.token, recipientId, ready.envelope, {
+            sessionId: ready.sessionId,
+            attachments: ready.attachments,
+            clientCreatedAt: ready.clientCreatedAt,
             clientMessageId,
           });
           sentAny = true;
@@ -4966,7 +5029,12 @@ export function useCloudBridgeState({
     });
   }, [client]);
 
-  const sendCloudBridgeMessage = useCallback(async (conversationId: string, text: string, attachments: AttachmentItem[] = []) => {
+  const sendCloudBridgeMessage = useCallback(async (
+    conversationId: string,
+    text: string,
+    attachments: AttachmentItem[] = [],
+    options: SendCloudBridgeMessageOptions = {},
+  ) => {
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);
     const trimmed = text.trim();
     if (!peerId || (!trimmed && attachments.length === 0)) throw new Error('Unable to resolve cloud conversation.');
@@ -4976,7 +5044,11 @@ export function useCloudBridgeState({
       ? await uploadComposerAttachments({ token: session.token, client, attachments })
       : [];
     const cloudSessionId = cloudSessionIdForBridgeSend(account?.accountId, peerId, conversationId);
-    const message = await client.sendMessage(session.token, peerId, trimmed, { sessionId: cloudSessionId, attachments: uploadedAttachments });
+    const message = await client.sendMessage(session.token, peerId, trimmed, {
+      sessionId: cloudSessionId,
+      attachments: uploadedAttachments,
+      clientMessageId: options.clientMessageId,
+    });
     mergeMessage(message);
   }, [account?.accountId, client, mergeMessage]);
 
@@ -5012,76 +5084,89 @@ export function useCloudBridgeState({
       groupTitle: input.groupTitle,
       relatedGroupTitles: relatedGroupControls.map((control) => control.envelope.groupTitle),
     });
-    const uploadedAttachments = input.attachments?.length
-      ? await uploadComposerAttachments({ token: session.token, client, attachments: input.attachments })
-      : [];
-    const message = input.message
-      ? {
-          ...input.message,
-          senderAccountId: input.message.senderAccountId?.trim() || account.accountId,
-          attachments: uploadedAttachments.length > 0 ? uploadedAttachments.map((attachment) => ({
-            attachmentId: attachment.attachmentId,
-            name: attachment.name,
-            kind: attachment.kind,
-            mimeType: attachment.mimeType ?? null,
-            sizeBytes: attachment.sizeBytes ?? null,
-            previewUrl: attachment.previewUrl ?? null,
-          })) : input.message.attachments,
-        }
-      : null;
     const forkFromSessionMetadata = input.kind === 'group-message'
       ? cloudGroupForkPayloadFromSessionMetadata(
           canonicalSessionStateRef.current?.sessions.find((sessionCandidate) => sessionCandidate.id === input.groupId)?.metadata,
           input.groupId,
         )
       : null;
-    const envelope = encodeCloudGroupControl({
-      kind: input.kind,
-      groupId: input.groupId,
-      groupSpaceId: input.groupSpaceId ?? null,
-      groupTitle,
-      createdByAccountId: input.createdByAccountId?.trim() || account.accountId,
-      actor,
-      participants,
-      fork: input.fork ?? forkFromSessionMetadata,
-      message,
-    });
-    const recordFirstAck = () => finishChatPerformanceSpan(firstAckPerformanceSpan, () => ({
+    const buildPayload = (uploadedAttachments: SendCloudMessageAttachmentInput[]) => {
+      const groupMessageAttachments = uploadedAttachments.length > 0
+        ? uploadedAttachments
+        : input.message?.attachments ?? [];
+      const message = input.message
+        ? {
+            ...input.message,
+            senderAccountId: input.message.senderAccountId?.trim() || account.accountId,
+            attachments: groupMessageAttachments.length > 0
+              ? cloudGroupAttachmentReferences(groupMessageAttachments)
+              : input.message.attachments,
+          }
+        : null;
+      const envelope = encodeCloudGroupControl({
+        kind: input.kind,
+        groupId: input.groupId,
+        groupSpaceId: input.groupSpaceId ?? null,
+        groupTitle,
+        createdByAccountId: input.createdByAccountId?.trim() || account.accountId,
+        actor,
+        participants,
+        fork: input.fork ?? forkFromSessionMetadata,
+        message,
+      });
+      return { message, envelope };
+    };
+    const initialPayload = buildPayload([]);
+    const recordFirstAck = (envelope: string, attachmentCount: number) => finishChatPerformanceSpan(firstAckPerformanceSpan, () => ({
       recipientCount: targetAccountIds.length,
-      attachmentCount: uploadedAttachments.length,
+      attachmentCount,
       payloadBytes: chatPerformancePayloadBytes(envelope),
     }));
-    const clientCreatedAtMs = typeof message?.createdAtMs === 'number' && Number.isFinite(message.createdAtMs)
-      ? message.createdAtMs
+    const clientCreatedAtMs = typeof initialPayload.message?.createdAtMs === 'number' && Number.isFinite(initialPayload.message.createdAtMs)
+      ? initialPayload.message.createdAtMs
       : typeof (input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs) === 'number' && Number.isFinite(input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs)
         ? (input.fork?.createdAtMs ?? forkFromSessionMetadata?.createdAtMs)!
         : null;
     const clientCreatedAt = clientCreatedAtMs !== null ? new Date(clientCreatedAtMs).toISOString() : null;
-    const canonicalMessageId = cleanText(message?.id);
+    const canonicalMessageId = cleanText(initialPayload.message?.id);
     if (input.kind === 'group-message' && canonicalMessageId && cloudGroupOutbox) {
       await cloudGroupOutbox.restore();
-      const queued = await cloudGroupOutbox.enqueue({
+      const outboxEntry = {
         canonicalMessageId,
         sessionId: input.groupId,
-        envelope,
-        trackCanonicalDelivery: message?.forkSnapshot !== true,
-        attachments: uploadedAttachments,
+        envelope: initialPayload.envelope,
+        trackCanonicalDelivery: initialPayload.message?.forkSnapshot !== true,
+        pendingAttachments: cloudGroupOutboxAttachmentSources(input.attachments ?? []),
         clientCreatedAt,
         pendingRecipientIds: targetAccountIds,
         deliveredRecipientIds: [],
         attemptsByRecipientId: {},
         nextAttemptAtMs: 0,
-      });
+      };
+      const queued = input.retryFailed
+        ? await cloudGroupOutbox.requeueFailed(outboxEntry)
+        : await cloudGroupOutbox.enqueue(outboxEntry);
       if (!queued) return;
       let sentAny = false;
+      let preparedEntry: Promise<CloudGroupOutboxEntry> | null = null;
       const outcome = await cloudGroupOutbox.deliver(canonicalMessageId, async ({ recipientId, clientMessageId, entry }) => {
-        const sentMessage = await client.sendMessage(session.token, recipientId, entry.envelope, {
-          sessionId: entry.sessionId,
-          attachments: entry.attachments,
-          clientCreatedAt: entry.clientCreatedAt,
+        preparedEntry ??= prepareCloudGroupOutboxEntryAttachments({
+          outbox: cloudGroupOutbox,
+          entry,
+          upload: (attachments) => uploadComposerAttachments({
+            token: session.token,
+            client,
+            attachments,
+          }),
+        });
+        const ready = await preparedEntry;
+        const sentMessage = await client.sendMessage(session.token, recipientId, ready.envelope, {
+          sessionId: ready.sessionId,
+          attachments: ready.attachments,
+          clientCreatedAt: ready.clientCreatedAt,
           clientMessageId,
         });
-        recordFirstAck();
+        recordFirstAck(ready.envelope, ready.attachments?.length ?? 0);
         sentAny = true;
         mergeMessage(sentMessage);
       }, { force: true });
@@ -5096,13 +5181,17 @@ export function useCloudBridgeState({
       if (sentAny) await syncCloudBridgeDiff().catch(() => {});
       return;
     }
+    const uploadedAttachments = input.attachments?.length
+      ? await uploadComposerAttachments({ token: session.token, client, attachments: input.attachments })
+      : [];
+    const payload = buildPayload(uploadedAttachments);
     const results = await Promise.allSettled(targetAccountIds.map(async (peerId) => {
-      const sentMessage = await client.sendMessage(session.token, peerId, envelope, {
+      const sentMessage = await client.sendMessage(session.token, peerId, payload.envelope, {
         sessionId: input.groupId,
         attachments: uploadedAttachments,
         ...(clientCreatedAt ? { clientCreatedAt } : {}),
       });
-      recordFirstAck();
+      recordFirstAck(payload.envelope, uploadedAttachments.length);
       return sentMessage;
     }));
     const sent = fulfilledCloudGroupSends(results);

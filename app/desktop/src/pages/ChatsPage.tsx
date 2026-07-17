@@ -448,6 +448,7 @@ type ChatSessionPaneProps = {
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onRetryMessage?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;
   onRequestUnpinMessage?: (message: Message) => void;
@@ -507,6 +508,7 @@ function ChatSessionPane({
   onOpenForkSession,
   onReplyMessage,
   onForwardMessage,
+  onRetryMessage,
   onSelectMessage,
   onRequestPinMessage,
   onRequestUnpinMessage,
@@ -599,6 +601,7 @@ function ChatSessionPane({
               onOpenForkSession={onOpenForkSession}
               onReplyMessage={onReplyMessage}
               onForwardMessage={onForwardMessage}
+              onRetryMessage={onRetryMessage}
               onOpenMessageDetail={onOpenMessageDetail}
               onSelectMessage={onSelectMessage}
               onRequestPinMessage={onRequestPinMessage}
@@ -1088,6 +1091,7 @@ type ChatsPageProps = {
   onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
   onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
   onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
+  onRetryChatMessage?: (message: Message) => void;
   onSelectSession?: (sessionId: string) => void;
   onSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[]) => void;
   onCreateAgentSession?: () => string | null | Promise<string | null>;
@@ -1186,6 +1190,7 @@ export function ChatsPage({
   onStopBridgeAgentRequest,
   onRequestBridgeContact,
   onForkChatMessage,
+  onRetryChatMessage,
   onSelectSession,
   onSendChatMessage,
   onCreateAgentSession,
@@ -2764,6 +2769,7 @@ export function ChatsPage({
         onOpenForkSession={onSelectSession}
         onReplyMessage={onReplyMessage}
         onForwardMessage={onForwardMessage}
+        onRetryMessage={onRetryChatMessage}
         onSelectMessage={onSelectMessage}
         onRequestPinMessage={requestPinMessage}
         onRequestUnpinMessage={requestUnpinMessage}
