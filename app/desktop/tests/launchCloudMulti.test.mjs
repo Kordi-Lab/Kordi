@@ -11,7 +11,7 @@ test('cloud multi launcher defaults tunnel test runs to the gcloud tunnel API', 
 
 test('cloud multi launcher requires an explicit hosted API base outside tunnel mode', () => {
   assert.match(source, /const configuredCloudApiBase = process\.env\.VITE_KORDI_CLOUD_API_BASE;/);
-  assert.match(source, /VITE_KORDI_CLOUD_API_BASE is required for hosted multi-user runs/);
+  assert.match(source, /resolveCloudDevApiBase/);
 });
 
 test('cloud multi launcher does not reintroduce product edition env switching', () => {

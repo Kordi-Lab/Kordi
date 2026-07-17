@@ -23,6 +23,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveCloudDevApiBase } from './cloud-dev-endpoint.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appDir = dirname(__dirname);
@@ -97,11 +98,17 @@ if (localTunnelEnabled) {
 }
 
 const configuredCloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE;
-if (!configuredCloudApiBase && !localTunnelEnabled) {
-    console.error('[kordi] VITE_KORDI_CLOUD_API_BASE is required for hosted multi-user runs. Set it to <PUBLIC_TEST_CLOUD_API_BASE> or enable KORDI_CLOUD_USE_LOCAL_TUNNEL=1.');
+let cloudApiBase;
+try {
+    cloudApiBase = resolveCloudDevApiBase({
+        VITE_KORDI_CLOUD_API_BASE: localTunnelEnabled
+            ? `http://127.0.0.1:${LOCAL_PORT}`
+            : configuredCloudApiBase,
+    });
+} catch (error) {
+    console.error(`[kordi] ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
 }
-const cloudApiBase = localTunnelEnabled ? `http://127.0.0.1:${LOCAL_PORT}` : configuredCloudApiBase;
 const forwardedArgs = process.argv.slice(2);
 const env = {
     ...process.env,

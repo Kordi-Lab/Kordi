@@ -1,0 +1,136 @@
+name: kordi-debug
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kordi_debug
+      POSTGRES_DB: kordi_debug
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/dev/.env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kordi_debug -d kordi_debug"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in deploy/dev/.env}
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.14.3-alpine
+    command: ["--jetstream", "--store_dir", "/data", "--http_port", "8222"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz | grep -q ok"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - nats-data:/data
+    restart: unless-stopped
+
+  nats-init:
+    image: natsio/nats-box:0.19.7
+    depends_on:
+      nats:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        if ! nats --server nats://nats:4222 stream info KORDI_EVENTS >/dev/null 2>&1; then
+          nats --server nats://nats:4222 stream add KORDI_EVENTS \
+            --subjects 'kordi.events.>' \
+            --storage file \
+            --retention limits \
+            --discard old \
+            --defaults
+        fi
+    restart: "no"
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in deploy/dev/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in deploy/dev/.env}
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${KORDI_DEBUG_MINIO_PORT:-19000}:9000"
+      - "127.0.0.1:${KORDI_DEBUG_MINIO_CONSOLE_PORT:-19001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in deploy/dev/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in deploy/dev/.env}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing local/kordi-attachments
+    restart: "no"
+
+  cloud-server:
+    build:
+      context: ../..
+      dockerfile: bridges/cloud-server/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://kordi_debug:${POSTGRES_PASSWORD}@postgres:5432/kordi_debug
+      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379/0
+      NATS_URL: nats://nats:4222
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: kordi-attachments
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      KORDI_CLOUD_PUBLIC_BASE_URL: http://127.0.0.1:${KORDI_DEBUG_API_PORT:-17081}
+      KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST: "http://127.0.0.1:,http://localhost:"
+      KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY: ${KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY:?Set KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY in deploy/dev/.env}
+      KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID: local-debug:v1
+      KORDI_CLOUD_RUNNER_TOKEN: ${KORDI_CLOUD_RUNNER_TOKEN:?Set KORDI_CLOUD_RUNNER_TOKEN in deploy/dev/.env}
+    command: ["serve", "--port", "17081"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${KORDI_DEBUG_API_PORT:-17081}:17081"
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  nats-data:
+  minio-data:

@@ -91,13 +91,70 @@ fn should_publish_presence_offline_on_exit() -> bool {
 
 const DEFAULT_CLOUD_API_BASE_URL: &str = "https://coordinar.io";
 
-fn cloud_api_base_url_from_env() -> String {
-    std::env::var("VITE_KORDI_CLOUD_API_BASE")
-        .or_else(|_| std::env::var("KORDI_CLOUD_API_BASE"))
-        .ok()
-        .map(|value| value.trim().trim_end_matches('/').to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| DEFAULT_CLOUD_API_BASE_URL.to_string())
+fn normalize_cloud_api_base_url(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("Cloud API base URL is empty".to_string());
+    }
+
+    let url = reqwest::Url::parse(trimmed)
+        .map_err(|_| "Cloud API base URL must be a valid absolute HTTP(S) URL".to_string())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("Cloud API base URL must use http:// or https://".to_string());
+    }
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(
+            "Cloud API base URL must not include credentials, a query, or a fragment".to_string(),
+        );
+    }
+    if url.path() != "/" && !url.path().is_empty() {
+        return Err("Cloud API base URL must be an origin without a path".to_string());
+    }
+
+    Ok(url.origin().ascii_serialization())
+}
+
+fn resolve_cloud_api_base_url(
+    vite_base: Option<&str>,
+    native_base: Option<&str>,
+    debug_build: bool,
+) -> Result<String, String> {
+    let configured = vite_base
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| native_base.filter(|value| !value.trim().is_empty()));
+
+    let Some(configured) = configured else {
+        if debug_build {
+            return Err(
+                "VITE_KORDI_CLOUD_API_BASE is required for development. Start the local debug server with `pnpm debug:cloud:up`, then set its loopback URL."
+                    .to_string(),
+            );
+        }
+        return Ok(DEFAULT_CLOUD_API_BASE_URL.to_string());
+    };
+
+    let origin = normalize_cloud_api_base_url(configured)?;
+    if debug_build && origin == DEFAULT_CLOUD_API_BASE_URL {
+        return Err(
+            "Production Cloud API is blocked in development. Use the self-hosted debug server or an approved non-production environment."
+                .to_string(),
+        );
+    }
+    Ok(origin)
+}
+
+fn cloud_api_base_url_from_env() -> Result<String, String> {
+    let vite_base = std::env::var("VITE_KORDI_CLOUD_API_BASE").ok();
+    let native_base = std::env::var("KORDI_CLOUD_API_BASE").ok();
+    resolve_cloud_api_base_url(
+        vite_base.as_deref(),
+        native_base.as_deref(),
+        cfg!(debug_assertions),
+    )
 }
 
 fn cloud_presence_offline_url(base_url: &str) -> String {
@@ -136,7 +193,13 @@ fn publish_stored_cloud_presence_offline_on_exit() {
             return;
         }
     };
-    let base_url = cloud_api_base_url_from_env();
+    let base_url = match cloud_api_base_url_from_env() {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("[kordi] Unable to publish Cloud presence offline on quit: {err}");
+            return;
+        }
+    };
     let token = session.token;
     if let Err(err) = publish_cloud_presence_offline(&token, &base_url) {
         eprintln!("[kordi] Unable to publish Cloud presence offline on quit: {err}");
@@ -146,9 +209,9 @@ fn publish_stored_cloud_presence_offline_on_exit() {
 #[cfg(test)]
 mod window_lifecycle_tests {
     use super::{
-        cloud_presence_offline_url, is_cloud_edition_context, should_hide_window_instead_of_close,
-        should_publish_presence_offline_on_exit, should_show_main_window_on_reopen,
-        DEFAULT_CLOUD_API_BASE_URL,
+        cloud_presence_offline_url, is_cloud_edition_context, resolve_cloud_api_base_url,
+        should_hide_window_instead_of_close, should_publish_presence_offline_on_exit,
+        should_show_main_window_on_reopen, DEFAULT_CLOUD_API_BASE_URL,
     };
 
     #[test]
@@ -177,6 +240,30 @@ mod window_lifecycle_tests {
         assert_eq!(
             cloud_presence_offline_url(DEFAULT_CLOUD_API_BASE_URL),
             "https://coordinar.io/v1/cloud/presence/offline"
+        );
+    }
+
+    #[test]
+    fn debug_build_requires_an_explicit_non_production_cloud_api() {
+        assert!(resolve_cloud_api_base_url(None, None, true)
+            .unwrap_err()
+            .contains("required for development"));
+        assert!(
+            resolve_cloud_api_base_url(Some("https://coordinar.io/"), None, true)
+                .unwrap_err()
+                .contains("blocked in development")
+        );
+        assert_eq!(
+            resolve_cloud_api_base_url(Some(" http://127.0.0.1:17081/ "), None, true).unwrap(),
+            "http://127.0.0.1:17081"
+        );
+    }
+
+    #[test]
+    fn release_build_keeps_the_product_default() {
+        assert_eq!(
+            resolve_cloud_api_base_url(None, None, false).unwrap(),
+            DEFAULT_CLOUD_API_BASE_URL
         );
     }
 
@@ -259,6 +346,9 @@ pub fn run() {
         .manage(DesktopChatManager::default())
         .setup(|app| {
             let is_cloud_edition = is_cloud_edition_app(app);
+            if is_cloud_edition {
+                cloud_api_base_url_from_env().map_err(std::io::Error::other)?;
+            }
             configure_cloud_app_data_dir(app, is_cloud_edition);
             activate_stored_cloud_account_data_dir(is_cloud_edition);
             let window = app

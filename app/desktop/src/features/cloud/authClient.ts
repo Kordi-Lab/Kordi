@@ -322,15 +322,38 @@ function cleanBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, '');
 }
 
-export function cloudApiBaseUrl(env?: { VITE_KORDI_CLOUD_API_BASE?: string }): string {
-  const fromEnv = env?.VITE_KORDI_CLOUD_API_BASE;
-  if (fromEnv && fromEnv.trim().length > 0) return cleanBaseUrl(fromEnv);
-  if (typeof import.meta !== 'undefined') {
-    const meta = (import.meta as ImportMeta & { env?: { VITE_KORDI_CLOUD_API_BASE?: string } }).env;
-    if (meta?.VITE_KORDI_CLOUD_API_BASE && meta.VITE_KORDI_CLOUD_API_BASE.trim().length > 0) {
-      return cleanBaseUrl(meta.VITE_KORDI_CLOUD_API_BASE);
-    }
+function isProductionCloudOrigin(value: string): boolean {
+  try {
+    return new URL(value).origin === DEFAULT_CLOUD_API_BASE_URL;
+  } catch {
+    return value === DEFAULT_CLOUD_API_BASE_URL;
   }
+}
+
+type CloudApiEnvironment = {
+  DEV?: boolean;
+  VITE_KORDI_CLOUD_API_BASE?: string;
+};
+
+export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
+  const meta = typeof import.meta !== 'undefined'
+    ? (import.meta as ImportMeta & { env?: CloudApiEnvironment }).env
+    : undefined;
+  const activeEnv = env ?? meta;
+  const configured = activeEnv?.VITE_KORDI_CLOUD_API_BASE?.trim();
+
+  if (activeEnv?.DEV) {
+    if (!configured) {
+      throw new Error('VITE_KORDI_CLOUD_API_BASE is required for development.');
+    }
+    const cleaned = cleanBaseUrl(configured);
+    if (isProductionCloudOrigin(cleaned)) {
+      throw new Error('Production Cloud API is blocked in development.');
+    }
+    return cleaned;
+  }
+
+  if (configured) return cleanBaseUrl(configured);
   return DEFAULT_CLOUD_API_BASE_URL;
 }
 

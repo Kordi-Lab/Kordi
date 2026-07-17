@@ -182,9 +182,36 @@ test('me returns the parsed account', async () => {
   assert.equal(account.passwordSet, true);
 });
 
-test('cloud API defaults to the hosted product origin, not localhost', () => {
+test('cloud API defaults to the hosted product origin outside development', () => {
   assert.equal(cloudApiBaseUrl({}), 'https://coordinar.io');
-  assert.equal(cloudApiBaseUrl({ VITE_KORDI_CLOUD_API_BASE: ' http://127.0.0.1:17081/ ' }), 'http://127.0.0.1:17081');
+});
+
+test('development cloud API requires an explicit non-production origin', () => {
+  assert.throws(
+    () => cloudApiBaseUrl({ DEV: true }),
+    /VITE_KORDI_CLOUD_API_BASE is required for development/i,
+  );
+  assert.throws(
+    () => cloudApiBaseUrl({
+      DEV: true,
+      VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io:443/',
+    }),
+    /production Cloud API is blocked in development/i,
+  );
+  assert.equal(
+    cloudApiBaseUrl({
+      DEV: true,
+      VITE_KORDI_CLOUD_API_BASE: ' http://127.0.0.1:17081/ ',
+    }),
+    'http://127.0.0.1:17081',
+  );
+  assert.equal(
+    cloudApiBaseUrl({
+      DEV: true,
+      VITE_KORDI_CLOUD_API_BASE: 'https://staging.example.test/',
+    }),
+    'https://staging.example.test',
+  );
 });
 
 test('cloud auth client gives local SSH tunnels a longer default timeout', () => {

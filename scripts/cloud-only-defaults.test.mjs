@@ -20,6 +20,9 @@ test('root commands expose only Cloud product entrypoints', () => {
   assert.equal(scripts['build:desktop'], 'pnpm build:cloud');
   assert.equal(scripts['dev:cloud'], 'pnpm --dir app/desktop tauri:dev:cloud');
   assert.equal(scripts['build:cloud'], 'pnpm --dir app/desktop tauri:build:cloud');
+  assert.equal(scripts['debug:cloud:up'], 'bash scripts/dev-cloud-up.sh');
+  assert.equal(scripts['debug:cloud:smoke'], 'bash scripts/dev-cloud-smoke.sh');
+  assert.equal(scripts['debug:cloud:reset'], 'bash scripts/dev-cloud-reset.sh');
   assert.deepEqual(scriptNames.filter((name) => name.includes(':local')), []);
   assert.doesNotMatch(scriptBody, /\bVITE_KORDI_EDITION\b|\bKORDI_EDITION\b/);
   assert.doesNotMatch(scriptBody, /kordi-app-server/);
@@ -66,6 +69,7 @@ test('public docs use neutral product wording and safe host guidance', () => {
   assert.match(publicDocs, /https:\/\/coordinar\.io/);
   assert.match(publicDocs, /<PUBLIC_TEST_CLOUD_API_BASE>/);
   assert.match(publicDocs, /Hosted\/dev runs must set `VITE_KORDI_CLOUD_API_BASE`/);
+  assert.match(publicDocs, /Development launches fail closed/);
   assert.doesNotMatch(publicDocs, /https:\/\/kordi\.cloud/);
   assert.doesNotMatch(publicDocs, /sslip\.io|gcloud compute ssh|[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+/i);
   assert.doesNotMatch(publicDocs, /(?:^|[^\d.])(?!(?:127|0|10|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.)\d{1,3}(?:\.\d{1,3}){3}(?:$|[^\d.])/);

@@ -8,7 +8,11 @@ test('buildBeforeDevCommand does not forward removed edition env into the Vite d
     title: 'Kordi Cloud',
     host: '127.0.0.1',
     port: 1492,
-    env: { KORDI_EDITION: 'local', VITE_KORDI_EDITION: 'local' },
+    env: {
+      KORDI_EDITION: 'local',
+      VITE_KORDI_EDITION: 'local',
+      VITE_KORDI_CLOUD_API_BASE: 'http://127.0.0.1:17081',
+    },
   });
 
   assert.match(command, /^VITE_KORDI_WINDOW_TITLE='Kordi Cloud' /);
@@ -27,13 +31,26 @@ test('buildBeforeDevCommand forwards explicit Cloud API base into the Vite dev s
   assert.match(command, / VITE_KORDI_CLOUD_API_BASE='http:\/\/127\.0\.0\.1:17081' /);
 });
 
-test('buildBeforeDevCommand omits edition env when no edition is configured', () => {
-  const command = buildBeforeDevCommand({
-    title: 'Kordi',
-    host: '127.0.0.1',
-    port: 1420,
-    env: {},
-  });
+test('buildBeforeDevCommand fails closed without a debug server origin', () => {
+  assert.throws(
+    () => buildBeforeDevCommand({
+      title: 'Kordi',
+      host: '127.0.0.1',
+      port: 1420,
+      env: {},
+    }),
+    /VITE_KORDI_CLOUD_API_BASE is required for development/i,
+  );
+});
 
-  assert.doesNotMatch(command, /KORDI_EDITION/);
+test('buildBeforeDevCommand rejects the production origin', () => {
+  assert.throws(
+    () => buildBeforeDevCommand({
+      title: 'Kordi',
+      host: '127.0.0.1',
+      port: 1420,
+      env: { VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io' },
+    }),
+    /production Cloud API is blocked in development/i,
+  );
 });
