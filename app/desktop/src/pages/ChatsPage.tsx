@@ -2543,6 +2543,12 @@ export function ChatsPage({
     await onRenameDesktopSession(baselineName);
   };
 
+  const beginActiveSelfAgentSessionTitleRename = () => {
+    if (!canRenameActiveSelfAgentSession) return;
+    setDesktopSessionRenameDraft(activeConv.name);
+    setIsEditingDesktopSessionTitle(true);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div
@@ -2612,17 +2618,19 @@ export function ChatsPage({
                   <h2 className="min-w-0 max-w-[18rem] text-[17px] font-semibold leading-6">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!canRenameActiveSelfAgentSession) return;
-                        setDesktopSessionRenameDraft(activeConv.name);
-                        setIsEditingDesktopSessionTitle(true);
+                      onDoubleClick={beginActiveSelfAgentSessionTitleRename}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        beginActiveSelfAgentSessionTitleRename();
                       }}
                       className="block w-full truncate rounded-lg px-1 py-0.5 text-left text-white transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
                       data-chat-session-title-rename="true"
+                      data-session-title-rename-trigger="double-click"
                       data-session-id={activeSelfAgentSessionId ?? activeConv.id}
                       data-kordi-window-drag="false"
                       aria-label={`Rename session ${activeConv.name}`}
-                      title="Click to rename session"
+                      title="Double-click to rename session"
                     >
                       {activeConv.name}
                     </button>

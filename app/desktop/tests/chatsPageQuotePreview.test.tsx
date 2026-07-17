@@ -123,7 +123,7 @@ test('self-agent title rename uses the stable canonical backend session id', () 
   }), null);
 });
 
-test('native self-agent header exposes single-click rename for Cloud-backed sessions only with its backend id', () => {
+test('native self-agent header exposes double-click rename for Cloud-backed sessions only with its backend id', () => {
   const selfAgentConversation: Conversation = {
     ...activeConv,
     id: 'cloud-row',
@@ -138,9 +138,10 @@ test('native self-agent header exposes single-click rename for Cloud-backed sess
   });
 
   assert.match(markup, /data-chat-session-title-rename="true"/);
+  assert.match(markup, /data-session-title-rename-trigger="double-click"/);
   assert.match(markup, /data-session-id="session:self-agent:stable-id"/);
   assert.match(markup, /aria-label="Rename session Release planning"/);
-  assert.match(markup, /title="Click to rename session"/);
+  assert.match(markup, /title="Double-click to rename session"/);
 
   const personMarkup = renderChatsPage({ isNativeShell: true });
   assert.doesNotMatch(personMarkup, /data-chat-session-title-rename="true"/);
