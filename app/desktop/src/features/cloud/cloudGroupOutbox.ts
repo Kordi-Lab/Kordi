@@ -3,6 +3,7 @@ import type { CanonicalSessionMessage, CanonicalSessionState } from '@/kordi-app
 
 export const CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 15_000, 30_000] as const;
 export const CLOUD_GROUP_OUTBOX_MAX_ATTEMPTS = CLOUD_GROUP_OUTBOX_RETRY_DELAYS_MS.length + 1;
+export const CLOUD_GROUP_CANONICAL_RECONCILE_DELAY_MS = 1_000;
 
 const CLOUD_GROUP_OUTBOX_VERSION = 1 as const;
 const CLOUD_GROUP_OUTBOX_DATABASE = 'kordi-cloud-group-outbox-v1';
@@ -17,12 +18,25 @@ export type CloudGroupOutboxEntry = {
   awaitingCanonicalAck?: boolean;
   trackCanonicalDelivery?: boolean;
   attachments?: SendCloudMessageAttachmentInput[];
+  pendingAttachments?: CloudGroupOutboxAttachmentSource[];
+  payloadVersion?: number;
+  deliveryGeneration?: number;
   clientCreatedAt?: string | null;
   pendingRecipientIds: string[];
   deliveredRecipientIds: string[];
   exhaustedRecipientIds?: string[];
   attemptsByRecipientId: Record<string, number>;
   nextAttemptAtMs: number;
+};
+
+export type CloudGroupOutboxAttachmentSource = {
+  id: string;
+  path: string;
+  name: string;
+  kind: 'image' | 'file';
+  formatLabel?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
 };
 
 export type CloudGroupOutboxPersistedState = {
@@ -43,6 +57,22 @@ export type CloudGroupOutboxDelivery = {
 };
 
 export type CloudGroupOutboxSend = (delivery: CloudGroupOutboxDelivery) => Promise<unknown>;
+
+export function cloudGroupOutboxNextWakeAtMs(
+  entries: readonly CloudGroupOutboxEntry[],
+  nowMs = Date.now(),
+): number | null {
+  const nextWakeAtMs = entries.reduce((earliest, entry) => {
+    if (entry.awaitingCanonicalAck === true) {
+      return Math.min(earliest, nowMs + CLOUD_GROUP_CANONICAL_RECONCILE_DELAY_MS);
+    }
+    if (entry.pendingRecipientIds.length > 0) {
+      return Math.min(earliest, entry.nextAttemptAtMs);
+    }
+    return earliest;
+  }, Number.POSITIVE_INFINITY);
+  return Number.isFinite(nextWakeAtMs) ? nextWakeAtMs : null;
+}
 
 export function cloudGroupOutboxDeliveryStatus(entry: CloudGroupOutboxEntry) {
   const deliveredRecipientIds = [...entry.deliveredRecipientIds];
@@ -142,6 +172,31 @@ function normalizedAttachments(value: unknown): SendCloudMessageAttachmentInput[
   return attachments.length > 0 ? attachments : undefined;
 }
 
+function normalizedPendingAttachments(value: unknown): CloudGroupOutboxAttachmentSource[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const attachments = value.flatMap((candidate, index): CloudGroupOutboxAttachmentSource[] => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+    const record = candidate as Record<string, unknown>;
+    const path = cleanText(record.path);
+    const name = cleanText(record.name);
+    const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
+    if (!path || !name || !kind) return [];
+    const id = cleanText(record.id) || `pending-attachment:${index}:${path}`;
+    return [{
+      id,
+      path,
+      name,
+      kind,
+      formatLabel: cleanText(record.formatLabel) || null,
+      mimeType: cleanText(record.mimeType) || null,
+      sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes)
+        ? record.sizeBytes
+        : null,
+    }];
+  });
+  return attachments.length > 0 ? attachments : undefined;
+}
+
 function normalizeEntry(value: unknown): CloudGroupOutboxEntry | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -162,6 +217,13 @@ function normalizeEntry(value: unknown): CloudGroupOutboxEntry | null {
     && exhaustedRecipientIds.length === 0;
   const clientCreatedAt = cleanText(record.clientCreatedAt);
   const attachments = normalizedAttachments(record.attachments);
+  const pendingAttachments = normalizedPendingAttachments(record.pendingAttachments);
+  const payloadVersion = typeof record.payloadVersion === 'number' && Number.isFinite(record.payloadVersion)
+    ? Math.max(0, Math.floor(record.payloadVersion))
+    : 0;
+  const deliveryGeneration = typeof record.deliveryGeneration === 'number' && Number.isFinite(record.deliveryGeneration)
+    ? Math.max(0, Math.floor(record.deliveryGeneration))
+    : 0;
 
   return {
     canonicalMessageId,
@@ -170,6 +232,9 @@ function normalizeEntry(value: unknown): CloudGroupOutboxEntry | null {
     awaitingCanonicalAck,
     trackCanonicalDelivery: record.trackCanonicalDelivery !== false,
     ...(attachments ? { attachments } : {}),
+    ...(pendingAttachments ? { pendingAttachments } : {}),
+    ...(payloadVersion > 0 ? { payloadVersion } : {}),
+    ...(deliveryGeneration > 0 ? { deliveryGeneration } : {}),
     ...(clientCreatedAt ? { clientCreatedAt } : {}),
     pendingRecipientIds,
     deliveredRecipientIds,
@@ -214,20 +279,33 @@ function mergeEntries(
   indexedDbEntry: CloudGroupOutboxEntry,
   fallbackEntry: CloudGroupOutboxEntry,
 ): CloudGroupOutboxEntry {
-  const deliveredRecipientIds = uniqueText([
-    ...indexedDbEntry.deliveredRecipientIds,
-    ...fallbackEntry.deliveredRecipientIds,
-  ]);
+  const indexedDbDeliveryGeneration = indexedDbEntry.deliveryGeneration ?? 0;
+  const fallbackDeliveryGeneration = fallbackEntry.deliveryGeneration ?? 0;
+  const newestDeliveryEntry = indexedDbDeliveryGeneration > fallbackDeliveryGeneration
+    ? indexedDbEntry
+    : fallbackDeliveryGeneration > indexedDbDeliveryGeneration
+      ? fallbackEntry
+      : null;
+  const deliveredRecipientIds = newestDeliveryEntry
+    ? uniqueText(newestDeliveryEntry.deliveredRecipientIds)
+    : uniqueText([
+        ...indexedDbEntry.deliveredRecipientIds,
+        ...fallbackEntry.deliveredRecipientIds,
+      ]);
   const delivered = new Set(deliveredRecipientIds);
-  const exhaustedRecipientIds = uniqueText([
-    ...(indexedDbEntry.exhaustedRecipientIds ?? []),
-    ...(fallbackEntry.exhaustedRecipientIds ?? []),
-  ]).filter((recipientId) => !delivered.has(recipientId));
+  const exhaustedRecipientIds = (newestDeliveryEntry
+    ? uniqueText(newestDeliveryEntry.exhaustedRecipientIds ?? [])
+    : uniqueText([
+        ...(indexedDbEntry.exhaustedRecipientIds ?? []),
+        ...(fallbackEntry.exhaustedRecipientIds ?? []),
+      ])).filter((recipientId) => !delivered.has(recipientId));
   const terminal = new Set([...deliveredRecipientIds, ...exhaustedRecipientIds]);
-  const pendingRecipientIds = uniqueText([
-    ...indexedDbEntry.pendingRecipientIds,
-    ...fallbackEntry.pendingRecipientIds,
-  ]).filter((recipientId) => !terminal.has(recipientId));
+  const pendingRecipientIds = (newestDeliveryEntry
+    ? uniqueText(newestDeliveryEntry.pendingRecipientIds)
+    : uniqueText([
+        ...indexedDbEntry.pendingRecipientIds,
+        ...fallbackEntry.pendingRecipientIds,
+      ])).filter((recipientId) => !terminal.has(recipientId));
   const recipientIds = new Set([
     ...pendingRecipientIds,
     ...deliveredRecipientIds,
@@ -235,31 +313,54 @@ function mergeEntries(
   ]);
   const attemptsByRecipientId: Record<string, number> = {};
   for (const recipientId of recipientIds) {
-    attemptsByRecipientId[recipientId] = Math.max(
-      indexedDbEntry.attemptsByRecipientId[recipientId] ?? 0,
-      fallbackEntry.attemptsByRecipientId[recipientId] ?? 0,
-    );
+    attemptsByRecipientId[recipientId] = newestDeliveryEntry
+      ? newestDeliveryEntry.attemptsByRecipientId[recipientId] ?? 0
+      : Math.max(
+          indexedDbEntry.attemptsByRecipientId[recipientId] ?? 0,
+          fallbackEntry.attemptsByRecipientId[recipientId] ?? 0,
+        );
   }
-  const awaitingCanonicalAck = (
-    indexedDbEntry.awaitingCanonicalAck === true
-    || fallbackEntry.awaitingCanonicalAck === true
-  )
+  const awaitingCanonicalAck = (newestDeliveryEntry
+    ? newestDeliveryEntry.awaitingCanonicalAck === true
+    : indexedDbEntry.awaitingCanonicalAck === true || fallbackEntry.awaitingCanonicalAck === true)
     && pendingRecipientIds.length === 0
     && deliveredRecipientIds.length > 0
     && exhaustedRecipientIds.length === 0;
+  const indexedDbUploadComplete = !indexedDbEntry.pendingAttachments?.length
+    && (indexedDbEntry.attachments?.length ?? 0) > 0;
+  const fallbackUploadComplete = !fallbackEntry.pendingAttachments?.length
+    && (fallbackEntry.attachments?.length ?? 0) > 0;
+  const indexedDbPayloadVersion = indexedDbEntry.payloadVersion ?? 0;
+  const fallbackPayloadVersion = fallbackEntry.payloadVersion ?? 0;
+  const payloadEntry = indexedDbPayloadVersion > fallbackPayloadVersion
+    ? indexedDbEntry
+    : fallbackPayloadVersion > indexedDbPayloadVersion
+      ? fallbackEntry
+      : indexedDbUploadComplete && !fallbackUploadComplete
+        ? indexedDbEntry
+        : fallbackEntry;
 
   return {
     ...indexedDbEntry,
     ...fallbackEntry,
+    envelope: payloadEntry.envelope,
+    attachments: payloadEntry.attachments?.map((attachment) => ({ ...attachment })),
+    pendingAttachments: payloadEntry.pendingAttachments?.map((attachment) => ({ ...attachment })),
+    ...(payloadEntry.payloadVersion ? { payloadVersion: payloadEntry.payloadVersion } : { payloadVersion: undefined }),
+    ...(Math.max(indexedDbDeliveryGeneration, fallbackDeliveryGeneration) > 0
+      ? { deliveryGeneration: Math.max(indexedDbDeliveryGeneration, fallbackDeliveryGeneration) }
+      : { deliveryGeneration: undefined }),
     awaitingCanonicalAck,
-    trackCanonicalDelivery: indexedDbEntry.trackCanonicalDelivery !== false
-      && fallbackEntry.trackCanonicalDelivery !== false,
+    trackCanonicalDelivery: newestDeliveryEntry
+      ? newestDeliveryEntry.trackCanonicalDelivery !== false
+      : indexedDbEntry.trackCanonicalDelivery !== false && fallbackEntry.trackCanonicalDelivery !== false,
     pendingRecipientIds,
     deliveredRecipientIds,
     ...(exhaustedRecipientIds.length > 0 ? { exhaustedRecipientIds } : { exhaustedRecipientIds: undefined }),
     attemptsByRecipientId,
     nextAttemptAtMs: pendingRecipientIds.length > 0
-      ? Math.max(indexedDbEntry.nextAttemptAtMs, fallbackEntry.nextAttemptAtMs)
+      ? newestDeliveryEntry?.nextAttemptAtMs
+        ?? Math.max(indexedDbEntry.nextAttemptAtMs, fallbackEntry.nextAttemptAtMs)
       : 0,
   };
 }
@@ -301,6 +402,7 @@ function cloneEntry(entry: CloudGroupOutboxEntry): CloudGroupOutboxEntry {
     ...entry,
     awaitingCanonicalAck: entry.awaitingCanonicalAck === true,
     attachments: entry.attachments?.map((attachment) => ({ ...attachment })),
+    pendingAttachments: entry.pendingAttachments?.map((attachment) => ({ ...attachment })),
     pendingRecipientIds: [...entry.pendingRecipientIds],
     deliveredRecipientIds: [...entry.deliveredRecipientIds],
     exhaustedRecipientIds: entry.exhaustedRecipientIds ? [...entry.exhaustedRecipientIds] : undefined,
@@ -432,6 +534,8 @@ export class CloudGroupOutbox {
       );
       const queued: CloudGroupOutboxEntry = {
         ...entry,
+        payloadVersion: Math.max(existing.payloadVersion ?? 0, entry.payloadVersion ?? 0) + 1,
+        deliveryGeneration: Math.max(existing.deliveryGeneration ?? 0, entry.deliveryGeneration ?? 0) + 1,
         awaitingCanonicalAck: false,
         pendingRecipientIds,
         deliveredRecipientIds,
@@ -450,6 +554,40 @@ export class CloudGroupOutbox {
     } finally {
       this.enqueueInFlight.delete(entry.canonicalMessageId);
     }
+  }
+
+  async completeAttachmentUpload(
+    canonicalMessageId: string,
+    payload: { envelope: string; attachments: SendCloudMessageAttachmentInput[] },
+  ) {
+    await this.ensureRestored();
+    const normalizedId = canonicalMessageId.trim();
+    const envelope = payload.envelope.trim();
+    const attachments = normalizedAttachments(payload.attachments);
+    if (!normalizedId || !envelope || !attachments) {
+      throw new Error('Cloud group outbox attachment payload is invalid.');
+    }
+    const pendingEnqueue = this.enqueueInFlight.get(normalizedId);
+    if (pendingEnqueue) await pendingEnqueue;
+
+    const update = this.commitMutation((state) => {
+      const index = state.entries.findIndex((entry) => entry.canonicalMessageId === normalizedId);
+      if (index < 0) return null;
+      const current = state.entries[index]!;
+      const next = normalizeEntry({
+        ...current,
+        envelope,
+        attachments,
+        pendingAttachments: undefined,
+        payloadVersion: (current.payloadVersion ?? 0) + 1,
+      });
+      if (!next) throw new Error('Cloud group outbox attachment payload is invalid.');
+      state.entries[index] = next;
+      return cloneEntry(next);
+    });
+    const updated = await update;
+    if (updated) this.notify();
+    return updated;
   }
 
   async deliver(

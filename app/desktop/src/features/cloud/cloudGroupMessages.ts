@@ -83,6 +83,23 @@ export function cloudGroupAttachmentReferences(
   }));
 }
 
+export function cloudGroupControlWithAttachmentReferences(
+  body: string,
+  attachments: readonly CloudGroupAttachmentReferenceInput[],
+): string {
+  const envelope = parseCloudGroupControl(body);
+  if (!envelope?.message) {
+    throw new Error('Cloud group outbox envelope has no message payload.');
+  }
+  return encodeCloudGroupControl({
+    ...envelope,
+    message: {
+      ...envelope.message,
+      attachments: cloudGroupAttachmentReferences(attachments),
+    },
+  });
+}
+
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }

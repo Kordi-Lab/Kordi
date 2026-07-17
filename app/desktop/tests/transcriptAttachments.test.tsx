@@ -351,6 +351,34 @@ test('failed image attachments expose a real inline retry action', async () => {
   }
 });
 
+test('partially delivered images can retry only the remaining recipients', async () => {
+  const environment = installDom();
+  const host = environment.dom.window.document.createElement('div');
+  environment.dom.window.document.body.appendChild(host);
+  let retryCount = 0;
+  let root: Root | null = createRoot(host);
+
+  try {
+    await act(async () => {
+      root?.render(createElement(AttachmentPreview, {
+        msg: { ...imageMessage, statusChips: ['partial'] },
+        onRetryImage: () => { retryCount += 1; },
+      }));
+    });
+
+    const retry = host.querySelector<HTMLButtonElement>('[aria-label="Retry sending image"]');
+    assert.ok(retry);
+    assert.equal(retry.textContent?.replace(/\s+/g, ' ').trim(), 'Partial·Retry');
+    await act(async () => retry.click());
+    assert.equal(retryCount, 1);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    environment.restore();
+  }
+});
+
 test('image delivery status mapping preserves upload, partial, and terminal semantics', () => {
   assert.deepEqual(attachmentImageDeliveryVisual('pending_send'), {
     kind: 'uploading',

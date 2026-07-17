@@ -16,6 +16,7 @@ import {
   retryAttachmentItemsFromMessage,
   toOptimisticAttachments,
 } from '../src/features/chat/messageActions/optimistic';
+import { failedCanonicalGroupMessageRequest } from '../src/features/chat/messageActions/chatMessages';
 import type { CanonicalSessionState, DesktopChatState } from '../src/kordi-app/types';
 
 const imageAttachment = {
@@ -446,6 +447,38 @@ test('failed prepared canonical bridge messages preserve attachment-only sends f
   assert.equal((failed?.request.content as { deliveryState?: string }).deliveryState, 'failed');
   assert.equal((failed?.request.content as { detail?: string }).detail, 'Contact request was rejected, so messages are blocked.');
   assert.equal(((failed?.request.content as { attachments?: Array<{ localPath?: string }> }).attachments ?? [])[0]?.localPath, '/tmp/pi-clipboard-1.png');
+});
+
+test('failed canonical group messages persist attachment recovery and exhausted recipients', () => {
+  const prepared = prepareCanonicalUserMessage(
+    'session-1',
+    'human:me',
+    '',
+    [imageAttachment],
+    '12:31',
+    'cloud-group-ui',
+    'sending',
+  );
+
+  const failed = failedCanonicalGroupMessageRequest(
+    prepared,
+    'Attachment upload failed.',
+    [' acct_a ', 'acct_b', 'acct_a'],
+  );
+  const content = failed?.content as {
+    attachments?: Array<{ localPath?: string }>;
+    deliveryState?: string;
+    detail?: string;
+    pendingRecipientIds?: string[];
+    exhaustedRecipientIds?: string[];
+  };
+
+  assert.equal(failed?.status, 'failed');
+  assert.equal(content.deliveryState, 'failed');
+  assert.equal(content.detail, 'Attachment upload failed.');
+  assert.deepEqual(content.pendingRecipientIds, []);
+  assert.deepEqual(content.exhaustedRecipientIds, ['acct_a', 'acct_b']);
+  assert.equal(content.attachments?.[0]?.localPath, '/tmp/pi-clipboard-1.png');
 });
 
 

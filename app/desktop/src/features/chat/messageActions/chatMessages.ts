@@ -66,6 +66,7 @@ import {
   persistCanonicalUserMessage,
   prepareCanonicalUserMessage,
   retryAttachmentItemsFromMessage,
+  type PreparedCanonicalUserMessage,
 } from './optimistic';
 import type { PendingBridgeOutreach } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
@@ -85,6 +86,38 @@ export function shouldShowBridgeSendFailureNotice(hasInlineFailureTarget: boolea
 
 export function shouldAppendOptimisticBridgeMessage(_conversationId: string): boolean {
   return true;
+}
+
+export function failedCanonicalGroupMessageRequest(
+  prepared: PreparedCanonicalUserMessage | null,
+  detail: string,
+  recipientIds: readonly string[],
+): AppendCanonicalMessageRequest | null {
+  const failed = failedPreparedCanonicalUserMessage(prepared, detail);
+  if (!failed) return null;
+  const content = failed.request.content && typeof failed.request.content === 'object'
+    ? failed.request.content
+    : {};
+  return {
+    ...failed.request,
+    content: {
+      ...content,
+      deliveryState: 'failed',
+      deliveredRecipientIds: [],
+      pendingRecipientIds: [],
+      exhaustedRecipientIds: [...new Set(recipientIds.map((recipientId) => recipientId.trim()).filter(Boolean))],
+    },
+  };
+}
+
+async function persistCanonicalGroupMessageFailure(
+  prepared: PreparedCanonicalUserMessage | null,
+  detail: string,
+  recipientIds: readonly string[],
+) {
+  const request = failedCanonicalGroupMessageRequest(prepared, detail, recipientIds);
+  if (!request) return;
+  await upsertCanonicalMessage(request);
 }
 
 function generatedSelfAgentSessionId() {
@@ -1171,7 +1204,7 @@ export function useChatMessageActions({
         canonicalSessionId,
         canonicalHumanIdentityId,
         text,
-        [],
+        chatComposerAttachments,
         sentAt,
         'cloud-group-ui',
         'sending',
@@ -1187,6 +1220,7 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         clearTargetDraft();
+        setChatComposerAttachments([]);
         await persistCanonicalUserMessage(preparedCanonicalMessage);
         await sendCloudGroupControl({
           targetAccountIds: cloudGroupTargetIds,
@@ -1201,7 +1235,7 @@ export function useChatMessageActions({
             text,
             createdAtMs: Date.now(),
           },
-          attachments: [],
+          attachments: chatComposerAttachments,
         });
       } catch (error) {
         const failureDetail = bridgeSendFailureDetail(error, 'Unable to send group message');
@@ -1212,10 +1246,13 @@ export function useChatMessageActions({
           preparedCanonicalMessage?.messageId ?? null,
           failureDetail,
         ));
-        void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
-          .catch((saveError: unknown) => {
-            setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
-          });
+        await persistCanonicalGroupMessageFailure(
+          preparedCanonicalMessage,
+          failureDetail,
+          cloudGroupTargetIds,
+        ).catch((saveError: unknown) => {
+          setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+        });
       }
       return;
     }
@@ -1235,11 +1272,17 @@ export function useChatMessageActions({
           text,
           sentAt,
           optimisticMessageId,
-          [],
+          chatComposerAttachments,
           attachmentSummaryText(text),
         ));
         clearTargetDraft();
-        await sendCloudBridgeMessage(targetConversation.id, text, []);
+        setChatComposerAttachments([]);
+        await sendCloudBridgeMessage(
+          targetConversation.id,
+          text,
+          chatComposerAttachments,
+          { clientMessageId: optimisticMessageId },
+        );
         setCloudBridgeState(null);
       } catch (error) {
         const failureDetail = bridgeSendFailureDetail(error, 'Unable to send message');
@@ -1289,6 +1332,7 @@ export function useChatMessageActions({
     sendCloudGroupControl,
     sendLocalAgentChatMessage,
     setCanonicalSessionState,
+    setChatComposerAttachments,
     setCloudBridgeState,
     setComposerDrafts,
     setDesktopChatError,
@@ -1465,7 +1509,12 @@ export function useChatMessageActions({
             activeConvId,
             retryMessageId,
           ));
-          await sendCloudBridgeMessage(activeConvId, text, retryAttachments);
+          await sendCloudBridgeMessage(
+            activeConvId,
+            text,
+            retryAttachments,
+            { clientMessageId: retryMessageId },
+          );
           setCloudBridgeState(null);
         } catch (error) {
           const failureDetail = bridgeSendFailureDetail(error, 'Unable to retry message');
@@ -1533,7 +1582,6 @@ export function useChatMessageActions({
           deliveryState: 'sending',
         };
       }
-      let canonicalUserMessagePersisted = false;
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
@@ -1543,7 +1591,6 @@ export function useChatMessageActions({
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         await persistCanonicalUserMessage(preparedCanonicalMessage);
-        canonicalUserMessagePersisted = true;
         await sendCloudGroupControl({
           targetAccountIds: cloudAgentMentionTargetIds,
           kind: 'group-message',
@@ -1573,12 +1620,13 @@ export function useChatMessageActions({
           preparedCanonicalMessage?.messageId ?? null,
           failureDetail,
         ));
-        if (!canonicalUserMessagePersisted) {
-          void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
-            .catch((saveError: unknown) => {
-              setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
-            });
-        }
+        await persistCanonicalGroupMessageFailure(
+          preparedCanonicalMessage,
+          failureDetail,
+          cloudAgentMentionTargetIds,
+        ).catch((saveError: unknown) => {
+          setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+        });
       } finally {
         setIsDesktopChatSending(false);
       }
@@ -1612,7 +1660,6 @@ export function useChatMessageActions({
           deliveryState: 'sending',
         };
       }
-      let canonicalUserMessagePersisted = false;
       try {
         shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
@@ -1622,7 +1669,6 @@ export function useChatMessageActions({
         resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         await persistCanonicalUserMessage(preparedCanonicalMessage);
-        canonicalUserMessagePersisted = true;
         await sendCloudGroupControl({
           targetAccountIds: cloudGroupTargetIds,
           kind: 'group-message',
@@ -1648,12 +1694,13 @@ export function useChatMessageActions({
           preparedCanonicalMessage?.messageId ?? null,
           failureDetail,
         ));
-        if (!canonicalUserMessagePersisted) {
-          void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
-            .catch((saveError: unknown) => {
-              setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
-            });
-        }
+        await persistCanonicalGroupMessageFailure(
+          preparedCanonicalMessage,
+          failureDetail,
+          cloudGroupTargetIds,
+        ).catch((saveError: unknown) => {
+          setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
+        });
       } finally {
         setIsDesktopChatSending(false);
       }
@@ -1694,7 +1741,12 @@ export function useChatMessageActions({
               ...(directHostedAgentTarget ?? {}),
             })
           : text;
-        await sendCloudBridgeMessage(activeConvId, cloudBody, chatComposerAttachments);
+        await sendCloudBridgeMessage(
+          activeConvId,
+          cloudBody,
+          chatComposerAttachments,
+          { clientMessageId: optimisticMessageId },
+        );
         if (appendedOptimisticBridgeMessage && isCloudBridgeConversationId(activeConvId)) {
           setCloudBridgeState(null);
         }

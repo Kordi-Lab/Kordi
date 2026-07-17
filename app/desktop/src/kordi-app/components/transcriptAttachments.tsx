@@ -577,9 +577,7 @@ function AttachmentImageDeliveryOverlay({ status, time, foregroundTone, onRetry 
         title={visual.label}
       >
         <div className="app-attachment-image-delivery-meta app-attachment-image-delivery-error">
-          {visual.kind === 'partial' ? (
-            <span>Partially delivered</span>
-          ) : onRetry ? (
+          {onRetry ? (
             <button
               type="button"
               className="app-attachment-image-delivery-retry"
@@ -590,12 +588,12 @@ function AttachmentImageDeliveryOverlay({ status, time, foregroundTone, onRetry 
               }}
               aria-label="Retry sending image"
             >
-              <span>Failed</span>
+              <span>{visual.kind === 'partial' ? 'Partial' : 'Failed'}</span>
               <span aria-hidden="true">·</span>
               <span className="app-attachment-image-delivery-retry-action">Retry</span>
             </button>
           ) : (
-            <span>Failed</span>
+            <span>{visual.kind === 'partial' ? 'Partially delivered' : 'Failed'}</span>
           )}
         </div>
       </div>
