@@ -23,15 +23,18 @@ test('plain cloud group messages send through cloud group transport instead of f
 
 test('active composer sends prefer Cloud group routing before direct Cloud bridge routing', () => {
   const source = chatMessagesSource();
-  const activeStart = source.indexOf('return useCallback(async (draftOverride?');
+  const activeStart = source.indexOf('const handleSendChatMessage = useCallback(async (');
   assert.notEqual(activeStart, -1, 'expected active composer send handler');
   const activeEnd = source.indexOf('const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);', activeStart);
   assert.notEqual(activeEnd, -1, 'expected local-send section after bridge routing');
   const bridgeRoutingSection = source.slice(activeStart, activeEnd);
 
-  const directCloudBranch = bridgeRoutingSection.indexOf('if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId))');
-  const mentionGroupBranch = bridgeRoutingSection.indexOf('if (activeConversationUsesBridgeRouting && shouldRouteMentionThroughCloudGroup({');
-  const plainGroupSend = bridgeRoutingSection.indexOf("kind: 'group-message'", mentionGroupBranch + 1);
+  const normalSendStart = bridgeRoutingSection.indexOf('if (activeLocalTurnShouldDelayChatSend({');
+  assert.notEqual(normalSendStart, -1, 'expected normal send path after retry handling');
+  const normalSendSection = bridgeRoutingSection.slice(normalSendStart);
+  const directCloudBranch = normalSendSection.indexOf('if (activeConversationUsesBridgeRouting && isCloudBridgeConversationId(activeConvId))');
+  const mentionGroupBranch = normalSendSection.indexOf('if (activeConversationUsesBridgeRouting && shouldRouteMentionThroughCloudGroup({');
+  const plainGroupSend = normalSendSection.indexOf("kind: 'group-message'", mentionGroupBranch + 1);
 
   assert.notEqual(directCloudBranch, -1, 'expected direct Cloud bridge branch');
   assert.notEqual(mentionGroupBranch, -1, 'expected Cloud group mention branch');

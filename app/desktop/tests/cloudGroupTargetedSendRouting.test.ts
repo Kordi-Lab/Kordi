@@ -8,7 +8,7 @@ test('targeted sends check Cloud group routing before direct Cloud bridge routin
   const source = chatMessagesSource();
   const sendTargetedStart = source.indexOf('const sendTargetedChatMessage = useCallback');
   assert.notEqual(sendTargetedStart, -1, 'expected targeted chat send handler');
-  const sendTargetedEnd = source.indexOf('return useCallback(async (draftOverride?', sendTargetedStart);
+  const sendTargetedEnd = source.indexOf('const handleSendChatMessage = useCallback(async (', sendTargetedStart);
   assert.notEqual(sendTargetedEnd, -1, 'expected end of targeted chat send handler');
   const targetedHandler = source.slice(sendTargetedStart, sendTargetedEnd);
 

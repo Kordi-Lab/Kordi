@@ -103,6 +103,7 @@ import {
 } from './cloudAgentRuntime';
 import { cloudProviderAuthSnapshotRouteSignature } from './providerAuthSnapshot';
 import {
+  cloudGroupAttachmentReferences,
   cloudGroupAgentConversationId,
   cloudGroupAgentMentionResponseState,
   cloudGroupAgentRequestingNoticeMessage,
@@ -2184,6 +2185,7 @@ export type SendCloudGroupControlInput = {
   fork?: CloudGroupControlEnvelope['fork'];
   message?: CloudGroupControlEnvelope['message'];
   attachments?: AttachmentItem[];
+  retryFailed?: boolean;
 };
 
 export type UseCloudBridgeStateResult = {
@@ -5015,18 +5017,16 @@ export function useCloudBridgeState({
     const uploadedAttachments = input.attachments?.length
       ? await uploadComposerAttachments({ token: session.token, client, attachments: input.attachments })
       : [];
+    const groupMessageAttachments = uploadedAttachments.length > 0
+      ? uploadedAttachments
+      : input.message?.attachments ?? [];
     const message = input.message
       ? {
           ...input.message,
           senderAccountId: input.message.senderAccountId?.trim() || account.accountId,
-          attachments: uploadedAttachments.length > 0 ? uploadedAttachments.map((attachment) => ({
-            attachmentId: attachment.attachmentId,
-            name: attachment.name,
-            kind: attachment.kind,
-            mimeType: attachment.mimeType ?? null,
-            sizeBytes: attachment.sizeBytes ?? null,
-            previewUrl: attachment.previewUrl ?? null,
-          })) : input.message.attachments,
+          attachments: groupMessageAttachments.length > 0
+            ? cloudGroupAttachmentReferences(groupMessageAttachments)
+            : input.message.attachments,
         }
       : null;
     const forkFromSessionMetadata = input.kind === 'group-message'
@@ -5060,7 +5060,7 @@ export function useCloudBridgeState({
     const canonicalMessageId = cleanText(message?.id);
     if (input.kind === 'group-message' && canonicalMessageId && cloudGroupOutbox) {
       await cloudGroupOutbox.restore();
-      const queued = await cloudGroupOutbox.enqueue({
+      const outboxEntry = {
         canonicalMessageId,
         sessionId: input.groupId,
         envelope,
@@ -5071,7 +5071,10 @@ export function useCloudBridgeState({
         deliveredRecipientIds: [],
         attemptsByRecipientId: {},
         nextAttemptAtMs: 0,
-      });
+      };
+      const queued = input.retryFailed
+        ? await cloudGroupOutbox.requeueFailed(outboxEntry)
+        : await cloudGroupOutbox.enqueue(outboxEntry);
       if (!queued) return;
       let sentAny = false;
       const outcome = await cloudGroupOutbox.deliver(canonicalMessageId, async ({ recipientId, clientMessageId, entry }) => {

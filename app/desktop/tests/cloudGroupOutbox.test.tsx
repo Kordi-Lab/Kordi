@@ -243,6 +243,28 @@ function awaitingEntry(canonicalMessageId: string) {
   };
 }
 
+test('outbox keeps image previews in attachment metadata for recipient delivery', async () => {
+  const persistence = new MemoryPersistence();
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+  const previewUrl = 'data:image/webp;base64,preview';
+
+  await outbox.enqueue({
+    ...entry(),
+    attachments: [{
+      attachmentId: 'att_preview',
+      name: 'image.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 42,
+      previewUrl,
+    }],
+  });
+
+  assert.equal(outbox.entries()[0]?.attachments?.[0]?.previewUrl, previewUrl);
+  assert.equal(persistence.value?.entries[0]?.attachments?.[0]?.previewUrl, previewUrl);
+});
+
 test('restart reconciles a newer fallback delivery state before promoting it to IndexedDB', async () => {
   const events: string[] = [];
   const storage = new MemoryStorage(events);
@@ -796,6 +818,46 @@ test('six rejected attempts become a durable exhausted failure instead of retryi
   assert.deepEqual(outcome?.exhaustedRecipientIds, ['acct_a', 'acct_b']);
   assert.deepEqual(outbox.entries()[0]?.exhaustedRecipientIds, ['acct_a', 'acct_b']);
   assert.deepEqual((await outbox.deliverDue(async () => { throw new Error('must not retry'); }, nowMs + 30_000)), []);
+});
+
+test('manual retry durably requeues exhausted recipients with the refreshed payload', async () => {
+  const persistence = new MemoryPersistence();
+  const outbox = new CloudGroupOutbox('acct_me', persistence);
+  await outbox.restore();
+  await outbox.enqueue(entry());
+  let nowMs = 100;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const outcome = await outbox.deliver('msg:canonical:one', async () => {
+      throw new Error('offline');
+    }, { nowMs, force: true });
+    nowMs = outcome?.nextAttemptAtMs ?? nowMs;
+  }
+
+  const requeued = await outbox.requeueFailed({
+    ...entry(),
+    envelope: 'refreshed-envelope',
+    attachments: [{
+      attachmentId: 'att_retry',
+      name: 'retry.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      sizeBytes: 42,
+    }],
+  });
+
+  assert.equal(requeued?.envelope, 'refreshed-envelope');
+  assert.deepEqual(requeued?.pendingRecipientIds, ['acct_a', 'acct_b']);
+  assert.deepEqual(requeued?.deliveredRecipientIds, []);
+  assert.deepEqual(requeued?.exhaustedRecipientIds, undefined);
+  assert.deepEqual(requeued?.attemptsByRecipientId, { acct_a: 0, acct_b: 0 });
+  assert.equal(persistence.value?.entries[0]?.envelope, 'refreshed-envelope');
+
+  const retried: string[] = [];
+  await outbox.deliver('msg:canonical:one', async ({ recipientId, entry: retriedEntry }) => {
+    retried.push(recipientId);
+    assert.equal(retriedEntry.attachments?.[0]?.attachmentId, 'att_retry');
+  }, { nowMs: nowMs + 1, force: true });
+  assert.deepEqual(retried.sort(), ['acct_a', 'acct_b']);
 });
 
 function canonicalState(): CanonicalSessionState {

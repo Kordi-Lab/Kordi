@@ -208,7 +208,7 @@ export function useComposerMessageActions({
     setOpenComposerSelector,
   ]);
 
-  const handleSendChatMessage = useChatMessageActions({
+  const { handleSendChatMessage, handleRetryChatMessage } = useChatMessageActions({
     activeConversationIsBridge,
     activeConvBridgeTarget,
     activeConvCanonicalSessionId,
@@ -368,6 +368,7 @@ export function useComposerMessageActions({
 
   return {
     handleSendChatMessage,
+    handleRetryChatMessage,
     handleSendProjectMessage,
     handleStopDesktopChatTurn,
     handleStopBridgeAgentRequest,

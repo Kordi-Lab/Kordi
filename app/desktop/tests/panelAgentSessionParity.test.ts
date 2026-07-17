@@ -291,7 +291,7 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   assert.match(typesSource, /contextMessages\?: DesktopChatContextMessage\[\]/, 'queued local messages should preserve optional side Agent reference context');
 
   const targetedStart = actionsSource.indexOf('const sendTargetedChatMessage = useCallback');
-  const activeStart = actionsSource.indexOf('return useCallback', targetedStart);
+  const activeStart = actionsSource.indexOf('const handleSendChatMessage = useCallback', targetedStart);
   assert.notEqual(targetedStart, -1, 'targeted side-panel send path should exist');
   assert.notEqual(activeStart, -1, 'active send path should exist after targeted send path');
   const targetedSendBlock = actionsSource.slice(targetedStart, activeStart);
@@ -303,7 +303,7 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
 test('side-panel local-agent sends use the shared local send pipeline instead of duplicating optimistic persistence', () => {
   const source = chatMessagesSource();
   const targetedStart = source.indexOf('const sendTargetedChatMessage = useCallback');
-  const activeStart = source.indexOf('return useCallback', targetedStart);
+  const activeStart = source.indexOf('const handleSendChatMessage = useCallback', targetedStart);
   assert.notEqual(targetedStart, -1, 'targeted side-panel send path should exist');
   assert.notEqual(activeStart, -1, 'active send path should exist after targeted send path');
   const targetedSendBlock = source.slice(targetedStart, activeStart);

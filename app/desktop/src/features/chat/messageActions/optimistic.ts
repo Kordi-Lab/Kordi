@@ -9,6 +9,7 @@ import type {
   DesktopBridgeState,
   DesktopChatState,
   MessageMention,
+  Message,
   ComposerQuoteState,
 } from '@/kordi-app/types';
 import { appendCanonicalMessageFast } from '@/lib/desktop';
@@ -27,6 +28,22 @@ export function toOptimisticAttachments(attachments: AttachmentItem[]) {
     localPath: attachment.path,
     sizeBytes: attachment.sizeBytes,
   }));
+}
+
+export function retryAttachmentItemsFromMessage(message: Message): AttachmentItem[] | null {
+  const attachments = message.attachments ?? [];
+  const retryAttachments = attachments.map((attachment, index) => {
+    const path = attachment.localPath?.trim();
+    if (!path) return null;
+    return {
+      ...attachment,
+      id: attachment.attachmentId?.trim() || `${message.id ?? 'message'}:${index}:${path}`,
+      path,
+    } satisfies AttachmentItem;
+  });
+  return retryAttachments.every((attachment): attachment is AttachmentItem => attachment !== null)
+    ? retryAttachments
+    : null;
 }
 
 export function bridgeAttachmentTransportFields(attachments: AttachmentItem[]) {
@@ -209,6 +226,33 @@ export function markOptimisticBridgeMessageFailed(
   };
 }
 
+export function markOptimisticBridgeMessageSending(
+  current: DesktopBridgeState | null,
+  conversationId: string,
+  messageId: string,
+): DesktopBridgeState | null {
+  if (!current) return current;
+
+  return {
+    ...current,
+    conversations: current.conversations.map((conversation) => {
+      if (conversation.id !== conversationId) return conversation;
+      return {
+        ...conversation,
+        messages: conversation.messages.map((message) => (
+          message.id === messageId
+            ? {
+                ...message,
+                deliveryState: 'sending',
+                detail: undefined,
+              }
+            : message
+        )),
+      };
+    }),
+  };
+}
+
 function optimisticContentRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -239,6 +283,41 @@ export function markOptimisticCanonicalMessageFailed(
           ...optimisticContentRecord(message.content),
           deliveryState: 'failed',
           ...(detail?.trim() ? { detail: detail.trim() } : null),
+        },
+      };
+    }),
+  };
+}
+
+export function markOptimisticCanonicalMessageSending(
+  current: CanonicalSessionState | null,
+  sessionId: string,
+  messageId: string,
+  pendingRecipientIds: string[],
+): CanonicalSessionState | null {
+  if (!current) return current;
+  const updatedAtMs = Date.now();
+
+  return {
+    ...current,
+    sessions: current.sessions.map((session) => (
+      session.id === sessionId
+        ? { ...session, updatedAtMs: Math.max(session.updatedAtMs, updatedAtMs) }
+        : session
+    )),
+    messages: current.messages.map((message) => {
+      if (message.id !== messageId || message.sessionId !== sessionId) return message;
+      return {
+        ...message,
+        status: 'sending',
+        updatedAtMs: Math.max(message.updatedAtMs, updatedAtMs),
+        content: {
+          ...optimisticContentRecord(message.content),
+          deliveryState: 'sending',
+          deliveredRecipientIds: [],
+          pendingRecipientIds,
+          exhaustedRecipientIds: [],
+          detail: undefined,
         },
       };
     }),

@@ -63,6 +63,26 @@ export type CloudGroupControlEnvelope = {
   } | null;
 };
 
+type CloudGroupAttachmentReferenceInput = Pick<
+  CloudMessageAttachment,
+  'attachmentId' | 'name' | 'kind'
+> & {
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+};
+
+export function cloudGroupAttachmentReferences(
+  attachments: readonly CloudGroupAttachmentReferenceInput[],
+): CloudMessageAttachment[] {
+  return attachments.map((attachment) => ({
+    attachmentId: attachment.attachmentId,
+    name: attachment.name,
+    kind: attachment.kind,
+    mimeType: attachment.mimeType ?? null,
+    sizeBytes: attachment.sizeBytes ?? null,
+  }));
+}
+
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }

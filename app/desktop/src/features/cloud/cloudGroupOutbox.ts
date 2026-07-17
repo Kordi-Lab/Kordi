@@ -126,6 +126,7 @@ function normalizedAttachments(value: unknown): SendCloudMessageAttachmentInput[
     const attachmentId = cleanText(record.attachmentId);
     const name = cleanText(record.name);
     const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
+    const previewUrl = cleanText(record.previewUrl);
     if (!attachmentId || !name || !kind) return [];
     return [{
       attachmentId,
@@ -135,6 +136,7 @@ function normalizedAttachments(value: unknown): SendCloudMessageAttachmentInput[
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes)
         ? record.sizeBytes
         : null,
+      ...(previewUrl ? { previewUrl } : {}),
     }];
   });
   return attachments.length > 0 ? attachments : undefined;
@@ -387,6 +389,64 @@ export class CloudGroupOutbox {
     this.enqueueInFlight.set(entry.canonicalMessageId, enqueue);
     try {
       return await enqueue;
+    } finally {
+      this.enqueueInFlight.delete(entry.canonicalMessageId);
+    }
+  }
+
+  async requeueFailed(value: CloudGroupOutboxEntry) {
+    await this.ensureRestored();
+    const entry = normalizeEntry(value);
+    if (!entry) throw new Error('Cloud group outbox entry is invalid.');
+    const existingEnqueue = this.enqueueInFlight.get(entry.canonicalMessageId);
+    if (existingEnqueue) await existingEnqueue;
+    if (this.state.completedCanonicalMessageIds.includes(entry.canonicalMessageId)) return null;
+
+    const requeue = this.commitMutation((state) => {
+      if (state.completedCanonicalMessageIds.includes(entry.canonicalMessageId)) return null;
+      const existingIndex = state.entries.findIndex((candidate) => (
+        candidate.canonicalMessageId === entry.canonicalMessageId
+      ));
+      if (existingIndex < 0) {
+        const queued = cloneEntry(entry);
+        state.entries.push(queued);
+        return cloneEntry(queued);
+      }
+
+      const existing = state.entries[existingIndex]!;
+      const retryRecipientIds = uniqueText([
+        ...entry.pendingRecipientIds,
+        ...entry.deliveredRecipientIds,
+        ...(entry.exhaustedRecipientIds ?? []),
+      ]);
+      const retryRecipientSet = new Set(retryRecipientIds);
+      const deliveredRecipientIds = existing.deliveredRecipientIds.filter((recipientId) => (
+        retryRecipientSet.has(recipientId)
+      ));
+      const deliveredRecipientSet = new Set(deliveredRecipientIds);
+      const pendingRecipientIds = retryRecipientIds.filter((recipientId) => (
+        !deliveredRecipientSet.has(recipientId)
+      ));
+      const attemptsByRecipientId = Object.fromEntries(
+        pendingRecipientIds.map((recipientId) => [recipientId, 0]),
+      );
+      const queued: CloudGroupOutboxEntry = {
+        ...entry,
+        awaitingCanonicalAck: false,
+        pendingRecipientIds,
+        deliveredRecipientIds,
+        exhaustedRecipientIds: undefined,
+        attemptsByRecipientId,
+        nextAttemptAtMs: 0,
+      };
+      state.entries[existingIndex] = queued;
+      return cloneEntry(queued);
+    });
+    this.enqueueInFlight.set(entry.canonicalMessageId, requeue);
+    try {
+      const queued = await requeue;
+      if (queued) this.notify();
+      return queued;
     } finally {
       this.enqueueInFlight.delete(entry.canonicalMessageId);
     }

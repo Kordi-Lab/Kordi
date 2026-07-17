@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide-react';
+import { Check, CheckCheck, Download, ExternalLink, FileText, Image, LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
@@ -384,6 +384,241 @@ function isAttachmentSending(msg: Message) {
   });
 }
 
+export type AttachmentImageDeliveryVisual = {
+  kind: 'uploading' | 'delivering' | 'sent' | 'delivered' | 'partial' | 'failed';
+  label: string;
+};
+
+export type AttachmentImageForegroundTone = 'light' | 'dark';
+
+function linearSrgbChannel(channel: number) {
+  const value = Math.min(255, Math.max(0, channel)) / 255;
+  return value <= 0.04045
+    ? value / 12.92
+    : ((value + 0.055) / 1.055) ** 2.4;
+}
+
+export function attachmentImageForegroundToneFromRgba(
+  pixels: ArrayLike<number>,
+): AttachmentImageForegroundTone | null {
+  let weightedLuminance = 0;
+  let alphaWeight = 0;
+
+  for (let index = 0; index + 3 < pixels.length; index += 4) {
+    const alpha = Math.min(255, Math.max(0, pixels[index + 3] ?? 0)) / 255;
+    if (alpha <= 0.02) continue;
+    const luminance = (
+      (0.2126 * linearSrgbChannel(pixels[index] ?? 0))
+      + (0.7152 * linearSrgbChannel(pixels[index + 1] ?? 0))
+      + (0.0722 * linearSrgbChannel(pixels[index + 2] ?? 0))
+    );
+    weightedLuminance += luminance * alpha;
+    alphaWeight += alpha;
+  }
+
+  if (alphaWeight === 0) return null;
+  return (weightedLuminance / alphaWeight) >= 0.179 ? 'dark' : 'light';
+}
+
+function sampleAttachmentImageForegroundTone(
+  image: HTMLImageElement,
+): AttachmentImageForegroundTone | null {
+  const naturalWidth = image.naturalWidth;
+  const naturalHeight = image.naturalHeight;
+  if (!naturalWidth || !naturalHeight || typeof document === 'undefined') return null;
+
+  const renderedWidth = image.clientWidth || naturalWidth;
+  const renderedHeight = image.clientHeight || naturalHeight;
+  if (!renderedWidth || !renderedHeight) return null;
+
+  try {
+    const objectFit = window.getComputedStyle(image).objectFit;
+    const scale = objectFit === 'cover'
+      ? Math.max(renderedWidth / naturalWidth, renderedHeight / naturalHeight)
+      : Math.min(renderedWidth / naturalWidth, renderedHeight / naturalHeight);
+    const objectWidth = naturalWidth * scale;
+    const objectHeight = naturalHeight * scale;
+    const objectLeft = (renderedWidth - objectWidth) / 2;
+    const objectTop = (renderedHeight - objectHeight) / 2;
+    const targetWidth = Math.min(renderedWidth, Math.max(64, renderedWidth * 0.4));
+    const targetHeight = Math.min(renderedHeight, Math.max(28, renderedHeight * 0.18));
+    const targetLeft = renderedWidth - targetWidth;
+    const targetTop = renderedHeight - targetHeight;
+    const sampleLeft = Math.max(targetLeft, objectLeft);
+    const sampleTop = Math.max(targetTop, objectTop);
+    const sampleRight = Math.min(renderedWidth, objectLeft + objectWidth);
+    const sampleBottom = Math.min(renderedHeight, objectTop + objectHeight);
+    const sampleDisplayWidth = sampleRight - sampleLeft;
+    const sampleDisplayHeight = sampleBottom - sampleTop;
+    if (
+      sampleDisplayWidth <= 0
+      || sampleDisplayHeight <= 0
+      || (sampleDisplayWidth * sampleDisplayHeight) < (targetWidth * targetHeight * 0.5)
+    ) {
+      return null;
+    }
+
+    const sourceX = (sampleLeft - objectLeft) / scale;
+    const sourceY = (sampleTop - objectTop) / scale;
+    const sourceWidth = sampleDisplayWidth / scale;
+    const sourceHeight = sampleDisplayHeight / scale;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.min(48, Math.round(sampleDisplayWidth)));
+    canvas.height = Math.max(1, Math.min(24, Math.round(sampleDisplayHeight)));
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(
+      image,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    return attachmentImageForegroundToneFromRgba(
+      context.getImageData(0, 0, canvas.width, canvas.height).data,
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function attachmentImageDeliveryVisual(status?: string | null): AttachmentImageDeliveryVisual | null {
+  const normalized = status?.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!normalized) return null;
+
+  if (normalized === 'sending' || normalized === 'pending' || normalized === 'pending_send') {
+    return { kind: 'uploading', label: 'Sending image' };
+  }
+  if (normalized === 'processing' || normalized === 'awaiting_reply') {
+    return { kind: 'delivering', label: 'Delivering image' };
+  }
+  if (normalized === 'sent') {
+    return { kind: 'sent', label: 'Sent' };
+  }
+  if (normalized === 'delivered' || normalized === 'read' || normalized === 'responded') {
+    return { kind: 'delivered', label: normalized === 'delivered' ? 'Delivered' : 'Read' };
+  }
+  if (normalized === 'partial') {
+    return { kind: 'partial', label: 'Partially delivered' };
+  }
+  if (normalized === 'failed' || normalized === 'processing_failed' || normalized === 'cancelled') {
+    return { kind: 'failed', label: 'Sending failed' };
+  }
+  return null;
+}
+
+function adaptiveDeliveryOverlayClassName(foregroundTone: AttachmentImageForegroundTone | null) {
+  return cn(
+    'app-attachment-image-delivery-overlay',
+    foregroundTone
+      ? `app-attachment-image-delivery-foreground-${foregroundTone}`
+      : 'app-attachment-image-delivery-adaptive',
+  );
+}
+
+function AttachmentImageDeliveryOverlay({ status, time, foregroundTone, onRetry }: {
+  status?: string | null;
+  time?: string | null;
+  foregroundTone: AttachmentImageForegroundTone | null;
+  onRetry?: () => void;
+}) {
+  const visual = attachmentImageDeliveryVisual(status);
+  if (!visual) return null;
+
+  if (visual.kind === 'uploading') {
+    return (
+      <div
+        data-attachment-image-delivery-status="uploading"
+        className={adaptiveDeliveryOverlayClassName(foregroundTone)}
+        role="status"
+        aria-label={visual.label}
+      >
+        <div className="app-attachment-image-media-ring" aria-hidden="true">
+          <div className="app-attachment-image-media-ring-spinner">
+            <svg viewBox="0 0 32 32" focusable="false">
+              <circle className="app-attachment-image-media-ring-track" cx="16" cy="16" r="12.5" />
+              <circle className="app-attachment-image-media-ring-progress" cx="16" cy="16" r="12.5" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (visual.kind === 'delivering') {
+    return (
+      <div
+        data-attachment-image-delivery-status="delivering"
+        className={adaptiveDeliveryOverlayClassName(foregroundTone)}
+        role="status"
+        aria-label={visual.label}
+      >
+        <div className="app-attachment-image-delivery-meta">
+          <span className="app-attachment-image-delivery-spinner" aria-hidden="true">
+            <LoaderCircle className="h-3 w-3" />
+          </span>
+          <span>Delivering…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (visual.kind === 'failed' || visual.kind === 'partial') {
+    return (
+      <div
+        data-attachment-image-delivery-status={visual.kind}
+        className="app-attachment-image-delivery-overlay"
+        role="status"
+        aria-label={visual.label}
+        title={visual.label}
+      >
+        <div className="app-attachment-image-delivery-meta app-attachment-image-delivery-error">
+          {visual.kind === 'partial' ? (
+            <span>Partially delivered</span>
+          ) : onRetry ? (
+            <button
+              type="button"
+              className="app-attachment-image-delivery-retry"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onRetry();
+              }}
+              aria-label="Retry sending image"
+            >
+              <span>Failed</span>
+              <span aria-hidden="true">·</span>
+              <span className="app-attachment-image-delivery-retry-action">Retry</span>
+            </button>
+          ) : (
+            <span>Failed</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-attachment-image-delivery-status={visual.kind}
+      className={adaptiveDeliveryOverlayClassName(foregroundTone)}
+      role="status"
+      aria-label={visual.label}
+    >
+      <div className="app-attachment-image-delivery-meta">
+        {time ? <span>{time}</span> : null}
+        {visual.kind === 'delivered'
+          ? <CheckCheck className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+          : <Check className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />}
+      </div>
+    </div>
+  );
+}
+
 function AttachmentSendingIndicator({ className }: { className?: string }) {
   return (
     <div
@@ -501,7 +736,14 @@ function imageTileClass(index: number, totalCount: number) {
   return index < 2 ? 'col-span-3 row-span-2' : 'col-span-2 row-span-2';
 }
 
-function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onOpenContextMenu }: {
+function AttachmentImageCard({
+  attachment,
+  index,
+  totalCount,
+  onOpenPreview,
+  onOpenContextMenu,
+  onImageForegroundTone,
+}: {
   attachment: MessageAttachment;
   index: number;
   totalCount: number;
@@ -511,6 +753,10 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
     previewLease: CloudAttachmentPreviewLease | null,
   ) => void;
   onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
+  onImageForegroundTone?: (
+    attachmentIdentity: string,
+    tone: AttachmentImageForegroundTone | null,
+  ) => void;
 }) {
   const attachmentId = recoverableAttachmentId(attachment);
   const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => attachmentId ? recoveredAttachmentPreviewUrls.get(attachmentId) ?? null : null);
@@ -619,7 +865,13 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
               imageLoaded ? 'opacity-100' : 'opacity-0',
               singleImage ? 'max-h-[320px] object-contain' : 'object-cover',
             )}
-            onLoad={() => setImageLoaded(true)}
+            onLoad={(event) => {
+              setImageLoaded(true);
+              onImageForegroundTone?.(
+                attachmentPreviewIdentity(attachment),
+                sampleAttachmentImageForegroundTone(event.currentTarget),
+              );
+            }}
             onError={() => {
               if (previewUrl) {
                 setFailedPreviewUrls((current) => current.includes(previewUrl) ? current : [...current, previewUrl]);
@@ -648,7 +900,15 @@ function AttachmentImageCard({ attachment, index, totalCount, onOpenPreview, onO
   );
 }
 
-export function AttachmentPreview({ msg }: { msg: Message }) {
+export function AttachmentPreview({
+  msg,
+  imageDeliveryStatus,
+  onRetryImage,
+}: {
+  msg: Message;
+  imageDeliveryStatus?: string | null;
+  onRetryImage?: () => void;
+}) {
   const attachments = msg.attachments ?? [];
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
   const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
@@ -659,9 +919,33 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
   } | null>(null);
   const lightboxPreviewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
+  const [sampledForegroundTone, setSampledForegroundTone] = useState<{
+    attachmentIdentity: string;
+    tone: AttachmentImageForegroundTone | null;
+  } | null>(null);
   const isSending = isAttachmentSending(msg);
+  const resolvedImageDeliveryStatus = imageDeliveryStatus === undefined
+    ? msg.statusChips?.[0] ?? null
+    : imageDeliveryStatus;
   const loadingOnlyImageCollage = previewImageAttachments.length > 0
     && previewImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
+  const deliveryImageIdentity = previewImageAttachments.length > 0
+    ? attachmentPreviewIdentity(previewImageAttachments[previewImageAttachments.length - 1]!)
+    : null;
+  const deliveryForegroundTone = sampledForegroundTone?.attachmentIdentity === deliveryImageIdentity
+    ? sampledForegroundTone.tone
+    : null;
+
+  const updateImageForegroundTone = useCallback((
+    attachmentIdentity: string,
+    tone: AttachmentImageForegroundTone | null,
+  ) => {
+    setSampledForegroundTone((current) => (
+      current?.attachmentIdentity === attachmentIdentity && current.tone === tone
+        ? current
+        : { attachmentIdentity, tone }
+    ));
+  }, []);
 
   const openLightbox = useCallback((
     attachment: MessageAttachment,
@@ -715,7 +999,7 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
             data-attachment-image-collage="true"
             data-attachment-image-count={previewImageAttachments.length}
             className={cn(
-              'relative grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden rounded-[20px] p-0',
+              'app-attachment-image-collage relative grid max-w-[min(100%,29rem)] grid-cols-6 gap-0.5 overflow-hidden rounded-[20px] p-0',
               loadingOnlyImageCollage ? 'w-[min(100%,20rem)] auto-rows-[4rem]' : 'w-[min(100%,29rem)] auto-rows-[6.5rem]',
             )}
           >
@@ -727,9 +1011,17 @@ export function AttachmentPreview({ msg }: { msg: Message }) {
                 totalCount={previewImageAttachments.length}
                 onOpenPreview={openLightbox}
                 onOpenContextMenu={openContextMenu}
+                onImageForegroundTone={index === previewImageAttachments.length - 1
+                  ? updateImageForegroundTone
+                  : undefined}
               />
             ))}
-            {isSending ? <AttachmentSendingIndicator /> : null}
+            <AttachmentImageDeliveryOverlay
+              status={resolvedImageDeliveryStatus}
+              time={msg.time}
+              foregroundTone={deliveryForegroundTone}
+              onRetry={onRetryImage}
+            />
           </div>
         ) : null}
         {downloadableAttachments.length > 0 ? (
