@@ -262,10 +262,16 @@ pub fn fork_canonical_session_into_local_chat(
             project_name: None,
             metadata: None,
         });
-    let source_title = source_info
-        .title
-        .clone()
-        .filter(|value| !value.trim().is_empty());
+    let source_title = source_info.title.clone().filter(|value| {
+        !value.trim().is_empty()
+            && !kordi_session::naming::is_placeholder_or_weak_legacy_title(value, "")
+    });
+    let fork_title = source_title
+        .as_deref()
+        .map(|title| {
+            kordi_session::naming::truncate_session_title(&format!("Fork of {}", title.trim()))
+        })
+        .unwrap_or_else(|| "New fork".to_string());
     let source_is_group = source_info.kind == "group";
 
     let local_human_id = local_profile_human_identity_id(&conn, "You")?;
@@ -318,6 +324,9 @@ pub fn fork_canonical_session_into_local_chat(
             "source": "canonical-fork-snapshot",
             "kind": "chat-group",
             "createdFrom": "cloud-group-fork",
+            "sessionTitleSource": "placeholder",
+            "sessionTitleRevision": 0,
+            "sessionTitlePolicyVersion": kordi_session::naming::SESSION_TITLE_POLICY_VERSION,
             "groupId": new_session_id,
             "groupSpaceId": new_session_id,
             "continuedFromSpaceId": continued_from_space_id,
@@ -332,6 +341,10 @@ pub fn fork_canonical_session_into_local_chat(
     } else {
         serde_json::json!({
             "source": "canonical-fork-snapshot",
+            "sessionTitleSource": "placeholder",
+            "titleSource": "placeholder",
+            "sessionTitleRevision": 0,
+            "sessionTitlePolicyVersion": kordi_session::naming::SESSION_TITLE_POLICY_VERSION,
             "fork": {
                 "forkedFromSessionId": canonical_session_id,
                 "forkedFromMessageId": canonical_message_id,
@@ -350,7 +363,7 @@ pub fn fork_canonical_session_into_local_chat(
             "self-agent"
         }
         .to_string(),
-        title: source_title.clone(),
+        title: Some(fork_title),
         status: Some("active".to_string()),
         created_by_identity_id: local_human_id.clone(),
         primary_identity_id: if source_is_group {

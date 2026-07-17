@@ -17,8 +17,8 @@ import {
   sessionChatActivityAtMs,
   sessionConversationDisplayTitle,
   sessionHasActiveProcessing,
-  sessionHasManualTitle,
   sessionMetadata,
+  sessionPrefersPersistedTitle,
   sessionUnreadCount,
   sessionViewMetadata,
   shouldUseCanonicalMessages,
@@ -553,7 +553,7 @@ export function createCanonicalSessionReadModel(
       const participants = canonicalParticipants.length > 0
         ? canonicalParticipants.map((participant) => participant.name)
         : conversation.participants;
-      const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionHasManualTitle(session) });
+      const displayTitle = sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionPrefersPersistedTitle(session) });
       const latestTime = formatDesktopLastActiveLabel(sessionActivityAtMs(session));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
       const directBridgeTarget = conversation.bridgeTarget ?? syntheticBridgeTarget(session, rawCanonicalParticipants);
@@ -602,7 +602,7 @@ export function createCanonicalSessionReadModel(
         canonicalParticipants: canonicalParticipants.length > 0 ? canonicalParticipants : undefined,
         participantSpaceId: conversation.participantSpaceId ?? syntheticParticipantSpaceId(session),
         metadata: canonicalMetadata,
-        directness: session.kind === 'group' ? 'Group chat' : isChatCreatedDirectAgent ? 'Direct chat' : conversation.directness,
+        directness: session.kind === 'group' ? 'Group chat' : isChatCreatedDirectAgent ? 'Agent chat' : conversation.directness,
         messages,
         updatedAtLabel: latestTime,
         statusIndicator: hasActiveProcessing ? { label: 'Running', tone: 'running', live: true } : conversation.statusIndicator,

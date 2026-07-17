@@ -224,8 +224,8 @@ test('hideRawConversationIds replaces raw names with stable friendly fallbacks',
   );
   assert.equal(
     draftConversation.name,
-    'This is a very long first sentence that should be clipped before it overwhelms the chat header and session rail.',
-    'derived titles should keep the full first sentence so CSS can adapt truncation to available width',
+    'This is a very long first sentence that',
+    'self-agent drafts should use the concise shared topic policy instead of a full prompt',
   );
 });
 
@@ -253,13 +253,14 @@ test('defaults the live local agent sender to My Kordi instead of bare Kordi', (
 });
 
 test('formatSessionIdSubtitle hides raw ids behind friendly labels', () => {
-  assert.equal(formatSessionIdSubtitle('63138d66-0f5b-40dd-90ea-605f7cdb9ba0'), 'Direct chat');
+  assert.equal(formatSessionIdSubtitle('63138d66-0f5b-40dd-90ea-605f7cdb9ba0'), 'Agent chat');
   assert.equal(formatSessionIdSubtitle('  '), '');
-  assert.equal(formatSessionIdSubtitle('Direct human chat'), 'Direct human chat');
-  assert.equal(formatSessionIdSubtitle('session:direct-person:acct_a:acct_b'), 'Direct chat');
-  assert.equal(formatSessionIdSubtitle('session:group:437f306a-6278-4b64-a635-79a71d2cb3e0'), 'Group');
+  assert.equal(formatSessionIdSubtitle('Direct human chat'), 'Person chat');
+  assert.equal(formatSessionIdSubtitle('Direct chat'), 'Chat');
+  assert.equal(formatSessionIdSubtitle('session:direct-person:acct_a:acct_b'), 'Person chat');
+  assert.equal(formatSessionIdSubtitle('session:group:437f306a-6278-4b64-a635-79a71d2cb3e0'), 'Group chat');
   assert.equal(formatSessionIdSubtitle('session:direct-agent:next-id'), 'Agent chat');
-  assert.equal(formatSessionIdSubtitle('session:bridge:humans:c49e4abc'), 'Direct chat');
+  assert.equal(formatSessionIdSubtitle('session:bridge:humans:c49e4abc'), 'Person chat');
 });
 
 function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {

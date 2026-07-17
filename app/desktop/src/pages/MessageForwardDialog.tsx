@@ -2,16 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { Send, X } from 'lucide-react';
 
 import type { ForwardDestination } from '@/features/chat/messageForwarding';
-import type { MessageActionSource } from '@/features/chat/messageActionMetadata';
+import type { ForwardMessageSource } from '@/features/chat/messageActionMetadata';
 
 export type MessageForwardDialogProps = {
-  sources: MessageActionSource[];
+  sources: ForwardMessageSource[];
   destinations: ForwardDestination[];
   onClose: () => void;
   onForward: (destination: ForwardDestination, caption: string) => void;
 };
 
-function sourcePreview(source: MessageActionSource) {
+function sourcePreview(source: ForwardMessageSource) {
   return source.textPreview || `${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}`;
 }
 
@@ -29,8 +29,6 @@ export function MessageForwardDialog({
   );
   const primarySource = sources[0] ?? null;
   const isBatch = sources.length > 1;
-  const previewSources = sources.slice(0, 3);
-  const hiddenPreviewCount = Math.max(0, sources.length - previewSources.length);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -80,25 +78,6 @@ export function MessageForwardDialog({
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </header>
-
-        {isBatch ? (
-          <div
-            className="mx-3 mt-3 rounded-2xl border border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] px-3 py-2"
-            data-message-forward-selected-preview="true"
-          >
-            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[color:var(--utility-muted-text)]">Selected preview</div>
-            <div className="space-y-1">
-              {previewSources.map((source) => (
-                <div key={source.sourceMessageId} className="truncate text-[11px] text-[color:var(--utility-foreground)]">
-                  {source.senderLabel}: {sourcePreview(source)}
-                </div>
-              ))}
-              {hiddenPreviewCount > 0 ? (
-                <div className="text-[11px] text-[color:var(--utility-muted-text)]">+{hiddenPreviewCount} more</div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
 
         <div className="max-h-[280px] overflow-y-auto px-2 py-2" data-message-forward-destinations="true">
           {destinations.length === 0 ? (

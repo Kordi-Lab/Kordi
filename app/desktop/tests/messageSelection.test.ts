@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { formatSelectedMessagesForCopy, hasMessageSelectionDragExceededThreshold, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '../src/features/chat/messageSelection';
-import type { MessageActionSource } from '../src/features/chat/messageActionMetadata';
+import type { ForwardMessageSource } from '../src/features/chat/messageActionMetadata';
 
-const source = (id: string): MessageActionSource => ({
+const source = (id: string): ForwardMessageSource => ({
   sourceSessionId: 'session:one',
   sourceMessageId: id,
   senderLabel: 'Alice',
   textPreview: id,
   attachmentCount: 0,
+  attachments: [],
+  attachmentOnly: false,
   createdAtMs: null,
   timeLabel: '10:42',
 });

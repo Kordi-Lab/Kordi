@@ -96,7 +96,7 @@ test('cloud self-agent bridge conversations render as My agent, not external age
   }), 'My Kordi');
 
   assert.equal(view.type, 'owned-agent');
-  assert.equal(view.directness, 'Direct chat');
+  assert.equal(view.directness, 'Agent chat');
   assert.deepEqual(view.participants, ['Me', 'My Kordi']);
   assert.equal(view.messages[0]?.role, 'owned-agent');
   assert.equal(view.messages[0]?.sender, 'My Kordi');

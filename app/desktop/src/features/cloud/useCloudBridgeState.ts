@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
+import {
+  deriveSessionTitle,
+  incomingSessionTitleWins,
+  isGenericSessionTitle,
+  sessionTitleMetadata,
+  titleSourceFromMetadata,
+} from '@/features/chat/sessionTitlePolicy';
 
 import {
   adoptCloudProfileIdentity,
@@ -36,6 +43,7 @@ import type {
   DesktopBridgeState,
   DesktopChatTurnSnapshot,
   MessageActionMetadata,
+  MessageAttachment,
 } from '@/kordi-app/types';
 import {
   applyCanonicalProfileIdentityDelta,
@@ -60,6 +68,7 @@ import {
   type CloudPublicProfile,
   type CloudSessionForkSummary,
   type CloudSessionPin,
+  type CloudSessionTitle,
   type UpsertCloudArtifactActivityInput,
   type UpsertCloudTaskActivityInput,
 } from './authClient';
@@ -145,6 +154,7 @@ import { cloudMessageActionAllowsAgentContext, cloudMessageActionAllowsAgentTrig
 import {
   uploadComposerAttachments,
   cloudMessageAttachmentToMessageAttachment,
+  resolveForwardAttachmentItems,
   resolveCloudMessageAttachments,
   resetCloudAttachmentPreviewLoader,
 } from './cloudAttachments';
@@ -166,6 +176,7 @@ import {
   saveCloudSessionVisibility,
   syncCloudDiffOnce,
   type CloudSessionPinsById,
+  type CloudSessionTitlesById,
 } from './cloudDiffSync';
 import {
   EMPTY_CLOUD_SESSION_ACTIVITY,
@@ -1773,12 +1784,14 @@ export function planCloudSelfAgentCanonicalSync({
   state,
   forksBySessionId = {},
   groupRowByWireMessageId,
+  cloudTitlesBySessionId = {},
 }: {
   account: CloudAccount;
   messages: CloudMessage[];
   state: CanonicalSessionState;
   forksBySessionId?: Record<string, CloudSessionForkSummary>;
   groupRowByWireMessageId?: ReadonlyMap<string, IndexedCloudGroupRow>;
+  cloudTitlesBySessionId?: Readonly<Record<string, CloudSessionTitle>>;
 }): {
   agentIdentityRequest: UpsertCanonicalIdentityRequest;
   sessionRequests: OpenCanonicalSessionRequest[];
@@ -1807,12 +1820,90 @@ export function planCloudSelfAgentCanonicalSync({
   const existingSessionById = new Map(state.sessions.map((session) => [session.id, session]));
   const messageRequests: AppendCanonicalMessageRequest[] = [];
 
-  const ensureSessionRequest = (sessionId: string, title: string) => {
-    if (sessionRequestsById.has(sessionId)) return;
+  const ensureSessionRequest = (sessionId: string, seed: string, generatedFromMessageId?: string | null, updatedAtMs?: number) => {
+    const cloudTitle = cloudTitlesBySessionId[sessionId];
     const fork = forksBySessionId[sessionId];
+    const generatedTitle = deriveSessionTitle(seed);
+    const title = cloudTitle?.title ?? generatedTitle ?? (fork ? 'New fork' : 'New chat');
+    const cloudTitleMetadata = cloudTitle ? {
+      sessionTitleSource: cloudTitle.titleSource,
+      titleSource: cloudTitle.titleSource,
+      sessionTitleRevision: cloudTitle.titleRevision,
+      sessionTitlePolicyVersion: cloudTitle.titlePolicyVersion,
+      sessionTitleUpdatedAtMs: cloudTitle.updatedAtMs,
+      sessionTitleUpdatedByAccountId: cloudTitle.updatedByAccountId,
+      ...(cloudTitle.titleGeneratedFromMessageId
+        ? { sessionTitleGeneratedFromMessageId: cloudTitle.titleGeneratedFromMessageId }
+        : {}),
+    } : null;
+    const planned = sessionRequestsById.get(sessionId);
+    if (planned) {
+      const plannedMetadata = planned.metadata && typeof planned.metadata === 'object' && !Array.isArray(planned.metadata)
+        ? planned.metadata as Record<string, unknown>
+        : {};
+      const plannedSource = titleSourceFromMetadata(plannedMetadata, planned.title);
+      const plannedUpdatedAtMs = typeof plannedMetadata.sessionTitleUpdatedAtMs === 'number'
+        ? plannedMetadata.sessionTitleUpdatedAtMs
+        : 0;
+      const plannedRevision = typeof plannedMetadata.sessionTitleRevision === 'number'
+        ? plannedMetadata.sessionTitleRevision
+        : 0;
+      const plannedUpdatedByAccountId = typeof plannedMetadata.sessionTitleUpdatedByAccountId === 'string'
+        ? plannedMetadata.sessionTitleUpdatedByAccountId
+        : null;
+      const cloudWinsPlanned = Boolean(cloudTitle)
+        && incomingSessionTitleWins(
+          {
+            titleSource: plannedSource,
+            titleRevision: plannedRevision,
+            updatedAtMs: plannedUpdatedAtMs,
+            updatedByAccountId: plannedUpdatedByAccountId,
+          },
+          cloudTitle,
+        );
+      if (cloudWinsPlanned || (generatedTitle && plannedSource === 'placeholder')) {
+        sessionRequestsById.set(sessionId, {
+          ...planned,
+          title,
+          metadata: {
+            ...plannedMetadata,
+            ...(cloudTitleMetadata ?? sessionTitleMetadata('auto', { generatedFromMessageId, updatedAtMs })),
+          },
+        });
+      }
+      return;
+    }
     const existingSession = existingSessionById.get(sessionId);
+    const existingMetadata = existingSession?.metadata && typeof existingSession.metadata === 'object' && !Array.isArray(existingSession.metadata)
+      ? existingSession.metadata as Record<string, unknown>
+      : {};
+    const existingSource = titleSourceFromMetadata(existingMetadata, existingSession?.title);
+    const existingUpdatedAtMs = typeof existingMetadata.sessionTitleUpdatedAtMs === 'number'
+      ? existingMetadata.sessionTitleUpdatedAtMs
+      : 0;
+    const existingRevision = typeof existingMetadata.sessionTitleRevision === 'number'
+      ? existingMetadata.sessionTitleRevision
+      : 0;
+    const existingUpdatedByAccountId = typeof existingMetadata.sessionTitleUpdatedByAccountId === 'string'
+      ? existingMetadata.sessionTitleUpdatedByAccountId
+      : null;
+    const cloudWinsExisting = Boolean(cloudTitle)
+      && incomingSessionTitleWins(
+        {
+          titleSource: existingSource,
+          titleRevision: existingRevision,
+          updatedAtMs: existingUpdatedAtMs,
+          updatedByAccountId: existingUpdatedByAccountId,
+        },
+        cloudTitle,
+      );
+    const shouldUpdateExistingTitle = cloudWinsExisting
+      || (Boolean(generatedTitle) && existingSource === 'placeholder');
     const metadata = {
       cloudSelfAgentSession: true,
+      ...(shouldUpdateExistingTitle || !existingSession
+        ? cloudTitleMetadata ?? sessionTitleMetadata(generatedTitle ? 'auto' : 'placeholder', { generatedFromMessageId, updatedAtMs })
+        : {}),
       ...(fork
         ? {
             fork: {
@@ -1822,20 +1913,17 @@ export function planCloudSelfAgentCanonicalSync({
           }
         : {}),
     };
-    const existingMetadata = existingSession?.metadata && typeof existingSession.metadata === 'object' && !Array.isArray(existingSession.metadata)
-      ? existingSession.metadata as Record<string, unknown>
-      : {};
     const existingFork = existingMetadata.fork && typeof existingMetadata.fork === 'object' && !Array.isArray(existingMetadata.fork)
       ? existingMetadata.fork as Record<string, unknown>
       : null;
     const existingHasFork = Boolean(fork)
       && existingFork?.forkedFromSessionId === fork?.parentSessionId
       && (!fork?.parentMessageId || existingFork?.forkedFromMessageId === fork.parentMessageId);
-    if (existingSession && (!fork || existingHasFork)) return;
+    if (existingSession && (!fork || existingHasFork) && !shouldUpdateExistingTitle) return;
     sessionRequestsById.set(sessionId, {
       id: sessionId,
       kind: 'self-agent',
-      title: cleanText(existingSession?.title) || title,
+      title: shouldUpdateExistingTitle ? title : cleanText(existingSession?.title) || title,
       status: 'active',
       createdByIdentityId: localHumanIdentityId,
       primaryIdentityId: agentIdentityId,
@@ -1860,9 +1948,21 @@ export function planCloudSelfAgentCanonicalSync({
       if (!responseRequestId) {
         userTextByCloudMessageId.set(message.messageId, text);
         requestLocalMessageIdByCloudMessageId.set(message.messageId, existingMatch.id);
-        ensureSessionRequest(sessionId, text || 'My Kordi');
+        ensureSessionRequest(
+          sessionId,
+          sourceTransport === 'canonical-fork-snapshot' ? '' : text,
+          message.messageId,
+          createdAtMs,
+        );
       } else {
-        ensureSessionRequest(sessionId, cleanText(userTextByCloudMessageId.get(responseRequestId)) || cleanText(existingSessionById.get(sessionId)?.title) || 'My Kordi');
+        ensureSessionRequest(
+          sessionId,
+          sourceTransport === 'canonical-fork-snapshot'
+            ? ''
+            : cleanText(userTextByCloudMessageId.get(responseRequestId)) || '',
+          responseRequestId,
+          createdAtMs,
+        );
       }
       if (sourceTransport === 'canonical-fork-snapshot' && existingMatch.sourceTransport !== sourceTransport) {
         messageRequests.push({
@@ -1906,8 +2006,13 @@ export function planCloudSelfAgentCanonicalSync({
       : quoteSourceMessageId;
     const title = cleanText(userTextByCloudMessageId.get(responseRequestId ?? message.messageId))
       || cleanText(existingSessionById.get(sessionId)?.title)
-      || 'My Kordi';
-    ensureSessionRequest(sessionId, title);
+      || '';
+    ensureSessionRequest(
+      sessionId,
+      sourceTransport === 'canonical-fork-snapshot' ? '' : title,
+      responseRequestId ?? message.messageId,
+      createdAtMs,
+    );
     plannedCanonicalMessageIdByDuplicateKey.set(duplicateKey, canonicalMessageId);
     messageRequests.push({
       id: canonicalMessageId,
@@ -2085,6 +2190,7 @@ export type UseCloudBridgeStateResult = {
   cloudBridgeState: DesktopBridgeState | null;
   setCloudBridgeState: Dispatch<SetStateAction<DesktopBridgeState | null>>;
   mergedBridgeState: DesktopBridgeState | null;
+  prepareCloudForwardAttachments(attachments: MessageAttachment[]): Promise<AttachmentItem[]>;
   sendCloudBridgeMessage(conversationId: string, text: string, attachments?: AttachmentItem[]): Promise<void>;
   sendCloudGroupControl(input: SendCloudGroupControlInput): Promise<void>;
   recordCloudSessionFork(input: { sourceSessionId: string; forkSessionId: string; parentMessageId?: string | null }): Promise<void>;
@@ -2212,6 +2318,7 @@ export function useCloudBridgeState({
   const [cloudSessionActivity, setCloudSessionActivity] = useState<CloudSessionActivityStore>(() => loadCachedCloudSessionActivity(account?.accountId));
   const [cloudSessionForksById, setCloudSessionForksById] = useState<Record<string, CloudSessionForkSummary>>({});
   const [cloudSessionPinsById, setCloudSessionPinsById] = useState<CloudSessionPinsById>({});
+  const [cloudSessionTitlesById, setCloudSessionTitlesById] = useState<CloudSessionTitlesById>({});
   const [cloudAgentDefinitionsById, setCloudAgentDefinitionsById] = useState<Record<string, CloudAgentDefinition>>({});
   const [sharedCloudAgentsByOwner, setSharedCloudAgentsByOwner] = useState<Record<string, SharedCloudAgentSummary[]>>({});
   const [cloudHiddenSessionIds, setCloudHiddenSessionIds] = useState<Set<string>>(() => loadCloudSessionVisibility(account?.accountId).hiddenSessionIds);
@@ -2220,6 +2327,8 @@ export function useCloudBridgeState({
   const cloudSessionActivityRef = useRef<CloudSessionActivityStore>(cloudSessionActivity);
   const cloudSessionForksByIdRef = useRef<Record<string, CloudSessionForkSummary>>(cloudSessionForksById);
   const cloudSessionPinsByIdRef = useRef<CloudSessionPinsById>(cloudSessionPinsById);
+  const cloudSessionTitlesByIdRef = useRef<CloudSessionTitlesById>(cloudSessionTitlesById);
+  const cloudSessionTitleUploadsRef = useRef<Map<string, string>>(new Map());
   const cloudAgentDefinitionsByIdRef = useRef<Record<string, CloudAgentDefinition>>(cloudAgentDefinitionsById);
   const cloudHiddenSessionIdsRef = useRef<Set<string>>(cloudHiddenSessionIds);
   const cloudDeletedSessionIdsRef = useRef<Set<string>>(cloudDeletedSessionIds);
@@ -2294,6 +2403,10 @@ export function useCloudBridgeState({
   }, [cloudSessionPinsById]);
 
   useEffect(() => {
+    cloudSessionTitlesByIdRef.current = cloudSessionTitlesById;
+  }, [cloudSessionTitlesById]);
+
+  useEffect(() => {
     cloudAgentDefinitionsByIdRef.current = cloudAgentDefinitionsById;
   }, [cloudAgentDefinitionsById]);
 
@@ -2359,10 +2472,13 @@ export function useCloudBridgeState({
     cloudSessionActivityRef.current = nextSessionActivity;
     cloudSessionForksByIdRef.current = {};
     cloudSessionPinsByIdRef.current = {};
+    cloudSessionTitlesByIdRef.current = {};
+    cloudSessionTitleUploadsRef.current.clear();
     cloudAgentDefinitionsByIdRef.current = {};
     setCloudSessionActivity(nextSessionActivity);
     setCloudSessionForksById({});
     setCloudSessionPinsById({});
+    setCloudSessionTitlesById({});
     setCloudAgentDefinitionsById({});
     const visibility = loadCloudSessionVisibility(account?.accountId);
     cloudHiddenSessionIdsRef.current = visibility.hiddenSessionIds;
@@ -2744,6 +2860,7 @@ export function useCloudBridgeState({
     let sessionActivity = cloudSessionActivityRef.current;
     let sessionForksById = cloudSessionForksByIdRef.current;
     let sessionPinsById = cloudSessionPinsByIdRef.current;
+    let sessionTitlesById = cloudSessionTitlesByIdRef.current;
     let cloudAgentsById = cloudAgentDefinitionsByIdRef.current;
     let hiddenSessionIds = cloudHiddenSessionIdsRef.current;
     let deletedSessionIds = cloudDeletedSessionIdsRef.current;
@@ -2755,6 +2872,7 @@ export function useCloudBridgeState({
         sessionActivity,
         sessionForksById,
         sessionPinsById,
+        sessionTitlesById,
         cloudAgentsById,
         hiddenSessionIds,
         deletedSessionIds,
@@ -2770,6 +2888,7 @@ export function useCloudBridgeState({
       sessionActivity = result.sessionActivity;
       sessionForksById = result.sessionForksById;
       sessionPinsById = result.sessionPinsById;
+      sessionTitlesById = result.sessionTitlesById;
       cloudAgentsById = result.cloudAgentsById;
       hiddenSessionIds = result.hiddenSessionIds;
       deletedSessionIds = result.deletedSessionIds;
@@ -2797,6 +2916,9 @@ export function useCloudBridgeState({
     ));
     setCloudSessionPinsById((current) => (
       JSON.stringify(current) === JSON.stringify(sessionPinsById) ? current : sessionPinsById
+    ));
+    setCloudSessionTitlesById((current) => (
+      JSON.stringify(current) === JSON.stringify(sessionTitlesById) ? current : sessionTitlesById
     ));
     setCloudAgentDefinitionsById((current) => (
       JSON.stringify(current) === JSON.stringify(cloudAgentsById) ? current : cloudAgentsById
@@ -3228,7 +3350,7 @@ export function useCloudBridgeState({
     const openResult = await openOrCreateCanonicalSessionFast({
       id: envelope.groupId,
       kind: 'group',
-      title: 'New session',
+      title: 'New chat',
       status: 'active',
       createdByIdentityId,
       primaryIdentityId: null,
@@ -4574,6 +4696,7 @@ export function useCloudBridgeState({
       state: canonicalSessionState,
       forksBySessionId: cloudSessionForksById,
       groupRowByWireMessageId: cloudMessageIndex.groupRowByWireMessageId,
+      cloudTitlesBySessionId: cloudSessionTitlesById,
     });
     if (plan.sessionRequests.length === 0 && plan.messageRequests.length === 0) return;
     let cancelled = false;
@@ -4599,7 +4722,113 @@ export function useCloudBridgeState({
     return () => {
       cancelled = true;
     };
-  }, [account, canonicalSessionState, cloudMessageIndex, cloudSessionForksById, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
+  }, [account, canonicalSessionState, cloudMessageIndex, cloudSessionForksById, cloudSessionTitlesById, initialMessagesSettled, messagesByPeer, setCanonicalSessionState]);
+
+  useEffect(() => {
+    if (!account || !canonicalSessionState || !initialMessagesSettled) return;
+    const cloudBackedSessionIds = new Set(
+      (messagesByPeer[account.accountId] ?? [])
+        .map((message) => cleanText(message.sessionId))
+        .filter(Boolean),
+    );
+    if (cloudBackedSessionIds.size === 0) return;
+
+    const uploads = canonicalSessionState.sessions.flatMap((canonicalSession) => {
+      if (!cloudBackedSessionIds.has(canonicalSession.id)) return [];
+      if (!['self-agent', 'project'].includes(canonicalSession.kind)) return [];
+      if (canonicalSession.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)) return [];
+      const metadata = canonicalSession.metadata && typeof canonicalSession.metadata === 'object' && !Array.isArray(canonicalSession.metadata)
+        ? canonicalSession.metadata as Record<string, unknown>
+        : {};
+      const titleSource = titleSourceFromMetadata(metadata, canonicalSession.title);
+      if (titleSource === 'placeholder' || isGenericSessionTitle(canonicalSession.title)) return [];
+      const titleRevisionValue = typeof metadata.sessionTitleRevision === 'number'
+        ? metadata.sessionTitleRevision
+        : 1;
+      const titleRevision = titleSource === 'auto'
+        ? Math.max(1, Math.min(2, Math.floor(titleRevisionValue)))
+        : Math.max(1, Math.floor(titleRevisionValue));
+      const titlePolicyVersion = typeof metadata.sessionTitlePolicyVersion === 'number'
+        ? Math.max(1, Math.floor(metadata.sessionTitlePolicyVersion))
+        : 1;
+      const updatedAtMs = typeof metadata.sessionTitleUpdatedAtMs === 'number'
+        ? metadata.sessionTitleUpdatedAtMs
+        : canonicalSession.updatedAtMs;
+      const titleGeneratedFromMessageId = typeof metadata.sessionTitleGeneratedFromMessageId === 'string'
+        ? metadata.sessionTitleGeneratedFromMessageId.trim() || null
+        : null;
+      const updatedByAccountId = typeof metadata.sessionTitleUpdatedByAccountId === 'string'
+        ? metadata.sessionTitleUpdatedByAccountId.trim() || null
+        : null;
+      const remote = cloudSessionTitlesById[canonicalSession.id];
+      if (remote) {
+        const remoteWins = incomingSessionTitleWins(
+          { titleSource, titleRevision, updatedAtMs, updatedByAccountId },
+          remote,
+        );
+        const identical = remote.title === canonicalSession.title
+          && remote.titleSource === titleSource
+          && remote.titleRevision === titleRevision
+          && remote.titlePolicyVersion === titlePolicyVersion
+          && remote.titleGeneratedFromMessageId === titleGeneratedFromMessageId;
+        if (identical || remoteWins) return [];
+      }
+      const input = {
+        title: canonicalSession.title.trim(),
+        titleSource,
+        titleRevision,
+        titlePolicyVersion,
+        titleGeneratedFromMessageId,
+        updatedAtMs,
+      };
+      const signature = JSON.stringify(input);
+      if (cloudSessionTitleUploadsRef.current.get(canonicalSession.id) === signature) return [];
+      return [{ sessionId: canonicalSession.id, input, signature }];
+    });
+    if (uploads.length === 0) return;
+
+    let cancelled = false;
+    for (const upload of uploads) {
+      cloudSessionTitleUploadsRef.current.set(upload.sessionId, upload.signature);
+    }
+    void (async () => {
+      const authSession = await loadSession();
+      if (!authSession?.token) {
+        for (const upload of uploads) cloudSessionTitleUploadsRef.current.delete(upload.sessionId);
+        return;
+      }
+      const results = await Promise.allSettled(uploads.map(async (upload) => ({
+        upload,
+        sessionTitle: await client.updateCloudSessionTitle(authSession.token, upload.sessionId, upload.input),
+      })));
+      if (cancelled) return;
+      setCloudSessionTitlesById((current) => {
+        let next = current;
+        for (const [index, result] of results.entries()) {
+          if (result.status === 'fulfilled') {
+            next = {
+              ...next,
+              [result.value.sessionTitle.sessionId]: result.value.sessionTitle,
+            };
+          } else {
+            const failedUpload = uploads[index];
+            if (failedUpload) cloudSessionTitleUploadsRef.current.delete(failedUpload.sessionId);
+          }
+        }
+        return next;
+      });
+    })().catch(() => {
+      for (const upload of uploads) cloudSessionTitleUploadsRef.current.delete(upload.sessionId);
+    });
+    return () => {
+      cancelled = true;
+      for (const upload of uploads) {
+        if (cloudSessionTitleUploadsRef.current.get(upload.sessionId) === upload.signature) {
+          cloudSessionTitleUploadsRef.current.delete(upload.sessionId);
+        }
+      }
+    };
+  }, [account, canonicalSessionState, client, cloudSessionTitlesById, initialMessagesSettled, messagesByPeer]);
 
   useEffect(() => {
     if (!account) return;
@@ -4725,6 +4954,17 @@ export function useCloudBridgeState({
     ...cloudSelfAgentDerivedSyncedStatusBySessionId(account?.accountId, currentAccountMessagesByPeer),
     ...cloudSelfAgentSyncStatusBySessionId,
   }), [account?.accountId, cloudSelfAgentSyncStatusBySessionId, currentAccountMessagesByPeer]);
+
+  const prepareCloudForwardAttachments = useCallback(async (attachments: MessageAttachment[]) => {
+    if (attachments.length === 0) return [];
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    return resolveForwardAttachmentItems({
+      token: session.token,
+      client,
+      attachments,
+    });
+  }, [client]);
 
   const sendCloudBridgeMessage = useCallback(async (conversationId: string, text: string, attachments: AttachmentItem[] = []) => {
     const peerId = cloudPeerAccountIdFromConversationId(conversationId);
@@ -5070,6 +5310,7 @@ export function useCloudBridgeState({
     cloudBridgeState,
     setCloudBridgeState,
     mergedBridgeState,
+    prepareCloudForwardAttachments,
     sendCloudBridgeMessage,
     sendCloudGroupControl,
     recordCloudSessionFork,

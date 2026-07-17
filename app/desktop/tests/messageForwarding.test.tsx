@@ -13,6 +13,8 @@ const source = {
   senderLabel: 'Alice',
   textPreview: 'Forward this',
   attachmentCount: 0,
+  attachments: [],
+  attachmentOnly: false,
   createdAtMs: null,
   timeLabel: '10:42',
 };
@@ -21,7 +23,8 @@ test('createForwardedMessageDraft stores forwardedFrom metadata and text fallbac
   const draft = createForwardedMessageDraft({ source, caption: '', destinationSessionId: 'session:two' });
   assert.equal(draft.text, 'Forward this');
   assert.equal(draft.messageAction.kind, 'forward');
-  assert.deepEqual(draft.forwardedFrom, source);
+  assert.equal(draft.forwardedFrom.sourceMessageId, source.sourceMessageId);
+  assert.equal('attachments' in draft.forwardedFrom, false);
 });
 
 test('createForwardedMessageDraft keeps user caption while preserving source metadata', () => {
@@ -30,17 +33,48 @@ test('createForwardedMessageDraft keeps user caption while preserving source met
   assert.equal(draft.messageAction.source.sourceMessageId, 'msg:source');
 });
 
+test('createForwardedMessageDraft preserves an image payload instead of replacing it with an attachment-count label', () => {
+  const imageSource = {
+    ...source,
+    textPreview: '1 attachment',
+    attachmentCount: 1,
+    attachmentOnly: true,
+    attachments: [{
+      kind: 'image' as const,
+      name: 'screen.png',
+      mimeType: 'image/png',
+      localPath: '/tmp/screen.png',
+      attachmentId: 'att_screen',
+    }],
+  };
+
+  const draft = createForwardedMessageDraft({ source: imageSource, caption: '', destinationSessionId: 'session:two' });
+
+  assert.equal(draft.text, '');
+  assert.deepEqual(draft.attachments, imageSource.attachments);
+  assert.notEqual(draft.attachments, imageSource.attachments);
+  assert.equal('attachments' in draft.messageAction.source, false);
+  assert.doesNotMatch(JSON.stringify(draft.messageAction), /\/tmp\/screen\.png/);
+});
+
 test('buildForwardDestinations exposes dense selectable chat labels', () => {
   const destinations = buildForwardDestinations([
     { id: 'local-draft-chat', name: 'Draft', type: 'person', subtitle: '', unread: 0, bridges: [], trust: '', directness: '', participants: [], messages: [] },
-    { id: 'conv:one', canonicalSessionId: 'session:one', name: 'Alice', type: 'person', subtitle: 'Direct', unread: 0, bridges: [], trust: '', directness: '', participants: [], messages: [] },
-    { id: 'conv:two', canonicalSessionId: 'session:two', name: 'Group', type: 'person', subtitle: '3 members', unread: 0, bridges: [], trust: '', directness: '', participants: [], messages: [] },
+    { id: 'conv:one', canonicalSessionId: 'session:self-agent:one', name: 'Research topic', type: 'owned-agent', subtitle: 'Latest message preview', unread: 0, bridges: [], trust: '', directness: 'Agent chat', participants: [], messages: [] },
+    { id: 'conv:two', canonicalSessionId: 'session:group:two', name: 'Project group', type: 'person', subtitle: '3 members', unread: 0, bridges: [], trust: '', directness: 'Group chat', participants: [], messages: [] },
+    { id: 'conv:three', canonicalSessionId: 'session:direct-person:three', name: 'Alice', type: 'person', subtitle: 'Latest message preview', unread: 0, bridges: [], trust: '', directness: 'Person chat', participants: [], messages: [] },
   ], 'local-draft-chat');
 
-  assert.deepEqual(destinations.map((destination) => destination.id), ['session:one', 'session:two']);
-  assert.equal(destinations[0].label, 'Alice');
+  assert.deepEqual(destinations.map((destination) => destination.id), [
+    'session:self-agent:one',
+    'session:group:two',
+    'session:direct-person:three',
+  ]);
+  assert.equal(destinations[0].label, 'Research topic');
   assert.equal(destinations[0].conversationId, 'conv:one');
-  assert.equal(destinations[1].subtitle, '3 members');
+  assert.equal(destinations[0].subtitle, 'Agent chat');
+  assert.equal(destinations[1].subtitle, 'Group chat');
+  assert.equal(destinations[2].subtitle, 'Person chat');
 });
 
 test('revealForwardedMessageInDestination selects destination before revealing forwarded message', () => {
@@ -87,6 +121,9 @@ test('forward confirmation requires an existing destination, appends there, and 
   assert.match(body, /if \(!destinationConversation\)/);
   assert.match(body, /appendCanonicalMessage\(/);
   assert.match(body, /sendCloudBridgeMessage\(directCloudConversationId/);
+  assert.match(body, /prepareCloudForwardAttachments\(draft\.attachments\)/);
+  assert.match(body, /attachments: draft\.attachments/);
+  assert.match(body, /attachments,/);
   assert.match(body, /revealForwardedMessageInDestination/);
   assert.doesNotMatch(body, /openOrCreateCanonicalSession/);
   assert.doesNotMatch(body, /createDesktopChatSession/);
@@ -130,7 +167,7 @@ test('MessageForwardDialog renders destination picker and source preview', () =>
   assert.match(markup, /Alice: Forward this/);
 });
 
-test('MessageForwardDialog renders batch preview without caption field', () => {
+test('MessageForwardDialog keeps batch forwarding focused on destinations without a preview or caption', () => {
   const secondSource = { ...source, sourceMessageId: 'msg:second', senderLabel: 'Bob', textPreview: 'Second' };
   const markup = renderToStaticMarkup(
     <MessageForwardDialog
@@ -142,9 +179,10 @@ test('MessageForwardDialog renders batch preview without caption field', () => {
   );
 
   assert.match(markup, /Forward 2 messages/);
-  assert.match(markup, /data-message-forward-selected-preview="true"/);
-  assert.match(markup, /Alice: Forward this/);
-  assert.match(markup, /Bob: Second/);
+  assert.doesNotMatch(markup, /Selected preview/);
+  assert.doesNotMatch(markup, /data-message-forward-selected-preview/);
+  assert.doesNotMatch(markup, /Alice: Forward this/);
+  assert.doesNotMatch(markup, /Bob: Second/);
   assert.doesNotMatch(markup, /Add a comment/);
 });
 

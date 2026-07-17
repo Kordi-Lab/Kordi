@@ -114,26 +114,30 @@ impl TuiController {
             store::get_session(&self.session_setup.conn, &self.session_setup.session_id)
                 .ok()
                 .flatten();
-        if session_row
-            .as_ref()
-            .and_then(|row| row.name.as_deref())
-            .is_some()
-        {
+        if session_row.as_ref().is_some_and(|row| {
+            let can_backfill_legacy = row.title_source == store::SessionTitleSource::Legacy
+                && row
+                    .name
+                    .as_deref()
+                    .is_some_and(kordi_session::naming::is_known_legacy_auto_title);
+            (!matches!(
+                row.title_source,
+                store::SessionTitleSource::Placeholder | store::SessionTitleSource::Auto
+            ) && !can_backfill_legacy)
+                || (row.title_source == store::SessionTitleSource::Auto && row.title_revision >= 2)
+        }) {
             return;
         }
 
-        let name = prompt.trim().replace('\n', " ");
-        let name = if name.chars().count() > 80 {
-            let truncated: String = name.chars().take(77).collect();
-            format!("{truncated}...")
-        } else {
-            name
+        let Some(name) = kordi_session::naming::derive_session_title(prompt) else {
+            return;
         };
 
-        let _ = store::set_session_name(
+        let _ = store::set_auto_session_name(
             &self.session_setup.conn,
             &self.session_setup.session_id,
-            Some(&name),
+            &name,
+            None,
         );
     }
 

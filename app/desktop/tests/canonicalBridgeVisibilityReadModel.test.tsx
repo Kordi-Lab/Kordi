@@ -413,7 +413,7 @@ test('canonical read model keeps chat-created bridge agent sessions scoped to th
     ['fresh private question', 'fresh private answer'],
   );
   assert.deepEqual(conversation?.participants, ['Me', "Owner's Kordi"]);
-  assert.equal(conversation?.directness, 'Direct chat');
+  assert.equal(conversation?.directness, 'Agent chat');
 });
 
 test('canonical read model does not show processing for bridge agent outreach without a sent bridge request', () => {

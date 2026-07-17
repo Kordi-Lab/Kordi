@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  forwardMessageSourceFromMessage,
   forwardMessageAction,
   messageActionPreviewText,
   messageActionSourceFromMessage,
@@ -40,6 +41,29 @@ test('quoteMessageAction and forwardMessageAction create schema-versioned metada
   assert.equal(quoteMessageAction(source).kind, 'quote');
   assert.equal(forwardMessageAction(source).kind, 'forward');
   assert.equal(quoteMessageAction(source).schemaVersion, 1);
+});
+
+test('forwardMessageSourceFromMessage keeps attachments transient while persisted actions omit local paths', () => {
+  const message: Message = {
+    ...sourceMessage,
+    text: '',
+    attachments: [{
+      kind: 'image',
+      name: 'screen.png',
+      mimeType: 'image/png',
+      localPath: '/tmp/private/screen.png',
+      attachmentId: 'att_screen',
+    }],
+  };
+  const source = forwardMessageSourceFromMessage(message, 'session:group:one');
+
+  assert.ok(source);
+  assert.equal(source.attachmentOnly, true);
+  assert.equal(source.attachments[0]?.localPath, '/tmp/private/screen.png');
+  const action = forwardMessageAction(source);
+  assert.equal('attachments' in action.source, false);
+  assert.equal('attachmentOnly' in action.source, false);
+  assert.doesNotMatch(JSON.stringify(action), /\/tmp\/private/);
 });
 
 test('messageActionPreviewText prefers assistant text and truncates multi-line text', () => {

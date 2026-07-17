@@ -2,7 +2,6 @@ use anyhow::Result;
 use chrono::{Local, TimeZone};
 use kordi_core::settings::Settings;
 
-use super::attachments::attachment_summary_from_metadata;
 use super::transcript::load_session_messages;
 use super::{
     DesktopChatMessage, DesktopChatProjectGroup, DesktopChatProjectInfo, DesktopChatProjectSource,
@@ -55,12 +54,20 @@ pub(super) fn session_activity_label(
 }
 
 fn is_placeholder_session_name(row: &kordi_session::store::SessionRow) -> bool {
-    row.name.as_deref().is_some_and(|value| {
-        let trimmed = value.trim();
-        trimmed.eq_ignore_ascii_case("New session")
-            || trimmed
-                .eq_ignore_ascii_case(&format!("Session {}", short_session_id(&row.session_id)))
-    })
+    let Some(name) = row.name.as_deref() else {
+        return true;
+    };
+    if kordi_session::naming::is_raw_session_identifier(name, &row.session_id)
+        || kordi_session::naming::is_explicit_placeholder_session_title(name)
+    {
+        return true;
+    }
+    row.title_source == kordi_session::store::SessionTitleSource::Placeholder
+        || (matches!(
+            row.title_source,
+            kordi_session::store::SessionTitleSource::Auto
+                | kordi_session::store::SessionTitleSource::Legacy
+        ) && kordi_session::naming::is_placeholder_or_weak_legacy_title(name, &row.session_id))
 }
 
 pub(super) fn session_row_display_name(row: &kordi_session::store::SessionRow) -> Option<String> {
@@ -71,22 +78,22 @@ pub(super) fn session_row_display_name(row: &kordi_session::store::SessionRow) -
 }
 
 pub(super) fn session_title_from_seed(value: &str) -> Option<String> {
-    let title = value
-        .split_whitespace()
-        .take(8)
-        .collect::<Vec<_>>()
-        .join(" ");
-    (!title.is_empty()).then(|| truncate_chars(&title, 60))
+    kordi_session::naming::derive_session_title(value)
 }
 
 pub(super) fn session_title_from_messages(messages: &[DesktopChatMessage]) -> Option<String> {
     messages
         .iter()
-        .find(|message| message.role == "user")
-        .and_then(|message| {
+        .filter(|message| message.role == "user")
+        .find_map(|message| {
             session_title_from_seed(&message.text).or_else(|| {
-                attachment_summary_from_metadata(&message.attachments)
-                    .and_then(|value| session_title_from_seed(&value))
+                kordi_session::naming::attachment_session_title(
+                    message.attachments.len(),
+                    message
+                        .attachments
+                        .iter()
+                        .any(|attachment| attachment.kind == "image"),
+                )
             })
         })
 }
@@ -95,6 +102,23 @@ pub(super) fn repair_session_title_from_history(
     conn: &rusqlite::Connection,
     row: &kordi_session::store::SessionRow,
 ) -> Result<Option<String>> {
+    if row.title_source == kordi_session::store::SessionTitleSource::Legacy
+        && row
+            .name
+            .as_deref()
+            .is_some_and(kordi_session::naming::is_known_legacy_auto_title)
+    {
+        // A v10 row can already have been migrated by an earlier build. Clear
+        // only recognized old auto-title shapes so the shared policy can
+        // backfill them without risking a user-authored legacy title.
+        kordi_session::store::set_session_title(
+            conn,
+            &row.session_id,
+            None,
+            kordi_session::store::SessionTitleSource::Placeholder,
+            None,
+        )?;
+    }
     if let Some(title) = session_row_display_name(row) {
         return Ok(Some(title));
     }
@@ -107,8 +131,13 @@ pub(super) fn repair_session_title_from_history(
     // parent's name. Pick the first user message added AFTER the fork
     // anchor instead so each fork is named after what made it distinct.
     if row.parent_session_message_id.is_some() {
-        if let Some(title) = first_post_fork_user_title(conn, row)? {
-            kordi_session::store::set_session_name(conn, &row.session_id, Some(&title))?;
+        if let Some((title, entry_id)) = first_post_fork_user_title(conn, row)? {
+            kordi_session::store::set_auto_session_name(
+                conn,
+                &row.session_id,
+                &title,
+                Some(&entry_id),
+            )?;
             return Ok(Some(title));
         }
         // Don't persist a placeholder so the title auto-upgrades the
@@ -120,14 +149,14 @@ pub(super) fn repair_session_title_from_history(
     else {
         return Ok(None);
     };
-    kordi_session::store::set_session_name(conn, &row.session_id, Some(&title))?;
+    kordi_session::store::set_auto_session_name(conn, &row.session_id, &title, None)?;
     Ok(Some(title))
 }
 
 fn first_post_fork_user_title(
     conn: &rusqlite::Connection,
     row: &kordi_session::store::SessionRow,
-) -> Result<Option<String>> {
+) -> Result<Option<(String, String)>> {
     let Some(anchor) = row.parent_session_message_id.as_deref() else {
         return Ok(None);
     };
@@ -161,7 +190,7 @@ fn first_post_fork_user_title(
             .collect::<Vec<_>>()
             .join("\n");
         if let Some(title) = session_title_from_seed(&text) {
-            return Ok(Some(title));
+            return Ok(Some((title, entry_row.entry_id.clone())));
         }
     }
     Ok(None)
@@ -172,8 +201,8 @@ fn session_summary_from_row(
     row: kordi_session::store::SessionRow,
 ) -> Result<DesktopChatSessionSummary> {
     let updated_at_label = session_activity_label(conn, &row);
-    let title =
-        repair_session_title_from_history(conn, &row)?.unwrap_or_else(|| "New session".to_string());
+    let title = repair_session_title_from_history(conn, &row)?
+        .unwrap_or_else(|| fallback_session_display_title(&row));
     let subtitle = match kordi_session::context::build_context(conn, &row.session_id) {
         Ok(context) => context
             .model
@@ -466,8 +495,14 @@ fn format_db_timestamp(value: &str) -> String {
     }
 }
 
-fn short_session_id(value: &str) -> String {
-    value.chars().take(8).collect()
+pub(super) fn fallback_session_display_title(row: &kordi_session::store::SessionRow) -> String {
+    if row.entry_count <= 0 {
+        return "New chat".to_string();
+    }
+    let date = chrono::DateTime::parse_from_rfc3339(&row.created_at)
+        .map(|value| value.with_timezone(&Local).format("%b %-d").to_string())
+        .unwrap_or_else(|_| "recently".to_string());
+    format!("Chat with My Kordi · {date}")
 }
 
 pub(super) fn truncate_chars(value: &str, max_chars: usize) -> String {
@@ -482,6 +517,27 @@ pub(super) fn truncate_chars(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
+    use kordi_core::types::{
+        AgentMessage, ContentBlock, EntryBase, EntryId, SessionEntry, UserMessage,
+    };
+
+    fn user_entry(parent_id: Option<&str>, text: &str) -> SessionEntry {
+        let now = Utc::now();
+        SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: parent_id.map(|value| EntryId(value.to_string())),
+                timestamp: now,
+            },
+            message: AgentMessage::User(UserMessage {
+                content: vec![ContentBlock::Text {
+                    text: text.to_string(),
+                }],
+                timestamp: now.timestamp_millis(),
+            }),
+        }
+    }
 
     #[test]
     fn session_title_seed_matches_chat_title_rules() {
@@ -490,9 +546,10 @@ mod tests {
                 "  plan the project session naming behavior with enough extra words  "
             )
             .as_deref(),
-            Some("plan the project session naming behavior with enough")
+            Some("Plan the project session naming behavior with e…")
         );
         assert_eq!(session_title_from_seed("   "), None);
+        assert_eq!(session_title_from_seed("hello"), None);
     }
 
     #[test]
@@ -503,6 +560,11 @@ mod tests {
             created_at: String::new(),
             updated_at: String::new(),
             name: Some("Session abcdef12".to_string()),
+            title_source: kordi_session::store::SessionTitleSource::Legacy,
+            title_revision: 1,
+            title_policy_version: 1,
+            title_generated_from_entry_id: None,
+            title_updated_at: None,
             leaf_id: None,
             entry_count: 0,
             parent_session_id: None,
@@ -517,5 +579,116 @@ mod tests {
             ..row
         };
         assert_eq!(session_row_display_name(&row), None);
+
+        let row = kordi_session::store::SessionRow {
+            name: Some("hello".to_string()),
+            title_source: kordi_session::store::SessionTitleSource::Manual,
+            ..row
+        };
+        assert_eq!(session_row_display_name(&row).as_deref(), Some("hello"));
+
+        let row = kordi_session::store::SessionRow {
+            name: Some("New session".to_string()),
+            ..row
+        };
+        assert_eq!(session_row_display_name(&row), None);
+    }
+
+    #[test]
+    fn fallback_title_is_human_readable_and_never_exposes_the_session_id() {
+        let row = kordi_session::store::SessionRow {
+            session_id: "e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83".to_string(),
+            cwd: "/tmp/kordi".to_string(),
+            created_at: "2026-07-15T12:00:00Z".to_string(),
+            updated_at: "2026-07-15T12:00:00Z".to_string(),
+            name: None,
+            title_source: kordi_session::store::SessionTitleSource::Placeholder,
+            title_revision: 0,
+            title_policy_version: 1,
+            title_generated_from_entry_id: None,
+            title_updated_at: None,
+            leaf_id: None,
+            entry_count: 2,
+            parent_session_id: None,
+            parent_session_message_id: None,
+            session_scope: "chat".to_string(),
+            project_root: None,
+        };
+
+        let title = fallback_session_display_title(&row);
+        assert!(title.starts_with("Chat with My Kordi · "));
+        assert!(!title.contains(&row.session_id));
+    }
+
+    #[test]
+    fn known_legacy_first_prompt_is_backfilled_but_manual_like_legacy_title_is_preserved() {
+        let conn = kordi_session::store::open_memory().expect("session database");
+        let session_id =
+            kordi_session::store::create_session(&conn, "/tmp/kordi").expect("session");
+        let entry = user_entry(None, "which model are you");
+        kordi_session::store::append_entry(&conn, &session_id, &entry).expect("append entry");
+        conn.execute(
+            "UPDATE sessions
+             SET name = 'which model are you', title_source = 'legacy', title_revision = 1
+             WHERE session_id = ?1",
+            rusqlite::params![session_id],
+        )
+        .expect("seed legacy title");
+        let row = kordi_session::store::get_session(&conn, &session_id)
+            .expect("row")
+            .expect("session exists");
+
+        assert_eq!(
+            repair_session_title_from_history(&conn, &row).expect("repair title"),
+            Some("Model and identity".to_string())
+        );
+        let repaired = kordi_session::store::get_session(&conn, &session_id)
+            .expect("repaired row")
+            .expect("session exists");
+        assert_eq!(
+            repaired.title_source,
+            kordi_session::store::SessionTitleSource::Auto
+        );
+
+        kordi_session::store::set_session_name(&conn, &session_id, Some("Release validation plan"))
+            .expect("manual rename");
+        let manual = kordi_session::store::get_session(&conn, &session_id)
+            .expect("manual row")
+            .expect("session exists");
+        assert_eq!(
+            repair_session_title_from_history(&conn, &manual).expect("preserve manual title"),
+            Some("Release validation plan".to_string())
+        );
+    }
+
+    #[test]
+    fn fork_title_skips_inherited_and_low_information_messages() {
+        let conn = kordi_session::store::open_memory().expect("session database");
+        let source_id =
+            kordi_session::store::create_session(&conn, "/tmp/kordi").expect("source session");
+        let source = user_entry(None, "Parent release discussion");
+        let source_entry_id = source.base().id.to_string();
+        kordi_session::store::append_entry(&conn, &source_id, &source).expect("source entry");
+        let fork = kordi_session::store::fork_session_from_entry(
+            &conn,
+            &source_id,
+            &source_entry_id,
+            "/tmp/kordi",
+        )
+        .expect("fork session");
+        let greeting = user_entry(Some(&source_entry_id), "hello");
+        let greeting_id = greeting.base().id.to_string();
+        kordi_session::store::append_entry(&conn, &fork.session_id, &greeting).expect("greeting");
+        let topic = user_entry(Some(&greeting_id), "diagnose memory leak in Node process");
+        let topic_id = topic.base().id.to_string();
+        kordi_session::store::append_entry(&conn, &fork.session_id, &topic).expect("topic");
+        let row = kordi_session::store::get_session(&conn, &fork.session_id)
+            .expect("fork row")
+            .expect("fork exists");
+
+        assert_eq!(
+            first_post_fork_user_title(&conn, &row).expect("derive fork title"),
+            Some(("Diagnose memory leak in Node process".to_string(), topic_id))
+        );
     }
 }

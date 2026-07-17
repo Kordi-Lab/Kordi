@@ -16,9 +16,9 @@ use super::model_options::desktop_thinking_levels_for_model_with_auth;
 use super::{
     DesktopChatAgentProfile, DesktopChatContextWindowStatus, DesktopChatMessage,
     DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopSessionArtifact,
-    attachment_summary_from_metadata, load_project_info, load_session_messages,
-    repair_session_title_from_history, session_activity_label, session_title_from_messages,
-    truncate_chars,
+    attachment_summary_from_metadata, fallback_session_display_title, load_project_info,
+    load_session_messages, repair_session_title_from_history, session_activity_label,
+    session_title_from_messages, truncate_chars,
 };
 
 fn discover_workspace_root(cwd: &std::path::Path) -> std::path::PathBuf {
@@ -241,9 +241,9 @@ pub(super) fn build_detail_from_setup(
     let title = if let Some(row) = session_row.as_ref() {
         repair_session_title_from_history(&setup.conn, row)?
             .or_else(|| session_title_from_messages(&messages))
-            .unwrap_or_else(|| "New session".to_string())
+            .unwrap_or_else(|| fallback_session_display_title(row))
     } else {
-        "New session".to_string()
+        "New chat".to_string()
     };
     let subtitle = session_focus_subtitle(&messages).unwrap_or_default();
     let updated_at_label = session_row

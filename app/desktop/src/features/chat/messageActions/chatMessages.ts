@@ -65,6 +65,7 @@ import {
 } from './optimistic';
 import type { PendingBridgeOutreach } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
+import { sessionTitleMetadata } from '../sessionTitlePolicy';
 
 export type LocalChatSendInFlight = {
   sessionId: string | null;
@@ -1622,15 +1623,19 @@ export function useChatMessageActions({
       if (!existingCanonicalSession && canonicalHumanIdentityId) {
         const primaryIdentityId = ownedAgentIdentityId(canonicalSessionState);
         if (primaryIdentityId) {
+          const sessionTitle = optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New chat');
           canonicalBaseState = await openOrCreateCanonicalSession({
             id: noProviderShortcutSessionId,
             kind: 'self-agent',
-            title: optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New session'),
+            title: sessionTitle,
             status: 'active',
             createdByIdentityId: canonicalHumanIdentityId,
             primaryIdentityId,
             participantIdentityIds: [canonicalHumanIdentityId, primaryIdentityId],
-            metadata: { createdFrom: 'chat-create-flow' },
+            metadata: {
+              createdFrom: 'chat-create-flow',
+              ...sessionTitleMetadata(sessionTitle === 'New chat' ? 'placeholder' : 'auto'),
+            },
           });
         }
       }
@@ -1787,15 +1792,19 @@ export function useChatMessageActions({
         if (!existingCanonicalSession && canonicalHumanIdentityId) {
           const primaryIdentityId = ownedAgentIdentityId(canonicalSessionState);
           if (primaryIdentityId) {
+            const sessionTitle = optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New chat');
             canonicalBaseState = await openOrCreateCanonicalSession({
               id: canonicalSessionId,
               kind: 'self-agent',
-              title: optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New session'),
+              title: sessionTitle,
               status: 'active',
               createdByIdentityId: canonicalHumanIdentityId,
               primaryIdentityId,
               participantIdentityIds: [canonicalHumanIdentityId, primaryIdentityId],
-              metadata: { createdFrom: 'chat-create-flow' },
+              metadata: {
+                createdFrom: 'chat-create-flow',
+                ...sessionTitleMetadata(sessionTitle === 'New chat' ? 'placeholder' : 'auto'),
+              },
             });
           }
         }

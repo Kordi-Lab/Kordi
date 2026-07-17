@@ -1,6 +1,10 @@
 import type { Conversation } from '@/kordi-app/types';
+import { conversationChatKindLabel } from './sessionKindLabels';
 
-import { forwardMessageAction, type MessageActionSource } from './messageActionMetadata';
+import {
+  forwardMessageAction,
+  type ForwardMessageSource,
+} from './messageActionMetadata';
 
 export type ForwardDestination = {
   id: string;
@@ -17,7 +21,7 @@ export function buildForwardDestinations(
     .map((conversation) => ({
       id: conversation.canonicalSessionId ?? conversation.id,
       label: conversation.name?.trim() || 'Untitled chat',
-      subtitle: conversation.subtitle?.trim() || '',
+      subtitle: conversationChatKindLabel(conversation),
       conversationId: conversation.id,
     }))
     .filter((destination) => destination.id && destination.id !== excludedConversationId && destination.conversationId !== excludedConversationId)
@@ -29,17 +33,20 @@ export function createForwardedMessageDraft({
   source,
   caption,
 }: {
-  source: MessageActionSource;
+  source: ForwardMessageSource;
   caption?: string;
   destinationSessionId: string;
 }) {
   const text = caption?.trim()
-    || source.textPreview
-    || `${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}`;
+    || (source.attachmentOnly ? '' : source.textPreview)
+    || (source.attachments.length === 0
+      ? `${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}`
+      : '');
   const messageAction = forwardMessageAction(source);
   return {
     text,
-    forwardedFrom: source,
+    attachments: source.attachments.map((attachment) => ({ ...attachment })),
+    forwardedFrom: messageAction.source,
     messageAction,
   };
 }
@@ -48,7 +55,7 @@ export function createForwardedMessageDrafts({
   sources,
   caption,
 }: {
-  sources: MessageActionSource[];
+  sources: ForwardMessageSource[];
   caption?: string;
 }) {
   return sources.map((source, index) => createForwardedMessageDraft({
@@ -60,9 +67,9 @@ export function createForwardedMessageDrafts({
 
 export function orderedForwardSourcesForMessageIds(
   orderedMessageIds: string[],
-  sourcesByMessageId: ReadonlyMap<string, MessageActionSource>,
-): MessageActionSource[] {
-  const result: MessageActionSource[] = [];
+  sourcesByMessageId: ReadonlyMap<string, ForwardMessageSource>,
+): ForwardMessageSource[] {
+  const result: ForwardMessageSource[] = [];
   orderedMessageIds.forEach((messageId) => {
     const source = sourcesByMessageId.get(messageId);
     if (source) result.push(source);

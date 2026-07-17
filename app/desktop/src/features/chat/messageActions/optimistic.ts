@@ -15,6 +15,7 @@ import { appendCanonicalMessageFast } from '@/lib/desktop';
 
 import type { AttachmentItem } from '../composerController.types';
 import { quoteMessageAction } from '../messageActionMetadata';
+import { optimisticSessionTitle } from '../sessionTitlePolicy';
 
 export function toOptimisticAttachments(attachments: AttachmentItem[]) {
   return attachments.map((attachment) => ({
@@ -36,28 +37,7 @@ export function bridgeAttachmentTransportFields(attachments: AttachmentItem[]) {
 }
 
 export function optimisticSessionTitleFromMessage(messageText: string, attachments: AttachmentItem[], fallbackTitle: string) {
-  const titleFromText = messageText
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 8)
-    .join(' ')
-    .slice(0, 60)
-    .trim();
-
-  if (titleFromText) {
-    return titleFromText;
-  }
-
-  if (attachments.length === 1) {
-    return `Attached ${attachments[0].name}`;
-  }
-
-  if (attachments.length > 1) {
-    return `${attachments.length} attachments`;
-  }
-
-  return fallbackTitle;
+  return optimisticSessionTitle(messageText, attachments, fallbackTitle);
 }
 
 export function appendOptimisticOutboundMessage(
@@ -94,8 +74,8 @@ export function appendOptimisticOutboundMessage(
     : (existingSummary?.messageCount ?? existingProjectSummary?.messageCount ?? 0) + 1;
   const baselineTitle = activeSessionMatches
     ? current.activeSession.title
-    : existingSummary?.title ?? existingProjectSummary?.title ?? 'New session';
-  const nextTitle = baselineTitle.trim() === 'New session'
+    : existingSummary?.title ?? existingProjectSummary?.title ?? 'New chat';
+  const nextTitle = /^(?:new session|new chat)$/i.test(baselineTitle.trim())
     ? optimisticSessionTitleFromMessage(messageText, attachments, baselineTitle)
     : baselineTitle;
   const optimisticSummary = {

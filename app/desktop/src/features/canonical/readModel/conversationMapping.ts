@@ -6,6 +6,14 @@ import type {
   ConversationParticipant,
   Message,
 } from '@/kordi-app/types';
+import {
+  deriveSessionTitle,
+  isExplicitPlaceholderSessionTitle,
+  isGenericSessionTitle,
+  isRawSessionIdentifier,
+  titleSourceFromMetadata,
+} from '@/features/chat/sessionTitlePolicy';
+import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 
 import { stringValue } from './messageMapping';
@@ -180,11 +188,20 @@ export function syntheticParticipantSpaceId(session: CanonicalSessionState['sess
 }
 
 function firstMessageTitle(messages: Message[]) {
+  const visible = messages.filter((message) => !message.isForkSnapshot && message.role !== 'system');
+  for (const message of [...visible.filter((message) => message.role === 'user'), ...visible.filter((message) => message.role !== 'user')]) {
+    const title = deriveSessionTitle(message.text);
+    if (title) return title;
+  }
+  return null;
+}
+
+function legacyFirstMessageTitle(messages: Message[]) {
   const text = messages
     .find((message) => !message.isForkSnapshot && message.role !== 'system' && message.text.trim().length > 0)
     ?.text
     .trim()
-    .split(/\s+/)
+    .split(/\s+/u)
     .filter(Boolean)
     .slice(0, 8)
     .join(' ')
@@ -193,16 +210,27 @@ function firstMessageTitle(messages: Message[]) {
   return text || null;
 }
 
-function isGenericSessionTitle(value?: string | null) {
-  return /^(#\s*)?(new session|untitled session)$/i.test(value?.trim() ?? '');
-}
-
 export function sessionHasManualTitle(session: CanonicalSessionState['sessions'][number]) {
   const metadata = sessionMetadata(session);
+  if (isRawSessionIdentifier(session.title) || isExplicitPlaceholderSessionTitle(session.title)) return false;
+  if (stringValue(metadata.sessionTitleSource) === 'manual') return Boolean(session.title.trim());
   if (isGenericSessionTitle(session.title)) return false;
-  if (stringValue(metadata.sessionTitleSource) === 'manual') return true;
   if (session.kind === 'group') return false;
   return stringValue(metadata.titleSource) === 'manual';
+}
+
+export function sessionPrefersPersistedTitle(session: CanonicalSessionState['sessions'][number]) {
+  if (session.kind !== 'self-agent' && session.kind !== 'project') {
+    return sessionHasManualTitle(session);
+  }
+  const metadata = sessionMetadata(session);
+  const source = titleSourceFromMetadata(metadata, session.title);
+  if (isRawSessionIdentifier(session.title) || isExplicitPlaceholderSessionTitle(session.title)) return false;
+  if (source === 'manual' || source === 'imported' || source === 'external') {
+    return Boolean(session.title.trim());
+  }
+  return source !== 'placeholder'
+    && !isGenericSessionTitle(session.title);
 }
 
 export function sessionDisplayTitle(messages: Message[], fallback: string, options: { preferFallback?: boolean } = {}) {
@@ -241,7 +269,9 @@ export function sessionConversationDisplayTitle(
   options: { preferFallback?: boolean } = {},
 ) {
   return directPersonContactTitle(session, participants)
-    ?? sessionDisplayTitle(messages, fallback, options);
+    ?? ((session.kind === 'self-agent' || session.kind === 'project')
+      ? sessionDisplayTitle(messages, fallback, options)
+      : (options.preferFallback && fallback.trim()) || legacyFirstMessageTitle(messages) || fallback);
 }
 
 export function sessionHasActiveProcessing(messages: Message[]) {
@@ -289,7 +319,7 @@ export function syntheticConversation(
   const bridgeTarget = syntheticBridgeTarget(session, participants);
   const updatedAtLabel = formatDesktopLastActiveLabel(sessionChatActivityAtMs(session, rawMessages));
 
-  const displayTitle = sessionConversationDisplayTitle(session, participants, messages, session.title, { preferFallback: sessionHasManualTitle(session) });
+  const displayTitle = sessionConversationDisplayTitle(session, participants, messages, session.title, { preferFallback: sessionPrefersPersistedTitle(session) });
 
   return {
     id: session.id,
@@ -301,7 +331,11 @@ export function syntheticConversation(
     unread: sessionUnreadCount(session),
     bridges: bridgeTarget ? ['Bridge'] : ['Local'],
     trust: bridgeTarget ? 'Bridge' : 'Owned',
-    directness: 'Direct chat',
+    directness: conversationChatKindLabel({
+      id: session.id,
+      canonicalSessionId: session.id,
+      type: syntheticConversationType(session, participants),
+    }),
     participants: participantNames,
     canonicalParticipants: participants,
     messages,

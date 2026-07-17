@@ -15,11 +15,20 @@ pub(super) fn export_jsonl(conn: &Connection, session_id: &str, output: &Path) -
 
     let header = serde_json::json!({
         "type": "session",
-        "version": 3,
+        "version": 4,
         "id": session_id,
         "timestamp": session.created_at,
         "cwd": session.cwd,
+        "name": session.name,
+        "title_source": session.title_source.as_str(),
+        "title_revision": session.title_revision,
+        "title_policy_version": session.title_policy_version,
+        "title_generated_from_entry_id": session.title_generated_from_entry_id,
+        "title_updated_at": session.title_updated_at,
         "parent_session": session.parent_session_id,
+        "parent_session_message": session.parent_session_message_id,
+        "session_scope": session.session_scope,
+        "project_root": session.project_root,
     });
     writeln!(file, "{}", serde_json::to_string(&header)?)?;
 

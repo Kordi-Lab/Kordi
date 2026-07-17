@@ -133,8 +133,8 @@ function optimisticBridgeConversation({
   const subtitle = project?.name
     ? `Shared in ${project.name}`
     : isPerson
-      ? 'Direct human chat'
-      : 'Remote agent thread';
+      ? 'Person chat'
+      : 'Remote agent chat';
   const updatedAtLabel = new Intl.DateTimeFormat([], {
     hour: 'numeric',
     minute: '2-digit',

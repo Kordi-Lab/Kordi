@@ -126,8 +126,8 @@ export async function runLocalSlashCommand({
         return true;
       }
       const activeSessionTitle = isLocalDraftChatConversationId(activeConvId)
-        ? 'New session'
-        : desktopChatState?.activeSession.title ?? 'New session';
+        ? 'New chat'
+        : desktopChatState?.activeSession.title ?? 'New chat';
       if (args) {
         setDesktopSessionRenameDraft(args);
         await handleRenameDesktopSession(activeSessionTitle);

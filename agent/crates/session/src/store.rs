@@ -1,6 +1,8 @@
 use anyhow::Result;
 use rusqlite::Connection;
 
+pub use crate::naming::SessionTitleSource;
+
 mod fork;
 mod queries;
 #[cfg(test)]
@@ -27,6 +29,11 @@ pub struct SessionRow {
     pub created_at: String,
     pub updated_at: String,
     pub name: Option<String>,
+    pub title_source: SessionTitleSource,
+    pub title_revision: i64,
+    pub title_policy_version: i64,
+    pub title_generated_from_entry_id: Option<String>,
+    pub title_updated_at: Option<String>,
     pub leaf_id: Option<String>,
     pub entry_count: i64,
     pub parent_session_id: Option<String>,
@@ -171,6 +178,31 @@ pub fn set_leaf(conn: &Connection, session_id: &str, leaf_id: Option<&str>) -> R
 
 pub fn set_session_name(conn: &Connection, session_id: &str, name: Option<&str>) -> Result<()> {
     writes::set_session_name(conn, session_id, name)
+}
+
+pub fn set_session_title(
+    conn: &Connection,
+    session_id: &str,
+    name: Option<&str>,
+    source: SessionTitleSource,
+    generated_from_entry_id: Option<&str>,
+) -> Result<bool> {
+    writes::set_session_title(conn, session_id, name, source, generated_from_entry_id)
+}
+
+pub fn set_auto_session_name(
+    conn: &Connection,
+    session_id: &str,
+    name: &str,
+    generated_from_entry_id: Option<&str>,
+) -> Result<bool> {
+    writes::set_session_title(
+        conn,
+        session_id,
+        Some(name),
+        SessionTitleSource::Auto,
+        generated_from_entry_id,
+    )
 }
 
 pub fn update_session_scope(
