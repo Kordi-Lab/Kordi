@@ -1592,7 +1592,6 @@ export function WorkspaceSidebar({
           className={cn(
             'app-left-glass flex shrink-0 flex-col items-center justify-between px-2.5 pb-2.5',
             isNativeShell ? 'pt-11' : 'pt-2.5',
-            collapseChatSessions || isSingleWorkspacePage ? '' : 'shadow-[inset_-1px_0_0_rgba(255,255,255,0.05)]',
           )}
           style={{ width: `${LEFT_RAIL_WIDTH}px` }}
         >
@@ -1645,7 +1644,7 @@ export function WorkspaceSidebar({
             <button
               ref={profileTriggerRef}
               type="button"
-              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70"
+              className="app-nav-rail-profile rounded-full"
               onClick={() => setIsProfileCardOpen((open) => !open)}
               aria-label="Open profile"
               aria-expanded={isProfileCardOpen}
@@ -1655,7 +1654,7 @@ export function WorkspaceSidebar({
                 seed={profileAvatarSeed}
                 name={profileDisplayName}
                 imageUrl={profileImageUrl}
-                className="h-9 w-9 border border-white/10"
+                className="app-nav-rail-avatar h-9 w-9"
               />
             </button>
           </div>

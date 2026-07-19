@@ -11,8 +11,12 @@ function App() {
   const isNativeShell = isNativeDesktopShell()
 
   useEffect(() => {
+    document.documentElement.classList.toggle('kordi-native-shell', isNativeShell)
     document.body.classList.toggle('kordi-native-shell', isNativeShell)
-    return () => document.body.classList.remove('kordi-native-shell')
+    return () => {
+      document.documentElement.classList.remove('kordi-native-shell')
+      document.body.classList.remove('kordi-native-shell')
+    }
   }, [isNativeShell])
 
   if (typeof window !== 'undefined') {

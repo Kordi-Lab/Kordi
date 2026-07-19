@@ -50,6 +50,20 @@
   transform: none;
 }
 
+.app-workspace-sidebar .app-nav-rail-profile {
+  border: 0;
+  outline: none;
+}
+
+.app-workspace-sidebar .app-nav-rail-profile:focus-visible {
+  outline: 2px solid var(--app-nav-rail-focus-ring);
+  outline-offset: 2px;
+}
+
+.app-workspace-sidebar .app-nav-rail-avatar {
+  border: 1px solid var(--app-nav-rail-avatar-ring);
+}
+
 .app-workspace-sidebar .app-workspace-note {
   border-color: color-mix(in oklab, var(--app-divider) 64%, transparent);
   background: color-mix(in oklab, var(--app-control-bg) 28%, transparent);

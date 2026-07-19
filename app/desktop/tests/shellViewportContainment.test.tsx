@@ -12,6 +12,8 @@ test('native shell locks page scrolling at the document root', () => {
 
   assert.match(baseCss, /body\.kordi-native-shell\s*\{[\s\S]*overflow:\s*hidden;/);
   assert.match(baseCss, /body\.kordi-native-shell\s*\{[\s\S]*overscroll-behavior:\s*none;/);
+  assert.match(baseCss, /html\.kordi-native-shell body #root\s*\{[\s\S]*background:\s*transparent;/);
+  assert.match(app, /document\.documentElement\.classList\.toggle\('kordi-native-shell'/);
   assert.match(app, /document\.body\.classList\.toggle\('kordi-native-shell'/);
 });
 

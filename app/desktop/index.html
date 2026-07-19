@@ -8,6 +8,9 @@
       window.__KORDI_BOOTSTRAP__ = {
         edition: '%VITE_KORDI_EDITION%',
       };
+      if (typeof window.__TAURI_INTERNALS__ !== 'undefined') {
+        document.documentElement.classList.add('kordi-native-shell');
+      }
     </script>
     <title>Kordi</title>
   </head>

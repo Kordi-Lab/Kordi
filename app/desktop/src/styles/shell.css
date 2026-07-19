@@ -77,17 +77,12 @@
 }
 
 .app-left-glass {
-  background:
-    radial-gradient(164px 136px at 50% 104%, rgba(214, 158, 46, 0.24), transparent 68%),
-    radial-gradient(112px 88px at 50% 100%, rgba(255, 194, 84, 0.12), transparent 64%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 18%, rgba(0, 0, 0, 0.08) 100%),
-    var(--app-left-glass-bg);
+  background: var(--app-nav-rail-glass-fallback);
   box-shadow:
-    inset -1px 0 0 var(--app-left-glass-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 30px rgba(5, 8, 15, 0.12);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+    inset -1px 0 0 var(--app-nav-rail-glass-border),
+    inset 0 1px 0 var(--app-nav-rail-glass-highlight);
+  backdrop-filter: blur(var(--app-nav-rail-glass-blur)) saturate(var(--app-nav-rail-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--app-nav-rail-glass-blur)) saturate(var(--app-nav-rail-glass-saturate));
 }
 
 .app-session-panel {
@@ -96,6 +91,54 @@
 
 .app-main-panel {
   background: var(--app-main-bg);
+}
+
+/* Native macOS window vibrancy is deliberately visible through the global
+ * navigation rail only. Session navigation and workspace content remain
+ * opaque, so wallpaper color never competes with dense application content. */
+html.kordi-native-shell .bridge-app.app-page-bg,
+html.kordi-native-shell .bridge-app .app-shell,
+html.kordi-native-shell .bridge-app .app-side-shell {
+  background: transparent;
+}
+
+html.kordi-native-shell .bridge-app .app-shell,
+html.kordi-native-shell .bridge-app .app-side-shell,
+html.kordi-native-shell .bridge-app .app-session-panel,
+html.kordi-native-shell .bridge-app .app-main-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.kordi-native-shell .bridge-app .app-shell {
+  box-shadow: none;
+}
+
+html.kordi-native-shell .bridge-app .app-workspace-sidebar,
+html.kordi-native-shell .bridge-app .app-main-panel {
+  border-radius: 0;
+}
+
+html.kordi-native-shell .bridge-app .app-left-glass {
+  background: var(--app-nav-rail-glass-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.kordi-native-shell .bridge-app .app-session-panel {
+  background: var(--app-native-session-bg);
+  box-shadow: none;
+}
+
+html.kordi-native-shell .bridge-app .app-main-panel {
+  background: var(--app-native-main-bg);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html.kordi-native-shell .bridge-app .app-left-glass {
+    background: var(--app-nav-rail-glass-fallback);
+  }
 }
 
 .app-surface-card {
