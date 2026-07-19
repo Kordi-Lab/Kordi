@@ -63,6 +63,17 @@
   color-scheme: light;
 }
 
+.app-composer-model-menu-layer .app-composer-popover-item,
+.app-composer-model-menu-layer .app-composer-popover-item.app-composer-popover-item-active {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-composer-model-menu-layer .app-composer-popover-item:hover,
+.app-composer-model-menu-layer .app-composer-popover-item:focus-visible {
+  background: var(--app-transient-hover-bg);
+}
+
 .bridge-app.theme-light .app-compact-model-menu,
 .app-compact-model-menu-light {
   color-scheme: light;

@@ -162,6 +162,8 @@ test('split-pane Agent model selection menu escapes the right panel clipping bou
   assert.match(controlsSource, /selectorMenuRef\.current\?\.contains\(target\)/, 'clicking inside the body-portaled selector should not close it');
   assert.match(popoversSource, /\.app-composer-model-menu-layer \{[\s\S]*--app-modal-bg:/, 'body-portaled selector should define its own dark theme variables');
   assert.match(popoversSource, /\.app-composer-model-menu-layer\.app-compact-model-menu-light \{[^}]*color-scheme:\s*light;/s, 'body-portaled selector should opt into light color controls');
+  assert.match(popoversSource, /\.app-composer-model-menu-layer \.app-composer-popover-item,[\s\S]*background:\s*transparent;/, 'model selector options should stay flat against the popup surface');
+  assert.match(popoversSource, /\.app-composer-model-menu-layer \.app-composer-popover-item:hover,[\s\S]*background:\s*var\(--app-transient-hover-bg\);/, 'flat model selector options should retain hover and keyboard feedback');
   assert.match(themeTokensSource, /\.app-compact-model-menu-light[^)]*\)\s*\{[\s\S]*--app-transient-surface-bg:/, 'body-portaled selector should inherit the portal-safe light surface variables');
   assert.doesNotMatch(controlsSource, /absolute bottom-full right-0 z-30 mb-2 max-h-\[min\(28rem,60vh\)\] w-\[340px\]/, 'model selector menu must not stay absolute inside the right-panel composer');
 });
