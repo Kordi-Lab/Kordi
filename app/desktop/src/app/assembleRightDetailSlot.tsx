@@ -12,7 +12,17 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
   const activeChatSessionId = args.activeConv.canonicalSessionId ?? args.activeConv.id;
   const activeProjectSessionId = args.activeProjectSession.id;
   const navigateToResponse = (messageId: string) => {
-    navigateToTranscriptMessageOrScrollBottom(messageId, args.chatTranscriptScrollRef);
+    const navigate = () => navigateToTranscriptMessageOrScrollBottom(messageId, args.chatTranscriptScrollRef);
+    if (args.activeNav !== 'chats') {
+      navigate();
+      return;
+    }
+    args.setIsDetailPanelCollapsed(true);
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      navigate();
+      return;
+    }
+    window.requestAnimationFrame(() => window.requestAnimationFrame(navigate));
   };
   const allDetailTabs: Array<{ id: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }> = args.activeNav === 'chats'
     ? [
@@ -30,7 +40,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
 
   return (
     <RightDetailRail
-      detailTabs={detailTabs.map((tab) => ({ id: tab.id, label: tab.label }))}
+      detailTabs={detailTabs}
       activeDetailTab={args.activeDetailTab}
       onSelectDetailTab={(tab) => {
         args.setActiveDetailTab(tab);
@@ -38,6 +48,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
       }}
       activeSourcePreview={args.activeSourcePreview}
       onCloseSourcePreview={() => args.setActiveSourcePreview(null)}
+      variant={args.activeNav === 'chats' ? 'page' : 'rail'}
     >
       {args.activeNav === 'projects' ? (
         <ProjectDetailPanel

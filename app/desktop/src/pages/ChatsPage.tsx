@@ -1,17 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentProps, ComponentType, Dispatch, DragEvent, MouseEventHandler, PointerEvent as ReactPointerEvent, ReactNode, RefObject, SetStateAction } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronDown,
   ChevronLeft,
+  CheckCircle2,
   Clock3,
   Cloud,
   Columns2,
   Copy,
   Ellipsis,
   FileText,
+  FolderOpen,
   GripVertical,
   Image as ImageIcon,
+  Info,
+  MessageSquare,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
@@ -102,6 +106,103 @@ import { cn } from '@/lib/utils';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
+
+type ChatDestination = 'messages' | 'info' | 'artifacts' | 'tasks';
+type ChatDetailDestination = Exclude<ChatDestination, 'messages'>;
+
+const CHAT_DESTINATIONS: ReadonlyArray<{
+  id: ChatDestination;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+}> = [
+  { id: 'messages', label: 'Messages', icon: MessageSquare },
+  { id: 'info', label: 'Info', icon: Info },
+  { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
+  { id: 'tasks', label: 'Tasks', icon: CheckCircle2 },
+];
+
+const CHAT_DETAIL_TABS: ReadonlyArray<{
+  id: DetailTab;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+}> = CHAT_DESTINATIONS
+  .filter((destination): destination is (typeof CHAT_DESTINATIONS)[number] & { id: ChatDetailDestination } => destination.id !== 'messages')
+  .map(({ id, label, icon }) => ({ id, label, icon }));
+
+function detailDestinationFromTab(tab: DetailTab): ChatDetailDestination {
+  return tab === 'artifacts' || tab === 'tasks' ? tab : 'info';
+}
+
+function SessionDestinationTabs({
+  scope,
+  activeDestination,
+  onSelect,
+}: {
+  scope: 'main' | 'companion';
+  activeDestination: ChatDestination;
+  onSelect: (destination: ChatDestination) => void;
+}) {
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const focusTab = (index: number) => {
+    const destinationCount = CHAT_DESTINATIONS.length;
+    const normalizedIndex = (index + destinationCount) % destinationCount;
+    onSelect(CHAT_DESTINATIONS[normalizedIndex].id);
+    tabRefs.current[normalizedIndex]?.focus();
+  };
+
+  return (
+    <nav
+      className="app-chat-destination-tabs"
+      aria-label={scope === 'main' ? 'Session destinations' : 'Ask Agent destinations'}
+      data-chat-destination-tabs={scope}
+      data-kordi-window-drag="false"
+      draggable={false}
+      onDragStart={(event) => event.preventDefault()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="app-chat-destination-tab-list" role="tablist">
+        {CHAT_DESTINATIONS.map((destination, index) => {
+          const Icon = destination.icon;
+          const active = destination.id === activeDestination;
+          return (
+            <button
+              key={destination.id}
+              ref={(node) => { tabRefs.current[index] = node; }}
+              type="button"
+              role="tab"
+              id={`chat-${scope}-${destination.id}-tab`}
+              aria-controls={`chat-${scope}-${destination.id}-panel`}
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              className={cn('app-chat-destination-tab', active && 'app-chat-destination-tab-active')}
+              data-chat-destination-tab={destination.id}
+              onClick={() => onSelect(destination.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowRight') {
+                  event.preventDefault();
+                  focusTab(index + 1);
+                } else if (event.key === 'ArrowLeft') {
+                  event.preventDefault();
+                  focusTab(index - 1);
+                } else if (event.key === 'Home') {
+                  event.preventDefault();
+                  focusTab(0);
+                } else if (event.key === 'End') {
+                  event.preventDefault();
+                  focusTab(CHAT_DESTINATIONS.length - 1);
+                }
+              }}
+            >
+              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{destination.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
 
 function scheduleTranscriptScrollToBottom<T extends HTMLElement>(scrollRef: RefObject<T | null>) {
   if (typeof window === 'undefined') return;
@@ -1036,6 +1137,7 @@ type ChatsPageProps = {
   onLoadOlderCanonicalSessionMessages?: (sessionId: string) => Promise<void>;
   onTranscriptScroll: () => void;
   onOpenSource: (file: EditFilePreview) => void;
+  onClearSourcePreview?: () => void;
   onOpenArtifact: (artifactId: string) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   queuedDesktopMessages: QueuedDesktopChatMessage[];
@@ -1109,12 +1211,10 @@ export function ChatsPage({
   isDetailPanelCollapsed,
   setIsDetailPanelCollapsed,
   rightDetailRail,
-  detailRailWidth = 344,
   activeDetailTab,
   setActiveDetailTab,
   activeArtifactId,
   setActiveArtifactId,
-  onDetailResizeMouseDown,
   activeConv,
   chatConversations,
   activeConversationIsBridge,
@@ -1135,6 +1235,7 @@ export function ChatsPage({
   onLoadOlderCanonicalSessionMessages,
   onTranscriptScroll,
   onOpenSource,
+  onClearSourcePreview,
   onOpenArtifact,
   desktopLiveTurn,
   queuedDesktopMessages,
@@ -1266,9 +1367,24 @@ export function ChatsPage({
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const companionTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const companionAttachmentInputRef = useRef<HTMLInputElement | null>(null);
-  const [isCompanionDetailPanelCollapsed, setIsCompanionDetailPanelCollapsed] = useState(true);
-  const [companionActiveDetailTab, setCompanionActiveDetailTab] = useState<DetailTab>('info');
+  const [companionDestination, setCompanionDestination] = useState<ChatDestination>('messages');
   const [companionActiveArtifactId, setCompanionActiveArtifactId] = useState<string | null>(null);
+  const [companionActiveSourcePreview, setCompanionActiveSourcePreview] = useState<EditFilePreview | null>(null);
+  const mainDestination: ChatDestination = isDetailPanelCollapsed
+    ? 'messages'
+    : detailDestinationFromTab(activeDetailTab);
+  const companionActiveDetailTab: ChatDetailDestination = companionDestination === 'messages'
+    ? 'info'
+    : companionDestination;
+  const selectMainDestination = useCallback((destination: ChatDestination) => {
+    onClearSourcePreview?.();
+    if (destination === 'messages') {
+      setIsDetailPanelCollapsed(true);
+      return;
+    }
+    setActiveDetailTab(destination);
+    setIsDetailPanelCollapsed(false);
+  }, [onClearSourcePreview, setActiveDetailTab, setIsDetailPanelCollapsed]);
   const prefersReducedMotion = useReducedMotion();
   const chatImeCompositionGuard = useImeCompositionGuard();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
@@ -1339,7 +1455,6 @@ export function ChatsPage({
     ? canonicalHistorySessionIdForConversation(companionConversation)
     : null;
   const showCompanionPane = Boolean(companionConversation && !isCompanionFolded);
-  const showCompanionDetailRail = showRightDetailRail && Boolean(companionConversation);
   const companionDraftText = companionConversation ? companionDrafts[companionConversation.id] ?? '' : '';
   const activePaneKind = conversationPaneKind(activeConv);
   const canOpenSideAgentPanel = Boolean(suggestedSideAgentConversation || (activePaneKind === 'agent' && onCreateAgentSession));
@@ -1359,6 +1474,19 @@ export function ChatsPage({
     modelOptions: chatModelOptions ?? [],
     authOptions: composerAuthOptions,
   });
+  useLayoutEffect(() => {
+    setIsDetailPanelCollapsed(true);
+  }, [activeConv.id, setIsDetailPanelCollapsed]);
+  useEffect(() => {
+    if (!isDetailPanelCollapsed && activeDetailTab === 'context') {
+      setActiveDetailTab('info');
+    }
+  }, [activeDetailTab, isDetailPanelCollapsed, setActiveDetailTab]);
+  useLayoutEffect(() => {
+    setCompanionDestination('messages');
+    setCompanionActiveArtifactId(null);
+    setCompanionActiveSourcePreview(null);
+  }, [companionConversation?.id]);
   const companionComposerSelection = companionComposerRuntime.selection;
   const companionComposerConfigTarget = companionComposerRuntime.configTarget;
   const toggleCompanionComposerSelector = (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => {
@@ -1618,6 +1746,8 @@ export function ChatsPage({
       : messageId;
     const resolvedMessageId = targetMessageId || messageId;
     transcriptNavigationNonceRef.current += 1;
+    setCompanionActiveSourcePreview(null);
+    setCompanionDestination('messages');
     setCompanionTranscriptNavigationRequest({ id: resolvedMessageId, nonce: transcriptNavigationNonceRef.current, sessionKey: companionConversation.id });
   }, [companionConversation, companionTranscriptMessages]);
   const attributedCompanionTranscriptLiveTurn = companionTranscriptLiveTurn;
@@ -1842,10 +1972,64 @@ export function ChatsPage({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
+  const companionArtifacts = useMemo(() => (
+    companionConversation
+      ? extractSessionArtifacts(companionConversation.messages, attributedCompanionTranscriptLiveTurn, companionConversation.reflectionLessonArtifacts)
+      : []
+  ), [attributedCompanionTranscriptLiveTurn, companionConversation]);
+  const companionDestinationPage = companionConversation && companionDestination !== 'messages' ? (
+    <div
+      id={`chat-companion-${companionDestination}-panel`}
+      className="min-h-0 min-w-0 flex-1 overflow-hidden"
+      role="tabpanel"
+      aria-labelledby={`chat-companion-${companionDestination}-tab`}
+      data-chat-destination-page={companionDestination}
+      data-chat-destination-scope="companion"
+    >
+      <RightDetailRail
+        variant="page"
+        detailTabs={CHAT_DETAIL_TABS}
+        activeDetailTab={companionActiveDetailTab}
+        onSelectDetailTab={(tab) => {
+          setCompanionActiveSourcePreview(null);
+          setCompanionDestination(detailDestinationFromTab(tab));
+        }}
+        activeSourcePreview={companionActiveSourcePreview}
+        onCloseSourcePreview={() => setCompanionActiveSourcePreview(null)}
+      >
+        <ChatDetailPanel
+          isNativeShell={isNativeShell}
+          activeDetailTab={companionActiveDetailTab}
+          activeConv={companionConversation}
+          activeConvHasSubtitle={Boolean(formatSessionIdSubtitle(companionConversation.subtitle))}
+          activeLastMessage={companionConversation.messages[companionConversation.messages.length - 1]}
+          activeLiveTurn={attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.id || attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.canonicalSessionId ? attributedCompanionTranscriptLiveTurn : null}
+          activeConversationIsBridge={false}
+          activeBridgeConversationHostNodeId={null}
+          activeBridgeConversationHostUrl={null}
+          activeBridgeConversation={null}
+          activeBridgeAwaitingReply={false}
+          isBridgePolling={false}
+          lastBridgePollAtLabel={null}
+          activeSessionProject={null}
+          artifacts={companionArtifacts}
+          activeArtifactId={companionActiveArtifactId}
+          onSelectArtifact={setCompanionActiveArtifactId}
+          onOpenArtifact={(artifactId) => {
+            setCompanionActiveSourcePreview(null);
+            setCompanionActiveArtifactId(artifactId);
+            setCompanionDestination('artifacts');
+          }}
+          onNavigateToResponse={handleNavigateToCompanionTranscriptMessage}
+          onOpenOutreachThread={onSelectSession}
+        />
+      </RightDetailRail>
+    </div>
+  ) : null;
   const companionPane = companionConversation ? (
     <aside className="app-chat-companion-pane flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-side={companionSide} data-chat-side-agent-panel="true">
       <div
-        className="app-page-header relative z-40 flex min-h-[72px] shrink-0 cursor-grab items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-2.5 active:cursor-grabbing"
+        className="app-page-header relative z-40 flex min-h-[84px] shrink-0 cursor-grab items-start justify-between gap-3 border-b border-white/[0.06] px-4 pb-8 pt-2.5 active:cursor-grabbing"
         draggable
         onDragStart={handleCompanionDragStart}
         onDragEnd={handleCompanionDragEnd}
@@ -1853,7 +2037,7 @@ export function ChatsPage({
       >
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1">
-            <div className="mb-1 flex min-w-0 items-center gap-1.5 text-white">
+            <div className="flex min-w-0 items-center gap-1.5 text-white">
               <span className="min-w-0 max-w-[18rem] truncate text-[17px] font-semibold leading-6">Ask Agent · {companionConversation.name}</span>
               <span data-chat-session-subtitle-pill="true" className="inline-flex h-5 shrink-0 items-center rounded-full border border-white/10 bg-white/[0.045] px-2 text-[10.5px] font-medium leading-none text-slate-300">Agent session</span>
             </div>
@@ -1967,7 +2151,24 @@ export function ChatsPage({
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
+        <SessionDestinationTabs
+          scope="companion"
+          activeDestination={companionDestination}
+          onSelect={(destination) => {
+            setCompanionActiveSourcePreview(null);
+            setCompanionDestination(destination);
+          }}
+        />
       </div>
+      {companionDestination === 'messages' ? (
+      <div
+        id="chat-companion-messages-panel"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        role="tabpanel"
+        aria-labelledby="chat-companion-messages-tab"
+        data-chat-destination-page="messages"
+        data-chat-destination-scope="companion"
+      >
       <ChatSessionPane
         sessionKey={companionConversation.id}
         messages={companionTranscriptMessages}
@@ -1993,8 +2194,15 @@ export function ChatsPage({
           </div>
         )}
         plainAgentResponse={companionSuppressAgentReplyAttribution}
-        onOpenSource={onOpenSource}
-        onOpenArtifact={onOpenArtifact}
+        onOpenSource={(file) => {
+          setCompanionActiveSourcePreview(file);
+          setCompanionDestination('artifacts');
+        }}
+        onOpenArtifact={(artifactId) => {
+          setCompanionActiveSourcePreview(null);
+          setCompanionActiveArtifactId(artifactId);
+          setCompanionDestination('artifacts');
+        }}
         onOpenAuthSettings={openAuthentication}
         onNavigateToMessage={handleNavigateToCompanionTranscriptMessage}
         onOpenMessageDetail={onSelectMessage}
@@ -2289,6 +2497,8 @@ export function ChatsPage({
           </ChatComposerShell>
         )}
       />
+      </div>
+      ) : companionDestinationPage}
     </aside>
   ) : null;
   const splitDivider = showCompanionPane && companionConversation ? (
@@ -2311,78 +2521,6 @@ export function ChatsPage({
       >
         <GripVertical className="h-4 w-4" />
       </span>
-    </div>
-  ) : null;
-  const companionDetailTabs = useMemo<Array<{ id: DetailTab; label: string }>>(() => [
-    { id: 'info', label: 'Info' },
-    { id: 'artifacts', label: 'Artifacts' },
-    { id: 'tasks', label: 'Tasks' },
-  ], []);
-  const companionArtifacts = useMemo(() => (
-    companionConversation
-      ? extractSessionArtifacts(companionConversation.messages, attributedCompanionTranscriptLiveTurn, companionConversation.reflectionLessonArtifacts)
-      : []
-  ), [attributedCompanionTranscriptLiveTurn, companionConversation]);
-  const companionInlineDetailRail = showCompanionDetailRail && !isCompanionDetailPanelCollapsed && companionConversation ? (
-    <div
-      className="relative h-full min-h-0 min-w-0 overflow-hidden border-l border-white/[0.06] bg-white/[0.025]"
-      style={{ width: detailRailWidth }}
-      data-chat-companion-detail-rail="true"
-    >
-      <RightDetailRail
-        detailTabs={companionDetailTabs}
-        activeDetailTab={companionActiveDetailTab}
-        onSelectDetailTab={(tab) => setCompanionActiveDetailTab(tab)}
-        activeSourcePreview={null}
-        onCloseSourcePreview={() => {}}
-      >
-        <ChatDetailPanel
-          isNativeShell={isNativeShell}
-          activeDetailTab={companionActiveDetailTab}
-          activeConv={companionConversation}
-          activeConvHasSubtitle={Boolean(formatSessionIdSubtitle(companionConversation.subtitle))}
-          activeLastMessage={companionConversation.messages[companionConversation.messages.length - 1]}
-          activeLiveTurn={attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.id || attributedCompanionTranscriptLiveTurn?.sessionId === companionConversation.canonicalSessionId ? attributedCompanionTranscriptLiveTurn : null}
-          activeConversationIsBridge={false}
-          activeBridgeConversationHostNodeId={null}
-          activeBridgeConversationHostUrl={null}
-          activeBridgeConversation={null}
-          activeBridgeAwaitingReply={false}
-          isBridgePolling={false}
-          lastBridgePollAtLabel={null}
-          activeSessionProject={null}
-          artifacts={companionArtifacts}
-          activeArtifactId={companionActiveArtifactId}
-          onSelectArtifact={setCompanionActiveArtifactId}
-          onOpenArtifact={(artifactId) => {
-            setCompanionActiveArtifactId(artifactId);
-            setCompanionActiveDetailTab('artifacts');
-          }}
-          onNavigateToResponse={handleNavigateToCompanionTranscriptMessage}
-          onOpenOutreachThread={onSelectSession}
-        />
-      </RightDetailRail>
-    </div>
-  ) : null;
-  const ownInlineDetailRail = showRightDetailRail && !isDetailPanelCollapsed && Boolean(rightDetailRail);
-  const inlineDetailRail = ownInlineDetailRail ? (
-    <div
-      className="relative h-full min-h-0 min-w-0 overflow-hidden border-l border-white/[0.06] bg-white/[0.025]"
-      style={{ width: detailRailWidth }}
-      data-chat-inline-detail-rail="true"
-    >
-      {onDetailResizeMouseDown ? (
-        <div
-          onMouseDown={onDetailResizeMouseDown}
-          className="absolute bottom-0 left-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
-          data-chat-inline-detail-resize="true"
-          data-kordi-window-drag="false"
-          aria-hidden="true"
-        >
-          <div className="mx-auto h-full w-px bg-white/8 transition hover:bg-white/20" />
-        </div>
-      ) : null}
-      {rightDetailRail}
     </div>
   ) : null;
   useEffect(() => {
@@ -2518,13 +2656,11 @@ export function ChatsPage({
   };
 
   const chatSplitGridColumns = (() => {
-    const ownDetailColumn = ownInlineDetailRail ? ` ${detailRailWidth}px` : '';
-    const companionDetailColumn = companionInlineDetailRail ? ` ${detailRailWidth}px` : '';
-    if (!showCompanionPane) return ownInlineDetailRail ? `minmax(0, 1fr)${ownDetailColumn}` : undefined;
+    if (!showCompanionPane) return undefined;
     if (companionSide === 'left') {
-      return `minmax(280px, ${splitLeftFraction}fr)${companionDetailColumn} 10px minmax(280px, ${1 - splitLeftFraction}fr)${ownDetailColumn}`;
+      return `minmax(280px, ${splitLeftFraction}fr) 10px minmax(280px, ${1 - splitLeftFraction}fr)`;
     }
-    return `minmax(280px, ${splitLeftFraction}fr)${ownDetailColumn} 10px minmax(280px, ${1 - splitLeftFraction}fr)${companionDetailColumn}`;
+    return `minmax(280px, ${splitLeftFraction}fr) 10px minmax(280px, ${1 - splitLeftFraction}fr)`;
   })();
 
   const commitActiveSelfAgentSessionTitle = async () => {
@@ -2577,10 +2713,9 @@ export function ChatsPage({
         }}
       >
         {showCompanionPane && companionSide === 'left' ? companionPane : null}
-        {showCompanionPane && companionSide === 'left' ? companionInlineDetailRail : null}
         {showCompanionPane && companionSide === 'left' ? splitDivider : null}
         <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]" data-active-side={companionSide === 'left' ? 'right' : 'left'}>
-      <div className="app-page-header flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-2.5 shadow-[0_1px_0_color-mix(in_srgb,var(--app-text)_8%,transparent)]">
+      <div className="app-page-header relative flex min-h-[84px] shrink-0 items-start justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 pb-8 pt-2.5 shadow-[0_1px_0_color-mix(in_srgb,var(--app-text)_8%,transparent)]">
         <div className="flex min-w-0 items-center gap-2">
           {showChatDetailRail && (
             <button
@@ -2684,7 +2819,7 @@ export function ChatsPage({
             </div>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2 self-start">
           {canOpenSideAgentPanel && !showCompanionPane ? (
             <Button
               type="button"
@@ -2698,21 +2833,25 @@ export function ChatsPage({
               Ask Agent
             </Button>
           ) : null}
-          {showRightDetailRail && (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setIsDetailPanelCollapsed((collapsed) => !collapsed)}
-              className="app-utility-button mt-0.5 h-8 rounded-full px-3 text-[12px] font-medium transition"
-              aria-label={isDetailPanelCollapsed ? 'Open session details' : 'Hide session details'}
-              title={isDetailPanelCollapsed ? 'Open session details' : 'Hide session details'}
-            >
-              {isDetailPanelCollapsed ? 'Details' : 'Hide details'}
-            </Button>
-          )}
         </div>
+        {showRightDetailRail ? (
+          <SessionDestinationTabs
+            scope="main"
+            activeDestination={mainDestination}
+            onSelect={selectMainDestination}
+          />
+        ) : null}
       </div>
 
+      {mainDestination === 'messages' ? (
+      <div
+        id="chat-main-messages-panel"
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        role="tabpanel"
+        aria-labelledby="chat-main-messages-tab"
+        data-chat-destination-page="messages"
+        data-chat-destination-scope="main"
+      >
       {!hasAnyAuth && !activeConversationIsBridge ? (
         <AuthNoticeBanner
           title="No provider connected yet"
@@ -3169,8 +3308,20 @@ export function ChatsPage({
           </ChatComposerShell>
         )}
       />
+      </div>
+      ) : (
+        <div
+          id={`chat-main-${mainDestination}-panel`}
+          className="min-h-0 min-w-0 flex-1 overflow-hidden"
+          role="tabpanel"
+          aria-labelledby={`chat-main-${mainDestination}-tab`}
+          data-chat-destination-page={mainDestination}
+          data-chat-destination-scope="main"
+        >
+          {rightDetailRail}
+        </div>
+      )}
         </section>
-        {inlineDetailRail}
         {pinDialog ? (
           <PinMessageDialog
             mode={pinDialog.mode}
@@ -3183,7 +3334,6 @@ export function ChatsPage({
         ) : null}
         {showCompanionPane && companionSide === 'right' ? splitDivider : null}
         {showCompanionPane && companionSide === 'right' ? companionPane : null}
-        {showCompanionPane && companionSide === 'right' ? companionInlineDetailRail : null}
       </div>
     </div>
   );

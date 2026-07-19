@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-test('right detail rail tabs use evenly distributed compact segments', () => {
+test('project rail keeps compact segments while chat page mode owns navigation in its header', () => {
   const rail = readFileSync(new URL('../src/pages/RightDetailRail.tsx', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
 
   const tabListStart = rail.indexOf('app-detail-tab-list');
-  const tabListEnd = rail.indexOf('<div className="min-h-0 min-w-0 flex-1', tabListStart);
+  const tabListEnd = rail.indexOf(') : null}', tabListStart);
   assert.ok(tabListStart >= 0 && tabListEnd > tabListStart, 'detail tab list block should be present');
   const tabListBlock = rail.slice(tabListStart, tabListEnd);
 
@@ -16,6 +16,8 @@ test('right detail rail tabs use evenly distributed compact segments', () => {
   assert.doesNotMatch(tabListBlock, /grid-cols-\[repeat\(3,minmax\(0,1fr\)\)\]/);
   assert.doesNotMatch(tabListBlock, /flex-1/);
   assert.match(tabListBlock, /w-full/);
+  assert.match(rail, /variant === 'rail' \? \(/);
+  assert.doesNotMatch(rail, /app-right-detail-page-header|app-right-detail-page-description/);
 
   const tabCssStart = shell.indexOf('.app-right-detail-rail .app-inspector-tabs');
   const tabCssEnd = shell.indexOf('.app-right-detail-rail .app-inspector-tab-active', tabCssStart);

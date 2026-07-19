@@ -885,9 +885,100 @@
     inset 0 -1px 0 rgba(0, 0, 0, 0.08);
 }
 
+.app-chat-destination-tabs {
+  position: absolute;
+  right: 14px;
+  bottom: 0;
+  left: 14px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-chat-destination-tab-list {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.app-chat-destination-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.app-chat-destination-tab {
+  position: relative;
+  display: inline-flex;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px 8px 0 0;
+  padding: 0 10px;
+  color: var(--utility-muted-text);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1;
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.app-chat-destination-tab::after {
+  position: absolute;
+  right: 9px;
+  bottom: 0;
+  left: 9px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+  content: '';
+  transition: background-color 140ms ease;
+}
+
+.app-chat-destination-tab:hover {
+  background: color-mix(in oklab, var(--app-control-hover) 72%, transparent);
+  color: var(--utility-foreground);
+}
+
+.app-chat-destination-tab:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--app-focus) 72%, transparent);
+  outline-offset: -3px;
+}
+
+.app-chat-destination-tab-active {
+  color: var(--utility-foreground);
+}
+
+.app-chat-destination-tab-active::after {
+  background: var(--app-sidebar-accent);
+}
+
 .app-right-detail-rail {
   background: var(--app-main-bg);
   box-shadow: none;
+}
+
+.app-right-detail-page {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: var(--app-main-bg);
+}
+
+.app-right-detail-page-content {
+  padding: 12px clamp(20px, 4vw, 44px) 40px;
+}
+
+.app-right-detail-page-content > * {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
+.app-right-detail-source-meta {
+  color: var(--utility-foreground);
 }
 
 .app-right-detail-rail .app-inspector-tabs {

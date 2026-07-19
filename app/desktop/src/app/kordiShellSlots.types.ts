@@ -664,6 +664,7 @@ export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'
   | 'activeDetailTab'
   | 'setActiveDetailTab'
+  | 'setIsDetailPanelCollapsed'
   | 'activeSourcePreview'
   | 'setActiveSourcePreview'
   | 'activeArtifactId'
