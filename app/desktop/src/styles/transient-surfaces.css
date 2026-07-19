@@ -152,6 +152,40 @@
   background-clip: padding-box;
 }
 
+/* Command-like actions inside dialogs stay quiet until the user interacts.
+ * Scope through the shared surface so Button's secondary variant cannot
+ * reintroduce a permanently raised control background. */
+.app-transient-surface .app-transient-flat-action {
+  border-color: transparent;
+  background: transparent;
+  color: var(--app-transient-text);
+  box-shadow: none;
+}
+
+.app-transient-surface .app-transient-flat-action:hover,
+.app-transient-surface .app-transient-flat-action:focus-visible {
+  border-color: transparent;
+  background: var(--app-transient-hover-bg);
+  color: var(--app-transient-text);
+}
+
+.app-transient-surface .app-transient-flat-action:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--app-transient-disabled-text);
+}
+
+.app-transient-surface .app-transient-flat-action-danger {
+  color: var(--app-transient-danger-text);
+}
+
+.app-transient-surface .app-transient-flat-action-danger:hover,
+.app-transient-surface .app-transient-flat-action-danger:focus-visible {
+  border-color: transparent;
+  background: var(--app-transient-danger-hover-bg);
+  color: var(--app-transient-danger-text);
+}
+
 .app-chat-create-popover-arrow,
 .app-dialog-popover-arrow,
 .app-group-management-popover-arrow {

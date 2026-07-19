@@ -498,7 +498,12 @@ export function ContactsPage({
 
           {contactOverlayMode && (
             <div className="app-transient-overlay app-overlay absolute inset-0 z-10 flex items-center justify-center px-4 py-8 backdrop-blur-[2px]">
-              <div className="app-transient-surface app-modal-panel w-full max-w-[420px] rounded-[20px] border p-4">
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={contactOverlayMode === 'contact' ? `${activeContact.name} contact details` : 'Contact request review'}
+                className="app-transient-surface app-modal-panel app-contact-detail-dialog w-full max-w-[420px] rounded-[18px] border p-4"
+              >
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     {contactOverlayMode === 'request' ? (
@@ -513,7 +518,8 @@ export function ContactsPage({
                   <button
                     type="button"
                     onClick={onCloseOverlay}
-                    className="app-contacts-action-chip rounded-full p-2 transition"
+                    aria-label="Close"
+                    className="app-transient-flat-action inline-flex h-8 w-8 items-center justify-center rounded-[10px] p-0 transition"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -537,14 +543,14 @@ export function ContactsPage({
                       </div>
                     </div>
                     {activeContactDetailBody ? <div className="app-transient-muted mb-5 text-sm">{activeContactDetailBody}</div> : null}
-                    <div className="grid gap-2">
-                      <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.bridgeHostId || !activeContact.bridgePeerNodeId}>
+                    <div className="grid gap-1">
+                      <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.bridgeHostId || !activeContact.bridgePeerNodeId}>
                         Message
                       </Button>
                       {canRemoveActiveContact ? (
                         <Button
                           variant="secondary"
-                          className="app-transient-row-danger rounded-full border shadow-none"
+                          className="app-transient-flat-action app-transient-flat-action-danger rounded-[10px] shadow-none"
                           onClick={() => { void submitRemoveContact(); }}
                           disabled={removeContactState === 'saving'}
                         >
@@ -567,8 +573,8 @@ export function ContactsPage({
                       <div className="app-badge-neutral px-2.5 py-1 text-[10px] font-medium">{activeContactRequest.time}</div>
                     </div>
                     <div className="app-transient-muted mb-5 text-sm">{activeContactRequest.detail}</div>
-                    <div className="grid gap-2">
-                      <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => { void submitContactRequestAction(activeContactRequest, 'accept'); }} disabled={!onAcceptRequest || Boolean(contactRequestAction)}>
+                    <div className="grid gap-1">
+                      <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={() => { void submitContactRequestAction(activeContactRequest, 'accept'); }} disabled={!onAcceptRequest || Boolean(contactRequestAction)}>
                         {contactRequestActionState(activeContactRequest) === 'accepting' ? (
                           <>
                             <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
@@ -576,7 +582,7 @@ export function ContactsPage({
                           </>
                         ) : 'Accept'}
                       </Button>
-                      <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => { void submitContactRequestAction(activeContactRequest, 'reject'); }} disabled={!onRejectRequest || Boolean(contactRequestAction)}>
+                      <Button variant="secondary" className="app-transient-flat-action app-transient-flat-action-danger rounded-[10px]" onClick={() => { void submitContactRequestAction(activeContactRequest, 'reject'); }} disabled={!onRejectRequest || Boolean(contactRequestAction)}>
                         {contactRequestActionState(activeContactRequest) === 'rejecting' ? (
                           <>
                             <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
@@ -584,7 +590,7 @@ export function ContactsPage({
                           </>
                         ) : 'Reject'}
                       </Button>
-                      <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={onCloseOverlay} disabled={Boolean(contactRequestAction)}>
+                      <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={onCloseOverlay} disabled={Boolean(contactRequestAction)}>
                         Close review
                       </Button>
                     </div>

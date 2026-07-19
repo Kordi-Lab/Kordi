@@ -265,6 +265,41 @@ test('contact detail modal shows other users with a read-only avatar', () => {
   assert.doesNotMatch(markup, /type="file"/);
 });
 
+test('contact overlays use the shared popup shell with flat actions at rest', () => {
+  const markup = renderContactsPage([], {
+    contactOverlayMode: 'contact',
+    activeContact: contact({
+      id: 'cloud:acct_peer',
+      name: 'Jiaxin Pei',
+      subtitle: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
+      bridgeHostId: 'cloud',
+      bridgePeerNodeId: 'acct_33bb4b1b5c8349ad8f26467854f3f18e',
+    }),
+    onMessageContact: () => undefined,
+    onRemoveContact: () => undefined,
+  });
+  const css = readFileSync(new URL('../src/styles/transient-surfaces.css', import.meta.url), 'utf8');
+  const requestMarkup = renderContactsPage([request()], {
+    contactOverlayMode: 'request',
+    activeContactRequest: request(),
+    onAcceptRequest: () => undefined,
+    onRejectRequest: () => undefined,
+  });
+
+  assert.match(markup, /role="dialog"/);
+  assert.match(markup, /aria-modal="true"/);
+  assert.match(markup, /app-contact-detail-dialog/);
+  assert.ok((markup.match(/app-transient-flat-action/g) ?? []).length >= 3);
+  assert.match(markup, /app-transient-flat-action-danger/);
+  assert.doesNotMatch(markup, /app-transient-row-danger rounded-full/);
+  assert.match(requestMarkup, /aria-label="Contact request review"/);
+  assert.ok((requestMarkup.match(/app-transient-flat-action/g) ?? []).length >= 4);
+  assert.match(requestMarkup, /app-transient-flat-action-danger/);
+  assert.match(css, /\.app-transient-surface \.app-transient-flat-action \{[\s\S]*?background:\s*transparent;/);
+  assert.match(css, /\.app-transient-surface \.app-transient-flat-action:hover,[\s\S]*?background:\s*var\(--app-transient-hover-bg\);/);
+  assert.match(css, /\.app-transient-surface \.app-transient-flat-action-danger:hover,[\s\S]*?background:\s*var\(--app-transient-danger-hover-bg\);/);
+});
+
 test('contact detail modal removes redundant repeated metadata and unused profile action', () => {
   const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
 
