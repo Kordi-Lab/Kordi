@@ -2135,11 +2135,12 @@ export function WorkspaceSidebar({
             zIndex: 180,
           }}
           className={cn(
-            'app-popover app-update-popover overflow-hidden border text-foreground',
+            'app-popover app-update-popover overflow-hidden text-foreground',
             updateState.status === 'checking'
               ? 'w-[14.5rem] rounded-[14px] px-3 py-2.5'
               : 'w-[18rem] rounded-[16px] p-3.5',
           )}
+          data-update-state={updateState.status}
         >
           {updateState.status === 'checking' ? (
             <div
@@ -2147,7 +2148,7 @@ export function WorkspaceSidebar({
               aria-live="polite"
               className="flex items-center justify-center gap-2.5"
             >
-              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500/[0.08] text-blue-500">
+              <div className="app-update-popover-symbol grid h-7 w-7 shrink-0 place-items-center rounded-full">
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
               </div>
               <div className="app-update-popover-title text-[12px] font-medium tracking-[-0.01em]">
@@ -2157,12 +2158,12 @@ export function WorkspaceSidebar({
           ) : (
             <div className="flex items-start gap-3">
               <div className={cn(
-                'mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full',
+                'app-update-popover-symbol mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full',
                 updateState.status === 'failed'
-                  ? 'bg-rose-500/10 text-rose-300'
+                  ? 'app-update-popover-symbol-danger'
                   : updateState.status === 'up-to-date'
-                    ? 'bg-emerald-500/10 text-emerald-300'
-                    : 'bg-blue-500/10 text-blue-300',
+                    ? 'app-update-popover-symbol-success'
+                    : null,
               )}>
                 {updateState.status === 'up-to-date' ? <CheckCircle2 className="h-[18px] w-[18px]" aria-hidden="true" /> : null}
                 {updateState.status === 'failed' ? <CircleAlert className="h-[18px] w-[18px]" aria-hidden="true" /> : null}
@@ -2206,7 +2207,7 @@ export function WorkspaceSidebar({
           )}
 
           {updateState.status === 'available' ? (
-            <div className="app-update-popover-note mt-2.5 rounded-[10px] px-2.5 py-2 text-[10.5px] leading-4">
+            <div className="app-update-popover-note ml-11 mt-2 text-[10.5px] leading-4">
               Click Update now to download, verify, install, and relaunch Kordi automatically.
             </div>
           ) : null}
@@ -2214,9 +2215,10 @@ export function WorkspaceSidebar({
           {updateState.status === 'failed' || updateState.status === 'downloading' || updateState.status === 'installing' || updateState.status === 'relaunching' ? (
             <div
               role="status"
+              aria-live="polite"
               className={cn(
-                'mt-2.5 rounded-[10px] px-2.5 py-2 text-[10.5px] leading-4',
-                updateState.status === 'failed' ? 'bg-rose-500/10 text-rose-200' : 'bg-blue-500/10 text-blue-200',
+                'app-update-popover-status ml-11 mt-2 text-[10.5px] leading-4',
+                updateState.status === 'failed' && 'app-update-popover-status-danger',
               )}
             >
               {desktopUpdateStatusMessage(updateState)}
@@ -2224,17 +2226,24 @@ export function WorkspaceSidebar({
           ) : null}
 
           {updateState.status === 'downloading' && typeof updateState.totalBytes === 'number' && updateState.totalBytes > 0 ? (
-            <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/[0.07]" aria-hidden="true">
+            <div
+              className="app-update-popover-progress ml-11 mt-2 h-1 overflow-hidden rounded-full"
+              role="progressbar"
+              aria-label="Update download progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(Math.min(100, ((updateState.receivedBytes ?? 0) / updateState.totalBytes) * 100))}
+            >
               <div
-                className="h-full rounded-full bg-blue-400 transition-[width]"
+                className="app-update-popover-progress-value h-full rounded-full transition-[width]"
                 style={{ width: `${Math.min(100, ((updateState.receivedBytes ?? 0) / updateState.totalBytes) * 100)}%` }}
               />
             </div>
           ) : null}
 
           {updateState.status === 'up-to-date' ? (
-            <div className="app-update-popover-meta mt-2.5 flex items-center gap-1.5 text-[10.5px]">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+            <div className="app-update-popover-meta ml-11 mt-2 flex items-center gap-1.5 text-[10.5px]">
+              <span className="app-update-popover-success-dot h-1.5 w-1.5 rounded-full" aria-hidden="true" />
               Checked just now
             </div>
           ) : null}
@@ -2248,7 +2257,7 @@ export function WorkspaceSidebar({
               {updateState.status === 'failed' && updateState.manualDownloadUrl ? (
                 <button
                   type="button"
-                  className="mr-auto rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                  className="app-update-popover-action app-update-popover-action-secondary mr-auto rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium transition"
                   onClick={() => { void onOpenUpdateUrl?.(updateState.manualDownloadUrl!); }}
                 >
                   Download manually
@@ -2259,7 +2268,7 @@ export function WorkspaceSidebar({
                   {updateState.status === 'available' || updateState.failureStage !== 'check' ? (
                     <button
                       type="button"
-                      className="rounded-[10px] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                      className="app-update-popover-action app-update-popover-action-secondary rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium transition"
                       onClick={() => setIsUpdateConfirmOpen(false)}
                     >
                       Not now
@@ -2267,7 +2276,7 @@ export function WorkspaceSidebar({
                   ) : null}
                   <button
                     type="button"
-                    className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                    className="app-update-popover-action app-update-popover-action-primary rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-55"
                     disabled={updateState.status === 'available' ? !onInstallUpdate : false}
                     onClick={() => { void handleConfirmUpdate(); }}
                   >
@@ -2280,7 +2289,7 @@ export function WorkspaceSidebar({
               {updateState.status === 'downloading' || updateState.status === 'installing' || updateState.status === 'relaunching' ? (
                 <button
                   type="button"
-                  className="rounded-[10px] bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-950 opacity-60"
+                  className="app-update-popover-action app-update-popover-action-primary rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold opacity-55"
                   disabled
                 >
                   {updateState.status === 'downloading'

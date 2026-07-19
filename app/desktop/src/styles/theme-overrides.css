@@ -86,18 +86,52 @@
     0 2px 6px rgba(15, 23, 42, 0.04) !important;
 }
 
-/* Update feedback is a compact utility surface, not a glass card. Keeping it
- * nearly opaque prevents bright chat content and avatars from bleeding into
- * the status text in dark mode. The same semantic tokens keep light mode
- * equally restrained. */
+/* Update feedback is a compact utility surface, not a glass card. Its local
+ * tokens deliberately avoid the generic popover highlight and float shadow:
+ * those layers compound into a bright rim and spotlight in dark mode. */
 .bridge-app .app-popover.app-update-popover {
-  background: color-mix(in oklab, var(--utility-background) 96%, var(--app-sidebar-accent) 4%) !important;
-  border-color: var(--app-control-border) !important;
+  --app-update-surface: rgb(20 22 27 / 0.985);
+  --app-update-edge: rgba(255, 255, 255, 0.055);
+  --app-update-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.34),
+    0 3px 10px rgba(0, 0, 0, 0.2);
+  --app-update-active: rgb(147 197 253);
+  --app-update-active-soft: rgba(96, 165, 250, 0.1);
+  --app-update-success: rgb(110 231 183);
+  --app-update-success-soft: rgba(52, 211, 153, 0.1);
+  --app-update-danger: rgb(253 164 175);
+  --app-update-danger-soft: rgba(244, 63, 94, 0.1);
+  --app-update-progress-track: rgba(255, 255, 255, 0.07);
+  --app-update-action-bg: rgba(255, 255, 255, 0.1);
+  --app-update-action-hover: rgba(255, 255, 255, 0.15);
+  --app-update-action-text: rgba(255, 255, 255, 0.9);
+  --app-update-focus: rgba(147, 197, 253, 0.72);
+  background: var(--app-update-surface) !important;
+  border: 0 !important;
   box-shadow:
-    inset 0 1px 0 color-mix(in oklab, var(--utility-foreground) 6%, transparent),
-    var(--app-shadow-float) !important;
+    inset 0 0 0 1px var(--app-update-edge),
+    var(--app-update-shadow) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+.bridge-app.theme-light .app-popover.app-update-popover {
+  --app-update-surface: rgba(255, 255, 255, 0.975);
+  --app-update-edge: rgba(15, 23, 42, 0.075);
+  --app-update-shadow:
+    0 14px 30px rgba(15, 23, 42, 0.1),
+    0 3px 9px rgba(15, 23, 42, 0.05);
+  --app-update-active: rgb(37 99 235);
+  --app-update-active-soft: rgba(37, 99, 235, 0.085);
+  --app-update-success: rgb(4 120 87);
+  --app-update-success-soft: rgba(5, 150, 105, 0.085);
+  --app-update-danger: rgb(190 18 60);
+  --app-update-danger-soft: rgba(225, 29, 72, 0.08);
+  --app-update-progress-track: rgba(15, 23, 42, 0.09);
+  --app-update-action-bg: rgba(31, 27, 25, 0.9);
+  --app-update-action-hover: rgba(31, 27, 25, 0.96);
+  --app-update-action-text: rgb(248 246 243);
+  --app-update-focus: rgba(37, 99, 235, 0.62);
 }
 
 .app-update-popover-title {
@@ -110,8 +144,66 @@
 }
 
 .app-update-popover-note {
-  background: var(--app-control-bg);
   color: var(--utility-muted-text);
+}
+
+.app-update-popover-symbol {
+  background: var(--app-update-active-soft);
+  color: var(--app-update-active);
+}
+
+.app-update-popover-symbol-success {
+  background: var(--app-update-success-soft);
+  color: var(--app-update-success);
+}
+
+.app-update-popover-symbol-danger {
+  background: var(--app-update-danger-soft);
+  color: var(--app-update-danger);
+}
+
+.app-update-popover-status {
+  color: var(--app-update-active);
+}
+
+.app-update-popover-status-danger {
+  color: var(--app-update-danger);
+}
+
+.app-update-popover-progress {
+  background: var(--app-update-progress-track);
+}
+
+.app-update-popover-progress-value {
+  background: var(--app-update-active);
+}
+
+.app-update-popover-success-dot {
+  background: var(--app-update-success);
+}
+
+.app-update-popover-action-secondary {
+  color: var(--utility-muted-text);
+}
+
+.app-update-popover-action-secondary:hover {
+  background: var(--app-control-hover);
+  color: var(--utility-foreground);
+}
+
+.app-update-popover-action-primary {
+  background: var(--app-update-action-bg);
+  color: var(--app-update-action-text);
+}
+
+.app-update-popover-action-primary:hover:not(:disabled) {
+  background: var(--app-update-action-hover);
+}
+
+.app-update-popover-action:focus-visible,
+.app-update-popover-close:focus-visible {
+  outline: 2px solid var(--app-update-focus);
+  outline-offset: 2px;
 }
 
 .app-update-popover-close {
