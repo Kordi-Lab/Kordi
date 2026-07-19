@@ -157,6 +157,51 @@ test('native self-agent header exposes double-click rename for Cloud-backed sess
   assert.doesNotMatch(hostedAgentMarkup, /data-chat-session-title-rename="true"/);
 });
 
+test('starting a local session keeps the New session title and shows neutral progress in the transcript', () => {
+  const draftConversation: Conversation = {
+    ...activeConv,
+    id: 'draft:local-chat',
+    canonicalSessionId: undefined,
+    name: 'New session',
+    type: 'owned-agent',
+    subtitle: 'Blank drafts stay local until the first real send.',
+    bridges: ['Local'],
+    directness: 'Draft',
+    participants: ['Me', 'My Kordi'],
+    messages: [],
+  };
+  const startingMarkup = renderChatsPage({
+    isNativeShell: true,
+    activeConv: draftConversation,
+    isDesktopChatSending: true,
+  });
+
+  assert.match(startingMarkup, /<h2[^>]*>New session<\/h2>/);
+  assert.match(startingMarkup, /data-session-starting-state="true"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(startingMarkup, /Starting session…/);
+  assert.match(startingMarkup, /text-\[color:var\(--utility-muted-text\)\]/);
+  assert.doesNotMatch(startingMarkup, /data-chat-session-title-rename="true"/);
+  assert.doesNotMatch(startingMarkup, /Kordi is still preparing this session|text-rose/);
+
+  const idleDraftMarkup = renderChatsPage({
+    isNativeShell: true,
+    activeConv: draftConversation,
+    isDesktopChatSending: false,
+  });
+  assert.doesNotMatch(idleDraftMarkup, /data-session-starting-state="true"|Starting session…/);
+
+  const materializedMarkup = renderChatsPage({
+    isNativeShell: true,
+    activeConv: {
+      ...draftConversation,
+      id: 'session:materialized',
+      canonicalSessionId: 'session:materialized',
+    },
+    isDesktopChatSending: true,
+  });
+  assert.doesNotMatch(materializedMarkup, /data-session-starting-state="true"|Starting session…/);
+});
+
 test('chat page renders message selection action bar', () => {
   const markup = renderChatsPage({
     messageSelectionMode: true,
