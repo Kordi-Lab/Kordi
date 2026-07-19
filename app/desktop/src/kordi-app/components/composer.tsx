@@ -525,7 +525,7 @@ export function CompactComposerModelMenu({
       </div>
       <div className="space-y-1">
         <details className="app-compact-model-menu-section">
-          <summary className="app-transient-row flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[13px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">provider</span>
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="app-transient-muted min-w-0 truncate text-[11px]">{providerSummary}</span>
@@ -541,7 +541,7 @@ export function CompactComposerModelMenu({
                   type="button"
                   onClick={() => chooseProvider(option)}
                   className={cn(
-                    'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    'app-composer-popover-item app-compact-model-menu-option flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
                     isSelected ? 'app-composer-popover-item-active' : '',
                   )}
                 >
@@ -556,7 +556,7 @@ export function CompactComposerModelMenu({
           </div>
         </details>
         <details className="app-compact-model-menu-section">
-          <summary className="app-transient-row flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[13px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">model</span>
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="app-transient-muted min-w-0 truncate text-[11px]">{modelSummary}</span>
@@ -572,7 +572,7 @@ export function CompactComposerModelMenu({
                   type="button"
                   onClick={() => chooseModel(option)}
                   className={cn(
-                    'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    'app-composer-popover-item app-compact-model-menu-option flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
                     isSelected ? 'app-composer-popover-item-active' : '',
                   )}
                 >
@@ -587,7 +587,7 @@ export function CompactComposerModelMenu({
           </div>
         </details>
         <details className="app-compact-model-menu-section">
-          <summary className="app-transient-row flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[13px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">thinking level</span>
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="app-transient-muted min-w-0 truncate text-[11px]">{thinkingSummary}</span>
@@ -603,7 +603,7 @@ export function CompactComposerModelMenu({
                   type="button"
                   onClick={() => setStagedThinking(value)}
                   className={cn(
-                    'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
+                    'app-composer-popover-item app-compact-model-menu-option flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',
                     isSelected ? 'app-composer-popover-item-active' : '',
                   )}
                 >

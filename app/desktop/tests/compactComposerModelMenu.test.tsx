@@ -57,6 +57,7 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.match(markup, /aria-label="Close agent model"/);
   assert.match(markup, /app-button-outline/);
   assert.match(markup, /app-button-primary/);
+  assert.match(markup, /app-compact-model-menu-option/);
   assert.match(markup, /Choose the provider, model, and thinking level\./);
   assert.doesNotMatch(markup, /only you see this/);
   assert.doesNotMatch(markup, /changes stay local in this popout until you save them\./);
@@ -93,7 +94,9 @@ test('compact model route menu uses light-theme tokenized popover colors', () =>
 
   assert.match(css, /\.app-compact-model-menu\s*{[\s\S]*border:\s*1px solid var\(--app-transient-border\);/);
   assert.match(css, /\.app-compact-model-menu details\[open\] \.app-compact-model-menu-chevron\s*{[\s\S]*transform:\s*rotate\(180deg\);/);
-  assert.match(css, /\.app-compact-model-menu details\[open\] > summary\s*{[\s\S]*background:\s*var\(--app-transient-selected-bg\);/);
+  assert.match(css, /\.app-compact-model-menu-section \+ \.app-compact-model-menu-section\s*{[\s\S]*border-top:\s*1px solid var\(--app-transient-divider\);/);
+  assert.match(css, /\.app-compact-model-menu \.app-compact-model-menu-option,[\s\S]*background:\s*transparent;/);
+  assert.match(css, /\.app-compact-model-menu \.app-compact-model-menu-option:hover,[\s\S]*background:\s*var\(--app-transient-hover-bg\);/);
   assert.match(css, /\.bridge-app\.theme-light \.app-compact-model-menu,\n\.app-compact-model-menu-light\s*{[\s\S]*color-scheme:\s*light;/);
   assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-foreground:\s*var\(--app-transient-text\);/);
   assert.match(css, /\.app-compact-model-menu-light\s*{[\s\S]*--utility-muted-text:\s*var\(--app-transient-muted-text\);/);
@@ -128,7 +131,8 @@ test('compact model route menu sits above transcript fold controls and uses the 
   assert.match(layerRule, /animation:\s*app-compact-model-menu-enter/);
   assert.match(menuRule, /--app-divider:\s*var\(--app-transient-divider\)/);
   assert.match(source, /app-transient-surface app-transient-scroll app-compact-model-menu/);
-  assert.match(source, /app-transient-row flex min-h-11/);
+  assert.doesNotMatch(source, /app-transient-row flex min-h-11/);
+  assert.match(source, /app-composer-popover-item app-compact-model-menu-option/);
   assert.doesNotMatch(source, /app-compact-model-menu-save/);
 });
 

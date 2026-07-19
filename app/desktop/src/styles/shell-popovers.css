@@ -91,10 +91,19 @@
   transform: rotate(180deg);
 }
 
-.app-compact-model-menu details[open] > summary {
-  border-color: var(--app-transient-selected-border);
-  background: var(--app-transient-selected-bg);
-  box-shadow: inset 0 0 0 1px var(--app-transient-selected-border);
+.app-compact-model-menu-section + .app-compact-model-menu-section {
+  border-top: 1px solid var(--app-transient-divider);
+}
+
+.app-compact-model-menu .app-compact-model-menu-option,
+.app-compact-model-menu .app-compact-model-menu-option.app-composer-popover-item-active {
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-compact-model-menu .app-compact-model-menu-option:hover,
+.app-compact-model-menu .app-compact-model-menu-option:focus-visible {
+  background: var(--app-transient-hover-bg);
 }
 
 @keyframes app-compact-model-menu-enter {
