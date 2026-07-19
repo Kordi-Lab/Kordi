@@ -90,6 +90,17 @@ fn should_publish_presence_offline_on_exit() -> bool {
 }
 
 const DEFAULT_CLOUD_API_BASE_URL: &str = "https://coordinar.io";
+const PRODUCTION_CLOUD_API_HOSTNAME: &str = "coordinar.io";
+
+fn is_production_cloud_api_url(url: &reqwest::Url) -> bool {
+    url.host_str()
+        .map(|hostname| {
+            hostname
+                .trim_end_matches('.')
+                .eq_ignore_ascii_case(PRODUCTION_CLOUD_API_HOSTNAME)
+        })
+        .unwrap_or(false)
+}
 
 fn normalize_cloud_api_base_url(value: &str) -> Result<String, String> {
     let trimmed = value.trim();
@@ -138,7 +149,9 @@ fn resolve_cloud_api_base_url(
     };
 
     let origin = normalize_cloud_api_base_url(configured)?;
-    if debug_build && origin == DEFAULT_CLOUD_API_BASE_URL {
+    let parsed_origin = reqwest::Url::parse(&origin)
+        .map_err(|_| "Cloud API base URL must be a valid absolute HTTP(S) URL".to_string())?;
+    if debug_build && is_production_cloud_api_url(&parsed_origin) {
         return Err(
             "Production Cloud API is blocked in development. Use the self-hosted debug server or an approved non-production environment."
                 .to_string(),
@@ -250,6 +263,16 @@ mod window_lifecycle_tests {
             .contains("required for development"));
         assert!(
             resolve_cloud_api_base_url(Some("https://coordinar.io/"), None, true)
+                .unwrap_err()
+                .contains("blocked in development")
+        );
+        assert!(
+            resolve_cloud_api_base_url(Some("http://coordinar.io"), None, true)
+                .unwrap_err()
+                .contains("blocked in development")
+        );
+        assert!(
+            resolve_cloud_api_base_url(Some("https://coordinar.io./"), None, true)
                 .unwrap_err()
                 .contains("blocked in development")
         );

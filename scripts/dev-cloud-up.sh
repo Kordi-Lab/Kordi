@@ -20,6 +20,7 @@ fi
 if [[ ! -f "$env_file" ]]; then
   umask 077
   temp_env="$(mktemp "$repo_root/deploy/dev/.env.XXXXXX")"
+  trap 'rm -f "$temp_env"' EXIT
   {
     printf 'KORDI_DEBUG_API_PORT=17081\n'
     printf 'KORDI_DEBUG_MINIO_PORT=19000\n'
@@ -33,6 +34,7 @@ if [[ ! -f "$env_file" ]]; then
   } >"$temp_env"
   chmod 600 "$temp_env"
   mv "$temp_env" "$env_file"
+  trap - EXIT
   echo "[kordi-debug] Generated local-only credentials in deploy/dev/.env"
 fi
 

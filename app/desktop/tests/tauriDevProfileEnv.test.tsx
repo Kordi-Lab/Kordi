@@ -44,13 +44,19 @@ test('buildBeforeDevCommand fails closed without a debug server origin', () => {
 });
 
 test('buildBeforeDevCommand rejects the production origin', () => {
-  assert.throws(
-    () => buildBeforeDevCommand({
-      title: 'Kordi',
-      host: '127.0.0.1',
-      port: 1420,
-      env: { VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io' },
-    }),
-    /production Cloud API is blocked in development/i,
-  );
+  for (const productionOrigin of [
+    'https://coordinar.io',
+    'http://coordinar.io',
+    'https://coordinar.io./',
+  ]) {
+    assert.throws(
+      () => buildBeforeDevCommand({
+        title: 'Kordi',
+        host: '127.0.0.1',
+        port: 1420,
+        env: { VITE_KORDI_CLOUD_API_BASE: productionOrigin },
+      }),
+      /production Cloud API is blocked in development/i,
+    );
+  }
 });

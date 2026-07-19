@@ -191,13 +191,19 @@ test('development cloud API requires an explicit non-production origin', () => {
     () => cloudApiBaseUrl({ DEV: true }),
     /VITE_KORDI_CLOUD_API_BASE is required for development/i,
   );
-  assert.throws(
-    () => cloudApiBaseUrl({
-      DEV: true,
-      VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io:443/',
-    }),
-    /production Cloud API is blocked in development/i,
-  );
+  for (const productionOrigin of [
+    'https://coordinar.io:443/',
+    'http://coordinar.io',
+    'https://coordinar.io./',
+  ]) {
+    assert.throws(
+      () => cloudApiBaseUrl({
+        DEV: true,
+        VITE_KORDI_CLOUD_API_BASE: productionOrigin,
+      }),
+      /production Cloud API is blocked in development/i,
+    );
+  }
   assert.equal(
     cloudApiBaseUrl({
       DEV: true,

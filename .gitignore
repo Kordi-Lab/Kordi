@@ -16,6 +16,7 @@ app/desktop/scripts/multi-instance/configs/local/
 .env
 .env.local
 deploy/dev/.env
+deploy/dev/.env.??????
 
 # Desktop updater and Apple release signing material. The updater public key
 # is embedded in Tauri config; private material must remain outside Git.

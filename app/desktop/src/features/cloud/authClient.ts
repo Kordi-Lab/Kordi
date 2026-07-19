@@ -341,7 +341,8 @@ function cleanBaseUrl(value: string): string {
 
 function isProductionCloudOrigin(value: string): boolean {
   try {
-    return new URL(value).origin === DEFAULT_CLOUD_API_BASE_URL;
+    const hostname = new URL(value).hostname.toLowerCase().replace(/\.+$/, '');
+    return hostname === new URL(DEFAULT_CLOUD_API_BASE_URL).hostname;
   } catch {
     return value === DEFAULT_CLOUD_API_BASE_URL;
   }

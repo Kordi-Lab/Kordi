@@ -27,6 +27,17 @@ test('debug environment template contains placeholders instead of usable credent
   assert.doesNotMatch(template, /coordinar\.io|hai-gcp-representation|kordi-product/i);
 });
 
+test('debug setup removes a temporary credential file when generation is interrupted', () => {
+  const helper = read('scripts/dev-cloud-up.sh');
+  const gitignore = read('.gitignore');
+  const dockerignore = read('.dockerignore');
+
+  assert.match(helper, /trap 'rm -f "\$temp_env"' EXIT/);
+  assert.match(helper, /mv "\$temp_env" "\$env_file"\n\s*trap - EXIT/);
+  assert.match(gitignore, /deploy\/dev\/\.env\.\?\?\?\?\?\?/);
+  assert.match(dockerignore, /deploy\/dev\/\.env\.\?\?\?\?\?\?/);
+});
+
 test('self-hosted guide uses the safe helper and explicit loopback API origin', () => {
   const guide = read('docs/self-hosted-debug.md');
 

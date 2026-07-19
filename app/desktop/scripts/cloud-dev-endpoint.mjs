@@ -1,4 +1,13 @@
 export const PRODUCTION_CLOUD_API_ORIGIN = 'https://coordinar.io';
+const PRODUCTION_CLOUD_API_HOSTNAME = new URL(PRODUCTION_CLOUD_API_ORIGIN).hostname;
+
+function normalizeHostname(value) {
+  return value.toLowerCase().replace(/\.+$/, '');
+}
+
+function isProductionCloudApiUrl(url) {
+  return normalizeHostname(url.hostname) === PRODUCTION_CLOUD_API_HOSTNAME;
+}
 
 export function normalizeCloudApiOrigin(value) {
   const raw = typeof value === 'string' ? value.trim() : '';
@@ -33,7 +42,7 @@ export function normalizeCloudApiOrigin(value) {
 
 export function resolveCloudDevApiBase(env = process.env) {
   const origin = normalizeCloudApiOrigin(env?.VITE_KORDI_CLOUD_API_BASE);
-  if (origin === PRODUCTION_CLOUD_API_ORIGIN) {
+  if (isProductionCloudApiUrl(new URL(origin))) {
     throw new Error(
       'Production Cloud API is blocked in development. '
       + 'Use the self-hosted debug server or an approved non-production environment.',
