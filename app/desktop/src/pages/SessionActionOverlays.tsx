@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react';
+import { LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  AppDialog,
+  AppDialogActions,
+  AppDialogDescription,
+  AppDialogTitle,
+  type AppDialogAnchor,
+} from '@/components/ui/dialog';
 
 export type SessionContextMenuTarget = {
   sessionId: string;
@@ -13,6 +21,7 @@ export type SessionContextMenuTarget = {
 export type SessionActionTarget = {
   sessionId: string;
   sessionName: string;
+  anchorRect?: AppDialogAnchor | null;
 };
 
 export type SessionMoveProjectTarget = {
@@ -51,7 +60,11 @@ export function SessionContextMenu({
           className="w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
           onClick={() => {
             onClose();
-            onRename({ sessionId: target.sessionId, sessionName: target.sessionName });
+            onRename({
+              sessionId: target.sessionId,
+              sessionName: target.sessionName,
+              anchorRect: { left: target.x, top: target.y, width: 1, height: 1 },
+            });
           }}
         >
           Rename…
@@ -73,7 +86,11 @@ export function SessionContextMenu({
           className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-rose-100 transition hover:bg-rose-500/10"
           onClick={() => {
             onClose();
-            onDelete({ sessionId: target.sessionId, sessionName: target.sessionName });
+            onDelete({
+              sessionId: target.sessionId,
+              sessionName: target.sessionName,
+              anchorRect: { left: target.x, top: target.y, width: 1, height: 1 },
+            });
           }}
         >
           Remove chat…
@@ -99,40 +116,42 @@ export function RenameSessionDialog({ target, onCancel, onConfirm }: RenameSessi
     onCancel();
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]" onMouseDown={onCancel}>
-      <div className="app-modal-panel w-full max-w-md rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="text-[16px] font-semibold">Rename session</div>
-        <div className="mt-2 text-[13px] leading-6 text-slate-400">
-          Choose a new title for <span className="font-medium text-slate-200">{target.sessionName}</span>.
-        </div>
-        <input
-          autoFocus
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              submit();
-            } else if (event.key === 'Escape') {
-              event.preventDefault();
-              onCancel();
-            }
-          }}
-          placeholder="Session title"
-          className="mt-4 w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2.5 text-[13px] text-white outline-none placeholder:text-slate-500"
-        />
-        <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
-          <Button
-            className="rounded-full px-4"
-            disabled={!canSubmit}
-            onClick={submit}
-          >
-            Rename
-          </Button>
-        </div>
-      </div>
-    </div>
+    <AppDialog
+      titleId="rename-session-dialog-title"
+      descriptionId="rename-session-dialog-description"
+      onDismiss={onCancel}
+      presentation="popover"
+      anchorRect={target.anchorRect}
+    >
+      <AppDialogTitle id="rename-session-dialog-title" className="text-[13px] leading-5">Rename session</AppDialogTitle>
+      <AppDialogDescription id="rename-session-dialog-description" className="mt-1 text-[11px] leading-4">
+        Choose a new title for <span className="font-medium text-[color:var(--utility-foreground)]">{target.sessionName}</span>.
+      </AppDialogDescription>
+      <input
+        autoFocus
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            submit();
+          }
+        }}
+        placeholder="Session title"
+        className="app-input-shell mt-3 h-9 w-full rounded-[12px] px-3 text-[13px] outline-none"
+      />
+      <AppDialogActions className="mt-3 gap-2">
+        <Button variant="secondary" size="sm" className="rounded-[12px] px-3" onClick={onCancel}>Cancel</Button>
+        <Button
+          size="sm"
+          className="rounded-[12px] px-3"
+          disabled={!canSubmit}
+          onClick={submit}
+        >
+          Rename
+        </Button>
+      </AppDialogActions>
+    </AppDialog>
   );
 }
 
@@ -166,41 +185,34 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]"
-      onMouseDown={cancel}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          cancel();
-        }
-      }}
+    <AppDialog
+      titleId="remove-chat-dialog-title"
+      onDismiss={cancel}
+      dismissDisabled={isDeleting}
+      busy={isDeleting}
+      presentation="popover"
+      anchorRect={target.anchorRect}
     >
-      <div className="app-modal-panel w-full max-w-md rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="text-[16px] font-semibold">Remove chat?</div>
-        <div className="mt-2 text-[13px] leading-6 text-slate-400">
-          <span className="font-medium text-slate-200">{target.sessionName}</span> will be removed from your chat list on this device and your signed-in cloud devices.
+      <AppDialogTitle id="remove-chat-dialog-title" className="text-[13px] leading-5">Remove chat?</AppDialogTitle>
+      {error ? (
+        <div className="app-error-text mt-2 text-[11px] leading-4 text-rose-500" role="alert">
+          {error}
         </div>
-        <div className="mt-3 text-[13px] leading-6 text-slate-400">
-          It will show again when there is a new update in this chat.
-        </div>
-        {error ? (
-          <div className="app-error-text mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100">
-            {error}
-          </div>
-        ) : null}
-        <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" className="rounded-full px-4" autoFocus disabled={isDeleting} onClick={cancel}>Cancel</Button>
-          <Button
-            className="rounded-full bg-rose-500 px-4 text-white hover:bg-rose-400"
-            disabled={isDeleting}
-            onClick={() => { void confirm(); }}
-          >
-            {isDeleting ? 'Removing…' : 'Remove chat'}
-          </Button>
-        </div>
-      </div>
-    </div>
+      ) : null}
+      <AppDialogActions className="mt-3 gap-2">
+        <Button variant="secondary" size="sm" className="rounded-[12px] px-3" autoFocus disabled={isDeleting} onClick={cancel}>Cancel</Button>
+        <Button
+          size="sm"
+          className="rounded-[12px] px-3"
+          disabled={isDeleting}
+          aria-busy={isDeleting}
+          onClick={() => { void confirm(); }}
+        >
+          {isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+          <span>{isDeleting ? 'Removing…' : error ? 'Try again' : 'Remove chat'}</span>
+        </Button>
+      </AppDialogActions>
+    </AppDialog>
   );
 }
 
@@ -224,66 +236,69 @@ export function MoveSessionDialog({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]" onMouseDown={onCancel}>
-      <div className="app-modal-panel w-full max-w-lg rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="text-[16px] font-semibold">Move to project</div>
-        <div className="mt-2 text-[13px] leading-6 text-slate-400">
-          Move <span className="font-medium text-slate-200">{target.sessionName}</span> out of Chats and into an explicit project folder.
-        </div>
+    <AppDialog
+      titleId="move-session-dialog-title"
+      descriptionId="move-session-dialog-description"
+      onDismiss={onCancel}
+      className="max-w-lg"
+    >
+      <AppDialogTitle id="move-session-dialog-title">Move to project</AppDialogTitle>
+      <AppDialogDescription id="move-session-dialog-description">
+        Move <span className="font-medium text-[color:var(--utility-foreground)]">{target.sessionName}</span> out of Chats and into an explicit project folder.
+      </AppDialogDescription>
 
-        <div className="mt-4">
-          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">Existing projects</div>
-          <div className="mt-2 grid gap-2">
-            {existingProjectTargets.length > 0 ? existingProjectTargets.map((project) => (
-              <button
-                key={project.id}
-                type="button"
-                className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:bg-white/[0.05]"
-                onClick={() => {
-                  const projectRoot = project.root?.trim();
-                  if (!projectRoot) return;
-                  onMoveToProject(target.sessionId, projectRoot);
-                  onCancel();
-                }}
-              >
-                <div className="text-[13px] font-medium text-white">{project.name}</div>
-                <div className="mt-1 truncate text-[11px] text-slate-400">{project.root}</div>
-              </button>
-            )) : (
-              <div className="rounded-[18px] border border-dashed border-white/10 px-4 py-3 text-[12px] text-slate-500">
-                No explicit projects yet.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-5">
-          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">Create new project folder</div>
-          <input
-            value={newProjectRootDraft}
-            onChange={(event) => setNewProjectRootDraft(event.target.value)}
-            placeholder="Enter a folder path"
-            className="mt-2 w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2.5 text-[13px] text-white outline-none placeholder:text-slate-500"
-          />
-          <div className="mt-1 text-[11px] text-slate-500">Relative paths resolve from the current desktop workspace.</div>
-        </div>
-
-        <div className="mt-5 flex justify-between gap-3">
-          <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
-          <Button
-            className="rounded-full px-4"
-            disabled={!newProjectRootDraft.trim()}
-            onClick={() => {
-              if (!newProjectRootDraft.trim()) return;
-              onMoveToProject(target.sessionId, newProjectRootDraft.trim());
-              onCancel();
-            }}
-          >
-            Create and move
-          </Button>
+      <div className="mt-4">
+        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Existing projects</div>
+        <div className="mt-2 grid gap-2">
+          {existingProjectTargets.length > 0 ? existingProjectTargets.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              className="rounded-[18px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-4 py-3 text-left transition hover:bg-[color:var(--app-control-hover)]"
+              onClick={() => {
+                const projectRoot = project.root?.trim();
+                if (!projectRoot) return;
+                onMoveToProject(target.sessionId, projectRoot);
+                onCancel();
+              }}
+            >
+              <div className="text-[13px] font-medium text-[color:var(--utility-foreground)]">{project.name}</div>
+              <div className="mt-1 truncate text-[11px] text-[color:var(--utility-muted-text)]">{project.root}</div>
+            </button>
+          )) : (
+            <div className="rounded-[18px] border border-dashed border-[color:var(--app-divider)] px-4 py-3 text-[12px] text-[color:var(--utility-muted-text)]">
+              No explicit projects yet.
+            </div>
+          )}
         </div>
       </div>
-    </div>
+
+      <div className="mt-5">
+        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Create new project folder</div>
+        <input
+          value={newProjectRootDraft}
+          onChange={(event) => setNewProjectRootDraft(event.target.value)}
+          placeholder="Enter a folder path"
+          className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
+        />
+        <div className="mt-1 text-[11px] text-[color:var(--utility-muted-text)]">Relative paths resolve from the current desktop workspace.</div>
+      </div>
+
+      <AppDialogActions className="justify-between">
+        <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
+        <Button
+          className="rounded-full px-4"
+          disabled={!newProjectRootDraft.trim()}
+          onClick={() => {
+            if (!newProjectRootDraft.trim()) return;
+            onMoveToProject(target.sessionId, newProjectRootDraft.trim());
+            onCancel();
+          }}
+        >
+          Create and move
+        </Button>
+      </AppDialogActions>
+    </AppDialog>
   );
 }
 
@@ -323,91 +338,96 @@ export function ProjectCreateDialog({
   const canSubmit = mode === 'folder' ? folderPath.trim().length > 0 : newName.trim().length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]" onMouseDown={onCancel}>
-      <div className="app-modal-panel w-full max-w-xl rounded-[28px] border border-[color:var(--app-divider)] p-5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="text-[16px] font-semibold">Create project</div>
-        <div className="mt-2 text-[13px] leading-6 text-[color:var(--utility-muted-text)]">
-          Projects group sessions by a shared local folder. Every session under a project uses the same project context and settings.
-        </div>
+    <AppDialog
+      titleId="create-project-dialog-title"
+      descriptionId="create-project-dialog-description"
+      onDismiss={onCancel}
+      dismissDisabled={isSubmitting}
+      busy={isSubmitting}
+      className="max-w-xl"
+    >
+      <AppDialogTitle id="create-project-dialog-title">Create project</AppDialogTitle>
+      <AppDialogDescription id="create-project-dialog-description">
+        Projects group sessions by a shared local folder. Every session under a project uses the same project context and settings.
+      </AppDialogDescription>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 rounded-[18px] bg-[color:var(--app-control-bg)] p-1">
-          <button
-            type="button"
-            onClick={() => setMode('folder')}
-            className={`rounded-[14px] px-3 py-2 text-[12px] font-medium transition ${mode === 'folder' ? 'bg-[color:var(--app-control-active-bg)] text-[color:var(--utility-foreground)] shadow-sm' : 'text-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]'}`}
-          >
-            From local folder
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('new')}
-            className={`rounded-[14px] px-3 py-2 text-[12px] font-medium transition ${mode === 'new' ? 'bg-[color:var(--app-control-active-bg)] text-[color:var(--utility-foreground)] shadow-sm' : 'text-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]'}`}
-          >
-            New folder
-          </button>
-        </div>
-
-        {mode === 'folder' ? (
-          <div className="mt-4 space-y-3">
-            <label className="block">
-              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Folder path</span>
-              <input
-                value={folderPath}
-                onChange={(event) => setFolderPath(event.target.value)}
-                placeholder="/Users/you/work/project"
-                className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              />
-              <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Use a folder path without spaces.</span>
-            </label>
-            <label className="block">
-              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Display name optional</span>
-              <input
-                value={folderName}
-                onChange={(event) => setFolderName(event.target.value)}
-                placeholder="Use folder name"
-                className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              />
-            </label>
-          </div>
-        ) : (
-          <div className="mt-4 space-y-3">
-            <label className="block">
-              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Project name</span>
-              <input
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-                placeholder="Website refresh"
-                className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              />
-            </label>
-            <label className="block">
-              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Parent folder optional</span>
-              <input
-                value={parentDir}
-                onChange={(event) => setParentDir(event.target.value)}
-                placeholder="Defaults to ~/KordiProjects"
-                className="mt-2 w-full rounded-[16px] border border-[color:var(--app-divider)] bg-[color:var(--app-control-bg)] px-3 py-2.5 text-[13px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              />
-              <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Kordi-created project paths cannot contain spaces.</span>
-            </label>
-          </div>
-        )}
-
-        {error ? <div className="app-error-text mt-4 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{error}</div> : null}
-
-        <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" className="rounded-full px-4" onClick={onCancel}>Cancel</Button>
-          <Button
-            className="rounded-full px-4"
-            disabled={!canSubmit || isSubmitting}
-            onClick={() => {
-              void submit();
-            }}
-          >
-            {isSubmitting ? 'Creating…' : 'Create project'}
-          </Button>
-        </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 rounded-[18px] bg-[color:var(--app-control-bg)] p-1">
+        <button
+          type="button"
+          onClick={() => setMode('folder')}
+          className={`rounded-[14px] px-3 py-2 text-[12px] font-medium transition ${mode === 'folder' ? 'bg-[color:var(--app-control-active-bg)] text-[color:var(--utility-foreground)] shadow-sm' : 'text-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]'}`}
+        >
+          From local folder
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('new')}
+          className={`rounded-[14px] px-3 py-2 text-[12px] font-medium transition ${mode === 'new' ? 'bg-[color:var(--app-control-active-bg)] text-[color:var(--utility-foreground)] shadow-sm' : 'text-[color:var(--utility-muted-text)] hover:text-[color:var(--utility-foreground)]'}`}
+        >
+          New folder
+        </button>
       </div>
-    </div>
+
+      {mode === 'folder' ? (
+        <div className="mt-4 space-y-3">
+          <label className="block">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Folder path</span>
+            <input
+              value={folderPath}
+              onChange={(event) => setFolderPath(event.target.value)}
+              placeholder="/Users/you/work/project"
+              className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
+            />
+            <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Use a folder path without spaces.</span>
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Display name optional</span>
+            <input
+              value={folderName}
+              onChange={(event) => setFolderName(event.target.value)}
+              placeholder="Use folder name"
+              className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
+            />
+          </label>
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          <label className="block">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Project name</span>
+            <input
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              placeholder="Website refresh"
+              className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[color:var(--utility-muted-text)]">Parent folder optional</span>
+            <input
+              value={parentDir}
+              onChange={(event) => setParentDir(event.target.value)}
+              placeholder="Defaults to ~/KordiProjects"
+              className="app-input-shell mt-2 w-full rounded-[16px] px-3 py-2.5 text-[13px] outline-none"
+            />
+            <span className="mt-1 block text-[11px] text-[color:var(--utility-muted-text)]">Kordi-created project paths cannot contain spaces.</span>
+          </label>
+        </div>
+      )}
+
+      {error ? <div className="app-error-text mt-4 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100">{error}</div> : null}
+
+      <AppDialogActions>
+        <Button variant="secondary" className="rounded-full px-4" disabled={isSubmitting} onClick={onCancel}>Cancel</Button>
+        <Button
+          className="rounded-full px-4"
+          disabled={!canSubmit || isSubmitting}
+          onClick={() => {
+            void submit();
+          }}
+        >
+          {isSubmitting ? 'Creating…' : 'Create project'}
+        </Button>
+      </AppDialogActions>
+    </AppDialog>
   );
 }

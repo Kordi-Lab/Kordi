@@ -25,7 +25,7 @@ import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { CloudAccountSettingsDialog, type CloudAccountSettingsConfig, type CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
-import { navAccentClasses, navItems } from '@/kordi-app/data';
+import { navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import type {
@@ -1604,23 +1604,23 @@ export function WorkspaceSidebar({
                 <span className="h-3 w-3 rounded-full bg-[#28c840] shadow-[0_0_0_1px_rgba(0,0,0,0.18)]" />
               </div>
             )}
-            <div className="flex w-full flex-col items-center gap-2.5">
+            <div className="flex w-full flex-col items-center gap-3">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = activeNav === item.id;
                 return (
                   <button
                     key={item.id}
+                    type="button"
                     onClick={() => setActiveNav(item.id)}
-                    className={cn(
-                      'app-workspace-nav-button app-list-item relative mx-auto grid h-11 w-11 place-items-center rounded-[18px] p-0 transition',
-                      active ? 'app-list-item-active text-white' : 'text-slate-300 hover:text-white',
-                    )}
+                    className="app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-[14px] p-0"
+                    data-active={active ? 'true' : 'false'}
                     aria-label={item.label}
+                    aria-current={active ? 'page' : undefined}
                     title={item.label}
                   >
                     <span className="relative grid h-8 w-8 place-items-center rounded-[14px]">
-                      <Icon className={cn('h-[17px] w-[17px]', active ? navAccentClasses[item.id] : 'text-slate-300')} />
+                      <Icon className="h-5 w-5" />
                       {item.id === 'chats' && totalUnread > 0 ? (
                         <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
                           {formatUnreadCount(totalUnread)}
