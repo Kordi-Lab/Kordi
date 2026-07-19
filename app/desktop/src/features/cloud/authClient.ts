@@ -27,6 +27,11 @@ export type CloudAuthResult = {
 
 export type CloudOAuthProvider = 'google' | 'github';
 
+export type CloudAuthCapabilities = {
+  password: boolean;
+  oauthProviders: CloudOAuthProvider[];
+};
+
 export type CloudOAuthStartResponse = {
   authUrl: string;
 };
@@ -49,6 +54,7 @@ export type CloudAuthErrorCode =
   | 'invalid_provider_auth_snapshot'
   | 'provider_auth_not_configured'
   | 'provider_auth_snapshot_not_found'
+  | 'oauth_not_configured'
   | 'requester_mismatch'
   | 'agent_not_available'
   | 'owner_online'
@@ -351,7 +357,14 @@ function isProductionCloudOrigin(value: string): boolean {
 type CloudApiEnvironment = {
   DEV?: boolean;
   VITE_KORDI_CLOUD_API_BASE?: string;
+  VITE_KORDI_DEV_PROFILE?: string;
+  VITE_KORDI_PRODUCTION_DEBUG_ACK?: string;
 };
+
+function operatorProductionDebugIsEnabled(env: CloudApiEnvironment | undefined): boolean {
+  return env?.VITE_KORDI_DEV_PROFILE?.trim().toLowerCase() === 'operator'
+    && env?.VITE_KORDI_PRODUCTION_DEBUG_ACK?.trim() === '1';
+}
 
 export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
   const meta = typeof import.meta !== 'undefined'
@@ -365,8 +378,11 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
       throw new Error('VITE_KORDI_CLOUD_API_BASE is required for development.');
     }
     const cleaned = cleanBaseUrl(configured);
-    if (isProductionCloudOrigin(cleaned)) {
-      throw new Error('Production Cloud API is blocked in development.');
+    if (isProductionCloudOrigin(cleaned) && !operatorProductionDebugIsEnabled(activeEnv)) {
+      throw new Error(
+        'Production Cloud API is blocked in development for community profiles. '
+        + 'Use the allowlisted operator launcher for approved production debugging.',
+      );
     }
     return cleaned;
   }
@@ -413,6 +429,7 @@ function isErrorCode(value: unknown): value is CloudAuthErrorCode {
     value === 'invalid_provider_auth_snapshot' ||
     value === 'provider_auth_not_configured' ||
     value === 'provider_auth_snapshot_not_found' ||
+    value === 'oauth_not_configured' ||
     value === 'requester_mismatch' ||
     value === 'agent_not_available' ||
     value === 'owner_online' ||
@@ -518,6 +535,14 @@ export class CloudAuthClient {
         body: JSON.stringify(input),
       },
       'Could not create account.',
+    );
+  }
+
+  async capabilities(): Promise<CloudAuthCapabilities> {
+    return this.send<CloudAuthCapabilities>(
+      '/v1/cloud/auth/capabilities',
+      { method: 'GET' },
+      'Could not load available sign-in methods.',
     );
   }
 

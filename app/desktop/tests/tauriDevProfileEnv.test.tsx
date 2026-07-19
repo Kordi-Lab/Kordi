@@ -29,6 +29,7 @@ test('buildBeforeDevCommand forwards explicit Cloud API base into the Vite dev s
   });
 
   assert.match(command, / VITE_KORDI_CLOUD_API_BASE='http:\/\/127\.0\.0\.1:17081' /);
+  assert.match(command, / VITE_KORDI_DEV_PROFILE='community' /);
 });
 
 test('buildBeforeDevCommand fails closed without a debug server origin', () => {
@@ -59,4 +60,32 @@ test('buildBeforeDevCommand rejects the production origin', () => {
       /production Cloud API is blocked in development/i,
     );
   }
+});
+
+test('buildBeforeDevCommand permits production only for acknowledged operator runs', () => {
+  const base = {
+    VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io',
+    VITE_KORDI_DEV_PROFILE: 'operator',
+  };
+  assert.throws(
+    () => buildBeforeDevCommand({
+      title: 'Kordi Operator',
+      host: '127.0.0.1',
+      port: 1420,
+      env: base,
+    }),
+    /blocked in development/i,
+  );
+
+  const command = buildBeforeDevCommand({
+    title: 'Kordi Operator',
+    host: '127.0.0.1',
+    port: 1420,
+    env: {
+      ...base,
+      VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
+    },
+  });
+  assert.match(command, /VITE_KORDI_DEV_PROFILE='operator'/);
+  assert.match(command, /VITE_KORDI_PRODUCTION_DEBUG_ACK='1'/);
 });

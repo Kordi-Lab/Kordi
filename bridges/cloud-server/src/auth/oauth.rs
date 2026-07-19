@@ -14,6 +14,8 @@ pub(super) enum OAuthProvider {
 }
 
 impl OAuthProvider {
+    pub(super) const ALL: [Self; 2] = [Self::Google, Self::Github];
+
     pub(super) fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "google" => Some(Self::Google),
@@ -26,6 +28,13 @@ impl OAuthProvider {
         match self {
             Self::Google => "google",
             Self::Github => "github",
+        }
+    }
+
+    pub(super) fn display_name(self) -> &'static str {
+        match self {
+            Self::Google => "Google",
+            Self::Github => "GitHub",
         }
     }
 
@@ -58,6 +67,25 @@ impl OAuthProvider {
     }
 }
 
+fn oauth_credentials_are_complete(client_id: &str, client_secret: &str) -> bool {
+    !client_id.trim().is_empty() && !client_secret.trim().is_empty()
+}
+
+pub(super) fn oauth_provider_is_configured(provider: OAuthProvider) -> bool {
+    let prefix = provider.env_prefix();
+    let client_id = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_ID")).unwrap_or_default();
+    let client_secret =
+        std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_SECRET")).unwrap_or_default();
+    oauth_credentials_are_complete(&client_id, &client_secret)
+}
+
+fn oauth_not_configured_message(provider: OAuthProvider) -> String {
+    format!(
+        "{} sign-in is not available on this server. Use email and password.",
+        provider.display_name()
+    )
+}
+
 pub(super) struct OAuthConfig {
     pub(super) provider: OAuthProvider,
     pub(super) client_id: String,
@@ -67,10 +95,12 @@ pub(super) struct OAuthConfig {
 
 pub(super) fn oauth_config(provider: OAuthProvider) -> Result<OAuthConfig, String> {
     let prefix = provider.env_prefix();
-    let client_id = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_ID"))
-        .map_err(|_| format!("Missing KORDI_OAUTH_{prefix}_CLIENT_ID"))?;
-    let client_secret = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_SECRET"))
-        .map_err(|_| format!("Missing KORDI_OAUTH_{prefix}_CLIENT_SECRET"))?;
+    let client_id = std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_ID")).unwrap_or_default();
+    let client_secret =
+        std::env::var(format!("KORDI_OAUTH_{prefix}_CLIENT_SECRET")).unwrap_or_default();
+    if !oauth_credentials_are_complete(&client_id, &client_secret) {
+        return Err(oauth_not_configured_message(provider));
+    }
     let public_base = public_base_url();
     Ok(OAuthConfig {
         provider,
@@ -310,8 +340,28 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        github_profile_from_values, is_allowed_oauth_redirect_with_config, public_base_url,
+        github_profile_from_values, is_allowed_oauth_redirect_with_config,
+        oauth_credentials_are_complete, oauth_not_configured_message, public_base_url,
+        OAuthProvider,
     };
+
+    #[test]
+    fn oauth_credentials_require_both_non_empty_values() {
+        assert!(oauth_credentials_are_complete("client-id", "client-secret"));
+        assert!(!oauth_credentials_are_complete("", "client-secret"));
+        assert!(!oauth_credentials_are_complete("client-id", ""));
+        assert!(!oauth_credentials_are_complete("   ", "client-secret"));
+    }
+
+    #[test]
+    fn unavailable_oauth_message_is_safe_and_actionable() {
+        let message = oauth_not_configured_message(OAuthProvider::Google);
+        assert_eq!(
+            message,
+            "Google sign-in is not available on this server. Use email and password."
+        );
+        assert!(!message.contains("KORDI_OAUTH_"));
+    }
 
     #[test]
     fn public_base_url_defaults_to_product_cloud_host() {

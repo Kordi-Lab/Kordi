@@ -55,6 +55,29 @@ curl -fsS "$VITE_KORDI_CLOUD_API_BASE/health"
 
 Expected: HTTP 200 or a healthy response.
 
+## Allowlisted operator debug profile
+
+The operator profile exists for approved core-maintainer diagnostics against a remote API, including production when necessary. It is not a client-side admin role and does not connect the desktop directly to Postgres, Redis, object storage, or any other data service. The hosted backend remains the only component with database credentials and must enforce the real account permissions, IAM rules, and audit policy.
+
+The launcher verifies the account currently authenticated in GitHub CLI against [`../deploy/dev/operator-github-allowlist.txt`](../deploy/dev/operator-github-allowlist.txt). The staged allowlist contains only `shuyhere`. A local source edit is not authorization; server-side controls remain mandatory.
+
+Authenticate GitHub CLI, then launch with an explicit acknowledgement and approved API origin:
+
+```bash
+gh auth login
+KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1 \
+  pnpm dev:cloud:operator -- "<APPROVED_REMOTE_API_BASE>"
+```
+
+The launcher fails closed unless all of these are true:
+
+- `gh api user` returns an allowlisted GitHub login.
+- `KORDI_OPERATOR_DEBUG_ACKNOWLEDGED=1` is set for this invocation.
+- An explicit absolute API origin is supplied.
+- Both the renderer and native endpoint guards recognize the operator profile and acknowledgement.
+
+Do not add community contributors to this allowlist to work around the normal production guard. Use the isolated backend or an approved staging API instead.
+
 ## Internal/operator local tunnel debug pipeline
 
 Use this path only when an operator explicitly asks you to test against a private hosted backend through a local tunnel. Keep all real operator hostnames, projects, account names, private IPs, and credentials out of commits, PRs, screenshots, and shared logs.

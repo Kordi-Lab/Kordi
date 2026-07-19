@@ -24,8 +24,12 @@ test('cloud features are split before the generic desktop features chunk', async
 
 test('Vite development serves only with an explicit non-production API origin', async () => {
   const previous = process.env.VITE_KORDI_CLOUD_API_BASE;
+  const previousProfile = process.env.VITE_KORDI_DEV_PROFILE;
+  const previousAck = process.env.VITE_KORDI_PRODUCTION_DEBUG_ACK;
   try {
     delete process.env.VITE_KORDI_CLOUD_API_BASE;
+    delete process.env.VITE_KORDI_DEV_PROFILE;
+    delete process.env.VITE_KORDI_PRODUCTION_DEBUG_ACK;
     assert.throws(
       () => config({ command: 'serve', mode: 'endpoint-guard-test' }),
       /VITE_KORDI_CLOUD_API_BASE is required for development/i,
@@ -40,8 +44,18 @@ test('Vite development serves only with an explicit non-production API origin', 
     process.env.VITE_KORDI_CLOUD_API_BASE = 'http://127.0.0.1:17081/';
     const resolved = await config({ command: 'serve', mode: 'endpoint-guard-test' });
     assert.ok(resolved.plugins?.length > 0);
+
+    process.env.VITE_KORDI_CLOUD_API_BASE = 'https://coordinar.io';
+    process.env.VITE_KORDI_DEV_PROFILE = 'operator';
+    process.env.VITE_KORDI_PRODUCTION_DEBUG_ACK = '1';
+    const operatorResolved = await config({ command: 'serve', mode: 'endpoint-guard-test' });
+    assert.ok(operatorResolved.plugins?.length > 0);
   } finally {
     if (previous === undefined) delete process.env.VITE_KORDI_CLOUD_API_BASE;
     else process.env.VITE_KORDI_CLOUD_API_BASE = previous;
+    if (previousProfile === undefined) delete process.env.VITE_KORDI_DEV_PROFILE;
+    else process.env.VITE_KORDI_DEV_PROFILE = previousProfile;
+    if (previousAck === undefined) delete process.env.VITE_KORDI_PRODUCTION_DEBUG_ACK;
+    else process.env.VITE_KORDI_PRODUCTION_DEBUG_ACK = previousAck;
   }
 });

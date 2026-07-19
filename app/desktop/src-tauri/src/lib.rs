@@ -102,6 +102,16 @@ fn is_production_cloud_api_url(url: &reqwest::Url) -> bool {
         .unwrap_or(false)
 }
 
+fn operator_production_debug_is_allowed(
+    dev_profile: Option<&str>,
+    production_debug_ack: Option<&str>,
+) -> bool {
+    dev_profile
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case("operator"))
+        && production_debug_ack.map(str::trim) == Some("1")
+}
+
 fn normalize_cloud_api_base_url(value: &str) -> Result<String, String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -133,6 +143,8 @@ fn resolve_cloud_api_base_url(
     vite_base: Option<&str>,
     native_base: Option<&str>,
     debug_build: bool,
+    dev_profile: Option<&str>,
+    production_debug_ack: Option<&str>,
 ) -> Result<String, String> {
     let configured = vite_base
         .filter(|value| !value.trim().is_empty())
@@ -151,9 +163,12 @@ fn resolve_cloud_api_base_url(
     let origin = normalize_cloud_api_base_url(configured)?;
     let parsed_origin = reqwest::Url::parse(&origin)
         .map_err(|_| "Cloud API base URL must be a valid absolute HTTP(S) URL".to_string())?;
-    if debug_build && is_production_cloud_api_url(&parsed_origin) {
+    if debug_build
+        && is_production_cloud_api_url(&parsed_origin)
+        && !operator_production_debug_is_allowed(dev_profile, production_debug_ack)
+    {
         return Err(
-            "Production Cloud API is blocked in development. Use the self-hosted debug server or an approved non-production environment."
+            "Production Cloud API is blocked in development for community profiles. Use the allowlisted operator launcher for approved production debugging."
                 .to_string(),
         );
     }
@@ -163,10 +178,14 @@ fn resolve_cloud_api_base_url(
 fn cloud_api_base_url_from_env() -> Result<String, String> {
     let vite_base = std::env::var("VITE_KORDI_CLOUD_API_BASE").ok();
     let native_base = std::env::var("KORDI_CLOUD_API_BASE").ok();
+    let dev_profile = std::env::var("VITE_KORDI_DEV_PROFILE").ok();
+    let production_debug_ack = std::env::var("VITE_KORDI_PRODUCTION_DEBUG_ACK").ok();
     resolve_cloud_api_base_url(
         vite_base.as_deref(),
         native_base.as_deref(),
         cfg!(debug_assertions),
+        dev_profile.as_deref(),
+        production_debug_ack.as_deref(),
     )
 }
 
@@ -258,34 +277,66 @@ mod window_lifecycle_tests {
 
     #[test]
     fn debug_build_requires_an_explicit_non_production_cloud_api() {
-        assert!(resolve_cloud_api_base_url(None, None, true)
+        assert!(resolve_cloud_api_base_url(None, None, true, None, None)
             .unwrap_err()
             .contains("required for development"));
         assert!(
-            resolve_cloud_api_base_url(Some("https://coordinar.io/"), None, true)
+            resolve_cloud_api_base_url(Some("https://coordinar.io/"), None, true, None, None)
                 .unwrap_err()
                 .contains("blocked in development")
         );
         assert!(
-            resolve_cloud_api_base_url(Some("http://coordinar.io"), None, true)
+            resolve_cloud_api_base_url(Some("http://coordinar.io"), None, true, None, None)
                 .unwrap_err()
                 .contains("blocked in development")
         );
         assert!(
-            resolve_cloud_api_base_url(Some("https://coordinar.io./"), None, true)
+            resolve_cloud_api_base_url(Some("https://coordinar.io./"), None, true, None, None)
                 .unwrap_err()
                 .contains("blocked in development")
         );
         assert_eq!(
-            resolve_cloud_api_base_url(Some(" http://127.0.0.1:17081/ "), None, true).unwrap(),
+            resolve_cloud_api_base_url(Some(" http://127.0.0.1:17081/ "), None, true, None, None,)
+                .unwrap(),
             "http://127.0.0.1:17081"
+        );
+    }
+
+    #[test]
+    fn operator_debug_requires_profile_and_explicit_production_acknowledgement() {
+        assert!(resolve_cloud_api_base_url(
+            Some(DEFAULT_CLOUD_API_BASE_URL),
+            None,
+            true,
+            Some("operator"),
+            None,
+        )
+        .is_err());
+        assert!(resolve_cloud_api_base_url(
+            Some(DEFAULT_CLOUD_API_BASE_URL),
+            None,
+            true,
+            Some("community"),
+            Some("1"),
+        )
+        .is_err());
+        assert_eq!(
+            resolve_cloud_api_base_url(
+                Some(DEFAULT_CLOUD_API_BASE_URL),
+                None,
+                true,
+                Some("operator"),
+                Some("1"),
+            )
+            .unwrap(),
+            DEFAULT_CLOUD_API_BASE_URL,
         );
     }
 
     #[test]
     fn release_build_keeps_the_product_default() {
         assert_eq!(
-            resolve_cloud_api_base_url(None, None, false).unwrap(),
+            resolve_cloud_api_base_url(None, None, false, None, None).unwrap(),
             DEFAULT_CLOUD_API_BASE_URL
         );
     }
