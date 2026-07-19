@@ -34,18 +34,9 @@
 }
 
 .app-compact-model-menu {
-  --app-compact-model-menu-bg: var(--app-transient-surface-bg);
-  --app-compact-model-menu-header-bg: var(--app-transient-raised-bg);
-  --app-compact-model-menu-save-bg: var(--app-transient-text);
-  --app-compact-model-menu-save-text: var(--app-transient-surface-fallback);
-  --app-compact-model-menu-save-hover-bg: color-mix(in oklab, var(--app-transient-text) 88%, var(--app-transient-surface-fallback));
   --app-divider: var(--app-transient-divider);
   border: 1px solid var(--app-transient-border);
-  background: var(--app-compact-model-menu-bg);
   color: var(--app-transient-text);
-  box-shadow: var(--app-transient-shadow);
-  backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
-  -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
 }
 
 .app-compact-model-menu-layer {
@@ -74,11 +65,7 @@
 
 .bridge-app.theme-light .app-compact-model-menu,
 .app-compact-model-menu-light {
-  --app-compact-model-menu-bg: var(--app-transient-surface-bg);
-  --app-compact-model-menu-header-bg: var(--app-transient-raised-bg);
-  --app-compact-model-menu-save-bg: var(--app-transient-text);
-  --app-compact-model-menu-save-text: var(--app-transient-surface-fallback);
-  --app-compact-model-menu-save-hover-bg: color-mix(in oklab, var(--app-transient-text) 88%, var(--app-transient-surface-fallback));
+  color-scheme: light;
 }
 
 .app-compact-model-menu-light {
@@ -87,11 +74,6 @@
   --app-divider: var(--app-transient-divider);
   --app-control-bg: var(--app-transient-raised-bg);
   --app-shadow-float: var(--app-transient-shadow);
-}
-
-.app-compact-model-menu-header {
-  border-bottom: 1px solid var(--app-divider);
-  background: var(--app-compact-model-menu-header-bg);
 }
 
 .app-compact-model-menu-chevron {
@@ -109,13 +91,10 @@
   transform: rotate(180deg);
 }
 
-.app-compact-model-menu-save {
-  background: var(--app-compact-model-menu-save-bg);
-  color: var(--app-compact-model-menu-save-text);
-}
-
-.app-compact-model-menu-save:hover {
-  background: var(--app-compact-model-menu-save-hover-bg);
+.app-compact-model-menu details[open] > summary {
+  border-color: var(--app-transient-selected-border);
+  background: var(--app-transient-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--app-transient-selected-border);
 }
 
 @keyframes app-compact-model-menu-enter {

@@ -15,6 +15,7 @@ import {
   Settings2,
   Sparkles,
   Wrench,
+  X,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
@@ -503,22 +504,35 @@ export function CompactComposerModelMenu({
   const renderMenu = () => (
     <div
       ref={menuRef}
-      className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] text-[12px] leading-[1.38]', menuThemeClass)}
+      role="dialog"
+      aria-label="Agent model"
+      className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] p-2.5 text-[12px] leading-[1.38]', menuThemeClass)}
       style={menuStyle}
     >
-      <div className="app-compact-model-menu-header flex items-center justify-between gap-3 px-3.5 py-3">
-        <div className="font-medium">Agent Model</div>
+      <div className="app-compact-model-menu-header mb-2 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-[13px] font-semibold leading-5">Agent model</div>
+          <div className="app-transient-muted mt-px text-[10.5px] leading-4">Choose the provider, model, and thinking level.</div>
+        </div>
+        <button
+          type="button"
+          onClick={cancel}
+          className="app-chat-create-close grid h-6 w-6 shrink-0 place-items-center rounded-[9px] transition"
+          aria-label="Close agent model"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
       </div>
-      <div className="px-2.5 py-2">
-        <details className="border-b border-[color:var(--app-divider)] py-1">
-          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+      <div className="space-y-1">
+        <details className="app-compact-model-menu-section">
+          <summary className="app-transient-row flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[13px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">provider</span>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{providerSummary}</span>
+              <span className="app-transient-muted min-w-0 truncate text-[11px]">{providerSummary}</span>
               <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
             </span>
           </summary>
-          <div className="space-y-1 pb-2 pl-3 pt-1">
+          <div className="space-y-1 px-1 pb-1 pt-1">
             {providerOptions.map((option) => {
               const isSelected = stagedProviderOption?.value === option.value;
               return (
@@ -533,23 +547,23 @@ export function CompactComposerModelMenu({
                 >
                   <span className="min-w-0">
                     <span className="block truncate">{lowerComposerLabel(option.label)}</span>
-                    {option.detail ? <span className="block truncate text-[11px] text-[color:var(--utility-muted-text)]">{lowerComposerLabel(option.detail)}</span> : null}
+                    {option.detail ? <span className="app-transient-muted block truncate text-[11px]">{lowerComposerLabel(option.detail)}</span> : null}
                   </span>
-                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'app-transient-muted' : 'text-transparent')}>selected</span>
                 </button>
               );
             })}
           </div>
         </details>
-        <details className="border-b border-[color:var(--app-divider)] py-1">
-          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+        <details className="app-compact-model-menu-section">
+          <summary className="app-transient-row flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[13px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">model</span>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{modelSummary}</span>
+              <span className="app-transient-muted min-w-0 truncate text-[11px]">{modelSummary}</span>
               <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
             </span>
           </summary>
-          <div className="space-y-1 pb-2 pl-3 pt-1">
+          <div className="space-y-1 px-1 pb-1 pt-1">
             {visibleModelOptions.map((option) => {
               const isSelected = stagedModel === option.value;
               return (
@@ -564,23 +578,23 @@ export function CompactComposerModelMenu({
                 >
                   <span className="min-w-0">
                     <span className="block truncate">{lowerComposerLabel(option.label)}</span>
-                    {option.detail ? <span className="block truncate text-[11px] text-[color:var(--utility-muted-text)]">{lowerComposerLabel(option.detail)}</span> : null}
+                    {option.detail ? <span className="app-transient-muted block truncate text-[11px]">{lowerComposerLabel(option.detail)}</span> : null}
                   </span>
-                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'app-transient-muted' : 'text-transparent')}>selected</span>
                 </button>
               );
             })}
           </div>
         </details>
-        <details className="py-1">
-          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[12px] px-2.5 text-[12px] marker:hidden [&::-webkit-details-marker]:hidden">
+        <details className="app-compact-model-menu-section">
+          <summary className="app-transient-row flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-[13px] px-2.5 text-[12px] marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">thinking level</span>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-[11px] text-[color:var(--utility-muted-text)]">{thinkingSummary}</span>
+              <span className="app-transient-muted min-w-0 truncate text-[11px]">{thinkingSummary}</span>
               <ChevronDown className="app-compact-model-menu-chevron h-3.5 w-3.5 shrink-0" strokeWidth={2.2} aria-hidden="true" />
             </span>
           </summary>
-          <div className="space-y-1 pb-2 pl-3 pt-1">
+          <div className="space-y-1 px-1 pb-1 pt-1">
             {stagedThinkingLevels.map((value) => {
               const isSelected = stagedThinkingValue === value;
               return (
@@ -594,17 +608,17 @@ export function CompactComposerModelMenu({
                   )}
                 >
                   <span>{lowerComposerLabel(composerThinkingLabel(value))}</span>
-                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'text-emerald-300' : 'text-transparent')}>selected</span>
+                  <span className={cn('shrink-0 text-[11px] font-medium', isSelected ? 'app-transient-muted' : 'text-transparent')}>selected</span>
                 </button>
               );
             })}
           </div>
         </details>
       </div>
-      <div className="flex items-center justify-end gap-3 border-t border-[color:var(--app-divider)] px-3.5 py-3">
+      <div className="mt-2 flex items-center justify-end gap-1">
         <span className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={cancel} className="rounded-full px-3 py-1.5 text-[12px] font-medium text-[color:var(--utility-muted-text)] transition hover:text-[color:var(--utility-foreground)]">cancel</button>
-          <button type="button" onClick={save} className="app-compact-model-menu-save rounded-full px-3 py-1.5 text-[12px] font-semibold transition">save</button>
+          <button type="button" onClick={cancel} className="app-button-outline rounded-[10px] border px-3 py-1.5 text-[12px] font-medium transition">cancel</button>
+          <button type="button" onClick={save} className="app-button-primary rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition">save</button>
         </span>
       </div>
     </div>
