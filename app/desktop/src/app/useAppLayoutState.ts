@@ -48,12 +48,13 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
 
   const showSessionRail = activeNav === 'chats' || activeNav === 'projects';
   const showRightDetailRail = activeNav === 'chats' || activeNav === 'projects';
+  const showResizableRightDetailRail = activeNav === 'projects';
   const initialMinWindowWidth = Math.max(
     WINDOW_MIN_WIDTH,
     getWorkspaceWindowMinWidth({
       showSessionRail,
       collapseChatSessions: false,
-      showRightDetailRail,
+      showRightDetailRail: showResizableRightDetailRail,
       isDetailPanelCollapsed: activeNav === 'chats' || activeNav === 'projects',
     }),
   );
@@ -67,14 +68,14 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   const isSingleWorkspacePage = activeNav !== 'chats' && activeNav !== 'projects';
   const sessionRailWidth =
     showSessionRail && !collapseChatSessions
-      ? clampSessionPanelWidth(sessionRailUserWidth, windowSize.width, showRightDetailRail && !isDetailPanelCollapsed)
+      ? clampSessionPanelWidth(sessionRailUserWidth, windowSize.width, showResizableRightDetailRail && !isDetailPanelCollapsed)
       : 0;
   const leftWorkspaceWidth =
     collapseChatSessions || isSingleWorkspacePage
       ? LEFT_RAIL_WIDTH
       : LEFT_RAIL_WIDTH + sessionRailWidth;
   const detailRailWidth =
-    showRightDetailRail && !isDetailPanelCollapsed
+    showResizableRightDetailRail && !isDetailPanelCollapsed
       ? clampDetailPanelWidth(detailRailUserWidth, windowSize.width, leftWorkspaceWidth)
       : 0;
   const minWindowWidth = Math.max(
@@ -82,7 +83,7 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
     getWorkspaceWindowMinWidth({
       showSessionRail,
       collapseChatSessions,
-      showRightDetailRail,
+      showRightDetailRail: showResizableRightDetailRail,
       isDetailPanelCollapsed,
     }),
   );
@@ -93,8 +94,8 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   useEffect(() => {
     windowWidthRef.current = windowSize.width;
     leftWorkspaceWidthRef.current = leftWorkspaceWidth;
-    rightDetailVisibleRef.current = showRightDetailRail && !isDetailPanelCollapsed;
-  }, [windowSize.width, leftWorkspaceWidth, showRightDetailRail, isDetailPanelCollapsed]);
+    rightDetailVisibleRef.current = showResizableRightDetailRail && !isDetailPanelCollapsed;
+  }, [windowSize.width, leftWorkspaceWidth, showResizableRightDetailRail, isDetailPanelCollapsed]);
 
   useEffect(() => {
     if (!isNativeShell) {

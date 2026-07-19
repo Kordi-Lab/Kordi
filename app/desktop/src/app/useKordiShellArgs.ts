@@ -294,6 +294,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       activeNav: args.activeNav,
       activeDetailTab: args.activeDetailTab,
       setActiveDetailTab: args.setActiveDetailTab,
+      setIsDetailPanelCollapsed: args.setIsDetailPanelCollapsed,
       activeSourcePreview: args.activeSourcePreview,
       setActiveSourcePreview: args.setActiveSourcePreview,
       activeArtifactId: args.activeArtifactId,

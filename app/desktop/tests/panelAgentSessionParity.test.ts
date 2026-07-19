@@ -39,6 +39,15 @@ test('side-panel Agent chat renders the same reusable session pane as the main A
   assert.doesNotMatch(side, /<textarea[\s\S]*data-composer-scope="companion"/, 'side panel must not keep a bespoke composer textarea');
 });
 
+test('side-panel destinations do not repeat Ask Agent or destination headings inside the page', () => {
+  const source = chatsPageSource();
+  const side = sidePanelBlock(source);
+  const detailPage = readFileSync(new URL('../src/pages/RightDetailRail.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(side, /pageEyebrow=|pageTitle=|Related tasks/, 'Ask Agent destinations should begin with their real content');
+  assert.doesNotMatch(detailPage, /app-right-detail-page-header|app-right-detail-page-eyebrow|uppercase/, 'full-page destinations should not render repeated or capitalized hero copy');
+});
+
 test('shared Agent session pane and composer include transcript, attachments, forwarding, details, and right expansion hooks', () => {
   const source = chatsPageSource();
   const pane = chatSessionPaneBlock(source);
@@ -213,7 +222,7 @@ test('virtualized chat transcripts load and mount off-page jump targets', () => 
   assert.match(source, /onNavigationHandled=\{handleCompanionTranscriptNavigationHandled\}/, 'companion navigation should acknowledge the exact handled request');
 });
 
-test('side-panel Agent session omits the header session Details button', () => {
+test('side-panel Agent session uses independent full-pane destination subtitles', () => {
   const source = chatsPageSource();
   const pane = chatSessionPaneBlock(source);
   const side = sidePanelBlock(source);
@@ -222,13 +231,30 @@ test('side-panel Agent session omits the header session Details button', () => {
   assert.match(pane, /onOpenMessageDetail=\{onOpenMessageDetail\}/, 'ChatSessionPane should pass message detail handling into MessageBubble');
   assert.doesNotMatch(side, /data-side-chat-session-detail-toggle="true"/, 'side-panel header should not show a session Details button');
   assert.doesNotMatch(side, /isCompanionDetailPanelCollapsed \? 'Details' : 'Hide details'/, 'side-panel header should not render Details/Hide details text');
-  assert.match(source, /companionInlineDetailRail\s*=\s*showCompanionDetailRail\s*&&\s*!isCompanionDetailPanelCollapsed/, 'side-panel session should still have its own inline detail rail state for message details');
-  assert.match(source, /const \[companionActiveDetailTab, setCompanionActiveDetailTab\] = useState<DetailTab>\('info'\)/, 'side-panel detail rail should not share the main activeDetailTab state');
-  assert.match(source, /const \[companionActiveArtifactId, setCompanionActiveArtifactId\] = useState<string \| null>\(null\)/, 'side-panel detail rail should not share the main activeArtifactId state');
+  assert.match(source, /const \[companionDestination, setCompanionDestination\] = useState<ChatDestination>\('messages'\)/, 'side-panel destinations should not share the main active destination state');
+  assert.match(source, /const \[companionActiveArtifactId, setCompanionActiveArtifactId\] = useState<string \| null>\(null\)/, 'side-panel artifacts should not share the main activeArtifactId state');
   assert.match(source, /activeDetailTab=\{companionActiveDetailTab\}/, 'side-panel detail rail should render using the side-panel detail tab');
   assert.match(source, /activeArtifactId=\{companionActiveArtifactId\}/, 'side-panel detail rail should render using the side-panel artifact selection');
-  assert.match(source, /data-chat-companion-detail-rail="true"/, 'side-panel detail rail should render as a companion rail, not the main middle rail');
-  assert.match(source, /\{showCompanionPane && companionSide === 'right' \? companionPane : null\}\s*\{showCompanionPane && companionSide === 'right' \? companionInlineDetailRail : null\}/s, 'right-side companion detail rail should render to the right of the side panel');
+  assert.match(source, /scope="companion"/, 'side-panel header should expose the same destination subtitles');
+  assert.match(source, /data-chat-destination-scope="companion"/, 'side-panel detail content should replace only its own pane');
+  assert.match(source, /variant="page"/, 'side-panel detail content should use the whole-pane detail surface');
+  assert.match(source, /companionDestination === 'messages' \? \(/, 'side-panel transcript and detail destinations should be mutually exclusive');
+  assert.doesNotMatch(source, /companionInlineDetailRail|data-chat-companion-detail-rail/, 'side-panel details should no longer add another split column');
+});
+
+test('changing either main or Ask Agent session returns that pane to Messages before paint', () => {
+  const source = chatsPageSource();
+
+  assert.match(
+    source,
+    /useLayoutEffect\(\(\) => \{\s*setIsDetailPanelCollapsed\(true\);\s*}, \[activeConv\.id, setIsDetailPanelCollapsed\]\);/,
+    'every main session identity change should reset the main destination to Messages',
+  );
+  assert.match(
+    source,
+    /useLayoutEffect\(\(\) => \{\s*setCompanionDestination\('messages'\);\s*setCompanionActiveArtifactId\(null\);\s*setCompanionActiveSourcePreview\(null\);\s*}, \[companionConversation\?\.id\]\);/,
+    'every Ask Agent session identity change should reset its destination and stale detail selections',
+  );
 });
 
 test('sending from main or side-panel chat schedules a jump to the sent message', () => {

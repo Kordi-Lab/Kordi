@@ -13,6 +13,7 @@ function baseArgs(overrides: Partial<RightDetailShellArgs> = {}): RightDetailShe
     activeNav: 'chats',
     activeDetailTab: 'info',
     setActiveDetailTab: () => {},
+    setIsDetailPanelCollapsed: () => {},
     activeSourcePreview: null,
     setActiveSourcePreview: () => {},
     activeArtifactId: null,
@@ -78,7 +79,7 @@ test('chat detail panel hides internal delivery metadata from normal user surfac
   assert.doesNotMatch(source, /activeConv\.bridges\.join/);
 });
 
-test('Cloud Edition chat right rail includes the Tasks tab', () => {
+test('Cloud Edition chat destination contract includes icon tabs and renders one full page', () => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
@@ -92,11 +93,18 @@ test('Cloud Edition chat right rail includes the Tasks tab', () => {
     value: { title: 'Kordi Cloud' },
   });
 
-  const markup = renderToStaticMarkup(createElement(() => assembleRightDetailSlot(baseArgs())));
+  const infoMarkup = renderToStaticMarkup(createElement(() => assembleRightDetailSlot(baseArgs())));
+  const tasksMarkup = renderToStaticMarkup(createElement(() => assembleRightDetailSlot(baseArgs({ activeDetailTab: 'tasks' }))));
+  const chatsPage = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
 
-  assert.match(markup, /Info/);
-  assert.match(markup, /Artifacts/);
-  assert.match(markup, /Tasks/);
+  assert.match(infoMarkup, /app-right-detail-page/);
+  assert.match(infoMarkup, /Info/);
+  assert.doesNotMatch(infoMarkup, /app-detail-tab-list/);
+  assert.match(tasksMarkup, /Tasks/);
+  assert.match(chatsPage, /\{ id: 'messages', label: 'Messages', icon: MessageSquare \}/);
+  assert.match(chatsPage, /\{ id: 'info', label: 'Info', icon: Info \}/);
+  assert.match(chatsPage, /\{ id: 'artifacts', label: 'Artifacts', icon: FolderOpen \}/);
+  assert.match(chatsPage, /\{ id: 'tasks', label: 'Tasks', icon: CheckCircle2 \}/);
 });
 
 test('inspector lists do not draw a trailing row divider under panel list content', () => {

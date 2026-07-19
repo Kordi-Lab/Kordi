@@ -59,28 +59,42 @@ test('chat header title text does not flex-grow away from fork or action pills',
   assert.doesNotMatch(source, /min-w-\[10rem\] flex-1 break-words/);
 });
 
-test('chat headers use compact inline subtitle tags instead of tall stacked subtitles', () => {
+test('chat headers reserve a compact second row for icon destination subtitles', () => {
   const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
 
   assert.doesNotMatch(source, /min-h-\[112px\]/);
-  assert.match(source, /min-h-\[72px\]/);
+  assert.doesNotMatch(source, /min-h-\[100px\]/);
+  assert.equal((source.match(/min-h-\[84px\]/g) ?? []).length, 2, 'main and Ask Agent headers should share the compact height');
+  assert.match(shell, /\.app-right-detail-page-content\s*{[^}]*padding:\s*12px clamp\(20px, 4vw, 44px\) 40px;/s);
   assert.match(source, /data-chat-session-subtitle-pill="true"/);
+  assert.match(source, /data-chat-destination-tabs=\{scope\}/);
+  assert.match(source, /icon: MessageSquare/);
+  assert.match(source, /icon: Info/);
+  assert.match(source, /icon: FolderOpen/);
+  assert.match(source, /icon: CheckCircle2/);
   assert.doesNotMatch(source, /mt-0\.5 flex min-w-0 items-center text-\[11px\] leading-5 text-slate-400/);
   assert.doesNotMatch(source, /mt-0\.5 text-\[11px\] leading-5 text-slate-400">Agent session/);
 });
 
-test('chat and project header utility buttons follow flat chip styling without standout overrides', () => {
+test('Ask Agent remains a flat utility action while chat details move into destination subtitles', () => {
   const chatSource = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
   const projectSource = readFileSync(new URL('../src/pages/ProjectsPage.tsx', import.meta.url), 'utf8');
   const askAgentButton = chatSource.slice(chatSource.indexOf('aria-label="Ask Agent"') - 360, chatSource.indexOf('aria-label="Ask Agent"') + 180);
-  const mainChatDetailButtonStart = chatSource.indexOf('className="app-utility-button', chatSource.indexOf('aria-label="Ask Agent"'));
-  const chatDetailsButton = chatSource.slice(mainChatDetailButtonStart - 120, mainChatDetailButtonStart + 320);
   const projectDetailsButton = projectSource.slice(projectSource.indexOf('aria-label={isDetailPanelCollapsed') - 260, projectSource.indexOf('aria-label={isDetailPanelCollapsed') + 180);
 
-  assert.doesNotMatch(`${askAgentButton}\n${chatDetailsButton}\n${projectDetailsButton}`, /border-pink|bg-white\/\[0\.06\]|text-pink|text-slate-100/);
+  assert.doesNotMatch(`${askAgentButton}\n${projectDetailsButton}`, /border-pink|bg-white\/\[0\.06\]|text-pink|text-slate-100/);
   assert.match(askAgentButton, /className="app-utility-button[^"]*font-medium transition"/);
-  assert.match(chatDetailsButton, /className="app-utility-button[^"]*font-medium transition"/);
   assert.match(projectDetailsButton, /className="app-utility-button[^"]*font-medium transition"/);
+  assert.doesNotMatch(chatSource, /Open session details|Hide session details|>\s*Hide details\s*</);
+});
+
+test('chat destination pages do not reserve a resizable right-rail width', () => {
+  const layoutSource = readFileSync(new URL('../src/app/useAppLayoutState.ts', import.meta.url), 'utf8');
+
+  assert.match(layoutSource, /const showResizableRightDetailRail = activeNav === 'projects';/);
+  assert.match(layoutSource, /showResizableRightDetailRail && !isDetailPanelCollapsed\s*\? clampDetailPanelWidth/);
+  assert.match(layoutSource, /showRightDetailRail: showResizableRightDetailRail/);
 });
 
 test('message selection control is smaller than the old oversized blue circle', () => {
@@ -298,8 +312,11 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
   assert.match(source, /app-page-header[^"`]*z-40/);
   assert.match(source, /data-side-chat-options-menu="true"/);
   assert.match(source, /z-50/);
-  assert.match(source, /data-chat-inline-detail-rail="true"/);
-  assert.match(source, /ownInlineDetailRail\s*=\s*showRightDetailRail\s*&&\s*!isDetailPanelCollapsed/);
+  assert.match(source, /scope="main"/);
+  assert.match(source, /scope="companion"/);
+  assert.match(source, /data-chat-destination-page=\{companionDestination\}/);
+  assert.doesNotMatch(source, /data-chat-inline-detail-rail="true"/);
+  assert.doesNotMatch(source, /ownInlineDetailRail|companionInlineDetailRail/);
   assert.match(source, /data-companion-composer-footer="true"/);
   assert.match(source, /data-companion-send-row="true"/);
   assert.match(source, /data-companion-send-control="true"/);

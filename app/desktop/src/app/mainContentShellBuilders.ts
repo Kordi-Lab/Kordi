@@ -195,8 +195,10 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onTranscriptScroll: args.onChatTranscriptScroll,
     onOpenSource: (file) => {
       args.setActiveSourcePreview(file);
+      args.setActiveDetailTab('artifacts');
       args.setIsDetailPanelCollapsed(false);
     },
+    onClearSourcePreview: () => args.setActiveSourcePreview(null),
     onOpenArtifact: (artifactId) => {
       args.setActiveSourcePreview(null);
       args.setActiveArtifactId(artifactId);
