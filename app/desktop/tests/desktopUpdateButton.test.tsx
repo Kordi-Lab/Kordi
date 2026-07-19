@@ -139,6 +139,8 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /animate-spin/);
   assert.match(source, /w-\[14\.5rem\]/);
   assert.match(source, /app-update-popover/);
+  assert.match(source, /data-update-state=\{updateState\.status\}/);
+  assert.doesNotMatch(source, /app-update-popover overflow-hidden border/);
   assert.match(source, /w-\[18rem\]/);
   assert.match(source, /title=\{isUpdateConfirmOpen \? undefined : updateButtonPresentation\.title\}/);
   assert.doesNotMatch(source, /min-h-16 items-center justify-center/);
@@ -161,10 +163,29 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /Download manually/);
   assert.match(source, /receivedBytes/);
   assert.match(source, /totalBytes/);
+  assert.match(source, /role="progressbar"/);
+  assert.match(source, /aria-valuenow/);
+  assert.match(source, /app-update-popover-action-primary/);
+  assert.match(source, /app-update-popover-action-secondary/);
   assert.match(source, /updateConfirmAnchor/);
   assert.match(source, /position: 'fixed'/);
   assert.match(source, /isUpdateConfirmOpen && updateConfirmAnchor && typeof document !== 'undefined' \? createPortal/);
   assert.doesNotMatch(source, /src="\/favicon\.svg"/);
+});
+
+test('desktop update popover uses a quiet theme-aware surface in dark mode', () => {
+  const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const updateSurface = css.match(/\.bridge-app \.app-popover\.app-update-popover \{([\s\S]*?)\n\}/)?.[1] ?? '';
+
+  assert.match(updateSurface, /--app-update-surface: rgb\(20 22 27 \/ 0\.985\)/);
+  assert.match(updateSurface, /--app-update-edge: rgba\(255, 255, 255, 0\.055\)/);
+  assert.match(updateSurface, /border: 0 !important/);
+  assert.match(updateSurface, /inset 0 0 0 1px var\(--app-update-edge\)/);
+  assert.doesNotMatch(updateSurface, /var\(--app-shadow-float\)/);
+  assert.doesNotMatch(updateSurface, /inset 0 1px 0/);
+  assert.match(css, /\.bridge-app\.theme-light \.app-popover\.app-update-popover/);
+  assert.match(css, /\.app-update-popover-status-danger/);
+  assert.match(css, /\.app-update-popover-action:focus-visible/);
 });
 
 test('desktop update button is wired through the signed updater controller', () => {
