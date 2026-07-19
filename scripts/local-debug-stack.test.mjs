@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
 function read(path) {
   return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -83,4 +89,62 @@ test('community guide routes contributors through issues and reviewed pull reque
   assert.match(guide, /Open a draft pull request early/i);
   assert.match(guide, /Do not include tokens, credentials, private infrastructure details/i);
   assert.match(guide, /pnpm check:ci/);
+});
+
+test('operator debug is allowlisted to the staged core GitHub account', () => {
+  const allowlist = read('deploy/dev/operator-github-allowlist.txt')
+    .split('\n')
+    .map((line) => line.replace(/#.*/, '').trim())
+    .filter(Boolean);
+
+  assert.deepEqual(allowlist, ['shuyhere']);
+});
+
+test('operator debug launcher rejects other GitHub accounts and exports no database credentials', () => {
+  const tempRoot = mkdtempSync(join(tmpdir(), 'kordi-operator-test-'));
+  const binDir = join(tempRoot, 'bin');
+  const capturePath = join(tempRoot, 'capture.txt');
+  const scriptPath = join(repoRoot, 'scripts', 'dev-cloud-operator.sh');
+  try {
+    mkdirSync(binDir);
+    writeFileSync(join(binDir, 'gh'), '#!/bin/sh\nprintf \'%s\\n\' "$TEST_GITHUB_LOGIN"\n');
+    writeFileSync(
+      join(binDir, 'pnpm'),
+      '#!/bin/sh\nprintf \'%s\\n\' "$VITE_KORDI_CLOUD_API_BASE|$VITE_KORDI_DEV_PROFILE|$VITE_KORDI_PRODUCTION_DEBUG_ACK|${DATABASE_URL:-}|${REDIS_URL:-}|${S3_SECRET_KEY:-}|${KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY:-}|${KORDI_OAUTH_GOOGLE_CLIENT_SECRET:-}" > "$TEST_OPERATOR_CAPTURE"\n',
+    );
+    chmodSync(join(binDir, 'gh'), 0o755);
+    chmodSync(join(binDir, 'pnpm'), 0o755);
+
+    const baseEnv = {
+      ...process.env,
+      PATH: `${binDir}:${process.env.PATH ?? ''}`,
+      KORDI_OPERATOR_DEBUG_ACKNOWLEDGED: '1',
+      TEST_OPERATOR_CAPTURE: capturePath,
+      DATABASE_URL: 'postgresql://must-not-reach-desktop',
+      REDIS_URL: 'redis://must-not-reach-desktop',
+      S3_SECRET_KEY: 'must-not-reach-desktop',
+      KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY: 'must-not-reach-desktop',
+      KORDI_OAUTH_GOOGLE_CLIENT_SECRET: 'must-not-reach-desktop',
+    };
+    const rejected = spawnSync('bash', [scriptPath, 'https://coordinar.io'], {
+      cwd: repoRoot,
+      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'not-allowlisted' },
+      encoding: 'utf8',
+    });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /is not allowlisted/i);
+
+    const allowed = spawnSync('bash', [scriptPath, 'https://coordinar.io'], {
+      cwd: repoRoot,
+      env: { ...baseEnv, TEST_GITHUB_LOGIN: 'shuyhere' },
+      encoding: 'utf8',
+    });
+    assert.equal(allowed.status, 0, allowed.stderr);
+    assert.equal(
+      readFileSync(capturePath, 'utf8').trim(),
+      'https://coordinar.io|operator|1|||||',
+    );
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });

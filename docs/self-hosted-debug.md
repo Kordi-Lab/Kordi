@@ -262,7 +262,9 @@ Do not patch around the guard. If a shared non-production environment is require
 
 ### OAuth login is unavailable
 
-Password sign-up and login work without third-party OAuth configuration. Google or GitHub login requires developer-owned OAuth applications configured with loopback callbacks. Missing OAuth configuration does not prevent local password-account testing.
+Password sign-up and login work without third-party OAuth configuration. The desktop reads the server's authentication capabilities, so Google and GitHub buttons appear gray and cannot be clicked when their OAuth credentials are absent. Use email and password for normal local account testing.
+
+Google or GitHub login requires developer-owned OAuth applications configured with loopback callbacks. The server never returns missing environment-variable names or OAuth secrets to the login screen.
 
 ## Validation before opening a PR
 
@@ -307,6 +309,8 @@ Ordinary feature development should not require production SSH, Kubernetes, data
 A shared staging environment, when needed, must use separate identities, databases, buckets, encryption keys, OAuth applications, runner tokens, and logs. Never clone the production secret set into staging or a developer laptop.
 
 Repository code and local Docker access give a contributor full control over their own test environment only. Production access is controlled by server-side IAM and infrastructure policy, not by hiding local debug functionality.
+
+The allowlisted operator launcher described in [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md) is for approved core-maintainer diagnostics only. It is not an alternative contributor setup and never gives the desktop direct database credentials.
 
 ## Related guides
 

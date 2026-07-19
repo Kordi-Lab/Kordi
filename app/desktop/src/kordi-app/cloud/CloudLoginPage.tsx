@@ -65,6 +65,9 @@ const SOCIAL_LOGIN_PROVIDERS: ReadonlyArray<SocialProvider> = [
   { id: 'google', label: 'Google', Mark: GoogleMark },
   { id: 'github', label: 'GitHub', Mark: GitHubMark },
 ];
+const ALL_SOCIAL_PROVIDER_IDS: ReadonlyArray<CloudOAuthProvider> = SOCIAL_LOGIN_PROVIDERS.map(
+  (provider) => provider.id,
+);
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PASSWORD_MIN_LENGTH = 8;
@@ -92,6 +95,8 @@ function messageForError(error: CloudAuthError): string {
       return 'Upload an avatar to create your account.';
     case 'invalid_avatar':
       return 'Could not process that avatar. Try another image.';
+    case 'oauth_not_configured':
+      return 'That social sign-in method is not available here. Use email and password.';
     default:
       return error.message || 'Something went wrong.';
   }
@@ -281,6 +286,7 @@ export type CloudLoginPageProps = {
     avatarUrl?: string;
   }) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
+  availableSocialProviders?: ReadonlyArray<CloudOAuthProvider>;
 };
 
 const noopSignIn = async () => {
@@ -293,6 +299,7 @@ export function CloudLoginPage({
   onSignIn = noopSignIn,
   onSignUp = noopSignUp,
   onSocialSignIn,
+  availableSocialProviders,
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
   const [avatarPref, setAvatarPref] = useState<AvatarPreference | null>(() => initialAvatarPreference());
@@ -306,6 +313,11 @@ export function CloudLoginPage({
   const [uploadError, setUploadError] = useState<string | undefined>(undefined);
   const uploadErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSignup = mode === 'signup';
+  const enabledSocialProviders = availableSocialProviders
+    ?? (onSocialSignIn ? ALL_SOCIAL_PROVIDER_IDS : []);
+  const enabledSocialProviderCount = SOCIAL_LOGIN_PROVIDERS.filter(
+    (provider) => enabledSocialProviders.includes(provider.id),
+  ).length;
 
   useEffect(() => {
     void applyCloudLoginWindowSize(mode);
@@ -366,7 +378,7 @@ export function CloudLoginPage({
       : 'Continue';
 
   async function handleSocialSignIn(provider: CloudOAuthProvider) {
-    if (!onSocialSignIn || socialProvider) return;
+    if (!onSocialSignIn || socialProvider || !enabledSocialProviders.includes(provider)) return;
     setSocialProvider(provider);
     setSubmitError(null);
     try {
@@ -451,32 +463,51 @@ export function CloudLoginPage({
         </div>
 
         <div className="mt-7 flex items-center justify-center gap-6">
-          {SOCIAL_LOGIN_PROVIDERS.map((provider) => (
-            <button
-              key={provider.id}
-              type="button"
-              disabled={!onSocialSignIn || Boolean(socialProvider)}
-              title={`Continue with ${provider.label}`}
-              aria-label={`Continue with ${provider.label}`}
-              data-provider={provider.id}
-              onClick={() => void handleSocialSignIn(provider.id)}
-              className={[
-                'app-cloud-login-social-pill flex h-10 w-10 items-center justify-center rounded-full transition duration-150',
-                'hover:scale-105 focus-visible:outline-none',
-                'focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]',
-                'disabled:cursor-wait disabled:opacity-55',
-                INK,
-              ].join(' ')}
-            >
-              <provider.Mark />
-              {socialProvider === provider.id ? <span className="sr-only">Starting…</span> : null}
-            </button>
-          ))}
+          {SOCIAL_LOGIN_PROVIDERS.map((provider) => {
+            const isAvailable = Boolean(
+              onSocialSignIn && enabledSocialProviders.includes(provider.id),
+            );
+            const accessibleLabel = isAvailable
+              ? `Continue with ${provider.label}`
+              : `${provider.label} sign-in unavailable; use email and password`;
+            return (
+              <button
+                key={provider.id}
+                type="button"
+                disabled={!isAvailable || Boolean(socialProvider)}
+                title={accessibleLabel}
+                aria-label={accessibleLabel}
+                data-provider={provider.id}
+                data-provider-available={isAvailable ? 'true' : 'false'}
+                onClick={() => void handleSocialSignIn(provider.id)}
+                className={[
+                  'app-cloud-login-social-pill flex h-10 w-10 items-center justify-center rounded-full transition duration-150',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-cloud-login-focus-ring-visible)]',
+                  isAvailable
+                    ? 'hover:scale-105 disabled:cursor-wait disabled:opacity-55'
+                    : 'cursor-not-allowed opacity-35 grayscale',
+                  INK,
+                ].join(' ')}
+              >
+                <provider.Mark />
+                {socialProvider === provider.id ? <span className="sr-only">Starting…</span> : null}
+              </button>
+            );
+          })}
         </div>
+
+        {onSocialSignIn && enabledSocialProviderCount === 0 ? (
+          <p
+            data-cloud-social-sign-in-unavailable="true"
+            className={`mx-auto mt-3 max-w-[320px] text-center ${TYPE_HINT} normal-case tracking-normal ${INK_MUTED}`}
+          >
+            Google and GitHub sign-in aren’t available on this server. Use email and password.
+          </p>
+        ) : null}
 
         <div className={`mt-5 flex items-center gap-3 ${TYPE_DIVIDER} ${INK_SUBTLE}`}>
           <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
-          or
+          {enabledSocialProviderCount > 0 ? 'or' : 'Email and password'}
           <div className="h-px flex-1 bg-[var(--app-cloud-login-divider)]" />
         </div>
 

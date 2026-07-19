@@ -37,6 +37,7 @@ export type UseCloudSessionResult = {
   status: CloudSessionStatus;
   account: CloudAccount | null;
   error: CloudAuthError | null;
+  oauthProviders: CloudOAuthProvider[];
   signIn(email: string, password: string): Promise<void>;
   signUp(input: {
     email: string;
@@ -138,6 +139,7 @@ export function useCloudSession({
   const [status, setStatus] = useState<CloudSessionStatus>(enabled ? 'loading' : 'signed-out');
   const [account, setAccount] = useState<CloudAccount | null>(null);
   const [error, setError] = useState<CloudAuthError | null>(null);
+  const [oauthProviders, setOAuthProviders] = useState<CloudOAuthProvider[]>([]);
   const mountedRef = useRef(true);
   const accountIdRef = useRef<string | null>(null);
   const accountRef = useRef<CloudAccount | null>(null);
@@ -164,6 +166,26 @@ export function useCloudSession({
       window.location.reload();
     }
   }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+
+    void authClient.capabilities()
+      .then((capabilities) => {
+        if (cancelled) return;
+        setOAuthProviders(capabilities.oauthProviders.filter(
+          (provider): provider is CloudOAuthProvider => provider === 'google' || provider === 'github',
+        ));
+      })
+      .catch(() => {
+        if (!cancelled) setOAuthProviders([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authClient, enabled]);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
@@ -487,6 +509,7 @@ export function useCloudSession({
     status,
     account,
     error,
+    oauthProviders,
     signIn,
     signUp,
     signInWithProvider,

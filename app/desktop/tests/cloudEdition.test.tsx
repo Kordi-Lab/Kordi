@@ -126,7 +126,10 @@ test('cloud login mode switch keeps the top edge stable and smooths signup secti
 });
 
 test('cloud login page centers a minimal Codex-style Kordi account view before model provider auth', () => {
-  const markup = renderToStaticMarkup(createElement(CloudLoginPage));
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
+    onSocialSignIn: async () => {},
+    availableSocialProviders: ['google', 'github'],
+  }));
 
   // The painted brand mark no longer renders on the login surface.
   assert.doesNotMatch(markup, /kordi-paint-mark/);
@@ -224,6 +227,39 @@ test('social buttons surface provider sign-in affordances', () => {
   assert.doesNotMatch(markup, /aria-label="Continue with X"/);
   assert.doesNotMatch(markup, /coming soon/i);
   assert.match(markup, /aria-label="Sign in"/);
+});
+
+test('unconfigured social providers are gray, disabled, and direct users to email sign-in', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
+    onSocialSignIn: async () => {},
+    availableSocialProviders: [],
+  }));
+  const googleButton = markup.match(/<button[^>]*data-provider="google"[^>]*>/)?.[0] ?? '';
+  const githubButton = markup.match(/<button[^>]*data-provider="github"[^>]*>/)?.[0] ?? '';
+
+  for (const button of [googleButton, githubButton]) {
+    assert.match(button, /disabled=""/);
+    assert.match(button, /data-provider-available="false"/);
+    assert.match(button, /cursor-not-allowed/);
+    assert.match(button, /grayscale/);
+  }
+  assert.match(markup, /Google and GitHub sign-in aren’t available on this server/);
+  assert.match(markup, /Email and password/);
+  assert.doesNotMatch(markup, /KORDI_OAUTH_GOOGLE_CLIENT_ID/);
+});
+
+test('capabilities can enable one social provider without enabling the other', () => {
+  const markup = renderToStaticMarkup(createElement(CloudLoginPage, {
+    onSocialSignIn: async () => {},
+    availableSocialProviders: ['github'],
+  }));
+  const googleButton = markup.match(/<button[^>]*data-provider="google"[^>]*>/)?.[0] ?? '';
+  const githubButton = markup.match(/<button[^>]*data-provider="github"[^>]*>/)?.[0] ?? '';
+
+  assert.match(googleButton, /disabled=""/);
+  assert.match(googleButton, /data-provider-available="false"/);
+  assert.doesNotMatch(githubButton, /disabled=""/);
+  assert.match(githubButton, /data-provider-available="true"/);
 });
 
 test('social buttons render icon marks and no provider text label', () => {

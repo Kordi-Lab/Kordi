@@ -29,7 +29,8 @@ use crate::auth::messages::{
 use crate::auth::oauth::{
     clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
     exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
-    pkce_challenge, random_url_token, redirect_with_oauth_error, OAuthProfile, OAuthProvider,
+    oauth_provider_is_configured, pkce_challenge, random_url_token, redirect_with_oauth_error,
+    OAuthProfile, OAuthProvider,
 };
 use crate::auth::password::{
     hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
@@ -152,6 +153,13 @@ pub struct OAuthCallbackQuery {
 pub struct OAuthStartResponse {
     #[serde(rename = "authUrl")]
     pub auth_url: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuthCapabilitiesResponse {
+    pub password: bool,
+    #[serde(rename = "oauthProviders")]
+    pub oauth_providers: Vec<&'static str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -687,6 +695,7 @@ pub fn routes_with_config(
     let hasher_config = Arc::new(hasher_config);
 
     let public = Router::new()
+        .route("/v1/cloud/auth/capabilities", get(auth_capabilities))
         .route("/v1/cloud/auth/signup", post(signup))
         .route("/v1/cloud/auth/login", post(login))
         .route("/v1/cloud/auth/oauth/:provider/start", get(oauth_start))
@@ -832,6 +841,17 @@ pub async fn cloud_session_middleware(
             StatusCode::INTERNAL_SERVER_ERROR,
         ),
     }
+}
+
+async fn auth_capabilities() -> Json<AuthCapabilitiesResponse> {
+    Json(AuthCapabilitiesResponse {
+        password: true,
+        oauth_providers: OAuthProvider::ALL
+            .into_iter()
+            .filter(|provider| oauth_provider_is_configured(*provider))
+            .map(OAuthProvider::id)
+            .collect(),
+    })
 }
 
 async fn oauth_start(

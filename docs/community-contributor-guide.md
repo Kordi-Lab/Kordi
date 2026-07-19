@@ -186,6 +186,8 @@ The local backend is intentionally inspectable by the developer who runs it. Pro
 
 If a maintainer asks for shared-environment validation, use only the approved non-production origin and test identity provided for that work. Never copy production secrets or data into a local or staging environment.
 
+The core-maintainer operator launcher is GitHub-allowlisted and is not part of the community workflow. Do not modify its allowlist or endpoint safeguards to make a contributor test pass.
+
 ## Where to ask for help
 
 - Use the relevant GitHub issue for implementation and reproduction questions.

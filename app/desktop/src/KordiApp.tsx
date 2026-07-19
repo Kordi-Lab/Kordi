@@ -11,6 +11,11 @@ import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/us
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode } from '@/kordi-app/types';
 
+type CloudSessionGateResult = Pick<
+  UseCloudSessionResult,
+  'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider'
+> & Partial<Pick<UseCloudSessionResult, 'oauthProviders'>>;
+
 function readSystemTheme(): ResolvedThemeMode {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
@@ -92,7 +97,7 @@ export type KordiAppRootProps = {
    */
   cloudSessionStatus?: CloudSessionStatus;
   /** Optional injected hook result for testing without a real Tauri/fetch env. */
-  cloudSession?: Pick<UseCloudSessionResult, 'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider'>;
+  cloudSession?: CloudSessionGateResult;
 };
 
 export function KordiAppRoot({
@@ -144,7 +149,7 @@ function CloudEditionRoot({
   cloudSessionOverride,
 }: {
   cloudSessionStatusOverride?: CloudSessionStatus;
-  cloudSessionOverride?: Pick<UseCloudSessionResult, 'status' | 'account' | 'signIn' | 'signUp' | 'signInWithProvider'>;
+  cloudSessionOverride?: CloudSessionGateResult;
 }) {
   // Tests can hand us a stubbed session result; in production we use the hook.
   const liveSession = useCloudSession({
@@ -159,6 +164,7 @@ function CloudEditionRoot({
           onSignIn={session.signIn}
           onSignUp={session.signUp}
           onSocialSignIn={session.signInWithProvider}
+          availableSocialProviders={session.oauthProviders ?? []}
         />
       </CloudGateShell>
     );

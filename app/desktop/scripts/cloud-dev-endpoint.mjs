@@ -1,4 +1,6 @@
 export const PRODUCTION_CLOUD_API_ORIGIN = 'https://coordinar.io';
+export const COMMUNITY_CLOUD_DEV_PROFILE = 'community';
+export const OPERATOR_CLOUD_DEV_PROFILE = 'operator';
 const PRODUCTION_CLOUD_API_HOSTNAME = new URL(PRODUCTION_CLOUD_API_ORIGIN).hostname;
 
 function normalizeHostname(value) {
@@ -7,6 +9,20 @@ function normalizeHostname(value) {
 
 function isProductionCloudApiUrl(url) {
   return normalizeHostname(url.hostname) === PRODUCTION_CLOUD_API_HOSTNAME;
+}
+
+export function resolveCloudDevProfile(env = process.env) {
+  const profile = typeof env?.VITE_KORDI_DEV_PROFILE === 'string'
+    ? env.VITE_KORDI_DEV_PROFILE.trim().toLowerCase()
+    : '';
+  if (!profile || profile === COMMUNITY_CLOUD_DEV_PROFILE) return COMMUNITY_CLOUD_DEV_PROFILE;
+  if (profile === OPERATOR_CLOUD_DEV_PROFILE) return OPERATOR_CLOUD_DEV_PROFILE;
+  throw new Error('VITE_KORDI_DEV_PROFILE must be community or operator.');
+}
+
+export function operatorProductionDebugIsAllowed(env = process.env) {
+  return resolveCloudDevProfile(env) === OPERATOR_CLOUD_DEV_PROFILE
+    && env?.VITE_KORDI_PRODUCTION_DEBUG_ACK?.trim() === '1';
 }
 
 export function normalizeCloudApiOrigin(value) {
@@ -42,10 +58,10 @@ export function normalizeCloudApiOrigin(value) {
 
 export function resolveCloudDevApiBase(env = process.env) {
   const origin = normalizeCloudApiOrigin(env?.VITE_KORDI_CLOUD_API_BASE);
-  if (isProductionCloudApiUrl(new URL(origin))) {
+  if (isProductionCloudApiUrl(new URL(origin)) && !operatorProductionDebugIsAllowed(env)) {
     throw new Error(
-      'Production Cloud API is blocked in development. '
-      + 'Use the self-hosted debug server or an approved non-production environment.',
+      'Production Cloud API is blocked in development for community profiles. '
+      + 'Use the allowlisted operator launcher for approved production debugging.',
     );
   }
   return origin;

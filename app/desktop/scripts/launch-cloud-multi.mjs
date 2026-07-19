@@ -101,6 +101,7 @@ const configuredCloudApiBase = process.env.VITE_KORDI_CLOUD_API_BASE;
 let cloudApiBase;
 try {
     cloudApiBase = resolveCloudDevApiBase({
+        ...process.env,
         VITE_KORDI_CLOUD_API_BASE: localTunnelEnabled
             ? `http://127.0.0.1:${LOCAL_PORT}`
             : configuredCloudApiBase,

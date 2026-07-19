@@ -182,6 +182,20 @@ test('me returns the parsed account', async () => {
   assert.equal(account.passwordSet, true);
 });
 
+test('capabilities reports only server-configured social sign-in providers', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
+    password: true,
+    oauthProviders: ['github'],
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const capabilities = await client.capabilities();
+
+  assert.deepEqual(capabilities, { password: true, oauthProviders: ['github'] });
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/auth/capabilities');
+  assert.equal(calls[0].init?.method, 'GET');
+});
+
 test('cloud API defaults to the hosted product origin outside development', () => {
   assert.equal(cloudApiBaseUrl({}), 'https://coordinar.io');
 });
@@ -217,6 +231,29 @@ test('development cloud API requires an explicit non-production origin', () => {
       VITE_KORDI_CLOUD_API_BASE: 'https://staging.example.test/',
     }),
     'https://staging.example.test',
+  );
+});
+
+test('operator development requires both the operator profile and production acknowledgement', () => {
+  const baseEnv = {
+    DEV: true,
+    VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io',
+  };
+  assert.throws(
+    () => cloudApiBaseUrl({ ...baseEnv, VITE_KORDI_DEV_PROFILE: 'operator' }),
+    /blocked in development/i,
+  );
+  assert.throws(
+    () => cloudApiBaseUrl({ ...baseEnv, VITE_KORDI_PRODUCTION_DEBUG_ACK: '1' }),
+    /blocked in development/i,
+  );
+  assert.equal(
+    cloudApiBaseUrl({
+      ...baseEnv,
+      VITE_KORDI_DEV_PROFILE: 'operator',
+      VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
+    }),
+    'https://coordinar.io',
   );
 });
 
