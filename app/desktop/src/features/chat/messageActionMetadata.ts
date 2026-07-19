@@ -1,4 +1,4 @@
-import type { Message } from '../../kordi-app/types/message';
+import type { Message, MessageAttachment } from '../../kordi-app/types/message';
 
 export type MessageActionKind = 'quote' | 'forward';
 
@@ -11,6 +11,16 @@ export type MessageActionSource = {
   attachmentCount: number;
   createdAtMs?: number | null;
   timeLabel?: string | null;
+};
+
+/**
+ * Transient source data used only while the forward dialog is open.
+ * Attachments must never be persisted inside message-action metadata because
+ * they can contain device-local paths.
+ */
+export type ForwardMessageSource = MessageActionSource & {
+  attachments: MessageAttachment[];
+  attachmentOnly: boolean;
 };
 
 export type MessageActionMetadata = {
@@ -61,12 +71,40 @@ export function messageActionSourceFromMessage(
   };
 }
 
+export function forwardMessageSourceFromMessage(
+  message: Message,
+  sourceSessionId: string,
+): ForwardMessageSource | null {
+  const source = messageActionSourceFromMessage(message, sourceSessionId);
+  if (!source) return null;
+  const attachments = (message.attachments ?? []).map((attachment) => ({ ...attachment }));
+  const messageText = clean(message.turn?.assistantText) || clean(message.text) || clean(message.detail);
+  return {
+    ...source,
+    attachments,
+    attachmentOnly: attachments.length > 0 && !messageText,
+  };
+}
+
+export function persistedMessageActionSource(source: MessageActionSource): MessageActionSource {
+  return {
+    sourceSessionId: source.sourceSessionId,
+    sourceMessageId: source.sourceMessageId,
+    sourceMessageKind: source.sourceMessageKind,
+    senderLabel: source.senderLabel,
+    textPreview: source.textPreview,
+    attachmentCount: source.attachmentCount,
+    createdAtMs: source.createdAtMs,
+    timeLabel: source.timeLabel,
+  };
+}
+
 export function quoteMessageAction(source: MessageActionSource): MessageActionMetadata {
-  return { schemaVersion: 1, kind: 'quote', source };
+  return { schemaVersion: 1, kind: 'quote', source: persistedMessageActionSource(source) };
 }
 
 export function forwardMessageAction(source: MessageActionSource): MessageActionMetadata {
-  return { schemaVersion: 1, kind: 'forward', source };
+  return { schemaVersion: 1, kind: 'forward', source: persistedMessageActionSource(source) };
 }
 
 export function isMessageActionMetadata(value: unknown): value is MessageActionMetadata {

@@ -607,7 +607,9 @@ pub async fn desktop_chat_new_project_session(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        runtime.set_name(title).map_err(|err| err.to_string())?;
+        runtime
+            .set_auto_name(title)
+            .map_err(|err| err.to_string())?;
     }
     let session_id = runtime.session_id().to_string();
     kordi_cli::desktop_runtime::move_session_to_project(&session_id, &resolved_project_root)

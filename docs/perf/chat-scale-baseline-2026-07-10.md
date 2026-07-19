@@ -286,7 +286,7 @@ The following scenarios were not run in this non-interactive worktree session. T
 | Warm relaunch from v3 cache | serialized, recoverable per-peer cache/store tests including stale-load/newer-save ordering | Pending packaged run |
 | Reactivation after five minutes | sync coordinator focus/pageshow tests | Pending |
 | Adopt a changed profile, including avatar clear | atomic profile-signature adoption and stale-completion tests | Pending packaged identity run |
-| 50 switches between 1,000-message group and short direct chat | session paging and virtual transcript tests | Pending CPU/RSS capture |
+| 50 switches between 1,000-message group and short person chat | session paging and virtual transcript tests | Pending CPU/RSS capture |
 | Scroll newest→oldest→newest | variable-height prepend/jump tests | Pending native visual run |
 | Send to 20 recipients with one transient failure | dual-store durable exact-ID outbox, serialized in-flight mutation, partial-success/retry, and two-phase acknowledgement tests | Pending real Cloud run |
 | Restart before retry | dual-store durable exact-ID restore, mutation serialization, and acknowledgement-phase tests | Pending packaged restart run |

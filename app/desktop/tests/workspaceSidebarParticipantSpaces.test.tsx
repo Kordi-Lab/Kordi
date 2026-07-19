@@ -1087,7 +1087,7 @@ test('ChatCreateDialog group picker requires at least 2 people and excludes agen
 test('participant-space child session rows use hashtag titles and hide raw session ids', () => {
   assert.equal(participantSpaceSessionRowTitle('Hi shu'), '# Hi shu');
   assert.equal(participantSpaceSessionRowTitle('# Existing'), '# Existing');
-  assert.equal(participantSpaceSessionIdLabel({ id: 'session:group:child', canonicalSessionId: 'session:group:root' }), 'Group');
+  assert.equal(participantSpaceSessionIdLabel({ id: 'session:group:child', canonicalSessionId: 'session:group:root' }), 'Group chat');
 });
 
 test('participant-space direct sessions expose remove-chat context menu targets', () => {
@@ -1466,9 +1466,9 @@ test('WorkspaceSidebar selected group header exposes details and hashtag child s
   assert.ok(markup.indexOf('aria-label="Open group management"') < markup.indexOf('aria-label="Create session in Alice, Bob"'));
   assert.match(markup, /data-participant-space-row-actions="true"/);
   assert.match(markup, /# Hi shu/);
-  assert.match(sessionRowMarkup, /data-session-id-label="Direct chat"/);
+  assert.match(sessionRowMarkup, /data-session-id-label="Group chat"/);
   assert.doesNotMatch(sessionRowMarkup, /app-participant-space-session-id/);
-  assert.doesNotMatch(sessionRowMarkup, />Direct chat<\//);
+  assert.doesNotMatch(sessionRowMarkup, />Group chat<\//);
 });
 
 test('WorkspaceSidebar group child titles avoid native tooltips that destabilize hover', () => {
@@ -1607,7 +1607,7 @@ test('WorkspaceSidebar aligns child session hashtags and keeps last-message meta
   assert.match(markup, /# Dinner plans/);
   assert.match(markup, /data-session-message-count="1"/);
   assert.match(markup, /data-session-preview-line="Dinner plans · 1 message"/);
-  assert.match(markup, /data-session-id-label="Direct chat"/);
+  assert.match(markup, /data-session-id-label="Group chat"/);
   assert.doesNotMatch(markup, /Session ID: session:group-duplicate-preview/);
   assert.match(markup, /app-participant-space-session-preview/);
   assert.match(markup, /app-participant-space-session-title/);

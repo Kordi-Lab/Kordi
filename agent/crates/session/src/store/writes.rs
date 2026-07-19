@@ -4,7 +4,10 @@ use kordi_core::types::SessionEntry;
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 
-use crate::schema;
+use crate::{
+    naming::{SESSION_TITLE_POLICY_VERSION, SessionTitleSource},
+    schema,
+};
 
 /// Open or create the sessions database.
 pub(super) fn open_db(path: &std::path::Path) -> Result<Connection> {
@@ -64,15 +67,19 @@ pub(super) fn create_session_with_id_and_parent(
     conn.execute(
         "INSERT INTO sessions (
              session_id, cwd, created_at, updated_at, name, leaf_id, entry_count,
-             parent_session_id, parent_session_message_id, session_scope, project_root
-         ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, ?5, ?6, 'chat', NULL)",
+             parent_session_id, parent_session_message_id, session_scope, project_root,
+             title_source, title_revision, title_policy_version,
+             title_generated_from_entry_id, title_updated_at
+         ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, ?5, ?6, 'chat', NULL,
+                   'placeholder', 0, ?7, NULL, NULL)",
         params![
             session_id,
             cwd,
             now,
             now,
             parent_session_id,
-            parent_session_message_id
+            parent_session_message_id,
+            SESSION_TITLE_POLICY_VERSION,
         ],
     )?;
     Ok(())
@@ -137,11 +144,104 @@ pub(super) fn set_session_name(
     session_id: &str,
     name: Option<&str>,
 ) -> Result<()> {
-    conn.execute(
-        "UPDATE sessions SET name = ?1, updated_at = datetime('now') WHERE session_id = ?2",
-        params![name, session_id],
-    )?;
+    let source = if name.is_some() {
+        SessionTitleSource::Manual
+    } else {
+        SessionTitleSource::Placeholder
+    };
+    set_session_title(conn, session_id, name, source, None)?;
     Ok(())
+}
+
+pub(super) fn set_session_title(
+    conn: &Connection,
+    session_id: &str,
+    name: Option<&str>,
+    source: SessionTitleSource,
+    generated_from_entry_id: Option<&str>,
+) -> Result<bool> {
+    let normalized_name = name.map(str::trim).filter(|value| !value.is_empty());
+    let incoming_source = if normalized_name.is_some() {
+        source
+    } else {
+        SessionTitleSource::Placeholder
+    };
+    let existing = conn.query_row(
+        "SELECT name, title_source, title_revision FROM sessions WHERE session_id = ?1",
+        params![session_id],
+        |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        },
+    );
+    let (existing_name, existing_source_raw, existing_revision) = match existing {
+        Ok(value) => value,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    let existing_source = SessionTitleSource::from_db(&existing_source_raw);
+    let title_changed = existing_name.as_deref() != normalized_name;
+
+    let legacy_is_known_auto = existing_source == SessionTitleSource::Legacy
+        && existing_name
+            .as_deref()
+            .is_some_and(crate::naming::is_known_legacy_auto_title);
+    let allowed = match incoming_source {
+        SessionTitleSource::Placeholder => {
+            existing_source == SessionTitleSource::Placeholder || legacy_is_known_auto
+        }
+        SessionTitleSource::Auto => {
+            existing_source == SessionTitleSource::Placeholder
+                || (existing_source == SessionTitleSource::Auto
+                    && existing_revision < 2
+                    && title_changed)
+                || legacy_is_known_auto
+        }
+        _ => existing_source.can_be_replaced_by(incoming_source),
+    };
+    if !allowed {
+        return Ok(false);
+    }
+
+    if !title_changed && existing_source == incoming_source {
+        return Ok(false);
+    }
+    let next_revision = if incoming_source == SessionTitleSource::Placeholder {
+        0
+    } else if incoming_source == SessionTitleSource::Auto
+        && existing_source == SessionTitleSource::Auto
+    {
+        (existing_revision + 1).min(2)
+    } else if existing_source == incoming_source {
+        existing_revision + 1
+    } else {
+        1
+    };
+    let title_updated_at = Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE sessions
+         SET name = ?1,
+             title_source = ?2,
+             title_revision = ?3,
+             title_policy_version = ?4,
+             title_generated_from_entry_id = ?5,
+             title_updated_at = ?6,
+             updated_at = ?6
+         WHERE session_id = ?7",
+        params![
+            normalized_name,
+            incoming_source.as_str(),
+            next_revision,
+            SESSION_TITLE_POLICY_VERSION,
+            generated_from_entry_id,
+            title_updated_at,
+            session_id,
+        ],
+    )?;
+    Ok(true)
 }
 
 pub(super) fn update_session_scope(

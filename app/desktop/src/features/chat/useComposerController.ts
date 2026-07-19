@@ -28,6 +28,7 @@ export function useComposerController(args: UseComposerControllerArgs) {
     acceptChatMentionTarget: messageActions.acceptChatMentionTarget,
     acceptProjectMentionTarget: messageActions.acceptProjectMentionTarget,
     handleSendChatMessage: messageActions.handleSendChatMessage,
+    handleRetryChatMessage: messageActions.handleRetryChatMessage,
     handleSendProjectMessage: messageActions.handleSendProjectMessage,
     handleStopDesktopChatTurn: messageActions.handleStopDesktopChatTurn,
     handleStopBridgeAgentRequest: messageActions.handleStopBridgeAgentRequest,

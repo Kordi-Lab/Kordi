@@ -75,7 +75,7 @@ export function useProjectMessageActions({
       if (!projectRoot) {
         throw new Error('Create or select a project before sending a project message.');
       }
-      const sessionTitle = optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New session');
+      const sessionTitle = optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New chat');
       const nextState = await createDesktopProjectSession(projectRoot, sessionTitle);
       resolvedDesktopChatState = nextState;
       resolvedProjectSessionId = nextState.activeSessionId;

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { canonicalHistorySessionIdForConversation, ChatsPage } from '../src/pages/ChatsPage';
+import { canonicalHistorySessionIdForConversation, ChatsPage, selfAgentSessionIdForTitleRename } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
 
 const activeConv: Conversation = {
@@ -40,6 +40,7 @@ function renderChatsPage(overrides: Record<string, unknown> = {}) {
     desktopSessionRenameDraft: '',
     setDesktopSessionRenameDraft: () => undefined,
     onRenameDesktopSession: async () => undefined,
+    onRenameChatSession: async () => undefined,
     chatTranscriptScrollRef: { current: null },
     onTranscriptScroll: () => undefined,
     onOpenSource: () => undefined,
@@ -97,6 +98,63 @@ test('desktop runtime chats skip canonical history pagination while canonical-on
     id: 'cloud-row',
     canonicalSessionId: 'session:direct-person:me:alice',
   }), 'session:direct-person:me:alice');
+});
+
+test('self-agent title rename uses the stable canonical backend session id', () => {
+  assert.equal(selfAgentSessionIdForTitleRename({
+    id: 'local-runtime-id',
+    canonicalSessionId: 'session:self-agent:stable-id',
+    type: 'owned-agent',
+  }), 'session:self-agent:stable-id');
+  assert.equal(selfAgentSessionIdForTitleRename({
+    id: 'session:external-agent:one',
+    canonicalSessionId: 'session:external-agent:one',
+    type: 'external-agent',
+  }), null);
+  assert.equal(selfAgentSessionIdForTitleRename({
+    id: 'draft:local-chat',
+    canonicalSessionId: 'draft:local-chat',
+    type: 'owned-agent',
+  }), null);
+  assert.equal(selfAgentSessionIdForTitleRename({
+    id: 'cloud-agent:acct_me:hosted-agent',
+    canonicalSessionId: 'cloud-agent:acct_me:hosted-agent',
+    type: 'owned-agent',
+  }), null);
+});
+
+test('native self-agent header exposes double-click rename for Cloud-backed sessions only with its backend id', () => {
+  const selfAgentConversation: Conversation = {
+    ...activeConv,
+    id: 'cloud-row',
+    canonicalSessionId: 'session:self-agent:stable-id',
+    name: 'Release planning',
+    type: 'owned-agent',
+  };
+  const markup = renderChatsPage({
+    isNativeShell: true,
+    activeConv: selfAgentConversation,
+    activeConversationIsBridge: true,
+  });
+
+  assert.match(markup, /data-chat-session-title-rename="true"/);
+  assert.match(markup, /data-session-title-rename-trigger="double-click"/);
+  assert.match(markup, /data-session-id="session:self-agent:stable-id"/);
+  assert.match(markup, /aria-label="Rename session Release planning"/);
+  assert.match(markup, /title="Double-click to rename session"/);
+
+  const personMarkup = renderChatsPage({ isNativeShell: true });
+  assert.doesNotMatch(personMarkup, /data-chat-session-title-rename="true"/);
+
+  const hostedAgentMarkup = renderChatsPage({
+    isNativeShell: true,
+    activeConv: {
+      ...selfAgentConversation,
+      id: 'cloud-agent:acct_me:hosted-agent',
+      canonicalSessionId: 'cloud-agent:acct_me:hosted-agent',
+    },
+  });
+  assert.doesNotMatch(hostedAgentMarkup, /data-chat-session-title-rename="true"/);
 });
 
 test('chat page renders message selection action bar', () => {

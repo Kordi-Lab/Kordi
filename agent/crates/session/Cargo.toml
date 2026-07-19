@@ -25,6 +25,7 @@ chrono.workspace = true
 rusqlite.workspace = true
 kordi-provider.workspace = true
 tokio-util.workspace = true
+unicode-segmentation.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

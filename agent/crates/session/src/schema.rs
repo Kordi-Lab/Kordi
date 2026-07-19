@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 #[cfg(test)]
-const CURRENT_VERSION: i32 = 9;
+const CURRENT_VERSION: i32 = 10;
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE IF NOT EXISTS entries (
@@ -141,6 +141,53 @@ const MIGRATION_V9: &str = r#"
 ALTER TABLE sessions ADD COLUMN parent_session_message_id TEXT;
 "#;
 
+const MIGRATION_V10: &str = r#"
+ALTER TABLE sessions ADD COLUMN title_source TEXT NOT NULL DEFAULT 'placeholder';
+ALTER TABLE sessions ADD COLUMN title_revision INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN title_policy_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE sessions ADD COLUMN title_generated_from_entry_id TEXT;
+ALTER TABLE sessions ADD COLUMN title_updated_at TEXT;
+
+UPDATE sessions
+SET title_source = 'legacy',
+    title_revision = 1,
+    title_updated_at = updated_at
+WHERE name IS NOT NULL
+  AND TRIM(name) <> '';
+
+UPDATE sessions
+SET name = NULL,
+    title_source = 'placeholder',
+    title_revision = 0,
+    title_updated_at = NULL
+WHERE name IS NULL
+   OR TRIM(name) = ''
+   OR LOWER(TRIM(name)) IN (
+       'new session', 'new chat', 'untitled session', 'session',
+       'hi', 'hii', 'hiii', 'hiiii', 'hello', 'hey', 'test', 'testing',
+       'test reply', 'ok', 'okay', 'thanks', 'thank you', 'got it',
+       'hi how are you', 'hello how are you', 'how are you'
+   )
+   OR TRIM(name) IN ('你好', '您好', '嗨', '测试', '收到', '好的', '谢谢')
+   OR TRIM(name) = session_id
+   OR LOWER(TRIM(name)) LIKE 'session:%'
+   OR TRIM(name) = 'Session ' || SUBSTR(session_id, 1, 8)
+   OR (
+       LENGTH(TRIM(name)) = 36
+       AND SUBSTR(TRIM(name), 9, 1) = '-'
+       AND SUBSTR(TRIM(name), 14, 1) = '-'
+       AND SUBSTR(TRIM(name), 19, 1) = '-'
+       AND SUBSTR(TRIM(name), 24, 1) = '-'
+       AND LOWER(REPLACE(TRIM(name), '-', '')) NOT GLOB '*[^0-9a-f]*'
+   )
+   OR LOWER(REPLACE(TRIM(name), ' ', '')) IN ('@mykordi', '@myagent', '@kordi')
+   OR (
+       LOWER(REPLACE(TRIM(name), ' ', '')) LIKE 'testreply%'
+       AND SUBSTR(LOWER(REPLACE(TRIM(name), ' ', '')), 10) NOT GLOB '*[^0-9]*'
+   )
+   OR TRIM(name) NOT GLOB '*[^0-9]*';
+"#;
+
 /// Initialize database schema, applying migrations as needed.
 pub fn init_schema(conn: &Connection) -> Result<()> {
     let current = get_version(conn);
@@ -188,6 +235,11 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
     if current < 9 {
         conn.execute_batch(MIGRATION_V9)?;
         set_version(conn, 9)?;
+    }
+
+    if current < 10 {
+        conn.execute_batch(MIGRATION_V10)?;
+        set_version(conn, 10)?;
     }
 
     Ok(())
@@ -284,6 +336,11 @@ mod tests {
         assert!(columns.contains(&"parent_session_message_id".to_string()));
         assert!(columns.contains(&"session_scope".to_string()));
         assert!(columns.contains(&"project_root".to_string()));
+        assert!(columns.contains(&"title_source".to_string()));
+        assert!(columns.contains(&"title_revision".to_string()));
+        assert!(columns.contains(&"title_policy_version".to_string()));
+        assert!(columns.contains(&"title_generated_from_entry_id".to_string()));
+        assert!(columns.contains(&"title_updated_at".to_string()));
 
         let project_count: i64 = conn
             .query_row(
@@ -302,5 +359,75 @@ mod tests {
             )
             .unwrap();
         assert_eq!(reflection_count, 1);
+    }
+
+    #[test]
+    fn v10_migration_preserves_substantive_legacy_names_and_clears_weak_titles() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        set_version(&conn, 1).unwrap();
+        conn.execute_batch(MIGRATION_V2).unwrap();
+        set_version(&conn, 2).unwrap();
+        conn.execute_batch(MIGRATION_V3).unwrap();
+        set_version(&conn, 3).unwrap();
+        conn.execute_batch(MIGRATION_V4).unwrap();
+        set_version(&conn, 4).unwrap();
+        conn.execute_batch(MIGRATION_V5).unwrap();
+        set_version(&conn, 5).unwrap();
+        set_version(&conn, 6).unwrap();
+        conn.execute_batch(MIGRATION_V7).unwrap();
+        set_version(&conn, 7).unwrap();
+        conn.execute_batch(MIGRATION_V8).unwrap();
+        set_version(&conn, 8).unwrap();
+        conn.execute_batch(MIGRATION_V9).unwrap();
+        set_version(&conn, 9).unwrap();
+        conn.execute(
+            "INSERT INTO sessions(session_id, cwd, created_at, updated_at, name, entry_count, session_scope) VALUES(?1, '.', '2026-07-15T00:00:00Z', '2026-07-15T00:00:00Z', ?2, 0, 'chat')",
+            rusqlite::params!["meaningful", "Release validation plan"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sessions(session_id, cwd, created_at, updated_at, name, entry_count, session_scope) VALUES(?1, '.', '2026-07-15T00:00:00Z', '2026-07-15T00:00:00Z', ?2, 0, 'chat')",
+            rusqlite::params!["weak", "hello"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sessions(session_id, cwd, created_at, updated_at, name, entry_count, session_scope) VALUES(?1, '.', '2026-07-15T00:00:00Z', '2026-07-15T00:00:00Z', ?2, 0, 'chat')",
+            rusqlite::params!["raw-id", "e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83"],
+        )
+        .unwrap();
+
+        init_schema(&conn).unwrap();
+
+        let meaningful: (Option<String>, String) = conn
+            .query_row(
+                "SELECT name, title_source FROM sessions WHERE session_id = 'meaningful'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let weak: (Option<String>, String) = conn
+            .query_row(
+                "SELECT name, title_source FROM sessions WHERE session_id = 'weak'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let raw_id: (Option<String>, String) = conn
+            .query_row(
+                "SELECT name, title_source FROM sessions WHERE session_id = 'raw-id'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            meaningful,
+            (
+                Some("Release validation plan".to_string()),
+                "legacy".to_string()
+            )
+        );
+        assert_eq!(weak, (None, "placeholder".to_string()));
+        assert_eq!(raw_id, (None, "placeholder".to_string()));
     }
 }

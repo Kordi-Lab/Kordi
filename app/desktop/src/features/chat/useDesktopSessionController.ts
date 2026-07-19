@@ -31,7 +31,7 @@ function draftDesktopChatState(current: DesktopChatState | null): DesktopChatSta
     activeSession: {
       ...current.activeSession,
       id: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
-      title: 'New session',
+      title: 'New chat',
       subtitle: '',
       updatedAtLabel: 'Draft',
       messageCount: 0,

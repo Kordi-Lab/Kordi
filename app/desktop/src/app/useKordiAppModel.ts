@@ -95,7 +95,11 @@ import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { removeQueuedDesktopMessageById } from '@/features/chat/queuedDesktopMessages';
-import { messageActionSourceFromMessage, type MessageActionSource } from '@/features/chat/messageActionMetadata';
+import {
+  forwardMessageSourceFromMessage,
+  messageActionSourceFromMessage,
+  type ForwardMessageSource,
+} from '@/features/chat/messageActionMetadata';
 import { formatSelectedMessagesForCopy, setMessageSelectionSource, toggleMessageSelectionSource, type MessageSelectionState } from '@/features/chat/messageSelection';
 import { buildForwardDestinations, createForwardedMessageDrafts, orderedForwardSourcesForMessageIds, revealForwardedMessageInDestination, type ForwardDestination } from '@/features/chat/messageForwarding';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
@@ -194,7 +198,7 @@ export function useKordiAppModel({
   const cloudPresence = useCloudPresence(cloudSession.account);
   const [cloudAccountDialogTab, setCloudAccountDialogTab] = useState<CloudAccountSettingsTabId | null>(null);
   const [forwardDialog, setForwardDialog] = useState<{
-    sources: MessageActionSource[];
+    sources: ForwardMessageSource[];
     destinations: ForwardDestination[];
   } | null>(null);
   const [messageSelection, setMessageSelection] = useState<MessageSelectionState | null>(null);
@@ -485,6 +489,7 @@ export function useKordiAppModel({
   const {
     setCloudBridgeState,
     mergedBridgeState: desktopBridgeState,
+    prepareCloudForwardAttachments,
     sendCloudBridgeMessage,
     sendCloudGroupControl,
     recordCloudSessionFork,
@@ -904,7 +909,7 @@ export function useKordiAppModel({
     focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell);
   }, [activeConv.canonicalSessionId, activeConv.id, chatDraftSessionId, composerUi.setChatQuoteBySessionId, isNativeShell]);
   const onForwardMessage = useCallback((message: Message) => {
-    const source = messageActionSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId);
+    const source = forwardMessageSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId);
     if (!source) return;
     const destinations = buildForwardDestinations(chatConversations, LOCAL_DRAFT_CHAT_CONVERSATION_ID);
     if (!destinations.length) return;
@@ -912,7 +917,7 @@ export function useKordiAppModel({
   }, [activeConv.canonicalSessionId, activeConv.id, chatConversations, chatDraftSessionId]);
 
   const sourceForSelectableMessage = useCallback((message: Message) => (
-    messageActionSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId)
+    forwardMessageSourceFromMessage(message, activeConv.canonicalSessionId ?? activeConv.id ?? chatDraftSessionId)
   ), [activeConv.canonicalSessionId, activeConv.id, chatDraftSessionId]);
 
   const isMessageSelectable = useCallback((message: Message) => Boolean(sourceForSelectableMessage(message)), [sourceForSelectableMessage]);
@@ -1013,13 +1018,14 @@ export function useKordiAppModel({
       setActiveConvId(directCloudConversationId);
       void (async () => {
         for (const draft of drafts) {
+          const attachments = await prepareCloudForwardAttachments(draft.attachments);
           const body = encodeCloudDirectMessageEnvelope({
             schemaVersion: 1,
             kind: 'message',
             text: draft.text,
             messageAction: draft.messageAction,
           });
-          await sendCloudBridgeMessage(directCloudConversationId, body, []);
+          await sendCloudBridgeMessage(directCloudConversationId, body, attachments);
         }
         revealForwardedMessageInDestination({
           destinationConversationId: directCloudConversationId,
@@ -1048,6 +1054,7 @@ export function useKordiAppModel({
           messageKind: 'text',
           contentText: draft.text,
           content: {
+            ...(draft.attachments.length > 0 ? { attachments: draft.attachments } : {}),
             forwardedFrom: draft.forwardedFrom,
             messageAction: draft.messageAction,
           },
@@ -1081,6 +1088,7 @@ export function useKordiAppModel({
             const targetAccountIds = cloudGroupTargetAccountIds(targets);
             if (targetAccountIds.length > 0) {
               const groupSpaceId = bridgeGroupSessionSpaceId(groupScope);
+              const attachments = await prepareCloudForwardAttachments(draft.attachments);
               await sendCloudGroupControl({
                 targetAccountIds,
                 kind: 'group-message',
@@ -1095,6 +1103,7 @@ export function useKordiAppModel({
                   createdAtMs: now + index,
                   messageAction: draft.messageAction,
                 },
+                attachments,
               });
             }
           }
@@ -1110,7 +1119,7 @@ export function useKordiAppModel({
     })().catch((error: unknown) => {
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to forward messages');
     });
-  }, [canonicalSessionState?.profile.humanIdentityId, chatConversations, cloudSession.account, desktopBridgeState?.activeHostId, desktopBridgeState?.hosts, forwardDialog?.sources, sendCloudBridgeMessage, sendCloudGroupControl, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
+  }, [canonicalSessionState?.profile.humanIdentityId, chatConversations, cloudSession.account, desktopBridgeState?.activeHostId, desktopBridgeState?.hosts, forwardDialog?.sources, prepareCloudForwardAttachments, sendCloudBridgeMessage, sendCloudGroupControl, setActiveConvId, setCanonicalSessionState, setDesktopChatError]);
 
   const activeConvMentionScope = useMemo(
     () => mentionScopeConversationForActiveConversation(activeConv, chatConversations),
@@ -1538,6 +1547,7 @@ export function useKordiAppModel({
     acceptChatMentionTarget,
     acceptProjectMentionTarget,
     handleSendChatMessage,
+    handleRetryChatMessage,
     handleSendProjectMessage,
     handleStopDesktopChatTurn,
     handleStopBridgeAgentRequest,
@@ -2579,6 +2589,7 @@ export function useKordiAppModel({
     wrappedStopDesktopChatTurn,
     wrappedSendProjectMessage,
     wrappedSendChatMessage,
+    wrappedRetryChatMessage,
   } = useKordiShellViewModel({
     themeMode: settingsUi.resolvedThemeMode,
     lastBridgePollAt,
@@ -2594,6 +2605,7 @@ export function useKordiAppModel({
     handleStopDesktopChatTurn,
     handleSendProjectMessage,
     handleSendChatMessage: handleSendChatMessageWithQuoteClear,
+    handleRetryChatMessage,
   });
   const setChatComposerTextForSession = useCallback((sessionId: string, value: string) => {
     composerUi.setComposerDrafts((current) => updateScopeDraft(current, 'chat', sessionId, value));
@@ -2856,6 +2868,7 @@ export function useKordiAppModel({
     handleStopBridgeAgentRequest,
     handleSendProjectMessage: wrappedSendProjectMessage,
     handleSendChatMessage: wrappedSendChatMessage,
+    handleRetryChatMessage: wrappedRetryChatMessage,
     handleForkChatMessage,
     showChatDetailRail,
     activeDetailTab,

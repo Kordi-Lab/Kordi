@@ -16,6 +16,8 @@ import { __setSessionBackendForTests, type SessionStorageBackend } from '../src/
 import {
   AttachmentImageLightbox,
   AttachmentPreview,
+  attachmentImageForegroundToneFromRgba,
+  attachmentImageDeliveryVisual,
   attachmentPreviewIdentity,
   shouldCloseAttachmentContextMenuForTarget,
 } from '../src/kordi-app/components/transcriptAttachments';
@@ -282,15 +284,155 @@ test('image attachment actions are available from context menu instead of sticky
   assert.doesNotMatch(markup, /aria-label="Download Screenshot 2026-05-20\.png"/);
 });
 
-test('sending image attachments show an overlay progress indicator without restoring chrome', () => {
+test('sending image attachments show a centered adaptive media ring without chrome', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
     msg: { ...imageMessage, statusChips: ['sending'] },
   }));
 
-  assert.match(markup, /data-attachment-sending-indicator="true"/);
-  assert.match(markup, /Sending…/);
-  assert.match(markup, /animate-spin/);
+  assert.match(markup, /data-attachment-image-delivery-status="uploading"/);
+  assert.match(markup, /aria-label="Sending image"/);
+  assert.match(markup, /app-attachment-image-media-ring/);
+  assert.match(markup, /app-attachment-image-delivery-adaptive/);
+  assert.doesNotMatch(markup, /data-attachment-sending-indicator="true"/);
   assert.doesNotMatch(markup, /app-attachment-image-footer/);
+});
+
+test('image delivery states keep status inside the image', () => {
+  const delivering = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...imageMessage, statusChips: ['processing'] },
+  }));
+  const delivered = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...imageMessage, statusChips: ['delivered'] },
+  }));
+  const failed = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...imageMessage, statusChips: ['failed'] },
+  }));
+
+  assert.match(delivering, /data-attachment-image-delivery-status="delivering"/);
+  assert.match(delivering, /Delivering…/);
+  assert.match(delivered, /data-attachment-image-delivery-status="delivered"/);
+  assert.match(
+    delivered,
+    /data-attachment-image-delivery-status="delivered" class="app-attachment-image-delivery-overlay app-attachment-image-delivery-adaptive"/,
+  );
+  assert.match(delivered, />19:45</);
+  assert.match(delivered, /lucide-check-check/);
+  assert.match(failed, /data-attachment-image-delivery-status="failed"/);
+  assert.match(failed, /app-attachment-image-delivery-error/);
+  assert.match(failed, />Failed</);
+  assert.doesNotMatch(failed, />!</);
+});
+
+test('failed image attachments expose a real inline retry action', async () => {
+  const environment = installDom();
+  const host = environment.dom.window.document.createElement('div');
+  environment.dom.window.document.body.appendChild(host);
+  let retryCount = 0;
+  let root: Root | null = createRoot(host);
+
+  try {
+    await act(async () => {
+      root?.render(createElement(AttachmentPreview, {
+        msg: { ...imageMessage, statusChips: ['failed'] },
+        onRetryImage: () => { retryCount += 1; },
+      }));
+    });
+
+    const retry = host.querySelector<HTMLButtonElement>('[aria-label="Retry sending image"]');
+    assert.ok(retry);
+    assert.equal(retry.textContent?.replace(/\s+/g, ' ').trim(), 'Failed·Retry');
+    await act(async () => retry.click());
+    assert.equal(retryCount, 1);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    environment.restore();
+  }
+});
+
+test('partially delivered images can retry only the remaining recipients', async () => {
+  const environment = installDom();
+  const host = environment.dom.window.document.createElement('div');
+  environment.dom.window.document.body.appendChild(host);
+  let retryCount = 0;
+  let root: Root | null = createRoot(host);
+
+  try {
+    await act(async () => {
+      root?.render(createElement(AttachmentPreview, {
+        msg: { ...imageMessage, statusChips: ['partial'] },
+        onRetryImage: () => { retryCount += 1; },
+      }));
+    });
+
+    const retry = host.querySelector<HTMLButtonElement>('[aria-label="Retry sending image"]');
+    assert.ok(retry);
+    assert.equal(retry.textContent?.replace(/\s+/g, ' ').trim(), 'Partial·Retry');
+    await act(async () => retry.click());
+    assert.equal(retryCount, 1);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    environment.restore();
+  }
+});
+
+test('image delivery status mapping preserves upload, partial, and terminal semantics', () => {
+  assert.deepEqual(attachmentImageDeliveryVisual('pending_send'), {
+    kind: 'uploading',
+    label: 'Sending image',
+  });
+  assert.deepEqual(attachmentImageDeliveryVisual('partial'), {
+    kind: 'partial',
+    label: 'Partially delivered',
+  });
+  assert.deepEqual(attachmentImageDeliveryVisual('read'), {
+    kind: 'delivered',
+    label: 'Read',
+  });
+  assert.deepEqual(attachmentImageDeliveryVisual('processing_failed'), {
+    kind: 'failed',
+    label: 'Sending failed',
+  });
+  assert.equal(attachmentImageDeliveryVisual('unknown'), null);
+});
+
+test('image delivery foreground chooses the higher-contrast tone from image pixels', () => {
+  assert.equal(
+    attachmentImageForegroundToneFromRgba(new Uint8ClampedArray([248, 249, 251, 255])),
+    'dark',
+  );
+  assert.equal(
+    attachmentImageForegroundToneFromRgba(new Uint8ClampedArray([12, 18, 28, 255])),
+    'light',
+  );
+  assert.equal(
+    attachmentImageForegroundToneFromRgba(new Uint8ClampedArray([255, 255, 255, 0])),
+    null,
+  );
+});
+
+test('callers can suppress image delivery UI when the message already has a footer', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...imageMessage, statusChips: ['sending'] },
+    imageDeliveryStatus: null,
+  }));
+
+  assert.doesNotMatch(markup, /data-attachment-image-delivery-status=/);
+});
+
+test('image delivery styling adapts to image pixels without adding status chrome', () => {
+  const stylesheet = readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8');
+
+  assert.match(stylesheet, /\.app-attachment-image-delivery-adaptive\s*{[^}]*mix-blend-mode:\s*difference;/s);
+  assert.match(stylesheet, /\.app-attachment-image-delivery-overlay\s*{[^}]*pointer-events:\s*none;/s);
+  assert.match(stylesheet, /\.app-attachment-image-delivery-retry\s*{[^}]*pointer-events:\s*auto;/s);
+  assert.doesNotMatch(
+    stylesheet.match(/\.app-attachment-image-delivery-meta\s*{[^}]*}/s)?.[0] ?? '',
+    /background|border|box-shadow|backdrop-filter/,
+  );
 });
 
 test('sending file attachments show the same progress indicator', () => {

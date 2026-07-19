@@ -146,7 +146,7 @@ pub(crate) fn default_session_title(
         return Ok(identity_id);
     }
 
-    Ok("New session".to_string())
+    Ok("New chat".to_string())
 }
 
 pub(crate) fn clean_optional(value: Option<String>) -> Option<String> {

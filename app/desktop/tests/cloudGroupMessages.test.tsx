@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  cloudGroupAttachmentReferences,
+  cloudGroupControlWithAttachmentReferences,
   cloudGroupIdentityRequest,
   cloudGroupAgentResponseTargetAccountIds,
   cloudGroupDeliveryStateFromMessages,
@@ -191,6 +193,78 @@ test('cloud group control envelopes round trip attachments', () => {
     sizeBytes: 1234,
     downloadUrl: 'https://files.test/att_1',
     previewUrl: 'https://files.test/att_1',
+  }]);
+});
+
+test('group attachment previews stay outside the size-limited control envelope', () => {
+  const previewUrl = `data:image/webp;base64,${'a'.repeat(20_000)}`;
+  const uploadedAttachments = [{
+    attachmentId: 'att_large_preview',
+    name: 'image.png',
+    kind: 'image' as const,
+    mimeType: 'image/png',
+    sizeBytes: 1234,
+    previewUrl,
+  }];
+  const attachmentReferences = cloudGroupAttachmentReferences(uploadedAttachments);
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:attachments',
+    groupTitle: null,
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' }],
+    message: {
+      id: 'msg_1',
+      senderAccountId: 'acct_a',
+      text: '',
+      createdAtMs: 123,
+      attachments: attachmentReferences,
+    },
+  });
+
+  assert.equal(attachmentReferences[0]?.previewUrl, undefined);
+  assert.ok(body.length < 4_000, `control envelope was ${body.length} characters`);
+  assert.equal(parseCloudGroupControl(body)?.message?.attachments?.[0]?.previewUrl, null);
+});
+
+test('uploaded attachment references replace the durable pre-upload group payload', () => {
+  const pendingBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:attachments',
+    groupTitle: 'Design',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    participants: [{ accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' }],
+    message: {
+      id: 'msg_pending_upload',
+      senderAccountId: 'acct_a',
+      text: 'review this',
+      createdAtMs: 123,
+      targetCloudAgentId: 'agent_design',
+    },
+  });
+
+  const uploadedBody = cloudGroupControlWithAttachmentReferences(pendingBody, [{
+    attachmentId: 'att_uploaded',
+    name: 'mockup.png',
+    kind: 'image',
+    mimeType: 'image/png',
+    sizeBytes: 512,
+  }]);
+  const parsed = parseCloudGroupControl(uploadedBody);
+
+  assert.equal(parsed?.message?.id, 'msg_pending_upload');
+  assert.equal(parsed?.message?.text, 'review this');
+  assert.equal(parsed?.message?.targetCloudAgentId, 'agent_design');
+  assert.deepEqual(parsed?.message?.attachments, [{
+    attachmentId: 'att_uploaded',
+    name: 'mockup.png',
+    kind: 'image',
+    mimeType: 'image/png',
+    sizeBytes: 512,
+    downloadUrl: null,
+    previewUrl: null,
   }]);
 });
 

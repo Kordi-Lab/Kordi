@@ -788,7 +788,7 @@ export function buildCloudBridgeConversation({
     projectId: null,
     projectName: null,
     title,
-    subtitle: last?.text || (isPerson ? 'Direct human chat' : 'Remote agent thread'),
+    subtitle: last?.text || (isPerson ? 'Person chat' : 'Remote agent chat'),
     unreadCount: forceRead
       ? 0
       : visibleCloudMessages.filter((message) => (

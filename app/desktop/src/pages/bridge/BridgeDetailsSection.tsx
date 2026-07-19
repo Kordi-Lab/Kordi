@@ -1036,7 +1036,7 @@ function BridgePeerCard({
             {kind === 'agent' && peer.isDefaultAgent ? <span className="rounded-full border border-white/12 bg-white/[0.05] px-2 py-1 text-[11px] leading-none text-slate-200">Default</span> : null}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
-            <span>{kind === 'person' ? 'Direct human chat' : `${peer.ownerName || 'Remote'} • ${peer.runtime}`}</span>
+            <span>{kind === 'person' ? 'Person chat' : `${peer.ownerName || 'Remote'} • ${peer.runtime}`}</span>
             {peer.sharedProjects.length > 0 ? <span className="text-slate-500">Shared: {peer.sharedProjects.join(' • ')}</span> : null}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">

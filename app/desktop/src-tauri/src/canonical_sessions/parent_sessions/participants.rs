@@ -437,7 +437,7 @@ pub(super) fn ensure_parent_session_participants(
         conn.execute(
             "UPDATE sessions
              SET title = CASE
-                    WHEN TRIM(title) = '' OR title IN ('Session', 'New session') THEN ?1
+                    WHEN TRIM(title) = '' OR title IN ('Session', 'New session', 'New chat') THEN ?1
                     ELSE title
                  END,
                  updated_at_ms = ?2

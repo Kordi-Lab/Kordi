@@ -63,6 +63,43 @@ export type CloudGroupControlEnvelope = {
   } | null;
 };
 
+type CloudGroupAttachmentReferenceInput = Pick<
+  CloudMessageAttachment,
+  'attachmentId' | 'name' | 'kind'
+> & {
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+};
+
+export function cloudGroupAttachmentReferences(
+  attachments: readonly CloudGroupAttachmentReferenceInput[],
+): CloudMessageAttachment[] {
+  return attachments.map((attachment) => ({
+    attachmentId: attachment.attachmentId,
+    name: attachment.name,
+    kind: attachment.kind,
+    mimeType: attachment.mimeType ?? null,
+    sizeBytes: attachment.sizeBytes ?? null,
+  }));
+}
+
+export function cloudGroupControlWithAttachmentReferences(
+  body: string,
+  attachments: readonly CloudGroupAttachmentReferenceInput[],
+): string {
+  const envelope = parseCloudGroupControl(body);
+  if (!envelope?.message) {
+    throw new Error('Cloud group outbox envelope has no message payload.');
+  }
+  return encodeCloudGroupControl({
+    ...envelope,
+    message: {
+      ...envelope.message,
+      attachments: cloudGroupAttachmentReferences(attachments),
+    },
+  });
+}
+
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
 }
