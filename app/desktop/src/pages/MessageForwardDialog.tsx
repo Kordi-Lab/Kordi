@@ -44,7 +44,7 @@ export function MessageForwardDialog({
 
   return (
     <div
-      className="app-overlay fixed inset-0 z-[260] flex items-center justify-center bg-black/35 p-4 backdrop-blur-[10px]"
+      className="app-transient-overlay app-overlay fixed inset-0 z-[260] flex items-center justify-center p-4 backdrop-blur-[10px]"
       style={{ WebkitAppRegion: 'no-drag' as const }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -56,9 +56,9 @@ export function MessageForwardDialog({
         aria-labelledby="message-forward-dialog-title"
         data-message-forward-dialog="true"
         data-message-forward-mode={isBatch ? 'batch' : 'single'}
-        className="app-message-forward-dialog w-full max-w-[380px] overflow-hidden rounded-[22px] border border-[color:var(--app-control-border)] bg-[color:var(--app-modal-bg)] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-[var(--app-glass-blur-float)]"
+        className="app-transient-surface app-message-forward-dialog w-full max-w-[380px] overflow-hidden rounded-[20px] border"
       >
-        <header className="flex items-start justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-3">
+        <header className="app-transient-divider flex items-start justify-between gap-3 border-b px-4 py-3">
           <div className="min-w-0 flex-1">
             <h2 id="message-forward-dialog-title" className="text-[13px] font-semibold text-[color:var(--utility-foreground)]">
               {isBatch ? `Forward ${sources.length} messages` : 'Forward message'}
@@ -88,7 +88,7 @@ export function MessageForwardDialog({
               <button
                 key={destination.id}
                 type="button"
-                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition ${selected ? 'bg-[color:var(--app-control-active)] text-[color:var(--utility-foreground)]' : 'text-[color:var(--utility-foreground)] hover:bg-[color:var(--app-control-hover)]'}`}
+                className={`app-transient-row flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition ${selected ? 'app-transient-row-selected' : ''}`}
                 data-message-forward-destination={destination.id}
                 aria-pressed={selected}
                 onClick={() => setSelectedId(destination.id)}
@@ -103,10 +103,10 @@ export function MessageForwardDialog({
           })}
         </div>
 
-        <footer className="border-t border-[color:var(--app-divider)] p-3">
+        <footer className="app-transient-divider border-t p-3">
           {!isBatch ? (
             <textarea
-              className="mb-3 min-h-[52px] w-full resize-none rounded-2xl border border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] px-3 py-2 text-[12px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)] focus:border-[color:var(--app-sidebar-accent)]"
+              className="mb-3 min-h-[52px] w-full resize-none rounded-[14px] border border-[color:var(--app-transient-border)] bg-[color:var(--app-transient-raised-bg)] px-3 py-2 text-[12px] text-[color:var(--app-transient-text)] outline-none placeholder:text-[color:var(--app-transient-muted-text)]"
               placeholder="Add a comment…"
               value={caption}
               onChange={(event) => setCaption(event.target.value)}

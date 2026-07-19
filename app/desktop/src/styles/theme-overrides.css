@@ -73,27 +73,19 @@
     inset 0 -1px 0 rgba(15, 23, 42, 0.04);
 }
 
-/* Light-mode popovers stay neutral-white and soft so they blend with the
- * surrounding paper shell instead of popping out. Background, border, and
- * shadow are deliberately quieter than the modal/sheet stack. */
+/* Popovers use the same cool, near-opaque transient hierarchy as the
+ * Start-a-chat reference. */
 .bridge-app.theme-light .app-popover {
-  background: rgba(255, 255, 255, 0.82) !important;
-  border-color: rgba(15, 23, 42, 0.06) !important;
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.03),
-    0 10px 24px rgba(15, 23, 42, 0.06),
-    0 2px 6px rgba(15, 23, 42, 0.04) !important;
+  background: var(--app-transient-surface-bg) !important;
+  border-color: var(--app-transient-border) !important;
+  box-shadow: var(--app-transient-shadow) !important;
 }
 
-/* Update feedback is a compact utility surface, not a glass card. Its local
- * tokens deliberately avoid the generic popover highlight and float shadow:
- * those layers compound into a bright rim and spotlight in dark mode. */
+/* Update feedback keeps status-specific accents inside the shared shell. */
 .bridge-app .app-popover.app-update-popover {
-  --app-update-surface: rgb(20 22 27 / 0.985);
-  --app-update-edge: rgba(255, 255, 255, 0.055);
-  --app-update-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.34),
-    0 3px 10px rgba(0, 0, 0, 0.2);
+  --app-update-surface: var(--app-transient-surface-bg);
+  --app-update-edge: var(--app-transient-border);
+  --app-update-shadow: var(--app-transient-shadow);
   --app-update-active: rgb(147 197 253);
   --app-update-active-soft: rgba(96, 165, 250, 0.1);
   --app-update-success: rgb(110 231 183);
@@ -106,20 +98,14 @@
   --app-update-action-text: rgba(255, 255, 255, 0.9);
   --app-update-focus: rgba(147, 197, 253, 0.72);
   background: var(--app-update-surface) !important;
-  border: 0 !important;
-  box-shadow:
-    inset 0 0 0 1px var(--app-update-edge),
-    var(--app-update-shadow) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  border: 1px solid var(--app-update-edge) !important;
+  box-shadow: var(--app-update-shadow) !important;
 }
 
 .bridge-app.theme-light .app-popover.app-update-popover {
-  --app-update-surface: rgba(255, 255, 255, 0.975);
-  --app-update-edge: rgba(15, 23, 42, 0.075);
-  --app-update-shadow:
-    0 14px 30px rgba(15, 23, 42, 0.1),
-    0 3px 9px rgba(15, 23, 42, 0.05);
+  --app-update-surface: var(--app-transient-surface-bg);
+  --app-update-edge: var(--app-transient-border);
+  --app-update-shadow: var(--app-transient-shadow);
   --app-update-active: rgb(37 99 235);
   --app-update-active-soft: rgba(37, 99, 235, 0.085);
   --app-update-success: rgb(4 120 87);
@@ -127,9 +113,9 @@
   --app-update-danger: rgb(190 18 60);
   --app-update-danger-soft: rgba(225, 29, 72, 0.08);
   --app-update-progress-track: rgba(15, 23, 42, 0.09);
-  --app-update-action-bg: rgba(31, 27, 25, 0.9);
-  --app-update-action-hover: rgba(31, 27, 25, 0.96);
-  --app-update-action-text: rgb(248 246 243);
+  --app-update-action-bg: var(--app-transient-text);
+  --app-update-action-hover: color-mix(in oklab, var(--app-transient-text) 88%, var(--app-transient-surface-fallback));
+  --app-update-action-text: var(--app-transient-surface-fallback);
   --app-update-focus: rgba(37, 99, 235, 0.62);
 }
 
@@ -214,38 +200,24 @@
   color: var(--utility-foreground);
 }
 
-/* --- Profile popover (avatar-anchored, glass) ---
- *
- * Independent floating surface that pops out beside the avatar trigger.
- * Uses a more aggressive glass treatment than the generic .app-popover —
- * the background is intentionally translucent so the page bg's brand-color
- * highlights diffuse through. Pairs with the @supports backdrop-filter
- * block in shell.css that targets .app-popover with the float-tier blur. */
+/* Avatar-anchored profile menus keep their placement animation while sharing
+ * the same readable surface contract as every other popup. */
 .app-profile-popover {
-  background: var(--app-popover-glass-bg, rgba(20, 24, 32, 0.56));
-  border-color: var(--app-popover-glass-border, rgba(255, 255, 255, 0.08));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 32px rgba(0, 0, 0, 0.38),
-    0 2px 6px rgba(0, 0, 0, 0.18);
+  background: var(--app-transient-surface-bg);
+  border-color: var(--app-transient-border);
+  box-shadow: var(--app-transient-shadow);
 }
 
 .bridge-app.theme-light .app-profile-popover {
-  background: rgba(255, 255, 255, 0.62) !important;
-  border-color: rgba(15, 23, 42, 0.07) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.65),
-    0 0 0 1px rgba(15, 23, 42, 0.03),
-    0 14px 32px rgba(15, 23, 42, 0.08),
-    0 2px 6px rgba(15, 23, 42, 0.05) !important;
+  background: var(--app-transient-surface-bg) !important;
+  border-color: var(--app-transient-border) !important;
+  box-shadow: var(--app-transient-shadow) !important;
 }
 
 @supports (backdrop-filter: blur(8px)) {
   .app-profile-popover {
-    /* Stronger blur than the float tier so the diffusion is actually visible
-     * on a fixed overlay. */
-    backdrop-filter: blur(18px) saturate(1.08);
-    -webkit-backdrop-filter: blur(18px) saturate(1.08);
+    backdrop-filter: blur(12px) saturate(1.035);
+    -webkit-backdrop-filter: blur(12px) saturate(1.035);
   }
 }
 
@@ -355,21 +327,18 @@
 }
 
 .bridge-app.theme-light .app-cloud-account-settings-overlay {
-  background: rgba(15, 23, 42, 0.24) !important;
+  background: var(--app-transient-overlay-bg) !important;
 }
 
 .bridge-app.theme-light .app-cloud-account-settings-dialog {
-  border-color: rgba(37, 99, 235, 0.12) !important;
-  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96) 0%, rgba(241, 247, 255, 0.92) 100%) !important;
-  box-shadow:
-    0 0 0 1px rgba(37, 99, 235, 0.045),
-    0 18px 44px rgba(15, 23, 42, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+  border-color: var(--app-transient-border) !important;
+  background: var(--app-transient-surface-bg) !important;
+  box-shadow: var(--app-transient-shadow) !important;
 }
 
 .bridge-app.theme-light .app-cloud-account-settings-dialog > div:first-child {
-  border-right-color: rgba(37, 99, 235, 0.10) !important;
-  background: rgba(248, 251, 255, 0.52);
+  border-right-color: var(--app-transient-divider) !important;
+  background: var(--app-transient-raised-bg);
 }
 
 .bridge-app.theme-light .app-avatar-upload-button {
@@ -387,25 +356,22 @@
 }
 
 .bridge-app.theme-light .app-auth-popup-panel {
-  border-color: rgba(37, 99, 235, 0.12) !important;
-  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96) 0%, rgba(241, 247, 255, 0.92) 100%) !important;
-  box-shadow:
-    0 0 0 1px rgba(37, 99, 235, 0.045),
-    0 18px 44px rgba(15, 23, 42, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+  border-color: var(--app-transient-border) !important;
+  background: var(--app-transient-surface-bg) !important;
+  box-shadow: var(--app-transient-shadow) !important;
 }
 
 .bridge-app.theme-light .app-auth-popup-header,
 .bridge-app.theme-light .app-auth-popup-footer {
-  border-color: rgba(37, 99, 235, 0.10) !important;
-  background: rgba(248, 251, 255, 0.38);
+  border-color: var(--app-transient-divider) !important;
+  background: var(--app-transient-raised-bg);
 }
 
 .bridge-app.theme-light .app-auth-flow-steps,
 .bridge-app.theme-light .app-auth-popup-info-card,
 .bridge-app.theme-light .app-auth-popup-note {
-  border-color: rgba(37, 99, 235, 0.12) !important;
-  background: rgba(239, 246, 255, 0.72) !important;
+  border-color: var(--app-transient-border) !important;
+  background: var(--app-transient-raised-bg) !important;
   box-shadow: none !important;
 }
 

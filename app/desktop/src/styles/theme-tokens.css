@@ -237,3 +237,60 @@
   --app-cloud-login-danger-text: oklch(0.42 0.18 25);
   --app-cloud-login-danger-bg: oklch(0.97 0.04 25 / 0.55);
 }
+
+/* Transient surfaces intentionally live on both the app root and body.
+ * Several menus are portaled to document.body, so keeping this contract on
+ * only .bridge-app would make their theme depend on where React mounts them. */
+:where(body, .bridge-app) {
+  --app-transient-surface-bg: rgb(20 22 27 / 0.985);
+  --app-transient-surface-fallback: rgb(20 22 27);
+  --app-transient-raised-bg: rgb(29 31 37 / 0.98);
+  --app-transient-hover-bg: rgb(35 38 45 / 0.98);
+  --app-transient-selected-bg: rgb(37 44 57 / 0.98);
+  --app-transient-selected-border: rgb(96 165 250 / 0.34);
+  --app-transient-border: rgb(255 255 255 / 0.095);
+  --app-transient-divider: rgb(255 255 255 / 0.075);
+  --app-transient-text: rgb(244 246 249);
+  --app-transient-muted-text: rgb(160 167 179);
+  --app-transient-subtle-text: rgb(116 124 138);
+  --app-transient-icon-bg: rgb(255 255 255 / 0.055);
+  --app-transient-focus-ring: rgb(96 165 250 / 0.82);
+  --app-transient-overlay-bg: rgb(5 7 10 / 0.66);
+  --app-transient-disabled-bg: rgb(255 255 255 / 0.035);
+  --app-transient-disabled-text: rgb(116 124 138);
+  --app-transient-danger-bg: rgb(244 63 94 / 0.11);
+  --app-transient-danger-hover-bg: rgb(244 63 94 / 0.17);
+  --app-transient-danger-border: rgb(251 113 133 / 0.24);
+  --app-transient-danger-text: rgb(253 164 175);
+  --app-transient-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.025),
+    0 18px 46px rgb(0 0 0 / 0.38),
+    0 4px 14px rgb(0 0 0 / 0.22);
+}
+
+:where(body.theme-light, .bridge-app.theme-light, .app-transient-theme-light, .app-compact-model-menu-light, .app-composer-mention-menu-light) {
+  --app-transient-surface-bg: rgb(252 252 253 / 0.985);
+  --app-transient-surface-fallback: rgb(252 252 253);
+  --app-transient-raised-bg: rgb(244 245 247 / 0.98);
+  --app-transient-hover-bg: rgb(238 240 243 / 0.99);
+  --app-transient-selected-bg: rgb(232 238 249 / 0.99);
+  --app-transient-selected-border: rgb(37 99 235 / 0.28);
+  --app-transient-border: rgb(15 23 42 / 0.105);
+  --app-transient-divider: rgb(15 23 42 / 0.075);
+  --app-transient-text: rgb(23 32 51);
+  --app-transient-muted-text: rgb(92 103 121);
+  --app-transient-subtle-text: rgb(132 142 158);
+  --app-transient-icon-bg: rgb(233 236 240 / 0.98);
+  --app-transient-focus-ring: rgb(37 99 235 / 0.72);
+  --app-transient-overlay-bg: rgb(15 23 42 / 0.34);
+  --app-transient-disabled-bg: rgb(15 23 42 / 0.035);
+  --app-transient-disabled-text: rgb(148 156 169);
+  --app-transient-danger-bg: rgb(225 29 72 / 0.075);
+  --app-transient-danger-hover-bg: rgb(225 29 72 / 0.12);
+  --app-transient-danger-border: rgb(190 18 60 / 0.18);
+  --app-transient-danger-text: rgb(159 18 57);
+  --app-transient-shadow:
+    0 0 0 1px rgb(15 23 42 / 0.025),
+    0 18px 44px rgb(15 23 42 / 0.14),
+    0 4px 12px rgb(15 23 42 / 0.075);
+}

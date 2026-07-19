@@ -148,6 +148,7 @@ test('split-pane Agent bottom controls stay compact without changing composer he
 test('split-pane Agent model selection menu escapes the right panel clipping boundary', () => {
   const composerSource = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
   const popoversSource = readFileSync(new URL('../src/styles/shell-popovers.css', import.meta.url), 'utf8');
+  const themeTokensSource = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
   const controlsStart = composerSource.indexOf('export function ComposerModelControls');
   assert.notEqual(controlsStart, -1, 'ComposerModelControls should exist');
   const controlsSource = composerSource.slice(controlsStart);
@@ -160,7 +161,8 @@ test('split-pane Agent model selection menu escapes the right panel clipping bou
   assert.match(controlsSource, /document\.addEventListener\('keydown', handleKeyDown, true\)/, 'body-portaled selector should close when users press Escape');
   assert.match(controlsSource, /selectorMenuRef\.current\?\.contains\(target\)/, 'clicking inside the body-portaled selector should not close it');
   assert.match(popoversSource, /\.app-composer-model-menu-layer \{[\s\S]*--app-modal-bg:/, 'body-portaled selector should define its own dark theme variables');
-  assert.match(popoversSource, /\.app-composer-model-menu-layer\.app-compact-model-menu-light \{[\s\S]*--app-modal-bg:/, 'body-portaled selector should define its own light theme variables');
+  assert.match(popoversSource, /\.app-composer-model-menu-layer\.app-compact-model-menu-light \{[^}]*color-scheme:\s*light;/s, 'body-portaled selector should opt into light color controls');
+  assert.match(themeTokensSource, /\.app-compact-model-menu-light[^)]*\)\s*\{[\s\S]*--app-transient-surface-bg:/, 'body-portaled selector should inherit the portal-safe light surface variables');
   assert.doesNotMatch(controlsSource, /absolute bottom-full right-0 z-30 mb-2 max-h-\[min\(28rem,60vh\)\] w-\[340px\]/, 'model selector menu must not stay absolute inside the right-panel composer');
 });
 

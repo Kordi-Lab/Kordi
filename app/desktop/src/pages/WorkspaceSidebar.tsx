@@ -396,7 +396,7 @@ export function CloudProfileRowCopyButton({ label, value }: { label: string; val
           ? 'bg-emerald-500/15 text-emerald-200'
           : errored
             ? 'bg-red-500/15 text-red-200'
-            : 'text-slate-200 hover:bg-white/10 hover:text-white',
+            : 'app-transient-row',
       )}
       aria-label={copied ? `${label} copied` : errored ? `Copy ${label} failed` : `Copy ${label}`}
       aria-live="polite"
@@ -1685,7 +1685,7 @@ export function WorkspaceSidebar({
               zIndex: 170,
             }}
             className={cn(
-              'app-popover app-profile-popover',
+              'app-transient-surface app-popover app-profile-popover',
               'w-[22rem] rounded-[18px] border px-4 py-3 text-foreground',
             )}
           >
@@ -1698,10 +1698,10 @@ export function WorkspaceSidebar({
                 className="h-10 w-10 border border-white/10"
               />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold text-slate-100">{profileDisplayName}</div>
-                <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-slate-400">
+                <div className="truncate text-[13px] font-semibold">{profileDisplayName}</div>
+                <div className="app-transient-muted mt-0.5 flex min-w-0 items-center gap-2 text-[11px]">
                   <span className="shrink-0">Account</span>
-                  <span aria-hidden="true" className="text-slate-600">•</span>
+                  <span aria-hidden="true" className="app-transient-subtle">•</span>
                   <span className="min-w-0 truncate font-mono" title={cloudAccount.accountId}>{cloudAccount.accountId}</span>
                   <CloudProfileRowCopyButton label="Account ID" value={cloudAccount.accountId} />
                 </div>
@@ -1709,23 +1709,23 @@ export function WorkspaceSidebar({
             </div>
             {cloudAccount.primaryEmail?.trim() ? (
               <div className="grid gap-1 text-[12px]">
-                <div className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
+                <div className="app-transient-row flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-slate-100">Email</div>
-                    <div className="mt-0.5 truncate text-[11px] text-slate-400">{cloudAccount.primaryEmail.trim()}</div>
+                    <div className="truncate font-medium">Email</div>
+                    <div className="app-transient-muted mt-0.5 truncate text-[11px]">{cloudAccount.primaryEmail.trim()}</div>
                   </div>
                 </div>
               </div>
             ) : null}
-            <div className="mt-3 grid gap-1 border-t border-white/10 pt-3">
+            <div className="app-transient-divider mt-3 grid gap-1 border-t pt-3">
               <button
                 type="button"
-                className="app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium text-slate-100 transition hover:text-white"
+                className="app-transient-row app-list-item flex items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-[12px] font-medium transition"
                 onClick={() => openCloudAccountDialog('auth')}
                 aria-label="Open account settings"
               >
-                <span className="flex items-center gap-2.5"><Settings className="h-4 w-4 text-slate-400" />Settings</span>
-                <ChevronRightIcon className="h-4 w-4 text-slate-500" />
+                <span className="flex items-center gap-2.5"><Settings className="app-transient-muted h-4 w-4" />Settings</span>
+                <ChevronRightIcon className="app-transient-subtle h-4 w-4" />
               </button>
             </div>
           </div>,
@@ -1744,33 +1744,33 @@ export function WorkspaceSidebar({
               zIndex: 160,
             }}
             className={cn(
-              'app-popover app-profile-popover',
+              'app-transient-surface app-popover app-profile-popover',
               'w-[21.25rem] rounded-[18px] border px-4 py-3 text-foreground',
             )}
           >
-            <div className="mb-3 flex items-center justify-between gap-3 text-[12px] font-medium text-slate-100">
+            <div className="mb-3 flex items-center justify-between gap-3 text-[12px] font-medium">
               <span>Profile</span>
             </div>
             <div className="grid gap-1 text-[12px]">
-              <div className="rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]">
-                <div className="truncate font-medium text-slate-100">{profileDisplayName}</div>
-                <div className="mt-0.5 truncate text-[11px] text-slate-400">{cloudAccount ? 'Account' : 'Local profile'}</div>
+              <div className="app-transient-row rounded-[12px] px-3 py-2.5 transition">
+                <div className="truncate font-medium">{profileDisplayName}</div>
+                <div className="app-transient-muted mt-0.5 truncate text-[11px]">{cloudAccount ? 'Account' : 'Local profile'}</div>
               </div>
               {profileRows.length > 0 ? profileRows.map((row) => (
                 <div
                   key={row.label}
-                  className="flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition hover:bg-white/[0.05]"
+                  className="app-transient-row flex min-w-0 items-center gap-3 rounded-[12px] px-3 py-2.5 transition"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-slate-100">{row.label}</div>
-                    <div className="mt-0.5 truncate text-[11px] text-slate-400">{row.value}</div>
+                    <div className="truncate font-medium">{row.label}</div>
+                    <div className="app-transient-muted mt-0.5 truncate text-[11px]">{row.value}</div>
                   </div>
                   {row.copyable ? (
                     <CloudProfileRowCopyButton label={row.label} value={row.value} />
                   ) : null}
                 </div>
               )) : (
-                <div className="rounded-[12px] px-3 py-2.5 text-[12px] text-slate-400">
+                <div className="app-transient-muted rounded-[12px] px-3 py-2.5 text-[12px]">
                   Profile details are stored locally.
                 </div>
               )}
@@ -2134,7 +2134,7 @@ export function WorkspaceSidebar({
             zIndex: 180,
           }}
           className={cn(
-            'app-popover app-update-popover overflow-hidden text-foreground',
+            'app-transient-surface app-popover app-update-popover overflow-hidden',
             updateState.status === 'checking'
               ? 'w-[14.5rem] rounded-[14px] px-3 py-2.5'
               : 'w-[18rem] rounded-[16px] p-3.5',

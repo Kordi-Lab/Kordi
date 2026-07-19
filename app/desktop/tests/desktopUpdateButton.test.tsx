@@ -177,10 +177,11 @@ test('desktop update popover uses a quiet theme-aware surface in dark mode', () 
   const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
   const updateSurface = css.match(/\.bridge-app \.app-popover\.app-update-popover \{([\s\S]*?)\n\}/)?.[1] ?? '';
 
-  assert.match(updateSurface, /--app-update-surface: rgb\(20 22 27 \/ 0\.985\)/);
-  assert.match(updateSurface, /--app-update-edge: rgba\(255, 255, 255, 0\.055\)/);
-  assert.match(updateSurface, /border: 0 !important/);
-  assert.match(updateSurface, /inset 0 0 0 1px var\(--app-update-edge\)/);
+  assert.match(updateSurface, /--app-update-surface: var\(--app-transient-surface-bg\)/);
+  assert.match(updateSurface, /--app-update-edge: var\(--app-transient-border\)/);
+  assert.match(updateSurface, /--app-update-shadow: var\(--app-transient-shadow\)/);
+  assert.match(updateSurface, /border: 1px solid var\(--app-update-edge\) !important/);
+  assert.match(updateSurface, /box-shadow: var\(--app-update-shadow\) !important/);
   assert.doesNotMatch(updateSurface, /var\(--app-shadow-float\)/);
   assert.doesNotMatch(updateSurface, /inset 0 1px 0/);
   assert.match(css, /\.bridge-app\.theme-light \.app-popover\.app-update-popover/);

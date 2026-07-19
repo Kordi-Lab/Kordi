@@ -126,8 +126,8 @@ export function ComposerSlashMenu({
   }
 
   return (
-    <div className="app-modal-panel absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] px-2 py-2 shadow-[var(--app-shadow-float)] backdrop-blur-2xl">
-      <div className="max-h-[min(32rem,62vh)] overflow-y-auto pr-1">
+    <div className="app-transient-surface app-modal-panel absolute bottom-full left-1/2 z-30 mb-2.5 w-full -translate-x-1/2 overflow-hidden rounded-[18px] border px-2 py-2">
+      <div className="app-transient-scroll max-h-[min(32rem,62vh)] overflow-y-auto pr-1">
         <div className="space-y-0.5">
           {items.map((item, index) => {
             const active = index === selectedIndex;
@@ -143,8 +143,8 @@ export function ComposerSlashMenu({
                   onSelect(item.value);
                 }}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-[16px] px-3 py-2 text-left text-[13px] transition',
-                  active ? 'bg-white/[0.06] text-white' : 'text-slate-300 hover:bg-white/[0.03] hover:text-white',
+                  'app-transient-row flex w-full items-center gap-3 rounded-[12px] px-3 py-2 text-left text-[13px] transition',
+                  active && 'app-transient-row-selected',
                 )}
               >
                 <div className="grid h-5 w-5 shrink-0 place-items-center">
@@ -152,7 +152,7 @@ export function ComposerSlashMenu({
                 </div>
                 <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                   <span className="shrink-0 font-medium">{item.label}</span>
-                  {item.detail ? <span className={cn('truncate text-[12px]', active ? 'text-slate-300' : 'text-slate-500')}>{item.detail}</span> : null}
+                  {item.detail ? <span className="app-transient-muted truncate text-[12px]">{item.detail}</span> : null}
                 </div>
               </button>
             );
@@ -223,8 +223,8 @@ export function ComposerMentionMenu({
   if (items.length === 0) return null;
 
   const renderMenu = () => (
-    <div className={cn('app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[22px] border px-2 py-2 shadow-[var(--app-shadow-float)]', menuThemeClass)} style={menuStyle}>
-      <div className="max-h-[inherit] overflow-y-auto pr-1">
+    <div className={cn('app-transient-surface app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[18px] border px-2 py-2', menuThemeClass)} style={menuStyle}>
+      <div className="app-transient-scroll max-h-[inherit] overflow-y-auto pr-1">
         <div className="space-y-0.5">
           {items.map((item, index) => {
             const active = index === selectedIndex;
@@ -503,7 +503,7 @@ export function CompactComposerModelMenu({
   const renderMenu = () => (
     <div
       ref={menuRef}
-      className={cn('app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] text-[12px] leading-[1.38]', menuThemeClass)}
+      className={cn('app-transient-surface app-transient-scroll app-compact-model-menu app-compact-model-menu-layer overflow-y-auto rounded-[18px] text-[12px] leading-[1.38]', menuThemeClass)}
       style={menuStyle}
     >
       <div className="app-compact-model-menu-header flex items-center justify-between gap-3 px-3.5 py-3">
@@ -766,7 +766,7 @@ export function ComposerModelControls({
   }, [activeSelector, onToggleSelector, scope]);
 
   const renderSelectorMenu = () => (
-    <div ref={selectorMenuRef} className={cn('app-composer-model-menu-layer fixed z-[2147483000] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-4 py-3 text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl', selectorMenuThemeClass)} style={selectorMenuStyle}>
+    <div ref={selectorMenuRef} className={cn('app-transient-surface app-transient-scroll app-composer-model-menu-layer fixed z-[2147483000] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px] leading-[1.38]', selectorMenuThemeClass)} style={selectorMenuStyle}>
       <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">
         {activeSelector === 'provider'
           ? 'Provider'
@@ -990,7 +990,7 @@ export function ComposerRuntimeStatus({
             <span className="absolute inset-0 rounded-full ring-1 ring-[color:var(--app-divider)]" />
           </span>
         </button>
-        <div className="pointer-events-none invisible absolute bottom-full left-1/2 z-30 mb-2 w-[264px] -translate-x-1/2 rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-4 py-3 text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] opacity-0 shadow-[var(--app-shadow-float)] backdrop-blur-xl transition duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+        <div className="app-transient-surface pointer-events-none invisible absolute bottom-full left-1/2 z-30 mb-2 w-[264px] -translate-x-1/2 rounded-[16px] border px-4 py-3 text-[12px] leading-[1.38] opacity-0 transition duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
           <div className="font-medium text-[color:var(--utility-foreground)]">Context window:</div>
           <div className="mt-1 text-[11px] text-[color:var(--utility-foreground)]">{usedPercentLabel} used ({leftPercentLabel} left)</div>
           <div className="mt-1 text-[11px] text-[color:var(--utility-foreground)]">
@@ -1074,7 +1074,7 @@ export function ComposerModeControl({
         <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', activeSelector === 'mode' ? 'rotate-180' : '')} />
       </button>
       {activeSelector === 'mode' && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 min-w-[260px] rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-4 py-3 text-[12px] leading-[1.38] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl">
+        <div className="app-transient-surface absolute bottom-full left-0 z-30 mb-2 min-w-[260px] rounded-[16px] border px-3 py-3 text-[12px] leading-[1.38]">
           <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">Compose mode</div>
           <div className="space-y-1">
             {activeOptions.map((option) => {

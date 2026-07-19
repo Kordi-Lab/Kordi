@@ -33,8 +33,8 @@ export function BridgeRemoveHostModal({
   }
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[color:var(--app-overlay-bg)] px-6 py-8 backdrop-blur-[10px]" style={{ WebkitAppRegion: 'no-drag' as const }}>
-      <div className="app-modal-panel w-full max-w-[420px] rounded-[24px] border border-white/10 p-[18px] text-white shadow-[var(--app-shadow-float)]">
+    <div className="app-transient-overlay absolute inset-0 z-50 flex items-center justify-center px-6 py-8 backdrop-blur-[10px]" style={{ WebkitAppRegion: 'no-drag' as const }}>
+      <div className="app-transient-surface app-modal-panel w-full max-w-[420px] rounded-[20px] border p-[18px]">
         <div className="mb-3">
           <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Remove host</div>
           <div className="mt-1 text-[18px] font-semibold">Remove this host from this Mac?</div>
@@ -110,8 +110,8 @@ export function BridgeWizardModal({
   }
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[color:var(--app-overlay-bg)] px-6 py-8 backdrop-blur-[10px]" style={{ WebkitAppRegion: 'no-drag' as const }}>
-      <div className="app-modal-panel app-bridge-wizard-panel w-full max-w-[620px] rounded-[24px] border border-white/10 p-[18px] text-white shadow-[var(--app-shadow-float)]">
+    <div className="app-transient-overlay absolute inset-0 z-50 flex items-center justify-center px-6 py-8 backdrop-blur-[10px]" style={{ WebkitAppRegion: 'no-drag' as const }}>
+      <div className="app-transient-surface app-modal-panel app-bridge-wizard-panel w-full max-w-[620px] rounded-[24px] border p-[18px]">
         <div className="mb-3.5 flex items-start justify-between gap-4">
           <div>
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Bridge setup</div>

@@ -112,10 +112,9 @@ test('inline auth popup uses cool chat-aligned light cards instead of warm gray'
     themeOverrides.indexOf('.bridge-app.theme-light .app-agent-shell'),
   );
 
-  assert.match(popupPaletteBlock, /rgba\(248, 251, 255, 0\.96\)/);
-  assert.match(popupPaletteBlock, /rgba\(241, 247, 255, 0\.92\)/);
-  assert.match(popupPaletteBlock, /rgba\(37, 99, 235, 0\.12\)/);
-  assert.match(popupPaletteBlock, /rgba\(239, 246, 255, 0\.72\)/);
+  assert.match(popupPaletteBlock, /\.app-auth-popup-panel\s*\{[^}]*background:\s*var\(--app-transient-surface-bg\)[^}]*box-shadow:\s*var\(--app-transient-shadow\)/s);
+  assert.match(popupPaletteBlock, /\.app-auth-popup-header,[^}]*background:\s*var\(--app-transient-raised-bg\)/s);
+  assert.match(popupPaletteBlock, /\.app-auth-popup-info-card,[^}]*border-color:\s*var\(--app-transient-border\)[^}]*background:\s*var\(--app-transient-raised-bg\)/s);
   assert.doesNotMatch(popupPaletteBlock, /rgba\(126,\s*111,\s*64|rgba\(147,\s*128,\s*109|rgba\(138,\s*118,\s*98|rgb\(245 241 232\)|rgba\(255, 252, 244|warm|amber|orange/i);
 });
 

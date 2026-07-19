@@ -68,11 +68,11 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
       role="dialog"
       aria-modal="true"
       aria-label={`Chat with ${peerLabel}`}
-      className="fixed inset-0 z-[200] grid place-items-center bg-black/60 px-4 py-6 backdrop-blur-sm"
+      className="app-transient-overlay fixed inset-0 z-[200] grid place-items-center px-4 py-6 backdrop-blur-sm"
     >
-      <div className="app-frosted-popover flex h-[min(720px,calc(100vh-3rem))] w-[min(560px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border border-white/10 bg-slate-950/95 shadow-2xl">
+      <div className="app-transient-surface app-frosted-popover flex h-[min(720px,calc(100vh-3rem))] w-[min(560px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[20px] border">
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+        <div className="app-transient-divider flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <IdentityAvatar
               kind="human"
@@ -83,15 +83,15 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
               className="h-9 w-9 shrink-0 overflow-hidden rounded-full"
             />
             <div className="min-w-0">
-              <div className="truncate text-[13.5px] font-semibold leading-5 text-white">{peerLabel}</div>
-              <div className="truncate text-[10.5px] leading-4 text-slate-400">{peerAccountId}</div>
+              <div className="truncate text-[13.5px] font-semibold leading-5">{peerLabel}</div>
+              <div className="app-transient-muted truncate text-[10.5px] leading-4">{peerAccountId}</div>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close chat"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10"
+            className="app-transient-icon grid h-8 w-8 shrink-0 place-items-center rounded-[10px] border transition"
           >
             <X className="h-4 w-4" />
           </button>
@@ -100,9 +100,9 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
           {conversation.loading && messages.length === 0 ? (
-            <div className="text-center text-[11px] text-slate-500">Loading conversation…</div>
+            <div className="app-transient-subtle text-center text-[11px]">Loading conversation…</div>
           ) : messages.length === 0 ? (
-            <div className="text-center text-[11px] text-slate-500">
+            <div className="app-transient-subtle text-center text-[11px]">
               No messages yet — say hi to {peerLabel}.
             </div>
           ) : (
@@ -145,7 +145,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
         </div>
 
         {/* Composer */}
-        <div className="shrink-0 border-t border-white/10 bg-slate-950/80 px-3 py-3">
+        <div className="app-transient-divider shrink-0 border-t bg-[color:var(--app-transient-raised-bg)] px-3 py-3">
           {conversation.error ? (
             <div className="app-error-text mb-2 rounded-[10px] border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200">
               {conversation.error}
@@ -158,9 +158,9 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
                   key={`${attachment.name}-${attachment.lastModified}-${index}`}
                   type="button"
                   onClick={() => setAttachments((current) => current.filter((_, candidateIndex) => candidateIndex !== index))}
-                  className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10.5px] text-slate-200 hover:bg-white/10"
+                  className="app-transient-row rounded-full border px-2 py-1 text-[10.5px]"
                 >
-                  {attachment.name} <span className="text-slate-500">×</span>
+                  {attachment.name} <span className="app-transient-subtle">×</span>
                 </button>
               ))}
             </div>
@@ -188,7 +188,7 @@ export function CloudPeerChatPanel({ account, contact, onClose }: CloudPeerChatP
               variant="outline"
               disabled={conversation.sending}
               onClick={() => fileInputRef.current?.click()}
-              className="h-9 w-9 shrink-0 rounded-[12px] border-white/10 bg-white/5 p-0 text-slate-200 hover:bg-white/10"
+              className="app-transient-icon h-9 w-9 shrink-0 rounded-[12px] border p-0"
               aria-label="Attach files"
             >
               <Paperclip className="h-4 w-4" />

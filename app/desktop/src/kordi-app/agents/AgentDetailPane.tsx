@@ -81,17 +81,17 @@ export function AgentDeleteConfirmDialog({
 }) {
   return (
     <div
-      className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/45 p-4 backdrop-blur-[8px]"
+      className="app-transient-overlay fixed inset-0 z-[100000] flex items-center justify-center p-4 backdrop-blur-[8px]"
       onMouseDown={() => {
         if (!isDeleting) onCancel();
       }}
     >
-      <div className="app-modal-panel w-full max-w-md rounded-[28px] border border-white/10 p-5 text-white shadow-[var(--app-shadow-float)]" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="app-transient-surface app-modal-panel w-full max-w-md rounded-[20px] border p-5" onMouseDown={(event) => event.stopPropagation()}>
         <div className="text-[16px] font-semibold">Delete this agent?</div>
-        <div className="mt-2 text-[13px] leading-6 text-slate-400">
-          <span className="font-medium text-slate-200">{agent.name}</span> will be removed from your Agent page and your signed-in cloud devices.
+        <div className="app-transient-muted mt-2 text-[13px] leading-6">
+          <span className="font-medium text-[color:var(--app-transient-text)]">{agent.name}</span> will be removed from your Agent page and your signed-in cloud devices.
         </div>
-        <div className="mt-3 text-[13px] leading-6 text-slate-400">
+        <div className="app-transient-muted mt-3 text-[13px] leading-6">
           It is kept as an archived Cloud record, not hard-deleted forever.
         </div>
         {error ? (
@@ -128,10 +128,10 @@ function AgentActionsMenu({ agent, onRequestArchive }: {
       >
         <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
       </summary>
-      <div className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-[14px] border border-white/10 bg-slate-950/95 p-1 shadow-2xl">
+      <div className="app-transient-surface absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-[14px] border p-1">
         <button
           type="button"
-          className="w-full rounded-[10px] px-3 py-2 text-left text-[12px] font-medium text-rose-200 transition hover:bg-rose-500/12 hover:text-rose-100"
+          className="app-transient-row app-transient-row-danger w-full rounded-[10px] px-3 py-2 text-left text-[12px] font-medium transition"
           onClick={() => {
             onRequestArchive(agent);
           }}
@@ -265,7 +265,7 @@ function RoutingSelect({
       {open ? (
         <div
           role="listbox"
-          className="absolute left-0 top-full z-40 mt-2 max-h-[min(20rem,45vh)] w-full min-w-[min(22rem,calc(100vw-3rem))] max-w-[min(34rem,calc(100vw-3rem))] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-3 py-3 text-[12px] text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl"
+          className="app-transient-surface app-transient-scroll absolute left-0 top-full z-40 mt-2 max-h-[min(20rem,45vh)] w-full min-w-[min(22rem,calc(100vw-3rem))] max-w-[min(34rem,calc(100vw-3rem))] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]"
         >
           <div className="space-y-1">
             {options.map((option) => {

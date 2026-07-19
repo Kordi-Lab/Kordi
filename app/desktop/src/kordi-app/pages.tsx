@@ -497,12 +497,12 @@ export function ContactsPage({
           </div>
 
           {contactOverlayMode && (
-            <div className="app-overlay absolute inset-0 z-10 flex items-center justify-center px-4 py-8 backdrop-blur-[2px]">
-              <div className="app-modal-panel w-full max-w-[420px] rounded-[28px] border border-white/10 p-4 text-white shadow-[var(--app-shadow-float)]">
+            <div className="app-transient-overlay app-overlay absolute inset-0 z-10 flex items-center justify-center px-4 py-8 backdrop-blur-[2px]">
+              <div className="app-transient-surface app-modal-panel w-full max-w-[420px] rounded-[20px] border p-4">
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     {contactOverlayMode === 'request' ? (
-                      <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
+                      <div className="app-transient-muted text-[11px] uppercase tracking-[0.24em]">
                         Request review
                       </div>
                     ) : null}
@@ -528,15 +528,15 @@ export function ContactsPage({
                         imageUrl={activeContact.profileImageUrl}
                         presenceStatus={activeContactPresenceStatus}
                         presenceLabel={activeContactPresenceStatus ? `${activeContact.name} is ${activeContactPresenceStatus}` : undefined}
-                        className="h-12 w-12 border border-white/10"
+                        className="h-12 w-12 border border-[color:var(--app-transient-border)]"
                       />
                       <div>
-                        <div className="text-sm text-slate-300">
+                        <div className="app-transient-muted text-sm">
                           {activeContact.entityType} • {activeContact.subtitle}
                         </div>
                       </div>
                     </div>
-                    {activeContactDetailBody ? <div className="mb-5 text-sm text-slate-300">{activeContactDetailBody}</div> : null}
+                    {activeContactDetailBody ? <div className="app-transient-muted mb-5 text-sm">{activeContactDetailBody}</div> : null}
                     <div className="grid gap-2">
                       <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.bridgeHostId || !activeContact.bridgePeerNodeId}>
                         Message
@@ -544,7 +544,7 @@ export function ContactsPage({
                       {canRemoveActiveContact ? (
                         <Button
                           variant="secondary"
-                          className="rounded-full border-rose-400/20 bg-rose-400/10 text-rose-100 shadow-none hover:bg-rose-400/15"
+                          className="app-transient-row-danger rounded-full border shadow-none"
                           onClick={() => { void submitRemoveContact(); }}
                           disabled={removeContactState === 'saving'}
                         >
@@ -554,7 +554,7 @@ export function ContactsPage({
                       ) : null}
                     </div>
                     {canRemoveActiveContact ? (
-                      <div className={cn('app-error-text mt-3 text-[11px] leading-4', removeContactState === 'error' ? 'text-rose-200' : 'text-slate-400')} aria-live="polite">
+                      <div className={cn('app-error-text mt-3 text-[11px] leading-4', removeContactState === 'error' ? 'text-rose-200' : 'app-transient-muted')} aria-live="polite">
                         {removeContactState === 'error'
                           ? removeContactError || 'Unable to delete contact.'
                           : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
@@ -566,7 +566,7 @@ export function ContactsPage({
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="app-badge-neutral px-2.5 py-1 text-[10px] font-medium">{activeContactRequest.time}</div>
                     </div>
-                    <div className="mb-5 text-sm text-slate-300">{activeContactRequest.detail}</div>
+                    <div className="app-transient-muted mb-5 text-sm">{activeContactRequest.detail}</div>
                     <div className="grid gap-2">
                       <Button variant="secondary" className="app-contacts-action-chip rounded-full" onClick={() => { void submitContactRequestAction(activeContactRequest, 'accept'); }} disabled={!onAcceptRequest || Boolean(contactRequestAction)}>
                         {contactRequestActionState(activeContactRequest) === 'accepting' ? (
@@ -589,9 +589,9 @@ export function ContactsPage({
                       </Button>
                     </div>
                     {contactRequestActionState(activeContactRequest) === 'accepting' ? (
-                      <div className="mt-3 text-[11px] leading-4 text-slate-400" aria-live="polite">Accepting and sending greeting…</div>
+                      <div className="app-transient-muted mt-3 text-[11px] leading-4" aria-live="polite">Accepting and sending greeting…</div>
                     ) : contactRequestActionState(activeContactRequest) === 'rejecting' ? (
-                      <div className="mt-3 text-[11px] leading-4 text-slate-400" aria-live="polite">Rejecting request…</div>
+                      <div className="app-transient-muted mt-3 text-[11px] leading-4" aria-live="polite">Rejecting request…</div>
                     ) : contactRequestActionError ? (
                       <div className="app-error-text mt-3 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
                         {contactRequestActionError}

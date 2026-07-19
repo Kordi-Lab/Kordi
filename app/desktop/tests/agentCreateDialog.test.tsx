@@ -98,8 +98,8 @@ test('AgentCreateDialog uses calm auth-aligned surfaces without dashed callout c
   assert.match(source, /app-agent-create-panel/);
   assert.match(source, /app-agent-create-muted/);
   assert.doesNotMatch(source, /border-dashed/);
-  assert.match(shellPagesCss, /\.app-agent-create-surface[\s\S]*--app-cloud-login-raised-bg/);
-  assert.match(shellPagesCss, /\.app-agent-create-muted[\s\S]*--app-cloud-login-sunk-bg/);
+  assert.match(shellPagesCss, /\.app-agent-create-surface[\s\S]*background:\s*var\(--app-transient-surface-bg\)/);
+  assert.match(shellPagesCss, /\.app-agent-create-muted[\s\S]*background:\s*var\(--app-transient-raised-bg\)/);
 });
 
 test('AgentsSidebar exposes New agent action when cloud creation is available', () => {

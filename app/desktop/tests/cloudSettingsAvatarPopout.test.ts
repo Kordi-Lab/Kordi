@@ -57,7 +57,8 @@ test('cloud settings modal uses cool chat-aligned light palette instead of warm 
   assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-cloud-account-settings-dialog\s*\{/);
   assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-cloud-account-settings-overlay\s*\{/);
   assert.match(modalPaletteBlock, /rgba\(37, 99, 235, 0\.12\)/);
-  assert.match(modalPaletteBlock, /rgba\(248, 251, 255, 0\.96\)/);
+  assert.match(modalPaletteBlock, /\.app-cloud-account-settings-overlay\s*\{[^}]*var\(--app-transient-overlay-bg\)/s);
+  assert.match(modalPaletteBlock, /\.app-cloud-account-settings-dialog\s*\{[^}]*background:\s*var\(--app-transient-surface-bg\)[^}]*box-shadow:\s*var\(--app-transient-shadow\)/s);
   assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-auth-provider-glyph[\s\S]*rgba\(239, 246, 255, 0\.96\)/);
   assert.doesNotMatch(modalPaletteBlock, /rgba\(147, 128, 109|rgba\(138, 118, 98|rgba\(126,111,64/);
 });

@@ -338,85 +338,76 @@
 }
 
 .app-agent-create-overlay {
-  background: color-mix(in oklab, rgb(5 7 10) 62%, transparent);
+  background: var(--app-transient-overlay-bg);
 }
 
 .app-agent-create-dialog {
-  border: 1px solid color-mix(in oklab, var(--app-cloud-login-border) 76%, transparent);
+  border: 1px solid var(--app-transient-border);
 }
 
 .app-agent-create-surface {
-  background:
-    linear-gradient(180deg,
-      color-mix(in oklab, var(--app-cloud-login-raised-bg) 92%, transparent) 0%,
-      color-mix(in oklab, var(--app-modal-bg) 86%, var(--app-cloud-login-sunk-bg)) 100%);
-  box-shadow:
-    inset 0 1px 0 var(--app-glass-highlight),
-    var(--app-shadow-float);
+  background: var(--app-transient-surface-bg);
+  box-shadow: var(--app-transient-shadow);
 }
 
 .app-agent-panel-header {
-  border-bottom: 1px solid color-mix(in oklab, var(--app-cloud-login-inner-border) 62%, transparent);
+  border-bottom: 1px solid var(--app-transient-divider);
 }
 
 .app-agent-create-panel {
-  border-right: 1px solid color-mix(in oklab, var(--app-cloud-login-inner-border) 58%, transparent);
+  border-right: 1px solid var(--app-transient-divider);
 }
 
 .app-agent-create-muted {
-  border: 1px solid color-mix(in oklab, var(--app-cloud-login-inner-border) 66%, transparent);
-  background: color-mix(in oklab, var(--app-cloud-login-sunk-bg) 88%, transparent);
-  color: var(--utility-muted-text);
-  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--app-glass-highlight) 54%, transparent);
+  border: 1px solid var(--app-transient-border);
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-muted-text);
 }
 
 .app-agent-create-actions {
-  border-top: 1px solid color-mix(in oklab, var(--app-cloud-login-inner-border) 58%, transparent);
-  background: color-mix(in oklab, var(--app-cloud-login-raised-bg) 56%, transparent);
+  border-top: 1px solid var(--app-transient-divider);
+  background: var(--app-transient-raised-bg);
 }
 
 .bridge-app.theme-light .app-agent-create-overlay {
-  background: rgb(148 153 166 / 0.54);
+  background: var(--app-transient-overlay-bg);
 }
 
 .bridge-app.theme-light .app-agent-create-dialog {
-  border-color: rgb(207 217 232);
+  border-color: var(--app-transient-border);
 }
 
 .bridge-app.theme-light .app-agent-create-surface {
-  background: linear-gradient(180deg, rgb(248 251 255) 0%, rgb(239 245 253) 100%);
-  box-shadow:
-    0 0 0 1px rgb(255 255 255 / 0.55) inset,
-    0 28px 64px rgb(30 41 59 / 0.20),
-    0 10px 28px rgb(30 41 59 / 0.12);
+  background: var(--app-transient-surface-bg);
+  box-shadow: var(--app-transient-shadow);
 }
 
 .bridge-app.theme-light .app-agent-panel-header,
 .bridge-app.theme-light .app-agent-create-actions,
 .bridge-app.theme-light .app-agent-create-panel {
-  border-color: rgb(214 224 238);
+  border-color: var(--app-transient-divider);
 }
 
 .bridge-app.theme-light .app-agent-panel-header,
 .bridge-app.theme-light .app-agent-create-actions {
-  background: rgb(246 250 255 / 0.82);
+  background: var(--app-transient-raised-bg);
 }
 
 .bridge-app.theme-light .app-agent-create-panel {
-  background: rgb(241 246 253 / 0.46);
+  background: transparent;
 }
 
 .bridge-app.theme-light .app-agent-create-muted {
-  border-color: rgb(214 224 238);
-  background: linear-gradient(180deg, rgb(250 252 255) 0%, rgb(244 248 253) 100%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.84);
+  border-color: var(--app-transient-border);
+  background: var(--app-transient-raised-bg);
+  box-shadow: none;
 }
 
 .bridge-app.theme-light .app-agent-create-dialog .app-agent-inspector-row,
 .bridge-app.theme-light .app-agent-create-dialog .app-agent-code-panel {
-  border-color: rgb(214 224 238);
-  background: rgb(253 254 255);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  border-color: var(--app-transient-border);
+  background: var(--app-transient-raised-bg);
+  box-shadow: none;
 }
 
 .app-agent-panel-title,
