@@ -2,6 +2,8 @@
 
 Thanks for helping build Kordi. This repository uses GitHub issues, pull requests, CI, and local git hooks to keep `main` stable while the team collaborates.
 
+If this is your first contribution, begin with the [community contributor guide](docs/community-contributor-guide.md) for contribution areas, issue preparation, safe local setup, bug-report guidance, and review expectations.
+
 ## Prerequisites
 
 - Rust with `cargo`, `rustfmt`, and `clippy`

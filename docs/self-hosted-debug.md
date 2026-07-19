@@ -310,6 +310,7 @@ Repository code and local Docker access give a contributor full control over the
 
 ## Related guides
 
+- [`community-contributor-guide.md`](community-contributor-guide.md): community contribution paths and review expectations
 - [`development.md`](development.md): monorepo command map
 - [`run-cloud-desktop.md`](run-cloud-desktop.md): desktop launch reference
 - [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md): approved shared staging and operator workflows

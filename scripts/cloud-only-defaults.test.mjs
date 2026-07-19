@@ -62,6 +62,7 @@ test('public docs use neutral product wording and safe host guidance', () => {
     'CONTRIBUTING.md',
     'app/desktop/README.md',
     'docs/development.md',
+    'docs/community-contributor-guide.md',
     'docs/run-cloud-desktop.md',
     'docs/self-hosted-debug.md',
     'docs/cloud-edition.md',

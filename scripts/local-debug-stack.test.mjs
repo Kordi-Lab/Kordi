@@ -42,7 +42,12 @@ test('self-hosted guide uses the safe helper and explicit loopback API origin', 
 });
 
 test('public contributor entrypoints lead to the isolated development workflow', () => {
-  for (const path of ['README.md', 'CONTRIBUTING.md', 'docs/run-cloud-desktop.md']) {
+  for (const path of [
+    'README.md',
+    'CONTRIBUTING.md',
+    'docs/community-contributor-guide.md',
+    'docs/run-cloud-desktop.md',
+  ]) {
     const document = read(path);
     assert.match(document, /pnpm debug:cloud:up/, `${path} should start the isolated backend`);
     assert.match(
@@ -57,4 +62,14 @@ test('public contributor entrypoints lead to the isolated development workflow',
     read('README.md'),
     /uses the production hosted API at `https:\/\/coordinar\.io` by default/i,
   );
+});
+
+test('community guide routes contributors through issues and reviewed pull requests', () => {
+  const guide = read('docs/community-contributor-guide.md');
+
+  assert.match(guide, /github\.com\/Kordi-AI\/Kordi\/issues/);
+  assert.match(guide, /Normal community contributions do not require production SSH/i);
+  assert.match(guide, /Open a draft pull request early/i);
+  assert.match(guide, /Do not include tokens, credentials, private infrastructure details/i);
+  assert.match(guide, /pnpm check:ci/);
 });
