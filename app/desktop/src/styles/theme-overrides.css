@@ -164,6 +164,7 @@
 
 .app-update-popover-status {
   color: var(--app-update-active);
+  overflow-wrap: anywhere;
 }
 
 .app-update-popover-status-danger {
@@ -184,6 +185,11 @@
 
 .app-update-popover-action-secondary {
   color: var(--utility-muted-text);
+}
+
+.app-update-popover-action {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .app-update-popover-action-secondary:hover {
