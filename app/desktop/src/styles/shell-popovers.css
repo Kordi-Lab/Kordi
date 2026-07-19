@@ -220,16 +220,19 @@
   -webkit-backdrop-filter: blur(var(--app-glass-blur-float)) saturate(var(--app-glass-saturate-float));
 }
 
-.app-chat-create-popover {
+.app-chat-create-popover,
+.app-dialog-popover {
   color: var(--utility-foreground);
 }
 
-.app-chat-create-popover-enter {
+.app-chat-create-popover-enter,
+.app-dialog-popover-enter {
   transform-origin: var(--app-popover-origin, left 22px);
   animation: app-chat-create-popover-enter 180ms var(--app-motion-ease) both;
 }
 
-.app-chat-create-popover-arrow {
+.app-chat-create-popover-arrow,
+.app-dialog-popover-arrow {
   border: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
   border-right-color: transparent;
   border-bottom-color: transparent;
@@ -383,6 +386,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .app-chat-create-popover-enter,
+  .app-dialog-popover-enter,
   .app-group-management-popover-enter {
     animation: none;
   }
