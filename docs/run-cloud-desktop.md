@@ -8,7 +8,7 @@ Production API:
 https://coordinar.io
 ```
 
-For development or QA, use an operator-provided public test API base or host your own compatible server:
+For development, use the isolated backend from the current checkout. For approved shared QA, use an operator-provided public test API base:
 
 ```text
 <PUBLIC_TEST_CLOUD_API_BASE>
@@ -21,24 +21,31 @@ Do not use the production server for destructive, load, or throwaway multi-accou
 - macOS development machine with Tauri prerequisites installed.
 - Node.js 22+ and `pnpm` 10.29.3+.
 - Rust toolchain from `rustup`.
-- A reachable hosted API.
+- Docker Desktop or Docker Engine with Compose v2 for the isolated backend.
 
 Install dependencies once:
 
 ```bash
 cd /path/to/kordi
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ## Run Kordi Desktop
 
-Use the product default:
+Start and verify the isolated backend:
 
 ```bash
-pnpm dev
+pnpm debug:cloud:up
+pnpm debug:cloud:smoke
 ```
 
-Target a public test or self-hosted API by setting the hosted API base explicitly:
+Launch the desktop with the explicit local API origin:
+
+```bash
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+```
+
+Development launches fail closed when the API origin is missing, invalid, or points at production. To use an approved public staging or self-hosted API, set that origin explicitly:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
@@ -63,8 +70,8 @@ The desktop build path uses the product configuration.
 Use this when testing contacts, groups, unread state, or multi-user sync. Each user gets isolated local desktop data, while product data comes from `VITE_KORDI_CLOUD_API_BASE`.
 
 ```bash
-VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> \
-pnpm dev:cloud:multi -- --users user1,user2,user3
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+pnpm dev:cloud:multi -- --reset --users user1,user2,user3
 ```
 
 Only use tunnel/local backend options if you have explicit operator access or are running your own compatible hosted API. For operator tunnel debugging, use environment placeholders and keep real private host details out of docs, PRs, issues, and shared logs. See [Internal/operator local tunnel debug pipeline](hosted-cloud-developer-guide.md#internaloperator-local-tunnel-debug-pipeline).
@@ -73,7 +80,7 @@ Only use tunnel/local backend options if you have explicit operator access or ar
 
 | Variable | Purpose |
 | --- | --- |
-| `VITE_KORDI_CLOUD_API_BASE` | Hosted API base URL. Use `<PUBLIC_TEST_CLOUD_API_BASE>` for testing or `https://coordinar.io` for production. |
+| `VITE_KORDI_CLOUD_API_BASE` | Required non-production API base URL for development. Use the loopback debug API or `<PUBLIC_TEST_CLOUD_API_BASE>`. |
 | `KORDI_CLOUD_API_BASE` | Native/backend hosted API override when a helper needs it. |
 | `KORDI_CLOUD_USE_LOCAL_TUNNEL=1` | Internal/operator tunnel mode for multi-instance development. |
 
@@ -81,10 +88,11 @@ Only use tunnel/local backend options if you have explicit operator access or ar
 
 ## Troubleshooting
 
-- If login or sync fails, verify the selected API base is reachable:
+- If local login or sync fails, verify the isolated API first:
 
   ```bash
-  curl <PUBLIC_TEST_CLOUD_API_BASE>/health
+  pnpm debug:cloud:smoke
+  curl -fsS http://127.0.0.1:17081/health
   ```
 
 - For operator tunnel debugging, verify the local tunnel endpoint and each desktop log's `VITE_KORDI_CLOUD_API_BASE` before changing code. Do not switch to production as a workaround unless an operator explicitly asks.
@@ -94,6 +102,7 @@ Only use tunnel/local backend options if you have explicit operator access or ar
 
 ## Related docs
 
+- [Local development with an isolated backend](self-hosted-debug.md)
 - [Kordi architecture and backend notes](cloud-edition.md)
 - [Hosted developer guide](hosted-cloud-developer-guide.md)
 - [Desktop app README](../app/desktop/README.md)

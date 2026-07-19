@@ -2,6 +2,8 @@
 
 This document keeps the top-level development commands for the Kordi monorepo in one place.
 
+New contributors should begin with [`self-hosted-debug.md`](self-hosted-debug.md). It covers the complete isolated backend and desktop workflow, multi-account testing, production access boundaries, troubleshooting, and cleanup.
+
 Run commands from:
 
 ```bash
@@ -11,7 +13,7 @@ cd /path/to/kordi
 ## Install dependencies
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ## Desktop
@@ -19,10 +21,11 @@ pnpm install
 ### Start the product app
 
 ```bash
-pnpm dev
+pnpm debug:cloud:up
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
 ```
 
-`pnpm dev` is the default product development command. It launches Kordi Desktop and uses the production origin unless you override the API base.
+`pnpm dev` launches Kordi Desktop. Development launches fail closed unless you explicitly select a non-production API origin. The recommended default is the isolated Docker backend described in [`self-hosted-debug.md`](self-hosted-debug.md).
 
 Production API:
 
@@ -30,13 +33,13 @@ Production API:
 https://coordinar.io
 ```
 
-For development/QA, prefer an operator-provided public test API base or a self-hosted compatible server. Always set the hosted API base explicitly:
+For development/QA, prefer the self-hosted server or an operator-provided public test API base. Always set the API base explicitly:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 ```
 
-Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized.
+The development launcher rejects the production origin. Do not bypass that safeguard for destructive, load, or throwaway multi-account testing.
 
 ### Start multiple isolated users
 
@@ -91,6 +94,8 @@ pnpm check
 ```
 
 For hosted desktop debugging, multi-user sync checks, and operator tunnel rules, see [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md).
+For the isolated Docker backend and contributor access model, see [`self-hosted-debug.md`](self-hosted-debug.md).
+For community contribution areas, issue preparation, and review expectations, see [`community-contributor-guide.md`](community-contributor-guide.md).
 For Rust artifact size notes and inactive worktree cleanup, see [`development/desktop-rust-build-artifacts.md`](development/desktop-rust-build-artifacts.md).
 For overlong-file thresholds and refactor boundaries, see [`development/maintainability-boundaries.md`](development/maintainability-boundaries.md).
 

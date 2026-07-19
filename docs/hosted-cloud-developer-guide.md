@@ -37,6 +37,8 @@ If an operator rotates the test server, update only this value and keep the rest
 
 Hosted/dev runs must set `VITE_KORDI_CLOUD_API_BASE` explicitly before launching desktop clients. Do not rely on the production default for hosted testing.
 
+Development launches fail closed if the API base is missing or points at the production origin. For ordinary contributor work, use the isolated setup in [`self-hosted-debug.md`](self-hosted-debug.md).
+
 Set these before launching desktop clients:
 
 ```bash

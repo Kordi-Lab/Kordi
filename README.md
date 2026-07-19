@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="#why-kordi">Why Kordi</a> ·
+  <a href="#community">Community</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-kordi-works">Architecture</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
@@ -34,6 +35,21 @@ Kordi treats AI as a participant in the conversation. People can chat one-to-one
 | **People and agents, together**<br>Invite an agent into the conversation instead of moving the conversation into a separate AI tool. | **Familiar social primitives**<br>Accounts, contacts, direct chats, groups, unread state, and synchronized history. |
 | **Agent-native groups**<br>Mention your own Kordi agent—or another participant's agent—inside the group where the context already lives. | **Hosted continuity**<br>A hosted API and agent runner keep collaboration and execution available beyond one local process. |
 
+## Community
+
+Kordi is in active beta development, and community feedback and contributions help shape how people and agents collaborate.
+
+You can contribute by:
+
+- Trying the beta and opening a focused [bug report or feature proposal](https://github.com/Kordi-AI/Kordi/issues)
+- Improving the desktop experience, accessibility, performance, or visual polish
+- Fixing account, messaging, synchronization, attachment, or agent-runtime behavior
+- Adding regression tests, clearer errors, examples, or documentation
+
+New contributors do not need production infrastructure access. The supported workflow runs an isolated backend and test data on your own machine.
+
+Start with the [community contributor guide](docs/community-contributor-guide.md), then use [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, validation, and review checklist.
+
 ## Quick start
 
 ### Try the beta
@@ -48,24 +64,26 @@ You will need:
 - Node.js 22+
 - pnpm 10.29.3+
 - a Rust toolchain installed with [`rustup`](https://rustup.rs/)
+- Docker Desktop or Docker Engine with Compose v2
 
 ```bash
 git clone https://github.com/Kordi-AI/Kordi.git
 cd Kordi
 pnpm install --frozen-lockfile
-pnpm dev
+pnpm debug:cloud:up
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
 ```
 
-Kordi opens in account login mode and uses the production hosted API at `https://coordinar.io` by default.
+Kordi opens in account login mode against an isolated Docker backend on your machine. Development launches require an explicit non-production API origin and reject the production origin.
 
 > [!IMPORTANT]
-> Do not run destructive, load, or throwaway multi-account tests against production. Point development and QA builds at an operator-provided test API or a compatible self-hosted API:
+> Do not run destructive, load, or throwaway multi-account tests against production. The local Docker environment is the default contributor workflow. When an approved shared staging environment is required, set its API origin explicitly:
 >
 > ```bash
 > VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 > ```
 
-For multi-user testing and troubleshooting, see [Run Kordi Desktop](docs/run-cloud-desktop.md).
+For prerequisites, multi-user testing, logs, troubleshooting, and cleanup, follow the [local development guide](docs/self-hosted-debug.md).
 
 ## How Kordi works
 
@@ -97,8 +115,10 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 
 | Task | Command |
 | --- | --- |
-| Start Kordi Desktop | `pnpm dev` |
-| Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev:cloud:multi -- --users user1,user2` |
+| Start the isolated backend | `pnpm debug:cloud:up` |
+| Check the isolated backend | `pnpm debug:cloud:smoke` |
+| Start Kordi Desktop | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev` |
+| Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev:cloud:multi -- --reset --users user1,user2` |
 | Build the desktop package | `pnpm build:desktop` |
 | Build the web UI | `pnpm build:web` |
 | Lint and typecheck | `pnpm lint && pnpm typecheck:web` |
@@ -109,6 +129,8 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 
 | Guide | What it covers |
 | --- | --- |
+| [Community contributor guide](docs/community-contributor-guide.md) | Contribution areas, issues, safe setup, testing, bug reports, and review expectations |
+| [Local development](docs/self-hosted-debug.md) | Isolated Docker backend, desktop launch, multi-user testing, safety, and cleanup |
 | [Run Kordi Desktop](docs/run-cloud-desktop.md) | Local startup, API selection, multi-user testing, and troubleshooting |
 | [Development commands](docs/development.md) | Full command map and package-specific workflows |
 | [Architecture](docs/architecture.md) | Product topology and layer responsibilities |
@@ -118,6 +140,6 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 
 ## Contributing
 
-Contributions start with a GitHub issue and land through a reviewed pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch workflow, validation commands, and PR checklist.
+Contributions start with a GitHub issue and land through a reviewed pull request. If this is your first Kordi contribution, read the [community contributor guide](docs/community-contributor-guide.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for the detailed branch workflow, validation commands, and PR checklist.
 
 Kordi currently targets macOS and is in beta. Product behavior, hosted interfaces, and contributor workflows may evolve as the project approaches a stable release.

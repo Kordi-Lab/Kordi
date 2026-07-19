@@ -1,0 +1,16 @@
+.git
+.worktrees
+node_modules
+**/node_modules
+target
+**/target
+dist
+**/dist
+app/desktop/.multi-instance-data
+app/desktop/.multi-instance-logs
+app/desktop/.multi-instance-runtime
+deploy/dev/.env
+deploy/dev/.env.??????
+*.key
+*.p8
+*.p12

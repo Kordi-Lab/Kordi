@@ -49,7 +49,10 @@
     "check": "pnpm lint && pnpm typecheck:web && pnpm check:rust",
     "dev:cloud": "pnpm --dir app/desktop tauri:dev:cloud",
     "dev:cloud:multi": "pnpm --dir app/desktop tauri:dev:multi:cloud",
-    "build:cloud": "pnpm --dir app/desktop tauri:build:cloud"
+    "build:cloud": "pnpm --dir app/desktop tauri:build:cloud",
+    "debug:cloud:up": "bash scripts/dev-cloud-up.sh",
+    "debug:cloud:smoke": "bash scripts/dev-cloud-smoke.sh",
+    "debug:cloud:reset": "bash scripts/dev-cloud-reset.sh"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1085.0"
