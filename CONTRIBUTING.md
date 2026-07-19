@@ -7,12 +7,29 @@ Thanks for helping build Kordi. This repository uses GitHub issues, pull request
 - Rust with `cargo`, `rustfmt`, and `clippy`
 - Node.js 22+
 - pnpm 10.29.3+
+- Docker Desktop or Docker Engine with Compose v2 for full product testing
 
 Install JavaScript dependencies once after cloning:
 
 ```bash
 pnpm install --frozen-lockfile
 ```
+
+## Safe local development
+
+Ordinary contributor work should use the isolated backend rather than production:
+
+```bash
+pnpm debug:cloud:up
+pnpm debug:cloud:smoke
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+```
+
+Development launches fail closed when the API origin is missing, invalid, or points at production. Do not bypass this guard for destructive, load, migration, or throwaway multi-account tests.
+
+The local stack generates its own credentials and stores all test accounts and product data in local Docker volumes. Contributors do not need production SSH, Kubernetes, database, object-store, signing, release, or secret-manager access for normal feature work.
+
+Follow [Local development with an isolated Kordi backend](docs/self-hosted-debug.md) for prerequisites, multi-user testing, logs, proxy troubleshooting, validation, and cleanup.
 
 ## Branch workflow
 
@@ -130,6 +147,7 @@ Before requesting review, make sure:
 - [ ] Window resizing / split-view was checked for layout changes.
 - [ ] New behavior has tests or a clear manual validation note.
 - [ ] No debug logs, secrets, or generated files were committed.
+- [ ] Development and destructive tests used an isolated or explicitly approved non-production backend.
 
 ## GitHub branch protection
 

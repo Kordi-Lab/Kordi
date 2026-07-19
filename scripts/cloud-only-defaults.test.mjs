@@ -59,9 +59,11 @@ test('desktop unit command discovers both TypeScript test suffixes without racin
 test('public docs use neutral product wording and safe host guidance', () => {
   const publicDocs = [
     'README.md',
+    'CONTRIBUTING.md',
     'app/desktop/README.md',
     'docs/development.md',
     'docs/run-cloud-desktop.md',
+    'docs/self-hosted-debug.md',
     'docs/cloud-edition.md',
     'docs/hosted-cloud-developer-guide.md',
   ].map((path) => `${path}\n${readText(path)}`).join('\n\n');

@@ -52,19 +52,20 @@ You will need:
 git clone https://github.com/Kordi-AI/Kordi.git
 cd Kordi
 pnpm install --frozen-lockfile
-pnpm dev
+pnpm debug:cloud:up
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
 ```
 
-Kordi opens in account login mode and uses the production hosted API at `https://coordinar.io` by default.
+Kordi opens in account login mode against an isolated Docker backend on your machine. Development launches require an explicit non-production API origin and reject the production origin.
 
 > [!IMPORTANT]
-> Do not run destructive, load, or throwaway multi-account tests against production. Point development and QA builds at an operator-provided test API or a compatible self-hosted API:
+> Do not run destructive, load, or throwaway multi-account tests against production. The local Docker environment is the default contributor workflow. When an approved shared staging environment is required, set its API origin explicitly:
 >
 > ```bash
 > VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 > ```
 
-For multi-user testing and troubleshooting, see [Run Kordi Desktop](docs/run-cloud-desktop.md).
+For prerequisites, multi-user testing, logs, troubleshooting, and cleanup, follow the [local development guide](docs/self-hosted-debug.md).
 
 ## How Kordi works
 
@@ -96,8 +97,10 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 
 | Task | Command |
 | --- | --- |
-| Start Kordi Desktop | `pnpm dev` |
-| Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev:cloud:multi -- --users user1,user2` |
+| Start the isolated backend | `pnpm debug:cloud:up` |
+| Check the isolated backend | `pnpm debug:cloud:smoke` |
+| Start Kordi Desktop | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev` |
+| Start isolated test users | `VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev:cloud:multi -- --reset --users user1,user2` |
 | Build the desktop package | `pnpm build:desktop` |
 | Build the web UI | `pnpm build:web` |
 | Lint and typecheck | `pnpm lint && pnpm typecheck:web` |
@@ -108,6 +111,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 
 | Guide | What it covers |
 | --- | --- |
+| [Local development](docs/self-hosted-debug.md) | Isolated Docker backend, desktop launch, multi-user testing, safety, and cleanup |
 | [Run Kordi Desktop](docs/run-cloud-desktop.md) | Local startup, API selection, multi-user testing, and troubleshooting |
 | [Development commands](docs/development.md) | Full command map and package-specific workflows |
 | [Architecture](docs/architecture.md) | Product topology and layer responsibilities |

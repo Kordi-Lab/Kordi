@@ -1,77 +1,316 @@
-# Self-hosted developer debug environment
+# Local development with an isolated Kordi backend
 
-Use this environment for feature work, multi-account sync checks, schema work, and destructive testing. It runs the current Kordi server plus Postgres, Redis, NATS JetStream, and MinIO entirely on the developer's machine.
+This is the recommended setup for contributors working on the desktop app, account and messaging flows, backend routes, database migrations, attachments, unread state, or multi-account synchronization.
 
-The helper never copies production data, credentials, snapshots, or configuration. The API and object-store ports bind to `127.0.0.1`, while Postgres, Redis, and NATS have no host ports at all.
+The environment runs the current checkout of the Kordi server with Postgres, Redis, NATS JetStream, and MinIO on the developer's machine. It never copies production data, credentials, snapshots, or configuration.
 
-## Start the backend
+## Safety model
 
-Prerequisites:
+The local stack is intentionally separated from the hosted product:
 
+- The desktop must receive an explicit non-production API origin in development.
+- A missing, invalid, or production API origin causes the development launch to fail closed.
+- The API and MinIO ports bind only to `127.0.0.1`.
+- Postgres, Redis, and NATS have no host-published ports.
+- Local credentials are generated into an ignored file and are not shared with any hosted environment.
+- Reset commands are scoped to the `kordi-debug` Compose project.
+
+These launch safeguards prevent accidental production traffic. They are not a security boundary against someone intentionally modifying source code. Production protection still depends on server-side authentication, IAM, network policy, audit logging, and keeping production credentials off contributor machines.
+
+## What runs locally
+
+| Component | Purpose | Host access |
+| --- | --- | --- |
+| Kordi Desktop | Native React and Tauri client | Local process |
+| Cloud API | Accounts, contacts, chats, groups, and synchronization | `127.0.0.1:17081` |
+| Postgres | Product data for local test accounts | Docker network only |
+| Redis | Sessions and transient coordination | Docker network only |
+| NATS JetStream | Local event delivery | Docker network only |
+| MinIO | Attachments and object-storage testing | `127.0.0.1:19000` |
+| MinIO console | Local object-store inspection | `127.0.0.1:19001` |
+
+The Docker environment does not include a remote cloud-agent runner. Desktop-managed agents still run through the local desktop runtime. Runner and sandbox changes require their own development setup.
+
+## Prerequisites
+
+- macOS with the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) installed
+- Node.js 22+
+- pnpm 10.29.3+
+- Rust installed through `rustup`
 - Docker Desktop or Docker Engine with Compose v2
-- Node.js and pnpm
 - `openssl` and `curl`
 
-From the repository root:
+Confirm the main tools before starting:
 
 ```bash
-pnpm install
+node --version
+pnpm --version
+rustc --version
+docker version
+docker compose version
+```
+
+## First-time setup
+
+Run these commands from the repository root:
+
+```bash
+pnpm install --frozen-lockfile
 pnpm debug:cloud:up
 ```
 
-The first run builds the Rust server image and can take several minutes. The helper creates `deploy/dev/.env` with random local credentials, starts the containers, and waits for this health endpoint:
+The first backend build compiles the Rust server and can take several minutes. The helper:
+
+1. Generates random local credentials in `deploy/dev/.env` if the file does not exist.
+2. Builds the server from the current checkout.
+3. Starts the dependency containers.
+4. Waits for the API health check.
+
+Expected health endpoint:
 
 ```text
 http://127.0.0.1:17081/health
 ```
 
-The generated `.env` file is ignored by Git. Do not paste it into issues, commits, screenshots, or chat.
+Verify the stack before opening the desktop:
 
-If an image pull fails while normal web traffic works through a VPN or proxy, configure that proxy in Docker Desktop or the Docker daemon as well. Shell proxy variables do not always apply to daemon-side image pulls. Use your own proxy address; do not commit it to this repository.
+```bash
+pnpm debug:cloud:smoke
+```
 
-## Start the desktop
+Expected result:
 
-Use the explicit local API origin printed by the helper:
+```text
+[kordi-debug] Healthy isolated Cloud API: http://127.0.0.1:17081/health
+```
+
+## Start one desktop instance
+
+Launch the native desktop against the local API:
 
 ```bash
 VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
 ```
 
-Create test accounts through the normal sign-up screen. These accounts exist only in the local Postgres volume. Provider API keys or subscription sessions entered in this build remain developer-owned test credentials; do not reuse production service credentials.
+Create a test account through the normal sign-up screen. The account, sessions, messages, and attachments remain inside the local Docker volumes.
 
-Development launches fail closed when `VITE_KORDI_CLOUD_API_BASE` is absent, invalid, or exactly the production origin. Release builds retain the normal product default. This guard prevents accidental development traffic; it is not a security boundary against someone intentionally modifying source code.
+Use dummy account data for development. Provider API keys or subscription sessions entered into the desktop remain developer-owned credentials; do not use production service identities or credentials supplied by another person.
 
-## Check, inspect, and reset
+## Start multiple isolated desktop users
 
-Check the running services and API:
+Use two or more local profiles for contacts, groups, unread state, message synchronization, and reconnect testing:
+
+```bash
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 \
+pnpm dev:cloud:multi -- --reset --users user1,user2
+```
+
+Each window receives its own local desktop profile and Vite port while sharing the same local backend. Sign in with a different local test account in each window.
+
+The default profiles use:
+
+| Profile | Local UI port |
+| --- | --- |
+| `user1` | `127.0.0.1:1482` |
+| `user2` | `127.0.0.1:1484` |
+| `user3` | `127.0.0.1:1486` |
+
+`--reset` deletes only the selected desktop profiles before launch. It does not delete accounts stored in the local Postgres volume. Omit it when testing session restoration or cached state.
+
+Instance logs are written under:
+
+```text
+app/desktop/.multi-instance-logs/
+```
+
+## Common development workflows
+
+### Desktop-only change
+
+Keep the backend running and restart the desktop after changing branches or native code:
+
+```bash
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+```
+
+For frontend-only iteration, `pnpm dev:web` is faster, but it does not validate native Tauri commands, keychain storage, OAuth loopback behavior, sidecars, system proxy handling, or the updater.
+
+### Cloud API change
+
+Rebuild and restart the local server from the current checkout:
+
+```bash
+pnpm debug:cloud:up
+pnpm debug:cloud:smoke
+```
+
+Follow the server logs while reproducing a request:
+
+```bash
+docker compose --env-file deploy/dev/.env \
+  -f deploy/dev/compose.yaml logs -f cloud-server
+```
+
+### Database migration change
+
+Test both paths:
+
+1. Start with existing local volumes and confirm the migration upgrades them.
+2. Reset the stack and confirm a fresh database starts successfully.
+
+The reset command permanently deletes local debug data, so run it only after preserving anything you still need:
+
+```bash
+pnpm debug:cloud:reset -- --yes
+pnpm debug:cloud:up
+```
+
+### Attachment change
+
+Inspect the local object store at:
+
+```text
+http://127.0.0.1:19001
+```
+
+The local MinIO credentials are in the ignored `deploy/dev/.env` file. Never paste that file into an issue, PR, screenshot, commit, or chat.
+
+## Inspect the environment
+
+Show service health and published ports:
+
+```bash
+docker compose --env-file deploy/dev/.env \
+  -f deploy/dev/compose.yaml ps
+```
+
+Check the API directly:
+
+```bash
+curl -fsS http://127.0.0.1:17081/health
+```
+
+Follow all container logs:
+
+```bash
+docker compose --env-file deploy/dev/.env \
+  -f deploy/dev/compose.yaml logs -f
+```
+
+Stop the containers while preserving local test data:
+
+```bash
+docker compose --env-file deploy/dev/.env \
+  -f deploy/dev/compose.yaml stop
+```
+
+Start them again with the normal helper:
+
+```bash
+pnpm debug:cloud:up
+```
+
+## Troubleshooting
+
+### Docker image pull returns `EOF`, times out, or ignores the VPN
+
+Docker image pulls are performed by the Docker daemon. Shell proxy variables do not always reach the daemon even when normal terminal traffic works.
+
+Configure Docker Desktop or the Docker daemon to use your own proxy URL, then retry:
+
+```text
+HTTP proxy:  <YOUR_PROXY_URL>
+HTTPS proxy: <YOUR_PROXY_URL>
+```
+
+Do not hard-code a personal proxy address in repository files. If Docker is using system-proxy mode but pulls still fail, switch Docker to a correctly configured manual proxy or repair the daemon configuration rather than weakening the application's production guard.
+
+### Port is already in use
+
+Find the process or container using a local port:
+
+```bash
+lsof -nP -iTCP:17081 -sTCP:LISTEN
+docker compose ls
+```
+
+Stop the stale Kordi debug stack or choose unused ports through the `KORDI_DEBUG_API_PORT`, `KORDI_DEBUG_MINIO_PORT`, and `KORDI_DEBUG_MINIO_CONSOLE_PORT` variables in the ignored `deploy/dev/.env` file.
+
+When changing the API port, pass the same origin to the desktop.
+
+### Backend is unhealthy
 
 ```bash
 pnpm debug:cloud:smoke
-docker compose --env-file deploy/dev/.env -f deploy/dev/compose.yaml ps
-docker compose --env-file deploy/dev/.env -f deploy/dev/compose.yaml logs -f cloud-server
+docker compose --env-file deploy/dev/.env \
+  -f deploy/dev/compose.yaml ps
+docker compose --env-file deploy/dev/.env \
+  -f deploy/dev/compose.yaml logs --tail=200 cloud-server postgres redis nats minio
 ```
 
-MinIO's local console is available at `http://127.0.0.1:19001`. Its local credentials are in the ignored `deploy/dev/.env` file.
+Resolve the unhealthy dependency first, then rerun `pnpm debug:cloud:up`.
 
-Permanently delete all local debug volumes and rotate the generated credentials on the next start:
+### Development launch rejects the API origin
+
+This is expected when the variable is missing, invalid, or points at production. Use the explicit loopback origin:
+
+```bash
+VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
+```
+
+Do not patch around the guard. If a shared non-production environment is required, use an operator-approved staging origin with independent data and credentials.
+
+### OAuth login is unavailable
+
+Password sign-up and login work without third-party OAuth configuration. Google or GitHub login requires developer-owned OAuth applications configured with loopback callbacks. Missing OAuth configuration does not prevent local password-account testing.
+
+## Validation before opening a PR
+
+Run the focused local-stack contracts:
+
+```bash
+node --test scripts/local-debug-stack.test.mjs
+```
+
+Run the complete repository checks when the change is ready:
+
+```bash
+pnpm check:ci
+```
+
+For behavior changes, manually verify the relevant paths with local test accounts:
+
+- Fresh sign-up and login
+- Relaunch with preserved session data
+- Direct messages in both directions
+- Group messages and session switching
+- Unread state across two desktop profiles
+- Offline/reconnect synchronization
+- Attachment upload and download when affected
+
+Include the exact commands and results in the PR description. Redact tokens, account identifiers when necessary, filesystem paths, credentials, and private infrastructure details.
+
+## Reset everything
+
+Permanently delete all local debug containers, networks, volumes, and generated credentials:
 
 ```bash
 pnpm debug:cloud:reset -- --yes
 ```
 
-That command is scoped to the `kordi-debug` Compose project. It does not contact or modify a hosted environment.
+The next `pnpm debug:cloud:up` generates new local credentials and a fresh database. The reset helper is scoped to the `kordi-debug` Compose project and does not contact or modify a hosted environment.
 
-## What developers can and cannot access
+## Contributor access boundaries
 
-A developer can inspect and change everything inside their own local containers and local test database. That is intentional and makes backend debugging reproducible.
+Ordinary feature development should not require production SSH, Kubernetes, database, object-store, signing, release, or secret-manager access.
 
-Repository code and desktop UI checks cannot protect a public production API from a malicious developer. Production access is controlled by server-side IAM, authenticated application APIs, database/network policy, audit logging, and the absence of production credentials on developer machines. Contributors should not receive production SSH, Kubernetes, database, object-store, signing, release, or secret-manager roles for ordinary feature work.
+A shared staging environment, when needed, must use separate identities, databases, buckets, encryption keys, OAuth applications, runner tokens, and logs. Never clone the production secret set into staging or a developer laptop.
 
-Use separate non-production identities and infrastructure for any shared staging environment. A staging server should have its own database, buckets, encryption keys, OAuth applications, runner tokens, and logs; never clone the production secret set.
+Repository code and local Docker access give a contributor full control over their own test environment only. Production access is controlled by server-side IAM and infrastructure policy, not by hiding local debug functionality.
 
-## Limitations
+## Related guides
 
-- Password sign-up and login work without third-party OAuth configuration.
-- GitHub or Google login requires OAuth applications owned by the developer or staging environment, with loopback callbacks configured there.
-- The stack does not start a remote cloud-agent runner. Desktop-managed agents still run through the local desktop runtime; runner-specific changes need a separate local runner setup.
-- The object-store API and console are loopback-only for debugging and must not be exposed as a deployment pattern.
+- [`development.md`](development.md): monorepo command map
+- [`run-cloud-desktop.md`](run-cloud-desktop.md): desktop launch reference
+- [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md): approved shared staging and operator workflows
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md): branch, validation, and review workflow

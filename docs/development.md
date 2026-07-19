@@ -2,6 +2,8 @@
 
 This document keeps the top-level development commands for the Kordi monorepo in one place.
 
+New contributors should begin with [`self-hosted-debug.md`](self-hosted-debug.md). It covers the complete isolated backend and desktop workflow, multi-account testing, production access boundaries, troubleshooting, and cleanup.
+
 Run commands from:
 
 ```bash
@@ -11,7 +13,7 @@ cd /path/to/kordi
 ## Install dependencies
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ## Desktop

@@ -34,4 +34,27 @@ test('self-hosted guide uses the safe helper and explicit loopback API origin', 
   assert.match(guide, /VITE_KORDI_CLOUD_API_BASE=http:\/\/127\.0\.0\.1:17081/);
   assert.match(guide, /never copies production data/i);
   assert.match(guide, /production access is controlled by server-side IAM/i);
+  assert.match(guide, /pnpm debug:cloud:smoke/);
+  assert.match(guide, /pnpm dev:cloud:multi -- --reset --users user1,user2/);
+  assert.match(guide, /pnpm debug:cloud:reset -- --yes/);
+  assert.match(guide, /pnpm check:ci/);
+  assert.doesNotMatch(guide, /127\.0\.0\.1:7890/);
+});
+
+test('public contributor entrypoints lead to the isolated development workflow', () => {
+  for (const path of ['README.md', 'CONTRIBUTING.md', 'docs/run-cloud-desktop.md']) {
+    const document = read(path);
+    assert.match(document, /pnpm debug:cloud:up/, `${path} should start the isolated backend`);
+    assert.match(
+      document,
+      /VITE_KORDI_CLOUD_API_BASE=http:\/\/127\.0\.0\.1:17081/,
+      `${path} should use the loopback API`,
+    );
+    assert.match(document, /self-hosted-debug\.md/, `${path} should link the full local guide`);
+  }
+
+  assert.doesNotMatch(
+    read('README.md'),
+    /uses the production hosted API at `https:\/\/coordinar\.io` by default/i,
+  );
 });
