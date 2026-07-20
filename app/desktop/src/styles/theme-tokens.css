@@ -143,8 +143,8 @@
   --app-nav-rail-active-pressed-bg: oklch(88.5% 0.04 242);
   --app-nav-rail-active-text: oklch(23.5% 0.023 252);
   --app-nav-rail-focus-ring: oklch(58% 0.155 246);
-  --app-nav-rail-glass-bg: linear-gradient(180deg, rgb(252 253 255 / 0.52) 0%, rgb(240 243 248 / 0.40) 100%);
-  --app-nav-rail-glass-fallback: linear-gradient(180deg, rgb(250 251 253 / 0.96) 0%, rgb(240 243 247 / 0.97) 100%);
+  --app-nav-rail-glass-bg: linear-gradient(180deg, oklch(82% 0.010 248 / 0.42) 0%, oklch(74% 0.012 248 / 0.34) 100%);
+  --app-nav-rail-glass-fallback: linear-gradient(180deg, oklch(90% 0.009 248 / 0.98) 0%, oklch(86% 0.011 248 / 0.98) 100%);
   --app-nav-rail-glass-border: rgb(15 23 42 / 0.12);
   --app-nav-rail-glass-highlight: rgb(255 255 255 / 0.72);
   --app-nav-rail-avatar-ring: rgb(15 23 42 / 0.16);

@@ -55,7 +55,7 @@ test('native shell exposes vibrancy through the navigation rail only', () => {
   assert.doesNotMatch(sidebar, /shadow-\[inset_-1px_0_0_rgba/);
 });
 
-test('dark navigation rail uses a black glass tint without changing light glass', () => {
+test('navigation rail uses black glass in dark mode and cooler mid-tone glass in light mode', () => {
   const tokensCss = readSource('src/styles/theme-tokens.css');
   const darkThemeStart = tokensCss.indexOf('.bridge-app {');
   const lightThemeStart = tokensCss.indexOf('.bridge-app.theme-light {');
@@ -71,8 +71,13 @@ test('dark navigation rail uses a black glass tint without changing light glass'
   );
   assert.match(
     lightTokens,
-    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, rgb\(252 253 255 \/ 0\.52\) 0%, rgb\(240 243 248 \/ 0\.40\) 100%\);/,
+    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, oklch\(82% 0\.010 248 \/ 0\.42\) 0%, oklch\(74% 0\.012 248 \/ 0\.34\) 100%\);/,
   );
+  assert.match(
+    lightTokens,
+    /--app-nav-rail-glass-fallback:\s*linear-gradient\(180deg, oklch\(90% 0\.009 248 \/ 0\.98\) 0%, oklch\(86% 0\.011 248 \/ 0\.98\) 100%\);/,
+  );
+  assert.doesNotMatch(lightTokens, /rgb\(252 253 255 \/ 0\.52\)|rgb\(250 251 253 \/ 0\.96\)/);
 });
 
 test('resolved Kordi theme is applied to the native macOS material', async () => {
