@@ -1301,8 +1301,8 @@ export function useChatMessageActions({
       queueLocalDraftForSession(targetConversation.id, text, chatComposerAttachments, contextMessages);
       return;
     }
-    if (delayReason) {
-      setDesktopChatError('Kordi is still preparing this session. Your draft is preserved.');
+    if (delayReason === 'session-starting') {
+      setDesktopChatError(null);
       return;
     }
     localChatSendInFlightRef.current = { sessionId: targetConversation.id };
@@ -1785,6 +1785,26 @@ export function useChatMessageActions({
       return;
     }
 
+    if (mentionedTarget) {
+      setDesktopChatError('This chat is unavailable. Try again from the chat list.');
+      return;
+    }
+
+    const localTargetSessionId = targetSessionId ?? null;
+    const localSendDelayReason = localChatSendDelayReason({
+      inFlight: localChatSendInFlightRef.current,
+      targetSessionId: localTargetSessionId,
+      desktopLiveTurn,
+    });
+    if (localSendDelayReason === 'same-session-running' && localTargetSessionId) {
+      queueLocalDraftForSession(localTargetSessionId, text, chatComposerAttachments);
+      return;
+    }
+    if (localSendDelayReason === 'session-starting') {
+      setDesktopChatError(null);
+      return;
+    }
+
     const noProviderShortcutSessionId = activeConvCanonicalSessionId?.trim()
       || (isTransientDraftConversation ? generatedSelfAgentSessionId() : null);
     if (noProviderShortcutSessionId && shouldUseNoProviderSelfAgentShortcut({
@@ -1793,6 +1813,10 @@ export function useChatMessageActions({
       canonicalSessionState,
       hasAnyDesktopAuth,
     })) {
+      localChatSendInFlightRef.current = { sessionId: localTargetSessionId };
+      shouldAutoFollowChatRef.current = true;
+      setIsDesktopChatSending(true);
+      setDesktopChatError(null);
       const sentAt = formatDesktopEventTime();
       let canonicalBaseState = canonicalSessionState;
       const existingCanonicalSession = canonicalSessionState?.sessions.find((session) => session.id === noProviderShortcutSessionId) ?? null;
@@ -1800,19 +1824,26 @@ export function useChatMessageActions({
         const primaryIdentityId = ownedAgentIdentityId(canonicalSessionState);
         if (primaryIdentityId) {
           const sessionTitle = optimisticSessionTitleFromMessage(text, chatComposerAttachments, 'New chat');
-          canonicalBaseState = await openOrCreateCanonicalSession({
-            id: noProviderShortcutSessionId,
-            kind: 'self-agent',
-            title: sessionTitle,
-            status: 'active',
-            createdByIdentityId: canonicalHumanIdentityId,
-            primaryIdentityId,
-            participantIdentityIds: [canonicalHumanIdentityId, primaryIdentityId],
-            metadata: {
-              createdFrom: 'chat-create-flow',
-              ...sessionTitleMetadata(sessionTitle === 'New chat' ? 'placeholder' : 'auto'),
-            },
-          });
+          try {
+            canonicalBaseState = await openOrCreateCanonicalSession({
+              id: noProviderShortcutSessionId,
+              kind: 'self-agent',
+              title: sessionTitle,
+              status: 'active',
+              createdByIdentityId: canonicalHumanIdentityId,
+              primaryIdentityId,
+              participantIdentityIds: [canonicalHumanIdentityId, primaryIdentityId],
+              metadata: {
+                createdFrom: 'chat-create-flow',
+                ...sessionTitleMetadata(sessionTitle === 'New chat' ? 'placeholder' : 'auto'),
+              },
+            });
+          } catch (error) {
+            localChatSendInFlightRef.current = null;
+            setIsDesktopChatSending(false);
+            setDesktopChatError(error instanceof Error ? error.message : 'Unable to start chat session');
+            return;
+          }
         }
       }
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
@@ -1840,10 +1871,8 @@ export function useChatMessageActions({
             text,
           })
         : null;
-      shouldAutoFollowChatRef.current = true;
-      setIsDesktopChatSending(true);
-      setDesktopChatError(null);
       setPendingUserChatMessage(null);
+      localChatSendInFlightRef.current = { sessionId: noProviderShortcutSessionId };
       if (isTransientDraftConversation) setActiveConvId(noProviderShortcutSessionId);
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(
         mergeCanonicalSessionState(current, canonicalBaseState),
@@ -1863,6 +1892,7 @@ export function useChatMessageActions({
       ));
       setChatComposerAttachments([]);
       resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+      localChatSendInFlightRef.current = null;
       setIsDesktopChatSending(false);
       if (preparedCanonicalMessage) {
         void upsertCanonicalMessage(preparedCanonicalMessage.request)
@@ -1911,25 +1941,6 @@ export function useChatMessageActions({
       return targetSessionId;
     };
 
-    if (mentionedTarget) {
-      setDesktopChatError('This chat is unavailable. Try again from the chat list.');
-      return;
-    }
-
-    const localTargetSessionId = targetSessionId ?? null;
-    const localSendDelayReason = localChatSendDelayReason({
-      inFlight: localChatSendInFlightRef.current,
-      targetSessionId: localTargetSessionId,
-      desktopLiveTurn,
-    });
-    if (localSendDelayReason === 'same-session-running' && localTargetSessionId) {
-      queueLocalDraftForSession(localTargetSessionId, text, chatComposerAttachments);
-      return;
-    }
-    if (localSendDelayReason) {
-      setDesktopChatError('Kordi is still preparing this session. Your draft and attachments are preserved.');
-      return;
-    }
     localChatSendInFlightRef.current = { sessionId: localTargetSessionId };
 
     try {

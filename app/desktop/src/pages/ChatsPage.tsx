@@ -15,6 +15,7 @@ import {
   GripVertical,
   Image as ImageIcon,
   Info,
+  LoaderCircle,
   MessageSquare,
   Paperclip,
   PanelLeftClose,
@@ -498,6 +499,23 @@ type ChatComposerShellProps = {
 
 function ChatComposerShell({ children }: ChatComposerShellProps) {
   return <>{children}</>;
+}
+
+function SessionStartingState() {
+  return (
+    <div
+      className="flex h-full min-h-48 items-center justify-center"
+      data-session-starting-state="true"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <div className="inline-flex items-center gap-2 text-[13px] font-medium text-[color:var(--utility-muted-text)]">
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        <span>Starting session…</span>
+      </div>
+    </div>
+  );
 }
 
 type TranscriptNavigationRequest = VirtualTranscriptNavigationRequest;
@@ -1316,9 +1334,11 @@ export function ChatsPage({
   const activeSelfAgentSessionId = selfAgentSessionIdForTitleRename(activeConv);
   const activeSelfAgentSessionIsDraft = activeConv.id === LOCAL_DRAFT_CHAT_CONVERSATION_ID
     || activeConv.canonicalSessionId === LOCAL_DRAFT_CHAT_CONVERSATION_ID;
+  const activeSelfAgentSessionIsStarting = activeSelfAgentSessionIsDraft && isDesktopChatSending;
   const canRenameActiveSelfAgentSession = isNativeShell
     && activeConv.type === 'owned-agent'
-    && (Boolean(activeSelfAgentSessionId) || activeSelfAgentSessionIsDraft);
+    && (Boolean(activeSelfAgentSessionId) || activeSelfAgentSessionIsDraft)
+    && !activeSelfAgentSessionIsStarting;
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
@@ -2881,6 +2901,7 @@ export function ChatsPage({
         onLoadOlderMessages={activeCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
           ? () => onLoadOlderCanonicalSessionMessages(activeCanonicalHistorySessionId)
           : undefined}
+        emptyState={activeSelfAgentSessionIsStarting ? <SessionStartingState /> : null}
         navigationRequest={mainTranscriptNavigationRequest}
         onNavigationHandled={handleMainTranscriptNavigationHandled}
         densityMode={chatTranscriptDensityMode(activeConv)}

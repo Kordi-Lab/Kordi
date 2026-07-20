@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-test('native blank chat draft shows the local-draft hint only in the header subtitle', () => {
+test('native blank chat draft does not surface redundant local-draft copy', () => {
   const source = readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
   const detailPanel = readFileSync(new URL('../src/pages/ChatDetailPanel.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('const nativeChatPlaceholder = useMemo(');
@@ -10,9 +10,9 @@ test('native blank chat draft shows the local-draft hint only in the header subt
   assert.ok(start >= 0 && end > start, 'native chat placeholder block should be present');
 
   const block = source.slice(start, end);
-  assert.match(block, /subtitle:\s*placeholderText,/);
+  assert.match(block, /subtitle:\s*'',/);
   assert.match(block, /messages:\s*\[\],/);
-  assert.doesNotMatch(block, /role:\s*'system'[\s\S]*text:\s*placeholderText/);
+  assert.doesNotMatch(block, /Blank drafts stay local until the first real send\./);
   assert.doesNotMatch(detailPanel, /Blank drafts stay local until the first real send\./);
 
   const overviewStart = detailPanel.indexOf("if (activeDetailTab === 'info')");

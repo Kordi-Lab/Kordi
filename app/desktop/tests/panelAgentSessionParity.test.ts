@@ -322,8 +322,29 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   assert.notEqual(activeStart, -1, 'active send path should exist after targeted send path');
   const targetedSendBlock = actionsSource.slice(targetedStart, activeStart);
   assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetConversation\.id, text, chatComposerAttachments, contextMessages\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
-  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*return;[\s\S]*\}\s*if \(delayReason\) \{[\s\S]*Kordi is still preparing this session/, 'side-panel send should only fall back to the preparing error after the same-session queue case');
+  assert.match(targetedSendBlock, /if \(delayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'side-panel duplicate sends should wait for the in-flight session without promoting normal preparation to an error');
+  assert.doesNotMatch(targetedSendBlock, /Kordi is still preparing this session/, 'normal session preparation should not render through the sidebar-wide error channel');
   assert.match(actionsSource, /startDesktopChatMessage\(message\.sessionId, message\.text, attachmentPaths, null, message\.contextMessages \?\? \[\]\)/, 'flushing queued side messages should send their preserved reference context');
+});
+
+test('new local sessions expose centered progress and coalesce duplicate first sends', () => {
+  const chatsSource = chatsPageSource();
+  const actionsSource = chatMessagesSource();
+  const activeSendStart = actionsSource.indexOf('const handleSendChatMessage = useCallback');
+  assert.notEqual(activeSendStart, -1, 'active send handler should exist');
+  const activeSendBlock = actionsSource.slice(activeSendStart);
+
+  assert.match(chatsSource, /const activeSelfAgentSessionIsStarting = activeSelfAgentSessionIsDraft && isDesktopChatSending;/, 'the pending visual should be scoped to the local draft session');
+  assert.match(chatsSource, /emptyState=\{activeSelfAgentSessionIsStarting \? <SessionStartingState \/> : null\}/, 'the pending visual should occupy the empty transcript rather than the global error banner');
+  assert.match(activeSendBlock, /if \(localSendDelayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'duplicate first sends should be coalesced while materialization is in flight');
+  assert.doesNotMatch(actionsSource, /Kordi is still preparing this session/, 'session-starting should never use failure copy');
+
+  const delayGuardIndex = activeSendBlock.indexOf("if (localSendDelayReason === 'session-starting')");
+  const noProviderShortcutIndex = activeSendBlock.indexOf('const noProviderShortcutSessionId');
+  const noProviderStartingIndex = activeSendBlock.indexOf('setIsDesktopChatSending(true);', noProviderShortcutIndex);
+  const noProviderCreateIndex = activeSendBlock.indexOf('await openOrCreateCanonicalSession({', noProviderShortcutIndex);
+  assert.ok(delayGuardIndex >= 0 && delayGuardIndex < noProviderShortcutIndex, 'the duplicate guard should run before generating a no-provider draft session id');
+  assert.ok(noProviderStartingIndex >= 0 && noProviderStartingIndex < noProviderCreateIndex, 'the centered starting state should appear before no-provider session creation is awaited');
 });
 
 test('side-panel local-agent sends use the shared local send pipeline instead of duplicating optimistic persistence', () => {
