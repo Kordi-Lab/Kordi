@@ -48,3 +48,23 @@ test('native shell exposes vibrancy through the navigation rail only', () => {
   assert.match(sidebar, /className="app-nav-rail-avatar h-9 w-9"/);
   assert.doesNotMatch(sidebar, /shadow-\[inset_-1px_0_0_rgba/);
 });
+
+test('dark navigation rail uses a black glass tint without changing light glass', () => {
+  const tokensCss = readSource('src/styles/theme-tokens.css');
+  const darkThemeStart = tokensCss.indexOf('.bridge-app {');
+  const lightThemeStart = tokensCss.indexOf('.bridge-app.theme-light {');
+  assert.ok(darkThemeStart >= 0, 'dark theme token block should exist');
+  assert.ok(lightThemeStart > darkThemeStart, 'light theme token block should follow dark tokens');
+
+  const darkTokens = tokensCss.slice(darkThemeStart, lightThemeStart);
+  const lightTokens = tokensCss.slice(lightThemeStart);
+
+  assert.match(
+    darkTokens,
+    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, oklch\(16% 0\.012 252 \/ 0\.78\) 0%, oklch\(11% 0\.010 252 \/ 0\.70\) 100%\);/,
+  );
+  assert.match(
+    lightTokens,
+    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, rgb\(252 253 255 \/ 0\.52\) 0%, rgb\(240 243 248 \/ 0\.40\) 100%\);/,
+  );
+});
