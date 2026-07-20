@@ -579,14 +579,12 @@ export function useWorkspaceViewModels({
   }, [activeConvId, cloudPresence, cloudSessionActivity, hiddenSessionIds, hydratedChatConversations, localAgentBridgeReachoutSessionIds]);
 
   const nativeChatPlaceholder = useMemo(
-    () => {
-      const placeholderText = 'Blank drafts stay local until the first real send.';
-      return {
+    () => ({
       id: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
       canonicalSessionId: undefined,
       name: 'New session',
       type: 'owned-agent' as const,
-      subtitle: placeholderText,
+      subtitle: '',
       unread: 0,
       bridges: ['Local'],
       trust: 'Owned',
@@ -594,8 +592,7 @@ export function useWorkspaceViewModels({
       participants: ['Me', 'My Kordi'],
       bridgeTarget: undefined,
       messages: [],
-    };
-    },
+    }),
     [],
   );
 

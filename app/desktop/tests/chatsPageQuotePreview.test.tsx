@@ -164,7 +164,7 @@ test('starting a local session keeps the New session title and shows neutral pro
     canonicalSessionId: undefined,
     name: 'New session',
     type: 'owned-agent',
-    subtitle: 'Blank drafts stay local until the first real send.',
+    subtitle: '',
     bridges: ['Local'],
     directness: 'Draft',
     participants: ['Me', 'My Kordi'],
@@ -181,6 +181,7 @@ test('starting a local session keeps the New session title and shows neutral pro
   assert.match(startingMarkup, /Starting session…/);
   assert.match(startingMarkup, /text-\[color:var\(--utility-muted-text\)\]/);
   assert.doesNotMatch(startingMarkup, /data-chat-session-title-rename="true"/);
+  assert.doesNotMatch(startingMarkup, /data-chat-session-subtitle-pill|Blank drafts stay local/);
   assert.doesNotMatch(startingMarkup, /Kordi is still preparing this session|text-rose/);
 
   const idleDraftMarkup = renderChatsPage({
