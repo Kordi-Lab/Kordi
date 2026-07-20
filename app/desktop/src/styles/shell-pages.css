@@ -1,9 +1,70 @@
-.app-auth-settings-page .app-auth-provider-list,
-.app-auth-settings-page .app-auth-detail-section,
+.app-auth-settings-page .app-auth-provider-list {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-auth-settings-page .app-auth-provider-rows {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-auth-settings-page .app-auth-detail-section {
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .app-auth-provider-detail-shell .app-auth-detail-section {
   border-color: color-mix(in oklab, var(--app-divider) 58%, transparent);
   background: color-mix(in oklab, var(--app-card-bg) 58%, transparent);
   box-shadow: none;
+}
+
+.app-transient-surface.app-cloud-account-settings-dialog {
+  border-color: var(--app-divider) !important;
+  background: var(--app-main-bg) !important;
+  box-shadow: var(--app-shadow-float) !important;
+}
+
+.app-cloud-account-settings-rail {
+  border-color: var(--app-divider);
+  background: var(--app-session-bg);
+}
+
+.app-cloud-account-settings-page {
+  background: var(--app-main-bg);
+}
+
+.app-cloud-account-settings-section {
+  width: 100%;
+}
+
+.app-cloud-account-profile,
+.app-cloud-account-theme,
+.app-cloud-account-settings-meta-row,
+.app-cloud-account-settings-divider {
+  border-color: var(--app-divider);
+}
+
+.app-cloud-account-profile {
+  border-top: 1px solid var(--app-divider);
+  border-bottom: 1px solid var(--app-divider);
+}
+
+@media (max-width: 767px) {
+  .app-cloud-account-settings-rail {
+    overflow-x: auto;
+  }
+
+  .app-cloud-account-settings-tabs {
+    min-width: 28rem;
+  }
 }
 
 .app-auth-settings-page .app-auth-provider-row:hover {

@@ -300,7 +300,11 @@
 }
 
 .bridge-app.theme-light .app-auth-settings-page .app-auth-provider-list,
-.bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section,
+.bridge-app.theme-light .app-auth-settings-page .app-auth-detail-section {
+  border-color: rgba(15, 23, 42, 0.10);
+  background: transparent;
+}
+
 .bridge-app.theme-light .app-auth-provider-detail-shell .app-auth-detail-section {
   background: linear-gradient(180deg, rgba(248, 251, 255, 0.88) 0%, rgba(241, 247, 255, 0.78) 100%);
   border-color: rgba(37, 99, 235, 0.12);
@@ -313,8 +317,8 @@
 }
 
 .bridge-app.theme-light .app-auth-settings-page .app-auth-provider-rows {
-  border-color: rgba(37, 99, 235, 0.10) !important;
-  background: rgba(255, 255, 255, 0.58) !important;
+  border-color: rgba(15, 23, 42, 0.10) !important;
+  background: transparent !important;
   box-shadow: none !important;
 }
 
@@ -331,14 +335,14 @@
 }
 
 .bridge-app.theme-light .app-cloud-account-settings-dialog {
-  border-color: var(--app-transient-border) !important;
-  background: var(--app-transient-surface-bg) !important;
-  box-shadow: var(--app-transient-shadow) !important;
+  border-color: var(--app-divider) !important;
+  background: var(--app-main-bg) !important;
+  box-shadow: var(--app-shadow-float) !important;
 }
 
-.bridge-app.theme-light .app-cloud-account-settings-dialog > div:first-child {
-  border-right-color: var(--app-transient-divider) !important;
-  background: var(--app-transient-raised-bg);
+.bridge-app.theme-light .app-cloud-account-settings-rail {
+  border-color: var(--app-divider) !important;
+  background: var(--app-session-bg);
 }
 
 .bridge-app.theme-light .app-avatar-upload-button {

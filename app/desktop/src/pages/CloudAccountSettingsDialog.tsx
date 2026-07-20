@@ -217,8 +217,8 @@ export function CloudAccountSettingsDialog({
   };
 
   const profilePanel = (
-    <div className="app-surface-muted rounded-[24px] p-5">
-      <div className="flex flex-wrap items-end gap-4">
+    <div className="app-cloud-account-settings-section app-cloud-account-profile max-w-[680px]">
+      <div className="flex flex-wrap items-center gap-4 py-3">
         <IdentityAvatar
           kind="human"
           seed={avatarSeed}
@@ -226,7 +226,7 @@ export function CloudAccountSettingsDialog({
           imageUrl={avatarUrlDraft || undefined}
           className="h-12 w-12 border border-white/10"
         />
-        <label className="grid min-w-[16rem] flex-1 gap-2 text-[12px] font-medium text-slate-300">
+        <label className="grid min-w-[16rem] flex-1 gap-1.5 text-[12px] font-medium text-slate-300">
           Display name
           <input
             value={displayNameDraft}
@@ -238,7 +238,7 @@ export function CloudAccountSettingsDialog({
             placeholder="Your display name"
           />
         </label>
-        <Button type="button" variant="secondary" className="h-10 rounded-full px-4 text-[12px]" onClick={() => {
+        <Button type="button" variant="secondary" className="app-avatar-upload-button h-9 rounded-full border px-4 text-[12px]" onClick={() => {
           setProfileError('');
           fileInputRef.current?.click();
         }}>
@@ -257,7 +257,7 @@ export function CloudAccountSettingsDialog({
         />
       </div>
       {profileError ? <div className="app-error-text mt-3 text-[12px] text-rose-200">{profileError}</div> : null}
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+      <div className="app-cloud-account-settings-meta-row mt-3 flex flex-wrap items-center justify-between gap-3 border-t py-3">
         <div className="grid gap-1 text-[11px] text-slate-500">
           {cloudProfileRows(account).map((row) => (
             <div key={row.label}><span className="text-slate-400">{row.label}:</span> {row.value}</div>
@@ -284,7 +284,7 @@ export function CloudAccountSettingsDialog({
   );
 
   const authPanel = (
-    <div className="max-w-[620px]">
+    <div className="app-cloud-account-settings-section max-w-[680px]">
       <AuthPage
         variant="settings"
         layoutWidth={Math.min(authSettingsLayoutWidth, 620)}
@@ -306,13 +306,13 @@ export function CloudAccountSettingsDialog({
   );
 
   const themePanel = (
-    <div className="app-surface-muted overflow-hidden rounded-[24px]">
+    <div className="app-cloud-account-settings-section app-cloud-account-theme max-w-[680px] border-y">
       {(appearanceSection?.items ?? []).map((item, index) => (
         <div
           key={item.label}
           className={cn(
-            'grid items-center gap-3 px-5 py-4 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]',
-            index > 0 && 'border-t border-white/10',
+            'grid items-center gap-3 py-3.5 md:grid-cols-[minmax(0,1fr)_minmax(208px,280px)]',
+            index > 0 && 'app-cloud-account-settings-divider border-t',
           )}
         >
           <div>
@@ -338,14 +338,13 @@ export function CloudAccountSettingsDialog({
         role="dialog"
         aria-label="Account settings"
         aria-modal="true"
-        className="app-transient-surface app-modal-panel app-cloud-account-settings-dialog grid h-[min(720px,calc(100vh-48px))] w-[min(920px,calc(100vw-48px))] overflow-hidden rounded-[24px] border md:grid-cols-[220px_minmax(0,1fr)]"
+        className="app-transient-surface app-modal-panel app-cloud-account-settings-dialog grid h-[min(680px,calc(100vh-40px))] w-[min(900px,calc(100vw-40px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[18px] border md:grid-cols-[208px_minmax(0,1fr)] md:grid-rows-1"
       >
-        <div className="flex min-h-0 flex-col border-r border-white/10 p-4">
-          <div className="mb-4 min-w-0 px-3 py-2">
+        <div className="app-session-panel app-cloud-account-settings-rail flex min-h-0 flex-col border-b p-3 md:border-b-0 md:border-r">
+          <div className="mb-2 min-w-0 px-2.5 py-2">
             <div className="truncate text-[13px] font-semibold text-white">{displayName}</div>
-            <div className="mt-0.5 truncate text-[11px] text-slate-400">Account</div>
           </div>
-          <div className="grid gap-1">
+          <div className="app-cloud-account-settings-tabs grid grid-cols-3 gap-1 md:grid-cols-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id || (tab.id !== 'profile' && activeSettingsSectionId === tab.id && activeTab === tab.id);
@@ -354,7 +353,7 @@ export function CloudAccountSettingsDialog({
                   key={tab.id}
                   type="button"
                   className={cn(
-                    'flex items-center gap-2.5 rounded-[14px] px-3 py-2 text-left text-[13px] font-medium transition',
+                    'flex min-w-0 items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left text-[13px] font-medium transition',
                     active ? 'app-list-item-active text-white' : 'app-list-item text-slate-300 hover:text-white',
                   )}
                   onClick={() => selectTab(tab.id)}
@@ -366,8 +365,8 @@ export function CloudAccountSettingsDialog({
             })}
           </div>
         </div>
-        <div className="flex min-h-0 flex-col p-5">
-          <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
+        <div className="app-main-panel app-cloud-account-settings-page flex min-h-0 flex-col px-5 py-4 md:px-6 md:py-5">
+          <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
             <div>
               <div className="text-[18px] font-semibold tracking-tight text-white">
                 {activeTab === 'profile' ? 'Profile' : activeTab === 'auth' ? 'Authentication' : 'Theme'}
@@ -378,7 +377,7 @@ export function CloudAccountSettingsDialog({
                 </div>
               ) : null}
             </div>
-            <button type="button" className="grid h-9 w-9 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white" onClick={onClose} aria-label="Close account settings">
+            <button type="button" className="app-icon-button grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:text-white" onClick={onClose} aria-label="Close account settings">
               <X className="h-4 w-4" />
             </button>
           </div>
