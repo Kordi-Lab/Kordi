@@ -306,7 +306,7 @@ export function CloudAccountSettingsDialog({
   );
 
   const themePanel = (
-    <div className="app-cloud-account-settings-section app-cloud-account-theme max-w-[680px] border-y">
+    <div className="app-cloud-account-settings-section app-cloud-account-theme max-w-[680px]">
       {(appearanceSection?.items ?? []).map((item, index) => (
         <div
           key={item.label}
@@ -329,7 +329,7 @@ export function CloudAccountSettingsDialog({
 
   return createPortal(
     <div
-      className="app-transient-overlay app-cloud-account-settings-overlay fixed inset-0 z-[180] flex items-center justify-center px-6 py-6 backdrop-blur-md"
+      className="app-transient-overlay app-cloud-account-settings-overlay fixed inset-0 z-[180] flex items-center justify-center px-6 py-6 backdrop-blur-sm"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -338,7 +338,7 @@ export function CloudAccountSettingsDialog({
         role="dialog"
         aria-label="Account settings"
         aria-modal="true"
-        className="app-transient-surface app-modal-panel app-cloud-account-settings-dialog grid h-[min(680px,calc(100vh-40px))] w-[min(900px,calc(100vw-40px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[18px] border md:grid-cols-[208px_minmax(0,1fr)] md:grid-rows-1"
+        className="app-transient-surface app-modal-panel app-cloud-account-settings-dialog grid h-[min(680px,calc(100vh-40px))] w-[min(900px,calc(100vw-40px))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[12px] md:grid-cols-[208px_minmax(0,1fr)] md:grid-rows-1"
       >
         <div className="app-session-panel app-cloud-account-settings-rail flex min-h-0 flex-col border-b p-3 md:border-b-0 md:border-r">
           <div className="mb-2 min-w-0 px-2.5 py-2">
@@ -377,7 +377,7 @@ export function CloudAccountSettingsDialog({
                 </div>
               ) : null}
             </div>
-            <button type="button" className="app-icon-button grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:text-white" onClick={onClose} aria-label="Close account settings">
+            <button type="button" className="app-transient-flat-action grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:text-white" onClick={onClose} aria-label="Close account settings">
               <X className="h-4 w-4" />
             </button>
           </div>

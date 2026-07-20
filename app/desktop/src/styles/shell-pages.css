@@ -27,9 +27,9 @@
 }
 
 .app-transient-surface.app-cloud-account-settings-dialog {
-  border-color: var(--app-divider) !important;
+  border: 0 !important;
   background: var(--app-main-bg) !important;
-  box-shadow: var(--app-shadow-float) !important;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.28) !important;
 }
 
 .app-cloud-account-settings-rail {
@@ -45,16 +45,10 @@
   width: 100%;
 }
 
-.app-cloud-account-profile,
 .app-cloud-account-theme,
 .app-cloud-account-settings-meta-row,
 .app-cloud-account-settings-divider {
   border-color: var(--app-divider);
-}
-
-.app-cloud-account-profile {
-  border-top: 1px solid var(--app-divider);
-  border-bottom: 1px solid var(--app-divider);
 }
 
 @media (max-width: 767px) {

@@ -331,13 +331,13 @@
 }
 
 .bridge-app.theme-light .app-cloud-account-settings-overlay {
-  background: var(--app-transient-overlay-bg) !important;
+  background: rgb(15 23 42 / 0.24) !important;
 }
 
 .bridge-app.theme-light .app-cloud-account-settings-dialog {
-  border-color: var(--app-divider) !important;
+  border: 0 !important;
   background: var(--app-main-bg) !important;
-  box-shadow: var(--app-shadow-float) !important;
+  box-shadow: 0 12px 30px rgb(15 23 42 / 0.11) !important;
 }
 
 .bridge-app.theme-light .app-cloud-account-settings-rail {

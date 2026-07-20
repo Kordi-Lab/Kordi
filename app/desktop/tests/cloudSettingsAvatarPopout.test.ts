@@ -49,6 +49,9 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
 
   assert.match(modal, /app-cloud-account-settings-overlay/);
   assert.match(modal, /app-cloud-account-settings-dialog/);
+  assert.match(modal, /app-cloud-account-settings-dialog[^\n]*rounded-\[12px\]/);
+  assert.doesNotMatch(modal, /app-cloud-account-settings-dialog[^\n]*rounded-\[18px\]/);
+  assert.doesNotMatch(modal, /app-cloud-account-settings-dialog[^\n]*\sborder(?:\s|$)/);
   assert.doesNotMatch(modal, /bg-black\/45/);
   assert.doesNotMatch(`${modal}\n${authPage}`, /rgba\(126,111,64/);
   const modalPaletteBlock = themeOverrides.slice(
@@ -64,8 +67,11 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
   assert.doesNotMatch(providerList, /app-surface-muted app-auth-provider-list/);
   assert.match(shellPages, /\.app-auth-settings-page \.app-auth-detail-section\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
   assert.match(modalPaletteBlock, /\.app-auth-settings-page \.app-auth-detail-section\s*\{[^}]*background:\s*transparent;/s);
-  assert.match(modalPaletteBlock, /\.app-cloud-account-settings-overlay\s*\{[^}]*var\(--app-transient-overlay-bg\)/s);
-  assert.match(modalPaletteBlock, /\.app-cloud-account-settings-dialog\s*\{[^}]*background:\s*var\(--app-main-bg\)[^}]*box-shadow:\s*var\(--app-shadow-float\)/s);
+  assert.match(modalPaletteBlock, /\.app-cloud-account-settings-overlay\s*\{[^}]*rgb\(15 23 42 \/ 0\.24\)/s);
+  assert.match(modalPaletteBlock, /\.app-cloud-account-settings-dialog\s*\{[^}]*border:\s*0[^}]*background:\s*var\(--app-main-bg\)[^}]*box-shadow:\s*0 12px 30px rgb\(15 23 42 \/ 0\.11\)/s);
+  assert.match(shellPages, /\.app-transient-surface\.app-cloud-account-settings-dialog\s*\{[^}]*border:\s*0[^}]*box-shadow:\s*0 14px 36px rgb\(0 0 0 \/ 0\.28\)/s);
+  assert.doesNotMatch(shellPages, /\.app-cloud-account-profile\s*\{[^}]*border-(?:top|bottom)/s);
+  assert.doesNotMatch(modal, /app-cloud-account-theme[^\n]*border-y/);
   assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-auth-provider-glyph[\s\S]*rgba\(239, 246, 255, 0\.96\)/);
   assert.doesNotMatch(modalPaletteBlock, /rgba\(147, 128, 109|rgba\(138, 118, 98|rgba\(126,111,64/);
 });
