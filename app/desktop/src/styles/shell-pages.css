@@ -304,6 +304,11 @@
   background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
 }
 
+.app-auth-gate-overlay,
+.app-auth-gate-shell {
+  background: #0f1115;
+}
+
 .app-agents-page {
   container: agents-page / inline-size;
   padding: 0;

@@ -294,6 +294,7 @@
   box-shadow: none;
 }
 
+.bridge-app.theme-light .app-auth-gate-overlay,
 .bridge-app.theme-light .app-auth-gate-shell {
   background: linear-gradient(180deg, rgb(248 251 255) 0%, rgb(241 247 255) 100%);
   box-shadow: none;

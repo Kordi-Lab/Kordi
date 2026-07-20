@@ -53,13 +53,21 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
 
 test('provider gate uses a flat cool light surface without modal board chrome', () => {
   const authPage = readAuthSource('AuthPage.tsx');
+  const overlaySlots = readFileSync(new URL('../src/app/assembleOverlaySlots.tsx', import.meta.url), 'utf8');
   const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const authGateOverlay = overlaySlots.slice(
+    overlaySlots.indexOf('const authGate ='),
+    overlaySlots.indexOf('const inlineAuthDialog ='),
+  );
 
   assert.match(authPage, /app-auth-gate-shell/);
   assert.match(authPage, /app-auth-gate-shell flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-none border-0 bg-transparent px-8 py-8 shadow-none/);
   assert.doesNotMatch(authPage, /app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-\[30px\] border border-white\/10/);
+  assert.match(authGateOverlay, /app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden/);
+  assert.doesNotMatch(authGateOverlay, /\bapp-overlay\b|\bp-3\b|\bsm:p-4\b|backdrop-blur/);
 
-  const gateLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const gateLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-gate-overlay,[\s\S]*?\.bridge-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.match(gateLightRule, /\.app-auth-gate-overlay/);
   assert.match(gateLightRule, /background:/);
   assert.match(gateLightRule, /rgb\(248 251 255\)|rgb\(241 247 255\)|rgba\(248, 251, 255/);
   assert.doesNotMatch(gateLightRule, /rgba\(248, 246, 242|rgba\(245, 240, 232|warm|amber|orange/);
