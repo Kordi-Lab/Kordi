@@ -138,10 +138,10 @@
   --app-nav-rail-hover-bg: oklch(94% 0.014 242);
   --app-nav-rail-hover-text: oklch(23.5% 0.023 252);
   --app-nav-rail-pressed-bg: oklch(89.5% 0.024 242);
-  --app-nav-rail-active-bg: oklch(58% 0.115 242);
-  --app-nav-rail-active-hover-bg: oklch(61% 0.120 242);
-  --app-nav-rail-active-pressed-bg: oklch(54% 0.110 242);
-  --app-nav-rail-active-text: oklch(96% 0.010 242);
+  --app-nav-rail-active-bg: var(--app-sidebar-selected-bg);
+  --app-nav-rail-active-hover-bg: color-mix(in oklab, var(--app-sidebar-selected-bg) 86%, var(--app-sidebar-accent));
+  --app-nav-rail-active-pressed-bg: color-mix(in oklab, var(--app-sidebar-selected-bg) 76%, var(--app-sidebar-accent));
+  --app-nav-rail-active-text: var(--app-sidebar-title-text);
   --app-nav-rail-focus-ring: oklch(58% 0.155 246);
   --app-nav-rail-glass-bg: linear-gradient(180deg, oklch(82% 0.010 248 / 0.42) 0%, oklch(74% 0.012 248 / 0.34) 100%);
   --app-nav-rail-glass-fallback: linear-gradient(180deg, oklch(90% 0.009 248 / 0.98) 0%, oklch(86% 0.011 248 / 0.98) 100%);

@@ -25,9 +25,10 @@ test('workspace rail navigation has explicit light and dark theme tokens', () =>
   assert.equal(activeBackgrounds.length, 2);
   assert.equal(activeForegrounds.length, 2);
   assert.match(tokens, /--app-nav-rail-focus-ring:/);
-  assert.match(lightTokens, /--app-nav-rail-active-bg:\s*oklch\(58% 0\.115 242\);/);
-  assert.match(lightTokens, /--app-nav-rail-active-hover-bg:\s*oklch\(61% 0\.120 242\);/);
-  assert.match(lightTokens, /--app-nav-rail-active-pressed-bg:\s*oklch\(54% 0\.110 242\);/);
-  assert.match(lightTokens, /--app-nav-rail-active-text:\s*oklch\(96% 0\.010 242\);/);
-  assert.doesNotMatch(lightTokens, /--app-nav-rail-active-bg:\s*oklch\(92\.5%/);
+  assert.match(lightTokens, /--app-sidebar-selected-bg:\s*#EEF4FF;/);
+  assert.match(lightTokens, /--app-nav-rail-active-bg:\s*var\(--app-sidebar-selected-bg\);/);
+  assert.match(lightTokens, /--app-nav-rail-active-hover-bg:\s*color-mix\(in oklab, var\(--app-sidebar-selected-bg\) 86%, var\(--app-sidebar-accent\)\);/);
+  assert.match(lightTokens, /--app-nav-rail-active-pressed-bg:\s*color-mix\(in oklab, var\(--app-sidebar-selected-bg\) 76%, var\(--app-sidebar-accent\)\);/);
+  assert.match(lightTokens, /--app-nav-rail-active-text:\s*var\(--app-sidebar-title-text\);/);
+  assert.doesNotMatch(lightTokens, /--app-nav-rail-active-bg:\s*oklch\(58% 0\.115 242\);/);
 });
