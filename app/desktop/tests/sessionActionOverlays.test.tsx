@@ -42,6 +42,32 @@ test('SessionContextMenu offers Remove chat without a separate Not show here act
   assert.match(markup, /Remove chat…/);
 });
 
+test('SessionContextMenu keeps ordinary actions flat at rest', () => {
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { innerWidth: 1024, innerHeight: 768 },
+  });
+
+  const markup = renderToStaticMarkup(createElement(SessionContextMenu, {
+    target: {
+      sessionId: 'session:one',
+      sessionName: 'Trip planning',
+      x: 120,
+      y: 120,
+      canMoveToProject: true,
+    },
+    onClose: () => {},
+    onRename: () => {},
+    onMove: () => {},
+    onDelete: () => {},
+  }));
+
+  assert.match(markup, /app-transient-flat-action[^>]*>Rename…</);
+  assert.match(markup, /app-transient-flat-action[^>]*>Move to project…</);
+  assert.match(markup, /app-transient-row app-transient-row-danger[^>]*>Remove chat…</);
+  assert.doesNotMatch(markup, /app-transient-row[^>]*>Rename…</);
+});
+
 test('RenameSessionDialog uses the anchored popout presentation', () => {
   const html = renderToStaticMarkup(createElement(RenameSessionDialog, {
       target: {

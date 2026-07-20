@@ -104,10 +104,10 @@ export function AuthProviderList({
 
   return (
     <div
-      className="app-surface-muted app-auth-provider-list flex h-full min-h-0 w-full min-w-0 max-w-none flex-1 flex-col self-stretch overflow-hidden rounded-[24px] border border-white/6 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      className="app-auth-provider-list flex h-full min-h-0 w-full min-w-0 max-w-none flex-1 flex-col self-stretch overflow-hidden"
       style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
     >
-      <div className="mb-3 flex shrink-0 items-start justify-between gap-2 px-2 py-1">
+      <div className="mb-4 flex shrink-0 items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="text-[14px] font-medium tracking-[-0.015em] text-white">Choose a provider</div>
@@ -154,7 +154,7 @@ export function AuthProviderList({
       ) : null}
 
       <ScrollArea className="min-h-0 flex-1 pr-1">
-        <div className="app-auth-provider-rows w-full overflow-hidden rounded-[22px] border border-white/8 bg-white/[0.025] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <div className="app-auth-provider-rows w-full overflow-hidden border-y border-white/8 bg-transparent shadow-none">
           {providers.map((provider, index) => {
             const selected = provider.id === selectedProviderId;
 

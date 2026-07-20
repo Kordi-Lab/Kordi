@@ -80,17 +80,27 @@ test('light cloud login and loading gates use the cool main-shell palette', () =
   assert.doesNotMatch(`${lightCloudTokenBlock}\n${lightCloudBlock}\n${lightAccentsBlock}\n${lightStartingBlock}`, /oklch\([^)]*\s82(?:\s|\/|\))|rgba\(255,\s*252|rgb\(245 241 232\)|0\.955 0\.026 82/);
 });
 
-test('light agent workspace uses cool slate surfaces instead of warm beige panels', () => {
+test('agent workspace is a full-bleed continuous surface with structural dividers', () => {
   const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const shellPagesCss = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const agentsPageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
+  const agentSharedSource = readFileSync(new URL('../src/kordi-app/agents/shared.tsx', import.meta.url), 'utf8');
   const agentBlockStart = themeOverridesCss.indexOf('.bridge-app.theme-light .app-agent-shell');
   const agentBlockEnd = themeOverridesCss.indexOf('.bridge-app.theme-light .app-workspace-sidebar .app-sidebar-panel-section', agentBlockStart);
   const agentLightBlock = themeOverridesCss.slice(agentBlockStart, agentBlockEnd);
 
   assert.ok(agentBlockStart >= 0 && agentBlockEnd > agentBlockStart, 'expected to find the light agent theme block');
-  assert.match(agentLightBlock, /\.app-agent-shell\s*{[^}]*border-color:\s*color-mix\(in oklab, rgb\(148 163 184\) 26%, transparent\);[^}]*background:\s*color-mix\(in oklab, rgb\(226 232 240\) 48%, transparent\)/s);
-  assert.match(agentLightBlock, /\.app-agent-sidebar\s*{[^}]*background:\s*color-mix\(in oklab, rgb\(248 250 252\) 86%, transparent\)/s);
-  assert.match(agentLightBlock, /\.app-agent-detail-pane\s*{[^}]*background:\s*color-mix\(in oklab, rgb\(241 245 249\) 78%, transparent\)/s);
-  assert.match(agentLightBlock, /\.app-agent-content-pane\s*{[^}]*border-left-color:\s*color-mix\(in oklab, rgb\(148 163 184\) 28%, transparent\);[^}]*background:\s*color-mix\(in oklab, rgb\(238 242 247\) 82%, transparent\)/s);
+  assert.match(shellPagesCss, /\.app-agents-page\s*{[^}]*padding:\s*0;/s);
+  assert.match(shellPagesCss, /\.app-agent-shell\s*{[^}]*border:\s*0;[^}]*background:\s*transparent;/s);
+  assert.match(shellPagesCss, /\.app-agent-sidebar\s*{[^}]*border-right:\s*1px solid[^}]*background:\s*transparent;/s);
+  assert.match(shellPagesCss, /\.app-agent-detail-pane\s*{[^}]*border-right:\s*1px solid[^}]*background:\s*transparent;/s);
+  assert.match(agentLightBlock, /\.app-agent-shell\s*{[^}]*border-color:\s*transparent;[^}]*background:\s*transparent;/s);
+  assert.match(agentLightBlock, /\.app-agent-sidebar,[\s\S]*?\.app-agent-detail-pane\s*{[^}]*border-right-color:\s*color-mix\(in oklab, rgb\(148 163 184\) 28%, transparent\);[^}]*background:\s*transparent;/s);
+  assert.match(agentLightBlock, /\.app-agent-content-pane\s*{[^}]*background:\s*transparent;/s);
+  assert.doesNotMatch(agentsPageSource, /app-agents-page[^"\n]*\bp-[0-9]/);
+  assert.doesNotMatch(agentsPageSource, /app-agent-shell[^"\n]*(?:rounded|border)/);
+  assert.match(agentSharedSource, /app-agent-section border-t pt-5/);
+  assert.doesNotMatch(agentSharedSource, /app-agent-section[^"\n]*(?:rounded|\bborder\b(?!-t))/);
   assert.doesNotMatch(agentLightBlock, /rgb\(245 241 232\)|rgba\(255, 252, 244|rgba\(247, 244, 235|rgba\(243, 239, 229|rgba\(73, 62, 54/);
 });
 

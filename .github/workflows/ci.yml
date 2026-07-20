@@ -50,6 +50,36 @@ jobs:
       - name: Build desktop web bundle
         run: pnpm --dir app/desktop build
 
+  desktop-visual:
+    name: Desktop visual regression
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install visual-test browser
+        run: pnpm --dir app/desktop exec playwright install chromium
+
+      - name: Compare transient surfaces
+        run: pnpm --dir app/desktop test:visual
+
   rust:
     name: Rust checks
     runs-on: macos-latest

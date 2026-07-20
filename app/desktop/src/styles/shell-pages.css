@@ -1,9 +1,64 @@
-.app-auth-settings-page .app-auth-provider-list,
-.app-auth-settings-page .app-auth-detail-section,
+.app-auth-settings-page .app-auth-provider-list {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-auth-settings-page .app-auth-provider-rows {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-auth-settings-page .app-auth-detail-section {
+  border-top: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .app-auth-provider-detail-shell .app-auth-detail-section {
   border-color: color-mix(in oklab, var(--app-divider) 58%, transparent);
   background: color-mix(in oklab, var(--app-card-bg) 58%, transparent);
   box-shadow: none;
+}
+
+.app-transient-surface.app-cloud-account-settings-dialog {
+  border: 0 !important;
+  background: var(--app-main-bg) !important;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.28) !important;
+}
+
+.app-cloud-account-settings-rail {
+  border-color: var(--app-divider);
+  background: var(--app-session-bg);
+}
+
+.app-cloud-account-settings-page {
+  background: var(--app-main-bg);
+}
+
+.app-cloud-account-settings-section {
+  width: 100%;
+}
+
+.app-cloud-account-theme,
+.app-cloud-account-settings-meta-row,
+.app-cloud-account-settings-divider {
+  border-color: var(--app-divider);
+}
+
+@media (max-width: 767px) {
+  .app-cloud-account-settings-rail {
+    overflow-x: auto;
+  }
+
+  .app-cloud-account-settings-tabs {
+    min-width: 28rem;
+  }
 }
 
 .app-auth-settings-page .app-auth-provider-row:hover {
@@ -249,16 +304,22 @@
   background: color-mix(in oklab, var(--app-control-bg) 42%, transparent);
 }
 
+.app-auth-gate-overlay,
+.app-auth-gate-shell {
+  background: #0f1115;
+}
+
 .app-agents-page {
   container: agents-page / inline-size;
+  padding: 0;
 }
 
 .app-agent-shell {
   grid-template-areas: 'sidebar detail content';
   grid-template-columns: minmax(252px, 296px) minmax(0, 0.94fr) minmax(0, 1.06fr);
   grid-template-rows: minmax(0, 1fr);
-  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
-  background: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  border: 0;
+  background: transparent;
   color: var(--utility-foreground);
 }
 
@@ -271,18 +332,19 @@
 
 .app-agent-sidebar {
   grid-area: sidebar;
-  background: color-mix(in oklab, var(--utility-card) 62%, var(--utility-background));
+  border-right: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: transparent;
 }
 
 .app-agent-detail-pane {
   grid-area: detail;
-  background: color-mix(in oklab, var(--app-card-bg) 56%, var(--utility-background));
+  border-right: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: transparent;
 }
 
 .app-agent-content-pane {
   grid-area: content;
-  border-left: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
-  background: color-mix(in oklab, var(--app-card-bg) 72%, var(--utility-background));
+  background: transparent;
 }
 
 .app-agent-support-grid {
@@ -298,14 +360,12 @@
 @container agents-page (max-width: 900px) {
   .app-agent-shell {
     grid-template-columns: minmax(188px, 220px) minmax(0, 1fr) minmax(0, 1fr);
-    border-radius: 18px;
   }
 }
 
 @container agents-page (max-width: 720px) {
   .app-agent-shell {
     grid-template-columns: minmax(160px, 188px) minmax(0, 0.98fr) minmax(0, 1.02fr);
-    border-radius: 14px;
   }
 
   .app-agent-panel-header {
@@ -325,98 +385,77 @@
   }
 }
 
-@media (max-width: 900px) {
-  .app-agents-page {
-    padding: 12px;
-  }
-}
-
-@media (max-width: 620px) {
-  .app-agents-page {
-    padding: 8px;
-  }
-}
-
 .app-agent-create-overlay {
-  background: color-mix(in oklab, rgb(5 7 10) 62%, transparent);
+  background: var(--app-transient-overlay-bg);
 }
 
 .app-agent-create-dialog {
-  border: 1px solid color-mix(in oklab, var(--app-cloud-login-border) 76%, transparent);
+  border: 1px solid var(--app-transient-border);
 }
 
 .app-agent-create-surface {
-  background:
-    linear-gradient(180deg,
-      color-mix(in oklab, var(--app-cloud-login-raised-bg) 92%, transparent) 0%,
-      color-mix(in oklab, var(--app-modal-bg) 86%, var(--app-cloud-login-sunk-bg)) 100%);
-  box-shadow:
-    inset 0 1px 0 var(--app-glass-highlight),
-    var(--app-shadow-float);
+  background: var(--app-transient-surface-bg);
+  box-shadow: var(--app-transient-shadow);
 }
 
 .app-agent-panel-header {
-  border-bottom: 1px solid color-mix(in oklab, var(--app-cloud-login-inner-border) 62%, transparent);
+  border-bottom: 1px solid var(--app-transient-divider);
 }
 
 .app-agent-create-panel {
-  border-right: 1px solid color-mix(in oklab, var(--app-cloud-login-inner-border) 58%, transparent);
+  border-right: 1px solid var(--app-transient-divider);
 }
 
 .app-agent-create-muted {
-  border: 1px solid color-mix(in oklab, var(--app-cloud-login-inner-border) 66%, transparent);
-  background: color-mix(in oklab, var(--app-cloud-login-sunk-bg) 88%, transparent);
-  color: var(--utility-muted-text);
-  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--app-glass-highlight) 54%, transparent);
+  border: 1px solid var(--app-transient-border);
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-muted-text);
 }
 
 .app-agent-create-actions {
-  border-top: 1px solid color-mix(in oklab, var(--app-cloud-login-inner-border) 58%, transparent);
-  background: color-mix(in oklab, var(--app-cloud-login-raised-bg) 56%, transparent);
+  border-top: 1px solid var(--app-transient-divider);
+  background: var(--app-transient-raised-bg);
 }
 
 .bridge-app.theme-light .app-agent-create-overlay {
-  background: rgb(148 153 166 / 0.54);
+  background: var(--app-transient-overlay-bg);
 }
 
 .bridge-app.theme-light .app-agent-create-dialog {
-  border-color: rgb(207 217 232);
+  border-color: var(--app-transient-border);
 }
 
 .bridge-app.theme-light .app-agent-create-surface {
-  background: linear-gradient(180deg, rgb(248 251 255) 0%, rgb(239 245 253) 100%);
-  box-shadow:
-    0 0 0 1px rgb(255 255 255 / 0.55) inset,
-    0 28px 64px rgb(30 41 59 / 0.20),
-    0 10px 28px rgb(30 41 59 / 0.12);
+  background: var(--app-transient-surface-bg);
+  box-shadow: var(--app-transient-shadow);
 }
 
 .bridge-app.theme-light .app-agent-panel-header,
 .bridge-app.theme-light .app-agent-create-actions,
 .bridge-app.theme-light .app-agent-create-panel {
-  border-color: rgb(214 224 238);
+  border-color: var(--app-transient-divider);
 }
 
-.bridge-app.theme-light .app-agent-panel-header,
+.bridge-app.theme-light .app-agent-create-dialog .app-agent-panel-header,
 .bridge-app.theme-light .app-agent-create-actions {
-  background: rgb(246 250 255 / 0.82);
+  background: var(--app-transient-raised-bg);
 }
 
 .bridge-app.theme-light .app-agent-create-panel {
-  background: rgb(241 246 253 / 0.46);
+  background: transparent;
 }
 
 .bridge-app.theme-light .app-agent-create-muted {
-  border-color: rgb(214 224 238);
-  background: linear-gradient(180deg, rgb(250 252 255) 0%, rgb(244 248 253) 100%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.84);
+  border-color: var(--app-transient-border);
+  background: var(--app-transient-raised-bg);
+  box-shadow: none;
 }
 
 .bridge-app.theme-light .app-agent-create-dialog .app-agent-inspector-row,
 .bridge-app.theme-light .app-agent-create-dialog .app-agent-code-panel {
-  border-color: rgb(214 224 238);
-  background: rgb(253 254 255);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  border-color: var(--app-transient-border);
+  background: var(--app-transient-raised-bg);
+  box-shadow: none;
 }
 
 .app-agent-panel-title,
@@ -450,13 +489,16 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.app-agent-section,
 .app-agent-inner-list,
 .app-agent-inspector-row,
-.app-agent-empty-callout,
 .app-agent-code-panel {
   border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
   background: color-mix(in oklab, var(--app-card-bg) 72%, transparent);
+}
+
+.app-agent-section {
+  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
+  background: transparent;
 }
 
 .app-agent-inner-list-row {
@@ -464,6 +506,7 @@
 }
 
 .app-agent-empty-callout {
+  background: transparent;
   color: var(--utility-muted-text);
 }
 

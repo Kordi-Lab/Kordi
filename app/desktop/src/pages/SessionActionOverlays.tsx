@@ -48,7 +48,7 @@ export function SessionContextMenu({
   return (
     <div className="fixed inset-0 z-50" onMouseDown={onClose}>
       <div
-        className="app-modal-panel absolute w-[220px] rounded-[20px] border border-white/10 bg-[color:var(--app-panel-bg)] p-1.5 shadow-[var(--app-shadow-float)]"
+        className="app-transient-surface app-modal-panel absolute w-[220px] rounded-[18px] border p-1.5"
         style={{
           left: Math.max(12, Math.min(target.x, window.innerWidth - 232)),
           top: Math.max(12, Math.min(target.y, window.innerHeight - 220)),
@@ -57,7 +57,7 @@ export function SessionContextMenu({
       >
         <button
           type="button"
-          className="w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
+          className="app-transient-flat-action w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition"
           onClick={() => {
             onClose();
             onRename({
@@ -72,7 +72,7 @@ export function SessionContextMenu({
         {target.canMoveToProject ? (
           <button
             type="button"
-            className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-slate-100 transition hover:bg-white/[0.05]"
+            className="app-transient-flat-action mt-1 w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition"
             onClick={() => {
               onClose();
               onMove({ sessionId: target.sessionId, sessionName: target.sessionName });
@@ -83,7 +83,7 @@ export function SessionContextMenu({
         ) : null}
         <button
           type="button"
-          className="mt-1 w-full rounded-[14px] px-3 py-2 text-left text-[13px] text-rose-100 transition hover:bg-rose-500/10"
+          className="app-transient-row app-transient-row-danger mt-1 w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition"
           onClick={() => {
             onClose();
             onDelete({

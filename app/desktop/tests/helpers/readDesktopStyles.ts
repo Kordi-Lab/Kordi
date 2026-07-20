@@ -7,6 +7,8 @@ const SHELL_STYLE_FILES = [
   '../../src/styles/shell-transcript.css',
   '../../src/styles/shell-sidebar.css',
   '../../src/styles/shell-pages.css',
+  '../../src/styles/theme-overrides.css',
+  '../../src/styles/transient-surfaces.css',
 ] as const;
 
 export function readDesktopShellCss() {

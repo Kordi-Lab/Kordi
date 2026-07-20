@@ -17,7 +17,7 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
 
   const authGate = args.showAuthGate ? (
     <div
-      className="app-overlay absolute inset-0 z-50 overflow-hidden p-3 backdrop-blur-[12px] sm:p-4"
+      className="app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden"
       style={{ WebkitAppRegion: 'no-drag' as const }}
     >
       <AuthPage
@@ -51,7 +51,7 @@ export function assembleOverlaySlots(args: OverlayShellArgs) {
   const inlineAuthDialog = args.inlineAuthDialog ? (
     <OverlayPortal>
       <div
-        className="app-overlay fixed inset-0 z-[260] flex items-center justify-center bg-black/35 p-4 backdrop-blur-[10px]"
+        className="app-transient-overlay app-overlay fixed inset-0 z-[260] flex items-center justify-center p-4 backdrop-blur-[10px]"
         style={{ WebkitAppRegion: 'no-drag' as const }}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) args.handleCloseInlineAuthDialog();

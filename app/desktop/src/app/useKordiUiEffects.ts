@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
+import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, ResolvedThemeMode } from '@/kordi-app/types';
@@ -172,6 +173,7 @@ export function useKordiUiEffects({
     document.body.classList.toggle('theme-light', themeMode === 'light');
     document.body.classList.toggle('theme-dark', themeMode === 'dark');
     document.documentElement.style.colorScheme = themeMode;
+    void syncNativeWindowTheme(themeMode).catch(() => undefined);
 
     return () => {
       document.body.classList.remove('theme-light', 'theme-dark');
