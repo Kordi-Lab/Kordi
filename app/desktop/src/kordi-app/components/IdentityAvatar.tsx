@@ -246,7 +246,7 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
   const localOverride = useAvatarOverride(resolvedAvatarKey);
   const originalImageUrl = localOverride ?? imageUrl;
   const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(originalImageUrl);
-  const [nativeImage, setNativeImage] = useState<{ source: string; dataUrl: string } | null>(null);
+  const [nativeImage, setNativeImage] = useState<{ source: string; dataUrl: string | null } | null>(null);
   useEffect(() => {
     const source = originalImageUrl?.trim();
     if (!source || !needsNativeProxy) return;
@@ -256,10 +256,10 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
         if (active) setNativeImage({ source, dataUrl });
       })
       .catch(() => {
-        // Preserve the normal WebView request as a fallback when the native
-        // request is unavailable. IdentityAvatar's onError path still keeps a
-        // deterministic generated avatar visible.
-        if (active) setNativeImage({ source, dataUrl: source });
+        // Fail closed after native validation rejects or cannot load a remote
+        // URL. Falling back to the WebView here would bypass the native DNS,
+        // redirect, media-type, timeout, and response-size protections.
+        if (active) setNativeImage({ source, dataUrl: null });
       });
     return () => {
       active = false;

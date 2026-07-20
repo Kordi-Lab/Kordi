@@ -48,6 +48,12 @@ fn is_public_remote_ipv6(address: Ipv6Addr) -> bool {
         );
         return is_public_remote_ipv4(embedded);
     }
+    // RFC 8215 reserves 64:ff9b:1::/48 for local-use translation. It must not
+    // be treated as a public destination even when its embedded IPv4 address
+    // is not represented in the well-known /96 layout above.
+    if segments[..3] == [0x0064, 0xff9b, 0x0001] {
+        return false;
+    }
 
     let is_global_unicast = segments[0] & 0xe000 == 0x2000;
     let is_special_registry = segments[0] == 0x2001 && segments[1] <= 0x01ff;
@@ -282,6 +288,7 @@ mod tests {
             "fe80::1",
             "::ffff:127.0.0.1",
             "64:ff9b::7f00:1",
+            "64:ff9b:1::7f00:1",
             "2001:2::1",
             "2002:7f00:1::",
             "3fff::1",

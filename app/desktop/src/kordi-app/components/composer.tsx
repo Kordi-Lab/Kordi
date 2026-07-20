@@ -468,11 +468,13 @@ export function CompactComposerModelMenu({
     setStagedModel(selection.model);
     setStagedThinking(selection.thinking);
     setIsOpen(false);
+    queueMicrotask(() => triggerRef.current?.focus());
   };
 
   const save = () => {
     onSave({ providerOption: stagedProviderOption, model: stagedModel, thinking: stagedThinkingValue });
     setIsOpen(false);
+    queueMicrotask(() => triggerRef.current?.focus());
   };
 
   useEffect(() => {
@@ -491,7 +493,10 @@ export function CompactComposerModelMenu({
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
       closeWithoutSaving();
+      queueMicrotask(() => triggerRef.current?.focus());
     };
     document.addEventListener('pointerdown', handlePointerDown, true);
     document.addEventListener('keydown', handleKeyDown, true);

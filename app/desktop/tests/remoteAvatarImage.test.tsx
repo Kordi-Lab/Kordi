@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -48,6 +49,13 @@ test('failed remote avatar image requests can be retried', async () => {
     'data:image/png;base64,recovered',
   );
   assert.equal(attempts, 2);
+});
+
+test('native avatar failures do not authorize a renderer-side URL fallback', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/IdentityAvatar.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /setNativeImage\(\{ source, dataUrl: null \}\)/);
+  assert.doesNotMatch(source, /setNativeImage\(\{ source, dataUrl: source \}\)/);
 });
 
 test('resolved remote avatars stay within a byte-budgeted LRU cache', async () => {

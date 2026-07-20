@@ -168,6 +168,8 @@ test('compact model route menu dismisses when users click outside or press escap
   assert.match(compactSource, /menuRef\.current\?\.contains\(target\)/, 'clicking inside the portaled menu should not close it');
   assert.match(compactSource, /triggerRef\.current\?\.contains\(target\)/, 'clicking the trigger should not be treated as an outside click');
   assert.match(compactSource, /setIsOpen\(false\)/, 'outside interactions should close the compact route popout');
+  assert.match(compactSource, /event\.key !== 'Escape'[\s\S]*event\.preventDefault\(\)[\s\S]*event\.stopPropagation\(\)[\s\S]*triggerRef\.current\?\.focus\(\)/, 'Escape should close the menu and restore trigger focus');
+  assert.equal((compactSource.match(/queueMicrotask\(\(\) => triggerRef\.current\?\.focus\(\)\)/g) ?? []).length, 3, 'cancel, save, and Escape should restore trigger focus');
 });
 
 test('ChatsPage places compact model route control before attachment and keeps explicit agent controls', () => {
