@@ -57,4 +57,3 @@ The compact **Start a chat** popover is the visual reference. Every Kordi-owned 
 - [ ] Dark mode at compact desktop size
 - [ ] Keyboard focus, Escape, outside click, and focus restoration
 - [ ] Long model/mention/session lists and nested popup stacking
-

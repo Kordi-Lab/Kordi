@@ -92,4 +92,3 @@ test('legacy one-off popup shells no longer bypass the semantic palette', () => 
   assert.doesNotMatch(transcript, /app-message-context-menu-content[\s\S]{0,220}rounded-\[14px\] bg-white/);
   assert.doesNotMatch(pinDialog, /data-pin-message-dialog[\s\S]{0,180}rounded-\[16px\] bg-white/);
 });
-
