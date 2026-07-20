@@ -6,6 +6,9 @@ export type AgentsPageProps = {
   agents: Agent[];
   activeAgentId: string;
   activeAgent?: Agent;
+  localProfileAvatarSeed?: string | null;
+  localProfileDisplayName?: string | null;
+  localProfileImageUrl?: string | null;
   onOpenAgent: (agentId: string) => void;
   getStatusBadgeClass: (value: string) => string;
   chatModelOptions?: ComposerModelOption[];
@@ -24,15 +27,29 @@ export type AgentsPageProps = {
   ) => Promise<void> | void;
   onMessageAgent?: (agent: Agent) => void;
   onOpenAgentReachoutSession?: (sessionId: string) => void;
+  onOpenAgentBuilderSession?: (sessionId: string) => void;
+  onOpenAuthSettings?: () => void;
   onCreateCloudAgent?: (input: CreateCloudAgentInput) => Promise<Agent>;
   onUpdateCloudAgent?: (agent: Agent, input: UpdateCloudAgentInput) => Promise<Agent> | Promise<void> | Agent | void;
   onArchiveCloudAgent?: (agent: Agent) => Promise<void>;
+  onSetAgentSkillEnabled?: (agent: Agent, skill: string, enabled: boolean) => Promise<void> | void;
 };
 
 export type AgentConfigDraft = {
   systemPrompt: string;
   loadedSkills: string[];
 };
+
+export type AgentStudioConfigDraft = AgentConfigDraft & {
+  loadedTools: string[];
+  loadedPlugins: string[];
+};
+
+export type AgentStudioCapabilityKind = 'skill' | 'tool' | 'plugin';
+
+export type FactoryArtifactKind = 'agent' | 'skill';
+
+export type FactorySection = 'builds' | 'skills';
 
 export type AgentEditHistoryEntry = {
   path: string;
@@ -72,13 +89,43 @@ export function buildAgentDraft(agent: Agent): AgentConfigDraft {
   };
 }
 
-export function buildPersistedAgentConfig(agent: Agent): PersistedAgentConfig {
+export function buildAgentStudioDraft(agent: Agent): AgentStudioConfigDraft {
   return {
     ...buildAgentDraft(agent),
     loadedTools: agent.loadedTools,
     loadedPlugins: agent.loadedPlugins,
+  };
+}
+
+export function buildPersistedAgentConfig(agent: Agent): PersistedAgentConfig {
+  return {
+    ...buildAgentStudioDraft(agent),
     editHistory: [],
   };
+}
+
+function sameStringList(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const normalizedLeft = [...left].sort((a, b) => a.localeCompare(b));
+  const normalizedRight = [...right].sort((a, b) => a.localeCompare(b));
+  return normalizedLeft.every((entry, index) => entry === normalizedRight[index]);
+}
+
+export function agentStudioConfigChanges(draft: AgentStudioConfigDraft, persisted: PersistedAgentConfig) {
+  const changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins'; label: string; detail: string }> = [];
+  if (draft.systemPrompt !== persisted.systemPrompt) {
+    changes.push({ key: 'prompt', label: 'System prompt updated', detail: 'prompt' });
+  }
+  if (!sameStringList(draft.loadedSkills, persisted.loadedSkills)) {
+    changes.push({ key: 'skills', label: 'Skill selection updated', detail: `${draft.loadedSkills.length} loaded` });
+  }
+  if (!sameStringList(draft.loadedTools, persisted.loadedTools)) {
+    changes.push({ key: 'tools', label: 'Tool selection updated', detail: `${draft.loadedTools.length} loaded` });
+  }
+  if (!sameStringList(draft.loadedPlugins, persisted.loadedPlugins)) {
+    changes.push({ key: 'plugins', label: 'Plugin selection updated', detail: `${draft.loadedPlugins.length} loaded` });
+  }
+  return changes;
 }
 
 export function getAgentConfigPath(agent: Agent) {
@@ -149,24 +196,30 @@ export function parsePersistedAgentConfig(raw: string, agent: Agent): PersistedA
 }
 
 export function readStoredAgentDrafts() {
-  if (typeof window === 'undefined') return {} as Record<string, AgentConfigDraft>;
+  if (typeof window === 'undefined') return {} as Record<string, Partial<AgentStudioConfigDraft>>;
 
   try {
     const raw = window.localStorage.getItem(AGENT_CONFIG_STORAGE_KEY);
-    if (!raw) return {} as Record<string, AgentConfigDraft>;
-    const parsed = JSON.parse(raw) as Record<string, Partial<AgentConfigDraft>>;
+    if (!raw) return {} as Record<string, Partial<AgentStudioConfigDraft>>;
+    const parsed = JSON.parse(raw) as Record<string, Partial<AgentStudioConfigDraft>>;
     return Object.fromEntries(
       Object.entries(parsed).map(([agentId, draft]) => [
         agentId,
         {
-          systemPrompt: typeof draft.systemPrompt === 'string' ? draft.systemPrompt : '',
+          systemPrompt: typeof draft.systemPrompt === 'string' ? draft.systemPrompt : undefined,
           loadedSkills: Array.isArray(draft.loadedSkills)
             ? draft.loadedSkills.filter((entry): entry is string => typeof entry === 'string')
-            : [],
+            : undefined,
+          loadedTools: Array.isArray(draft.loadedTools)
+            ? draft.loadedTools.filter((entry): entry is string => typeof entry === 'string')
+            : undefined,
+          loadedPlugins: Array.isArray(draft.loadedPlugins)
+            ? draft.loadedPlugins.filter((entry): entry is string => typeof entry === 'string')
+            : undefined,
         },
       ]),
     );
   } catch {
-    return {} as Record<string, AgentConfigDraft>;
+    return {} as Record<string, Partial<AgentStudioConfigDraft>>;
   }
 }

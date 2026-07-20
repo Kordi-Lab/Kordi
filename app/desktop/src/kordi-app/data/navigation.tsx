@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Bot, MessageSquare, Users } from 'lucide-react';
+import { Factory, MessageSquare, Users } from 'lucide-react';
 
 import type { NavId } from '../types';
 
@@ -8,7 +8,7 @@ type NavItem = { id: NavId; label: string; icon: ComponentType<{ className?: str
 export const navItems: NavItem[] = [
   { id: 'chats', label: 'Chats', icon: MessageSquare },
   { id: 'contacts', label: 'Contacts', icon: Users },
-  { id: 'agents', label: 'Agents', icon: Bot },
+  { id: 'agents', label: 'Factory', icon: Factory },
 ];
 
 export function normalizeNavIdForCloud(navId: NavId): NavId {

@@ -2634,6 +2634,7 @@ export function useKordiAppModel({
   const shellArgs = useKordiShellArgs({
     isNativeShell,
     desktopChatState,
+    refreshDesktopChat,
     cloudSelfAgentSyncStatusBySessionId,
     cloudSessionPinsById,
     onUpdateCloudSessionPin: updateCloudSessionPin,
@@ -2701,6 +2702,8 @@ export function useKordiAppModel({
     handleArchiveCloudAgent,
     activeBridgeHost,
     localProfileAvatarSeed,
+    localProfileDisplayName,
+    localProfileImageUrl,
     refreshDesktopBridge,
     handleCopyBridgeText,
     handleCreateBridgeDraft,

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { readDesktopWorkspaceTextFile, writeDesktopWorkspaceTextFile } from '@/lib/desktop';
 import type { Agent } from '../types';
 import {
   AGENT_CONFIG_STORAGE_KEY,
-  buildAgentDraft,
+  agentStudioConfigChanges,
+  buildAgentStudioDraft,
   buildUnavailableFilePreview,
   buildPersistedAgentConfig,
   getAgentConfigPath,
@@ -11,7 +12,7 @@ import {
   isRepoFilePath,
   parsePersistedAgentConfig,
   readStoredAgentDrafts,
-  type AgentConfigDraft,
+  type AgentStudioConfigDraft,
   type AgentSaveFeedback,
   type PersistedAgentConfig,
 } from './model';
@@ -23,7 +24,7 @@ type AgentDetailTarget =
   | { kind: 'file'; path: string };
 
 export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
-  const [agentDrafts, setAgentDrafts] = useState<Record<string, AgentConfigDraft>>(() => readStoredAgentDrafts());
+  const [agentDrafts, setAgentDrafts] = useState<Record<string, Partial<AgentStudioConfigDraft>>>(() => readStoredAgentDrafts());
   const [persistedAgentConfigs, setPersistedAgentConfigs] = useState<Record<string, PersistedAgentConfig>>({});
   const [selectedDetailByAgentId, setSelectedDetailByAgentId] = useState<Record<string, AgentDetailTarget>>({});
   const [editingSectionByAgentId, setEditingSectionByAgentId] = useState<Record<string, 'prompt' | 'skills' | null>>({});
@@ -45,14 +46,16 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
             {
               systemPrompt: agentDrafts[agent.id]?.systemPrompt ?? persisted.systemPrompt,
               loadedSkills: agentDrafts[agent.id]?.loadedSkills ?? persisted.loadedSkills,
+              loadedTools: agentDrafts[agent.id]?.loadedTools ?? persisted.loadedTools,
+              loadedPlugins: agentDrafts[agent.id]?.loadedPlugins ?? persisted.loadedPlugins,
             },
           ];
         }),
-      ) as Record<string, AgentConfigDraft>,
+      ) as Record<string, AgentStudioConfigDraft>,
     [agentDrafts, agents, persistedAgentConfigs],
   );
 
-  const activeAgentConfig = activeAgent ? agentConfigs[activeAgent.id] ?? buildAgentDraft(activeAgent) : null;
+  const activeAgentConfig = activeAgent ? agentConfigs[activeAgent.id] ?? buildAgentStudioDraft(activeAgent) : null;
   const activePersistedConfig = activeAgent ? persistedAgentConfigs[activeAgent.id] ?? buildPersistedAgentConfig(activeAgent) : null;
   const availableSkills = useMemo(
     () =>
@@ -60,10 +63,30 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
         new Set([
           ...(activePersistedConfig?.loadedSkills ?? []),
           ...(activeAgentConfig?.loadedSkills ?? []),
+          ...agents.flatMap((agent) => agent.loadedSkills),
         ]),
       ).sort((left, right) => left.localeCompare(right)),
-    [activeAgentConfig?.loadedSkills, activePersistedConfig?.loadedSkills],
+    [activeAgentConfig?.loadedSkills, activePersistedConfig?.loadedSkills, agents],
   );
+  const availableTools = useMemo(
+    () => Array.from(new Set([
+      ...(activePersistedConfig?.loadedTools ?? []),
+      ...(activeAgentConfig?.loadedTools ?? []),
+      ...agents.flatMap((agent) => agent.loadedTools),
+    ])).sort((left, right) => left.localeCompare(right)),
+    [activeAgentConfig?.loadedTools, activePersistedConfig?.loadedTools, agents],
+  );
+  const availablePlugins = useMemo(
+    () => Array.from(new Set([
+      ...(activePersistedConfig?.loadedPlugins ?? []),
+      ...(activeAgentConfig?.loadedPlugins ?? []),
+      ...agents.flatMap((agent) => agent.loadedPlugins),
+    ])).sort((left, right) => left.localeCompare(right)),
+    [activeAgentConfig?.loadedPlugins, activePersistedConfig?.loadedPlugins, agents],
+  );
+  const activeDraftChanges = activeAgentConfig && activePersistedConfig
+    ? agentStudioConfigChanges(activeAgentConfig, activePersistedConfig)
+    : [];
   const activeDetail = activeAgent ? selectedDetailByAgentId[activeAgent.id] ?? { kind: 'prompt' as const } : null;
   const activeIdentityFile = activeDetail?.kind === 'file' ? activeDetail.path : null;
   const activeConfigPath = activeAgent ? getAgentConfigPath(activeAgent) : null;
@@ -90,7 +113,11 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(AGENT_CONFIG_STORAGE_KEY, JSON.stringify(agentDrafts));
+    try {
+      window.localStorage.setItem(AGENT_CONFIG_STORAGE_KEY, JSON.stringify(agentDrafts));
+    } catch {
+      // Keep the in-memory draft usable if browser storage is unavailable.
+    }
   }, [agentDrafts]);
 
   useEffect(() => {
@@ -165,13 +192,20 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     };
   }, [activeAgent, activeAgentConfig, activeIdentityFile, canUseNativeFileAccess]);
 
-  const updateAgentDraft = (agentId: string, apply: (current: AgentConfigDraft) => AgentConfigDraft) => {
+  const updateAgentDraft = useCallback((agentId: string, apply: (current: AgentStudioConfigDraft) => AgentStudioConfigDraft) => {
     setAgentDrafts((current) => {
       const fallbackAgent = agents.find((agent) => agent.id === agentId) ?? activeAgent ?? agents[0];
       if (!fallbackAgent) {
         return current;
       }
-      const baseline = current[agentId] ?? buildAgentDraft(fallbackAgent);
+      const persisted = persistedAgentConfigs[agentId] ?? buildPersistedAgentConfig(fallbackAgent);
+      const stored = current[agentId];
+      const baseline: AgentStudioConfigDraft = {
+        systemPrompt: stored?.systemPrompt ?? persisted.systemPrompt,
+        loadedSkills: stored?.loadedSkills ?? persisted.loadedSkills,
+        loadedTools: stored?.loadedTools ?? persisted.loadedTools,
+        loadedPlugins: stored?.loadedPlugins ?? persisted.loadedPlugins,
+      };
       return {
         ...current,
         [agentId]: apply(baseline),
@@ -181,7 +215,11 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       ...current,
       [agentId]: { tone: 'info', text: 'Unsaved changes' },
     }));
-  };
+  }, [activeAgent, agents, persistedAgentConfigs]);
+
+  const replaceAgentDraft = useCallback((agentId: string, draft: AgentStudioConfigDraft) => {
+    updateAgentDraft(agentId, () => draft);
+  }, [updateAgentDraft]);
 
   const resetAgentDraft = (agent: Agent) => {
     const persisted = persistedAgentConfigs[agent.id] ?? buildPersistedAgentConfig(agent);
@@ -192,6 +230,8 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       [agent.id]: {
         systemPrompt: persisted.systemPrompt,
         loadedSkills: persisted.loadedSkills,
+        loadedTools: persisted.loadedTools,
+        loadedPlugins: persisted.loadedPlugins,
       },
     }));
     setEditingSectionByAgentId((current) => ({ ...current, [agent.id]: null }));
@@ -201,18 +241,18 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     }));
   };
 
-  const saveAgentConfig = async (agent: Agent, section: 'prompt' | 'skills') => {
+  const saveAgentConfig = async (agent: Agent, section: 'prompt' | 'skills' | 'tools' | 'plugins' | 'all') => {
     const configPath = getAgentConfigPath(agent);
-    const draft = agentConfigs[agent.id] ?? buildAgentDraft(agent);
+    const draft = agentConfigs[agent.id] ?? buildAgentStudioDraft(agent);
     const persisted = persistedAgentConfigs[agent.id] ?? buildPersistedAgentConfig(agent);
 
     if (!canUseNativeFileAccess || !configPath || !isRepoFilePath(configPath)) {
       setEditingSectionByAgentId((current) => ({ ...current, [agent.id]: null }));
       setSaveFeedbackByAgentId((current) => ({
         ...current,
-        [agent.id]: { tone: 'success', text: `Saved ${section} locally` },
+        [agent.id]: { tone: 'error', text: 'This runtime does not expose a writable agent config file.' },
       }));
-      return;
+      throw new Error('This runtime does not expose a writable agent config file.');
     }
 
     setSaveFeedbackByAgentId((current) => ({
@@ -223,12 +263,16 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     const nextPersisted: PersistedAgentConfig = {
       systemPrompt: draft.systemPrompt,
       loadedSkills: draft.loadedSkills,
-      loadedTools: persisted.loadedTools,
-      loadedPlugins: persisted.loadedPlugins,
+      loadedTools: draft.loadedTools,
+      loadedPlugins: draft.loadedPlugins,
       editHistory: [
         {
           path: configPath,
-          action: section === 'prompt' ? 'Saved system prompt' : 'Saved loaded skills',
+          action: section === 'all'
+            ? 'Published Factory draft'
+            : section === 'prompt'
+              ? 'Saved system prompt'
+              : `Saved loaded ${section}`,
           timestamp: new Date().toLocaleString(),
         },
         ...persisted.editHistory,
@@ -242,7 +286,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
       setEditingSectionByAgentId((current) => ({ ...current, [agent.id]: null }));
       setSaveFeedbackByAgentId((current) => ({
         ...current,
-        [agent.id]: { tone: 'success', text: `${section === 'prompt' ? 'System prompt' : 'Skills'} saved to ${configPath}` },
+        [agent.id]: { tone: 'success', text: `${section === 'all' ? 'Factory draft' : section === 'prompt' ? 'System prompt' : section} saved to ${configPath}` },
       }));
       if (activeIdentityFile === configPath) {
         setActiveFilePreview({ status: 'ready', text: nextRaw });
@@ -324,6 +368,8 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
           [activeAgent.id]: {
             systemPrompt: nextPersisted.systemPrompt,
             loadedSkills: nextPersisted.loadedSkills,
+            loadedTools: nextPersisted.loadedTools,
+            loadedPlugins: nextPersisted.loadedPlugins,
           },
         }));
         setSaveFeedbackByAgentId((current) => ({
@@ -337,6 +383,24 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
         [activeIdentityFile]: { tone: 'error', text: error instanceof Error ? error.message : 'Unable to save file' },
       }));
     }
+  };
+
+  const markAgentDraftPublished = (agent: Agent, draft: AgentStudioConfigDraft, action = 'Published Factory draft') => {
+    const previous = persistedAgentConfigs[agent.id] ?? buildPersistedAgentConfig(agent);
+    const path = getAgentConfigPath(agent) ?? (agent.cloudAgentId ? 'Cloud Agent' : 'Local runtime');
+    const nextPersisted: PersistedAgentConfig = {
+      ...draft,
+      editHistory: [
+        { path, action, timestamp: new Date().toLocaleString() },
+        ...previous.editHistory,
+      ].slice(0, 12),
+    };
+    setPersistedAgentConfigs((current) => ({ ...current, [agent.id]: nextPersisted }));
+    setAgentDrafts((current) => ({ ...current, [agent.id]: draft }));
+    setSaveFeedbackByAgentId((current) => ({
+      ...current,
+      [agent.id]: { tone: 'success', text: `${agent.name} is published and ready.` },
+    }));
   };
 
   return {
@@ -353,8 +417,12 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
     activeFileIsEditing,
     activeFileSaveFeedback,
     availableSkills,
+    availableTools,
+    availablePlugins,
+    activeDraftChanges,
     resetAgentDraft,
     saveAgentConfig,
+    markAgentDraftPublished,
     saveActiveFile,
     startEditing: (agentId: string, section: 'prompt' | 'skills') => setEditingSectionByAgentId((current) => ({ ...current, [agentId]: section })),
     startFileEditing,
@@ -366,6 +434,7 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
         [agentId]: { kind: 'file', path: file },
       })),
     updatePrompt: (agentId: string, value: string) => updateAgentDraft(agentId, (current) => ({ ...current, systemPrompt: value })),
+    replaceAgentDraft,
     updateActiveFileDraft,
     toggleSkill: (agentId: string, skill: string, selected: boolean) =>
       updateAgentDraft(agentId, (current) => ({
@@ -374,5 +443,26 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
           ? current.loadedSkills.filter((entry) => entry !== skill)
           : [...current.loadedSkills, skill].sort((left, right) => left.localeCompare(right)),
       })),
+    toggleCapability: (agentId: string, kind: 'skill' | 'tool' | 'plugin', name: string, selected: boolean) =>
+      updateAgentDraft(agentId, (current) => {
+        const field = kind === 'skill' ? 'loadedSkills' : kind === 'tool' ? 'loadedTools' : 'loadedPlugins';
+        return {
+          ...current,
+          [field]: selected
+            ? current[field].filter((entry) => entry !== name)
+            : [...current[field], name].sort((left, right) => left.localeCompare(right)),
+        };
+      }),
+    renameCapability: (agentId: string, kind: 'skill' | 'tool' | 'plugin', previousName: string, nextName: string) =>
+      updateAgentDraft(agentId, (current) => {
+        const field = kind === 'skill' ? 'loadedSkills' : kind === 'tool' ? 'loadedTools' : 'loadedPlugins';
+        const normalized = nextName.trim();
+        if (!normalized) return current;
+        return {
+          ...current,
+          [field]: Array.from(new Set(current[field].map((entry) => entry === previousName ? normalized : entry)))
+            .sort((left, right) => left.localeCompare(right)),
+        };
+      }),
   };
 }

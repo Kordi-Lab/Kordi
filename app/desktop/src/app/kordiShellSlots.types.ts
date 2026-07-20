@@ -63,6 +63,7 @@ export type CreateChatGroupRequest = {
 export type AssembleKordiShellSlotsArgs = {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
+  refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
   cloudSelfAgentSyncStatusBySessionId: Record<string, CloudSelfAgentSyncStatus>;
   cloudSessionPinsById: Record<string, CloudSessionPin>;
   onUpdateCloudSessionPin: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
@@ -112,6 +113,8 @@ export type AssembleKordiShellSlotsArgs = {
   handleArchiveCloudAgent: (agent: Agent) => Promise<void>;
   activeBridgeHost: DesktopBridgeHost | null;
   localProfileAvatarSeed?: string | null;
+  localProfileDisplayName?: string | null;
+  localProfileImageUrl?: string | null;
   refreshDesktopBridge: () => Promise<void>;
   handleCopyBridgeText: (value: string, successMessage: string) => Promise<void>;
   handleCreateBridgeDraft: () => void;
@@ -424,6 +427,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'displayedAgents'
   | 'activeBridgeHost'
   | 'localProfileAvatarSeed'
+  | 'localProfileDisplayName'
+  | 'localProfileImageUrl'
   | 'activeSettingsSectionId'
   | 'setActiveSettingsSectionId'
   | 'settingsSections'
@@ -491,6 +496,8 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'desktopBridgeState'
   | 'activeBridgeHost'
   | 'localProfileAvatarSeed'
+  | 'localProfileDisplayName'
+  | 'localProfileImageUrl'
   | 'activeBridgePeople'
   | 'activeBridgeAgents'
   | 'bridgeSettingsDraft'
@@ -535,6 +542,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'authSettingsLayoutWidth'
   | 'isNativeShell'
   | 'desktopChatState'
+  | 'refreshDesktopChat'
   | 'cloudSelfAgentSyncStatusBySessionId'
   | 'cloudSessionPinsById'
   | 'onUpdateCloudSessionPin'

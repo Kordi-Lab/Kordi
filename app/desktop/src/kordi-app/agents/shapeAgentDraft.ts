@@ -6,6 +6,8 @@ export type ShapeAgentResourceInput = {
 export type ShapeAgentSkillDraft = {
   name: string;
   description: string;
+  path?: string;
+  content?: string;
 };
 
 export type ShapeAgentDraft = {

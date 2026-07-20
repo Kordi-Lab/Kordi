@@ -21,6 +21,7 @@ pub mod turn_runner;
 pub mod desktop_runtime;
 pub mod login;
 pub mod oauth;
+pub mod skill_library;
 
 #[derive(Clone, Debug, Default)]
 pub struct Cli {

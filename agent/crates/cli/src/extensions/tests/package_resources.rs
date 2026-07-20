@@ -198,6 +198,37 @@ async fn disabled_skills_are_excluded_from_runtime_resources() {
     );
 }
 
+#[tokio::test]
+async fn explicit_profile_skills_override_the_user_disable_list() {
+    let cwd = tempdir().unwrap();
+    let skill_dir = cwd.path().join("profile-skills/agent-creator");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: agent-creator\ndescription: trusted profile skill\n---\nBuild agents.",
+    )
+    .unwrap();
+
+    let settings = Settings {
+        disabled_skills: vec!["agent-creator".to_string()],
+        ..Settings::default()
+    };
+    let support = load_runtime_extension_support(
+        cwd.path(),
+        &settings,
+        &ExtensionBootstrap {
+            skill_paths: vec![skill_dir],
+            ..ExtensionBootstrap::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(support.session_resources.skills.iter().any(|skill| {
+        skill.info.name == "agent-creator" && skill.content.contains("Build agents.")
+    }));
+}
+
 #[test]
 fn project_scoped_package_settings_round_trip() {
     let cwd = tempdir().unwrap();

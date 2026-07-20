@@ -291,7 +291,12 @@ test('private cloud agent sessions carry runtime context for local execution', (
     systemPrompt: 'You are Kordi Project Driver. Help plan projects only.',
     cloudAgentSourceSummary: 'Created from project-management notes.',
     cloudAgentBoundaries: ['Stay focused on project planning'],
-    cloudAgentSkills: [{ name: 'project-planning', description: 'Plan milestones and blockers' }],
+    cloudAgentSkills: [{
+      name: 'project-planning',
+      description: 'Plan milestones and blockers',
+      content: 'Always identify the next milestone and its owner.',
+    }],
+    loadedTools: ['read', 'find'],
   });
 
   const metadata = buildChatAgentSessionMetadata(selectedAgent);
@@ -304,6 +309,8 @@ test('private cloud agent sessions carry runtime context for local execution', (
   assert.match(contextMessages[0]?.text ?? '', /You are Kordi Project Driver/);
   assert.match(contextMessages[0]?.text ?? '', /Stay focused on project planning/);
   assert.match(contextMessages[0]?.text ?? '', /project-planning/);
+  assert.match(contextMessages[0]?.text ?? '', /Always identify the next milestone and its owner/);
+  assert.match(contextMessages[0]?.text ?? '', /Enabled runtime tools:\n- read\n- find/);
 
   const definitionContextMessages = cloudAgentContextMessagesFromDefinition({
     agentId: 'cloud_agent_abc',
@@ -312,7 +319,12 @@ test('private cloud agent sessions carry runtime context for local execution', (
     systemPrompt: 'You are Kordi Project Driver. Help plan projects only.',
     sourceSummary: 'Created from project-management notes.',
     boundaries: ['Stay focused on project planning'],
-    skills: [{ name: 'project-planning', description: 'Plan milestones and blockers' }],
+    skills: [{
+      name: 'project-planning',
+      description: 'Plan milestones and blockers',
+      content: 'Always identify the next milestone and its owner.',
+    }],
+    modelRouting: { tools: ['read', 'find'] },
   });
   assert.deepEqual(definitionContextMessages, contextMessages);
 });

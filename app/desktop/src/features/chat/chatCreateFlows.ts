@@ -213,11 +213,13 @@ export function buildChatAgentSessionMetadata(agent: Agent) {
       cloudAgentSourceSummary: agent.cloudAgentSourceSummary ?? null,
       cloudAgentBoundaries: agent.cloudAgentBoundaries ?? [],
       cloudAgentSkills: agent.cloudAgentSkills ?? [],
+      cloudAgentTools: agent.loadedTools,
+      cloudAgentPlugins: agent.loadedPlugins,
     } : {}),
   };
 }
 
-export function cloudAgentContextMessagesFromDefinition(definition: Pick<CloudAgentDefinition, 'agentId' | 'name' | 'role' | 'systemPrompt' | 'sourceSummary' | 'boundaries' | 'skills'> | null | undefined) {
+export function cloudAgentContextMessagesFromDefinition(definition: (Pick<CloudAgentDefinition, 'agentId' | 'name' | 'role' | 'systemPrompt' | 'sourceSummary' | 'boundaries' | 'skills'> & Partial<Pick<CloudAgentDefinition, 'modelRouting'>>) | null | undefined) {
   const cloudAgentId = cleanText(definition?.agentId);
   const name = cleanText(definition?.name);
   const role = cleanText(definition?.role);
@@ -227,6 +229,9 @@ export function cloudAgentContextMessagesFromDefinition(definition: Pick<CloudAg
   const sourceSummary = cleanText(definition?.sourceSummary);
   const boundaries = definition?.boundaries ?? [];
   const skills = definition?.skills ?? [];
+  const tools = Array.isArray(definition?.modelRouting?.tools)
+    ? definition.modelRouting.tools.filter((tool): tool is string => typeof tool === 'string' && tool.trim().length > 0)
+    : [];
   const text = [
     `You are ${name}${role ? `, ${role}` : ''}.`,
     'For this conversation, answer as this private Cloud Agent rather than the default Kordi agent.',
@@ -234,7 +239,12 @@ export function cloudAgentContextMessagesFromDefinition(definition: Pick<CloudAg
     systemPrompt,
     sourceSummary ? `Source summary: ${sourceSummary}` : '',
     boundaries.length ? `Boundaries:\n${boundaries.map((boundary) => `- ${boundary}`).join('\n')}` : '',
-    skills.length ? `Suggested skills:\n${skills.map((skill) => `- ${skill.name}: ${skill.description}`).join('\n')}` : '',
+    skills.length ? `Agent skills:\n${skills.map((skill) => (
+      skill.content?.trim()
+        ? `Skill ${skill.name} (${skill.description}):\n${skill.content.trim()}`
+        : `Skill ${skill.name}: ${skill.description}`
+    )).join('\n\n')}` : '',
+    tools.length ? `Enabled runtime tools:\n${tools.map((tool) => `- ${tool}`).join('\n')}` : '',
   ].filter(Boolean).join('\n\n');
 
   return [{
@@ -257,6 +267,7 @@ export function cloudAgentContextMessagesFromConversation(conversation: unknown)
     sourceSummary: metadataText(metadata, 'cloudAgentSourceSummary'),
     boundaries: metadataStringArray(metadata, 'cloudAgentBoundaries'),
     skills: metadataSkills(metadata),
+    modelRouting: { tools: metadataStringArray(metadata, 'cloudAgentTools') },
   });
 }
 
@@ -325,13 +336,14 @@ function metadataStringArray(metadata: Record<string, unknown>, key: string) {
 
 function metadataSkills(metadata: Record<string, unknown>) {
   const value = metadata.cloudAgentSkills;
-  if (!Array.isArray(value)) return [] as Array<{ name: string; description: string }>;
+  if (!Array.isArray(value)) return [] as Array<{ name: string; description: string; content?: string | null }>;
   return value.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return [];
     const record = entry as Record<string, unknown>;
     const name = typeof record.name === 'string' ? record.name.trim() : '';
     const description = typeof record.description === 'string' ? record.description.trim() : '';
-    return name && description ? [{ name, description }] : [];
+    const content = typeof record.content === 'string' && record.content.trim() ? record.content.trim() : null;
+    return name && description ? [{ name, description, content }] : [];
   });
 }
 

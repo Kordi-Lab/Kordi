@@ -6,6 +6,7 @@ use kordi_core::types::{ContentBlock, EntryBase, EntryId, SessionEntry};
 use kordi_provider::registry::Model;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 use crate::login;
@@ -13,6 +14,7 @@ use crate::session_bootstrap::{
     SessionAuthChoiceOverride, SessionBootstrapOptions, SessionRuntimeSetup,
     prepare_session_runtime_for_cwd,
 };
+use crate::tool_registry::ToolSelectionPreference;
 use crate::turn_runner::{self, TurnConfig, TurnEvent, run_turn};
 mod attachments;
 mod model_options;
@@ -280,6 +282,24 @@ pub struct DesktopRuntimeSession {
     setup: SessionRuntimeSetup,
 }
 
+/// A constrained runtime profile for purpose-built desktop sessions.
+///
+/// Unlike the normal desktop chat runtime, profiled sessions may use a fixed
+/// system prompt, a small tool allowlist, and explicit skill roots. This keeps
+/// specialized workflows persistent without inheriting unrelated project
+/// tools or the display model configured on a cloud agent record.
+#[derive(Clone, Debug, Default)]
+pub struct DesktopRuntimeProfile {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub thinking: Option<String>,
+    pub system_prompt: Option<String>,
+    pub tool_names: Option<Vec<String>>,
+    pub skill_names: Option<Vec<String>>,
+    pub skill_paths: Vec<PathBuf>,
+    pub execution_policy: Option<kordi_tools::ExecutionPolicy>,
+}
+
 pub struct DesktopRuntimeTurn {
     event_rx: mpsc::UnboundedReceiver<TurnEvent>,
     handle: tokio::task::JoinHandle<(TurnConfig, Result<()>)>,
@@ -346,6 +366,31 @@ impl DesktopRuntimeSession {
         Ok(Self { setup })
     }
 
+    pub async fn create_profiled_with_id(
+        cwd: PathBuf,
+        session_id: &str,
+        profile: DesktopRuntimeProfile,
+    ) -> Result<Self> {
+        let options = profile_bootstrap_options(&profile, None);
+        let (_runtime_host, _ui, mut setup) = prepare_session_runtime_for_cwd(cwd, options).await?;
+        retarget_runtime_setup_session(&mut setup, session_id)?;
+        apply_runtime_profile(&mut setup, &profile);
+        normalize_setup_thinking(&mut setup);
+        Ok(Self { setup })
+    }
+
+    pub async fn resume_profiled(
+        cwd: PathBuf,
+        session_id: &str,
+        profile: DesktopRuntimeProfile,
+    ) -> Result<Self> {
+        let options = profile_bootstrap_options(&profile, Some(session_id.to_string()));
+        let (_runtime_host, _ui, mut setup) = prepare_session_runtime_for_cwd(cwd, options).await?;
+        apply_runtime_profile(&mut setup, &profile);
+        normalize_setup_thinking(&mut setup);
+        Ok(Self { setup })
+    }
+
     pub fn session_id(&self) -> &str {
         &self.setup.session_id
     }
@@ -360,6 +405,18 @@ impl DesktopRuntimeSession {
                 value: item.value.clone(),
             })
             .collect()
+    }
+
+    pub async fn reload_resources(&mut self) -> Result<()> {
+        let cwd = self.setup.tool_ctx.cwd.clone();
+        let session_id = self.setup.session_id.clone();
+        let entry = SessionBootstrapOptions {
+            session: Some(session_id),
+            ..SessionBootstrapOptions::default()
+        };
+        let (_runtime_host, _ui, setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
+        self.setup = setup;
+        Ok(())
     }
 
     pub async fn run_skill_command(&mut self, text: &str) -> Result<Option<String>> {
@@ -435,15 +492,7 @@ impl DesktopRuntimeSession {
 
                 settings.save_global()?;
 
-                let cwd = self.setup.tool_ctx.cwd.clone();
-                let session_id = self.setup.session_id.clone();
-                let entry = SessionBootstrapOptions {
-                    session: Some(session_id),
-                    ..SessionBootstrapOptions::default()
-                };
-                let (_runtime_host, _ui, setup) =
-                    prepare_session_runtime_for_cwd(cwd, entry).await?;
-                self.setup = setup;
+                self.reload_resources().await?;
 
                 Ok(Some(if disable {
                     format!("Disabled skill: {normalized}")
@@ -482,15 +531,7 @@ impl DesktopRuntimeSession {
 
                 settings.save_global()?;
 
-                let cwd = self.setup.tool_ctx.cwd.clone();
-                let session_id = self.setup.session_id.clone();
-                let entry = SessionBootstrapOptions {
-                    session: Some(session_id),
-                    ..SessionBootstrapOptions::default()
-                };
-                let (_runtime_host, _ui, setup) =
-                    prepare_session_runtime_for_cwd(cwd, entry).await?;
-                self.setup = setup;
+                self.reload_resources().await?;
 
                 Ok(Some(if disable {
                     format!("Disabled skill: {normalized}")
@@ -986,6 +1027,56 @@ impl DesktopRuntimeSession {
             .await?;
         let result = turn.run(on_event).await?;
         self.finish_message_streaming(result)
+    }
+}
+
+fn profile_bootstrap_options(
+    profile: &DesktopRuntimeProfile,
+    session: Option<String>,
+) -> SessionBootstrapOptions {
+    SessionBootstrapOptions {
+        provider: profile.provider.clone(),
+        model: profile.model.clone(),
+        thinking: profile.thinking.clone(),
+        system_prompt: profile.system_prompt.clone(),
+        tool_selection: match &profile.tool_names {
+            Some(names) => ToolSelectionPreference::Only(names.clone()),
+            None => ToolSelectionPreference::UseSettings,
+        },
+        skill_names: profile.skill_names.clone(),
+        skill_paths: profile.skill_paths.clone(),
+        isolate_extensions: true,
+        session,
+        prompt_label: "desktop-profile".to_string(),
+        ..SessionBootstrapOptions::default()
+    }
+}
+
+fn apply_runtime_profile(setup: &mut SessionRuntimeSetup, profile: &DesktopRuntimeProfile) {
+    if let Some(execution_policy) = profile.execution_policy {
+        setup.tool_ctx.execution_policy = execution_policy;
+    }
+
+    if let Some(tool_names) = &profile.tool_names {
+        let enabled = tool_names
+            .iter()
+            .map(|name| name.trim().to_ascii_lowercase())
+            .collect::<HashSet<_>>();
+        if !enabled.contains("web_search") && !enabled.contains("web_fetch") {
+            setup.tool_ctx.web_search = None;
+        }
+        if !enabled.contains("reach_out") {
+            setup.tool_ctx.reach_out = None;
+        }
+        if !enabled.contains("search_sessions") && !enabled.contains("read_session") {
+            setup.tool_ctx.session_observation = None;
+        }
+        if !enabled.contains("task_operator") {
+            setup.tool_ctx.task_operator = None;
+        }
+        if !enabled.contains("schedule_task") {
+            setup.tool_ctx.schedule_task = None;
+        }
     }
 }
 
