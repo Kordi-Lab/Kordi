@@ -306,14 +306,15 @@
 
 .app-agents-page {
   container: agents-page / inline-size;
+  padding: 0;
 }
 
 .app-agent-shell {
   grid-template-areas: 'sidebar detail content';
   grid-template-columns: minmax(252px, 296px) minmax(0, 0.94fr) minmax(0, 1.06fr);
   grid-template-rows: minmax(0, 1fr);
-  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
-  background: color-mix(in oklab, var(--app-divider) 92%, transparent);
+  border: 0;
+  background: transparent;
   color: var(--utility-foreground);
 }
 
@@ -326,18 +327,19 @@
 
 .app-agent-sidebar {
   grid-area: sidebar;
-  background: color-mix(in oklab, var(--utility-card) 62%, var(--utility-background));
+  border-right: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: transparent;
 }
 
 .app-agent-detail-pane {
   grid-area: detail;
-  background: color-mix(in oklab, var(--app-card-bg) 56%, var(--utility-background));
+  border-right: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
+  background: transparent;
 }
 
 .app-agent-content-pane {
   grid-area: content;
-  border-left: 1px solid color-mix(in oklab, var(--app-divider) 78%, transparent);
-  background: color-mix(in oklab, var(--app-card-bg) 72%, var(--utility-background));
+  background: transparent;
 }
 
 .app-agent-support-grid {
@@ -353,14 +355,12 @@
 @container agents-page (max-width: 900px) {
   .app-agent-shell {
     grid-template-columns: minmax(188px, 220px) minmax(0, 1fr) minmax(0, 1fr);
-    border-radius: 18px;
   }
 }
 
 @container agents-page (max-width: 720px) {
   .app-agent-shell {
     grid-template-columns: minmax(160px, 188px) minmax(0, 0.98fr) minmax(0, 1.02fr);
-    border-radius: 14px;
   }
 
   .app-agent-panel-header {
@@ -377,18 +377,6 @@
   .app-agent-content-pane [class*='py-5'] {
     padding-top: 16px;
     padding-bottom: 16px;
-  }
-}
-
-@media (max-width: 900px) {
-  .app-agents-page {
-    padding: 12px;
-  }
-}
-
-@media (max-width: 620px) {
-  .app-agents-page {
-    padding: 8px;
   }
 }
 
@@ -443,7 +431,7 @@
   border-color: var(--app-transient-divider);
 }
 
-.bridge-app.theme-light .app-agent-panel-header,
+.bridge-app.theme-light .app-agent-create-dialog .app-agent-panel-header,
 .bridge-app.theme-light .app-agent-create-actions {
   background: var(--app-transient-raised-bg);
 }
@@ -496,13 +484,16 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.app-agent-section,
 .app-agent-inner-list,
 .app-agent-inspector-row,
-.app-agent-empty-callout,
 .app-agent-code-panel {
   border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
   background: color-mix(in oklab, var(--app-card-bg) 72%, transparent);
+}
+
+.app-agent-section {
+  border-color: color-mix(in oklab, var(--app-divider) 72%, transparent);
+  background: transparent;
 }
 
 .app-agent-inner-list-row {
@@ -510,6 +501,7 @@
 }
 
 .app-agent-empty-callout {
+  background: transparent;
   color: var(--utility-muted-text);
 }
 

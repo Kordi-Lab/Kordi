@@ -384,21 +384,18 @@
 }
 
 .bridge-app.theme-light .app-agent-shell {
-  border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
-  background: color-mix(in oklab, rgb(226 232 240) 48%, transparent);
+  border-color: transparent;
+  background: transparent;
 }
 
-.bridge-app.theme-light .app-agent-sidebar {
-  background: color-mix(in oklab, rgb(248 250 252) 86%, transparent);
-}
-
+.bridge-app.theme-light .app-agent-sidebar,
 .bridge-app.theme-light .app-agent-detail-pane {
-  background: color-mix(in oklab, rgb(241 245 249) 78%, transparent);
+  border-right-color: color-mix(in oklab, rgb(148 163 184) 28%, transparent);
+  background: transparent;
 }
 
 .bridge-app.theme-light .app-agent-content-pane {
-  border-left-color: color-mix(in oklab, rgb(148 163 184) 28%, transparent);
-  background: color-mix(in oklab, rgb(238 242 247) 82%, transparent);
+  background: transparent;
 }
 
 .bridge-app.theme-light .app-agent-panel-header,
@@ -407,12 +404,19 @@
   border-color: color-mix(in oklab, rgb(148 163 184) 26%, transparent);
 }
 
-.bridge-app.theme-light .app-agent-section,
 .bridge-app.theme-light .app-agent-inner-list,
-.bridge-app.theme-light .app-agent-inspector-row,
-.bridge-app.theme-light .app-agent-empty-callout {
+.bridge-app.theme-light .app-agent-inspector-row {
   border-color: color-mix(in oklab, rgb(148 163 184) 24%, transparent);
   background: color-mix(in oklab, rgb(255 255 255) 62%, rgb(241 245 249));
+}
+
+.bridge-app.theme-light .app-agent-section {
+  border-color: color-mix(in oklab, rgb(148 163 184) 24%, transparent);
+  background: transparent;
+}
+
+.bridge-app.theme-light .app-agent-empty-callout {
+  background: transparent;
 }
 
 .bridge-app.theme-light .app-agent-code-panel {

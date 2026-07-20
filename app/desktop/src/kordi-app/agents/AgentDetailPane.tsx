@@ -151,7 +151,7 @@ function AgentAccessMenu({ agent, onUpdateAccess, isSaving }: {
   if (!agent.cloudAgentId) return null;
   const accessScope = agent.cloudAgentAccessScope === 'participant_conversations' ? 'participant_conversations' : 'private';
   return (
-    <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[12px] leading-5">
+    <div className="app-agent-section border-t pt-5 text-[12px] leading-5">
       <div className="app-agent-row-title font-medium">Access</div>
       <select
         className="mt-2 w-full rounded-[12px] border border-[color:var(--app-divider)] bg-transparent px-3 py-2 text-[12px]"
@@ -736,7 +736,7 @@ export function AgentDetailPane({
   };
   const modelRoutingSection = activeAgent.isOwned ? (
     <AgentInspectorSection title="Model routing" detail="Backbone/default auth source + model, fallback auth source + model, and thinking for this owned agent. These choices are private and not announced in shared chat history.">
-      <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px] leading-5">
+      <div className="app-agent-section-detail text-[13px] leading-5">
         {routingPersistsToBridge
           ? 'Use the default model for inbound mentions and reach-outs. If it is unavailable or errors during generation, Kordi retries with the fallback model.'
           : 'Choose the default and fallback now. Saved locally until this agent is connected to Bridge, then the connected Bridge agent inherits the same routing.'}
@@ -933,7 +933,7 @@ export function AgentDetailPane({
                   />
                 ))
               ) : (
-                <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px]">
+                <div className="app-agent-empty-callout text-[13px]">
                   No real identity files are exposed for this bridge agent.
                 </div>
               )}
@@ -986,7 +986,7 @@ export function AgentDetailPane({
                 </div>
               </>
             ) : (
-              <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px]">
+              <div className="app-agent-empty-callout text-[13px]">
                 No real loaded-skills payload is exposed for this bridge agent.
               </div>
             )}
@@ -997,7 +997,7 @@ export function AgentDetailPane({
               {exposesLoadedTools ? (
                 <AgentConfigList items={activePersistedConfig?.loadedTools ?? activeAgent.loadedTools} emptyLabel="No tools loaded for this identity." />
               ) : (
-                <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px]">
+                <div className="app-agent-empty-callout text-[13px]">
                   No real loaded-tools payload is exposed for this bridge agent.
                 </div>
               )}
@@ -1007,7 +1007,7 @@ export function AgentDetailPane({
               {exposesLoadedPlugins ? (
                 <AgentConfigList items={activePersistedConfig?.loadedPlugins ?? activeAgent.loadedPlugins} emptyLabel="No plugins loaded for this identity." />
               ) : (
-                <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px]">
+                <div className="app-agent-empty-callout text-[13px]">
                   No real loaded-plugins payload is exposed for this bridge agent.
                 </div>
               )}
