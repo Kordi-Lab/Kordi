@@ -26,6 +26,16 @@ function nativeWindowThemeIsResolvedTheme(theme: unknown): theme is ResolvedThem
   return theme === 'light' || theme === 'dark';
 }
 
+const GATE_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
+  light: '#f8fafc',
+  dark: '#0f1115',
+};
+
+const APP_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
+  light: '#f4f1e7',
+  dark: '#22231d',
+};
+
 // The shell's useKordiUiEffects also writes `theme-*` to <body>, but it only
 // runs after KordiAppShell mounts. Before that — on the cloud login gate and
 // the restoring-session splash — nothing else applies a theme class, so the
@@ -86,6 +96,20 @@ function useGateThemeClass() {
     document.body.classList.toggle('theme-dark', theme === 'dark');
     document.documentElement.style.colorScheme = theme;
     void syncNativeWindowTheme(theme).catch(() => undefined);
+  }, [theme]);
+
+  useEffect(() => {
+    document.body.classList.add('app-cloud-gate-active');
+    if (isTauriRuntime()) {
+      void getCurrentWindow().setBackgroundColor(GATE_WINDOW_BACKGROUND[theme]).catch(() => undefined);
+    }
+
+    return () => {
+      document.body.classList.remove('app-cloud-gate-active');
+      if (isTauriRuntime()) {
+        void getCurrentWindow().setBackgroundColor(APP_WINDOW_BACKGROUND[theme]).catch(() => undefined);
+      }
+    };
   }, [theme]);
 
   return theme;

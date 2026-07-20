@@ -446,6 +446,8 @@ test('cloud gate auto theme follows system light before shell mount', () => {
 
 test('cloud login gate reads persisted theme preference and native system theme before shell mount', () => {
   const source = readSource('src/KordiApp.tsx');
+  const baseCss = readSource('src/styles/base.css');
+  const capabilities = readSource('src-tauri/capabilities/default.json');
 
   assert.match(source, /readStoredThemeMode/);
   assert.match(source, /resolveThemeMode\(themeMode, readSystemTheme\(\)\)/);
@@ -453,6 +455,11 @@ test('cloud login gate reads persisted theme preference and native system theme 
   assert.match(source, /getCurrentWindow\(\)\.theme\(\)/);
   assert.match(source, /getCurrentWindow\(\)\.onThemeChanged/);
   assert.match(source, /nativeWindowThemeIsResolvedTheme/);
+  assert.match(source, /classList\.add\('app-cloud-gate-active'\)/);
+  assert.match(source, /setBackgroundColor\(GATE_WINDOW_BACKGROUND\[theme\]\)/);
+  assert.match(source, /setBackgroundColor\(APP_WINDOW_BACKGROUND\[theme\]\)/);
+  assert.match(baseCss, /body\.app-cloud-gate-active\.theme-light\s*\{[^}]*background:\s*linear-gradient\(180deg, rgb\(248 250 252\)/s);
+  assert.match(capabilities, /core:window:allow-set-background-color/);
   assert.doesNotMatch(source, /const \[theme, setTheme\] = useState<ResolvedThemeMode>\(\(\) => readSystemTheme\(\)\)/);
 });
 
