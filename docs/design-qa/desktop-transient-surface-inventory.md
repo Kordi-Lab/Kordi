@@ -49,7 +49,16 @@ The compact **Start a chat** popover is the visual reference. Every Kordi-owned 
 - [x] Menu bodies are near opaque; transcript text behind them is not readable.
 - [x] Operating-system file pickers, permission prompts, and external OAuth browser windows are intentionally unchanged.
 
+## Automated regression coverage
+
+- [x] Browser-rendered light and dark galleries cover Start a chat, composer routing, context menus, confirmations, authentication, updater, group management, and detached auxiliary windows.
+- [x] Checked-in macOS Chromium baselines live in `app/desktop/tests/visual/__screenshots__` and are compared by `pnpm --dir app/desktop test:visual`.
+- [x] Pull requests run the visual comparison in the `Desktop visual regression` CI job with a pinned Playwright version and browser build.
+- [x] Agent routing and shared-dialog tests cover keyboard navigation, Escape, focus movement, and trigger-focus restoration.
+
 ## Native QA checklist
+
+These remain manual release checks; the deterministic browser gallery does not replace validation in the native Tauri window.
 
 - [ ] Light mode at default desktop size
 - [ ] Dark mode at default desktop size

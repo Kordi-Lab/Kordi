@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AgentCreateDialog } from '../src/kordi-app/agents/AgentCreateDialog';
 import { AgentsSidebar } from '../src/kordi-app/agents/AgentsSidebar';
-import { AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
+import { AgentDeleteConfirmDialog, AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
 import type { Agent } from '../src/kordi-app/types';
 
 const creatorAgent: Agent = {
@@ -158,6 +158,21 @@ test('AgentDetailPane exposes delete action only for private cloud agents', () =
   assert.match(cloudMarkup, /More agent actions/);
   assert.match(cloudMarkup, /Delete agent/);
   assert.doesNotMatch(kordiMarkup, /Delete agent/);
+});
+
+test('agent deletion uses the accessible shared modal lifecycle', () => {
+  const markup = renderToStaticMarkup(createElement(AgentDeleteConfirmDialog, {
+    agent: cloudAgent,
+    isDeleting: true,
+    error: null,
+    onCancel: () => undefined,
+    onConfirm: () => undefined,
+  }));
+
+  assert.match(markup, /role="dialog"/);
+  assert.match(markup, /aria-modal="true"/);
+  assert.match(markup, /aria-labelledby="delete-agent-dialog-title"/);
+  assert.match(markup, /aria-busy="true"/);
 });
 
 test('AgentDetailPane uses an in-app delete dialog instead of native window.confirm', () => {

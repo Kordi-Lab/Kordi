@@ -11,6 +11,7 @@
     "check:bundle": "node scripts/check-js-chunk-budget.mjs",
     "typecheck": "tsc --noEmit",
     "test:unit": "tsx --test tests/*.test.tsx && tsx --test --test-concurrency=1 tests/*.test.ts",
+    "test:visual": "playwright test -c playwright.visual.config.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "tauri:refresh-icon": "swift scripts/reshape-mac-icon.swift",
@@ -51,6 +52,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "1.61.1",
     "@tauri-apps/cli": "^2.8.0",
     "@types/jsdom": "^28.0.3",
     "@types/react": "^19.2.14",

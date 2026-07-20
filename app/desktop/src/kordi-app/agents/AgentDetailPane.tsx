@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  AppDialog,
+  AppDialogActions,
+  AppDialogDescription,
+  AppDialogTitle,
+} from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { EditableIdentityAvatar } from '../components/EditableIdentityAvatar';
@@ -35,7 +41,7 @@ export async function archiveAgentFromMenu({
   }
 }
 
-type RoutingOption = {
+export type RoutingOption = {
   value: string;
   label: string;
   model?: string | null;
@@ -80,37 +86,38 @@ export function AgentDeleteConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div
-      className="app-transient-overlay fixed inset-0 z-[100000] flex items-center justify-center p-4 backdrop-blur-[8px]"
-      onMouseDown={() => {
-        if (!isDeleting) onCancel();
-      }}
+    <AppDialog
+      titleId="delete-agent-dialog-title"
+      descriptionId="delete-agent-dialog-description"
+      onDismiss={onCancel}
+      dismissDisabled={isDeleting}
+      busy={isDeleting}
+      className="max-w-md rounded-[20px]"
+      backdropClassName="!z-[100000]"
     >
-      <div className="app-transient-surface app-modal-panel w-full max-w-md rounded-[20px] border p-5" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="text-[16px] font-semibold">Delete this agent?</div>
-        <div className="app-transient-muted mt-2 text-[13px] leading-6">
+      <AppDialogTitle id="delete-agent-dialog-title">Delete this agent?</AppDialogTitle>
+      <AppDialogDescription id="delete-agent-dialog-description" className="app-transient-muted">
+        <span className="block">
           <span className="font-medium text-[color:var(--app-transient-text)]">{agent.name}</span> will be removed from your Agent page and your signed-in cloud devices.
+        </span>
+        <span className="mt-3 block">It is kept as an archived Cloud record, not hard-deleted forever.</span>
+      </AppDialogDescription>
+      {error ? (
+        <div className="app-error-text mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100" role="alert">
+          {error}
         </div>
-        <div className="app-transient-muted mt-3 text-[13px] leading-6">
-          It is kept as an archived Cloud record, not hard-deleted forever.
-        </div>
-        {error ? (
-          <div className="app-error-text mt-4 rounded-[16px] border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[12px] leading-5 text-rose-100">
-            {error}
-          </div>
-        ) : null}
-        <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" className="rounded-full px-4" autoFocus disabled={isDeleting} onClick={onCancel}>Cancel</Button>
-          <Button
-            className="rounded-full bg-rose-500 px-4 text-white hover:bg-rose-400"
-            disabled={isDeleting}
-            onClick={() => { onConfirm(); }}
-          >
-            {isDeleting ? 'Deleting…' : 'Delete agent'}
-          </Button>
-        </div>
-      </div>
-    </div>
+      ) : null}
+      <AppDialogActions className="mt-5 gap-3">
+        <Button variant="secondary" className="rounded-full px-4" autoFocus disabled={isDeleting} onClick={onCancel}>Cancel</Button>
+        <Button
+          className="rounded-full bg-rose-500 px-4 text-white hover:bg-rose-400"
+          disabled={isDeleting}
+          onClick={() => { onConfirm(); }}
+        >
+          {isDeleting ? 'Deleting…' : 'Delete agent'}
+        </Button>
+      </AppDialogActions>
+    </AppDialog>
   );
 }
 
@@ -233,7 +240,7 @@ function sameRoutingDraft(left: ModelRoutingDraft, right: ModelRoutingDraft) {
   return routingDraftKey(left) === routingDraftKey(right);
 }
 
-function RoutingSelect({
+export function AgentRoutingSelect({
   label,
   value,
   options,
@@ -245,26 +252,87 @@ function RoutingSelect({
   onChange: (option: RoutingOption) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listboxRef = useRef<HTMLDivElement>(null);
+  const labelId = useId();
+  const valueId = useId();
   const selected = options.find((option) => option.value === value) ?? options[0];
   const selectedLabel = selected?.label ?? 'Select';
 
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return undefined;
+    queueMicrotask(() => {
+      const selectedOption = listboxRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
+      const firstOption = listboxRef.current?.querySelector<HTMLElement>('[role="option"]');
+      (selectedOption ?? firstOption)?.focus();
+    });
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && rootRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      queueMicrotask(() => triggerRef.current?.focus());
+    };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [open]);
+
+  const handleListboxKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const optionElements = Array.from(listboxRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+    if (optionElements.length === 0) return;
+    event.preventDefault();
+    const activeIndex = optionElements.indexOf(document.activeElement as HTMLElement);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? optionElements.length - 1
+        : event.key === 'ArrowUp'
+          ? (activeIndex <= 0 ? optionElements.length - 1 : activeIndex - 1)
+          : (activeIndex + 1) % optionElements.length;
+    optionElements[nextIndex]?.focus();
+  };
+
   return (
-    <div className="relative min-w-0">
-      <div className="app-agent-row-meta mb-1 text-[11px]">{label}</div>
+    <div
+      ref={rootRef}
+      className="relative min-w-0"
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (nextTarget instanceof Node && rootRef.current?.contains(nextTarget)) return;
+        setOpen(false);
+      }}
+    >
+      <div id={labelId} className="app-agent-row-meta mb-1 text-[11px]">{label}</div>
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-labelledby={`${labelId} ${valueId}`}
         onClick={() => setOpen((current) => !current)}
         title={selectedLabel}
         className="app-agent-inspector-row flex min-h-10 w-full items-center justify-between gap-2 rounded-[12px] border px-3 py-2.5 text-left text-[12px] transition hover:border-white/18"
       >
-        <span className="app-agent-row-title min-w-0 flex-1 whitespace-normal break-words leading-5">{selectedLabel}</span>
+        <span id={valueId} className="app-agent-row-title min-w-0 flex-1 whitespace-normal break-words leading-5">{selectedLabel}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', open ? 'rotate-180 text-slate-300' : '')} />
       </button>
       {open ? (
         <div
+          ref={listboxRef}
           role="listbox"
+          aria-labelledby={labelId}
+          onKeyDown={handleListboxKeyDown}
           className="app-transient-surface app-transient-scroll absolute left-0 top-full z-40 mt-2 max-h-[min(20rem,45vh)] w-full min-w-[min(22rem,calc(100vw-3rem))] max-w-[min(34rem,calc(100vw-3rem))] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]"
         >
           <div className="space-y-1">
@@ -279,6 +347,7 @@ function RoutingSelect({
                   onClick={() => {
                     onChange(option);
                     setOpen(false);
+                    queueMicrotask(() => triggerRef.current?.focus());
                   }}
                   title={option.label}
                   className={cn(
@@ -742,7 +811,7 @@ export function AgentDetailPane({
           : 'Choose the default and fallback now. Saved locally until this agent is connected to Bridge, then the connected Bridge agent inherits the same routing.'}
       </div>
       <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">
-        <RoutingSelect
+        <AgentRoutingSelect
           label="Default route"
           value={selectedDefaultRouteValue}
           options={modelOptions}
@@ -754,7 +823,7 @@ export function AgentDetailPane({
             });
           }}
         />
-        <RoutingSelect
+        <AgentRoutingSelect
           label="Fallback route"
           value={selectedFallbackRouteValue}
           options={fallbackOptions}
@@ -766,7 +835,7 @@ export function AgentDetailPane({
             });
           }}
         />
-        <RoutingSelect
+        <AgentRoutingSelect
           label="Thinking level"
           value={selectedThinkingValue}
           options={thinkingOptions}

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   clearRemoteAvatarImageCacheForTests,
+  getRemoteAvatarImageCacheStatsForTests,
   loadAvatarThroughNativeProxy,
   shouldLoadAvatarThroughNativeProxy,
 } from '../src/kordi-app/components/remoteAvatarImage';
@@ -47,4 +48,43 @@ test('failed remote avatar image requests can be retried', async () => {
     'data:image/png;base64,recovered',
   );
   assert.equal(attempts, 2);
+});
+
+test('resolved remote avatars stay within a byte-budgeted LRU cache', async () => {
+  clearRemoteAvatarImageCacheForTests();
+  const calls = new Map<string, number>();
+  const payload = `data:image/png;base64,${'a'.repeat(1_000_000)}`;
+  const invoke = async <T,>(_command: string, args?: Record<string, unknown>): Promise<T> => {
+    const url = String(args?.url ?? '');
+    calls.set(url, (calls.get(url) ?? 0) + 1);
+    return payload as T;
+  };
+
+  for (let index = 0; index < 32; index += 1) {
+    await loadAvatarThroughNativeProxy(`https://images.example/avatar-${index}.png`, invoke);
+  }
+
+  const stats = getRemoteAvatarImageCacheStatsForTests();
+  assert.ok(stats.totalBytes <= stats.maxBytes);
+  assert.ok(stats.entries < 32, 'the byte budget should evict old resolved avatars');
+
+  await loadAvatarThroughNativeProxy('https://images.example/avatar-0.png', invoke);
+  assert.equal(calls.get('https://images.example/avatar-0.png'), 2, 'reading an evicted URL should fetch it again');
+});
+
+test('a single result larger than the cache budget is returned but not retained', async () => {
+  clearRemoteAvatarImageCacheForTests();
+  let calls = 0;
+  const maxBytes = getRemoteAvatarImageCacheStatsForTests().maxBytes;
+  const invoke = async <T,>(): Promise<T> => {
+    calls += 1;
+    return `data:image/png;base64,${'a'.repeat(Math.floor(maxBytes / 2) + 1)}` as T;
+  };
+
+  const url = 'https://images.example/too-large-to-cache.png';
+  await loadAvatarThroughNativeProxy(url, invoke);
+  await loadAvatarThroughNativeProxy(url, invoke);
+
+  assert.equal(calls, 2);
+  assert.equal(getRemoteAvatarImageCacheStatsForTests().entries, 0);
 });
