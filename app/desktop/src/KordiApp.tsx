@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useState, type MouseEventHandler } from 'react';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
+import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
@@ -84,6 +85,7 @@ function useGateThemeClass() {
     document.body.classList.toggle('theme-light', theme === 'light');
     document.body.classList.toggle('theme-dark', theme === 'dark');
     document.documentElement.style.colorScheme = theme;
+    void syncNativeWindowTheme(theme).catch(() => undefined);
   }, [theme]);
 
   return theme;

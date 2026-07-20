@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { syncNativeWindowTheme } from '../src/app/nativeWindowTheme';
+
 const readSource = (relativePath: string) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 
 test('macOS main window enables semantic sidebar vibrancy on a transparent canvas', () => {
@@ -17,6 +19,9 @@ test('macOS main window enables semantic sidebar vibrancy on a transparent canva
     };
   };
   const cargo = readSource('src-tauri/Cargo.toml');
+  const capability = JSON.parse(readSource('src-tauri/capabilities/default.json')) as {
+    permissions?: string[];
+  };
   const mainWindow = config.app.windows.find((window) => window.label === 'main');
 
   assert.equal(config.app.macOSPrivateApi, true);
@@ -27,6 +32,7 @@ test('macOS main window enables semantic sidebar vibrancy on a transparent canva
     state: 'followsWindowActiveState',
   });
   assert.match(cargo, /tauri\s*=\s*\{[^}]*features\s*=\s*\[[^\]]*"macos-private-api"/s);
+  assert.ok(capability.permissions?.includes('core:window:allow-set-theme'));
 });
 
 test('native shell exposes vibrancy through the navigation rail only', () => {
@@ -61,10 +67,29 @@ test('dark navigation rail uses a black glass tint without changing light glass'
 
   assert.match(
     darkTokens,
-    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, oklch\(16% 0\.012 252 \/ 0\.78\) 0%, oklch\(11% 0\.010 252 \/ 0\.70\) 100%\);/,
+    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, oklch\(18% 0\.008 252 \/ 0\.18\) 0%, oklch\(12% 0\.006 252 \/ 0\.10\) 100%\);/,
   );
   assert.match(
     lightTokens,
     /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, rgb\(252 253 255 \/ 0\.52\) 0%, rgb\(240 243 248 \/ 0\.40\) 100%\);/,
   );
+});
+
+test('resolved Kordi theme is applied to the native macOS material', async () => {
+  const appliedThemes: string[] = [];
+  const target = {
+    setTheme: async (theme: 'light' | 'dark') => {
+      appliedThemes.push(theme);
+    },
+  };
+
+  await syncNativeWindowTheme('dark', target);
+  await syncNativeWindowTheme('light', target);
+
+  assert.deepEqual(appliedThemes, ['dark', 'light']);
+
+  const gateSource = readSource('src/KordiApp.tsx');
+  const shellEffectsSource = readSource('src/app/useKordiUiEffects.ts');
+  assert.match(gateSource, /syncNativeWindowTheme\(theme\)/);
+  assert.match(shellEffectsSource, /syncNativeWindowTheme\(themeMode\)/);
 });
