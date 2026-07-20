@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { Avatar } from '@/components/ui/avatar';
 import {
@@ -8,6 +8,7 @@ import {
 } from '@/features/cloud/signupAvatar';
 import { cn } from '@/lib/utils';
 import { useAvatarOverride } from './avatarOverrides';
+import { loadAvatarThroughNativeProxy, shouldLoadAvatarThroughNativeProxy } from './remoteAvatarImage';
 
 export type IdentityAvatarKind = 'human' | 'agent';
 
@@ -243,7 +244,30 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
   const normalizedSeed = seed.trim() || name?.trim() || `${kind}:unknown`;
   const resolvedAvatarKey = getIdentityAvatarKey(kind, normalizedSeed, avatarKey);
   const localOverride = useAvatarOverride(resolvedAvatarKey);
-  const resolvedImageUrl = localOverride ?? imageUrl;
+  const originalImageUrl = localOverride ?? imageUrl;
+  const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(originalImageUrl);
+  const [nativeImage, setNativeImage] = useState<{ source: string; dataUrl: string } | null>(null);
+  useEffect(() => {
+    const source = originalImageUrl?.trim();
+    if (!source || !needsNativeProxy) return;
+    let active = true;
+    void loadAvatarThroughNativeProxy(source)
+      .then((dataUrl) => {
+        if (active) setNativeImage({ source, dataUrl });
+      })
+      .catch(() => {
+        // Preserve the normal WebView request as a fallback when the native
+        // request is unavailable. IdentityAvatar's onError path still keeps a
+        // deterministic generated avatar visible.
+        if (active) setNativeImage({ source, dataUrl: source });
+      });
+    return () => {
+      active = false;
+    };
+  }, [needsNativeProxy, originalImageUrl]);
+  const resolvedImageUrl = needsNativeProxy
+    ? (nativeImage && nativeImage.source === originalImageUrl?.trim() ? nativeImage.dataUrl : null)
+    : originalImageUrl;
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const displayImageUrl = resolvedImageUrl && failedImageUrl !== resolvedImageUrl ? resolvedImageUrl : null;
   const fallbackLabel = name?.trim() || normalizedSeed;
