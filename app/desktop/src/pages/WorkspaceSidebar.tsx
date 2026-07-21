@@ -2366,6 +2366,7 @@ export function WorkspaceSidebar({
         isOpen={isGroupDetailsDialogOpen}
         space={selectedParticipantSpace}
         contacts={displayedContacts}
+        currentAccountId={cloudAccount?.accountId}
         onClose={() => {
           setIsGroupDetailsDialogOpen(false);
           setGroupDetailsAnchor(null);
@@ -2374,6 +2375,12 @@ export function WorkspaceSidebar({
         onAddMembers={onAddChatGroupMembers}
         onRemoveMember={onRemoveChatGroupMember}
         onSetAdmin={onSetChatGroupAdmin}
+        onAddContact={onAddContactByNodeId}
+        onMessageContact={async (contact) => {
+          setIsGroupDetailsDialogOpen(false);
+          setGroupDetailsAnchor(null);
+          await onStartChatWithPerson(contact);
+        }}
         anchorRect={groupDetailsAnchor}
       />
 

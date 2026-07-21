@@ -91,6 +91,7 @@ export function useKordiShellArgs(args: AssembleKordiShellSlotsArgs): KordiShell
       handleCreateSideAgentSession: args.handleCreateSideAgentSession,
       handleSelectChatSession: args.handleSelectChatSession,
       handleRenameChatSession: args.handleRenameChatSession,
+      handleStartChatWithPerson: args.handleStartChatWithPerson,
       handleStartChatWithAgent: args.handleStartChatWithAgent,
       filteredGroupedContacts: args.filteredGroupedContacts,
       addableContacts: args.addableContacts,

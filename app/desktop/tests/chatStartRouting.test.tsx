@@ -123,6 +123,7 @@ function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {})
     chatConversations: [directPersonConversation()],
     setActiveNav: (nav: string) => calls.push(`nav:${nav}`),
     handleSelectChatSession: async (sessionId: string) => { calls.push(`select:${sessionId}`); },
+    handleStartChatWithPerson: async () => { calls.push('startChatWithPerson'); },
     handleOpenBridgeConversation: async () => { calls.push('openBridge'); },
     handleStartBridgePersonSession: async (target: Record<string, unknown>) => { calls.push(`startPerson:${target.hostId}:${target.nodeId}:${target.humanId}`); },
     handleStartChatWithAgent: async (agent: Record<string, unknown>) => { calls.push(`startAgent:${agent.bridgeHostId}:${agent.bridgePeerNodeId}:${agent.bridgeAgentId}`); },
@@ -407,6 +408,16 @@ test('chat transcript contact-request hint calls Add contact for the active brid
   await props.onRequestBridgeContact?.();
 
   assert.deepEqual(calls, ['add:host-1:node-shared']);
+});
+
+test('chat transcript member profile reuses the normal person-chat route', () => {
+  const calls: string[] = [];
+  const startPerson = async () => { calls.push('message'); };
+  const props = buildChatsPageProps(baseShellArgs(calls, {
+    handleStartChatWithPerson: startPerson,
+  }) as never);
+
+  assert.equal(props.onMessageContact, startPerson);
 });
 
 test('bridge Chat starts an agent session instead of selecting an existing same-node person conversation', () => {

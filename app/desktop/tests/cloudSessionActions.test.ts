@@ -295,15 +295,45 @@ test('cloud group read state is driven by cloud metadata, not transient local un
 
 test('cloud group requesting placeholder times out to unavailable notice instead of misleading auth copy', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
-  assert.match(source, /CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 45_000/);
-  const timeoutIndex = source.indexOf('window.setTimeout(() => {');
-  assert.ok(timeoutIndex >= 0, 'expected requesting placeholder timeout');
-  const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 2500);
+  assert.match(source, /CLOUD_GROUP_AGENT_STATUS_RECHECK_MS = 5_000/);
+  assert.match(source, /CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 2 \* 60_000/);
+  const timeoutIndex = source.indexOf('const requestDeadlineMs = candidate.requestMessage.createdAtMs + CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS;');
+  assert.ok(timeoutIndex >= 0, 'expected bounded requesting placeholder status checks');
+  const timeoutBlock = source.slice(timeoutIndex, timeoutIndex + 6500);
+  assert.match(timeoutBlock, /cloudFallbackRunAlreadyOwnsRequest\(\{/);
+  assert.match(timeoutBlock, /cloudFallbackRunClaimsForMessages\(\{/);
+  assert.match(timeoutBlock, /claimCloudFallbackRun\(exactClaim/);
+  assert.match(timeoutBlock, /scheduleStatusCheck\(Math\.min\(CLOUD_GROUP_AGENT_STATUS_RECHECK_MS, remainingMs\)\)/);
   assert.match(timeoutBlock, /cloudGroupAgentUnavailableFallbackRequest\(\{/);
   assert.match(source, /CLOUD_GROUP_AGENT_UNAVAILABLE_NOTICE/);
   assert.match(source, /sourceEventId: `cloud-group-agent-unavailable-timeout:/);
   assert.match(source, /status:\s*'failed'/);
   assert.match(source, /sourceTransport:\s*'cloud-group-agent-offline'/);
+});
+
+test('fresh group sends claim fallback before waiting for a background Cloud sync', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const outboxBlockStart = source.indexOf('const sentMessages: CloudMessage[] = [];');
+  const outboxBlock = source.slice(outboxBlockStart, outboxBlockStart + 3200);
+  assert.match(outboxBlock, /await Promise\.all\(\[[\s\S]*claimFreshCloudGroupFallback\(sentMessages, canonicalMessageId, session\.token\),[\s\S]*syncCloudBridgeDiff/);
+  const directSendBlockStart = source.indexOf('const sent = fulfilledCloudGroupSends(results);', outboxBlockStart);
+  const directSendBlock = source.slice(directSendBlockStart, directSendBlockStart + 900);
+  assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFreshCloudGroupFallback\(sent, canonicalMessageId, session\.token\),[\s\S]*syncCloudBridgeDiff/);
+});
+
+test('adding existing group members publishes Cloud authorization before the local batch commit', () => {
+  const source = readFileSync(new URL('../src/app/useKordiAppModel.ts', import.meta.url), 'utf8');
+  const handlerStart = source.indexOf('const handleAddChatGroupMembers = useCallback');
+  const handlerEnd = source.indexOf('const handleRemoveChatGroupMember', handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+  const inviteIndex = handler.indexOf('await Promise.all(groupSessionIds.map');
+  const commitIndex = handler.indexOf('await addCanonicalGroupMembersFast');
+  assert.ok(inviteIndex >= 0, 'expected parallel Cloud invite publication');
+  assert.ok(commitIndex > inviteIndex, 'expected local membership commit after Cloud invite acknowledgement');
+  assert.match(handler, /memberJoins: cloudMemberJoins/);
+  assert.match(handler, /joinEvents: joinEvents\.map/);
+  assert.doesNotMatch(handler, /await addCanonicalSessionParticipants/);
+  assert.doesNotMatch(handler, /nextState = await updateCanonicalSessionMetadata/);
 });
 
 test('cloud group hosted-agent sends render processing in the final response slot', () => {

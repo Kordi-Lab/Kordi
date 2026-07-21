@@ -139,6 +139,8 @@ export type Message = {
   entryId?: string | null;
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
+  /** Canonical human/agent identity for profile actions in shared transcripts. */
+  senderIdentityId?: string | null;
   sourceSenderLabel?: string | null;
   senderType?: 'human' | 'agent';
   senderProfileImageUrl?: string | null;

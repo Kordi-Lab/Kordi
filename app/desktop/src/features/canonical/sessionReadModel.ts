@@ -370,6 +370,10 @@ function shouldKeepLegacyChatConversationExtra(
     return true;
   }
 
+  if (conversation.transientDraft) {
+    return true;
+  }
+
   const sessionId = conversation.canonicalSessionId ?? conversation.id;
   if (indexes.sessionById.has(sessionId)) {
     return false;
@@ -592,6 +596,7 @@ export function createCanonicalSessionReadModel(
         ...conversation,
         canonicalSessionId: sessionId,
         canonicalCreatedByIdentityId: session.createdByIdentityId,
+        canonicalCreatedAtMs: session.createdAtMs,
         canonicalStoragePath: indexes.storagePath,
         name: displayTitle,
         subtitle: buildSubtitle(messages, conversation.subtitle),

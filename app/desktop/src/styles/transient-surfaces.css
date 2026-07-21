@@ -30,9 +30,7 @@
 .app-transient-row,
 .app-composer-popover-item,
 .app-chat-create-choice,
-.app-chat-create-list-item,
-.app-group-management-member-row,
-.app-group-management-add-row {
+.app-chat-create-list-item {
   border-color: transparent;
   background: var(--app-transient-raised-bg);
   color: var(--app-transient-text);
@@ -42,9 +40,7 @@
 .app-transient-row:focus-visible,
 .app-composer-popover-item:hover,
 .app-chat-create-choice:hover,
-.app-chat-create-list-item:hover,
-.app-group-management-member-row:hover,
-.app-group-management-add-row:hover {
+.app-chat-create-list-item:hover {
   border-color: var(--app-transient-border);
   background: var(--app-transient-hover-bg);
   color: var(--app-transient-text);
@@ -53,7 +49,6 @@
 .app-transient-row-selected,
 .app-composer-popover-item-active,
 .app-chat-create-list-item-selected,
-.app-group-management-add-row-selected,
 [role='option'][aria-selected='true'].app-transient-row {
   border-color: var(--app-transient-selected-border);
   background: var(--app-transient-selected-bg);

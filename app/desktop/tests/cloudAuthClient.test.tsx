@@ -5,6 +5,7 @@ import {
   CloudAuthClient,
   CloudAuthError,
   cloudApiBaseUrl,
+  operatorCloudOAuthProviderFallback,
   cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudRequestTimeoutMs,
@@ -255,6 +256,28 @@ test('operator development requires both the operator profile and production ack
     }),
     'https://coordinar.io',
   );
+});
+
+test('acknowledged production operator previews retain OAuth when capability discovery is unavailable', () => {
+  const operatorEnv = {
+    DEV: true,
+    VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io',
+    VITE_KORDI_DEV_PROFILE: 'operator',
+    VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
+  };
+  assert.deepEqual(operatorCloudOAuthProviderFallback(operatorEnv), ['google', 'github']);
+  assert.deepEqual(operatorCloudOAuthProviderFallback({
+    ...operatorEnv,
+    VITE_KORDI_DEV_PROFILE: 'community',
+  }), []);
+  assert.deepEqual(operatorCloudOAuthProviderFallback({
+    ...operatorEnv,
+    VITE_KORDI_PRODUCTION_DEBUG_ACK: undefined,
+  }), []);
+  assert.deepEqual(operatorCloudOAuthProviderFallback({
+    ...operatorEnv,
+    VITE_KORDI_CLOUD_API_BASE: 'https://staging.example.test',
+  }), []);
 });
 
 test('cloud auth client gives local SSH tunnels a longer default timeout', () => {

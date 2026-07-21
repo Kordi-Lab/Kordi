@@ -1,15 +1,20 @@
+use std::collections::HashSet;
+
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 use super::{
     add_session_participants_in_db, adopt_cloud_profile_identity_in_db, append_message_in_db,
-    create_delegated_exchange_in_db, hash_hex, json_from_db, mark_session_read_in_db, now_ms,
-    open_db, open_or_create_session_in_db, remove_session_participant_in_db,
-    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
-    select_delegated_exchange, select_identity, select_session, set_session_metadata_in_db,
-    set_session_participant_role_in_db, update_presence_in_db, upsert_identity_in_db,
-    upsert_message_in_db, AddCanonicalSessionParticipantsRequest, AdoptCloudProfileIdentityRequest,
-    AppendCanonicalMessageRequest, CanonicalContextSnapshot, CanonicalDelegatedExchange,
+    create_delegated_exchange_in_db, hash_hex, identity_display_name, json_from_db,
+    mark_session_read_in_db, now_ms, open_db, open_or_create_session_in_db,
+    remove_session_participant_in_db, rename_any_session_title_in_db, rename_session_in_db,
+    require_group_admin, require_group_creator, require_group_member,
+    require_group_member_removal_permission, select_delegated_exchange, select_identity,
+    select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
+    update_presence_in_db, upsert_identity_in_db, upsert_message_in_db,
+    AddCanonicalGroupMembersRequest, AddCanonicalSessionParticipantsRequest,
+    AdoptCloudProfileIdentityRequest, AppendCanonicalMessageRequest, CanonicalContextSnapshot,
+    CanonicalDelegatedExchange, CanonicalGroupMembershipDelta, CanonicalGroupMembershipUpdate,
     CanonicalIdentity, CanonicalMessageDeliveryDelta, CanonicalMessagePage, CanonicalPresence,
     CanonicalProfileIdentityDelta, CanonicalReadCursorDelta, CanonicalSession,
     CanonicalSessionCatalog, CanonicalSessionMessage, CanonicalSessionParticipant,
@@ -795,14 +800,48 @@ pub(super) fn desktop_canonical_update_presence(
     load_state_from_db(&conn)
 }
 
+fn group_authority_metadata_signature(metadata: Option<&Value>) -> (String, Vec<String>, i64) {
+    let creator_identity_id = metadata
+        .and_then(Value::as_object)
+        .and_then(|metadata| metadata.get("groupCreatorIdentityId"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    let mut admin_identity_ids = metadata
+        .and_then(Value::as_object)
+        .and_then(|metadata| metadata.get("adminIdentityIds"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|identity_id| !identity_id.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    admin_identity_ids.sort();
+    admin_identity_ids.dedup();
+    let updated_at_ms = metadata
+        .and_then(Value::as_object)
+        .and_then(|metadata| metadata.get("groupAdminUpdatedAtMs"))
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    (creator_identity_id, admin_identity_ids, updated_at_ms)
+}
+
 pub(super) fn desktop_canonical_rename_session(
     request: RenameCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
     let session = select_session(&conn, &request.session_id)?
         .ok_or_else(|| "Session not found".to_string())?;
-    let _requested_by_identity_id = request.requested_by_identity_id.as_deref();
     if session.kind == "group" {
+        require_group_admin(
+            &conn,
+            &request.session_id,
+            request.requested_by_identity_id.as_deref(),
+            "rename this group",
+        )?;
         rename_session_in_db(&conn, &request.session_id, &request.title)?;
     } else {
         rename_any_session_title_in_db(&conn, &request.session_id, &request.title)?;
@@ -814,12 +853,25 @@ pub(super) fn desktop_canonical_update_session_metadata(
     request: UpdateCanonicalSessionMetadataRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
-    require_group_admin(
-        &conn,
-        &request.session_id,
-        request.requested_by_identity_id.as_deref(),
-        "change this group",
-    )?;
+    let session = select_session(&conn, &request.session_id)?
+        .ok_or_else(|| "Group session not found".to_string())?;
+    let changes_authority = group_authority_metadata_signature(session.metadata.as_ref())
+        != group_authority_metadata_signature(Some(&request.metadata));
+    if changes_authority {
+        require_group_creator(
+            &conn,
+            &request.session_id,
+            request.requested_by_identity_id.as_deref(),
+            "change group admins",
+        )?;
+    } else {
+        require_group_admin(
+            &conn,
+            &request.session_id,
+            request.requested_by_identity_id.as_deref(),
+            "change this group",
+        )?;
+    }
     set_session_metadata_in_db(&conn, &request.session_id, request.metadata)?;
     load_state_from_db(&conn)
 }
@@ -828,7 +880,7 @@ pub(super) fn desktop_canonical_add_session_participants(
     request: AddCanonicalSessionParticipantsRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
-    require_group_admin(
+    require_group_member(
         &conn,
         &request.session_id,
         Some(request.added_by_identity_id.as_str()),
@@ -843,15 +895,223 @@ pub(super) fn desktop_canonical_add_session_participants(
     load_state_from_db(&conn)
 }
 
+fn merge_group_membership_metadata(
+    conn: &Connection,
+    update: &CanonicalGroupMembershipUpdate,
+) -> Result<Value, String> {
+    let session = select_session(conn, &update.session_id)?
+        .ok_or_else(|| "Group session not found".to_string())?;
+    if session.kind != "group" {
+        return Err("Session is not a group".to_string());
+    }
+    let mut metadata = match session.metadata {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    let existing_group_space_id = metadata
+        .get("groupSpaceId")
+        .and_then(Value::as_str)
+        .or_else(|| metadata.get("groupId").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let group_space_id = existing_group_space_id
+        .unwrap_or_else(|| update.group_space_id.trim())
+        .to_string();
+    if group_space_id.is_empty() {
+        return Err("Group space id is required".to_string());
+    }
+    metadata.insert("groupId".to_string(), Value::String(group_space_id.clone()));
+    metadata.insert("groupSpaceId".to_string(), Value::String(group_space_id));
+
+    for (key, additions) in [
+        ("initialContactIds", &update.added_contact_ids),
+        ("initialParticipantNames", &update.added_participant_names),
+    ] {
+        let mut seen = HashSet::new();
+        let values = metadata
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .chain(additions.iter().map(String::as_str))
+            .map(str::trim)
+            .filter(|value| !value.is_empty() && seen.insert((*value).to_string()))
+            .map(|value| Value::String(value.to_string()))
+            .collect::<Vec<_>>();
+        metadata.insert(key.to_string(), Value::Array(values));
+    }
+    Ok(Value::Object(metadata))
+}
+
+fn add_canonical_group_members_in_db(
+    conn: &mut Connection,
+    request: AddCanonicalGroupMembersRequest,
+) -> Result<CanonicalGroupMembershipDelta, String> {
+    let AddCanonicalGroupMembersRequest {
+        sessions: requested_sessions,
+        identity_ids: requested_identity_ids,
+        added_by_identity_id,
+        join_events: requested_join_events,
+    } = request;
+    let transaction = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|err| err.to_string())?;
+    let added_by_identity_id = added_by_identity_id.trim();
+    if added_by_identity_id.is_empty() {
+        return Err("Group member inviter is required".to_string());
+    }
+
+    let mut seen_session_ids = HashSet::new();
+    let updates = requested_sessions
+        .into_iter()
+        .filter_map(|mut update| {
+            update.session_id = update.session_id.trim().to_string();
+            if update.session_id.is_empty() || !seen_session_ids.insert(update.session_id.clone()) {
+                return None;
+            }
+            Some(update)
+        })
+        .collect::<Vec<_>>();
+    if updates.is_empty() {
+        return Err("At least one group session is required".to_string());
+    }
+    let mut seen_identity_ids = HashSet::new();
+    let identity_ids = requested_identity_ids
+        .into_iter()
+        .map(|identity_id| identity_id.trim().to_string())
+        .filter(|identity_id| {
+            !identity_id.is_empty() && seen_identity_ids.insert(identity_id.clone())
+        })
+        .collect::<Vec<_>>();
+    if identity_ids.is_empty() {
+        return Err("At least one group member is required".to_string());
+    }
+    let identity_id_set = identity_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let mut seen_join_event_ids = HashSet::new();
+    let mut join_events = Vec::new();
+    for mut event in requested_join_events {
+        event.event_id = event.event_id.trim().to_string();
+        event.member_identity_id = event.member_identity_id.trim().to_string();
+        if event.event_id.is_empty()
+            || event.event_id.len() > 80
+            || !event.event_id.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
+            })
+        {
+            return Err("Group member join event id is invalid".to_string());
+        }
+        if !identity_id_set.contains(event.member_identity_id.as_str()) {
+            return Err("Group member join event does not match an invited member".to_string());
+        }
+        if seen_join_event_ids.insert(event.event_id.clone()) {
+            join_events.push(event);
+        }
+    }
+
+    for update in &updates {
+        require_group_member(
+            &transaction,
+            update.session_id.trim(),
+            Some(added_by_identity_id),
+            "invite people to this group",
+        )?;
+    }
+    let invited_by_display_name = identity_display_name(&transaction, added_by_identity_id)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "Someone".to_string());
+    let join_events = join_events
+        .into_iter()
+        .map(|event| {
+            let member_display_name =
+                identity_display_name(&transaction, event.member_identity_id.as_str())?
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| "Someone".to_string());
+            Ok((event, member_display_name))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let mut messages = Vec::with_capacity(updates.len() * join_events.len());
+    for update in &updates {
+        let session_id = update.session_id.trim();
+        add_session_participants_in_db(
+            &transaction,
+            session_id,
+            &identity_ids,
+            added_by_identity_id,
+        )?;
+        let metadata = merge_group_membership_metadata(&transaction, update)?;
+        set_session_metadata_in_db(&transaction, session_id, metadata)?;
+        for (event, member_display_name) in &join_events {
+            let message_id = format!("msg:group-member-join:{}:{}", event.event_id, session_id);
+            messages.push(append_message_in_db(
+                &transaction,
+                AppendCanonicalMessageRequest {
+                    id: Some(message_id.clone()),
+                    session_id: session_id.to_string(),
+                    sender_identity_id: added_by_identity_id.to_string(),
+                    sender_role: "system".to_string(),
+                    message_kind: "status".to_string(),
+                    content_text: format!(
+                        "{member_display_name} joined the group, invited by {invited_by_display_name}."
+                    ),
+                    content: Some(json!({
+                        "kind": "group-member-joined",
+                        "eventId": event.event_id,
+                        "memberIdentityId": event.member_identity_id,
+                        "memberDisplayName": member_display_name,
+                        "invitedByIdentityId": added_by_identity_id,
+                        "invitedByDisplayName": invited_by_display_name,
+                    })),
+                    created_at_ms: Some(event.created_at_ms),
+                    parent_message_id: None,
+                    delegated_exchange_id: None,
+                    status: Some("complete".to_string()),
+                    source_transport: Some("group-member-join".to_string()),
+                    source_event_id: Some(message_id),
+                },
+            )?);
+        }
+    }
+
+    let mut sessions = Vec::with_capacity(updates.len());
+    let mut participants = Vec::new();
+    for update in &updates {
+        let session_id = update.session_id.trim();
+        sessions.push(
+            select_session(&transaction, session_id)?
+                .ok_or_else(|| "Group session not found after member update".to_string())?,
+        );
+        participants.extend(select_session_participants(&transaction, session_id)?);
+    }
+    transaction.commit().map_err(|err| err.to_string())?;
+    Ok(CanonicalGroupMembershipDelta {
+        sessions,
+        participants,
+        messages,
+    })
+}
+
+pub(super) fn desktop_canonical_add_group_members_fast(
+    request: AddCanonicalGroupMembersRequest,
+) -> Result<CanonicalGroupMembershipDelta, String> {
+    let mut conn = open_db()?;
+    add_canonical_group_members_in_db(&mut conn, request)
+}
+
 pub(super) fn desktop_canonical_remove_session_participant(
     request: RemoveCanonicalSessionParticipantRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
-    require_group_admin(
+    require_group_member_removal_permission(
         &conn,
         &request.session_id,
         request.removed_by_identity_id.as_deref(),
-        "remove people from this group",
+        &request.identity_id,
     )?;
     remove_session_participant_in_db(&conn, &request.session_id, &request.identity_id)?;
     load_state_from_db(&conn)
@@ -861,7 +1121,7 @@ pub(super) fn desktop_canonical_set_session_participant_role(
     request: SetCanonicalSessionParticipantRoleRequest,
 ) -> Result<CanonicalSessionState, String> {
     let conn = open_db()?;
-    require_group_admin(
+    require_group_creator(
         &conn,
         &request.session_id,
         request.requested_by_identity_id.as_deref(),
@@ -947,12 +1207,17 @@ pub(crate) fn delete_session(session_id: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod catalog_tests {
+    use std::collections::HashSet;
+
     use rusqlite::{params, Connection};
 
-    use super::super::UpdateCanonicalMessageDeliveryRequest;
+    use super::super::{
+        AddCanonicalGroupMembersRequest, CanonicalGroupMemberJoinEvent,
+        CanonicalGroupMembershipUpdate, UpdateCanonicalMessageDeliveryRequest,
+    };
     use super::{
-        load_catalog_from_db, load_message_page_from_db, load_state_from_db,
-        select_session_participants, update_canonical_message_delivery_in_db,
+        add_canonical_group_members_in_db, load_catalog_from_db, load_message_page_from_db,
+        load_state_from_db, select_session_participants, update_canonical_message_delivery_in_db,
     };
 
     fn test_conn() -> Connection {
@@ -1018,6 +1283,203 @@ mod catalog_tests {
         .expect("seed missing cursor message");
         let catalog = load_catalog_from_db(&conn).expect("load catalog with missing cursor");
         assert_eq!(catalog.participants[0].last_read_sequence_num, None);
+    }
+
+    #[test]
+    fn group_member_batch_updates_all_sessions_atomically_and_returns_only_changed_rows() {
+        let mut conn = test_conn();
+        seed_identity(&conn);
+        conn.execute(
+            "INSERT INTO identities (
+                id, kind, display_name, source, avatar_key, created_at_ms, updated_at_ms
+             ) VALUES ('human:owner', 'human', 'Owner', 'bridge', 'human:owner', 1, 1)",
+            [],
+        )
+        .expect("seed owner identity");
+        conn.execute(
+            "INSERT INTO identities (
+                id, kind, display_name, source, avatar_key, created_at_ms, updated_at_ms
+             ) VALUES ('human:peer', 'human', 'Peer', 'bridge', 'human:peer', 1, 1)",
+            [],
+        )
+        .expect("seed peer identity");
+        for session_id in ["session:group:parent", "session:group:child"] {
+            conn.execute(
+                "INSERT INTO sessions (
+                    id, kind, title, status, created_by_identity_id,
+                    metadata_json, created_at_ms, updated_at_ms
+                 ) VALUES (?1, 'group', ?2, 'active', 'human:owner', '{}', 1, 1)",
+                params![session_id, session_id],
+            )
+            .expect("seed group session");
+            conn.execute(
+                "INSERT INTO session_participants (
+                    session_id, identity_id, role, state, added_at_ms
+                 ) VALUES (?1, 'human:me', 'person', 'active', 1)",
+                [session_id],
+            )
+            .expect("seed regular group member");
+        }
+        conn.execute(
+            "UPDATE sessions
+             SET metadata_json = '{\"concurrentField\":\"keep\",\"initialContactIds\":[\"cloud:old\"]}'
+             WHERE id = 'session:group:parent'",
+            [],
+        )
+        .expect("seed concurrent metadata");
+
+        let delta = add_canonical_group_members_in_db(
+            &mut conn,
+            AddCanonicalGroupMembersRequest {
+                sessions: vec![
+                    CanonicalGroupMembershipUpdate {
+                        session_id: "session:group:parent".to_string(),
+                        group_space_id: "session:group:parent".to_string(),
+                        added_contact_ids: vec!["cloud:peer".to_string()],
+                        added_participant_names: vec!["Peer".to_string()],
+                    },
+                    CanonicalGroupMembershipUpdate {
+                        session_id: "session:group:child".to_string(),
+                        group_space_id: "session:group:parent".to_string(),
+                        added_contact_ids: vec!["cloud:peer".to_string()],
+                        added_participant_names: vec!["Peer".to_string()],
+                    },
+                ],
+                identity_ids: vec!["human:peer".to_string()],
+                added_by_identity_id: "human:me".to_string(),
+                join_events: vec![CanonicalGroupMemberJoinEvent {
+                    event_id: "invite_peer_1".to_string(),
+                    member_identity_id: "human:peer".to_string(),
+                    created_at_ms: 42,
+                }],
+            },
+        )
+        .expect("batch group member update");
+
+        assert_eq!(delta.sessions.len(), 2);
+        assert_eq!(delta.participants.len(), 4);
+        assert_eq!(delta.messages.len(), 2);
+        assert!(delta.messages.iter().all(|message| {
+            message.sender_role == "system"
+                && message.message_kind == "status"
+                && message.content_text == "Peer joined the group, invited by Me."
+                && message.source_transport.as_deref() == Some("group-member-join")
+        }));
+        assert_eq!(
+            delta
+                .messages
+                .iter()
+                .map(|message| message.session_id.as_str())
+                .collect::<HashSet<_>>(),
+            HashSet::from(["session:group:parent", "session:group:child"])
+        );
+        assert!(delta.sessions.iter().all(|session| session
+            .metadata
+            .as_ref()
+            .and_then(|value| value.get("groupSpaceId"))
+            .and_then(|value| value.as_str())
+            == Some("session:group:parent")));
+        let parent_metadata = delta
+            .sessions
+            .iter()
+            .find(|session| session.id == "session:group:parent")
+            .and_then(|session| session.metadata.as_ref())
+            .expect("parent metadata");
+        assert_eq!(
+            parent_metadata
+                .get("concurrentField")
+                .and_then(|value| value.as_str()),
+            Some("keep")
+        );
+        assert_eq!(
+            parent_metadata
+                .get("initialContactIds")
+                .and_then(|value| value.as_array())
+                .map(Vec::len),
+            Some(2)
+        );
+        assert!(
+            delta
+                .participants
+                .iter()
+                .filter(|participant| participant.identity_id == "human:peer")
+                .count()
+                == 2
+        );
+    }
+
+    #[test]
+    fn group_member_batch_rolls_back_every_session_when_inviter_is_not_a_member() {
+        let mut conn = test_conn();
+        seed_identity(&conn);
+        conn.execute_batch(
+            "INSERT INTO identities (
+                id, kind, display_name, source, avatar_key, created_at_ms, updated_at_ms
+             ) VALUES ('human:peer', 'human', 'Peer', 'bridge', 'human:peer', 1, 1);
+             INSERT INTO identities (
+                id, kind, display_name, source, avatar_key, created_at_ms, updated_at_ms
+             ) VALUES ('human:other', 'human', 'Other', 'local', 'human:other', 1, 1);
+             INSERT INTO sessions (
+                id, kind, title, status, created_by_identity_id,
+                metadata_json, created_at_ms, updated_at_ms
+             ) VALUES ('session:allowed', 'group', 'Allowed', 'active', 'human:other', '{}', 1, 1);
+             INSERT INTO sessions (
+                id, kind, title, status, created_by_identity_id,
+                metadata_json, created_at_ms, updated_at_ms
+             ) VALUES ('session:denied', 'group', 'Denied', 'active', 'human:other', '{}', 1, 1);
+             INSERT INTO session_participants (
+                session_id, identity_id, role, state, added_at_ms
+             ) VALUES ('session:allowed', 'human:me', 'person', 'active', 1);
+             INSERT INTO session_participants (
+                session_id, identity_id, role, state, added_at_ms
+             ) VALUES ('session:denied', 'human:other', 'admin', 'active', 1);",
+        )
+        .expect("seed rollback groups");
+
+        let result = add_canonical_group_members_in_db(
+            &mut conn,
+            AddCanonicalGroupMembersRequest {
+                sessions: vec![
+                    CanonicalGroupMembershipUpdate {
+                        session_id: "session:allowed".to_string(),
+                        group_space_id: "session:allowed".to_string(),
+                        added_contact_ids: vec!["cloud:peer".to_string()],
+                        added_participant_names: vec!["Peer".to_string()],
+                    },
+                    CanonicalGroupMembershipUpdate {
+                        session_id: "session:denied".to_string(),
+                        group_space_id: "session:denied".to_string(),
+                        added_contact_ids: vec!["cloud:peer".to_string()],
+                        added_participant_names: vec!["Peer".to_string()],
+                    },
+                ],
+                identity_ids: vec!["human:peer".to_string()],
+                added_by_identity_id: "human:me".to_string(),
+                join_events: vec![CanonicalGroupMemberJoinEvent {
+                    event_id: "invite_peer_rollback".to_string(),
+                    member_identity_id: "human:peer".to_string(),
+                    created_at_ms: 42,
+                }],
+            },
+        );
+
+        assert!(result
+            .expect_err("outsider cannot invite people")
+            .contains("Only group members can invite people to this group"));
+        let inserted_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM session_participants WHERE identity_id = 'human:peer'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count rolled back participants");
+        assert_eq!(inserted_count, 0);
+        let notice_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM session_messages", [], |row| {
+                row.get(0)
+            })
+            .expect("count rolled back notices");
+        assert_eq!(notice_count, 0);
     }
 
     #[test]

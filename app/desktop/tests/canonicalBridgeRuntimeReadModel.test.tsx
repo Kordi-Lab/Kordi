@@ -52,6 +52,7 @@ test('canonical group unread honors persisted self read marker at latest message
 
   const conversation = readModel.buildChatConversations([], (messages, fallback) => messages.at(-1)?.text ?? fallback ?? '')[0];
   assert.equal(conversation?.unread, 0);
+  assert.equal(conversation?.canonicalCreatedAtMs, 1);
 });
 
 test('canonical Cloud unread remains masked until the account snapshot is ready', () => {

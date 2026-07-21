@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import {
   cloudGroupAttachmentReferences,
+  cloudGroupAdminAccountIds,
   cloudGroupControlWithAttachmentReferences,
   cloudGroupIdentityRequest,
   cloudGroupAgentResponseTargetAccountIds,
@@ -10,6 +11,7 @@ import {
   cloudGroupReadReceiptSummaryFromMessages,
   cloudGroupControlMessagesForAccount,
   cloudGroupLocalAgentRequestAlreadyHandled,
+  cloudGroupMemberJoinNoticeRequests,
   cloudGroupMessageReadPeerIds,
   cloudGroupMessageReadTargets,
   cloudGroupMessageSessionId,
@@ -18,12 +20,14 @@ import {
   cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantFromContact,
   cloudGroupParticipantsWithProfiles,
+  cloudGroupParticipantsForBridgeSessionParticipants,
   cloudGroupRelatedControlsForSend,
   cloudGroupTargetAccountIds,
   cloudGroupTitleForOutgoingControl,
   cloudGroupUniqueParticipants,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
+  firstRequiredCloudGroupSendFailure,
   fulfilledCloudGroupSends,
   isCloudGroupSessionId,
   nonCloudGroupTargets,
@@ -40,6 +44,50 @@ import {
   cloudGroupAgentRequestingNoticeMessage,
 } from '../src/features/cloud/cloudGroupMessages';
 import { CLOUD_HOST_SENTINEL } from '../src/features/cloud/useCloudContacts';
+
+test('group admin snapshots always keep the creator and explicit promoted admins', () => {
+  const envelope = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-update',
+    groupId: 'session:group:admins',
+    groupSpaceId: 'session:group:admins',
+    groupTitle: 'Admins',
+    createdByAccountId: 'acct_creator',
+    actor: { accountId: 'acct_creator', displayName: 'Creator', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_creator', displayName: 'Creator', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_promoted', displayName: 'Promoted', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_member', displayName: 'Member', avatarUrl: null, role: 'person' },
+    ],
+    message: null,
+  }));
+
+  assert.ok(envelope);
+  assert.deepEqual(cloudGroupAdminAccountIds(envelope!), ['acct_creator', 'acct_promoted']);
+});
+
+test('Cloud participant snapshots do not silently promote the local sender', () => {
+  const participants = cloudGroupParticipantsForBridgeSessionParticipants({
+    accountId: 'acct_self',
+    displayName: 'Self',
+    primaryEmail: 'self@example.com',
+    avatarUrl: null,
+    nodeId: 'acct_self',
+    passwordSet: true,
+  }, [{
+    identityId: 'human:acct_self',
+    displayName: 'Self',
+    role: 'person',
+    humanId: 'acct_self',
+  }, {
+    identityId: 'human:acct_admin',
+    displayName: 'Admin',
+    role: 'admin',
+    humanId: 'acct_admin',
+  }]);
+
+  assert.equal(participants.find((participant) => participant.accountId === 'acct_self')?.role, 'person');
+  assert.equal(participants.find((participant) => participant.accountId === 'acct_admin')?.role, 'admin');
+});
 
 test('cloud group control envelopes reject direct contact session ids', () => {
   const body = encodeCloudGroupControl({
@@ -602,6 +650,57 @@ test('session title updates build a remote visible rename notice without changin
   });
 });
 
+test('group invites carry one durable join notice for each invited member', () => {
+  const envelope = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-invite',
+    groupId: 'session:group:cloud',
+    groupSpaceId: 'session:group:root',
+    groupTitle: 'Research team',
+    createdByAccountId: 'acct_inviter',
+    actor: { accountId: 'acct_inviter', displayName: 'Shu Yang', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_inviter', displayName: 'Shu Yang', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_new', displayName: 'Jiaxin Pei', avatarUrl: null, role: 'person' },
+    ],
+    memberJoins: [{
+      eventId: 'invite_event_1',
+      accountId: 'acct_new',
+      displayName: 'Jiaxin Pei',
+      createdAtMs: 1234,
+    }],
+    message: null,
+  }));
+
+  assert.deepEqual(envelope?.memberJoins, [{
+    eventId: 'invite_event_1',
+    accountId: 'acct_new',
+    displayName: 'Jiaxin Pei',
+    createdAtMs: 1234,
+  }]);
+  const requests = cloudGroupMemberJoinNoticeRequests({
+    envelope: envelope!,
+    actorIdentityId: 'human:cloud:acct_inviter',
+    identityIdByAccount: new Map([
+      ['acct_inviter', 'human:cloud:acct_inviter'],
+      ['acct_new', 'human:cloud:acct_new'],
+    ]),
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.id, 'msg:group-member-join:invite_event_1:session:group:cloud');
+  assert.equal(requests[0]?.senderRole, 'system');
+  assert.equal(requests[0]?.messageKind, 'status');
+  assert.equal(requests[0]?.contentText, 'Jiaxin Pei joined the group, invited by Shu Yang.');
+  assert.deepEqual(requests[0]?.content, {
+    kind: 'group-member-joined',
+    eventId: 'invite_event_1',
+    memberIdentityId: 'human:cloud:acct_new',
+    memberDisplayName: 'Jiaxin Pei',
+    invitedByIdentityId: 'human:cloud:acct_inviter',
+    invitedByDisplayName: 'Shu Yang',
+  });
+});
+
 test('cloud group detects whether an offline candidate already sent an agent response', () => {
   assert.equal(cloudGroupAgentMentionHasResponse({
     requestMessageId: 'msg_request',
@@ -1072,6 +1171,8 @@ test('cloud group send helpers treat partial recipient success as a send success
 
   assert.deepEqual(fulfilledCloudGroupSends(results), ['msg_ok']);
   assert.equal(firstCloudGroupSendFailure(results) instanceof Error, true);
+  assert.equal(firstRequiredCloudGroupSendFailure(results, ['acct_existing', 'acct_new'], ['acct_existing']), undefined);
+  assert.equal(firstRequiredCloudGroupSendFailure(results, ['acct_existing', 'acct_new'], ['acct_new'])?.reason instanceof Error, true);
 });
 
 test('cloud agent mentions inside cloud groups stay on cloud group transport', () => {

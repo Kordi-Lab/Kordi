@@ -46,6 +46,73 @@ fn source_event_dedupes_messages() {
 }
 
 #[test]
+fn source_event_upsert_reuses_the_existing_source_row_when_the_requested_id_differs() {
+    let conn = test_conn();
+    let session = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:source-upsert".to_string()),
+            kind: "group".to_string(),
+            title: Some("Group".to_string()),
+            status: None,
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: Vec::new(),
+            metadata: None,
+        },
+    )
+    .expect("open session");
+    let existing = append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:cloud-event".to_string()),
+            session_id: session.id.clone(),
+            sender_identity_id: "human:local".to_string(),
+            sender_role: "user".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "processing".to_string(),
+            content: None,
+            created_at_ms: Some(1_000),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("processing".to_string()),
+            source_transport: Some("cloud-group".to_string()),
+            source_event_id: Some("cloud-group:event-1".to_string()),
+        },
+    )
+    .expect("append source row");
+
+    let reconciled = upsert_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:different-stable-slot".to_string()),
+            session_id: session.id,
+            sender_identity_id: "human:local".to_string(),
+            sender_role: "user".to_string(),
+            message_kind: "text".to_string(),
+            content_text: "complete".to_string(),
+            content: None,
+            created_at_ms: Some(1_000),
+            parent_message_id: None,
+            delegated_exchange_id: None,
+            status: Some("complete".to_string()),
+            source_transport: Some("cloud-group".to_string()),
+            source_event_id: Some("cloud-group:event-1".to_string()),
+        },
+    )
+    .expect("reconcile source row");
+
+    assert_eq!(reconciled.id, existing.id);
+    assert_eq!(reconciled.content_text, "complete");
+    assert_eq!(reconciled.status, "complete");
+    let state = commands::load_state_from_db(&conn).expect("load state");
+    assert_eq!(state.messages.len(), 1);
+}
+
+#[test]
 fn source_event_reconcile_noops_when_bridge_message_is_unchanged() {
     let conn = test_conn();
     open_or_create_session_in_db(

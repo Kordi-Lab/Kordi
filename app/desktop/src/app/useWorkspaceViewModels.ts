@@ -327,6 +327,7 @@ type UseWorkspaceViewModelsArgs = {
   cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
   cloudPresence?: CloudPresenceStore;
   cloudUnreadReady?: boolean;
+  transientChatConversations?: Conversation[];
 };
 
 export function useWorkspaceViewModels({
@@ -358,6 +359,7 @@ export function useWorkspaceViewModels({
   cloudAgentDefinitionsById = {},
   cloudPresence = {},
   cloudUnreadReady = true,
+  transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
   const canonicalReadModel = useMemo(
     () => createCanonicalSessionReadModel(canonicalSessionState, {
@@ -565,13 +567,13 @@ export function useWorkspaceViewModels({
       return conversations;
     }
     const bridgeSourceConversations = canonicalReadModel ? bridgeChatConversations : visibleBridgeChatConversations;
-    const merged = [...bridgeSourceConversations, ...localChatConversations];
+    const merged = [...bridgeSourceConversations, ...localChatConversations, ...transientChatConversations];
     merged.sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0));
     const sourceConversations = merged.map(({ _updatedAtMs, ...conversation }) => conversation);
     return canonicalReadModel
       ? canonicalReadModel.buildChatConversations(sourceConversations, buildConversationPreview)
       : sourceConversations;
-  }, [bridgeChatConversations, canonicalReadModel, conversations, isNativeShell, localChatConversations, visibleBridgeChatConversations]);
+  }, [bridgeChatConversations, canonicalReadModel, conversations, isNativeShell, localChatConversations, transientChatConversations, visibleBridgeChatConversations]);
 
   const chatConversations = useMemo(() => {
     const hiddenIds = new Set([...hiddenSessionIds, ...localAgentBridgeReachoutSessionIds]);

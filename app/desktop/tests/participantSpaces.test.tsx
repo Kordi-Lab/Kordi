@@ -330,6 +330,73 @@ test('buildParticipantSpaces collapses duplicate blank sessions in a participant
   ]);
 });
 
+test('buildParticipantSpaces hides persisted empty group continuations but keeps the local draft', () => {
+  const canonicalParticipants = [
+    { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+    { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+    { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+  ];
+  const shared = {
+    type: 'person' as const,
+    participants: ['Me', 'Alice', 'Bob'],
+    canonicalParticipants,
+    participantSpaceId: 'group:session:group:root',
+    directness: 'Group chat',
+  };
+  const spaces = buildParticipantSpaces([
+    conversation({
+      ...shared,
+      id: 'session:group:root',
+      canonicalSessionId: 'session:group:root',
+      name: 'main',
+      subtitle: 'Hello',
+      messages: [{ role: 'person', sender: 'Alice', text: 'Hello', time: '10:00' }],
+      canonicalMessageCount: 1,
+      metadata: { groupId: 'session:group:root', groupSpaceId: 'session:group:root' },
+      _updatedAtMs: 1,
+    }),
+    conversation({
+      ...shared,
+      id: 'session:group:legacy-empty',
+      canonicalSessionId: 'session:group:legacy-empty',
+      name: 'New chat',
+      subtitle: 'New chat',
+      messages: [],
+      canonicalMessageCount: 0,
+      participants: ['Me', 'Alice', 'Bob', 'Chen'],
+      canonicalParticipants: [
+        ...canonicalParticipants,
+        { id: 'human:chen', name: 'Chen', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'chen' },
+      ],
+      metadata: { createdFrom: 'cloud-group-sync', groupId: 'session:group:root', groupSpaceId: 'session:group:root' },
+      _updatedAtMs: 2,
+    }),
+    conversation({
+      ...shared,
+      id: 'session:group:local-draft',
+      transientDraft: true,
+      canonicalSessionId: 'session:group:local-draft',
+      name: 'New session',
+      subtitle: '',
+      messages: [],
+      canonicalMessageCount: 0,
+      metadata: { createdFrom: 'chat-create-flow', groupId: 'session:group:root', groupSpaceId: 'session:group:root' },
+      _updatedAtMs: 3,
+    }),
+  ]);
+
+  assert.equal(spaces.length, 1);
+  assert.deepEqual(spaces[0]?.sessions.map((session) => session.id), [
+    'session:group:local-draft',
+    'session:group:root',
+  ]);
+  assert.deepEqual(spaces[0]?.membershipSessionIds, [
+    'session:group:legacy-empty',
+    'session:group:root',
+  ]);
+  assert.ok(spaces[0]?.participants.some((participant) => participant.id === 'human:chen'));
+});
+
 test('buildParticipantSpaces collapses duplicate blank selected-agent sessions by agent', () => {
   const spaces = buildParticipantSpaces([
     conversation({
@@ -575,6 +642,42 @@ test('buildParticipantSpaces keeps a stable group space when invited members cha
     'human:alice',
     'human:bob',
     'human:chen',
+  ]);
+});
+
+test('buildParticipantSpaces uses the authoritative group id when Cloud membership changes', () => {
+  const self = { id: 'human:acct_self', name: 'Me', kind: 'human' as const, role: 'self', source: 'local' as const, humanId: 'acct_self', avatarKey: 'me' };
+  const alice = { id: 'human:acct_alice', name: 'Alice', kind: 'human' as const, role: 'person', source: 'bridge' as const, humanId: 'acct_alice', bridgeNodeId: 'acct_alice', bridgeHostId: 'cloud', avatarKey: 'alice' };
+  const bob = { id: 'human:acct_bob', name: 'Bob', kind: 'human' as const, role: 'person', source: 'bridge' as const, humanId: 'acct_bob', bridgeNodeId: 'acct_bob', bridgeHostId: 'cloud', avatarKey: 'bob' };
+  const spaces = buildParticipantSpaces([
+    conversation({
+      id: 'session:group:cloud-root',
+      canonicalSessionId: 'session:group:cloud-root',
+      name: 'Cloud group',
+      participantSpaceId: 'group:session:group:cloud-root',
+      metadata: { customName: 'Cloud group', groupSpaceId: 'session:group:cloud-root' },
+      canonicalParticipants: [self, alice],
+      participants: ['Me', 'Alice'],
+      _updatedAtMs: 1,
+    }),
+    conversation({
+      id: 'session:group:cloud-followup',
+      canonicalSessionId: 'session:group:cloud-followup',
+      name: 'Follow-up',
+      participantSpaceId: 'group:session:group:cloud-root',
+      metadata: { customName: 'Cloud group', groupSpaceId: 'session:group:cloud-root' },
+      canonicalParticipants: [self, alice, bob],
+      participants: ['Me', 'Alice', 'Bob'],
+      _updatedAtMs: 2,
+    }),
+  ]);
+
+  assert.equal(spaces.length, 1);
+  assert.equal(spaces[0]?.id, 'group:session:group:cloud-root');
+  assert.deepEqual(spaces[0]?.participants.map((participant) => participant.id), [
+    'human:acct_self',
+    'human:acct_alice',
+    'human:acct_bob',
   ]);
 });
 

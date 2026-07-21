@@ -1,4 +1,4 @@
-import { isBlankParticipantSpaceSession } from './participantSpaces';
+import { isBlankParticipantSpaceSession, isPersistedBlankGroupContinuation } from './participantSpaces';
 import type {
   Agent,
   CanonicalIdentity,
@@ -50,7 +50,9 @@ export type ChatGroupMetadata = {
   customName: string | null;
   groupId: string | null;
   groupSpaceId: string | null;
+  groupCreatorIdentityId: string;
   adminIdentityIds: string[];
+  groupAdminUpdatedAtMs: number;
   initialContactIds: string[];
   initialParticipantNames: string[];
   memberApprovalPolicy: 'under-50-open';
@@ -596,7 +598,17 @@ export function existingBlankSessionIdForParticipantSpace(space: ParticipantSpac
 }
 
 export function participantSpaceCanonicalSessionIds(space: ParticipantSpaceViewModel) {
-  return uniqueNonEmpty(space.sessions.map((session) => session.canonicalSessionId ?? session.id));
+  return uniqueNonEmpty(space.sessions
+    .filter((session) => !session.conversation.transientDraft)
+    .filter((session) => space.kind !== 'group' || !isPersistedBlankGroupContinuation(session))
+    .map((session) => session.canonicalSessionId ?? session.id));
+}
+
+export function participantSpaceCanonicalMembershipSessionIds(space: ParticipantSpaceViewModel) {
+  return uniqueNonEmpty([
+    ...(space.membershipSessionIds ?? []),
+    ...participantSpaceCanonicalSessionIds(space),
+  ]);
 }
 
 export function buildChatCreateGroupMetadata(input: {
@@ -614,7 +626,9 @@ export function buildChatCreateGroupMetadata(input: {
     customName: customName || null,
     groupId: groupSpaceId || null,
     groupSpaceId: groupSpaceId || null,
+    groupCreatorIdentityId: cleanText(input.creatorIdentityId),
     adminIdentityIds: uniqueNonEmpty([input.creatorIdentityId]),
+    groupAdminUpdatedAtMs: Date.now(),
     initialContactIds: uniqueNonEmpty(input.selectedContactIds),
     initialParticipantNames: uniqueNonEmpty(input.selectedNames),
     memberApprovalPolicy: 'under-50-open',

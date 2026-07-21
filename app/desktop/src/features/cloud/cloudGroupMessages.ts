@@ -16,6 +16,7 @@ import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudBridgeTargets } f
 import { CLOUD_HOST_SENTINEL } from './useCloudContacts';
 
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
+const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
 
 export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update' | 'session-fork';
@@ -29,6 +30,13 @@ export type CloudGroupParticipant = {
 
 export type CloudGroupActor = CloudGroupParticipant;
 
+export type CloudGroupMemberJoin = {
+  eventId: string;
+  accountId: string;
+  displayName: string;
+  createdAtMs: number;
+};
+
 export type CloudGroupControlEnvelope = {
   kind: CloudGroupControlKind;
   groupId: string;
@@ -37,6 +45,7 @@ export type CloudGroupControlEnvelope = {
   createdByAccountId: string;
   actor: CloudGroupActor;
   participants: CloudGroupParticipant[];
+  memberJoins?: CloudGroupMemberJoin[];
   fork?: {
     forkSessionId: string;
     parentSessionId: string;
@@ -106,6 +115,33 @@ function cleanText(value?: string | null) {
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function cloudGroupMemberJoins(value: unknown): CloudGroupMemberJoin[] {
+  if (!Array.isArray(value)) return [];
+  const seenEventIds = new Set<string>();
+  const joins: CloudGroupMemberJoin[] = [];
+  value.forEach((candidate) => {
+    const record = objectRecord(candidate);
+    const eventId = cleanText(typeof record.eventId === 'string' ? record.eventId : null);
+    const accountId = cleanText(typeof record.accountId === 'string' ? record.accountId : null);
+    const displayName = cleanText(typeof record.displayName === 'string' ? record.displayName : null);
+    const createdAtMs = typeof record.createdAtMs === 'number' && Number.isFinite(record.createdAtMs)
+      ? record.createdAtMs
+      : null;
+    if (!CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN.test(eventId)
+      || !isCloudAccountId(accountId)
+      || createdAtMs === null
+      || seenEventIds.has(eventId)) return;
+    seenEventIds.add(eventId);
+    joins.push({
+      eventId,
+      accountId,
+      displayName: displayName || accountId,
+      createdAtMs,
+    });
+  });
+  return joins;
 }
 
 export function cloudGroupForkPayloadFromSessionMetadata(
@@ -300,6 +336,18 @@ export function shouldApplyCloudGroupTitleUpdate(input: Pick<CloudGroupControlEn
   return ['group-invite', 'group-update', 'group-title-update'].includes(input.kind) && Boolean(cloudGroupNonGenericTitle(input.groupTitle));
 }
 
+export function cloudGroupAdminAccountIds(
+  envelope: Pick<CloudGroupControlEnvelope, 'kind' | 'createdByAccountId' | 'participants'>,
+) {
+  if (!['group-invite', 'group-update'].includes(envelope.kind)) return [];
+  return [...new Set([
+    cleanText(envelope.createdByAccountId),
+    ...envelope.participants
+      .filter((participant) => participant.role === 'admin')
+      .map((participant) => cleanText(participant.accountId)),
+  ].filter(Boolean))];
+}
+
 export function cloudSessionTitleUpdateTitle(input: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle'>) {
   return input.kind === 'session-title-update' ? cloudGroupNonGenericTitle(input.groupTitle) : null;
 }
@@ -365,6 +413,48 @@ export function cloudSessionTitleUpdateNoticeRequest(input: {
   });
 }
 
+export function groupMemberJoinNoticeText(memberDisplayName: string, invitedByDisplayName: string) {
+  const memberName = cleanText(memberDisplayName) || 'Someone';
+  const inviterName = cleanText(invitedByDisplayName) || 'Someone';
+  return `${memberName} joined the group, invited by ${inviterName}.`;
+}
+
+export function cloudGroupMemberJoinNoticeRequests(input: {
+  envelope: CloudGroupControlEnvelope;
+  actorIdentityId: string;
+  identityIdByAccount: ReadonlyMap<string, string>;
+}): AppendCanonicalMessageRequest[] {
+  if (input.envelope.kind !== 'group-invite') return [];
+  const actorIdentityId = cleanText(input.actorIdentityId);
+  if (!actorIdentityId) return [];
+  const invitedByDisplayName = cleanText(input.envelope.actor.displayName) || 'Someone';
+  return (input.envelope.memberJoins ?? []).flatMap((join) => {
+    const memberIdentityId = cleanText(input.identityIdByAccount.get(join.accountId));
+    if (!memberIdentityId) return [];
+    const messageId = `msg:group-member-join:${join.eventId}:${input.envelope.groupId}`;
+    return [{
+      id: messageId,
+      sessionId: input.envelope.groupId,
+      senderIdentityId: actorIdentityId,
+      senderRole: 'system',
+      messageKind: 'status',
+      contentText: groupMemberJoinNoticeText(join.displayName, invitedByDisplayName),
+      content: {
+        kind: 'group-member-joined',
+        eventId: join.eventId,
+        memberIdentityId,
+        memberDisplayName: join.displayName,
+        invitedByIdentityId: actorIdentityId,
+        invitedByDisplayName,
+      },
+      createdAtMs: join.createdAtMs,
+      status: 'complete',
+      sourceTransport: 'group-member-join',
+      sourceEventId: messageId,
+    } satisfies AppendCanonicalMessageRequest];
+  });
+}
+
 function encodeBase64Url(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = '';
@@ -380,6 +470,7 @@ function decodeBase64Url(value: string): string {
 }
 
 export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): string {
+  const memberJoins = input.kind === 'group-invite' ? cloudGroupMemberJoins(input.memberJoins) : [];
   const envelope: CloudGroupControlEnvelope = {
     ...input,
     groupId: cleanText(input.groupId),
@@ -388,6 +479,7 @@ export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): strin
     createdByAccountId: cleanText(input.createdByAccountId),
     actor: cloudGroupNormalizeParticipant(input.actor),
     participants: uniqueByAccount(input.participants),
+    ...(memberJoins.length > 0 ? { memberJoins } : {}),
   };
   return `${CLOUD_GROUP_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
 }
@@ -440,6 +532,9 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       parentMessageId: cleanText(typeof forkRecord.parentMessageId === 'string' ? forkRecord.parentMessageId : null) || null,
       createdAtMs: typeof forkRecord.createdAtMs === 'number' && Number.isFinite(forkRecord.createdAtMs) ? forkRecord.createdAtMs : null,
     } : null;
+    const memberJoins = kind === 'group-invite'
+      ? cloudGroupMemberJoins((parsed as { memberJoins?: unknown }).memberJoins)
+      : [];
     return {
       kind,
       groupId: parsed.groupId.trim(),
@@ -448,6 +543,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       createdByAccountId: parsed.createdByAccountId.trim(),
       actor,
       participants,
+      ...(memberJoins.length > 0 ? { memberJoins } : {}),
       fork,
       message,
     };
@@ -517,22 +613,20 @@ export function cloudGroupParticipantsForConversation(
   account: CloudAccount,
   conversation: Pick<Conversation, 'canonicalParticipants'>,
 ): CloudGroupParticipant[] {
-  return uniqueByAccount([
-    cloudGroupSelfParticipant(account, 'admin'),
-    ...(conversation.canonicalParticipants ?? [])
-      .filter((participant) => participant.kind === 'human')
-      .map((participant) => cloudGroupParticipantFromConversationParticipant(participant, account))
-      .filter((value): value is CloudGroupParticipant => Boolean(value)),
-  ]);
+  const mapped = (conversation.canonicalParticipants ?? [])
+    .filter((participant) => participant.kind === 'human')
+    .map((participant) => cloudGroupParticipantFromConversationParticipant(participant, account))
+    .filter((value): value is CloudGroupParticipant => Boolean(value));
+  const self = mapped.find((participant) => participant.accountId === account.accountId)
+    ?? cloudGroupSelfParticipant(account, 'person');
+  return uniqueByAccount([self, ...mapped]);
 }
 
 export function cloudGroupParticipantsForBridgeSessionParticipants(
   account: CloudAccount,
   participants: DesktopBridgeSessionParticipant[],
 ): CloudGroupParticipant[] {
-  return uniqueByAccount([
-    cloudGroupSelfParticipant(account, 'admin'),
-    ...participants.flatMap((participant): CloudGroupParticipant[] => {
+  const mapped = participants.flatMap((participant): CloudGroupParticipant[] => {
       const accountId = cleanText(participant.humanId) || cleanText(participant.bridgeNodeId);
       if (!accountId) return [];
       return [{
@@ -541,8 +635,10 @@ export function cloudGroupParticipantsForBridgeSessionParticipants(
         avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl),
         role: participant.role || 'person',
       }];
-    }),
-  ]);
+    });
+  const self = mapped.find((participant) => participant.accountId === account.accountId)
+    ?? cloudGroupSelfParticipant(account, 'person');
+  return uniqueByAccount([self, ...mapped]);
 }
 
 export function cloudGroupMessageSessionId(input: {
@@ -1034,6 +1130,17 @@ export function fulfilledCloudGroupSends<T>(results: PromiseSettledResult<T>[]):
 
 export function firstCloudGroupSendFailure(results: PromiseSettledResult<unknown>[]): unknown {
   return results.find((result): result is PromiseRejectedResult => result.status === 'rejected')?.reason;
+}
+
+export function firstRequiredCloudGroupSendFailure(
+  results: PromiseSettledResult<unknown>[],
+  recipientAccountIds: string[],
+  requiredAccountIds: string[],
+): PromiseRejectedResult | undefined {
+  const required = new Set(requiredAccountIds.map(cleanText).filter(Boolean));
+  return results.find((result, index): result is PromiseRejectedResult => (
+    result.status === 'rejected' && required.has(cleanText(recipientAccountIds[index]))
+  ));
 }
 
 export function cloudGroupIdentityRequest(

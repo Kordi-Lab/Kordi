@@ -38,6 +38,7 @@ import {
   seedCloudSelfAgentForwardSyncLedger,
   cloudMessagesByPeerEqual,
   mergeCloudMessagesByPeerSnapshot,
+  resolveCloudGroupAdminSnapshot,
   markCloudMessagesReadLocally,
   loadCloudMessagesByPeerUntilStable,
   cloudAccountGenerationKey,
@@ -53,6 +54,7 @@ import {
   cloudAgentResponseExistsForRequest,
   cloudGroupAgentResponseExistsForRequest,
   cloudAgentRunStatusAlreadyOwnsRequest,
+  cloudFallbackClaimErrorIsRetryable,
   cloudFallbackRunClaimsForMessages,
 } from '../src/features/cloud/useCloudBridgeState';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
@@ -75,6 +77,61 @@ const peer = cloudContactToContact({
   avatarUrl: null,
   nodeId: 'node_peer',
   createdAt: '2026-05-11T00:00:00Z',
+});
+
+test('replicated admin snapshots preserve creator authority and reject admin or stale updates', () => {
+  const identityIdByAccount = new Map([
+    ['acct_creator', 'human:creator'],
+    ['acct_alice', 'human:alice'],
+  ]);
+  const adminEnvelope = {
+    kind: 'group-update' as const,
+    actor: { accountId: 'acct_alice', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+    createdByAccountId: 'acct_creator',
+    participants: [
+      { accountId: 'acct_creator', displayName: 'Creator', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_alice', displayName: 'Alice', avatarUrl: null, role: 'person' },
+    ],
+  };
+  const unauthorizedAdmin = resolveCloudGroupAdminSnapshot({
+    envelope: adminEnvelope,
+    identityIdByAccount,
+    createdByIdentityId: 'human:creator',
+    existingAdminIdentityIds: ['human:creator', 'human:alice'],
+    hasExistingSession: true,
+    controlCreatedAtMs: 20,
+    storedAdminUpdatedAtMs: 10,
+  });
+  assert.equal(unauthorizedAdmin.applies, false);
+  assert.deepEqual(unauthorizedAdmin.adminIdentityIds, ['human:creator', 'human:alice']);
+
+  const creatorEnvelope = {
+    ...adminEnvelope,
+    actor: { accountId: 'acct_creator', displayName: 'Creator', avatarUrl: null, role: 'admin' },
+  };
+  const current = resolveCloudGroupAdminSnapshot({
+    envelope: creatorEnvelope,
+    identityIdByAccount,
+    createdByIdentityId: 'human:creator',
+    existingAdminIdentityIds: ['human:creator', 'human:alice'],
+    hasExistingSession: true,
+    controlCreatedAtMs: 20,
+    storedAdminUpdatedAtMs: 10,
+  });
+  assert.equal(current.applies, true);
+  assert.deepEqual(current.adminIdentityIds, ['human:creator']);
+
+  const stale = resolveCloudGroupAdminSnapshot({
+    envelope: creatorEnvelope,
+    identityIdByAccount,
+    createdByIdentityId: 'human:creator',
+    existingAdminIdentityIds: ['human:creator', 'human:alice'],
+    hasExistingSession: true,
+    controlCreatedAtMs: 5,
+    storedAdminUpdatedAtMs: 10,
+  });
+  assert.equal(stale.applies, false);
+  assert.deepEqual(stale.adminIdentityIds, ['human:creator', 'human:alice']);
 });
 
 test('direct Cloud forwarded envelopes survive bridge transcript mapping', () => {
@@ -3143,6 +3200,15 @@ test('cloud local owner agent treats active Cloud fallback run as already owned 
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('completed'), true);
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('failed'), false);
   assert.equal(cloudAgentRunStatusAlreadyOwnsRequest('cancelled'), false);
+});
+
+test('cloud fallback claim retries transient presence, invite, and network races', () => {
+  for (const code of ['network_error', 'owner_online', 'agent_not_available', 'rate_limited', 'server_error']) {
+    assert.equal(cloudFallbackClaimErrorIsRetryable({ code }), true, code);
+  }
+  for (const code of ['provider_auth_not_configured', 'requester_mismatch', 'invalid_session']) {
+    assert.equal(cloudFallbackClaimErrorIsRetryable({ code }), false, code);
+  }
 });
 
 test('cloud local group owner agent detects existing Cloud fallback response for request', () => {

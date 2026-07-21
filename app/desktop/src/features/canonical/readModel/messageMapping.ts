@@ -568,6 +568,7 @@ export function mapCanonicalMessage(
     isForkSnapshot: (message.sourceTransport === 'canonical-fork-snapshot' || message.sourceTransport === 'cloud-group-fork-snapshot') || undefined,
     role,
     sender,
+    senderIdentityId: message.senderIdentityId,
     senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',
     senderProfileImageUrl: identity?.profileImageUrl ?? null,
     senderAvatarSeed: identity?.avatarKey ?? null,
