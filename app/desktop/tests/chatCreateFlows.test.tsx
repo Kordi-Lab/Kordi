@@ -569,6 +569,42 @@ test('existingBlankSessionIdForParticipantSpace reuses the newest blank session 
   assert.equal(existingBlankSessionIdForParticipantSpace(space), 'session:bridge:humans:blank-newer');
 });
 
+test('existingBlankSessionIdForParticipantSpace treats an empty New chat as reusable until it has a message', () => {
+  const blankSpace = participantSpace({
+    sessions: [{
+      ...participantSpace().sessions[0],
+      id: 'session:group:new-chat',
+      canonicalSessionId: 'session:group:new-chat',
+      title: 'New chat',
+      preview: 'New chat',
+      conversation: {
+        ...participantSpace().sessions[0].conversation,
+        id: 'session:group:new-chat',
+        canonicalSessionId: 'session:group:new-chat',
+        canonicalMessageCount: 0,
+        name: 'New chat',
+        subtitle: '',
+        messages: [],
+      },
+    }],
+  });
+
+  assert.equal(existingBlankSessionIdForParticipantSpace(blankSpace), 'session:group:new-chat');
+
+  const populatedSpace = participantSpace({
+    sessions: [{
+      ...blankSpace.sessions[0],
+      conversation: {
+        ...blankSpace.sessions[0]!.conversation,
+        canonicalMessageCount: 1,
+        messages: [{ role: 'person', sender: 'Me', text: 'Start the topic', time: '16:05' }],
+      },
+    }],
+  });
+
+  assert.equal(existingBlankSessionIdForParticipantSpace(populatedSpace), null);
+});
+
 test('existingBlankSessionIdForParticipantSpace reuses legacy blank id families instead of creating another blank', () => {
   const space = participantSpace({
     sessions: [{
