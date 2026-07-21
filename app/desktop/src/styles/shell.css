@@ -93,9 +93,9 @@
   background: var(--app-main-bg);
 }
 
-/* Native macOS window vibrancy is deliberately visible through the global
- * navigation rail only. Session navigation and workspace content remain
- * opaque, so wallpaper color never competes with dense application content. */
+/* Native macOS window vibrancy is deliberately visible through the complete
+ * left navigation stack. The workspace remains opaque, while the lighter
+ * rail and session tint preserve contrast over the system material. */
 html.kordi-native-shell .bridge-app.app-page-bg,
 html.kordi-native-shell .bridge-app .app-shell,
 html.kordi-native-shell .bridge-app .app-side-shell {

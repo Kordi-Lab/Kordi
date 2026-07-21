@@ -51,7 +51,7 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.doesNotMatch(shellPages, /app-auth-provider-selected/);
 });
 
-test('provider gate uses a flat cool light surface without modal board chrome', () => {
+test('provider gate uses the flat shared light workspace surface without modal board chrome', () => {
   const authPage = readAuthSource('AuthPage.tsx');
   const overlaySlots = readFileSync(new URL('../src/app/assembleOverlaySlots.tsx', import.meta.url), 'utf8');
   const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
@@ -68,19 +68,19 @@ test('provider gate uses a flat cool light surface without modal board chrome', 
 
   const gateLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-gate-overlay,[\s\S]*?\.bridge-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
   assert.match(gateLightRule, /\.app-auth-gate-overlay/);
-  assert.match(gateLightRule, /background:/);
-  assert.match(gateLightRule, /rgb\(248 251 255\)|rgb\(241 247 255\)|rgba\(248, 251, 255/);
-  assert.doesNotMatch(gateLightRule, /rgba\(248, 246, 242|rgba\(245, 240, 232|warm|amber|orange/);
+  assert.match(gateLightRule, /background:\s*var\(--app-main-bg\);/);
+  assert.doesNotMatch(gateLightRule, /linear-gradient|rgb\(248 251 255\)|rgb\(241 247 255\)/);
   assert.match(gateLightRule, /box-shadow:\s*none/);
 });
 
-test('every onboarding provider detail stays on the same flat cool app canvas', () => {
+test('every onboarding provider detail stays in the shared light workspace surface family', () => {
   const authPage = readAuthSource('AuthPage.tsx');
   const shellPages = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
   const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
   const detailRouteStart = authPage.indexOf('app-auth-gate-shell app-auth-provider-detail-shell');
   const pickerRouteStart = authPage.indexOf('app-auth-gate-shell flex', detailRouteStart);
   const detailRoute = authPage.slice(detailRouteStart, pickerRouteStart);
+  const detailLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-provider-detail-shell \.app-auth-detail-section \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.ok(detailRouteStart >= 0 && pickerRouteStart > detailRouteStart);
   assert.match(detailRoute, /items-start justify-center/);
@@ -91,7 +91,8 @@ test('every onboarding provider detail stays on the same flat cool app canvas', 
   assert.doesNotMatch(detailRoute, /bg-\[linear-gradient/);
   assert.doesNotMatch(detailRoute, /app-shadow-float/);
   assert.match(shellPages, /\.app-auth-provider-detail-shell \.app-auth-detail-section/);
-  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-auth-provider-detail-shell \.app-auth-detail-section/);
+  assert.match(detailLightRule, /background:\s*var\(--app-main-raised-bg\);/);
+  assert.doesNotMatch(detailLightRule, /linear-gradient|rgb\(248 251 255\)|rgb\(241 247 255\)/);
 });
 
 test('inline auth popup uses direct handoff copy without authentication status chips', () => {

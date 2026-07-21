@@ -52,10 +52,34 @@ test('glassmorphism tokens are declared in both themes and frame bgs are translu
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-main-bg:\s*rgba\(15,\s*17,\s*21,\s*0\.62\);/);
   assert.match(themeTokensCss, /\.bridge-app\s*{[\s\S]*--app-modal-bg:\s*rgba\(17,\s*19,\s*24,\s*0\.66\);/);
 
-  // Light frame bgs are now neutral-white translucent (no paper warmth).
+  // Light frame bgs use a high-lightness translucent white family.
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-shell-bg:\s*linear-gradient\(180deg,\s*rgba\(252,\s*252,\s*253,\s*0\.72\)/);
-  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*rgba\(250,\s*250,\s*251,\s*0\.66\);/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*oklch\(99\.2% 0\.001 80 \/ 0\.58\);/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-session-bg:\s*oklch\(99\.4% 0\.001 80 \/ 0\.68\);/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*var\(--app-session-bg\);/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
+});
+
+test('light workspace pages share one flat near-white surface family in web and native shells', () => {
+  const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const themeOverridesCss = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const appShellFrame = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
+  const rightDetailRail = readFileSync(new URL('../src/pages/RightDetailRail.tsx', import.meta.url), 'utf8');
+  const cloudAccountSettings = readFileSync(new URL('../src/pages/CloudAccountSettingsDialog.tsx', import.meta.url), 'utf8');
+  const lightTokenBlock = themeTokensCss.match(/\.bridge-app\.theme-light\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+  const lightPageHeaderBlock = themeOverridesCss.match(/\.bridge-app\.theme-light \.app-page-header \{[\s\S]*?\n\}/)?.[0] ?? '';
+
+  assert.match(lightTokenBlock, /--app-main-bg:\s*oklch\(98\.9% 0\.001 80\);/);
+  assert.match(lightTokenBlock, /--app-main-raised-bg:\s*oklch\(99\.6% 0\.001 80\);/);
+  assert.match(lightTokenBlock, /--app-main-muted-bg:\s*oklch\(97\.3% 0\.002 80\);/);
+  assert.match(lightTokenBlock, /--app-native-main-bg:\s*var\(--app-main-bg\);/);
+  assert.doesNotMatch(lightTokenBlock, /--app-main-bg:\s*linear-gradient/);
+  assert.match(shellCss, /\.app-main-panel\s*\{[^}]*background:\s*var\(--app-main-bg\);/s);
+  assert.match(appShellFrame, /isSingleWorkspacePage \? 'app-main-panel/);
+  assert.match(rightDetailRail, /app-main-panel app-right-detail-rail/);
+  assert.match(cloudAccountSettings, /app-main-panel app-cloud-account-settings-page/);
+  assert.match(lightPageHeaderBlock, /background:\s*transparent;/);
 });
 
 test('light cloud login and loading gates use the cool main-shell palette', () => {
@@ -97,10 +121,13 @@ test('agent workspace is a full-bleed continuous surface with structural divider
   assert.match(agentLightBlock, /\.app-agent-shell\s*{[^}]*border-color:\s*transparent;[^}]*background:\s*transparent;/s);
   assert.match(agentLightBlock, /\.app-agent-sidebar,[\s\S]*?\.app-agent-detail-pane\s*{[^}]*border-right-color:\s*color-mix\(in oklab, rgb\(148 163 184\) 28%, transparent\);[^}]*background:\s*transparent;/s);
   assert.match(agentLightBlock, /\.app-agent-content-pane\s*{[^}]*background:\s*transparent;/s);
+  assert.match(agentLightBlock, /\.app-agent-inner-list,[\s\S]*?\.app-agent-inspector-row\s*{[^}]*background:\s*var\(--app-main-raised-bg\);/s);
+  assert.match(agentLightBlock, /\.app-agent-code-panel\s*{[^}]*background:\s*var\(--app-main-muted-bg\);/s);
   assert.doesNotMatch(agentsPageSource, /app-agents-page[^"\n]*\bp-[0-9]/);
   assert.doesNotMatch(agentsPageSource, /app-agent-shell[^"\n]*(?:rounded|border)/);
   assert.match(agentSharedSource, /app-agent-section border-t pt-5/);
   assert.doesNotMatch(agentSharedSource, /app-agent-section[^"\n]*(?:rounded|\bborder\b(?!-t))/);
+  assert.doesNotMatch(agentLightBlock, /background:[^;]*(?:rgb\(241 245 249\)|rgb\(248 250 252\))/);
   assert.doesNotMatch(agentLightBlock, /rgb\(245 241 232\)|rgba\(255, 252, 244|rgba\(247, 244, 235|rgba\(243, 239, 229|rgba\(73, 62, 54/);
 });
 
@@ -155,9 +182,10 @@ test('composer send area keeps the outer surface without an inner input pop or d
   assert.match(composerFocusBlock, /var\(--app-accent-ring\)/);
   assert.doesNotMatch(shellCss, /\.app-composer-shell:focus-within \.app-composer-input/);
   assert.doesNotMatch(themeOverridesCss, /\.bridge-app\.theme-light \.app-composer-input \{[^}]*background:/);
-  assert.match(lightComposerBlock, /background:\s*linear-gradient\(180deg, rgba\(248, 251, 255, 0\.96\) 0%, rgba\(241, 247, 255, 0\.92\) 100%\);/);
+  assert.match(lightComposerBlock, /background:\s*var\(--app-main-raised-bg\);/);
   assert.match(lightComposerBlock, /border-color:\s*rgba\(37, 99, 235, 0\.12\);/);
-  assert.doesNotMatch(lightComposerBlock, /rgba\(252, 249, 243|rgba\(246, 241, 232/);
+  assert.doesNotMatch(lightComposerBlock, /linear-gradient|rgba\(248, 251, 255|rgba\(241, 247, 255/);
   assert.match(lightComposerFocusBlock, /border-color:\s*rgba\(37, 99, 235, 0\.22\);/);
+  assert.match(lightComposerFocusBlock, /background:\s*var\(--app-main-raised-bg\);/);
   assert.match(lightComposerFocusBlock, /box-shadow:/);
 });

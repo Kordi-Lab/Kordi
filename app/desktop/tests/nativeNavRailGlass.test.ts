@@ -35,7 +35,7 @@ test('macOS main window enables semantic sidebar vibrancy on a transparent canva
   assert.ok(capability.permissions?.includes('core:window:allow-set-theme'));
 });
 
-test('native shell exposes vibrancy through the navigation rail only', () => {
+test('native shell exposes vibrancy through the complete left navigation stack', () => {
   const shellCss = readSource('src/styles/shell.css');
   const tokensCss = readSource('src/styles/theme-tokens.css');
   const sidebar = readSource('src/pages/WorkspaceSidebar.tsx');
@@ -50,12 +50,13 @@ test('native shell exposes vibrancy through the navigation rail only', () => {
   assert.equal((tokensCss.match(/--app-nav-rail-glass-bg:/g) ?? []).length, 2);
   assert.equal((tokensCss.match(/--app-native-session-bg:/g) ?? []).length, 2);
   assert.equal((tokensCss.match(/--app-native-main-bg:/g) ?? []).length, 2);
+  assert.match(tokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*var\(--app-session-bg\);/);
   assert.match(sidebar, /className="app-nav-rail-profile rounded-full"/);
   assert.match(sidebar, /className="app-nav-rail-avatar h-9 w-9"/);
   assert.doesNotMatch(sidebar, /shadow-\[inset_-1px_0_0_rgba/);
 });
 
-test('navigation rail uses black glass in dark mode and cooler mid-tone glass in light mode', () => {
+test('navigation rail uses black glass in dark mode and translucent white glass in light mode', () => {
   const tokensCss = readSource('src/styles/theme-tokens.css');
   const darkThemeStart = tokensCss.indexOf('.bridge-app {');
   const lightThemeStart = tokensCss.indexOf('.bridge-app.theme-light {');
@@ -71,13 +72,14 @@ test('navigation rail uses black glass in dark mode and cooler mid-tone glass in
   );
   assert.match(
     lightTokens,
-    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, oklch\(82% 0\.010 248 \/ 0\.42\) 0%, oklch\(74% 0\.012 248 \/ 0\.34\) 100%\);/,
+    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, oklch\(99% 0\.002 248 \/ 0\.34\) 0%, oklch\(96% 0\.004 248 \/ 0\.24\) 100%\);/,
   );
   assert.match(
     lightTokens,
-    /--app-nav-rail-glass-fallback:\s*linear-gradient\(180deg, oklch\(90% 0\.009 248 \/ 0\.98\) 0%, oklch\(86% 0\.011 248 \/ 0\.98\) 100%\);/,
+    /--app-nav-rail-glass-fallback:\s*linear-gradient\(180deg, oklch\(96\.5% 0\.004 248 \/ 0\.98\) 0%, oklch\(93\.5% 0\.005 248 \/ 0\.98\) 100%\);/,
   );
-  assert.doesNotMatch(lightTokens, /rgb\(252 253 255 \/ 0\.52\)|rgb\(250 251 253 \/ 0\.96\)/);
+  assert.match(lightTokens, /--app-side-bg:\s*oklch\(99\.2% 0\.001 80 \/ 0\.58\);/);
+  assert.match(lightTokens, /--app-session-bg:\s*oklch\(99\.4% 0\.001 80 \/ 0\.68\);/);
 });
 
 test('resolved Kordi theme is applied to the native macOS material', async () => {
