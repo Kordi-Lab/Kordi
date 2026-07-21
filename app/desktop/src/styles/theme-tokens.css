@@ -52,7 +52,10 @@
   --app-side-bg: rgba(15, 17, 21, 0.56);
   --app-session-bg: rgba(15, 17, 21, 0.52);
   --app-main-bg: rgba(15, 17, 21, 0.62);
+  --app-main-raised-bg: rgba(255, 255, 255, 0.05);
+  --app-main-muted-bg: rgba(255, 255, 255, 0.025);
   --app-native-session-bg: rgb(15 17 21);
+  --app-native-session-fallback: rgb(15 17 21);
   --app-native-main-bg: rgb(15 17 21);
   --app-card-bg: rgba(255, 255, 255, 0.04);
   --app-overlay-bg: rgba(5, 7, 10, 0.74);
@@ -143,8 +146,8 @@
   --app-nav-rail-active-pressed-bg: color-mix(in oklab, var(--app-sidebar-selected-bg) 76%, var(--app-sidebar-accent));
   --app-nav-rail-active-text: var(--app-sidebar-title-text);
   --app-nav-rail-focus-ring: oklch(58% 0.155 246);
-  --app-nav-rail-glass-bg: linear-gradient(180deg, oklch(82% 0.010 248 / 0.42) 0%, oklch(74% 0.012 248 / 0.34) 100%);
-  --app-nav-rail-glass-fallback: linear-gradient(180deg, oklch(90% 0.009 248 / 0.98) 0%, oklch(86% 0.011 248 / 0.98) 100%);
+  --app-nav-rail-glass-bg: linear-gradient(180deg, oklch(99% 0.002 248 / 0.34) 0%, oklch(96% 0.004 248 / 0.24) 100%);
+  --app-nav-rail-glass-fallback: linear-gradient(180deg, oklch(96.5% 0.004 248 / 0.98) 0%, oklch(93.5% 0.005 248 / 0.98) 100%);
   --app-nav-rail-glass-border: rgb(15 23 42 / 0.12);
   --app-nav-rail-glass-highlight: rgb(255 255 255 / 0.72);
   --app-nav-rail-avatar-ring: rgb(15 23 42 / 0.16);
@@ -168,11 +171,17 @@
     linear-gradient(180deg, #fbfbfc 0%, #f4f5f7 50%, #eceef2 100%);
   --app-shell-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.72) 0%, rgba(246, 247, 249, 0.68) 100%);
   --app-shell-border: rgba(15, 23, 42, 0.08);
-  --app-side-bg: rgba(250, 250, 251, 0.66);
-  --app-session-bg: rgba(250, 250, 251, 0.70);
-  --app-main-bg: linear-gradient(180deg, rgba(252, 252, 253, 0.74) 0%, rgba(245, 246, 249, 0.70) 100%);
-  --app-native-session-bg: rgb(250 250 251);
-  --app-native-main-bg: rgb(248 249 251);
+  --app-side-bg: oklch(99.2% 0.001 80 / 0.58);
+  --app-session-bg: oklch(99.4% 0.001 80 / 0.68);
+  /* Use a flat near-white workspace plane. The tiny warm tint keeps the
+   * surface from reading as pure digital white; raised and muted variants
+   * keep every full-page view in the same neutral family. */
+  --app-main-bg: oklch(98.9% 0.001 80);
+  --app-main-raised-bg: oklch(99.6% 0.001 80);
+  --app-main-muted-bg: oklch(97.3% 0.002 80);
+  --app-native-session-bg: var(--app-session-bg);
+  --app-native-session-fallback: oklch(98.6% 0.002 80);
+  --app-native-main-bg: var(--app-main-bg);
   --app-card-bg: rgba(15, 23, 42, 0.045);
   --app-overlay-bg: rgba(225, 226, 230, 0.72);
   --app-modal-bg: rgba(255, 255, 255, 0.80);
