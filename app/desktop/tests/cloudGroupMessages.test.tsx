@@ -15,6 +15,7 @@ import {
   cloudGroupMessageReadPeerIds,
   cloudGroupMessageReadTargets,
   cloudGroupMessageSessionId,
+  cloudGroupOutgoingParticipantSnapshot,
   cloudGroupUnreadCountsBySessionId,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
@@ -32,6 +33,7 @@ import {
   isCloudGroupSessionId,
   nonCloudGroupTargets,
   parseCloudGroupControl,
+  requiredCloudGroupControlTargetAccountIds,
   shouldApplyCloudGroupTitleUpdate,
   shouldCountCloudGroupMessageUnread,
   cloudSessionTitleUpdateTitle,
@@ -63,6 +65,68 @@ test('group admin snapshots always keep the creator and explicit promoted admins
 
   assert.ok(envelope);
   assert.deepEqual(cloudGroupAdminAccountIds(envelope!), ['acct_creator', 'acct_promoted']);
+});
+
+test('group member removals survive envelope validation and stay scoped to group updates', () => {
+  const base = {
+    groupId: 'session:group:members',
+    groupSpaceId: 'session:group:members',
+    groupTitle: 'Members',
+    createdByAccountId: 'acct_creator',
+    actor: { accountId: 'acct_creator', displayName: 'Creator', avatarUrl: null, role: 'admin' },
+    participants: [
+      { accountId: 'acct_creator', displayName: 'Creator', avatarUrl: null, role: 'admin' },
+    ],
+    memberLeaves: [{ eventId: 'leave_member_1', accountId: 'acct_removed', createdAtMs: 1234 }],
+    message: null,
+  };
+  const update = parseCloudGroupControl(encodeCloudGroupControl({
+    ...base,
+    kind: 'group-update',
+  }));
+  const message = parseCloudGroupControl(encodeCloudGroupControl({
+    ...base,
+    kind: 'group-message',
+    message: {
+      id: 'msg:member-snapshot',
+      senderAccountId: 'acct_creator',
+      text: 'hello',
+      createdAtMs: 1235,
+    },
+  }));
+
+  assert.deepEqual(update?.memberLeaves, [
+    { eventId: 'leave_member_1', accountId: 'acct_removed', createdAtMs: 1234 },
+  ]);
+  assert.equal(message?.memberLeaves, undefined);
+});
+
+test('explicit outgoing membership snapshots do not resurrect historical recipients', () => {
+  const currentParticipants = [
+    { accountId: 'acct_creator', displayName: 'Creator', avatarUrl: null, role: 'admin' },
+    { accountId: 'acct_remaining', displayName: 'Remaining', avatarUrl: null, role: 'person' },
+  ];
+  const historicalParticipants = [
+    ...currentParticipants,
+    { accountId: 'acct_removed', displayName: 'Removed', avatarUrl: null, role: 'person' },
+  ];
+
+  assert.deepEqual(
+    cloudGroupOutgoingParticipantSnapshot({
+      currentParticipants,
+      historicalParticipants,
+      hasExplicitCurrentSnapshot: true,
+    }).map((participant) => participant.accountId),
+    ['acct_creator', 'acct_remaining'],
+  );
+  assert.deepEqual(
+    cloudGroupOutgoingParticipantSnapshot({
+      currentParticipants: [],
+      historicalParticipants,
+      hasExplicitCurrentSnapshot: false,
+    }).map((participant) => participant.accountId),
+    ['acct_creator', 'acct_remaining', 'acct_removed'],
+  );
 });
 
 test('Cloud participant snapshots do not silently promote the local sender', () => {
@@ -1173,6 +1237,26 @@ test('cloud group send helpers treat partial recipient success as a send success
   assert.equal(firstCloudGroupSendFailure(results) instanceof Error, true);
   assert.equal(firstRequiredCloudGroupSendFailure(results, ['acct_existing', 'acct_new'], ['acct_existing']), undefined);
   assert.equal(firstRequiredCloudGroupSendFailure(results, ['acct_existing', 'acct_new'], ['acct_new'])?.reason instanceof Error, true);
+});
+
+test('group invites and member removals require every explicit target to receive the control', () => {
+  assert.deepEqual(requiredCloudGroupControlTargetAccountIds({
+    kind: 'group-invite',
+    explicitTargetAccountIds: ['acct_existing', ' acct_new ', 'acct_new'],
+  }), ['acct_existing', 'acct_new']);
+  assert.deepEqual(requiredCloudGroupControlTargetAccountIds({
+    kind: 'group-update',
+    explicitTargetAccountIds: ['acct_existing', 'acct_removed'],
+    memberLeaves: [{ eventId: 'leave_1', accountId: 'acct_removed', createdAtMs: 1 }],
+  }), ['acct_existing', 'acct_removed']);
+  assert.deepEqual(requiredCloudGroupControlTargetAccountIds({
+    kind: 'group-update',
+    explicitTargetAccountIds: ['acct_existing'],
+  }), []);
+  assert.deepEqual(requiredCloudGroupControlTargetAccountIds({
+    kind: 'group-message',
+    explicitTargetAccountIds: ['acct_existing'],
+  }), []);
 });
 
 test('cloud agent mentions inside cloud groups stay on cloud group transport', () => {

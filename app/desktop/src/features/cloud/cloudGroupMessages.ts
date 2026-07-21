@@ -37,6 +37,12 @@ export type CloudGroupMemberJoin = {
   createdAtMs: number;
 };
 
+export type CloudGroupMemberLeave = {
+  eventId: string;
+  accountId: string;
+  createdAtMs: number;
+};
+
 export type CloudGroupControlEnvelope = {
   kind: CloudGroupControlKind;
   groupId: string;
@@ -46,6 +52,7 @@ export type CloudGroupControlEnvelope = {
   actor: CloudGroupActor;
   participants: CloudGroupParticipant[];
   memberJoins?: CloudGroupMemberJoin[];
+  memberLeaves?: CloudGroupMemberLeave[];
   fork?: {
     forkSessionId: string;
     parentSessionId: string;
@@ -142,6 +149,27 @@ function cloudGroupMemberJoins(value: unknown): CloudGroupMemberJoin[] {
     });
   });
   return joins;
+}
+
+function cloudGroupMemberLeaves(value: unknown): CloudGroupMemberLeave[] {
+  if (!Array.isArray(value)) return [];
+  const seenEventIds = new Set<string>();
+  const leaves: CloudGroupMemberLeave[] = [];
+  value.forEach((candidate) => {
+    const record = objectRecord(candidate);
+    const eventId = cleanText(typeof record.eventId === 'string' ? record.eventId : null);
+    const accountId = cleanText(typeof record.accountId === 'string' ? record.accountId : null);
+    const createdAtMs = typeof record.createdAtMs === 'number' && Number.isFinite(record.createdAtMs)
+      ? record.createdAtMs
+      : null;
+    if (!CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN.test(eventId)
+      || !isCloudAccountId(accountId)
+      || createdAtMs === null
+      || seenEventIds.has(eventId)) return;
+    seenEventIds.add(eventId);
+    leaves.push({ eventId, accountId, createdAtMs });
+  });
+  return leaves;
 }
 
 export function cloudGroupForkPayloadFromSessionMetadata(
@@ -277,6 +305,16 @@ function uniqueByAccount(
 
 export function cloudGroupUniqueParticipants(participants: CloudGroupParticipant[]): CloudGroupParticipant[] {
   return uniqueByAccount(participants);
+}
+
+export function cloudGroupOutgoingParticipantSnapshot(input: {
+  currentParticipants: CloudGroupParticipant[];
+  historicalParticipants: CloudGroupParticipant[];
+  hasExplicitCurrentSnapshot: boolean;
+}): CloudGroupParticipant[] {
+  return uniqueByAccount(input.hasExplicitCurrentSnapshot
+    ? input.currentParticipants
+    : [...input.currentParticipants, ...input.historicalParticipants]);
 }
 
 export function cloudGroupParticipantsWithProfiles(
@@ -471,6 +509,7 @@ function decodeBase64Url(value: string): string {
 
 export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): string {
   const memberJoins = input.kind === 'group-invite' ? cloudGroupMemberJoins(input.memberJoins) : [];
+  const memberLeaves = input.kind === 'group-update' ? cloudGroupMemberLeaves(input.memberLeaves) : [];
   const envelope: CloudGroupControlEnvelope = {
     ...input,
     groupId: cleanText(input.groupId),
@@ -480,6 +519,7 @@ export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): strin
     actor: cloudGroupNormalizeParticipant(input.actor),
     participants: uniqueByAccount(input.participants),
     ...(memberJoins.length > 0 ? { memberJoins } : {}),
+    ...(memberLeaves.length > 0 ? { memberLeaves } : {}),
   };
   return `${CLOUD_GROUP_PREFIX}${encodeBase64Url(JSON.stringify(envelope))}`;
 }
@@ -535,6 +575,9 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
     const memberJoins = kind === 'group-invite'
       ? cloudGroupMemberJoins((parsed as { memberJoins?: unknown }).memberJoins)
       : [];
+    const memberLeaves = kind === 'group-update'
+      ? cloudGroupMemberLeaves((parsed as { memberLeaves?: unknown }).memberLeaves)
+      : [];
     return {
       kind,
       groupId: parsed.groupId.trim(),
@@ -544,6 +587,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       actor,
       participants,
       ...(memberJoins.length > 0 ? { memberJoins } : {}),
+      ...(memberLeaves.length > 0 ? { memberLeaves } : {}),
       fork,
       message,
     };
@@ -1130,6 +1174,17 @@ export function fulfilledCloudGroupSends<T>(results: PromiseSettledResult<T>[]):
 
 export function firstCloudGroupSendFailure(results: PromiseSettledResult<unknown>[]): unknown {
   return results.find((result): result is PromiseRejectedResult => result.status === 'rejected')?.reason;
+}
+
+export function requiredCloudGroupControlTargetAccountIds(input: {
+  kind: CloudGroupControlKind;
+  explicitTargetAccountIds: string[];
+  memberLeaves?: CloudGroupMemberLeave[];
+}): string[] {
+  const requiresEveryExplicitTarget = input.kind === 'group-invite'
+    || (input.kind === 'group-update' && (input.memberLeaves?.length ?? 0) > 0);
+  if (!requiresEveryExplicitTarget) return [];
+  return [...new Set(input.explicitTargetAccountIds.map(cleanText).filter(Boolean))];
 }
 
 export function firstRequiredCloudGroupSendFailure(

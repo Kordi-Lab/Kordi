@@ -1025,6 +1025,21 @@ fn select_cloud_self_agent_existing_echo(
 
 fn upsert_message_in_db(
     conn: &Connection,
+    request: AppendCanonicalMessageRequest,
+) -> Result<CanonicalSessionMessage, String> {
+    // Cloud replay and the local agent runner can reconcile the same stable
+    // processing slot at the same time. Acquire the write lock before the
+    // source/id lookups so two connections cannot both observe a missing row
+    // and then race to insert the same primary key.
+    let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+        .map_err(|err| err.to_string())?;
+    let message = upsert_message_in_transaction(&tx, request)?;
+    tx.commit().map_err(|err| err.to_string())?;
+    Ok(message)
+}
+
+fn upsert_message_in_transaction(
+    conn: &Connection,
     mut request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionMessage, String> {
     if let (Some(source_transport), Some(source_event_id)) = (

@@ -71,7 +71,6 @@ import {
   isBridgeGroupSession,
 } from '@/features/chat/messageActions/chatMessages';
 import {
-  adminIdentityIdsFromMetadata,
   agentCanonicalIdentityRequest,
   buildChatAgentSessionKind,
   buildChatAgentSessionMetadata,
@@ -2695,33 +2694,79 @@ export function useKordiAppModel({
 
   const handleRemoveChatGroupMember = useCallback(async (sessionIds: string[], identityId: string) => {
     if (!isNativeShell) return;
-    const activeSessionIdsForIdentity = new Set((canonicalSessionState?.participants ?? [])
+    const currentState = canonicalSessionState;
+    if (!currentState) throw new Error('Local profile identity is not ready yet.');
+    const groupContextSessionIds = uniqueStrings(sessionIds).filter((sessionId) => (
+      currentState.sessions.some((session) => session.id === sessionId && session.kind === 'group')
+    ));
+    if (groupContextSessionIds.length === 0) return;
+    const activeSessionIdsForIdentity = new Set(currentState.participants
       .filter((participant) => participant.identityId === identityId && participant.state === 'active')
       .map((participant) => participant.sessionId));
-    const groupSessionIds = uniqueStrings(sessionIds).filter((sessionId) => activeSessionIdsForIdentity.has(sessionId));
+    const groupSessionIds = groupContextSessionIds.filter((sessionId) => activeSessionIdsForIdentity.has(sessionId));
     if (groupSessionIds.length === 0) return;
     setDesktopChatError(null);
-    const actorIdentityId = canonicalSessionState?.profile.humanIdentityId?.trim();
+    const actorIdentityId = currentState.profile.humanIdentityId?.trim();
     if (!actorIdentityId) throw new Error('Local profile identity is not ready yet.');
-    const fallbackGroupSpaceId = groupSessionIds[0];
-    let nextState = canonicalSessionState;
+    const fallbackGroupSpaceId = metadataGroupSpaceId(sessionMetadataRecord(currentState, groupContextSessionIds[0]))
+      || groupContextSessionIds[0];
+    const rootSessionId = currentState.sessions.some((session) => session.id === fallbackGroupSpaceId)
+      ? fallbackGroupSpaceId
+      : groupContextSessionIds[0];
+    const previousParticipants = canonicalGroupParticipantsForSessions(currentState, groupContextSessionIds);
+    const previousTargets = buildChatGroupBridgeUpdateTargets({ actorIdentityId, participants: previousParticipants });
+    const targetAccountIds = cloudGroupTargetAccountIds(previousTargets);
+    const removedIdentity = currentState.identities.find((identity) => identity.id === identityId);
+    const removedAccountId = removedIdentity?.humanId?.trim() || removedIdentity?.bridgeNodeId?.trim() || '';
+    const groupCreatorIdentityId = canonicalGroupCreatorIdentityId(currentState, rootSessionId)
+      || currentState.sessions.find((session) => session.id === rootSessionId)?.createdByIdentityId?.trim()
+      || actorIdentityId;
+    let nextState = currentState;
     for (const sessionId of groupSessionIds) {
       nextState = await removeCanonicalSessionParticipant({ sessionId, identityId, removedByIdentityId: actorIdentityId });
-      const currentMetadata = sessionMetadataRecord(nextState, sessionId);
-      const adminIds = adminIdentityIdsFromMetadata(currentMetadata).filter((adminId) => adminId !== identityId);
-      nextState = await updateCanonicalSessionMetadata({
-        sessionId,
-        requestedByIdentityId: actorIdentityId,
-        metadata: {
-          ...currentMetadata,
-          groupId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
-          groupSpaceId: metadataGroupSpaceId(currentMetadata) || fallbackGroupSpaceId,
-          adminIdentityIds: adminIds.length > 0 ? adminIds : activeGroupAdminIds(nextState, sessionId),
-        },
-      });
     }
     setCanonicalSessionState(nextState);
-  }, [canonicalSessionState, isNativeShell, setDesktopChatError]);
+
+    const cloudAccount = cloudSession.account;
+    if (!cloudAccount || !removedAccountId || targetAccountIds.length === 0) return;
+    const participants = canonicalGroupParticipantsForSessions(nextState, groupContextSessionIds);
+    const adminIdentityIds = activeGroupAdminIds(nextState, rootSessionId);
+    const updateParticipants = buildChatGroupBridgeUpdateParticipants({ participants, adminIdentityIds });
+    const creatorIdentity = nextState.identities.find((identity) => identity.id === groupCreatorIdentityId);
+    const createdByAccountId = creatorIdentity?.humanId?.trim()
+      || creatorIdentity?.bridgeNodeId?.trim()
+      || (groupCreatorIdentityId === nextState.profile.humanIdentityId ? cloudAccount.accountId : '');
+    const removalEvent = {
+      eventId: crypto.randomUUID(),
+      accountId: removedAccountId,
+      createdAtMs: Date.now(),
+    };
+    const actor = cloudGroupSelfParticipant(
+      cloudAccount,
+      adminIdentityIds.includes(actorIdentityId) ? 'admin' : 'person',
+    );
+    try {
+      await Promise.all(groupContextSessionIds.map((sessionId) => {
+        const metadata = sessionMetadataRecord(nextState, sessionId);
+        const groupSpaceId = metadataGroupSpaceId(metadata) || fallbackGroupSpaceId;
+        return sendCloudGroupControl({
+          targetAccountIds,
+          kind: 'group-update',
+          groupId: sessionId,
+          groupSpaceId,
+          groupTitle: metadataString(metadata, 'customName') || null,
+          createdByAccountId: createdByAccountId || null,
+          actor,
+          participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudAccount, updateParticipants),
+          memberLeaves: [removalEvent],
+        });
+      }));
+    } catch (error) {
+      const message = `Group member removed locally, but Cloud sync failed: ${error instanceof Error ? error.message : String(error)}`;
+      setDesktopChatError(message);
+      throw new Error(message);
+    }
+  }, [canonicalSessionState, cloudSession.account, isNativeShell, sendCloudGroupControl, setDesktopChatError]);
 
   const handleSetChatGroupAdmin = useCallback(async (sessionIds: string[], identityId: string, isAdmin: boolean) => {
     if (!isNativeShell) return;

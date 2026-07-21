@@ -13,13 +13,13 @@ import {
 import {
   adoptCloudProfileIdentity,
   appendCanonicalMessage,
-  appendCanonicalMessageFast,
   buildDesktopCloudProviderAuthSnapshotPayload,
   cancelDesktopChatTurn,
   fetchDesktopChatTurnState,
   markCanonicalSessionRead,
   openOrCreateCanonicalSession,
   openOrCreateCanonicalSessionFast,
+  removeCanonicalSessionParticipant,
   renameCanonicalSession,
   startDesktopChatMessage,
   upsertCanonicalIdentity,
@@ -118,6 +118,7 @@ import {
   cloudGroupLocalAgentRequestAlreadyHandled,
   cloudGroupMemberJoinNoticeRequests,
   cloudGroupMessageReadTargets,
+  cloudGroupOutgoingParticipantSnapshot,
   cloudGroupParticipantsForBridgeSessionParticipants,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
@@ -137,10 +138,12 @@ import {
   firstRequiredCloudGroupSendFailure,
   fulfilledCloudGroupSends,
   parseCloudGroupControl,
+  requiredCloudGroupControlTargetAccountIds,
   shouldApplyCloudGroupTitleUpdate,
   shouldCountCloudGroupMessageUnread,
   type CloudGroupControlEnvelope,
   type CloudGroupMemberJoin,
+  type CloudGroupMemberLeave,
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import {
@@ -2268,6 +2271,7 @@ export type SendCloudGroupControlInput = {
   actor?: CloudGroupParticipant | null;
   participants?: CloudGroupParticipant[];
   memberJoins?: CloudGroupMemberJoin[];
+  memberLeaves?: CloudGroupMemberLeave[];
   bridgeParticipants?: DesktopBridgeSessionParticipant[];
   fork?: CloudGroupControlEnvelope['fork'];
   message?: CloudGroupControlEnvelope['message'];
@@ -3594,6 +3598,7 @@ export function useCloudBridgeState({
     });
     const appliesAdminSnapshot = adminSnapshot.applies;
     const adminIdentityIds = adminSnapshot.adminIdentityIds;
+    const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
     const groupMetadata = {
       ...groupRootMetadata,
       ...envelopeSessionMetadata,
@@ -3626,7 +3631,6 @@ export function useCloudBridgeState({
     if (!nextState) return;
 
     if (sessionTitleUpdateTitle) {
-      const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
       nextState = await renameCanonicalSession({
         sessionId: envelope.groupId,
         title: sessionTitleUpdateTitle,
@@ -3653,7 +3657,7 @@ export function useCloudBridgeState({
       if (!isSelfAuthoredControl) {
         const noticeRequest = cloudGroupTitleUpdateNoticeRequest({
           envelope,
-          actorIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
+          actorIdentityId,
           createdAtMs: controlCreatedAtMs,
           cloudMessageId: cloudMessage.messageId,
         });
@@ -3665,12 +3669,28 @@ export function useCloudBridgeState({
 
     const memberJoinNoticeRequests = cloudGroupMemberJoinNoticeRequests({
       envelope,
-      actorIdentityId: identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId,
+      actorIdentityId,
       identityIdByAccount,
     });
     for (const noticeRequest of memberJoinNoticeRequests) {
       const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
       nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
+    }
+
+    for (const memberLeave of envelope.memberLeaves ?? []) {
+      const removedIdentityId = identityIdByAccount.get(memberLeave.accountId)
+        ?? `human:${memberLeave.accountId}`;
+      const isStillActive = nextState.participants.some((participant) => (
+        participant.sessionId === envelope.groupId
+        && participant.identityId === removedIdentityId
+        && participant.state === 'active'
+      ));
+      if (!isStillActive) continue;
+      nextState = await removeCanonicalSessionParticipant({
+        sessionId: envelope.groupId,
+        identityId: removedIdentityId,
+        removedByIdentityId: actorIdentityId,
+      });
     }
 
     if (envelope.kind !== 'group-message' || !envelope.message) {
@@ -3833,7 +3853,6 @@ export function useCloudBridgeState({
         return;
       }
       const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
-      const shouldUpdateStableAgentSlot = Boolean(replacementAgentSlot);
       const agentStatus = senderIsAgent && agentDeliveryState === 'processing'
         ? 'processing'
         : senderIsAgent && agentDeliveryState === 'failed'
@@ -3871,14 +3890,15 @@ export function useCloudBridgeState({
         sourceTransport: incomingSourceTransport,
         sourceEventId: incomingSourceEventId,
       };
-      const persistedMessage = shouldUpdateStableAgentSlot
-        ? await upsertCanonicalMessageFast(messageRequest)
-        : await appendCanonicalMessageFast(messageRequest);
+      // Replay can overlap with the local owner writing the same stable agent
+      // slot. Always use the compact idempotent path so a stale renderer
+      // snapshot cannot turn that overlap into a duplicate primary-key insert.
+      const persistedMessage = await upsertCanonicalMessageFast(messageRequest);
       nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
       // Race guard: if the local offline-timer effect added the offline-tier
       // placeholder AFTER we captured canonicalSessionState above (which can
       // happen when the response arrives in the same cloud-poll batch as the
-      // mention), shouldUpdateStableAgentSlot was false and we just wrote a
+      // mention), replacementAgentSlot was absent and we just wrote a
       // separate row under envelope.message.id. Strip any orphan offline-tier
       // placeholder for this request from `nextState` before applying it so
       // the agent reply slot ends up with a single row instead of two
@@ -5288,20 +5308,28 @@ export function useCloudBridgeState({
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
     const actor = input.actor ?? cloudGroupSelfParticipant(account, input.kind === 'group-message' ? 'person' : 'admin');
+    const hasExplicitCurrentParticipantSnapshot = input.participants !== undefined
+      || input.bridgeParticipants !== undefined;
     const inputParticipants = input.participants?.length
       ? input.participants
       : cloudGroupParticipantsForBridgeSessionParticipants(account, input.bridgeParticipants ?? []);
-    const participants = cloudGroupUniqueParticipants([
-      ...inputParticipants,
-      ...relatedGroupControls.flatMap((control) => control.envelope.participants),
-    ]);
+    const participants = cloudGroupOutgoingParticipantSnapshot({
+      currentParticipants: inputParticipants,
+      historicalParticipants: relatedGroupControls.flatMap((control) => control.envelope.participants),
+      hasExplicitCurrentSnapshot: hasExplicitCurrentParticipantSnapshot,
+    });
     const targetAccountIds = [...new Set([
       ...input.targetAccountIds.map((value) => value.trim()).filter(Boolean),
       ...participants.map((participant) => participant.accountId.trim()).filter(Boolean),
     ])].filter((accountId) => accountId !== account.accountId);
-    const requiredTargetAccountIds = input.targetAccountIds
+    const explicitTargetAccountIds = input.targetAccountIds
       .map((value) => value.trim())
       .filter((accountId) => accountId && accountId !== account.accountId);
+    const requiredTargetAccountIds = requiredCloudGroupControlTargetAccountIds({
+      kind: input.kind,
+      explicitTargetAccountIds,
+      memberLeaves: input.memberLeaves,
+    });
     if (targetAccountIds.length === 0) return;
     const groupTitle = cloudGroupTitleForOutgoingControl({
       kind: input.kind,
@@ -5336,6 +5364,7 @@ export function useCloudBridgeState({
         actor,
         participants,
         memberJoins: input.memberJoins,
+        memberLeaves: input.memberLeaves,
         fork: input.fork ?? forkFromSessionMetadata,
         message,
       });
@@ -5428,13 +5457,15 @@ export function useCloudBridgeState({
     }));
     const sent = fulfilledCloudGroupSends(results);
     sent.forEach(mergeMessage);
-    const requiredInviteFailure = input.kind === 'group-invite'
-      ? firstRequiredCloudGroupSendFailure(results, targetAccountIds, requiredTargetAccountIds)
-      : undefined;
-    if (requiredInviteFailure) {
-      throw requiredInviteFailure.reason instanceof Error
-        ? requiredInviteFailure.reason
-        : new Error(String(requiredInviteFailure.reason || 'Required group invite failed.'));
+    const requiredControlFailure = firstRequiredCloudGroupSendFailure(
+      results,
+      targetAccountIds,
+      requiredTargetAccountIds,
+    );
+    if (requiredControlFailure) {
+      throw requiredControlFailure.reason instanceof Error
+        ? requiredControlFailure.reason
+        : new Error(String(requiredControlFailure.reason || 'Required group control failed.'));
     }
     if (sent.length > 0) {
       if (input.kind === 'group-message' && canonicalMessageId) {

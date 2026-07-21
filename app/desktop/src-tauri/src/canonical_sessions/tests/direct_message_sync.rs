@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::mpsc, thread, time::Duration};
 
 use super::*;
 
@@ -110,6 +110,122 @@ fn source_event_upsert_reuses_the_existing_source_row_when_the_requested_id_diff
     assert_eq!(reconciled.status, "complete");
     let state = commands::load_state_from_db(&conn).expect("load state");
     assert_eq!(state.messages.len(), 1);
+}
+
+#[test]
+fn concurrent_stable_message_upserts_lock_before_checking_for_the_row() {
+    let db_path = std::env::temp_dir().join(format!(
+        "kordi-canonical-concurrent-upsert-{}.sqlite3",
+        Uuid::new_v4().simple()
+    ));
+    let conn = Connection::open(&db_path).expect("open first file-backed connection");
+    conn.busy_timeout(Duration::from_secs(2))
+        .expect("configure first busy timeout");
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;",
+    )
+    .expect("configure first connection");
+    schema::initialize_schema(&conn).expect("initialize shared schema");
+    let session = open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some("session:concurrent-upsert".to_string()),
+            kind: "group".to_string(),
+            title: Some("Group".to_string()),
+            status: None,
+            created_by_identity_id: "human:local".to_string(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: Vec::new(),
+            metadata: None,
+        },
+    )
+    .expect("open shared session");
+
+    let second_conn = Connection::open(&db_path).expect("open second file-backed connection");
+    second_conn
+        .busy_timeout(Duration::from_secs(2))
+        .expect("configure second busy timeout");
+    second_conn
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .expect("configure second connection");
+
+    let writer = rusqlite::Transaction::new_unchecked(&conn, TransactionBehavior::Immediate)
+        .expect("begin first writer");
+    append_message_in_db(
+        &writer,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:stable-processing-slot".to_string()),
+            session_id: session.id.clone(),
+            sender_identity_id: "human:local".to_string(),
+            sender_role: "owned-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "processing...".to_string(),
+            content: None,
+            created_at_ms: Some(1_000),
+            parent_message_id: Some("msg:request".to_string()),
+            delegated_exchange_id: None,
+            status: Some("processing".to_string()),
+            source_transport: Some("cloud-group-agent".to_string()),
+            source_event_id: Some("cloud-group-agent:local-processing".to_string()),
+        },
+    )
+    .expect("insert uncommitted stable slot");
+
+    let (started_tx, started_rx) = mpsc::channel();
+    let session_id = session.id;
+    let replay = thread::spawn(move || {
+        started_tx.send(()).expect("signal replay start");
+        upsert_message_in_db(
+            &second_conn,
+            AppendCanonicalMessageRequest {
+                id: Some("msg:stable-processing-slot".to_string()),
+                session_id,
+                sender_identity_id: "human:local".to_string(),
+                sender_role: "external-agent".to_string(),
+                message_kind: "agent-turn".to_string(),
+                content_text: "complete".to_string(),
+                content: None,
+                created_at_ms: Some(2_000),
+                parent_message_id: Some("msg:request".to_string()),
+                delegated_exchange_id: None,
+                status: Some("complete".to_string()),
+                source_transport: Some("cloud-group-agent".to_string()),
+                source_event_id: Some("cloud-group-agent:replayed-response".to_string()),
+            },
+        )
+    });
+
+    started_rx.recv().expect("wait for replay writer");
+    thread::sleep(Duration::from_millis(100));
+    writer.commit().expect("commit first writer");
+
+    let reconciled = replay
+        .join()
+        .expect("join replay writer")
+        .expect("reconcile concurrent stable slot");
+    assert_eq!(reconciled.id, "msg:stable-processing-slot");
+    assert_eq!(reconciled.content_text, "complete");
+    assert_eq!(reconciled.status, "complete");
+
+    let state = commands::load_state_from_db(&conn).expect("load reconciled state");
+    assert_eq!(
+        state
+            .messages
+            .iter()
+            .filter(|message| message.id == "msg:stable-processing-slot")
+            .count(),
+        1
+    );
+
+    drop(conn);
+    let _ = std::fs::remove_file(&db_path);
+    let _ = std::fs::remove_file(format!("{}-shm", db_path.display()));
+    let _ = std::fs::remove_file(format!("{}-wal", db_path.display()));
 }
 
 #[test]
