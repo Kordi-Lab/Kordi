@@ -54,6 +54,18 @@ body.kordi-native-shell {
   overscroll-behavior: none;
 }
 
+html.kordi-native-shell,
+html.kordi-native-shell body,
+html.kordi-native-shell body #root {
+  height: 100%;
+  min-height: 0;
+  overflow: clip;
+}
+
+html.kordi-native-shell body {
+  min-height: 0;
+}
+
 body.theme-dark {
   background:
     radial-gradient(circle at top, rgba(218, 205, 166, 0.08), transparent 24%),

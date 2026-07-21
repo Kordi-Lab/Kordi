@@ -2797,6 +2797,7 @@ name = "kordi-desktop"
 version = "0.0.1-beta.8"
 dependencies = [
  "base64 0.22.1",
+ "block2",
  "bs58",
  "chacha20poly1305",
  "chrono",
@@ -2809,6 +2810,9 @@ dependencies = [
  "kordi-core",
  "kordi-session",
  "kordi-tools",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "rand 0.8.6",
  "reqwest 0.12.28",
  "reqwest 0.13.2",

@@ -129,6 +129,7 @@ export function SettingsPage({
               <AuthPage
                 variant="settings"
                 layoutWidth={authSettingsLayoutWidth}
+                settingsLayoutMode={isNativeShell ? 'fluid' : 'fixed'}
                 isNativeShell={isNativeShell}
                 authState={desktopAuthState}
                 isLoading={isDesktopAuthLoading}

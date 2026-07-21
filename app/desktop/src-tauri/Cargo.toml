@@ -42,6 +42,10 @@ chacha20poly1305 = "0.10"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSEvent", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["block2", "NSDictionary", "NSGeometry", "NSNotification", "NSObject", "NSOperation", "NSString", "NSUserDefaults", "NSValue"] }
 system-configuration = "0.7"
 
 [dev-dependencies]

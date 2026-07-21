@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -12,6 +13,7 @@ import {
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { observeElementRectWithNativeResize } from '@/app/nativeLiveResizeRect';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
@@ -51,6 +53,24 @@ export type VirtualTranscriptProps<Item> = {
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
 };
+
+type VirtualTranscriptItemContentProps<Item> = {
+  item: Item;
+  index: number;
+  renderItem: (item: Item, index: number) => ReactNode;
+};
+
+function VirtualTranscriptItemContent<Item>({
+  item,
+  index,
+  renderItem,
+}: VirtualTranscriptItemContentProps<Item>) {
+  return renderItem(item, index);
+}
+
+const MemoizedVirtualTranscriptItemContent = memo(
+  VirtualTranscriptItemContent,
+) as typeof VirtualTranscriptItemContent;
 
 export function VirtualTranscript<Item>({
   items,
@@ -119,6 +139,8 @@ export function VirtualTranscript<Item>({
     gap,
     anchorTo: 'end',
     useFlushSync: false,
+    useAnimationFrameWithResizeObserver: true,
+    observeElementRect: observeElementRectWithNativeResize,
   });
 
   const scopedNavigationRequest = navigationRequest?.sessionKey === sessionKey
@@ -161,13 +183,13 @@ export function VirtualTranscript<Item>({
     viewportWasAtTailRef.current = true;
   }, []);
 
-  const scheduleTailAlignment = useCallback(() => {
+  const scheduleTailAlignment = useCallback((settleFrames = 4) => {
     if (tailAlignmentFrameRef.current !== null) {
       window.cancelAnimationFrame(tailAlignmentFrameRef.current);
     }
     tailAlignmentActiveRef.current = true;
     alignViewportToTail();
-    let framesRemaining = 4;
+    let framesRemaining = Math.max(1, settleFrames);
     const settle = () => {
       tailAlignmentFrameRef.current = null;
       if (!tailAlignmentActiveRef.current) return;
@@ -311,6 +333,12 @@ export function VirtualTranscript<Item>({
       || tailContentChanged
       || measuredSizeChanged
       || viewportSizeChanged;
+    const viewportOnlyChange = viewportSizeChanged
+      && !firstPageReplacedLoadingCopy
+      && !catalogPreviewHydrated
+      && !latestItemAppended
+      && !tailContentChanged
+      && !measuredSizeChanged;
     alignedSessionRef.current = {
       sessionKey,
       itemCount: items.length,
@@ -325,7 +353,7 @@ export function VirtualTranscript<Item>({
       if (items.length > 0) {
         virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
       }
-      scheduleTailAlignment();
+      scheduleTailAlignment(viewportOnlyChange ? 1 : 4);
     }
   }, [items.length, newestItemKey, normalizedTailKey, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
@@ -397,7 +425,11 @@ export function VirtualTranscript<Item>({
                 className="absolute left-0 top-0 w-full"
                 style={{ transform: `translateY(${virtualItem.start}px)` }}
               >
-                {renderItem(item, virtualItem.index)}
+                <MemoizedVirtualTranscriptItemContent
+                  item={item}
+                  index={virtualItem.index}
+                  renderItem={renderItem}
+                />
               </div>
             );
           })}

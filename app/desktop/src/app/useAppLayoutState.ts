@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 
+import { subscribeNativeLiveResize } from '@/app/nativeLiveResize';
 import {
   clampDetailPanelWidth,
   clampSessionPanelWidth,
@@ -122,7 +123,11 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       }
 
       if (!cancelled) {
-        setWindowSize({ width: nextWidth, height: nextHeight });
+        setWindowSize((current) => (
+          current.width === nextWidth && current.height === nextHeight
+            ? current
+            : { width: nextWidth, height: nextHeight }
+        ));
       }
     })();
 
@@ -132,6 +137,23 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   }, [isNativeShell, minWindowWidth]);
 
   useEffect(() => {
+    if (!isNativeShell) return undefined;
+
+    return subscribeNativeLiveResize((state) => {
+      if (state.active) return;
+      const nextWidth = Math.max(window.innerWidth, minWindowWidth);
+      const nextHeight = Math.max(window.innerHeight, WINDOW_MIN_HEIGHT);
+      windowWidthRef.current = nextWidth;
+      setWindowSize((current) => (
+        current.width === nextWidth && current.height === nextHeight
+          ? current
+          : { width: nextWidth, height: nextHeight }
+      ));
+    });
+  }, [isNativeShell, minWindowWidth]);
+
+  useEffect(() => {
+    if (isNativeShell) return undefined;
     const element = settingsContentRef.current;
     if (!element || typeof ResizeObserver === 'undefined') return;
 
@@ -140,7 +162,7 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       const paddingLeft = Number.parseFloat(styles.paddingLeft || '0') || 0;
       const paddingRight = Number.parseFloat(styles.paddingRight || '0') || 0;
       const contentWidth = Math.max(0, element.clientWidth - paddingLeft - paddingRight);
-      setSettingsMeasuredWidth(contentWidth);
+      setSettingsMeasuredWidth((current) => current === contentWidth ? current : contentWidth);
     };
 
     updateWidth();
@@ -151,15 +173,14 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [activeNav, windowSize.width]);
+  }, [activeNav, isNativeShell]);
 
   useEffect(() => {
     const handleWindowResize = () => {
-      setWindowSize((current) =>
-        isNativeShell
-          ? getViewportFillSize(minWindowWidth, WINDOW_MIN_HEIGHT)
-          : clampWindowSize(current.width, current.height, { minWidth: minWindowWidth, minHeight: WINDOW_MIN_HEIGHT }),
-      );
+      setWindowSize((current) => clampWindowSize(current.width, current.height, {
+        minWidth: minWindowWidth,
+        minHeight: WINDOW_MIN_HEIGHT,
+      }));
     };
 
     const handlePointerMove = (event: MouseEvent) => {
@@ -221,12 +242,12 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       setIsLayoutResizing(false);
     };
 
-    window.addEventListener('resize', handleWindowResize);
+    if (!isNativeShell) window.addEventListener('resize', handleWindowResize);
     window.addEventListener('mousemove', handlePointerMove);
     window.addEventListener('mouseup', stopResize);
 
     return () => {
-      window.removeEventListener('resize', handleWindowResize);
+      if (!isNativeShell) window.removeEventListener('resize', handleWindowResize);
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', stopResize);
       document.body.style.userSelect = '';
@@ -261,6 +282,15 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
     (target: PanelResizeTarget) => (event: ReactMouseEvent<HTMLDivElement>) => {
       event.preventDefault();
       event.stopPropagation();
+      if (isNativeShell) {
+        const liveWindowWidth = Math.max(window.innerWidth, minWindowWidth);
+        windowWidthRef.current = liveWindowWidth;
+        setWindowSize((current) => (
+          current.width === liveWindowWidth
+            ? current
+            : { width: liveWindowWidth, height: current.height }
+        ));
+      }
       panelResizeStateRef.current = {
         target,
         startX: event.clientX,

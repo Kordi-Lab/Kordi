@@ -1,7 +1,10 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { MouseEventHandler, ReactNode } from 'react';
 
-import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
+import {
+  APP_WINDOW_RESIZE_GUARD,
+  shouldStartNativeWindowDrag,
+} from '@/app/windowDrag';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
 import { cn } from '@/lib/utils';
 
@@ -51,11 +54,15 @@ export function AppShellFrame({
   windowResizeHandles,
 }: AppShellFrameProps) {
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
+    const shellBounds = event.currentTarget.getBoundingClientRect();
     if (!shouldStartNativeWindowDrag({
       isNativeShell,
       button: event.button,
+      clientX: event.clientX,
       clientY: event.clientY,
-      shellTop: event.currentTarget.getBoundingClientRect().top,
+      shellLeft: shellBounds.left,
+      shellRight: shellBounds.right,
+      shellTop: shellBounds.top,
       target: event.target,
     })) {
       return;
@@ -71,7 +78,7 @@ export function AppShellFrame({
       className={cn(
         'bridge-app app-page-bg w-full min-w-0 max-w-full text-[13px] text-foreground',
         rootThemeClass,
-        isNativeShell ? 'h-[100dvh] overflow-hidden p-0' : 'min-h-screen p-4 md:p-6',
+        isNativeShell ? 'app-native-viewport overflow-hidden p-0' : 'min-h-screen p-4 md:p-6',
       )}
     >
       <div
@@ -93,17 +100,25 @@ export function AppShellFrame({
         {isNativeShell ? (
           <>
             <div
-              className="pointer-events-auto absolute left-0 top-0 z-40 h-11"
-              style={{ width: `${LEFT_RAIL_WIDTH}px`, WebkitAppRegion: 'drag' as const }}
+              className="pointer-events-auto absolute z-40"
+              style={{
+                left: `${APP_WINDOW_RESIZE_GUARD}px`,
+                top: `${APP_WINDOW_RESIZE_GUARD}px`,
+                width: `${LEFT_RAIL_WIDTH - APP_WINDOW_RESIZE_GUARD}px`,
+                height: `${44 - APP_WINDOW_RESIZE_GUARD}px`,
+                WebkitAppRegion: 'drag' as const,
+              }}
               data-tauri-drag-region="true"
               aria-hidden="true"
             />
             {leftWorkspaceWidth > LEFT_RAIL_WIDTH ? (
               <div
-                className="pointer-events-auto absolute top-0 z-40 h-11"
+                className="pointer-events-auto absolute z-40"
                 style={{
                   left: `${LEFT_RAIL_WIDTH}px`,
+                  top: `${APP_WINDOW_RESIZE_GUARD}px`,
                   width: `${leftWorkspaceWidth - LEFT_RAIL_WIDTH}px`,
+                  height: `${44 - APP_WINDOW_RESIZE_GUARD}px`,
                   WebkitAppRegion: 'drag' as const,
                 }}
                 data-tauri-drag-region="true"
@@ -114,7 +129,7 @@ export function AppShellFrame({
         ) : null}
         <div
           className={cn(
-            'relative grid h-full min-w-0 flex-1 gap-0 overflow-hidden box-border',
+            'app-shell-layout-grid relative grid h-full min-w-0 flex-1 gap-0 overflow-hidden box-border',
             isLayoutResizing ? 'transition-none' : 'transition-[grid-template-columns]',
           )}
           style={{
@@ -143,7 +158,7 @@ export function AppShellFrame({
           >
             <div
               className={cn(
-                'grid h-full min-h-0 min-w-0',
+                'app-shell-layout-grid grid h-full min-h-0 min-w-0',
                 isLayoutResizing ? 'transition-none' : 'transition-[grid-template-columns] duration-300',
               )}
               style={{

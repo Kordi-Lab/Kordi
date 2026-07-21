@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default defineConfig(({ command, mode }) => {
+  const previewWindowTitle = process.env.VITE_KORDI_PREVIEW_NAME?.trim()
   if (command === 'serve') {
     resolveCloudDevApiBase({
       ...loadEnv(mode, __dirname, ''),
@@ -18,7 +19,21 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      {
+        name: 'kordi-preview-window-title',
+        transformIndexHtml(html) {
+          if (!previewWindowTitle) return html
+          const escapedTitle = previewWindowTitle
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+          return html.replace('<title>Kordi</title>', `<title>${escapedTitle}</title>`)
+        },
+      },
+      react(),
+      tailwindcss(),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
