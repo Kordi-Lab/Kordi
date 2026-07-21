@@ -335,28 +335,28 @@ export function ArtifactPreviewWindow({
   onClose: () => void;
 }) {
   return (
-    <div className="app-artifact-preview-window-backdrop fixed inset-0 z-50 p-3 sm:p-6" role="presentation">
+    <div className="app-transient-overlay app-artifact-preview-window-backdrop fixed inset-0 z-50 p-3 sm:p-6" role="presentation">
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Artifact preview window"
-        className="app-artifact-preview-window-panel mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-[color:var(--app-divider)] shadow-2xl"
+        className="app-transient-surface app-artifact-preview-window-panel mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border"
       >
-        <div className="app-artifact-preview-window-header flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--app-divider)] px-4 py-2.5">
+        <div className="app-transient-divider app-artifact-preview-window-header flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.045] text-slate-300">
+            <div className="app-transient-icon grid h-7 w-7 shrink-0 place-items-center rounded-lg">
               <Maximize2 className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0 truncate text-[13px] font-medium leading-5 text-[color:var(--utility-foreground)]">{title}</div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
+            <span className="app-transient-icon rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.12em]">
               {kindLabel}
             </span>
             <button
               type="button"
               onClick={onClose}
-              className="app-icon-button grid h-8 w-8 place-items-center rounded-xl text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+              className="app-transient-icon app-icon-button grid h-8 w-8 place-items-center rounded-xl border transition"
               aria-label="Close preview window"
               title="Close preview window"
             >

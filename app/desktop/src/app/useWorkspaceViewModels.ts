@@ -145,7 +145,11 @@ export function activeConversationForSelection(
       : undefined);
   if (selectedConversation) {
     const selectedCanonicalId = selectedConversation.canonicalSessionId ?? selectedConversation.id;
-    if (isCanonicalCloudSessionId(selectedCanonicalId) && selectedConversation.messages.length === 0) {
+    if (
+      isCanonicalCloudSessionId(selectedCanonicalId)
+      && selectedConversation.messages.length === 0
+      && selectedConversation.canonicalMessageCount !== 0
+    ) {
       const pending = pendingCanonicalCloudConversationForActiveId(selectedCanonicalId);
       return pending ? {
         ...selectedConversation,
@@ -160,6 +164,26 @@ export function activeConversationForSelection(
   const pendingCanonicalCloudConversation = pendingCanonicalCloudConversationForActiveId(activeConvId);
   if (pendingCanonicalCloudConversation) return pendingCanonicalCloudConversation;
   return chatConversations[0] ?? (options.isNativeShell ? options.nativeChatPlaceholder : options.fallbackConversation ?? options.nativeChatPlaceholder);
+}
+
+export function applyCanonicalHydrationPlaceholder(
+  selectedConversation: Conversation,
+  hydration: SessionHydrationState | undefined,
+): Conversation {
+  // A zero catalog count is authoritative for the current snapshot. Hydration may
+  // still check for newer rows, but it should not turn a real empty chat into copy.
+  if (
+    selectedConversation.desktopRuntimeBacked
+    || selectedConversation.canonicalMessageCount === 0
+    || (hydration !== 'cold' && hydration !== 'loading')
+  ) {
+    return selectedConversation;
+  }
+  return {
+    ...selectedConversation,
+    subtitle: 'Loading chat history…',
+    messages: [{ role: 'system', text: 'Loading chat history…', time: '--:--' }],
+  };
 }
 
 export function pendingCanonicalCloudConversationForActiveId(activeConvId: string): Conversation | null {
@@ -579,14 +603,12 @@ export function useWorkspaceViewModels({
   }, [activeConvId, cloudPresence, cloudSessionActivity, hiddenSessionIds, hydratedChatConversations, localAgentBridgeReachoutSessionIds]);
 
   const nativeChatPlaceholder = useMemo(
-    () => {
-      const placeholderText = 'Blank drafts stay local until the first real send.';
-      return {
+    () => ({
       id: LOCAL_DRAFT_CHAT_CONVERSATION_ID,
       canonicalSessionId: undefined,
       name: 'New session',
       type: 'owned-agent' as const,
-      subtitle: placeholderText,
+      subtitle: '',
       unread: 0,
       bridges: ['Local'],
       trust: 'Owned',
@@ -594,8 +616,7 @@ export function useWorkspaceViewModels({
       participants: ['Me', 'My Kordi'],
       bridgeTarget: undefined,
       messages: [],
-    };
-    },
+    }),
     [],
   );
 
@@ -607,12 +628,7 @@ export function useWorkspaceViewModels({
     });
     const canonicalSessionId = selected.canonicalSessionId ?? selected.id;
     const hydration = canonicalHydrationBySessionId[canonicalSessionId];
-    if (selected.desktopRuntimeBacked || (hydration !== 'cold' && hydration !== 'loading')) return selected;
-    return {
-      ...selected,
-      subtitle: 'Loading chat history…',
-      messages: [{ role: 'system' as const, text: 'Loading chat history…', time: '--:--' }],
-    };
+    return applyCanonicalHydrationPlaceholder(selected, hydration);
   }, [activeConvId, canonicalHydrationBySessionId, chatConversations, isNativeShell, nativeChatPlaceholder]);
   const activeConversationIsBridge = isNativeShell && (
     activeConv.id.startsWith('bridge:')

@@ -40,13 +40,18 @@ test('cloud settings modal contains profile authentication and theme sections', 
   assert.match(modal, /initialTab/);
 });
 
-test('cloud settings modal uses cool chat-aligned light palette instead of warm gray', () => {
+test('cloud settings modal uses the flat main-app palette instead of nested transient boards', () => {
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
   const authPage = readSource('kordi-app/auth/AuthPage.tsx');
+  const providerList = readSource('kordi-app/auth/AuthProviderList.tsx');
+  const shellPages = readSource('styles/shell-pages.css');
   const themeOverrides = readSource('styles/theme-overrides.css');
 
   assert.match(modal, /app-cloud-account-settings-overlay/);
   assert.match(modal, /app-cloud-account-settings-dialog/);
+  assert.match(modal, /app-cloud-account-settings-dialog[^\n]*rounded-\[12px\]/);
+  assert.doesNotMatch(modal, /app-cloud-account-settings-dialog[^\n]*rounded-\[18px\]/);
+  assert.doesNotMatch(modal, /app-cloud-account-settings-dialog[^\n]*\sborder(?:\s|$)/);
   assert.doesNotMatch(modal, /bg-black\/45/);
   assert.doesNotMatch(`${modal}\n${authPage}`, /rgba\(126,111,64/);
   const modalPaletteBlock = themeOverrides.slice(
@@ -56,25 +61,36 @@ test('cloud settings modal uses cool chat-aligned light palette instead of warm 
 
   assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-cloud-account-settings-dialog\s*\{/);
   assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-cloud-account-settings-overlay\s*\{/);
-  assert.match(modalPaletteBlock, /rgba\(37, 99, 235, 0\.12\)/);
-  assert.match(modalPaletteBlock, /rgba\(248, 251, 255, 0\.96\)/);
+  assert.match(modal, /app-session-panel app-cloud-account-settings-rail/);
+  assert.match(modal, /app-main-panel app-cloud-account-settings-page/);
+  assert.doesNotMatch(modal, /app-surface-muted rounded-\[24px\]/);
+  assert.doesNotMatch(providerList, /app-surface-muted app-auth-provider-list/);
+  assert.match(shellPages, /\.app-auth-settings-page \.app-auth-detail-section\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
+  assert.match(modalPaletteBlock, /\.app-auth-settings-page \.app-auth-detail-section\s*\{[^}]*background:\s*transparent;/s);
+  assert.match(modalPaletteBlock, /\.app-cloud-account-settings-overlay\s*\{[^}]*rgb\(15 23 42 \/ 0\.24\)/s);
+  assert.match(modalPaletteBlock, /\.app-cloud-account-settings-dialog\s*\{[^}]*border:\s*0[^}]*background:\s*var\(--app-main-bg\)[^}]*box-shadow:\s*0 12px 30px rgb\(15 23 42 \/ 0\.11\)/s);
+  assert.match(shellPages, /\.app-transient-surface\.app-cloud-account-settings-dialog\s*\{[^}]*border:\s*0[^}]*box-shadow:\s*0 14px 36px rgb\(0 0 0 \/ 0\.28\)/s);
+  assert.doesNotMatch(shellPages, /\.app-cloud-account-profile\s*\{[^}]*border-(?:top|bottom)/s);
+  assert.doesNotMatch(modal, /app-cloud-account-theme[^\n]*border-y/);
   assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-auth-provider-glyph[\s\S]*rgba\(239, 246, 255, 0\.96\)/);
   assert.doesNotMatch(modalPaletteBlock, /rgba\(147, 128, 109|rgba\(138, 118, 98|rgba\(126,111,64/);
 });
 
-test('cloud authentication tab suppresses nested auth header and stays narrow', () => {
+test('cloud authentication tab suppresses nested auth chrome and stays readable', () => {
   const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
   const authPage = readSource('kordi-app/auth/AuthPage.tsx');
   const providerList = readSource('kordi-app/auth/AuthProviderList.tsx');
 
   assert.match(modal, /showSettingsHeader=\{false\}/);
   assert.match(modal, /settingsLayoutMode="fluid"/);
-  assert.match(modal, /max-w-\[620px\]/);
+  assert.match(modal, /max-w-\[680px\]/);
   assert.doesNotMatch(modal, /Connect Kordi to cloud accounts or local model servers/);
   assert.match(authPage, /showSettingsHeader = true/);
   assert.match(authPage, /settingsLayoutMode = 'fixed'/);
   assert.doesNotMatch(providerList, /Pick a cloud account/);
   assert.match(providerList, /Pick a provider\. One working connection is enough\./);
+  assert.match(providerList, /app-auth-provider-rows[^\n]*border-y[^\n]*bg-transparent[^\n]*shadow-none/);
+  assert.doesNotMatch(providerList, /app-auth-provider-rows[^\n]*rounded-\[22px\]/);
 });
 
 test('profile modal is distilled to one avatar and no cloud explanation copy', () => {

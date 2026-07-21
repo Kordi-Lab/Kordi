@@ -15,6 +15,7 @@ import {
   GripVertical,
   Image as ImageIcon,
   Info,
+  LoaderCircle,
   MessageSquare,
   Paperclip,
   PanelLeftClose,
@@ -450,8 +451,8 @@ export function PinMessageDialog({
 }) {
   const isPin = mode === 'pin';
   return (
-    <div className="fixed inset-0 z-[300] grid place-items-center bg-black/45 px-4" data-pin-message-dialog={mode}>
-      <div className="w-full max-w-[28rem] rounded-[16px] bg-white px-6 py-5 text-slate-950 shadow-[0_20px_56px_rgba(15,23,42,0.24)]">
+    <div className="app-transient-overlay fixed inset-0 z-[300] grid place-items-center px-4" data-pin-message-dialog={mode}>
+      <div className="app-transient-surface w-full max-w-[28rem] rounded-[18px] border px-6 py-5">
         <div className="text-[15px] font-medium leading-6">
           {isPin ? 'Pin this message?' : 'Unpin this message?'}
         </div>
@@ -461,14 +462,14 @@ export function PinMessageDialog({
               type="checkbox"
               checked={pinForEveryone}
               onChange={(event) => onTogglePinForEveryone(event.currentTarget.checked)}
-              className="h-5.5 w-5.5 rounded border-2 border-slate-300"
+              className="h-5.5 w-5.5 rounded border-2 border-[color:var(--app-transient-border)]"
             />
             <span>Pin for everyone</span>
           </label>
         ) : null}
-        <div className="mt-6 flex justify-end gap-6 text-[14px] font-semibold text-pink-500">
-          <button type="button" onClick={onCancel} className="rounded-full px-2 py-1 transition hover:bg-pink-50">Cancel</button>
-          <button type="button" onClick={onConfirm} className="rounded-full px-2 py-1 transition hover:bg-pink-50">{isPin ? 'Pin' : 'Unpin'}</button>
+        <div className="mt-6 flex justify-end gap-2 text-[14px] font-semibold">
+          <button type="button" onClick={onCancel} className="app-transient-row rounded-[10px] px-3 py-1.5 transition">Cancel</button>
+          <button type="button" onClick={onConfirm} className="app-transient-row app-transient-row-selected rounded-[10px] px-3 py-1.5 transition">{isPin ? 'Pin' : 'Unpin'}</button>
         </div>
       </div>
     </div>
@@ -498,6 +499,23 @@ type ChatComposerShellProps = {
 
 function ChatComposerShell({ children }: ChatComposerShellProps) {
   return <>{children}</>;
+}
+
+function SessionStartingState() {
+  return (
+    <div
+      className="flex h-full min-h-48 items-center justify-center"
+      data-session-starting-state="true"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <div className="inline-flex items-center gap-2 text-[13px] font-medium text-[color:var(--utility-muted-text)]">
+        <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        <span>Starting session…</span>
+      </div>
+    </div>
+  );
 }
 
 type TranscriptNavigationRequest = VirtualTranscriptNavigationRequest;
@@ -1316,9 +1334,11 @@ export function ChatsPage({
   const activeSelfAgentSessionId = selfAgentSessionIdForTitleRename(activeConv);
   const activeSelfAgentSessionIsDraft = activeConv.id === LOCAL_DRAFT_CHAT_CONVERSATION_ID
     || activeConv.canonicalSessionId === LOCAL_DRAFT_CHAT_CONVERSATION_ID;
+  const activeSelfAgentSessionIsStarting = activeSelfAgentSessionIsDraft && isDesktopChatSending;
   const canRenameActiveSelfAgentSession = isNativeShell
     && activeConv.type === 'owned-agent'
-    && (Boolean(activeSelfAgentSessionId) || activeSelfAgentSessionIsDraft);
+    && (Boolean(activeSelfAgentSessionId) || activeSelfAgentSessionIsDraft)
+    && !activeSelfAgentSessionIsStarting;
   const activeTranscriptLiveTurn = visibleDesktopLiveTurn?.sessionId === activeConv.id ? visibleDesktopLiveTurn : undefined;
   const chatComposerPlaceholderText = chatComposerPlaceholder(activeConv);
   const liveTurnSender = localOwnedAgentSenderLabel(activeConv);
@@ -2067,13 +2087,13 @@ export function ChatsPage({
             <div
               data-side-chat-options-menu="true"
               data-side-chat-root-menu="true"
-              className="absolute right-8 top-full z-50 mt-2 w-44 rounded-[18px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] p-1.5 text-[13px] font-medium text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)] backdrop-blur-xl"
+              className="app-transient-surface absolute right-8 top-full z-50 mt-2 w-44 rounded-[18px] border p-1.5 text-[13px] font-medium"
             >
               {isSideAgentSessionListOpen ? (
                 <div data-side-chat-session-list="true">
                   <button
                     type="button"
-                    className="mb-1 flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition hover:bg-[color:var(--app-control-hover)]"
+                    className="app-transient-row mb-1 flex w-full items-center gap-2 rounded-[12px] px-2 py-1.5 text-left text-[13px] transition"
                     onClick={() => setIsSideAgentSessionListOpen(false)}
                   >
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -2085,8 +2105,8 @@ export function ChatsPage({
                       key={conversation.id}
                       type="button"
                       className={cn(
-                        'flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition hover:bg-[color:var(--app-control-hover)]',
-                        conversation.id === companionConversation.id ? 'text-pink-500 dark:text-pink-200' : 'text-[color:var(--utility-foreground)]',
+                        'app-transient-row flex w-full items-center justify-between gap-2 rounded-[12px] px-2.5 py-1.5 text-left text-[13px] transition',
+                        conversation.id === companionConversation.id && 'app-transient-row-selected',
                       )}
                       title={`Switch to ${conversation.name}`}
                       onClick={() => {
@@ -2109,7 +2129,7 @@ export function ChatsPage({
                   {onCreateAgentSession ? (
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition hover:bg-[color:var(--app-control-hover)]"
+                      className="app-transient-row flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition"
                       title="New chat"
                       aria-label="New chat"
                       onClick={() => {
@@ -2124,7 +2144,7 @@ export function ChatsPage({
                   ) : null}
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition hover:bg-[color:var(--app-control-hover)]"
+                    className="app-transient-row flex w-full items-center justify-between gap-2.5 rounded-[12px] px-2.5 py-2 text-left transition"
                     onClick={() => setIsSideAgentSessionListOpen(true)}
                   >
                     <span>Switch Chat</span>
@@ -2401,7 +2421,7 @@ export function ChatsPage({
                         </button>
                       ) : null}
                       {companionBridgeAgentSelectorOpen ? (
-                        <div className="absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-3 py-3 text-[12px] shadow-[var(--app-shadow-float)] backdrop-blur-xl">
+                        <div className="app-transient-surface app-transient-scroll absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]">
                           <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
                           <div className="space-y-1">
                             {companionBridgeRoutingAgents.map((agent) => (
@@ -2881,6 +2901,7 @@ export function ChatsPage({
         onLoadOlderMessages={activeCanonicalHistorySessionId && onLoadOlderCanonicalSessionMessages
           ? () => onLoadOlderCanonicalSessionMessages(activeCanonicalHistorySessionId)
           : undefined}
+        emptyState={activeSelfAgentSessionIsStarting ? <SessionStartingState /> : null}
         navigationRequest={mainTranscriptNavigationRequest}
         onNavigationHandled={handleMainTranscriptNavigationHandled}
         densityMode={chatTranscriptDensityMode(activeConv)}
@@ -3216,7 +3237,7 @@ export function ChatsPage({
                     </button>
                   ) : null}
                   {bridgeAgentSelectorOpen ? (
-                    <div className="absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[14px] border border-[color:var(--app-divider)] bg-[var(--app-modal-bg)] px-3 py-3 text-[12px] shadow-[var(--app-shadow-float)] backdrop-blur-xl">
+                    <div className="app-transient-surface app-transient-scroll absolute bottom-full right-0 z-30 mb-2 max-h-[min(22rem,50vh)] w-[260px] overflow-y-auto rounded-[16px] border px-3 py-3 text-[12px]">
                       <div className="pb-2 text-[12px] font-medium text-[color:var(--utility-foreground)]">My agent</div>
                       <div className="space-y-1">
                         {bridgeRoutingAgents.map((agent) => (

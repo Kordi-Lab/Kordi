@@ -40,7 +40,7 @@ const options: ComposerMentionOption[] = [
   } as ComposerMentionOption,
 ];
 
-test('mention participant menu uses its own solid surface instead of the shared translucent modal blur', () => {
+test('mention participant menu uses the shared near-opaque transient surface', () => {
   const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
     items: options,
     selectedIndex: 0,
@@ -48,8 +48,8 @@ test('mention participant menu uses its own solid surface instead of the shared 
   }));
 
   const menuClass = html.match(/<div class="([^"]*app-composer-mention-menu[^"]*)"/)?.[1] ?? '';
-  assert.ok(menuClass, 'mention menu should expose the solid-surface class');
-  assert.doesNotMatch(menuClass, /app-modal-panel/);
+  assert.ok(menuClass, 'mention menu should expose the transient-surface class');
+  assert.match(menuClass, /app-transient-surface/);
   assert.doesNotMatch(menuClass, /backdrop-blur/);
 
   const css = readDesktopShellCss();
@@ -58,14 +58,19 @@ test('mention participant menu uses its own solid surface instead of the shared 
   assert.doesNotMatch(menuRule, /transparent/);
   assert.doesNotMatch(menuRule, /backdrop-filter/);
 
+  const sharedSurfaceContract = readFileSync(new URL('../src/styles/transient-surfaces.css', import.meta.url), 'utf8');
   const lightRule = cssRule(css, '.bridge-app.theme-light .app-composer-mention-menu');
-  assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
+  assert.match(sharedSurfaceContract, /\.app-transient-surface,[\s\S]*background:\s*var\(--app-transient-surface-fallback\) !important;/);
+  assert.match(sharedSurfaceContract, /\.app-transient-surface,[\s\S]*background:\s*var\(--app-transient-surface-bg\) !important;/);
+  assert.match(lightRule, /--app-composer-mention-menu-bg:\s*var\(--app-transient-surface-bg\);/);
 });
 
 test('mention participant menu can carry light theme after portaling outside the app shell', () => {
   const css = readDesktopShellCss();
   const lightRule = cssRule(css, '.app-composer-mention-menu-light');
-  assert.match(lightRule, /--app-composer-mention-menu-bg:\s*rgb\(255 255 255\);/);
+  const themeTokens = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+  assert.match(lightRule, /color-scheme:\s*light;/);
+  assert.match(themeTokens, /\.app-composer-mention-menu-light\)\s*\{[\s\S]*--app-transient-surface-bg:\s*rgb\(252 252 253 \/ 0\.985\);/);
 
   const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
   assert.match(source, /setMenuThemeClass/);
@@ -115,7 +120,7 @@ test('mention participant menu uses polished card sizing without secondary detai
   assert.ok(start >= 0 && end > start, 'expected ComposerMentionMenu source block');
   const block = source.slice(start, end);
 
-  assert.match(block, /app-composer-mention-menu[^']*rounded-\[22px\][^']*px-2 py-2/);
+  assert.match(block, /app-composer-mention-menu[^']*rounded-\[18px\][^']*px-2 py-2/);
   assert.match(block, /app-composer-mention-menu-item[^']*rounded-\[16px\][^']*px-2\.5 py-2[^']*text-\[13px\]/);
   assert.match(block, /app-composer-mention-menu-icon h-7 w-7/);
   assert.match(block, /app-composer-mention-menu-at/);
@@ -168,12 +173,11 @@ test('mention participant selected row uses a soft hover-like state in both them
   const activeRule = cssRule(css, '.app-composer-mention-menu-item-active');
   const hoverRule = cssRule(css, '.app-composer-mention-menu-item:not(.app-composer-mention-menu-item-active):hover');
 
-  assert.match(darkRule, /--app-composer-mention-menu-item-hover-bg:\s*rgba\(255, 255, 255, 0\.075\);/);
-  assert.match(darkRule, /--app-composer-mention-menu-item-active-bg:\s*rgba\(255, 255, 255, 0\.075\);/);
-  assert.match(lightClassRule, /--app-composer-mention-menu-item-hover-bg:\s*rgb\(248 250 252\);/);
-  assert.match(lightClassRule, /--app-composer-mention-menu-item-active-bg:\s*rgb\(248 250 252\);/);
-  assert.match(lightShellRule, /--app-composer-mention-menu-item-hover-bg:\s*rgb\(248 250 252\);/);
-  assert.match(lightShellRule, /--app-composer-mention-menu-item-active-bg:\s*rgb\(248 250 252\);/);
+  assert.match(darkRule, /--app-composer-mention-menu-item-hover-bg:\s*var\(--app-transient-hover-bg\);/);
+  assert.match(darkRule, /--app-composer-mention-menu-item-active-bg:\s*var\(--app-transient-selected-bg\);/);
+  assert.match(lightClassRule, /color-scheme:\s*light;/);
+  assert.match(lightShellRule, /--app-composer-mention-menu-item-hover-bg:\s*var\(--app-transient-hover-bg\);/);
+  assert.match(lightShellRule, /--app-composer-mention-menu-item-active-bg:\s*var\(--app-transient-selected-bg\);/);
   assert.match(activeRule, /background:\s*var\(--app-composer-mention-menu-item-active-bg\);/);
   assert.match(hoverRule, /background:\s*var\(--app-composer-mention-menu-item-hover-bg\);/);
   assert.doesNotMatch(`${darkRule}\n${lightClassRule}\n${lightShellRule}\n${activeRule}`, /indigo|purple|818cf8|99,\s*102,\s*241|226 232 240|35 43 57|53 63 82|203 213 225/i);

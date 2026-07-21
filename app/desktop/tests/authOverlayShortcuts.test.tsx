@@ -33,9 +33,10 @@ function overlayArgs(overrides: Record<string, unknown> = {}) {
 
 test('first-run auth gate receives an enter-chat shortcut handler', () => {
   const slots = assembleOverlaySlots(overlayArgs() as never);
-  const gateShell = slots.authGate as never as { props: { children: { props: Record<string, unknown> } } };
+  const gateShell = slots.authGate as never as { props: { className: string; children: { props: Record<string, unknown> } } };
   const authPage = gateShell.props.children;
 
+  assert.equal(gateShell.props.className, 'app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden');
   assert.equal(typeof authPage.props.onEnterChat, 'function');
 });
 

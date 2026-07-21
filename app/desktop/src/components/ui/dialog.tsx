@@ -170,7 +170,7 @@ export function AppDialog({
       className={cn(
         isPopover
           ? 'fixed inset-0 z-40 bg-transparent'
-          : 'app-overlay fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-[8px]',
+          : 'app-transient-overlay app-overlay fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-[8px]',
         backdropClassName,
       )}
       data-dialog-presentation={presentation}
@@ -182,8 +182,8 @@ export function AppDialog({
         ref={panelRef}
         className={cn(
           isPopover
-            ? 'app-frosted-popover app-dialog-popover app-dialog-popover-enter fixed z-50 w-[min(17.75rem,calc(100vw-1.25rem))] overflow-visible rounded-[18px] p-2.5 backdrop-blur-2xl backdrop-saturate-150'
-            : 'app-modal-panel w-full max-w-md rounded-[28px] border border-[color:var(--app-divider)] p-5 text-[color:var(--utility-foreground)] shadow-[var(--app-shadow-float)]',
+            ? 'app-transient-surface app-frosted-popover app-dialog-popover app-dialog-popover-enter fixed z-50 w-[min(17.75rem,calc(100vw-1.25rem))] overflow-visible rounded-[18px] p-2.5'
+            : 'app-transient-surface app-modal-panel w-full max-w-md rounded-[28px] border p-5',
           className,
         )}
         style={popoverGeometry?.style}

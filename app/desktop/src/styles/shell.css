@@ -77,17 +77,12 @@
 }
 
 .app-left-glass {
-  background:
-    radial-gradient(164px 136px at 50% 104%, rgba(214, 158, 46, 0.24), transparent 68%),
-    radial-gradient(112px 88px at 50% 100%, rgba(255, 194, 84, 0.12), transparent 64%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 18%, rgba(0, 0, 0, 0.08) 100%),
-    var(--app-left-glass-bg);
+  background: var(--app-nav-rail-glass-fallback);
   box-shadow:
-    inset -1px 0 0 var(--app-left-glass-border),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 30px rgba(5, 8, 15, 0.12);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+    inset -1px 0 0 var(--app-nav-rail-glass-border),
+    inset 0 1px 0 var(--app-nav-rail-glass-highlight);
+  backdrop-filter: blur(var(--app-nav-rail-glass-blur)) saturate(var(--app-nav-rail-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--app-nav-rail-glass-blur)) saturate(var(--app-nav-rail-glass-saturate));
 }
 
 .app-session-panel {
@@ -98,6 +93,58 @@
   background: var(--app-main-bg);
 }
 
+/* Native macOS window vibrancy is deliberately visible through the complete
+ * left navigation stack. The workspace remains opaque, while the lighter
+ * rail and session tint preserve contrast over the system material. */
+html.kordi-native-shell .bridge-app.app-page-bg,
+html.kordi-native-shell .bridge-app .app-shell,
+html.kordi-native-shell .bridge-app .app-side-shell {
+  background: transparent;
+}
+
+html.kordi-native-shell .bridge-app .app-shell,
+html.kordi-native-shell .bridge-app .app-side-shell,
+html.kordi-native-shell .bridge-app .app-session-panel,
+html.kordi-native-shell .bridge-app .app-main-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.kordi-native-shell .bridge-app .app-shell {
+  box-shadow: none;
+}
+
+html.kordi-native-shell .bridge-app .app-workspace-sidebar,
+html.kordi-native-shell .bridge-app .app-main-panel {
+  border-radius: 0;
+}
+
+html.kordi-native-shell .bridge-app .app-left-glass {
+  background: var(--app-nav-rail-glass-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.kordi-native-shell .bridge-app .app-session-panel {
+  background: var(--app-native-session-bg);
+  box-shadow: none;
+}
+
+html.kordi-native-shell .bridge-app .app-main-panel {
+  background: var(--app-native-main-bg);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html.kordi-native-shell .bridge-app .app-left-glass {
+    background: var(--app-nav-rail-glass-fallback);
+  }
+
+  html.kordi-native-shell .bridge-app .app-session-panel {
+    background: var(--app-native-session-fallback);
+  }
+}
+
 .app-surface-card {
   background: var(--app-card-bg);
   border-color: var(--app-divider);
@@ -105,11 +152,11 @@
 }
 
 .app-overlay {
-  background: var(--app-overlay-bg);
+  background: var(--app-transient-overlay-bg);
 }
 
 .app-modal-panel {
-  background: var(--app-modal-bg);
+  background: var(--app-transient-surface-bg);
 }
 
 .app-avatar-upload-button {
@@ -131,17 +178,23 @@
   background: var(--app-code-toolbar-bg);
 }
 
-.app-artifact-preview-opaque-surface,
-.app-artifact-preview-window-panel,
-.app-artifact-preview-window-body {
+.app-artifact-preview-opaque-surface {
   background: #0f1117;
 }
 
-.app-artifact-preview-window-backdrop {
-  background: #080b11;
+.app-artifact-preview-window-panel,
+.app-artifact-preview-window-body {
+  background: var(--app-transient-surface-bg);
 }
 
-.app-artifact-preview-window-header,
+.app-artifact-preview-window-backdrop {
+  background: var(--app-transient-overlay-bg);
+}
+
+.app-artifact-preview-window-header {
+  background: var(--app-transient-raised-bg);
+}
+
 .app-artifact-preview-toolbar {
   background: #151923;
 }
@@ -154,17 +207,23 @@
   background: #0f1117;
 }
 
-.bridge-app.theme-light .app-artifact-preview-opaque-surface,
-.bridge-app.theme-light .app-artifact-preview-window-panel,
-.bridge-app.theme-light .app-artifact-preview-window-body {
+.bridge-app.theme-light .app-artifact-preview-opaque-surface {
   background: #f7f9fc;
 }
 
-.bridge-app.theme-light .app-artifact-preview-window-backdrop {
-  background: #f2f5f9;
+.bridge-app.theme-light .app-artifact-preview-window-panel,
+.bridge-app.theme-light .app-artifact-preview-window-body {
+  background: var(--app-transient-surface-bg);
 }
 
-.bridge-app.theme-light .app-artifact-preview-window-header,
+.bridge-app.theme-light .app-artifact-preview-window-backdrop {
+  background: var(--app-transient-overlay-bg);
+}
+
+.bridge-app.theme-light .app-artifact-preview-window-header {
+  background: var(--app-transient-raised-bg);
+}
+
 .bridge-app.theme-light .app-artifact-preview-toolbar,
 .bridge-app.theme-light .app-artifact-preview-opaque-surface .app-markdown-code-header {
   background: #e8edf5;
@@ -674,6 +733,17 @@
   background: color-mix(in oklab, var(--app-control-hover) 38%, transparent);
   color: var(--utility-foreground);
   opacity: 1;
+}
+
+.app-participant-space-context-create:disabled,
+.app-participant-space-context-create:disabled:hover,
+.app-participant-space-context-create:disabled:focus-visible {
+  cursor: not-allowed;
+  border-color: transparent;
+  background: transparent;
+  color: var(--utility-muted-text);
+  opacity: 0.38;
+  transform: none;
 }
 
 .app-participant-space-session-row {

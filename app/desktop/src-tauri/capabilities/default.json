@@ -10,6 +10,8 @@
     "core:window:allow-set-min-size",
     "core:window:allow-set-resizable",
     "core:window:allow-set-size",
+    "core:window:allow-set-theme",
+    "core:window:allow-set-background-color",
     "core:window:allow-start-dragging",
     "core:webview:allow-create-webview-window",
     "updater:default",

@@ -68,6 +68,23 @@ body.theme-light {
     linear-gradient(180deg, #f4f1e7 0%, #ebe6da 48%, #dfd8ca 100%);
 }
 
+/* The native shell supplies the macOS material behind the webview. Clear the
+ * document canvas before React mounts so the rail never flashes an opaque
+ * page color while the rest of the workspace paints its own surfaces. */
+html.kordi-native-shell,
+html.kordi-native-shell body,
+html.kordi-native-shell body #root {
+  background: transparent;
+}
+
+body.app-cloud-gate-active.theme-dark {
+  background: #0f1115;
+}
+
+body.app-cloud-gate-active.theme-light {
+  background: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
+}
+
 button,
 input,
 textarea,

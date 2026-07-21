@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { stripDerivedCloudUnreadCounts } from '../src/app/useKordiAppModelHelpers';
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
-import { activeConversationForSelection, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
+import { activeConversationForSelection, applyCanonicalHydrationPlaceholder, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
 import { restoredCloudSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
 import { createCanonicalSessionReadModel, mergeCanonicalHistoryIntoRuntime } from '../src/features/canonical/sessionReadModel';
@@ -139,6 +139,47 @@ test('workspace active conversation shows loading copy for an empty selected can
   assert.equal(selected.name, 'main');
   assert.equal(selected.messages.length > 0, true);
   assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
+});
+
+test('workspace active conversation keeps a catalog-confirmed empty group session blank while hydration runs', () => {
+  const localConversation = {
+    id: 'local-newer',
+    canonicalSessionId: 'local-newer',
+    name: 'Local newer',
+    type: 'owned-agent' as const,
+    subtitle: 'Local fallback should not win',
+    unread: 0,
+    bridges: ['Local'],
+    trust: 'Owned',
+    directness: 'Direct chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'owned-agent' as const, text: 'wrong local history', time: '10:02' }],
+  };
+  const emptyGroupSession = {
+    id: 'session:group:new-chat',
+    canonicalSessionId: 'session:group:new-chat',
+    canonicalMessageCount: 0,
+    name: 'New chat',
+    type: 'owned-agent' as const,
+    subtitle: '',
+    unread: 0,
+    bridges: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Group chat',
+    participants: ['Me', 'Alice', 'Bob'],
+    messages: [],
+  };
+
+  const selected = activeConversationForSelection(
+    emptyGroupSession.id,
+    [localConversation, emptyGroupSession],
+    { isNativeShell: true, nativeChatPlaceholder: localConversation },
+  );
+  const hydrated = applyCanonicalHydrationPlaceholder(selected, 'loading');
+
+  assert.equal(hydrated.id, emptyGroupSession.id);
+  assert.equal(hydrated.subtitle, '');
+  assert.deepEqual(hydrated.messages, []);
 });
 
 test('workspace keeps a desktop runtime transcript visible while canonical hydration is loading', () => {

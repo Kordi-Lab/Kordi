@@ -101,6 +101,24 @@ test('WorkspaceSidebar keeps the update button visible while the native updater 
   assert.doesNotMatch(markup, /<span>Update<\/span>/);
 });
 
+test('WorkspaceSidebar centers and visually unifies the Chats header actions', () => {
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
+    onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
+  }) as never));
+  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+
+  assert.match(markup, /class="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2\.5"/);
+  assert.match(markup, /class="app-chat-sidebar-actions flex shrink-0 items-center gap-2"/);
+  assert.match(source, /app-update-logo-button app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
+  assert.match(source, /app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
+  assert.match(source, /h-4 w-4 stroke-\[2\.2\]/);
+  assert.doesNotMatch(source, /border border-slate-300\/70 bg-white text-slate-950/);
+  assert.match(css, /\.app-update-logo-button\[data-update-status='available'\]::after/);
+  assert.match(css, /--app-update-control-active: oklch/);
+  assert.match(css, /\.app-chat-sidebar-actions \.app-icon-button:focus-visible/);
+});
+
 test('WorkspaceSidebar does not expose the native updater control in web mode', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
     isNativeShell: false,
@@ -177,10 +195,11 @@ test('desktop update popover uses a quiet theme-aware surface in dark mode', () 
   const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
   const updateSurface = css.match(/\.bridge-app \.app-popover\.app-update-popover \{([\s\S]*?)\n\}/)?.[1] ?? '';
 
-  assert.match(updateSurface, /--app-update-surface: rgb\(20 22 27 \/ 0\.985\)/);
-  assert.match(updateSurface, /--app-update-edge: rgba\(255, 255, 255, 0\.055\)/);
-  assert.match(updateSurface, /border: 0 !important/);
-  assert.match(updateSurface, /inset 0 0 0 1px var\(--app-update-edge\)/);
+  assert.match(updateSurface, /--app-update-surface: var\(--app-transient-surface-bg\)/);
+  assert.match(updateSurface, /--app-update-edge: var\(--app-transient-border\)/);
+  assert.match(updateSurface, /--app-update-shadow: var\(--app-transient-shadow\)/);
+  assert.match(updateSurface, /border: 1px solid var\(--app-update-edge\) !important/);
+  assert.match(updateSurface, /box-shadow: var\(--app-update-shadow\) !important/);
   assert.doesNotMatch(updateSurface, /var\(--app-shadow-float\)/);
   assert.doesNotMatch(updateSurface, /inset 0 1px 0/);
   assert.match(css, /\.bridge-app\.theme-light \.app-popover\.app-update-popover/);

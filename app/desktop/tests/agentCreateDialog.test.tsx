@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AgentCreateDialog } from '../src/kordi-app/agents/AgentCreateDialog';
 import { AgentsSidebar } from '../src/kordi-app/agents/AgentsSidebar';
-import { AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
+import { AgentDeleteConfirmDialog, AgentDetailPane } from '../src/kordi-app/agents/AgentDetailPane';
 import type { Agent } from '../src/kordi-app/types';
 
 const creatorAgent: Agent = {
@@ -98,8 +98,8 @@ test('AgentCreateDialog uses calm auth-aligned surfaces without dashed callout c
   assert.match(source, /app-agent-create-panel/);
   assert.match(source, /app-agent-create-muted/);
   assert.doesNotMatch(source, /border-dashed/);
-  assert.match(shellPagesCss, /\.app-agent-create-surface[\s\S]*--app-cloud-login-raised-bg/);
-  assert.match(shellPagesCss, /\.app-agent-create-muted[\s\S]*--app-cloud-login-sunk-bg/);
+  assert.match(shellPagesCss, /\.app-agent-create-surface[\s\S]*background:\s*var\(--app-transient-surface-bg\)/);
+  assert.match(shellPagesCss, /\.app-agent-create-muted[\s\S]*background:\s*var\(--app-transient-raised-bg\)/);
 });
 
 test('AgentsSidebar exposes New agent action when cloud creation is available', () => {
@@ -161,6 +161,21 @@ test('AgentDetailPane exposes delete action only for private cloud agents', () =
   assert.match(cloudMarkup, /More agent actions/);
   assert.match(cloudMarkup, /Delete agent/);
   assert.doesNotMatch(kordiMarkup, /Delete agent/);
+});
+
+test('agent deletion uses the accessible shared modal lifecycle', () => {
+  const markup = renderToStaticMarkup(createElement(AgentDeleteConfirmDialog, {
+    agent: cloudAgent,
+    isDeleting: true,
+    error: null,
+    onCancel: () => undefined,
+    onConfirm: () => undefined,
+  }));
+
+  assert.match(markup, /role="dialog"/);
+  assert.match(markup, /aria-modal="true"/);
+  assert.match(markup, /aria-labelledby="delete-agent-dialog-title"/);
+  assert.match(markup, /aria-busy="true"/);
 });
 
 test('AgentDetailPane uses an in-app delete dialog instead of native window.confirm', () => {

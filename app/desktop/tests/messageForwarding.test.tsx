@@ -197,8 +197,10 @@ test('MessageForwardDialog uses theme-safe shell classes and exposes forward mod
   );
 
   assert.match(markup, /app-message-forward-dialog/);
+  assert.match(markup, /app-transient-overlay/);
+  assert.match(markup, /app-transient-surface/);
   assert.match(markup, /data-message-forward-dialog="true"/);
   assert.match(markup, /data-message-forward-mode="single"/);
-  assert.match(markup, /bg-\[color:var\(--app-modal-bg\)\]/);
+  assert.match(markup, /app-transient-divider/);
   assert.doesNotMatch(markup, /bg-\[#101820\]/);
 });

@@ -393,12 +393,12 @@ function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceipt
 
   return (
     <div
-      className="flex items-center gap-2 border-t border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-normal leading-[1.45] text-slate-950"
+      className="app-transient-divider app-transient-muted flex items-center gap-2 border-t px-3 py-1.5 text-[10px] font-normal leading-[1.45]"
       data-message-context-menu-seen-row="true"
       title={title}
       style={messageContextMenuTextStyle}
     >
-      <CheckCheck className="h-3.5 w-3.5 shrink-0 text-slate-700" aria-hidden="true" />
+      <CheckCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span>{count} Seen</span>
       {participants.length > 0 ? (
         <span className="ml-auto inline-flex -space-x-1" aria-hidden="true">
@@ -424,11 +424,11 @@ function MessageContextMenuAction({ icon, label, action, onClick }: { icon: Reac
       type="button"
       role="menuitem"
       data-message-context-menu-action={action}
-      className="app-message-context-menu-action flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] text-slate-950 transition hover:bg-slate-100"
+      className="app-transient-flat-action app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] transition"
       style={messageContextMenuTextStyle}
       onClick={onClick}
     >
-      <span className="grid h-4 w-4 shrink-0 place-items-center text-slate-950" aria-hidden="true">{icon}</span>
+      <span className="grid h-4 w-4 shrink-0 place-items-center" aria-hidden="true">{icon}</span>
       <span>{label}</span>
     </button>
   );
@@ -517,7 +517,7 @@ export function MessageContextMenuContent({
 
   return (
     <div className="app-message-context-menu-content w-[13.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
-      <div className="overflow-hidden rounded-[14px] bg-white py-1 shadow-[0_14px_34px_rgba(15,23,42,0.18)] ring-1 ring-slate-950/10">
+      <div className="app-transient-surface overflow-hidden rounded-[14px] border p-1">
         {actionEligible ? <MessageContextMenuAction action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={handleReply} /> : null}
         {actionEligible && (onRequestPinMessage || onRequestUnpinMessage) ? (
           isPinned
@@ -1000,14 +1000,14 @@ function MessageBubbleView({
             aria-hidden="true"
           />
           <div
-            className="app-message-fork-list absolute left-0 top-full z-50 mt-1 w-64 rounded-[14px] border border-white/10 bg-[color:var(--app-panel-bg)] p-1.5 shadow-[var(--app-shadow-float)]"
+            className="app-transient-surface app-message-fork-list absolute left-0 top-full z-50 mt-1 w-64 rounded-[14px] border p-1.5"
             role="menu"
           >
             {forks.map((fork) => (
               <button
                 key={fork.sessionId}
                 type="button"
-                className="flex w-full items-baseline justify-between gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[12px] text-slate-100 transition hover:bg-white/[0.06] focus:outline-none focus-visible:bg-white/[0.06]"
+                className="app-transient-row flex w-full items-baseline justify-between gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[12px] transition focus:outline-none"
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -1018,7 +1018,7 @@ function MessageBubbleView({
               >
                 <span className="min-w-0 flex-1 truncate" title={fork.title}>{fork.title}</span>
                 {fork.updatedAtLabel ? (
-                  <span className="shrink-0 text-[10px] tabular-nums text-slate-500">{fork.updatedAtLabel}</span>
+                  <span className="app-transient-muted shrink-0 text-[10px] tabular-nums">{fork.updatedAtLabel}</span>
                 ) : null}
               </button>
             ))}

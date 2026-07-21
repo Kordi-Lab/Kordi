@@ -363,7 +363,7 @@ export default function AuthPopup({
 
   const shell = (
     <div className={embedded ? 'mx-auto w-full max-w-[440px]' : 'mx-auto flex h-full min-h-0 w-full max-w-[520px] items-start'}>
-      <div className={embedded ? 'app-auth-popup-panel app-modal-panel overflow-hidden rounded-[24px] border border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.32)]' : 'app-auth-popup-panel app-modal-panel flex max-h-[calc(100dvh-4rem)] w-full flex-col overflow-hidden rounded-[28px] border border-white/10 shadow-[var(--app-shadow-float)]'}>
+      <div className={embedded ? 'app-transient-surface app-auth-popup-panel app-modal-panel overflow-hidden rounded-[20px] border' : 'app-transient-surface app-auth-popup-panel app-modal-panel flex max-h-[calc(100dvh-4rem)] w-full flex-col overflow-hidden rounded-[24px] border'}>
         {embedded ? (
           <div className="app-auth-popup-header border-b border-white/8 px-4 py-2.5 sm:px-4.5">
             <div className="flex items-start justify-between gap-3.5">
@@ -584,7 +584,7 @@ export default function AuthPopup({
   if (embedded) {
     return (
       <div
-        className="absolute inset-0 z-[120] flex items-start justify-center bg-[color:var(--app-overlay-bg)] px-4 py-8 sm:items-center"
+        className="app-transient-overlay absolute inset-0 z-[120] flex items-start justify-center px-4 py-8 sm:items-center"
         style={{ WebkitAppRegion: 'no-drag' as const }}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) {

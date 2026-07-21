@@ -330,8 +330,8 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
   assert.match(source, /data-companion-attachment-control="true"/);
   assert.doesNotMatch(source, /shrink-0 border-t border-white\/\[0\.06\] px-5 pb-4 pt-3/);
   assert.doesNotMatch(source, /bg-\[#1f1f1f\]/);
-  assert.match(source, /data-side-chat-options-menu="true"[^>]+bg-\[var\(--app-modal-bg\)\]/s);
-  assert.match(source, /data-side-chat-options-menu="true"[^>]+text-\[color:var\(--utility-foreground\)\]/s);
+  assert.match(source, /data-side-chat-options-menu="true"[^>]+app-transient-surface/s);
+  assert.doesNotMatch(source, /data-side-chat-options-menu="true"[^>]+bg-\[var\(--app-modal-bg\)\]/s);
   assert.match(source, /text-\[13px\]/);
   assert.match(source, />\s*New chat\s*</);
   assert.match(source, />\s*Switch Chat\s*</);

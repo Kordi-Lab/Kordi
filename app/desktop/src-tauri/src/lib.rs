@@ -8,6 +8,7 @@ mod cloud_oauth_loopback;
 mod cloud_session;
 mod project;
 mod skill_library;
+mod remote_image;
 mod system_proxy;
 #[cfg(test)]
 mod test_support;
@@ -594,7 +595,8 @@ pub fn run() {
             cloud_session::cloud_session_clear,
             cloud_session::cloud_device_keypair_load_or_create,
             cloud_session::cloud_bridges_api_key_store,
-            cloud_session::cloud_bridges_api_key_load
+            cloud_session::cloud_bridges_api_key_load,
+            remote_image::desktop_fetch_remote_image_data_url
         ])
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");

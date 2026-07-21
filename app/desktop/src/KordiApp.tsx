@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useState, type MouseEventHandler } from 'react';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
+import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
@@ -24,6 +25,16 @@ function readSystemTheme(): ResolvedThemeMode {
 function nativeWindowThemeIsResolvedTheme(theme: unknown): theme is ResolvedThemeMode {
   return theme === 'light' || theme === 'dark';
 }
+
+const GATE_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
+  light: '#f8fafc',
+  dark: '#0f1115',
+};
+
+const APP_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
+  light: '#f4f1e7',
+  dark: '#22231d',
+};
 
 // The shell's useKordiUiEffects also writes `theme-*` to <body>, but it only
 // runs after KordiAppShell mounts. Before that — on the cloud login gate and
@@ -84,6 +95,21 @@ function useGateThemeClass() {
     document.body.classList.toggle('theme-light', theme === 'light');
     document.body.classList.toggle('theme-dark', theme === 'dark');
     document.documentElement.style.colorScheme = theme;
+    void syncNativeWindowTheme(theme).catch(() => undefined);
+  }, [theme]);
+
+  useEffect(() => {
+    document.body.classList.add('app-cloud-gate-active');
+    if (isTauriRuntime()) {
+      void getCurrentWindow().setBackgroundColor(GATE_WINDOW_BACKGROUND[theme]).catch(() => undefined);
+    }
+
+    return () => {
+      document.body.classList.remove('app-cloud-gate-active');
+      if (isTauriRuntime()) {
+        void getCurrentWindow().setBackgroundColor(APP_WINDOW_BACKGROUND[theme]).catch(() => undefined);
+      }
+    };
   }, [theme]);
 
   return theme;

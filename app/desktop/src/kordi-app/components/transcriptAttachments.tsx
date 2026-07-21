@@ -260,7 +260,7 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
   }
 
   if (variant === 'menu') {
-    const menuButtonClass = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[12px] text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-55';
+    const menuButtonClass = 'app-transient-row flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left text-[12px] transition disabled:cursor-not-allowed disabled:opacity-55';
     return (
       <div className="flex min-w-[170px] flex-col gap-1">
         <button
@@ -284,8 +284,8 @@ function AttachmentActions({ attachment, variant = 'icon' }: { attachment: Messa
             <span>Open with local app</span>
           </button>
         ) : null}
-        {isDownloading ? <span className="px-3 pb-1 text-[10px] text-slate-400">Downloading…</span> : null}
-        {downloadedPath && !isDownloading ? <span className="px-3 pb-1 text-[10px] text-slate-400">Downloaded</span> : null}
+        {isDownloading ? <span className="app-transient-muted px-3 pb-1 text-[10px]">Downloading…</span> : null}
+        {downloadedPath && !isDownloading ? <span className="app-transient-muted px-3 pb-1 text-[10px]">Downloaded</span> : null}
         {error ? <span className="app-error-text max-w-[190px] px-3 pb-1 text-[10px] text-rose-300">{error}</span> : null}
       </div>
     );
@@ -367,7 +367,7 @@ function AttachmentContextMenu({ state, onClose }: { state: AttachmentContextMen
       <div
         ref={menuRef}
         data-attachment-image-context-menu="true"
-        className="fixed z-[230] rounded-[14px] border border-white/12 bg-slate-950/94 p-1.5 shadow-[0_18px_55px_rgba(0,0,0,0.38)] backdrop-blur-xl"
+        className="app-transient-surface fixed z-[230] rounded-[14px] border p-1.5"
         style={{ left: state.x, top: state.y }}
         onContextMenu={(event) => event.preventDefault()}
       >
@@ -695,7 +695,7 @@ export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onCon
   return (
     <div
       data-attachment-image-lightbox="true"
-      className="fixed inset-0 z-[220] flex items-center justify-center bg-black/72 px-5 py-6 backdrop-blur-md"
+      className="app-transient-overlay fixed inset-0 z-[220] flex items-center justify-center px-5 py-6 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-label="Preview image"
@@ -703,11 +703,11 @@ export function AttachmentImageLightbox({ attachment, previewUrl, onClose, onCon
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div data-attachment-image-lightbox-panel="true" className="relative flex max-h-full w-full max-w-5xl items-center justify-center overflow-hidden rounded-[24px] bg-transparent">
+      <div data-attachment-image-lightbox-panel="true" className="app-transient-surface relative flex max-h-full w-full max-w-5xl items-center justify-center overflow-hidden rounded-[24px] border p-2">
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/45 text-white/90 shadow-lg shadow-black/25 backdrop-blur-md transition hover:bg-black/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+          className="app-transient-icon absolute right-3 top-3 z-10 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition focus-visible:outline-none"
           aria-label="Close image preview"
         >
           <X className="h-4 w-4" />

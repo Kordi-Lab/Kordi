@@ -51,28 +51,36 @@ test('gate provider picker uses cards without forced uppercase microcopy', () =>
   assert.doesNotMatch(shellPages, /app-auth-provider-selected/);
 });
 
-test('provider gate uses a flat cool light surface without modal board chrome', () => {
+test('provider gate uses the flat shared light workspace surface without modal board chrome', () => {
   const authPage = readAuthSource('AuthPage.tsx');
+  const overlaySlots = readFileSync(new URL('../src/app/assembleOverlaySlots.tsx', import.meta.url), 'utf8');
   const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+  const authGateOverlay = overlaySlots.slice(
+    overlaySlots.indexOf('const authGate ='),
+    overlaySlots.indexOf('const inlineAuthDialog ='),
+  );
 
   assert.match(authPage, /app-auth-gate-shell/);
   assert.match(authPage, /app-auth-gate-shell flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-none border-0 bg-transparent px-8 py-8 shadow-none/);
   assert.doesNotMatch(authPage, /app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-\[30px\] border border-white\/10/);
+  assert.match(authGateOverlay, /app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden/);
+  assert.doesNotMatch(authGateOverlay, /\bapp-overlay\b|\bp-3\b|\bsm:p-4\b|backdrop-blur/);
 
-  const gateLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
-  assert.match(gateLightRule, /background:/);
-  assert.match(gateLightRule, /rgb\(248 251 255\)|rgb\(241 247 255\)|rgba\(248, 251, 255/);
-  assert.doesNotMatch(gateLightRule, /rgba\(248, 246, 242|rgba\(245, 240, 232|warm|amber|orange/);
+  const gateLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-gate-overlay,[\s\S]*?\.bridge-app\.theme-light \.app-auth-gate-shell \{[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.match(gateLightRule, /\.app-auth-gate-overlay/);
+  assert.match(gateLightRule, /background:\s*var\(--app-main-bg\);/);
+  assert.doesNotMatch(gateLightRule, /linear-gradient|rgb\(248 251 255\)|rgb\(241 247 255\)/);
   assert.match(gateLightRule, /box-shadow:\s*none/);
 });
 
-test('every onboarding provider detail stays on the same flat cool app canvas', () => {
+test('every onboarding provider detail stays in the shared light workspace surface family', () => {
   const authPage = readAuthSource('AuthPage.tsx');
   const shellPages = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
   const themeOverrides = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
   const detailRouteStart = authPage.indexOf('app-auth-gate-shell app-auth-provider-detail-shell');
   const pickerRouteStart = authPage.indexOf('app-auth-gate-shell flex', detailRouteStart);
   const detailRoute = authPage.slice(detailRouteStart, pickerRouteStart);
+  const detailLightRule = themeOverrides.match(/\.bridge-app\.theme-light \.app-auth-provider-detail-shell \.app-auth-detail-section \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.ok(detailRouteStart >= 0 && pickerRouteStart > detailRouteStart);
   assert.match(detailRoute, /items-start justify-center/);
@@ -83,7 +91,8 @@ test('every onboarding provider detail stays on the same flat cool app canvas', 
   assert.doesNotMatch(detailRoute, /bg-\[linear-gradient/);
   assert.doesNotMatch(detailRoute, /app-shadow-float/);
   assert.match(shellPages, /\.app-auth-provider-detail-shell \.app-auth-detail-section/);
-  assert.match(themeOverrides, /\.bridge-app\.theme-light \.app-auth-provider-detail-shell \.app-auth-detail-section/);
+  assert.match(detailLightRule, /background:\s*var\(--app-main-raised-bg\);/);
+  assert.doesNotMatch(detailLightRule, /linear-gradient|rgb\(248 251 255\)|rgb\(241 247 255\)/);
 });
 
 test('inline auth popup uses direct handoff copy without authentication status chips', () => {
@@ -112,10 +121,9 @@ test('inline auth popup uses cool chat-aligned light cards instead of warm gray'
     themeOverrides.indexOf('.bridge-app.theme-light .app-agent-shell'),
   );
 
-  assert.match(popupPaletteBlock, /rgba\(248, 251, 255, 0\.96\)/);
-  assert.match(popupPaletteBlock, /rgba\(241, 247, 255, 0\.92\)/);
-  assert.match(popupPaletteBlock, /rgba\(37, 99, 235, 0\.12\)/);
-  assert.match(popupPaletteBlock, /rgba\(239, 246, 255, 0\.72\)/);
+  assert.match(popupPaletteBlock, /\.app-auth-popup-panel\s*\{[^}]*background:\s*var\(--app-transient-surface-bg\)[^}]*box-shadow:\s*var\(--app-transient-shadow\)/s);
+  assert.match(popupPaletteBlock, /\.app-auth-popup-header,[^}]*background:\s*var\(--app-transient-raised-bg\)/s);
+  assert.match(popupPaletteBlock, /\.app-auth-popup-info-card,[^}]*border-color:\s*var\(--app-transient-border\)[^}]*background:\s*var\(--app-transient-raised-bg\)/s);
   assert.doesNotMatch(popupPaletteBlock, /rgba\(126,\s*111,\s*64|rgba\(147,\s*128,\s*109|rgba\(138,\s*118,\s*98|rgb\(245 241 232\)|rgba\(255, 252, 244|warm|amber|orange/i);
 });
 

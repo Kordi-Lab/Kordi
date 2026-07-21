@@ -1439,6 +1439,47 @@ test('WorkspaceSidebar expanded group space keeps contextual create on the first
   assert.match(markup, /data-session-updated-at="10:00"/);
 });
 
+test('WorkspaceSidebar grays and disables group create while a blank New chat already exists', () => {
+  const renderCreateButton = (hasMessage: boolean) => {
+    const chatConversations = [conversation({
+      id: 'session:group:new-chat',
+      canonicalSessionId: 'session:group:new-chat',
+      canonicalMessageCount: hasMessage ? 1 : 0,
+      name: 'New chat',
+      subtitle: hasMessage ? 'Start the topic' : '',
+      messages: hasMessage
+        ? [{ role: 'person', sender: 'Me', text: 'Start the topic', time: '16:05' }]
+        : [],
+      participants: ['Me', 'Alice', 'Bob'],
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
+        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
+      ],
+    })];
+    const participantSpaces = buildParticipantSpaces(chatConversations);
+    const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+      chatConversations,
+      participantSpaces,
+      contactParticipantSpaces: participantSpaces,
+      activeConvId: 'session:group:new-chat',
+      initialSelectedParticipantSpaceId: participantSpaces[0]?.id,
+    }) as never));
+    const marker = markup.indexOf('data-participant-space-context-create="true"');
+    const buttonStart = markup.lastIndexOf('<button', marker);
+    return markup.slice(buttonStart, markup.indexOf('</button>', marker));
+  };
+
+  const disabledButton = renderCreateButton(false);
+  const enabledButton = renderCreateButton(true);
+  const shellCss = readDesktopShellCss();
+
+  assert.match(disabledButton, /disabled=""/);
+  assert.match(disabledButton, /aria-label="New session unavailable in Alice, Bob: a blank chat already exists"/);
+  assert.doesNotMatch(enabledButton, /disabled=""/);
+  assert.match(shellCss, /\.app-participant-space-context-create:disabled[\s\S]*?cursor:\s*not-allowed;[\s\S]*?opacity:\s*0\.38;/);
+});
+
 test('WorkspaceSidebar selected group header exposes details and hashtag child sessions', () => {
   const chatConversations = [conversation({
     id: 'session:group-selected',
