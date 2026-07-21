@@ -565,6 +565,60 @@
   color: rgb(31 27 25);
 }
 
+/* The Chats header actions share one quiet utility-button geometry. Update
+ * state is communicated with a restrained tint and a small availability dot,
+ * not a second button shape or a floating white surface. */
+.bridge-app .app-chat-sidebar-actions .app-icon-button:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--app-sidebar-accent) 72%, transparent);
+  outline-offset: 2px;
+}
+
+.bridge-app .app-update-logo-button {
+  --app-update-control-active: oklch(0.78 0.09 255);
+  --app-update-control-success: oklch(0.79 0.1 158);
+  --app-update-control-danger: oklch(0.78 0.12 24);
+  position: relative;
+}
+
+.bridge-app.theme-light .app-update-logo-button {
+  --app-update-control-active: oklch(0.52 0.15 255);
+  --app-update-control-success: oklch(0.48 0.12 158);
+  --app-update-control-danger: oklch(0.52 0.17 24);
+}
+
+.bridge-app .app-update-logo-button[data-update-status='available'],
+.bridge-app .app-update-logo-button[data-update-status='downloading'],
+.bridge-app .app-update-logo-button[data-update-status='installing'],
+.bridge-app .app-update-logo-button[data-update-status='relaunching'] {
+  border-color: color-mix(in oklab, var(--app-update-control-active) 24%, transparent);
+  background: color-mix(in oklab, var(--app-update-control-active) 11%, transparent);
+  color: var(--app-update-control-active);
+}
+
+.bridge-app .app-update-logo-button[data-update-status='up-to-date'] {
+  border-color: color-mix(in oklab, var(--app-update-control-success) 24%, transparent);
+  background: color-mix(in oklab, var(--app-update-control-success) 10%, transparent);
+  color: var(--app-update-control-success);
+}
+
+.bridge-app .app-update-logo-button[data-update-status='failed'] {
+  border-color: color-mix(in oklab, var(--app-update-control-danger) 24%, transparent);
+  background: color-mix(in oklab, var(--app-update-control-danger) 10%, transparent);
+  color: var(--app-update-control-danger);
+}
+
+.bridge-app .app-update-logo-button[data-update-status='available']::after {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border: 1.5px solid var(--app-session-bg);
+  border-radius: 9999px;
+  background: currentColor;
+  content: '';
+}
+
 .bridge-app.theme-light .app-input-shell {
   border-color: rgba(73, 62, 54, 0.2);
   background: rgba(255, 255, 255, 0.58);

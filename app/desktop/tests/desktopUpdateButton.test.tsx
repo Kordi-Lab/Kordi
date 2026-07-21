@@ -101,6 +101,24 @@ test('WorkspaceSidebar keeps the update button visible while the native updater 
   assert.doesNotMatch(markup, /<span>Update<\/span>/);
 });
 
+test('WorkspaceSidebar centers and visually unifies the Chats header actions', () => {
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
+    onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
+  }) as never));
+  const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/styles/theme-overrides.css', import.meta.url), 'utf8');
+
+  assert.match(markup, /class="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2\.5"/);
+  assert.match(markup, /class="app-chat-sidebar-actions flex shrink-0 items-center gap-2"/);
+  assert.match(source, /app-update-logo-button app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
+  assert.match(source, /app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
+  assert.match(source, /h-4 w-4 stroke-\[2\.2\]/);
+  assert.doesNotMatch(source, /border border-slate-300\/70 bg-white text-slate-950/);
+  assert.match(css, /\.app-update-logo-button\[data-update-status='available'\]::after/);
+  assert.match(css, /--app-update-control-active: oklch/);
+  assert.match(css, /\.app-chat-sidebar-actions \.app-icon-button:focus-visible/);
+});
+
 test('WorkspaceSidebar does not expose the native updater control in web mode', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
     isNativeShell: false,
