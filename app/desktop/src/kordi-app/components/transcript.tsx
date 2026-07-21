@@ -424,7 +424,7 @@ function MessageContextMenuAction({ icon, label, action, onClick }: { icon: Reac
       type="button"
       role="menuitem"
       data-message-context-menu-action={action}
-      className="app-transient-row app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] transition"
+      className="app-transient-flat-action app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left text-[10px] font-normal leading-[1.45] transition"
       style={messageContextMenuTextStyle}
       onClick={onClick}
     >

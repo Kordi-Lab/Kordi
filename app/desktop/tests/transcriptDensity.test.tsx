@@ -608,6 +608,37 @@ test('message context menu content lists read receipts when available', () => {
   assert.doesNotMatch(markup, /py-2/);
 });
 
+test('message context menu actions stay flat at rest and retain interaction feedback', () => {
+  const message: Message = {
+    id: 'msg:flat-context-actions',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'Choose an action',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    onReplyMessage: () => undefined,
+    onForwardMessage: () => undefined,
+    onOpenMessageDetail: () => undefined,
+    onSelectMessage: () => undefined,
+    onRequestPinMessage: () => undefined,
+  }));
+  const css = readFileSync(new URL('../src/styles/transient-surfaces.css', import.meta.url), 'utf8');
+  const actionClasses = [...markup.matchAll(/data-message-context-menu-action="[^"]+" class="([^"]+)"/g)]
+    .map((match) => match[1]);
+
+  assert.equal(actionClasses.length, 6);
+  for (const className of actionClasses) {
+    assert.match(className, /(?:^|\s)app-transient-flat-action(?:\s|$)/);
+    assert.doesNotMatch(className, /(?:^|\s)app-transient-row(?:\s|$)/);
+  }
+  assert.match(markup, /app-transient-surface/);
+  assert.match(css, /\.app-transient-surface \.app-transient-flat-action \{[\s\S]*?background:\s*transparent;/);
+  assert.match(css, /\.app-transient-surface \.app-transient-flat-action:hover,[\s\S]*?\.app-transient-surface \.app-transient-flat-action:focus-visible \{[\s\S]*?background:\s*var\(--app-transient-hover-bg\);/);
+});
+
 test('message context menu exposes only wired actions for eligible messages', () => {
   const message: Message = {
     id: 'msg:quote-target',
