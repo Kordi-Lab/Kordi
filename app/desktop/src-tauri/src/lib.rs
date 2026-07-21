@@ -7,8 +7,8 @@ mod cloud_account_paths;
 mod cloud_oauth_loopback;
 mod cloud_session;
 mod project;
-mod skill_library;
 mod remote_image;
+mod skill_library;
 mod system_proxy;
 #[cfg(test)]
 mod test_support;
@@ -582,6 +582,7 @@ pub fn run() {
             skill_library::desktop_skill_library_write_file,
             skill_library::desktop_skill_library_set_enabled,
             skill_library::desktop_skill_library_remove,
+            skill_library::desktop_skill_community_providers,
             skill_library::desktop_skill_community_search,
             skill_library::desktop_skill_community_detail,
             skill_library::desktop_skill_community_install,

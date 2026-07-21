@@ -859,6 +859,7 @@ export function AgentStudioWorkspace({
   publishing,
   publishFeedback,
   publishDisabled,
+  draftMutationDisabled,
   chatModelOptions = [],
   composerProviderOptions = [],
   onUpdateModelRouting,
@@ -909,6 +910,7 @@ export function AgentStudioWorkspace({
   publishing: boolean;
   publishFeedback: AgentSaveFeedback | null;
   publishDisabled: boolean;
+  draftMutationDisabled: boolean;
   chatModelOptions?: ComposerModelOption[];
   composerProviderOptions?: ComposerProviderOption[];
   onUpdateModelRouting?: (
@@ -962,6 +964,7 @@ export function AgentStudioWorkspace({
           <button key={id} type="button" className={cn(activeTab === id && 'is-active')} onClick={() => setTab(id)} aria-current={activeTab === id ? 'page' : undefined}><Icon className="h-3.5 w-3.5" />{label}</button>
         ))}
       </nav>
+      <fieldset className="contents" disabled={draftMutationDisabled} aria-busy={draftMutationDisabled}>
       <div className="app-agent-studio-workspace-body">
         {activeTab === 'blueprint' ? (
           <BlueprintView
@@ -1036,10 +1039,11 @@ export function AgentStudioWorkspace({
           />
         ) : null}
       </div>
+      </fieldset>
       {(changes.length > 0 || creating && creationDraft) ? (
         <div className="app-agent-studio-workspace-footer">
           <span>{skillBuild ? 'New skill build' : creating ? 'New Factory build' : `${changes.length} unpublished change${changes.length === 1 ? '' : 's'}`}</span>
-          <div className="flex gap-2"><button type="button" className="app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing}>Discard</button><button type="button" className="app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? (skillBuild ? 'Installing…' : 'Publishing…') : skillBuild ? 'Install skill' : creating ? 'Create agent' : 'Publish'}</button></div>
+          <div className="flex gap-2"><button type="button" className="app-agent-studio-button is-ghost is-small" onClick={onDiscard} disabled={publishing || draftMutationDisabled}>Discard</button><button type="button" className="app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>{publishing ? (skillBuild ? 'Installing…' : 'Publishing…') : skillBuild ? 'Install skill' : creating ? 'Create agent' : 'Publish'}</button></div>
         </div>
       ) : null}
     </section>

@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { CloudAgentAccessScope } from '../src/features/cloud/cloudAgentsClient';
 import { AgentStudioWorkspace, CapabilitiesView } from '../src/kordi-app/agents/AgentStudioWorkspace';
-import { visibleAgentStudioTabIds, type AgentStudioConfigDraft } from '../src/kordi-app/agents/model';
+import { agentBuilderTargetKey, visibleAgentStudioTabIds, type AgentStudioConfigDraft } from '../src/kordi-app/agents/model';
 
 const availableSkills = ['navigate-knowledge', 'clarify-requirements'];
 const availableTools = ['write', 'web_fetch', 'web_search'];
@@ -61,6 +61,7 @@ function factoryWorkspace(onAccessScopeChange: (scope: CloudAgentAccessScope) =>
       publishing={false}
       publishFeedback={null}
       publishDisabled={false}
+      draftMutationDisabled={false}
       activeDetail={null}
       activeFilePreview={{ status: 'idle', text: '' }}
       activeFileDraft=""
@@ -76,6 +77,18 @@ function factoryWorkspace(onAccessScopeChange: (scope: CloudAgentAccessScope) =>
     />
   );
 }
+
+test('Factory draft targets are isolated by signed-in Cloud account', () => {
+  assert.equal(
+    agentBuilderTargetKey(' account/one ', 'agent:shared-id'),
+    'account:account%2Fone:agent:shared-id',
+  );
+  assert.equal(
+    agentBuilderTargetKey('account-two', 'agent:shared-id'),
+    'account:account-two:agent:shared-id',
+  );
+  assert.equal(agentBuilderTargetKey(null, 'create-agent'), 'device:create-agent');
+});
 
 test('Factory keeps its publish action only in the bottom-right workspace footer', () => {
   const agentsPageSource = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');

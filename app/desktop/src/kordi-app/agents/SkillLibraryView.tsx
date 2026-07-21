@@ -19,6 +19,7 @@ import {
 
 import {
   fetchDesktopCommunitySkillDetail,
+  fetchDesktopCommunitySkillProviders,
   fetchDesktopSkillLibraryDetail,
   installDesktopCommunitySkill,
   openDesktopExternalUrl,
@@ -431,21 +432,47 @@ function CommunitySkillView({
   onAddToAgent: (agentId: string, skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
 }) {
   const [provider, setProvider] = useState<CommunityProvider>('clawhub');
+  const [providers, setProviders] = useState<CommunityProvider[]>(['clawhub']);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<DesktopCommunitySkillSummary[]>([]);
   const [selected, setSelected] = useState<DesktopCommunitySkillSummary | null>(null);
   const [detail, setDetail] = useState<DesktopCommunitySkillDetail | null>(null);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const detailRequestRef = useRef(0);
   const installedSkill = useMemo(() => installedCommunityMatch(skills, selected), [selected, skills]);
+  const selectedPreviewFile = useMemo(() => (
+    detail?.files.find((file) => file.path === selectedFilePath)
+      ?? detail?.files.find((file) => file.path === 'SKILL.md')
+      ?? detail?.files[0]
+      ?? null
+  ), [detail, selectedFilePath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDesktopCommunitySkillProviders()
+      .then((available) => {
+        if (cancelled) return;
+        const next = available.filter((entry): entry is CommunityProvider => (
+          entry === 'clawhub' || entry === 'skills-sh'
+        ));
+        setProviders(next.length > 0 ? next : ['clawhub']);
+        if (!next.includes(provider)) setProvider('clawhub');
+      })
+      .catch(() => {
+        if (!cancelled) setProviders(['clawhub']);
+      });
+    return () => { cancelled = true; };
+  }, [provider]);
 
   useEffect(() => {
     detailRequestRef.current += 1;
     setSelected(null);
     setDetail(null);
+    setSelectedFilePath(null);
     setResults([]);
     setError(null);
   }, [provider]);
@@ -483,6 +510,7 @@ function CommunitySkillView({
     detailRequestRef.current = request;
     setSelected(skill);
     setDetail(null);
+    setSelectedFilePath(null);
     setDetailLoading(true);
     setError(null);
     try {
@@ -492,7 +520,14 @@ function CommunitySkillView({
         slug: skill.slug,
         version: skill.version,
       });
-      if (detailRequestRef.current === request) setDetail(next);
+      if (detailRequestRef.current === request) {
+        setDetail(next);
+        setSelectedFilePath(
+          next.files.find((file) => file.path === 'SKILL.md')?.path
+            ?? next.files[0]?.path
+            ?? null,
+        );
+      }
     } catch (detailError) {
       if (detailRequestRef.current === request) setError(errorMessage(detailError, `Kordi could not inspect ${skill.name}.`));
     } finally {
@@ -511,6 +546,7 @@ function CommunitySkillView({
         slug: detail.skill.slug,
         version: detail.skill.version,
         scope: 'global',
+        reviewedDigest: detail.reviewDigest,
       });
       await onInstalled(installed);
       setSelected((current) => current ? { ...current, installed: true } : current);
@@ -525,9 +561,10 @@ function CommunitySkillView({
   return (
     <div className="app-skill-community">
       <aside className="app-skill-community-results">
-        <div className="app-skill-community-provider" role="group" aria-label="Community source">
-          <button type="button" className={cn(provider === 'clawhub' && 'is-active')} onClick={() => setProvider('clawhub')}>ClawHub</button>
-          <button type="button" className={cn(provider === 'skills-sh' && 'is-active')} onClick={() => setProvider('skills-sh')}>Skills.sh</button>
+        <div className="app-skill-community-provider" role="group" aria-label="Community source" style={{ gridTemplateColumns: `repeat(${providers.length}, minmax(0, 1fr))` }}>
+          {providers.map((entry) => (
+            <button key={entry} type="button" className={cn(provider === entry && 'is-active')} onClick={() => setProvider(entry)}>{communityProviderLabel(entry)}</button>
+          ))}
         </div>
         <label className="app-agent-studio-search"><Search className="h-4 w-4" /><input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={`Search ${provider === 'clawhub' ? 'ClawHub' : 'Skills.sh'}`} /></label>
         <div className="app-skill-community-result-list">
@@ -567,8 +604,8 @@ function CommunitySkillView({
                   : <span className="app-agent-studio-state-pill is-enabled"><Check className="h-3.5 w-3.5" />Installed</span>
               ) : <button type="button" className="app-agent-studio-button is-primary" onClick={() => void install()} disabled={installing}>{installing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{installing ? 'Installing' : 'Install reviewed skill'}</button>}
             </div>
-            <div className="app-skill-community-file-strip" aria-label="Community skill files">{detail.files.map((file) => <span key={file.path}><FileText className="h-3.5 w-3.5" />{file.path}</span>)}</div>
-            <pre className="app-skill-community-code">{detail.skillMd}</pre>
+            <div className="app-skill-community-file-strip" aria-label="Community skill files">{detail.files.map((file) => <button key={file.path} type="button" className={cn(selectedPreviewFile?.path === file.path && 'is-active')} onClick={() => setSelectedFilePath(file.path)}><FileText className="h-3.5 w-3.5" />{file.path}</button>)}</div>
+            <pre className="app-skill-community-code">{selectedPreviewFile?.text ?? 'Preview unavailable for this binary file.'}</pre>
           </>
         ) : <SkillLibraryState title="Inspect before installing" detail="Select a result to review its instructions, files, provenance, and available security report." />}
       </section>

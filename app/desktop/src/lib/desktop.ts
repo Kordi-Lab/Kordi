@@ -529,20 +529,41 @@ export async function readDesktopAgentBuilderFile(draftId: string, path: string)
   return invokeDesktop<string>('desktop_agent_builder_read_file', { draftId, path });
 }
 
-export async function writeDesktopAgentBuilderFile(draftId: string, path: string, content: string) {
-  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_write_file', { draftId, path, content });
+export async function writeDesktopAgentBuilderFile(
+  draftId: string,
+  path: string,
+  content: string,
+  expectedFingerprint: string,
+) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_write_file', {
+    draftId,
+    path,
+    content,
+    expectedFingerprint,
+  });
 }
 
-export async function updateDesktopAgentBuilderDraft(draftId: string, draft: DesktopAgentBuilderDraft) {
-  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_update_draft', { draftId, draft });
+export async function updateDesktopAgentBuilderDraft(
+  draftId: string,
+  draft: DesktopAgentBuilderDraft,
+  expectedFingerprint: string,
+) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_update_draft', {
+    draftId,
+    draft,
+    expectedFingerprint,
+  });
 }
 
-export async function testDesktopAgentBuilderDraft(draftId: string) {
-  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_test', { draftId });
+export async function testDesktopAgentBuilderDraft(draftId: string, expectedFingerprint: string) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_test', { draftId, expectedFingerprint });
 }
 
-export async function markDesktopAgentBuilderPublished(draftId: string) {
-  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_mark_published', { draftId });
+export async function markDesktopAgentBuilderPublished(draftId: string, expectedFingerprint: string) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_mark_published', {
+    draftId,
+    expectedFingerprint,
+  });
 }
 
 export type DesktopSkillLibraryEntry = {
@@ -596,6 +617,7 @@ export type DesktopCommunitySkillFile = {
   size: number;
   sha256?: string | null;
   contentType?: string | null;
+  text?: string | null;
 };
 
 export type DesktopCommunitySkillDetail = {
@@ -605,17 +627,20 @@ export type DesktopCommunitySkillDetail = {
   securityStatus: string;
   securitySummary: string;
   digest?: string | null;
+  reviewDigest: string;
 };
 
 export async function installDesktopAgentBuilderSkill(
   draftId: string,
   skillName: string,
-  scope: 'global' | 'project' = 'global',
+  scope: 'global' | 'project',
+  expectedFingerprint: string,
 ) {
   return invokeDesktop<DesktopSkillLibraryEntry>('desktop_agent_builder_install_skill', {
     draftId,
     skillName,
     scope,
+    expectedFingerprint,
   });
 }
 
@@ -652,6 +677,11 @@ export async function searchDesktopCommunitySkills(
   return invokeDesktop<DesktopCommunitySkillSummary[]>('desktop_skill_community_search', { provider, query });
 }
 
+export async function fetchDesktopCommunitySkillProviders() {
+  if (!isNativeDesktopShell()) return ['clawhub'] as Array<'clawhub' | 'skills-sh'>;
+  return invokeDesktop<Array<'clawhub' | 'skills-sh'>>('desktop_skill_community_providers');
+}
+
 export async function fetchDesktopCommunitySkillDetail(input: {
   provider: 'clawhub' | 'skills-sh';
   owner?: string | null;
@@ -667,12 +697,13 @@ export async function installDesktopCommunitySkill(input: {
   slug: string;
   version?: string | null;
   scope: 'global' | 'project';
+  reviewedDigest: string;
 }) {
   return invokeDesktop<DesktopSkillLibraryEntry>('desktop_skill_community_install', input);
 }
 
-export async function discardDesktopAgentBuilderDraft(draftId: string) {
-  return invokeDesktop<void>('desktop_agent_builder_discard', { draftId });
+export async function discardDesktopAgentBuilderDraft(draftId: string, expectedFingerprint: string) {
+  return invokeDesktop<void>('desktop_agent_builder_discard', { draftId, expectedFingerprint });
 }
 
 export async function fetchDesktopBridgeState() {

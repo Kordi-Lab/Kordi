@@ -17,7 +17,7 @@ import { AgentStudioConversation } from './AgentStudioConversation';
 import { AgentStudioRail } from './AgentStudioRail';
 import { AgentStudioWorkspace } from './AgentStudioWorkspace';
 import { SkillLibraryView } from './SkillLibraryView';
-import { cloudAgentAccessLabel, getAgentConfigPath, isRepoFilePath, type AgentSaveFeedback, type AgentStudioCapabilityKind, type FactoryArtifactKind, type FactorySection } from './model';
+import { agentBuilderTargetKey, cloudAgentAccessLabel, getAgentConfigPath, isRepoFilePath, type AgentSaveFeedback, type AgentStudioCapabilityKind, type FactoryArtifactKind, type FactorySection } from './model';
 import type { AgentsPageProps } from './model';
 import { type ShapeAgentDraft } from './shapeAgentDraft';
 import { useAgentBuilderSession } from './useAgentBuilderSession';
@@ -136,6 +136,7 @@ export function AgentsPage({
   agents,
   activeAgentId,
   activeAgent,
+  cloudAccountId,
   localProfileAvatarSeed,
   localProfileDisplayName,
   localProfileImageUrl,
@@ -220,7 +221,10 @@ export function AgentsPage({
     setCompactPane('conversation');
   }, [creating, selectedAgent?.id]);
 
-  const builderTargetKey = creating ? `create-${creatingKind}` : selectedAgent ? `agent:${selectedAgent.id}` : 'agent:none';
+  const builderTargetKey = agentBuilderTargetKey(
+    cloudAccountId,
+    creating ? `create-${creatingKind}` : selectedAgent ? `agent:${selectedAgent.id}` : 'agent:none',
+  );
   const builderSeed = useMemo<DesktopAgentBuilderSeed>(() => creatingSkill ? {
     name: 'New skill build',
     role: 'Reusable Kordi skill',
@@ -297,7 +301,18 @@ export function AgentsPage({
       && onSetAgentSkillEnabled,
   );
   const skillAgentTargets = useMemo(() => agents
-    .filter((agent) => agent.isOwned)
+    .filter((agent) => {
+      if (!agent.isOwned) return false;
+      if (agent.cloudAgentId) return Boolean(onUpdateCloudAgent);
+      const configPath = getAgentConfigPath(agent);
+      const hasWritableConfig = Boolean(
+        isNativeDesktopShell() && configPath && isRepoFilePath(configPath),
+      );
+      const canToggleActiveRuntime = Boolean(
+        (agent.id === 'desktop:local-agent' || agent.isBridgeActive) && onSetAgentSkillEnabled,
+      );
+      return hasWritableConfig || canToggleActiveRuntime;
+    })
     .map((agent) => ({
       id: agent.id,
       name: agent.name,
@@ -305,7 +320,7 @@ export function AgentsPage({
       avatarSeed: agent.avatarSeed,
       profileImageUrl: agent.profileImageUrl,
       loadedSkills: agentConfigs[agent.id]?.loadedSkills ?? agent.loadedSkills,
-    })), [agentConfigs, agents]);
+    })), [agentConfigs, agents, onSetAgentSkillEnabled, onUpdateCloudAgent]);
   const canEditPrompt = Boolean(builder.status?.draft);
   const editableCapabilityKinds = useMemo(() => {
     const kinds = new Set<AgentStudioCapabilityKind>();
@@ -449,7 +464,12 @@ export function AgentsPage({
           const status = builder.status;
           const skill = status?.draft?.skills[0];
           if (!status || !skill) throw new Error('The Factory draft does not contain an installable skill.');
-          const installed = await installDesktopAgentBuilderSkill(status.draftId, skill.name, 'global');
+          const installed = await installDesktopAgentBuilderSkill(
+            status.draftId,
+            skill.name,
+            'global',
+            status.validation.fingerprint,
+          );
           await builder.markPublished();
           await skillLibrary.refresh();
           setCreationDraft(null);
@@ -547,7 +567,8 @@ export function AgentsPage({
   };
 
   const discard = async () => {
-    await builder.discard();
+    const discarded = await builder.discard();
+    if (!discarded) return;
     if (creating) {
       setCreationDraft(null);
       setBuilderGeneration((current) => current + 1);
@@ -609,8 +630,10 @@ export function AgentsPage({
   };
 
   const addLibrarySkillToAgent = async (targetAgentId: string, skill: DesktopSkillLibraryEntry, skillMd: string) => {
-    const targetAgent = agents.find((agent) => agent.id === targetAgentId && agent.isOwned);
-    if (!targetAgent) throw new Error('Choose an agent you own.');
+    const targetAgent = agents.find((agent) => agent.id === targetAgentId);
+    if (!targetAgent || !skillAgentTargets.some((candidate) => candidate.id === targetAgentId)) {
+      throw new Error('Choose an agent that can publish skill changes.');
+    }
 
     const isOpenTarget = !creating && selectedAgent?.id === targetAgent.id;
     let result: DesktopAgentBuilderStatus | null = null;
@@ -618,13 +641,17 @@ export function AgentsPage({
       result = await builder.updateDraft((draft) => draftWithLibrarySkill(draft, skill, skillMd));
       if (!result) throw new Error(`Kordi could not update ${targetAgent.name}'s draft.`);
     } else {
-      const opened = await openDesktopAgentBuilder(`agent:${targetAgent.id}`, agentBuilderSeedForAgent(targetAgent));
+      const opened = await openDesktopAgentBuilder(
+        agentBuilderTargetKey(cloudAccountId, `agent:${targetAgent.id}`),
+        agentBuilderSeedForAgent(targetAgent),
+      );
       if (!opened?.status.draft || opened.status.lifecycle !== 'draft') {
         throw new Error(`Kordi could not open ${targetAgent.name}'s private draft.`);
       }
       result = await updateDesktopAgentBuilderDraft(
         opened.status.draftId,
         draftWithLibrarySkill(opened.status.draft, skill, skillMd),
+        opened.status.validation.fingerprint,
       );
       if (isOpenTarget) setBuilderGeneration((current) => current + 1);
     }
@@ -788,6 +815,13 @@ export function AgentsPage({
               publishing={publishing}
               publishFeedback={publishFeedback ?? activeSaveFeedback}
               publishDisabled={publishDisabled}
+              draftMutationDisabled={Boolean(
+                builder.opening
+                  || builder.testing
+                  || builder.updating
+                  || publishing
+                  || (builder.activeTurn && !builder.activeTurn.completed)
+              )}
               chatModelOptions={chatModelOptions}
               composerProviderOptions={composerProviderOptions}
               onUpdateModelRouting={canStageRouting ? stageModelRouting : undefined}

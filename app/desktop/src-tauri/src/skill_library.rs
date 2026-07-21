@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
@@ -43,6 +44,7 @@ pub struct DesktopCommunitySkillFile {
     size: u64,
     sha256: Option<String>,
     content_type: Option<String>,
+    text: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -54,6 +56,7 @@ pub struct DesktopCommunitySkillDetail {
     security_status: String,
     security_summary: String,
     digest: Option<String>,
+    review_digest: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,8 +97,6 @@ struct ClawHubSkill {
     display_name: String,
     #[serde(default)]
     summary: String,
-    #[serde(default)]
-    description: String,
     #[serde(default)]
     stats: ClawHubStats,
     updated_at: Option<i64>,
@@ -370,7 +371,7 @@ async fn clawhub_detail(
     slug: &str,
     requested_version: Option<&str>,
     installed: &[SkillLibraryEntry],
-) -> Result<(DesktopCommunitySkillDetail, ClawHubVersion), String> {
+) -> Result<(DesktopCommunitySkillDetail, Vec<SkillBundleFile>), String> {
     let detail_query = owner
         .map(|value| vec![("owner", value)])
         .unwrap_or_default();
@@ -435,26 +436,62 @@ async fn clawhub_detail(
         _ => "No complete security verdict is available. Inspect every file before installing."
             .to_string(),
     };
-    let skill_md = if envelope.skill.description.trim_start().starts_with("---") {
-        envelope.skill.description.clone()
-    } else {
-        fetch_clawhub_file(
-            client,
-            owner.as_deref(),
-            slug,
-            &version,
-            &ClawHubFile {
-                path: "SKILL.md".to_string(),
-                size: 0,
-                sha256: None,
-                content_type: Some("text/markdown".to_string()),
+    if version_envelope.version.files.len() > MAX_COMMUNITY_FILES {
+        return Err(format!(
+            "This skill has more than {MAX_COMMUNITY_FILES} files and cannot be reviewed safely"
+        ));
+    }
+    if !version_envelope
+        .version
+        .files
+        .iter()
+        .any(|file| file.path == "SKILL.md")
+    {
+        return Err("ClawHub version metadata does not include SKILL.md".to_string());
+    }
+    let mut bundle_files = Vec::with_capacity(version_envelope.version.files.len());
+    let mut public_files = Vec::with_capacity(version_envelope.version.files.len());
+    let downloads =
+        futures_util::stream::iter(version_envelope.version.files.clone().into_iter().map(
+            |file| {
+                let client = client.clone();
+                let owner = owner.clone();
+                let slug = slug.to_string();
+                let version = version.clone();
+                async move {
+                    let bytes =
+                        fetch_clawhub_file(&client, owner.as_deref(), &slug, &version, &file)
+                            .await?;
+                    Ok::<_, String>((file, bytes))
+                }
             },
-        )
-        .await
-        .and_then(|bytes| {
-            String::from_utf8(bytes).map_err(|_| "ClawHub SKILL.md is not valid UTF-8".to_string())
-        })?
-    };
+        ))
+        .buffer_unordered(6)
+        .collect::<Vec<_>>()
+        .await;
+    for download in downloads {
+        let (file, bytes) = download?;
+        let actual_sha256 = hex_digest(&bytes);
+        public_files.push(DesktopCommunitySkillFile {
+            path: file.path.clone(),
+            size: bytes.len() as u64,
+            sha256: Some(actual_sha256),
+            content_type: file.content_type.clone(),
+            text: String::from_utf8(bytes.clone()).ok(),
+        });
+        bundle_files.push(SkillBundleFile {
+            path: file.path.clone(),
+            bytes,
+        });
+    }
+    public_files.sort_by(|left, right| left.path.cmp(&right.path));
+    bundle_files.sort_by(|left, right| left.path.cmp(&right.path));
+    let review_digest = reviewed_bundle_digest(&bundle_files)?;
+    let skill_md = bundle_files
+        .iter()
+        .find(|file| file.path == "SKILL.md")
+        .and_then(|file| String::from_utf8(file.bytes.clone()).ok())
+        .ok_or_else(|| "ClawHub SKILL.md is not valid UTF-8".to_string())?;
     let summary = DesktopCommunitySkillSummary {
         id: format!("clawhub:{}:{}", owner.as_deref().unwrap_or("unknown"), slug),
         provider: "clawhub".to_string(),
@@ -475,17 +512,7 @@ async fn clawhub_detail(
     };
     let detail = DesktopCommunitySkillDetail {
         skill: summary,
-        files: version_envelope
-            .version
-            .files
-            .iter()
-            .map(|file| DesktopCommunitySkillFile {
-                path: file.path.clone(),
-                size: file.size,
-                sha256: file.sha256.clone(),
-                content_type: file.content_type.clone(),
-            })
-            .collect(),
+        files: public_files,
         skill_md,
         security_status,
         security_summary,
@@ -496,8 +523,9 @@ async fn clawhub_detail(
             .and_then(|security| security.get("sha256hash"))
             .and_then(serde_json::Value::as_str)
             .map(ToOwned::to_owned),
+        review_digest,
     };
-    Ok((detail, version_envelope.version))
+    Ok((detail, bundle_files))
 }
 
 async fn skills_sh_detail(
@@ -505,7 +533,7 @@ async fn skills_sh_detail(
     source: &str,
     slug: &str,
     installed: &[SkillLibraryEntry],
-) -> Result<(DesktopCommunitySkillDetail, Vec<SkillsShFile>), String> {
+) -> Result<(DesktopCommunitySkillDetail, Vec<SkillBundleFile>), String> {
     let token = skills_sh_token()?;
     let id = format!("{source}/{slug}");
     if id
@@ -579,6 +607,14 @@ async fn skills_sh_detail(
         source_url: format!("https://skills.sh/{}/{}", detail.source, detail.slug),
         installed: installed_match(installed, "skills-sh", Some(&detail.source), &detail.slug),
     };
+    let bundle_files = files
+        .iter()
+        .map(|file| SkillBundleFile {
+            path: file.path.clone(),
+            bytes: file.contents.as_bytes().to_vec(),
+        })
+        .collect::<Vec<_>>();
+    let review_digest = reviewed_bundle_digest(&bundle_files)?;
     let public_files = files
         .iter()
         .map(|file| DesktopCommunitySkillFile {
@@ -590,6 +626,7 @@ async fn skills_sh_detail(
             } else {
                 "text/plain".to_string()
             }),
+            text: Some(file.contents.clone()),
         })
         .collect();
     Ok((
@@ -600,8 +637,9 @@ async fn skills_sh_detail(
             security_status,
             security_summary,
             digest: detail.hash,
+            review_digest,
         },
-        files,
+        bundle_files,
     ))
 }
 
@@ -639,6 +677,12 @@ async fn fetch_clawhub_file(
         ));
     }
     let bytes = limited_bytes(response, MAX_COMMUNITY_FILE_BYTES).await?;
+    if file.size > 0 && bytes.len() as u64 != file.size {
+        return Err(format!(
+            "{} did not match the size declared by ClawHub",
+            file.path
+        ));
+    }
     if let Some(expected) = file.sha256.as_deref() {
         let actual = hex_digest(&bytes);
         if !actual.eq_ignore_ascii_case(expected) {
@@ -706,6 +750,43 @@ fn hex_digest(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
+}
+
+fn reviewed_bundle_digest(files: &[SkillBundleFile]) -> Result<String, String> {
+    if files.is_empty() || files.len() > MAX_COMMUNITY_FILES {
+        return Err(format!(
+            "Community skill bundles must contain between 1 and {MAX_COMMUNITY_FILES} files"
+        ));
+    }
+    let mut ordered = files.iter().collect::<Vec<_>>();
+    ordered.sort_by(|left, right| left.path.cmp(&right.path));
+    let mut seen = BTreeSet::new();
+    let mut total = 0_usize;
+    let mut digest = Sha256::new();
+    for file in ordered {
+        if !safe_relative_path(&file.path) || !seen.insert(file.path.clone()) {
+            return Err(format!(
+                "Community skill file path is invalid: {}",
+                file.path
+            ));
+        }
+        if file.bytes.len() > MAX_COMMUNITY_FILE_BYTES {
+            return Err(format!("{} exceeds the 1 MB per-file limit", file.path));
+        }
+        total = total.saturating_add(file.bytes.len());
+        if total > MAX_COMMUNITY_BUNDLE_BYTES {
+            return Err("Community skill bundle exceeds the 4 MB limit".to_string());
+        }
+        digest.update(file.path.as_bytes());
+        digest.update([0]);
+        digest.update((file.bytes.len() as u64).to_le_bytes());
+        digest.update(&file.bytes);
+        digest.update([0]);
+    }
+    if !seen.contains("SKILL.md") {
+        return Err("Community skill bundle does not include SKILL.md".to_string());
+    }
+    Ok(format!("{:x}", digest.finalize()))
 }
 
 fn install_scope(value: &str) -> Result<SkillInstallScope, String> {
@@ -784,6 +865,15 @@ pub async fn desktop_skill_library_remove(
 }
 
 #[tauri::command]
+pub fn desktop_skill_community_providers() -> Vec<String> {
+    let mut providers = vec!["clawhub".to_string()];
+    if skills_sh_token().is_ok() {
+        providers.push("skills-sh".to_string());
+    }
+    providers
+}
+
+#[tauri::command]
 pub async fn desktop_skill_community_search(
     provider: String,
     query: String,
@@ -839,6 +929,7 @@ pub async fn desktop_skill_community_install(
     slug: String,
     version: Option<String>,
     scope: String,
+    reviewed_digest: String,
 ) -> Result<SkillLibraryEntry, String> {
     let cwd = cwd()?;
     let installed_before = skill_library::list_skills(&cwd).map_err(|error| error.to_string())?;
@@ -846,47 +937,17 @@ pub async fn desktop_skill_community_install(
     let install_scope = install_scope(&scope)?;
     let (detail, files) = match provider.trim() {
         "clawhub" => {
-            let (detail, version_detail) = clawhub_detail(
+            clawhub_detail(
                 &client,
                 owner.as_deref(),
                 slug.trim(),
                 version.as_deref(),
                 &installed_before,
             )
-            .await?;
-            if version_detail.files.len() > MAX_COMMUNITY_FILES {
-                return Err(format!(
-                    "This skill has more than {MAX_COMMUNITY_FILES} files and cannot be installed safely"
-                ));
-            }
-            let mut total = 0usize;
-            let mut bundle_files = Vec::with_capacity(version_detail.files.len());
-            for file in &version_detail.files {
-                let bytes = fetch_clawhub_file(
-                    &client,
-                    detail.skill.owner.as_deref(),
-                    &detail.skill.slug,
-                    detail
-                        .skill
-                        .version
-                        .as_deref()
-                        .unwrap_or(&version_detail.version),
-                    file,
-                )
-                .await?;
-                total = total.saturating_add(bytes.len());
-                if total > MAX_COMMUNITY_BUNDLE_BYTES {
-                    return Err("Community skill bundle exceeds the 4 MB limit".to_string());
-                }
-                bundle_files.push(SkillBundleFile {
-                    path: file.path.clone(),
-                    bytes,
-                });
-            }
-            (detail, bundle_files)
+            .await?
         }
         "skills-sh" => {
-            let (detail, source_files) = skills_sh_detail(
+            skills_sh_detail(
                 &client,
                 owner
                     .as_deref()
@@ -894,27 +955,19 @@ pub async fn desktop_skill_community_install(
                 slug.trim(),
                 &installed_before,
             )
-            .await?;
-            let total = source_files
-                .iter()
-                .map(|file| file.contents.len())
-                .sum::<usize>();
-            if source_files.len() > MAX_COMMUNITY_FILES || total > MAX_COMMUNITY_BUNDLE_BYTES {
-                return Err(
-                    "Community skill bundle exceeds Kordi's safe install limits".to_string()
-                );
-            }
-            let files = source_files
-                .into_iter()
-                .map(|file| SkillBundleFile {
-                    path: file.path,
-                    bytes: file.contents.into_bytes(),
-                })
-                .collect();
-            (detail, files)
+            .await?
         }
         _ => return Err("Unknown community skill provider".to_string()),
     };
+    let installed_review_digest = reviewed_bundle_digest(&files)?;
+    if reviewed_digest.trim().is_empty()
+        || !installed_review_digest.eq_ignore_ascii_case(reviewed_digest.trim())
+    {
+        return Err(
+            "This community skill changed after review. Inspect the current files before installing."
+                .to_string(),
+        );
+    }
 
     let previously_installed = detail.skill.installed;
     let entry = skill_library::install_skill_bundle(
@@ -929,7 +982,7 @@ pub async fn desktop_skill_community_install(
             owner: detail.skill.owner.clone(),
             version: detail.skill.version.clone(),
             source_url: Some(detail.skill.source_url.clone()),
-            digest: detail.digest.clone(),
+            digest: Some(installed_review_digest),
             files,
         },
     )
@@ -968,5 +1021,44 @@ mod tests {
             frontmatter_field(content, "description").as_deref(),
             Some("A useful skill")
         );
+    }
+
+    #[test]
+    fn reviewed_bundle_digest_is_order_independent_and_content_bound() {
+        let first = vec![
+            SkillBundleFile {
+                path: "scripts/check.sh".to_string(),
+                bytes: b"exit 0\n".to_vec(),
+            },
+            SkillBundleFile {
+                path: "SKILL.md".to_string(),
+                bytes: b"---\nname: example\n---\n".to_vec(),
+            },
+        ];
+        let reversed = first.iter().cloned().rev().collect::<Vec<_>>();
+        assert_eq!(
+            reviewed_bundle_digest(&first).expect("digest first bundle"),
+            reviewed_bundle_digest(&reversed).expect("digest reversed bundle")
+        );
+        let mut changed = first.clone();
+        changed[0].bytes = b"exit 1\n".to_vec();
+        assert_ne!(
+            reviewed_bundle_digest(&first).expect("digest first bundle"),
+            reviewed_bundle_digest(&changed).expect("digest changed bundle")
+        );
+    }
+
+    #[test]
+    fn reviewed_bundle_digest_rejects_unsafe_or_incomplete_bundles() {
+        let unsafe_files = vec![SkillBundleFile {
+            path: "../SKILL.md".to_string(),
+            bytes: Vec::new(),
+        }];
+        assert!(reviewed_bundle_digest(&unsafe_files).is_err());
+        let missing_manifest = vec![SkillBundleFile {
+            path: "scripts/check.sh".to_string(),
+            bytes: Vec::new(),
+        }];
+        assert!(reviewed_bundle_digest(&missing_manifest).is_err());
     }
 }

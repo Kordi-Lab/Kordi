@@ -28,7 +28,13 @@ function isNativeDesktopShell() {
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return fallback;
+}
+
+function isStaleDraftError(message: string) {
+  return message.includes('changed in another session');
 }
 
 function wait(milliseconds: number) {
@@ -181,7 +187,10 @@ export function useAgentBuilderSession({
       await updateQueueRef.current;
       const currentStatus = statusRef.current;
       if (!currentStatus) return null;
-      const next = await testDesktopAgentBuilderDraft(currentStatus.draftId);
+      const next = await testDesktopAgentBuilderDraft(
+        currentStatus.draftId,
+        currentStatus.validation.fingerprint,
+      );
       commitStatus(next);
       return next;
     } catch (testError) {
@@ -203,13 +212,25 @@ export function useAgentBuilderSession({
         if (!currentStatus || !currentDraft || generationRef.current !== generation) return null;
         setError(null);
         const draft = typeof update === 'function' ? update(currentDraft) : update;
-        const next = await updateDesktopAgentBuilderDraft(currentStatus.draftId, draft);
+        const next = await updateDesktopAgentBuilderDraft(
+          currentStatus.draftId,
+          draft,
+          currentStatus.validation.fingerprint,
+        );
         if (generationRef.current !== generation) return null;
         commitStatus(next);
         return next;
       } catch (updateError) {
         if (generationRef.current === generation) {
-          setError(errorMessage(updateError, 'Unable to update the agent draft.'));
+          const message = errorMessage(updateError, 'Unable to update the agent draft.');
+          setError(message);
+          if (isStaleDraftError(message) && statusRef.current) {
+            try {
+              await refresh(statusRef.current);
+            } catch {
+              // Keep the conflict message when the refreshed draft is unavailable.
+            }
+          }
         }
         return null;
       } finally {
@@ -222,13 +243,16 @@ export function useAgentBuilderSession({
     const result = updateQueueRef.current.then(run, run);
     updateQueueRef.current = result.then(() => undefined, () => undefined);
     return result;
-  }, [commitStatus]);
+  }, [commitStatus, refresh]);
 
   const markPublished = useCallback(async () => {
     await updateQueueRef.current;
     const currentStatus = statusRef.current;
     if (!currentStatus) return null;
-    const next = await markDesktopAgentBuilderPublished(currentStatus.draftId);
+    const next = await markDesktopAgentBuilderPublished(
+      currentStatus.draftId,
+      currentStatus.validation.fingerprint,
+    );
     commitStatus(next);
     return next;
   }, [commitStatus]);
@@ -239,21 +263,60 @@ export function useAgentBuilderSession({
   }, [status]);
 
   const writeFile = useCallback(async (path: string, content: string) => {
-    if (!status) throw new Error('Kordi Factory draft is unavailable.');
-    const next = await writeDesktopAgentBuilderFile(status.draftId, path, content);
-    commitStatus(next);
-    return next;
-  }, [commitStatus, status]);
+    await updateQueueRef.current;
+    const currentStatus = statusRef.current;
+    if (!currentStatus) throw new Error('Kordi Factory draft is unavailable.');
+    try {
+      const next = await writeDesktopAgentBuilderFile(
+        currentStatus.draftId,
+        path,
+        content,
+        currentStatus.validation.fingerprint,
+      );
+      commitStatus(next);
+      return next;
+    } catch (writeError) {
+      const message = errorMessage(writeError, 'Unable to save the Factory file.');
+      setError(message);
+      if (isStaleDraftError(message)) {
+        try {
+          await refresh(currentStatus);
+        } catch {
+          // Keep the conflict message when the refreshed draft is unavailable.
+        }
+      }
+      throw new Error(message);
+    }
+  }, [commitStatus, refresh]);
 
   const discard = useCallback(async () => {
-    if (!status) return;
-    await discardDesktopAgentBuilderDraft(status.draftId);
-    commitStatus(null);
-    setDetail(null);
-    setActiveTurn(null);
-    setOptimisticPrompt(null);
-    setOptimisticAttachments([]);
-  }, [commitStatus, status]);
+    await updateQueueRef.current;
+    const currentStatus = statusRef.current;
+    if (!currentStatus) return false;
+    try {
+      await discardDesktopAgentBuilderDraft(
+        currentStatus.draftId,
+        currentStatus.validation.fingerprint,
+      );
+      commitStatus(null);
+      setDetail(null);
+      setActiveTurn(null);
+      setOptimisticPrompt(null);
+      setOptimisticAttachments([]);
+      return true;
+    } catch (discardError) {
+      const message = errorMessage(discardError, 'Unable to discard the Factory draft.');
+      setError(message);
+      if (isStaleDraftError(message)) {
+        try {
+          await refresh(currentStatus);
+        } catch {
+          // Keep the conflict message when the refreshed draft is unavailable.
+        }
+      }
+      return false;
+    }
+  }, [commitStatus, refresh]);
 
   return {
     status,

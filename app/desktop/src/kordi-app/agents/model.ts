@@ -6,6 +6,7 @@ export type AgentsPageProps = {
   agents: Agent[];
   activeAgentId: string;
   activeAgent?: Agent;
+  cloudAccountId?: string | null;
   localProfileAvatarSeed?: string | null;
   localProfileDisplayName?: string | null;
   localProfileImageUrl?: string | null;
@@ -50,6 +51,14 @@ export type AgentStudioCapabilityKind = 'skill' | 'tool' | 'plugin';
 export type FactoryArtifactKind = 'agent' | 'skill';
 
 export type FactorySection = 'builds' | 'skills';
+
+export function agentBuilderTargetKey(accountId: string | null | undefined, target: string) {
+  const normalizedAccountId = accountId?.trim();
+  const scope = normalizedAccountId
+    ? `account:${encodeURIComponent(normalizedAccountId)}`
+    : 'device';
+  return `${scope}:${target}`;
+}
 
 export type AgentStudioTab = 'blueprint' | 'capabilities' | 'files' | 'runs' | 'history';
 

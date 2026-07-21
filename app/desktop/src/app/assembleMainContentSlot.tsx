@@ -105,6 +105,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         agents: args.displayedAgents,
         activeAgentId: args.activeAgentId,
         activeAgent: args.activeAgent,
+        cloudAccountId: args.cloudSession?.account?.accountId,
         localProfileAvatarSeed: args.localProfileAvatarSeed,
         localProfileDisplayName: args.localProfileDisplayName,
         localProfileImageUrl: args.localProfileImageUrl,

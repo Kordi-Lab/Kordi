@@ -27,6 +27,8 @@ const TEST_REPORT_FILE: &str = "test-report.json";
 const MAX_AGENT_BYTES: u64 = 128 * 1024;
 const MAX_PROMPT_BYTES: u64 = 96 * 1024;
 const MAX_SKILL_BYTES: u64 = 96 * 1024;
+const MAX_SKILL_SUPPORT_FILE_BYTES: u64 = 512 * 1024;
+const MAX_SKILL_BUNDLE_FILES: usize = 64;
 const MAX_SKILLS: usize = 24;
 const MAX_TOOLS: usize = 48;
 const MAX_PLUGINS: usize = 24;
@@ -219,7 +221,7 @@ fn drafts_root() -> PathBuf {
     kordi_core::config::preferred_global_settings_dir().join("agent-drafts")
 }
 
-fn builder_open_lock() -> &'static tokio::sync::Mutex<()> {
+fn builder_mutation_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
@@ -317,6 +319,20 @@ fn is_canonical_skill_file_path(path: &Path) -> bool {
         || components[0].as_os_str() != "skills"
         || components[2].as_os_str() != "SKILL.md"
     {
+        return false;
+    }
+    let Some(slug) = components[1].as_os_str().to_str() else {
+        return false;
+    };
+    !slug.is_empty() && clean_slug(slug) == slug
+}
+
+fn is_skill_bundle_file_path(path: &Path) -> bool {
+    if !is_safe_relative_path(path) || path.to_string_lossy().len() > 512 {
+        return false;
+    }
+    let components = path.components().collect::<Vec<_>>();
+    if components.len() < 3 || components[0].as_os_str() != "skills" {
         return false;
     }
     let Some(slug) = components[1].as_os_str().to_str() else {
@@ -732,6 +748,62 @@ fn workspace_fingerprint(workspace: &Path) -> Result<(String, Vec<PathBuf>), Str
     Ok((format!("{:x}", digest.finalize()), files))
 }
 
+fn collect_skill_bundle_files(
+    root: &Path,
+    current: &Path,
+    files: &mut Vec<SkillBundleFile>,
+    total_bytes: &mut u64,
+) -> Result<(), String> {
+    for entry in fs::read_dir(current)
+        .map_err(|error| format!("Unable to inspect {}: {error}", current.display()))?
+    {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("Unable to inspect {}: {error}", path.display()))?;
+        let relative = path.strip_prefix(root).map_err(|error| error.to_string())?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "Skill bundles cannot contain symbolic links: {}",
+                relative.display()
+            ));
+        }
+        if file_type.is_dir() {
+            collect_skill_bundle_files(root, &path, files, total_bytes)?;
+            continue;
+        }
+        if !file_type.is_file() || !is_safe_relative_path(relative) {
+            return Err(format!(
+                "Skill bundle file is invalid: {}",
+                relative.display()
+            ));
+        }
+        if files.len() >= MAX_SKILL_BUNDLE_FILES {
+            return Err(format!(
+                "A built skill may contain at most {MAX_SKILL_BUNDLE_FILES} files"
+            ));
+        }
+        let bytes = fs::read(&path)
+            .map_err(|error| format!("Unable to read {}: {error}", path.display()))?;
+        if bytes.len() as u64 > MAX_SKILL_SUPPORT_FILE_BYTES {
+            return Err(format!("Skill file is too large: {}", relative.display()));
+        }
+        *total_bytes = total_bytes.saturating_add(bytes.len() as u64);
+        if *total_bytes > MAX_FINGERPRINT_BYTES {
+            return Err(format!(
+                "A built skill may total at most {} MB",
+                MAX_FINGERPRINT_BYTES / (1024 * 1024)
+            ));
+        }
+        files.push(SkillBundleFile {
+            path: relative.to_string_lossy().to_string(),
+            bytes,
+        });
+    }
+    Ok(())
+}
+
 fn validate_workspace(
     workspace: &Path,
 ) -> (
@@ -746,6 +818,7 @@ fn validate_workspace(
     });
     let mut expected_files =
         BTreeSet::from([PathBuf::from(AGENT_FILE), PathBuf::from(PROMPT_FILE)]);
+    let mut declared_skill_roots = BTreeSet::new();
 
     let agent_text = read_limited_inside(workspace, Path::new(AGENT_FILE), MAX_AGENT_BYTES);
     let mut agent_file = None;
@@ -866,6 +939,9 @@ fn validate_workspace(
             };
             let display_path = relative.to_string_lossy().to_string();
             expected_files.insert(relative.clone());
+            if let Some(parent) = relative.parent() {
+                declared_skill_roots.insert(parent.to_path_buf());
+            }
             match read_limited_inside(workspace, &relative, MAX_SKILL_BYTES) {
                 Ok(content) => {
                     let header_name = frontmatter_name(&content);
@@ -914,8 +990,41 @@ fn validate_workspace(
         }
     }
 
+    let mut skill_bundle_file_counts = declared_skill_roots
+        .iter()
+        .map(|root| (root.clone(), 1_usize))
+        .collect::<std::collections::BTreeMap<_, _>>();
     for relative in workspace_files {
         if expected_files.contains(&relative) {
+            continue;
+        }
+        if let Some(skill_root) = declared_skill_roots
+            .iter()
+            .find(|skill_root| relative.starts_with(skill_root.as_path()))
+        {
+            let count = skill_bundle_file_counts
+                .entry(skill_root.clone())
+                .or_default();
+            *count += 1;
+            let size = workspace
+                .join(&relative)
+                .metadata()
+                .map(|metadata| metadata.len())
+                .unwrap_or(MAX_SKILL_SUPPORT_FILE_BYTES.saturating_add(1));
+            let within_limits = is_skill_bundle_file_path(&relative)
+                && *count <= MAX_SKILL_BUNDLE_FILES
+                && size <= MAX_SKILL_SUPPORT_FILE_BYTES;
+            if !within_limits {
+                errors.push(format!(
+                    "Skill support file is invalid or exceeds bundle limits: {}",
+                    relative.display()
+                ));
+            }
+            files.push(DesktopAgentBuilderFileStatus {
+                path: relative.to_string_lossy().to_string(),
+                kind: "skill-support".to_string(),
+                valid: within_limits,
+            });
             continue;
         }
         errors.push(format!(
@@ -1010,11 +1119,97 @@ fn load_metadata(draft_id: &str) -> Result<(PathBuf, DesktopAgentBuilderMetadata
     Ok((workspace, metadata))
 }
 
+fn ensure_expected_fingerprint(workspace: &Path, expected_fingerprint: &str) -> Result<(), String> {
+    let expected = expected_fingerprint.trim();
+    if expected.is_empty() {
+        return Err("Kordi Factory draft version is required".to_string());
+    }
+    let (current, _) = workspace_fingerprint(workspace)?;
+    if current != expected {
+        return Err(
+            "This Factory draft changed in another session. Refresh it before editing again."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn copy_workspace_tree(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination)
+        .map_err(|error| format!("Unable to stage Kordi Factory workspace: {error}"))?;
+    for entry in fs::read_dir(source)
+        .map_err(|error| format!("Unable to inspect {}: {error}", source.display()))?
+    {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("Unable to inspect {}: {error}", source_path.display()))?;
+        if file_type.is_symlink() {
+            return Err(format!(
+                "Kordi Factory drafts cannot contain symbolic links: {}",
+                source_path.display()
+            ));
+        }
+        if file_type.is_dir() {
+            copy_workspace_tree(&source_path, &destination_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&source_path, &destination_path).map_err(|error| {
+                format!(
+                    "Unable to stage {} as {}: {error}",
+                    source_path.display(),
+                    destination_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn atomically_update_workspace<F>(
+    workspace: &Path,
+    expected_fingerprint: &str,
+    update: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&Path) -> Result<(), String>,
+{
+    ensure_expected_fingerprint(workspace, expected_fingerprint)?;
+    let container = draft_container(workspace)?;
+    let nonce = uuid::Uuid::new_v4();
+    let staged = container.join(format!(".workspace-stage-{nonce}"));
+    let backup = container.join(format!(".workspace-backup-{nonce}"));
+    let result = (|| {
+        copy_workspace_tree(workspace, &staged)?;
+        update(&staged)?;
+        workspace_fingerprint(&staged)?;
+        ensure_expected_fingerprint(workspace, expected_fingerprint)?;
+        fs::rename(workspace, &backup)
+            .map_err(|error| format!("Unable to prepare the Factory draft update: {error}"))?;
+        if let Err(error) = fs::rename(&staged, workspace) {
+            let _ = fs::rename(&backup, workspace);
+            return Err(format!("Unable to apply the Factory draft update: {error}"));
+        }
+        let _ = fs::remove_dir_all(&backup);
+        Ok(())
+    })();
+    if staged.exists() {
+        let _ = fs::remove_dir_all(&staged);
+    }
+    if backup.exists() && !workspace.exists() {
+        let _ = fs::rename(&backup, workspace);
+    } else if backup.exists() {
+        let _ = fs::remove_dir_all(&backup);
+    }
+    result
+}
+
 fn checked_draft_file_path(workspace: &Path, relative_path: &str) -> Result<PathBuf, String> {
     let relative = PathBuf::from(relative_path.trim());
     let allowed = relative == Path::new(AGENT_FILE)
         || relative == Path::new(PROMPT_FILE)
-        || is_canonical_skill_file_path(&relative);
+        || is_skill_bundle_file_path(&relative);
     if !allowed || !is_safe_relative_path(&relative) {
         return Err("Kordi Factory file path is not editable".to_string());
     }
@@ -1041,7 +1236,7 @@ pub async fn desktop_agent_builder_open(
     target_key: String,
     seed: Option<DesktopAgentBuilderSeed>,
 ) -> Result<DesktopAgentBuilderOpenResult, String> {
-    let _open_guard = builder_open_lock().lock().await;
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let target_key = target_key.trim();
     if target_key.is_empty() || target_key.len() > 240 {
         return Err("Kordi Factory target is invalid".to_string());
@@ -1074,6 +1269,7 @@ pub async fn desktop_agent_builder_open(
 pub async fn desktop_agent_builder_status(
     draft_id: String,
 ) -> Result<DesktopAgentBuilderStatus, String> {
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let (_, metadata) = load_metadata(&draft_id)?;
     status_from_metadata(&metadata)
 }
@@ -1083,6 +1279,7 @@ pub async fn desktop_agent_builder_read_file(
     draft_id: String,
     path: String,
 ) -> Result<String, String> {
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let (workspace, _) = load_metadata(&draft_id)?;
     let file_path = checked_draft_file_path(&workspace, &path)?;
     read_limited(
@@ -1096,31 +1293,44 @@ pub async fn desktop_agent_builder_write_file(
     draft_id: String,
     path: String,
     content: String,
+    expected_fingerprint: String,
 ) -> Result<DesktopAgentBuilderStatus, String> {
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let (workspace, mut metadata) = load_metadata(&draft_id)?;
     if metadata.status != "draft" {
         return Err("Only an active draft can be edited".to_string());
     }
-    if content.len() as u64 > MAX_AGENT_BYTES.max(MAX_PROMPT_BYTES).max(MAX_SKILL_BYTES) {
+    if content.len() as u64
+        > MAX_AGENT_BYTES
+            .max(MAX_PROMPT_BYTES)
+            .max(MAX_SKILL_SUPPORT_FILE_BYTES)
+    {
         return Err("Kordi Factory file is too large".to_string());
     }
-    let file_path = checked_draft_file_path(&workspace, &path)?;
-    if let Some(parent) = file_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Unable to create {}: {error}", parent.display()))?;
-    }
-    fs::write(&file_path, content)
-        .map_err(|error| format!("Unable to write {}: {error}", file_path.display()))?;
+    atomically_update_workspace(&workspace, &expected_fingerprint, |staged| {
+        let file_path = checked_draft_file_path(staged, &path)?;
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Unable to create {}: {error}", parent.display()))?;
+        }
+        fs::write(&file_path, content)
+            .map_err(|error| format!("Unable to write {}: {error}", file_path.display()))
+    })?;
     metadata.updated_at_ms = now_millis();
     write_metadata(&workspace, &metadata)?;
     status_from_metadata(&metadata)
 }
 
 fn write_draft(workspace: &Path, draft: DesktopAgentBuilderDraft) -> Result<(), String> {
+    if draft.skills.len() > MAX_SKILLS {
+        return Err(format!(
+            "A Factory draft may contain at most {MAX_SKILLS} skills"
+        ));
+    }
     let mut skill_specs = Vec::new();
     let mut seen = BTreeSet::new();
     let mut retained_skill_directories = BTreeSet::new();
-    for skill in draft.skills.into_iter().take(MAX_SKILLS) {
+    for skill in draft.skills {
         let name = clean_slug(&skill.name);
         if name.is_empty() || !seen.insert(name.clone()) {
             return Err(format!(
@@ -1236,12 +1446,16 @@ fn write_draft(workspace: &Path, draft: DesktopAgentBuilderDraft) -> Result<(), 
 pub async fn desktop_agent_builder_update_draft(
     draft_id: String,
     draft: DesktopAgentBuilderDraft,
+    expected_fingerprint: String,
 ) -> Result<DesktopAgentBuilderStatus, String> {
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let (workspace, mut metadata) = load_metadata(&draft_id)?;
     if metadata.status != "draft" {
         return Err("Only an active draft can be edited".to_string());
     }
-    write_draft(&workspace, draft)?;
+    atomically_update_workspace(&workspace, &expected_fingerprint, |staged| {
+        write_draft(staged, draft)
+    })?;
     metadata.updated_at_ms = now_millis();
     write_metadata(&workspace, &metadata)?;
     status_from_metadata(&metadata)
@@ -1250,11 +1464,14 @@ pub async fn desktop_agent_builder_update_draft(
 #[tauri::command]
 pub async fn desktop_agent_builder_test(
     draft_id: String,
+    expected_fingerprint: String,
 ) -> Result<DesktopAgentBuilderStatus, String> {
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let (workspace, metadata) = load_metadata(&draft_id)?;
     if metadata.status != "draft" {
         return Err("Only an active draft can be tested".to_string());
     }
+    ensure_expected_fingerprint(&workspace, &expected_fingerprint)?;
     let (draft, validation) = validate_workspace(&workspace);
     let mut report = DesktopAgentBuilderTestReport {
         passed: false,
@@ -1262,6 +1479,7 @@ pub async fn desktop_agent_builder_test(
         summary: validation.errors.join(" "),
         tested_at_ms: now_millis(),
     };
+    drop(_mutation_guard);
     if validation.valid {
         let draft = draft.ok_or_else(|| "Validated draft is unavailable".to_string())?;
         let skill_names = draft
@@ -1319,15 +1537,24 @@ pub async fn desktop_agent_builder_test(
             Err(error) => report.summary = error,
         }
     }
+    let _mutation_guard = builder_mutation_lock().lock().await;
+    ensure_expected_fingerprint(&workspace, &validation.fingerprint)?;
+    let (_, current_metadata) = load_metadata(&draft_id)?;
+    if current_metadata.status != "draft" {
+        return Err("Only an active draft can be tested".to_string());
+    }
     write_json(&test_report_path(draft_container(&workspace)?), &report)?;
-    status_from_metadata(&metadata)
+    status_from_metadata(&current_metadata)
 }
 
 #[tauri::command]
 pub async fn desktop_agent_builder_mark_published(
     draft_id: String,
+    expected_fingerprint: String,
 ) -> Result<DesktopAgentBuilderStatus, String> {
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let (workspace, mut metadata) = load_metadata(&draft_id)?;
+    ensure_expected_fingerprint(&workspace, &expected_fingerprint)?;
     let status = status_from_metadata(&metadata)?;
     if !status.publish_ready {
         return Err(
@@ -1346,8 +1573,11 @@ pub async fn desktop_agent_builder_install_skill(
     draft_id: String,
     skill_name: String,
     scope: String,
+    expected_fingerprint: String,
 ) -> Result<SkillLibraryEntry, String> {
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let (workspace, metadata) = load_metadata(&draft_id)?;
+    ensure_expected_fingerprint(&workspace, &expected_fingerprint)?;
     let status = status_from_metadata(&metadata)?;
     if !status.publish_ready {
         return Err(
@@ -1374,8 +1604,21 @@ pub async fn desktop_agent_builder_install_skill(
         .iter()
         .any(|entry| entry.origin == "built" && entry.name == skill.name);
     let source_path = workspace.join(&skill.path);
-    let content = fs::read(&source_path)
-        .map_err(|error| format!("Unable to read {}: {error}", source_path.display()))?;
+    let source_root = source_path
+        .parent()
+        .ok_or_else(|| "The built skill directory is invalid".to_string())?;
+    let mut bundle_files = Vec::new();
+    let mut bundle_bytes = 0_u64;
+    collect_skill_bundle_files(
+        source_root,
+        source_root,
+        &mut bundle_files,
+        &mut bundle_bytes,
+    )?;
+    bundle_files.sort_by(|left, right| left.path.cmp(&right.path));
+    if !bundle_files.iter().any(|file| file.path == "SKILL.md") {
+        return Err("The built skill bundle does not contain SKILL.md".to_string());
+    }
     let entry = skill_library::install_skill_bundle(
         &cwd,
         install_scope,
@@ -1389,10 +1632,7 @@ pub async fn desktop_agent_builder_install_skill(
             version: None,
             source_url: None,
             digest: None,
-            files: vec![SkillBundleFile {
-                path: "SKILL.md".to_string(),
-                bytes: content,
-            }],
+            files: bundle_files,
         },
     )
     .map_err(|error| error.to_string())?;
@@ -1411,8 +1651,11 @@ pub async fn desktop_agent_builder_install_skill(
 pub async fn desktop_agent_builder_discard(
     manager: State<'_, DesktopChatManager>,
     draft_id: String,
+    expected_fingerprint: String,
 ) -> Result<(), String> {
+    let _mutation_guard = builder_mutation_lock().lock().await;
     let (workspace, mut metadata) = load_metadata(&draft_id)?;
+    ensure_expected_fingerprint(&workspace, &expected_fingerprint)?;
     metadata.status = "discarded".to_string();
     metadata.updated_at_ms = now_millis();
     write_metadata(&workspace, &metadata)?;
@@ -1471,6 +1714,9 @@ mod tests {
         assert!(!is_safe_relative_path(Path::new("/tmp/SKILL.md")));
         assert!(is_canonical_skill_file_path(Path::new(
             "skills/review/SKILL.md"
+        )));
+        assert!(is_skill_bundle_file_path(Path::new(
+            "skills/review/scripts/check.sh"
         )));
         assert!(!is_canonical_skill_file_path(Path::new(
             "skills/review/notes.md"
@@ -1543,6 +1789,75 @@ mod tests {
             .iter()
             .any(|error| error.contains("Unsupported file")));
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn validates_and_fingerprints_declared_skill_support_files() {
+        let workspace =
+            std::env::temp_dir().join(format!("kordi-agent-builder-test-{}", uuid::Uuid::new_v4()));
+        let seed = DesktopAgentBuilderSeed {
+            name: "Repository reviewer".to_string(),
+            role: "Code review agent".to_string(),
+            access: "only-me".to_string(),
+            skills: vec![DesktopAgentBuilderSkillSeed {
+                name: "repository-review".to_string(),
+                description: "Review a repository safely".to_string(),
+                content: None,
+            }],
+            ..DesktopAgentBuilderSeed::default()
+        };
+        materialize_seed(&workspace, Some(&seed)).expect("materialize builder workspace");
+        let script = workspace.join("skills/repository-review/scripts/check.sh");
+        fs::create_dir_all(script.parent().expect("script parent")).expect("create scripts");
+        fs::write(&script, "#!/bin/sh\nexit 0\n").expect("write supporting script");
+
+        let (_, validation) = validate_workspace(&workspace);
+        assert!(validation.valid, "{:?}", validation.errors);
+        assert!(validation.files.iter().any(|file| {
+            file.path == "skills/repository-review/scripts/check.sh"
+                && file.kind == "skill-support"
+                && file.valid
+        }));
+        let original_fingerprint = validation.fingerprint;
+        fs::write(&script, "#!/bin/sh\nexit 1\n").expect("change supporting script");
+        let (_, changed) = validate_workspace(&workspace);
+        assert!(changed.valid, "{:?}", changed.errors);
+        assert_ne!(changed.fingerprint, original_fingerprint);
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn atomic_workspace_updates_reject_stale_fingerprints() {
+        let container =
+            std::env::temp_dir().join(format!("kordi-agent-builder-test-{}", uuid::Uuid::new_v4()));
+        let workspace = container.join(WORKSPACE_DIR);
+        let seed = DesktopAgentBuilderSeed {
+            name: "Focused agent".to_string(),
+            role: "Test agent".to_string(),
+            access: "only-me".to_string(),
+            ..DesktopAgentBuilderSeed::default()
+        };
+        materialize_seed(&workspace, Some(&seed)).expect("materialize builder workspace");
+        let original = workspace_fingerprint(&workspace)
+            .expect("fingerprint workspace")
+            .0;
+        atomically_update_workspace(&workspace, &original, |staged| {
+            fs::write(staged.join(PROMPT_FILE), "Updated prompt\n")
+                .map_err(|error| error.to_string())
+        })
+        .expect("apply atomic update");
+        let changed = workspace_fingerprint(&workspace)
+            .expect("fingerprint updated workspace")
+            .0;
+        assert_ne!(changed, original);
+        let error = atomically_update_workspace(&workspace, &original, |_| Ok(()))
+            .expect_err("stale update should fail");
+        assert!(error.contains("changed in another session"));
+        assert_eq!(
+            fs::read_to_string(workspace.join(PROMPT_FILE)).expect("read updated prompt"),
+            "Updated prompt\n"
+        );
+        let _ = fs::remove_dir_all(container);
     }
 
     #[test]

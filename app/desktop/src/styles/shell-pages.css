@@ -1585,7 +1585,7 @@
   margin-top: 16px;
 }
 
-.app-skill-community-file-strip span {
+.app-skill-community-file-strip button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1595,6 +1595,11 @@
   background: color-mix(in oklab, var(--app-control-bg) 52%, transparent);
   color: var(--utility-muted-text);
   font-size: var(--agent-studio-type-caption);
+}
+
+.app-skill-community-file-strip button.is-active {
+  background: color-mix(in oklab, var(--app-control-active) 76%, transparent);
+  color: var(--utility-foreground);
 }
 
 .app-skill-community-code {
