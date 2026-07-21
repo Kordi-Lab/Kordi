@@ -7,12 +7,12 @@ use super::{
     add_session_participants_in_db, adopt_cloud_profile_identity_in_db, append_message_in_db,
     create_delegated_exchange_in_db, hash_hex, identity_display_name, json_from_db,
     mark_session_read_in_db, now_ms, open_db, open_or_create_session_in_db,
-    remove_session_participant_in_db, rename_any_session_title_in_db, rename_session_in_db,
-    require_group_admin, require_group_creator, require_group_member,
-    require_group_member_removal_permission, select_delegated_exchange, select_identity,
-    select_session, set_session_metadata_in_db, set_session_participant_role_in_db,
-    update_presence_in_db, upsert_identity_in_db, upsert_message_in_db,
-    AddCanonicalGroupMembersRequest, AddCanonicalSessionParticipantsRequest,
+    remove_session_participant_in_db, rename_any_session_title_in_db,
+    rename_session_in_db_with_actor_account, require_group_admin, require_group_creator,
+    require_group_member, require_group_member_removal_permission, select_delegated_exchange,
+    select_identity, select_session, set_session_metadata_in_db,
+    set_session_participant_role_in_db, update_presence_in_db, upsert_identity_in_db,
+    upsert_message_in_db, AddCanonicalGroupMembersRequest, AddCanonicalSessionParticipantsRequest,
     AdoptCloudProfileIdentityRequest, AppendCanonicalMessageRequest, CanonicalContextSnapshot,
     CanonicalDelegatedExchange, CanonicalGroupMembershipDelta, CanonicalGroupMembershipUpdate,
     CanonicalIdentity, CanonicalMessageDeliveryDelta, CanonicalMessagePage, CanonicalPresence,
@@ -829,6 +829,23 @@ fn group_authority_metadata_signature(metadata: Option<&Value>) -> (String, Vec<
     (creator_identity_id, admin_identity_ids, updated_at_ms)
 }
 
+fn cloud_account_id_for_identity(
+    conn: &Connection,
+    identity_id: Option<&str>,
+) -> Result<Option<String>, String> {
+    let Some(identity_id) = identity_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let Some(identity) = select_identity(conn, identity_id)? else {
+        return Ok(None);
+    };
+    Ok(identity
+        .human_id
+        .or(identity.bridge_node_id)
+        .map(|value| value.trim().to_string())
+        .filter(|value| value.starts_with("acct_")))
+}
+
 pub(super) fn desktop_canonical_rename_session(
     request: RenameCanonicalSessionRequest,
 ) -> Result<CanonicalSessionState, String> {
@@ -842,7 +859,14 @@ pub(super) fn desktop_canonical_rename_session(
             request.requested_by_identity_id.as_deref(),
             "rename this group",
         )?;
-        rename_session_in_db(&conn, &request.session_id, &request.title)?;
+        let updated_by_account_id =
+            cloud_account_id_for_identity(&conn, request.requested_by_identity_id.as_deref())?;
+        rename_session_in_db_with_actor_account(
+            &conn,
+            &request.session_id,
+            &request.title,
+            updated_by_account_id.as_deref(),
+        )?;
     } else {
         rename_any_session_title_in_db(&conn, &request.session_id, &request.title)?;
     }

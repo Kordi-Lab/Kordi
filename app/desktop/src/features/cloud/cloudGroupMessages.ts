@@ -3,6 +3,8 @@ import type {
   Conversation,
   ConversationParticipant,
   AppendCanonicalMessageRequest,
+  CanonicalIdentity,
+  CanonicalSession,
   CanonicalSessionMessage,
   DesktopBridgeSessionParticipant,
   UpsertCanonicalIdentityRequest,
@@ -43,6 +45,15 @@ export type CloudGroupMemberLeave = {
   createdAtMs: number;
 };
 
+export type CloudGroupSessionTitleSnapshot = {
+  title: string;
+  titleSource: 'manual';
+  titleRevision: number;
+  titlePolicyVersion: number;
+  updatedAtMs: number;
+  updatedByAccountId: string;
+};
+
 export type CloudGroupControlEnvelope = {
   kind: CloudGroupControlKind;
   groupId: string;
@@ -51,6 +62,8 @@ export type CloudGroupControlEnvelope = {
   createdByAccountId: string;
   actor: CloudGroupActor;
   participants: CloudGroupParticipant[];
+  sessionTitle?: CloudGroupSessionTitleSnapshot | null;
+  sessionTitleSyncOnly?: boolean;
   memberJoins?: CloudGroupMemberJoin[];
   memberLeaves?: CloudGroupMemberLeave[];
   fork?: {
@@ -122,6 +135,70 @@ function cleanText(value?: string | null) {
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function positiveInteger(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 1
+    ? Math.floor(value)
+    : fallback;
+}
+
+export function normalizeCloudGroupSessionTitleSnapshot(
+  value: unknown,
+): CloudGroupSessionTitleSnapshot | null {
+  const record = objectRecord(value);
+  const title = cloudGroupNonGenericTitle(typeof record.title === 'string' ? record.title : null);
+  const updatedByAccountId = cloudAccountIdOrNull(
+    typeof record.updatedByAccountId === 'string' ? record.updatedByAccountId : null,
+  );
+  const updatedAtMs = typeof record.updatedAtMs === 'number' && Number.isFinite(record.updatedAtMs)
+    ? Math.floor(record.updatedAtMs)
+    : 0;
+  if (!title || record.titleSource !== 'manual' || !updatedByAccountId || updatedAtMs <= 0) return null;
+  return {
+    title,
+    titleSource: 'manual',
+    titleRevision: positiveInteger(record.titleRevision, 1),
+    titlePolicyVersion: positiveInteger(record.titlePolicyVersion, 1),
+    updatedAtMs,
+    updatedByAccountId,
+  };
+}
+
+export function cloudGroupManualSessionTitleSnapshot(input: {
+  session?: Pick<CanonicalSession, 'title' | 'metadata' | 'createdByIdentityId' | 'updatedAtMs'> | null;
+  identities?: Array<Pick<CanonicalIdentity, 'id' | 'humanId' | 'bridgeNodeId'>>;
+}): CloudGroupSessionTitleSnapshot | null {
+  const session = input.session;
+  if (!session) return null;
+  const metadata = objectRecord(session.metadata);
+  if (cleanText(typeof metadata.sessionTitleSource === 'string' ? metadata.sessionTitleSource : null).toLowerCase() !== 'manual') {
+    return null;
+  }
+  const identityById = new Map((input.identities ?? []).map((identity) => [identity.id, identity]));
+  const creatorIdentityId = cleanText(
+    typeof metadata.groupCreatorIdentityId === 'string'
+      ? metadata.groupCreatorIdentityId
+      : session.createdByIdentityId,
+  );
+  const creatorIdentity = identityById.get(creatorIdentityId);
+  const fallbackCreatorAccountId = cloudAccountIdOrNull(creatorIdentity?.humanId)
+    ?? cloudAccountIdOrNull(creatorIdentity?.bridgeNodeId)
+    ?? cloudAccountIdOrNull(creatorIdentityId.replace(/^human:/, ''));
+  return normalizeCloudGroupSessionTitleSnapshot({
+    title: session.title,
+    titleSource: 'manual',
+    titleRevision: metadata.sessionTitleRevision,
+    titlePolicyVersion: metadata.sessionTitlePolicyVersion,
+    updatedAtMs: typeof metadata.sessionTitleUpdatedAtMs === 'number'
+      ? metadata.sessionTitleUpdatedAtMs
+      : session.updatedAtMs,
+    updatedByAccountId: cloudAccountIdOrNull(
+      typeof metadata.sessionTitleUpdatedByAccountId === 'string'
+        ? metadata.sessionTitleUpdatedByAccountId
+        : null,
+    ) ?? fallbackCreatorAccountId,
+  });
 }
 
 function cloudGroupMemberJoins(value: unknown): CloudGroupMemberJoin[] {
@@ -390,6 +467,24 @@ export function cloudSessionTitleUpdateTitle(input: Pick<CloudGroupControlEnvelo
   return input.kind === 'session-title-update' ? cloudGroupNonGenericTitle(input.groupTitle) : null;
 }
 
+export function cloudGroupSessionTitleSnapshotForControl(
+  envelope: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle' | 'actor' | 'sessionTitle'>,
+  controlCreatedAtMs: number,
+): CloudGroupSessionTitleSnapshot | null {
+  const snapshot = normalizeCloudGroupSessionTitleSnapshot(envelope.sessionTitle);
+  if (snapshot) return snapshot;
+  const legacyTitle = cloudSessionTitleUpdateTitle(envelope);
+  if (!legacyTitle) return null;
+  return normalizeCloudGroupSessionTitleSnapshot({
+    title: legacyTitle,
+    titleSource: 'manual',
+    titleRevision: 1,
+    titlePolicyVersion: 1,
+    updatedAtMs: controlCreatedAtMs,
+    updatedByAccountId: envelope.actor.accountId,
+  });
+}
+
 function cloudTitleUpdateNoticeRequest(input: {
   envelope: CloudGroupControlEnvelope;
   actorIdentityId: string;
@@ -444,6 +539,7 @@ export function cloudSessionTitleUpdateNoticeRequest(input: {
   createdAtMs: number;
   cloudMessageId: string;
 }): AppendCanonicalMessageRequest | null {
+  if (input.envelope.sessionTitleSyncOnly) return null;
   return cloudTitleUpdateNoticeRequest({
     ...input,
     scope: 'session',
@@ -510,6 +606,7 @@ function decodeBase64Url(value: string): string {
 export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): string {
   const memberJoins = input.kind === 'group-invite' ? cloudGroupMemberJoins(input.memberJoins) : [];
   const memberLeaves = input.kind === 'group-update' ? cloudGroupMemberLeaves(input.memberLeaves) : [];
+  const sessionTitle = normalizeCloudGroupSessionTitleSnapshot(input.sessionTitle);
   const envelope: CloudGroupControlEnvelope = {
     ...input,
     groupId: cleanText(input.groupId),
@@ -518,6 +615,8 @@ export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): strin
     createdByAccountId: cleanText(input.createdByAccountId),
     actor: cloudGroupNormalizeParticipant(input.actor),
     participants: uniqueByAccount(input.participants),
+    sessionTitle,
+    ...(input.sessionTitleSyncOnly ? { sessionTitleSyncOnly: true } : {}),
     ...(memberJoins.length > 0 ? { memberJoins } : {}),
     ...(memberLeaves.length > 0 ? { memberLeaves } : {}),
   };
@@ -578,6 +677,9 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
     const memberLeaves = kind === 'group-update'
       ? cloudGroupMemberLeaves((parsed as { memberLeaves?: unknown }).memberLeaves)
       : [];
+    const sessionTitle = normalizeCloudGroupSessionTitleSnapshot(
+      (parsed as { sessionTitle?: unknown }).sessionTitle,
+    );
     return {
       kind,
       groupId: parsed.groupId.trim(),
@@ -586,6 +688,8 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       createdByAccountId: parsed.createdByAccountId.trim(),
       actor,
       participants,
+      sessionTitle,
+      ...(parsed.sessionTitleSyncOnly === true ? { sessionTitleSyncOnly: true } : {}),
       ...(memberJoins.length > 0 ? { memberJoins } : {}),
       ...(memberLeaves.length > 0 ? { memberLeaves } : {}),
       fork,

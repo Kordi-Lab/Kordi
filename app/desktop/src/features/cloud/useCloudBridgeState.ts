@@ -21,7 +21,6 @@ import {
   openOrCreateCanonicalSession,
   openOrCreateCanonicalSessionFast,
   removeCanonicalSessionParticipant,
-  renameCanonicalSession,
   startDesktopChatMessage,
   upsertCanonicalIdentity,
   upsertCanonicalIdentityFast,
@@ -117,6 +116,7 @@ import {
   cloudGroupIdFromAgentConversationId,
   cloudGroupIdentityRequest,
   cloudGroupLocalAgentRequestAlreadyHandled,
+  cloudGroupManualSessionTitleSnapshot,
   cloudGroupMemberJoinNoticeRequests,
   cloudGroupMessageReadTargets,
   cloudGroupOutgoingParticipantSnapshot,
@@ -125,6 +125,7 @@ import {
   cloudGroupPeerIdsFromMessages,
   cloudGroupParticipantsWithProfiles,
   cloudGroupSelfParticipant,
+  cloudGroupSessionTitleSnapshotForControl,
   cloudGroupTitleForOutgoingControl,
   cloudGroupTitleUpdateNoticeRequest,
   cloudGroupUnreadCountsBySessionId,
@@ -145,6 +146,7 @@ import {
   type CloudGroupMemberJoin,
   type CloudGroupMemberLeave,
   type CloudGroupParticipant,
+  type CloudGroupSessionTitleSnapshot,
 } from './cloudGroupMessages';
 import {
   buildCloudMessageIndex,
@@ -315,6 +317,23 @@ export function resolveCloudGroupAdminSnapshot(input: {
       ...(applies ? advertisedAdminIdentityIds : input.existingAdminIdentityIds),
     ].filter(Boolean))],
   };
+}
+
+export function resolveAuthorizedCloudGroupSessionTitleSnapshot(input: {
+  envelope: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle' | 'actor' | 'sessionTitle'>;
+  controlCreatedAtMs: number;
+  identityIdByAccount: ReadonlyMap<string, string>;
+  adminIdentityIds: readonly string[];
+}): CloudGroupSessionTitleSnapshot | null {
+  const snapshot = cloudGroupSessionTitleSnapshotForControl(
+    input.envelope,
+    input.controlCreatedAtMs,
+  );
+  if (!snapshot) return null;
+  const updatedByIdentityId = input.identityIdByAccount.get(snapshot.updatedByAccountId)?.trim() ?? '';
+  if (!updatedByIdentityId) return null;
+  const adminIdentityIds = new Set(input.adminIdentityIds.map((identityId) => identityId.trim()).filter(Boolean));
+  return adminIdentityIds.has(updatedByIdentityId) ? snapshot : null;
 }
 
 async function publishDerivedCloudSessionActivity({
@@ -2272,6 +2291,7 @@ export type SendCloudGroupControlInput = {
   participants?: CloudGroupParticipant[];
   memberJoins?: CloudGroupMemberJoin[];
   memberLeaves?: CloudGroupMemberLeave[];
+  sessionTitleSyncOnly?: boolean;
   bridgeParticipants?: DesktopBridgeSessionParticipant[];
   fork?: CloudGroupControlEnvelope['fork'];
   message?: CloudGroupControlEnvelope['message'];
@@ -2431,6 +2451,7 @@ export function useCloudBridgeState({
   const cloudSessionPinsByIdRef = useRef<CloudSessionPinsById>(cloudSessionPinsById);
   const cloudSessionTitlesByIdRef = useRef<CloudSessionTitlesById>(cloudSessionTitlesById);
   const cloudSessionTitleUploadsRef = useRef<Map<string, string>>(new Map());
+  const cloudGroupSessionTitleBackfillsRef = useRef<Set<string>>(new Set());
   const cloudAgentDefinitionsByIdRef = useRef<Record<string, CloudAgentDefinition>>(cloudAgentDefinitionsById);
   const cloudHiddenSessionIdsRef = useRef<Set<string>>(cloudHiddenSessionIds);
   const cloudDeletedSessionIdsRef = useRef<Set<string>>(cloudDeletedSessionIds);
@@ -2579,6 +2600,7 @@ export function useCloudBridgeState({
     cloudSessionPinsByIdRef.current = {};
     cloudSessionTitlesByIdRef.current = {};
     cloudSessionTitleUploadsRef.current.clear();
+    cloudGroupSessionTitleBackfillsRef.current.clear();
     cloudAgentDefinitionsByIdRef.current = {};
     setCloudSessionActivity(nextSessionActivity);
     setCloudSessionForksById({});
@@ -3613,6 +3635,12 @@ export function useCloudBridgeState({
     const appliesAdminSnapshot = adminSnapshot.applies;
     const adminIdentityIds = adminSnapshot.adminIdentityIds;
     const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
+    const authorizedSessionTitle = resolveAuthorizedCloudGroupSessionTitleSnapshot({
+      envelope,
+      controlCreatedAtMs,
+      identityIdByAccount,
+      adminIdentityIds,
+    });
     const groupMetadata = {
       ...groupRootMetadata,
       ...envelopeSessionMetadata,
@@ -3629,12 +3657,21 @@ export function useCloudBridgeState({
       initialParticipantNames: participantNames,
       memberApprovalPolicy: 'under-50-open',
       createdFrom: envelope.kind === 'session-fork' || forkMetadata ? 'cloud-group-fork-sync' : 'cloud-group-sync',
+      ...(authorizedSessionTitle
+        ? {
+            sessionTitleSource: authorizedSessionTitle.titleSource,
+            sessionTitleRevision: authorizedSessionTitle.titleRevision,
+            sessionTitlePolicyVersion: authorizedSessionTitle.titlePolicyVersion,
+            sessionTitleUpdatedAtMs: authorizedSessionTitle.updatedAtMs,
+            sessionTitleUpdatedByAccountId: authorizedSessionTitle.updatedByAccountId,
+          }
+        : {}),
       ...(forkMetadata ? { fork: forkMetadata } : {}),
     };
     const openResult = await openOrCreateCanonicalSessionFast({
       id: envelope.groupId,
       kind: 'group',
-      title: 'New chat',
+      title: authorizedSessionTitle?.title ?? 'New chat',
       status: 'active',
       createdByIdentityId,
       primaryIdentityId: null,
@@ -3645,13 +3682,13 @@ export function useCloudBridgeState({
     nextState = mergeOpenCanonicalSessionFastResultIntoLocalState(nextState, openResult);
     if (!nextState) return;
 
-    if (sessionTitleUpdateTitle) {
-      nextState = await renameCanonicalSession({
-        sessionId: envelope.groupId,
-        title: sessionTitleUpdateTitle,
-        requestedByIdentityId: actorIdentityId,
-      });
-      if (!isSelfAuthoredControl) {
+    const appliedSessionTitle = Boolean(
+      sessionTitleUpdateTitle
+      && authorizedSessionTitle
+      && openResult.session.title === authorizedSessionTitle.title
+      && envelopeSession?.title !== openResult.session.title,
+    );
+    if (appliedSessionTitle && !isSelfAuthoredControl) {
         const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
           envelope,
           actorIdentityId,
@@ -3661,7 +3698,6 @@ export function useCloudBridgeState({
         if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
           nextState = await appendCanonicalMessage(noticeRequest);
         }
-      }
     }
 
     if (groupTitleResolution.appliesIncoming) {
@@ -5351,6 +5387,11 @@ export function useCloudBridgeState({
       groupTitle: input.groupTitle,
       relatedGroupTitles: relatedGroupControls.map((control) => control.envelope.groupTitle),
     });
+    const canonicalState = canonicalSessionStateRef.current;
+    const sessionTitle = cloudGroupManualSessionTitleSnapshot({
+      session: canonicalState?.sessions.find((candidate) => candidate.id === input.groupId),
+      identities: canonicalState?.identities,
+    });
     const forkFromSessionMetadata = input.kind === 'group-message'
       ? cloudGroupForkPayloadFromSessionMetadata(
           canonicalSessionStateRef.current?.sessions.find((sessionCandidate) => sessionCandidate.id === input.groupId)?.metadata,
@@ -5378,6 +5419,8 @@ export function useCloudBridgeState({
         createdByAccountId: input.createdByAccountId?.trim() || account.accountId,
         actor,
         participants,
+        sessionTitle,
+        sessionTitleSyncOnly: input.sessionTitleSyncOnly,
         memberJoins: input.memberJoins,
         memberLeaves: input.memberLeaves,
         fork: input.fork ?? forkFromSessionMetadata,
@@ -5496,6 +5539,81 @@ export function useCloudBridgeState({
     const firstFailure = firstCloudGroupSendFailure(results);
     throw firstFailure instanceof Error ? firstFailure : new Error(String(firstFailure || 'Group message failed.'));
   }, [account, claimFreshCloudGroupFallback, client, cloudGroupOutbox, cloudMessageIndex, mergeMessage, persistCloudGroupOutboxDelivery, syncCloudBridgeDiff]);
+
+  useEffect(() => {
+    if (!account || !canonicalSessionState || !initialMessagesSettled) return;
+    const controls = cloudMessageIndex.groupRows.map((row) => ({
+      envelope: row.envelope,
+      createdAtMs: Date.parse(row.wire.createdAt) || 0,
+    }));
+    const identityById = new Map(canonicalSessionState.identities.map((identity) => [identity.id, identity]));
+    for (const canonicalSession of canonicalSessionState.sessions) {
+      if (canonicalSession.kind !== 'group') continue;
+      const sessionTitle = cloudGroupManualSessionTitleSnapshot({
+        session: canonicalSession,
+        identities: canonicalSessionState.identities,
+      });
+      if (!sessionTitle) continue;
+      const metadata = objectContent(canonicalSession.metadata);
+      const groupSpaceId = cleanText(
+        typeof metadata.groupSpaceId === 'string'
+          ? metadata.groupSpaceId
+          : typeof metadata.groupId === 'string'
+            ? metadata.groupId
+            : canonicalSession.id,
+      ) || canonicalSession.id;
+      const relatedControls = cloudGroupRelatedControlsForSend(controls, {
+        groupId: canonicalSession.id,
+        groupSpaceId,
+      }).sort((left, right) => left.createdAtMs - right.createdAtMs);
+      const latestControl = relatedControls[relatedControls.length - 1]?.envelope;
+      if (!latestControl) continue;
+      const targetAccountIds = [...new Set(latestControl.participants
+        .map((participant) => participant.accountId.trim())
+        .filter((accountId) => accountId && accountId !== account.accountId))];
+      if (targetAccountIds.length === 0) continue;
+      const backfillKey = `${account.accountId}:${canonicalSession.id}`;
+      if (cloudGroupSessionTitleBackfillsRef.current.has(backfillKey)) continue;
+
+      const creatorIdentityId = cleanText(
+        typeof metadata.groupCreatorIdentityId === 'string'
+          ? metadata.groupCreatorIdentityId
+          : canonicalSession.createdByIdentityId,
+      );
+      const adminIdentityIds = new Set([
+        creatorIdentityId,
+        ...(Array.isArray(metadata.adminIdentityIds)
+          ? metadata.adminIdentityIds.filter((identityId): identityId is string => typeof identityId === 'string')
+          : []),
+      ].map((identityId) => identityId.trim()).filter(Boolean));
+      const selfIdentityId = canonicalSessionState.profile.humanIdentityId?.trim() ?? '';
+      const actor = cloudGroupSelfParticipant(
+        account,
+        adminIdentityIds.has(selfIdentityId) ? 'admin' : 'person',
+      );
+      const creatorIdentity = identityById.get(creatorIdentityId);
+      const createdByAccountId = cleanText(creatorIdentity?.humanId)
+        || cleanText(creatorIdentity?.bridgeNodeId)
+        || latestControl.createdByAccountId;
+
+      cloudGroupSessionTitleBackfillsRef.current.add(backfillKey);
+      void sendCloudGroupControl({
+        targetAccountIds,
+        kind: 'session-title-update',
+        groupId: canonicalSession.id,
+        groupSpaceId,
+        groupTitle: sessionTitle.title,
+        createdByAccountId,
+        actor,
+        participants: latestControl.participants,
+        sessionTitleSyncOnly: true,
+      }).catch((error) => {
+        cloudGroupSessionTitleBackfillsRef.current.delete(backfillKey);
+        // eslint-disable-next-line no-console
+        console.warn('[cloud-group-session-title] failed to backfill title', error);
+      });
+    }
+  }, [account, canonicalSessionState, cloudMessageIndex, initialMessagesSettled, sendCloudGroupControl]);
 
   const refreshCloudSessionActivity = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();

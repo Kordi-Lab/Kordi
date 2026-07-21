@@ -57,9 +57,11 @@ use self::desktop_sync::{
 };
 #[cfg(test)]
 pub(crate) use self::group_participants::group_admin_identity_ids;
+#[cfg(test)]
+pub(crate) use self::group_participants::rename_session_in_db;
 pub(crate) use self::group_participants::{
     add_session_participants_in_db, remove_session_participant_in_db,
-    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
+    rename_any_session_title_in_db, rename_session_in_db_with_actor_account, require_group_admin,
     require_group_creator, require_group_member, require_group_member_removal_permission,
     session_has_participant, set_session_metadata_in_db, set_session_participant_role_in_db,
 };

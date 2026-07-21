@@ -3,7 +3,11 @@ use serde_json::Value;
 
 use super::{now_ms, select_session, upsert_participant, CanonicalSession};
 
-fn manual_title_metadata(session: &CanonicalSession, updated_at_ms: i64) -> Result<String, String> {
+fn manual_title_metadata(
+    session: &CanonicalSession,
+    updated_at_ms: i64,
+    updated_by_account_id: Option<&str>,
+) -> Result<String, String> {
     let mut metadata = match session.metadata.clone() {
         Some(Value::Object(map)) => map,
         _ => serde_json::Map::new(),
@@ -30,9 +34,19 @@ fn manual_title_metadata(session: &CanonicalSession, updated_at_ms: i64) -> Resu
         "sessionTitleUpdatedAtMs".to_string(),
         Value::from(updated_at_ms),
     );
-    // Cloud assigns the authoritative actor after accepting this edit. A new
-    // local rename must not inherit the actor from an older synchronized edit.
-    metadata.remove("sessionTitleUpdatedByAccountId");
+    if let Some(account_id) = updated_by_account_id
+        .map(str::trim)
+        .filter(|value| value.starts_with("acct_"))
+    {
+        metadata.insert(
+            "sessionTitleUpdatedByAccountId".to_string(),
+            Value::String(account_id.to_string()),
+        );
+    } else {
+        // A rename without a known Cloud actor must not inherit the actor from
+        // an older synchronized edit.
+        metadata.remove("sessionTitleUpdatedByAccountId");
+    }
     serde_json::to_string(&Value::Object(metadata)).map_err(|err| err.to_string())
 }
 
@@ -48,10 +62,20 @@ pub(crate) fn ensure_group_session(
     Ok(session)
 }
 
+#[cfg(test)]
 pub(crate) fn rename_session_in_db(
     conn: &Connection,
     session_id: &str,
     title: &str,
+) -> Result<(), String> {
+    rename_session_in_db_with_actor_account(conn, session_id, title, None)
+}
+
+pub(crate) fn rename_session_in_db_with_actor_account(
+    conn: &Connection,
+    session_id: &str,
+    title: &str,
+    updated_by_account_id: Option<&str>,
 ) -> Result<(), String> {
     let title = title.trim();
     if title.is_empty() {
@@ -59,7 +83,7 @@ pub(crate) fn rename_session_in_db(
     }
     let session = ensure_group_session(conn, session_id)?;
     let updated_at_ms = now_ms();
-    let metadata = manual_title_metadata(&session, updated_at_ms)?;
+    let metadata = manual_title_metadata(&session, updated_at_ms, updated_by_account_id)?;
     conn.execute(
         "UPDATE sessions SET title = ?2, metadata_json = ?3, updated_at_ms = ?4 WHERE id = ?1",
         params![session_id, title, metadata, updated_at_ms],
@@ -80,7 +104,7 @@ pub(crate) fn rename_any_session_title_in_db(
     let session =
         select_session(conn, session_id)?.ok_or_else(|| "Session not found".to_string())?;
     let updated_at_ms = now_ms();
-    let metadata = manual_title_metadata(&session, updated_at_ms)?;
+    let metadata = manual_title_metadata(&session, updated_at_ms, None)?;
     conn.execute(
         "UPDATE sessions SET title = ?2, metadata_json = ?3, updated_at_ms = ?4 WHERE id = ?1",
         params![session_id, title, metadata, updated_at_ms],

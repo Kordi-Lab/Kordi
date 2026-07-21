@@ -68,6 +68,30 @@ test('SessionContextMenu keeps ordinary actions flat at rest', () => {
   assert.doesNotMatch(markup, /app-transient-row[^>]*>Rename…</);
 });
 
+test('SessionContextMenu hides rename for a non-admin group member', () => {
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { innerWidth: 1024, innerHeight: 768 },
+  });
+
+  const markup = renderToStaticMarkup(createElement(SessionContextMenu, {
+    target: {
+      sessionId: 'session:group:one',
+      sessionName: 'main',
+      x: 120,
+      y: 120,
+      canRename: false,
+    },
+    onClose: () => {},
+    onRename: () => {},
+    onMove: () => {},
+    onDelete: () => {},
+  }));
+
+  assert.doesNotMatch(markup, /Rename…/);
+  assert.match(markup, /Remove chat…/);
+});
+
 test('RenameSessionDialog uses the anchored popout presentation', () => {
   const html = renderToStaticMarkup(createElement(RenameSessionDialog, {
       target: {

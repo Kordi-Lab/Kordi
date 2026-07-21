@@ -11,11 +11,13 @@ import {
   cloudGroupReadReceiptSummaryFromMessages,
   cloudGroupControlMessagesForAccount,
   cloudGroupLocalAgentRequestAlreadyHandled,
+  cloudGroupManualSessionTitleSnapshot,
   cloudGroupMemberJoinNoticeRequests,
   cloudGroupMessageReadPeerIds,
   cloudGroupMessageReadTargets,
   cloudGroupMessageSessionId,
   cloudGroupOutgoingParticipantSnapshot,
+  cloudGroupSessionTitleSnapshotForControl,
   cloudGroupUnreadCountsBySessionId,
   cloudGroupPeerIdsFromContactsAndRequests,
   cloudGroupPeerIdsFromMessages,
@@ -654,6 +656,101 @@ test('only explicit group title update controls mutate the shared group name', (
   assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'group-title-update', groupTitle: 'Lalla' }), true);
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'session-title-update', groupTitle: 'Thread title' }), 'Thread title');
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'group-title-update', groupTitle: 'Lalla' }), null);
+});
+
+test('group controls preserve the administrator-authored manual session title snapshot', () => {
+  const sessionTitle = cloudGroupManualSessionTitleSnapshot({
+    session: {
+      title: 'main',
+      createdByIdentityId: 'human:acct_creator',
+      updatedAtMs: 800,
+      metadata: {
+        groupCreatorIdentityId: 'human:acct_creator',
+        sessionTitleSource: 'manual',
+        sessionTitleRevision: 3,
+        sessionTitlePolicyVersion: 1,
+        sessionTitleUpdatedAtMs: 700,
+      },
+    },
+    identities: [{ id: 'human:acct_creator', humanId: 'acct_creator', bridgeNodeId: null }],
+  });
+  assert.deepEqual(sessionTitle, {
+    title: 'main',
+    titleSource: 'manual',
+    titleRevision: 3,
+    titlePolicyVersion: 1,
+    updatedAtMs: 700,
+    updatedByAccountId: 'acct_creator',
+  });
+
+  const envelope = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:title-snapshot',
+    groupSpaceId: 'session:group:title-snapshot',
+    groupTitle: null,
+    createdByAccountId: 'acct_creator',
+    actor: { accountId: 'acct_member', displayName: 'Member', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_creator', displayName: 'Creator', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_member', displayName: 'Member', avatarUrl: null, role: 'person' },
+    ],
+    sessionTitle,
+    message: { id: 'msg:title-snapshot', senderAccountId: 'acct_member', text: 'hello', createdAtMs: 900 },
+  }));
+
+  assert.deepEqual(envelope?.sessionTitle, sessionTitle);
+  assert.deepEqual(cloudGroupSessionTitleSnapshotForControl(envelope!, 900), sessionTitle);
+});
+
+test('legacy session rename controls become administrator-authored title snapshots', () => {
+  const snapshot = cloudGroupSessionTitleSnapshotForControl({
+    kind: 'session-title-update',
+    groupTitle: 'main',
+    actor: { accountId: 'acct_admin', displayName: 'Admin', avatarUrl: null, role: 'admin' },
+    sessionTitle: null,
+  }, 1_234);
+
+  assert.deepEqual(snapshot, {
+    title: 'main',
+    titleSource: 'manual',
+    titleRevision: 1,
+    titlePolicyVersion: 1,
+    updatedAtMs: 1_234,
+    updatedByAccountId: 'acct_admin',
+  });
+});
+
+test('automatic session title backfills stay silent while applying the same snapshot', () => {
+  const envelope = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'session-title-update',
+    groupId: 'session:group:title-backfill',
+    groupSpaceId: 'session:group:title-backfill',
+    groupTitle: 'main',
+    createdByAccountId: 'acct_admin',
+    actor: { accountId: 'acct_member', displayName: 'Member', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_admin', displayName: 'Admin', avatarUrl: null, role: 'admin' },
+      { accountId: 'acct_member', displayName: 'Member', avatarUrl: null, role: 'person' },
+    ],
+    sessionTitle: {
+      title: 'main',
+      titleSource: 'manual',
+      titleRevision: 2,
+      titlePolicyVersion: 1,
+      updatedAtMs: 1_234,
+      updatedByAccountId: 'acct_admin',
+    },
+    sessionTitleSyncOnly: true,
+    message: null,
+  }));
+
+  assert.equal(envelope?.sessionTitleSyncOnly, true);
+  assert.equal(cloudSessionTitleUpdateNoticeRequest({
+    envelope: envelope!,
+    actorIdentityId: 'human:acct_member',
+    createdAtMs: 2_000,
+    cloudMessageId: 'cloud-title-backfill',
+  }), null);
 });
 
 test('group title updates build a remote visible group rename notice separately from session titles', () => {

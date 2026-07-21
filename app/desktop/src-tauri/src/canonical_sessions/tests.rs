@@ -1352,7 +1352,7 @@ fn canonical_group_session_title_rename_requires_group_admin() {
     let _storage =
         crate::test_support::ScopedKordiStorageRoot::new("group-session-title-non-admin");
     let conn = open_db().expect("open db");
-    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let creator = seed_identity(&conn, "human:acct_creator", "Me", "human");
     let alice = seed_identity(&conn, "human:alice", "Alice", "human");
     let group = open_or_create_session_in_db(
         &conn,
@@ -1401,6 +1401,7 @@ fn canonical_group_session_title_rename_requires_group_admin() {
     let metadata = renamed.metadata.as_ref().expect("metadata preserved");
     assert_eq!(metadata["customName"], "Me, Alice");
     assert_eq!(metadata["sessionTitleSource"], "manual");
+    assert_eq!(metadata["sessionTitleUpdatedByAccountId"], "acct_creator");
 }
 
 #[test]

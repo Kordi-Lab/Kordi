@@ -164,6 +164,7 @@ export function sessionContextMenuTargetForConversation(
   conversation: ConversationItem,
   x: number,
   y: number,
+  options: { canRename?: boolean } = {},
 ): SessionContextMenuTarget | null {
   const sessionId = sessionActionIdForConversation(conversation);
   if (!sessionId) return null;
@@ -174,7 +175,21 @@ export function sessionContextMenuTargetForConversation(
     x,
     y,
     canMoveToProject: canMoveConversationToProject(conversation, sessionId),
+    ...(options.canRename === false ? { canRename: false } : {}),
   };
+}
+
+export function participantSpaceCanRenameSessions(space: ParticipantSpaceItem) {
+  if (space.kind !== 'group') return true;
+  const selfIdentityIds = new Set(space.participants
+    .filter((participant) => participant.role === 'self' || participant.source === 'local')
+    .map((participant) => participant.id.trim())
+    .filter(Boolean));
+  if (selfIdentityIds.size === 0) return false;
+  const adminIdentityIds = new Set((space.groupAdminIdentityIds ?? [])
+    .map((identityId) => identityId.trim())
+    .filter(Boolean));
+  return [...selfIdentityIds].some((identityId) => adminIdentityIds.has(identityId));
 }
 
 type ProjectSessionItem = {
@@ -934,6 +949,7 @@ export function WorkspaceSidebar({
   // one measured row so offscreen fork descendants never mount recursively.
   const renderParticipantSpaceSessionRow = (
     session: ParticipantSpaceItem['sessions'][number],
+    space: ParticipantSpaceItem,
     depth: number,
   ) => {
     const conversation = session.conversation;
@@ -967,7 +983,12 @@ export function WorkspaceSidebar({
           data-session-fork-depth={visualDepth || undefined}
           onClick={() => onSelectChatSession(session.id)}
           onContextMenu={(event) => {
-            const target = sessionContextMenuTargetForConversation(conversation, event.clientX, event.clientY);
+            const target = sessionContextMenuTargetForConversation(
+              conversation,
+              event.clientX,
+              event.clientY,
+              { canRename: participantSpaceCanRenameSessions(space) },
+            );
             if (!target) return;
             event.preventDefault();
             event.stopPropagation();
@@ -1521,7 +1542,7 @@ export function WorkspaceSidebar({
       return space ? renderParticipantSpaceItem(space) : null;
     }
     const row = allSidebarSessionRowsById.get(descriptor.sessionId);
-    return row ? renderParticipantSpaceSessionRow(row.session, descriptor.depth) : null;
+    return row ? renderParticipantSpaceSessionRow(row.session, row.space, descriptor.depth) : null;
   };
   const renderAgentSidebarRow = (descriptor: ChatSidebarRow) => {
     if (descriptor.kind !== 'session') return null;

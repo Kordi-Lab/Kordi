@@ -1907,7 +1907,7 @@ test('WorkspaceSidebar keeps group child host rows mounted across parent refresh
 
   assert.doesNotMatch(workspace, /const ParticipantSpaceSessionRow\s*=\s*\(/);
   assert.match(workspace, /const renderParticipantSpaceSessionRow\s*=\s*\(\s*session:\s*ParticipantSpaceItem\['sessions'\]\[number\],/);
-  assert.match(workspace, /return row \? renderParticipantSpaceSessionRow\(row\.session, descriptor\.depth\) : null;/);
+  assert.match(workspace, /return row \? renderParticipantSpaceSessionRow\(row\.session, row\.space, descriptor\.depth\) : null;/);
 });
 
 test('WorkspaceSidebar hides old fork rows for canonical group sessions', () => {
