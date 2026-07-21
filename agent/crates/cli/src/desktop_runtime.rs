@@ -166,6 +166,8 @@ pub struct DesktopChatMessage {
     pub timestamp_ms: i64,
     #[serde(default, skip_serializing_if = "is_false")]
     pub failed: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub cancelled: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<DesktopChatAttachment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

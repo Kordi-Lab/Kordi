@@ -813,6 +813,7 @@ fn set_local_model_timeout_override(timeout: Duration) -> LocalModelTimeoutOverr
     LocalModelTimeoutOverrideGuard
 }
 
+mod cancellation;
 mod compaction;
 mod provider_failures;
 mod tool_execution;

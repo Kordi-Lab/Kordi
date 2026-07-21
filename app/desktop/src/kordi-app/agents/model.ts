@@ -51,6 +51,20 @@ export type FactoryArtifactKind = 'agent' | 'skill';
 
 export type FactorySection = 'builds' | 'skills';
 
+export type AgentStudioTab = 'blueprint' | 'capabilities' | 'files' | 'runs' | 'history';
+
+export function skillLibraryFileDisplay(path: string) {
+  const segments = path.split('/').filter(Boolean);
+  const name = segments[segments.length - 1] ?? path;
+  const parent = segments.length > 1 ? segments.slice(0, -1).join('/') : null;
+  return { name, parent };
+}
+
+export function visibleAgentStudioTabIds(creating: boolean, artifactKind: FactoryArtifactKind): AgentStudioTab[] {
+  if (creating && artifactKind === 'skill') return ['files', 'runs', 'history'];
+  return ['blueprint', 'capabilities', 'runs', 'history'];
+}
+
 export type AgentEditHistoryEntry = {
   path: string;
   action: string;
@@ -159,9 +173,7 @@ export function buildUnavailableFilePreview(agent: Agent, file?: string | null) 
   return [
     `# ${agent.name}`,
     '',
-    file ? `No real file contents are available for: ${file}` : 'No real identity files are exposed for this agent.',
-    '',
-    'The desktop UI is intentionally avoiding generated placeholder content here.',
+    file ? `No content is available for ${file}.` : 'No files are available for this agent.',
   ].join('\n');
 }
 

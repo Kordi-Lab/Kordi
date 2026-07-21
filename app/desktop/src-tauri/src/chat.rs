@@ -1303,12 +1303,8 @@ pub async fn desktop_chat_cancel_turn(
     turn.cancel.cancel();
     update_turn(&turn.snapshot, |state| {
         if !state.completed {
-            state.status = "cancelled".to_string();
-            state.message = "Response stopped".to_string();
-            state.completed = true;
-            state.completed_at_ms = Some(now_millis());
-            state.succeeded = false;
-            state.error = None;
+            state.status = "cancelling".to_string();
+            state.message = "Stopping…".to_string();
         }
     });
     snapshot_turn(&turn.snapshot)

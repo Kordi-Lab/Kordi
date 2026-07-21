@@ -193,7 +193,7 @@ function EditHistorySection({ entries }: { entries: AgentEditHistoryEntry[] }) {
 
 function truncatePrompt(value: string) {
   const normalized = promptDisplayText(value).replace(/\s+/g, ' ').trim();
-  if (!normalized) return 'No real prompt payload is exposed for this identity.';
+  if (!normalized) return 'No prompt available.';
   if (normalized.length <= 180) return normalized;
   return `${normalized.slice(0, 179).trimEnd()}…`;
 }
@@ -580,7 +580,7 @@ export function AgentDetailPane({
     return (
       <section className="app-agent-detail-pane flex min-h-0 min-w-0 flex-col">
         <div className="app-agent-empty-state flex h-full items-center justify-center px-6 text-center text-[13px] leading-5">
-          Select an agent to inspect its system prompt, tools, plugins, skills, and identity files.
+          Select an agent.
         </div>
       </section>
     );
@@ -821,7 +821,6 @@ export function AgentDetailPane({
             <div className="min-w-0">
               <div className="app-agent-panel-subtitle text-[12px] font-medium">Agent inspector</div>
               <div className="app-agent-hero-title mt-1 truncate text-[22px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
-              <div className="app-agent-panel-subtitle mt-1 text-[13px]">Middle panel lists each item. Click prompt or markdown files to open detail on the right.</div>
             {archiveFeedback || activeSaveFeedback ? (
               <div
                 className={cn(
@@ -911,14 +910,13 @@ export function AgentDetailPane({
             </AgentInspectorSection>
           ) : null}
 
-          <AgentInspectorSection title="Overview" detail="System prompt and markdown/config files open in the right panel.">
+          <AgentInspectorSection title="Overview">
             <div className="space-y-3">
               <InspectorRow
                 label={hasRuntimePrompt ? 'System prompt' : 'System prompt unavailable'}
                 detail={truncatePrompt(activeAgentConfig.systemPrompt)}
                 active={activeDetail?.kind === 'prompt'}
                 onClick={() => onOpenPromptDetail(activeAgent.id)}
-                trailing={<div className="app-agent-row-meta text-[11px]">{activeConfigPath ?? 'runtime'}</div>}
               />
 
               {exposesIdentityFiles ? (
@@ -934,19 +932,18 @@ export function AgentDetailPane({
                 ))
               ) : (
                 <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px]">
-                  No real identity files are exposed for this bridge agent.
+                  No files available.
                 </div>
               )}
             </div>
           </AgentInspectorSection>
 
-          <AgentInspectorSection title="Loaded skills" detail="Show and edit the skill list here without opening a full detail pane.">
+          <AgentInspectorSection title="Loaded skills">
             {exposesLoadedSkills ? (
               <>
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="app-agent-row-meta text-[11px]">Persisted in {activeConfigPath ?? (hasRuntimePrompt ? 'current runtime' : 'not exposed by bridge agent')}</div>
-                  {isEditable ? (
-                    activeEditingSection === 'skills' ? (
+                {isEditable ? (
+                  <div className="mb-3 flex items-center justify-end gap-2">
+                    {activeEditingSection === 'skills' ? (
                       <div className="flex items-center gap-2">
                         <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onCancelEditing(activeAgent)}>
                           Cancel
@@ -959,11 +956,9 @@ export function AgentDetailPane({
                       <Button variant="secondary" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={() => onStartEditing(activeAgent.id, 'skills')}>
                         Edit
                       </Button>
-                    )
-                  ) : (
-                    <div className="app-agent-row-meta text-[11px]">Runtime-managed</div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {availableSkills.map((skill) => {
                     const selected = activeAgentConfig.loadedSkills.includes(skill);
@@ -987,7 +982,7 @@ export function AgentDetailPane({
               </>
             ) : (
               <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px]">
-                No real loaded-skills payload is exposed for this bridge agent.
+                No skills available.
               </div>
             )}
           </AgentInspectorSection>
@@ -998,7 +993,7 @@ export function AgentDetailPane({
                 <AgentConfigList items={activePersistedConfig?.loadedTools ?? activeAgent.loadedTools} emptyLabel="No tools loaded for this identity." />
               ) : (
                 <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px]">
-                  No real loaded-tools payload is exposed for this bridge agent.
+                  No tools available.
                 </div>
               )}
             </AgentInspectorSection>
@@ -1008,7 +1003,7 @@ export function AgentDetailPane({
                 <AgentConfigList items={activePersistedConfig?.loadedPlugins ?? activeAgent.loadedPlugins} emptyLabel="No plugins loaded for this identity." />
               ) : (
                 <div className="app-agent-empty-callout rounded-[14px] border border-dashed px-4 py-3 text-[13px]">
-                  No real loaded-plugins payload is exposed for this bridge agent.
+                  No plugins available.
                 </div>
               )}
             </AgentInspectorSection>

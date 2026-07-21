@@ -156,11 +156,14 @@ export function AgentStudioConversation({
   onOpenAuthSettings?: () => void;
 }) {
   const [draft, setDraft] = useState('');
+  const [hasSubmittedMessage, setHasSubmittedMessage] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentsRef = useRef<AttachmentItem[]>([]);
+  const lastResolvedSessionIdRef = useRef(sessionId ?? null);
   const [routeOverride, setRouteOverride] = useState<{
     sessionId: string | null;
     selection: BuilderRouteSelection;
@@ -171,8 +174,16 @@ export function AgentStudioConversation({
   } | null>(null);
   const busy = opening || Boolean(activeTurn && !activeTurn.completed);
   const suggestions = creating
-    ? ['Build from these requirements', 'Create a reusable skill', 'Design a safe workflow']
-    : ['Make the instructions more concise', 'Review this build for missing boundaries', 'Suggest the smallest useful capability set'];
+    ? [
+        'I want to create an agent that helps me with…',
+        'I want to create a skill for…',
+        'I want to automate…',
+      ]
+    : [
+        'I want this agent to help me with…',
+        'Review this agent for skills it does not need',
+        'Suggest useful skills for this agent',
+      ];
   const messages = useMemo(() => {
     if (!detail || !sessionId) return [];
     return mapDesktopMessagesForTranscript(sessionId, detail.messages, {
@@ -191,6 +202,8 @@ export function AgentStudioConversation({
     ? routeOverride.selection
     : defaultRouteSelection;
   const showOptimistic = optimisticPrompt !== null || optimisticAttachments.length > 0;
+  const hasUserMessage = Boolean(detail?.messages.some((message) => message.role === 'user'));
+  const showSuggestions = !hasSubmittedMessage && !hasUserMessage && !showOptimistic && !activeTurn;
   const hasVisibleRuntimeFailure = Boolean(error && messages.some((message) => (
     message.turn?.completed
     && !message.turn.succeeded
@@ -233,7 +246,14 @@ export function AgentStudioConversation({
   }, []);
 
   useEffect(() => {
+    const nextSessionId = sessionId ?? null;
+    if (!nextSessionId) return;
+    const previousSessionId = lastResolvedSessionIdRef.current;
+    lastResolvedSessionIdRef.current = nextSessionId;
+    if (!previousSessionId || previousSessionId === nextSessionId) return;
+
     setDraft('');
+    setHasSubmittedMessage(false);
     setAttachmentError(null);
     setRouteOverride(null);
     setOpenRouteSelector(null);
@@ -296,6 +316,11 @@ export function AgentStudioConversation({
       if (removed?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(removed.previewUrl);
       return current.filter((attachment) => attachment.id !== id);
     });
+  };
+
+  const applySuggestion = (suggestion: string) => {
+    setDraft(suggestion);
+    composerInputRef.current?.focus();
   };
 
   const updateRouteSelection = useCallback((
@@ -366,10 +391,11 @@ export function AgentStudioConversation({
     setOpenRouteSelector(null);
   }, [updateRouteSelection]);
 
-  const submit = async (override?: string) => {
-    const text = (override ?? draft).trim();
-    if ((!text && attachments.length === 0) || busy) return;
+  const submit = async () => {
+    const text = draft.trim();
+    if ((!text && attachments.length === 0) || busy || !sessionId) return;
     const submittedAttachments = attachments;
+    setHasSubmittedMessage(true);
     setDraft('');
     setAttachments([]);
     try {
@@ -425,11 +451,13 @@ export function AgentStudioConversation({
       </div>
 
       <footer className="app-agent-studio-composer-wrap">
-        <div className="app-agent-studio-suggestions" aria-label="Suggested requests">
-          {suggestions.map((suggestion) => (
-            <button key={suggestion} type="button" onClick={() => void submit(suggestion)} disabled={busy || !sessionId}>{suggestion}</button>
-          ))}
-        </div>
+        {showSuggestions ? (
+          <div className="app-agent-studio-suggestions" aria-label="Suggested requests">
+            {suggestions.map((suggestion) => (
+              <button key={suggestion} type="button" onClick={() => applySuggestion(suggestion)}>{suggestion}</button>
+            ))}
+          </div>
+        ) : null}
         <div className="app-composer-shell rounded-[26px] p-3">
           <input
             ref={attachmentInputRef}
@@ -469,6 +497,7 @@ export function AgentStudioConversation({
               </div>
             ) : null}
             <textarea
+              ref={composerInputRef}
               rows={1}
               value={draft}
               onChange={(event) => setDraft(event.currentTarget.value)}
@@ -497,7 +526,6 @@ export function AgentStudioConversation({
               className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
               placeholder={creating ? 'Describe what you want Kordi Factory to build…' : `Ask Kordi Factory to build or refine ${targetName}…`}
               aria-label="Message Kordi Factory"
-              disabled={opening || !sessionId}
             />
             {attachmentError ? <div className="pt-1 text-[11px] text-rose-500" role="alert">{attachmentError}</div> : null}
           </div>

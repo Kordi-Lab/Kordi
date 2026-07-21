@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Factory, LoaderCircle, MessageSquare, MoreHorizontal, PanelRight, Send, Sparkles } from 'lucide-react';
+import { MoreHorizontal, PanelRight, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   installDesktopAgentBuilderSkill,
+  openDesktopAgentBuilder,
+  updateDesktopAgentBuilderDraft,
   type DesktopAgentBuilderDraft,
   type DesktopAgentBuilderSeed,
+  type DesktopAgentBuilderStatus,
   type DesktopSkillLibraryEntry,
 } from '@/lib/desktop';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
@@ -56,6 +59,52 @@ function agentBuilderSkillSlug(value: string) {
     .slice(0, 64);
 }
 
+function agentBuilderSeedForAgent(agent?: Agent): DesktopAgentBuilderSeed {
+  return {
+    name: agent?.name ?? 'Agent',
+    role: agent?.role ?? '',
+    description: agent?.cloudAgentDescription ?? agent?.cloudAgentSourceSummary ?? agent?.role ?? '',
+    sourceSummary: agent?.cloudAgentSourceSummary ?? '',
+    boundaries: agent?.cloudAgentBoundaries ?? [],
+    systemPrompt: agent?.systemPrompt ?? '',
+    access: agent?.cloudAgentAccessScope === 'participant_conversations' ? 'participant-conversations' : 'only-me',
+    provider: agent?.defaultAuthProvider ?? null,
+    model: agent?.defaultModel ?? null,
+    thinking: agent?.defaultThinking ?? null,
+    tools: agent?.loadedTools ?? [],
+    plugins: agent?.loadedPlugins ?? [],
+    skills: (agent?.cloudAgentSkills ?? agent?.loadedSkills.map((name) => ({ name, description: '' })) ?? []).map((skill) => ({
+      name: skill.name,
+      description: skill.description ?? '',
+      content: 'content' in skill && typeof skill.content === 'string' ? skill.content : null,
+    })),
+  };
+}
+
+function draftWithLibrarySkill(draft: DesktopAgentBuilderDraft, skill: DesktopSkillLibraryEntry, skillMd: string) {
+  const normalizedName = agentBuilderSkillSlug(skill.name);
+  const content = skillMd.trim() || [
+    '---',
+    `name: ${normalizedName}`,
+    `description: "${skill.description.replace(/"/g, '\\"')}"`,
+    '---',
+    '',
+    `# ${skill.name}`,
+  ].join('\n');
+  return {
+    ...draft,
+    skills: [
+      ...draft.skills.filter((entry) => entry.name !== normalizedName),
+      {
+        name: normalizedName,
+        description: skill.description,
+        path: `skills/${normalizedName}/SKILL.md`,
+        content,
+      },
+    ].sort((left, right) => left.name.localeCompare(right.name)),
+  };
+}
+
 type AgentModelRoutingDraft = {
   defaultModel?: string | null;
   defaultAuthProvider?: string | null;
@@ -95,7 +144,6 @@ export function AgentsPage({
   composerProviderOptions,
   onUpdateAgentModelRouting,
   onOpenAgentReachoutSession,
-  onOpenAgentBuilderSession,
   onOpenAuthSettings,
   onCreateCloudAgent,
   onUpdateCloudAgent,
@@ -152,6 +200,20 @@ export function AgentsPage({
     replaceAgentDraft,
     updateActiveFileDraft,
   } = useAgentsPageModel(agents, selectedAgent);
+  const capabilitySkillCatalog = useMemo(() => {
+    const names = new Map<string, string>();
+    const descriptions: Record<string, string> = {};
+    availableSkills.forEach((name) => names.set(name.toLocaleLowerCase(), name));
+    skillLibrary.skills.forEach((skill) => {
+      const name = agentBuilderSkillSlug(skill.name) || skill.name;
+      names.set(name.toLocaleLowerCase(), name);
+      if (skill.description.trim()) descriptions[name.toLocaleLowerCase()] = skill.description.trim();
+    });
+    return {
+      names: Array.from(names.values()).sort((left, right) => left.localeCompare(right)),
+      descriptions,
+    };
+  }, [availableSkills, skillLibrary.skills]);
 
   useEffect(() => {
     setPublishFeedback(null);
@@ -190,25 +252,7 @@ export function AgentsPage({
     tools: [],
     plugins: [],
     skills: [],
-  } : {
-    name: selectedAgent?.name ?? 'Agent',
-    role: selectedAgent?.role ?? '',
-    description: selectedAgent?.cloudAgentDescription ?? selectedAgent?.cloudAgentSourceSummary ?? selectedAgent?.role ?? '',
-    sourceSummary: selectedAgent?.cloudAgentSourceSummary ?? '',
-    boundaries: selectedAgent?.cloudAgentBoundaries ?? [],
-    systemPrompt: selectedAgent?.systemPrompt ?? '',
-    access: selectedAgent?.cloudAgentAccessScope === 'participant_conversations' ? 'participant-conversations' : 'only-me',
-    provider: selectedAgent?.defaultAuthProvider ?? null,
-    model: selectedAgent?.defaultModel ?? null,
-    thinking: selectedAgent?.defaultThinking ?? null,
-    tools: selectedAgent?.loadedTools ?? [],
-    plugins: selectedAgent?.loadedPlugins ?? [],
-    skills: (selectedAgent?.cloudAgentSkills ?? selectedAgent?.loadedSkills.map((name) => ({ name, description: '' })) ?? []).map((skill) => ({
-      name: skill.name,
-      description: skill.description ?? '',
-      content: 'content' in skill && typeof skill.content === 'string' ? skill.content : null,
-    })),
-  }, [creating, creatingSkill, selectedAgent]);
+  } : agentBuilderSeedForAgent(selectedAgent), [creating, creatingSkill, selectedAgent]);
   const builderSeedKey = `${builderGeneration}:${JSON.stringify(builderSeed)}`;
   const builder = useAgentBuilderSession({
     targetKey: builderTargetKey,
@@ -252,6 +296,16 @@ export function AgentsPage({
       && (selectedAgent.id === 'desktop:local-agent' || selectedAgent.isBridgeActive)
       && onSetAgentSkillEnabled,
   );
+  const skillAgentTargets = useMemo(() => agents
+    .filter((agent) => agent.isOwned)
+    .map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      role: agent.role,
+      avatarSeed: agent.avatarSeed,
+      profileImageUrl: agent.profileImageUrl,
+      loadedSkills: agentConfigs[agent.id]?.loadedSkills ?? agent.loadedSkills,
+    })), [agentConfigs, agents]);
   const canEditPrompt = Boolean(builder.status?.draft);
   const editableCapabilityKinds = useMemo(() => {
     const kinds = new Set<AgentStudioCapabilityKind>();
@@ -292,7 +346,6 @@ export function AgentsPage({
   const studioChanges = routingChanged
     ? [...studioChangesWithAccess, { key: 'routing' as const, label: 'Model routing updated', detail: selectedRouting.defaultModel || 'Runtime default' }]
     : studioChangesWithAccess;
-  const publishChangeCount = creating ? (creationDraft ? 1 : 0) : studioChanges.length;
   const publishDisabled = Boolean(publishing
     || builder.opening
     || builder.testing
@@ -342,7 +395,8 @@ export function AgentsPage({
           ? draft.skills.filter((skill) => skill.name !== slug)
           : [...draft.skills.filter((skill) => skill.name !== slug), {
             name: slug,
-            description: 'Focused instructions for this agent.',
+            description: capabilitySkillCatalog.descriptions[slug.toLocaleLowerCase()]
+              ?? `Reusable guidance for ${name.replace(/[-_]+/g, ' ')}.`,
             path: `skills/${slug}/SKILL.md`,
             content: '',
           }].sort((left, right) => left.name.localeCompare(right.name));
@@ -554,31 +608,35 @@ export function AgentsPage({
     }
   };
 
-  const addLibrarySkillToBuild = async (skill: DesktopSkillLibraryEntry, skillMd: string) => {
-    const normalizedName = agentBuilderSkillSlug(skill.name);
-    const content = skillMd.trim() || [
-      '---',
-      `name: ${normalizedName}`,
-      `description: "${skill.description.replace(/"/g, '\\"')}"`,
-      '---',
-      '',
-      `# ${skill.name}`,
-    ].join('\n');
-    const result = await persistBuilderDraft((draft) => ({
-      ...draft,
-      skills: [
-        ...draft.skills.filter((entry) => entry.name !== normalizedName),
-        {
-          name: normalizedName,
-          description: skill.description,
-          path: `skills/${normalizedName}/SKILL.md`,
-          content,
-        },
-      ].sort((left, right) => left.name.localeCompare(right.name)),
-    }));
-    if (!result) return;
-    setFactorySection('builds');
-    setPublishFeedback({ tone: 'info', text: `${skill.name} was added to the current private draft. Publish to apply it.` });
+  const addLibrarySkillToAgent = async (targetAgentId: string, skill: DesktopSkillLibraryEntry, skillMd: string) => {
+    const targetAgent = agents.find((agent) => agent.id === targetAgentId && agent.isOwned);
+    if (!targetAgent) throw new Error('Choose an agent you own.');
+
+    const isOpenTarget = !creating && selectedAgent?.id === targetAgent.id;
+    let result: DesktopAgentBuilderStatus | null = null;
+    if (isOpenTarget && builder.status?.draft && builder.status.lifecycle === 'draft' && !builder.opening) {
+      result = await builder.updateDraft((draft) => draftWithLibrarySkill(draft, skill, skillMd));
+      if (!result) throw new Error(`Kordi could not update ${targetAgent.name}'s draft.`);
+    } else {
+      const opened = await openDesktopAgentBuilder(`agent:${targetAgent.id}`, agentBuilderSeedForAgent(targetAgent));
+      if (!opened?.status.draft || opened.status.lifecycle !== 'draft') {
+        throw new Error(`Kordi could not open ${targetAgent.name}'s private draft.`);
+      }
+      result = await updateDesktopAgentBuilderDraft(
+        opened.status.draftId,
+        draftWithLibrarySkill(opened.status.draft, skill, skillMd),
+      );
+      if (isOpenTarget) setBuilderGeneration((current) => current + 1);
+    }
+
+    if (!result?.draft) throw new Error(`Kordi could not save ${targetAgent.name}'s private draft.`);
+    replaceAgentDraft(targetAgent.id, {
+      systemPrompt: result.draft.systemPrompt,
+      loadedSkills: result.draft.skills.map((entry) => entry.name),
+      loadedTools: result.draft.tools,
+      loadedPlugins: result.draft.plugins,
+    });
+    setPublishFeedback({ tone: 'info', text: `${skill.name} was added to ${targetAgent.name}'s private draft. Publish that agent to apply it.` });
   };
 
   const handleCommunityInstalled = async (installed: DesktopSkillLibraryEntry) => {
@@ -611,11 +669,6 @@ export function AgentsPage({
     : creating
       ? creationDraft?.name ?? 'New agent'
       : selectedAgent?.name ?? 'Kordi Factory';
-  const displayRole = creatingSkill
-    ? builder.status?.draft?.skills[0]?.description ?? 'Reusable Kordi skill'
-    : creating
-      ? creationDraft?.role ?? 'Build with Kordi Factory'
-      : selectedAgent?.role ?? 'No project selected';
   const routedAgent = selectedAgent ? {
     ...selectedAgent,
     defaultModel: selectedRouting.defaultModel ?? selectedAgent.defaultModel,
@@ -656,34 +709,23 @@ export function AgentsPage({
             loading={skillLibrary.loading}
             error={skillLibrary.error}
             mutatingSkillId={skillLibrary.mutatingSkillId}
-            canAddToBuild={Boolean(builder.status?.draft && builder.status.lifecycle === 'draft')}
+            agentTargets={skillAgentTargets}
             onSelectSkill={setSelectedSkillId}
             onRefresh={skillLibrary.refresh}
             onSetEnabled={skillLibrary.setEnabled}
             onRemove={removeLibrarySkill}
             onInstalled={handleCommunityInstalled}
-            onAddToBuild={addLibrarySkillToBuild}
+            onAddToAgent={addLibrarySkillToAgent}
           />
         ) : <main className="app-agent-studio-main">
-          <header className="app-agent-studio-header">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="app-agent-studio-factory-mark" aria-hidden="true"><Factory className="h-5 w-5" /></span>
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2"><h2>Kordi Factory</h2><span className={cn('app-agent-studio-status-pill', publishChangeCount > 0 && 'is-draft')}>{publishChangeCount > 0 ? `${publishChangeCount} draft` : 'Ready'}</span></div>
-                <p>{creating ? 'New private build' : `Building ${displayName}`}{displayRole ? ` · ${displayRole}` : ''}</p>
-              </div>
+          {!creating && selectedAgent?.cloudAgentId && onArchiveCloudAgent ? (
+            <div className="app-agent-studio-header-actions is-floating">
+              <details className="relative">
+                <summary className="app-agent-studio-icon-button" aria-label="More agent actions"><MoreHorizontal className="h-4 w-4" /></summary>
+                <div className="app-agent-studio-actions-menu"><button type="button" onClick={() => setArchiveConfirmAgent(selectedAgent)}>Delete agent</button></div>
+              </details>
             </div>
-            <div className="app-agent-studio-header-actions">
-              {builder.status?.sessionId && onOpenAgentBuilderSession ? <button type="button" className="app-agent-studio-button is-ghost" onClick={() => onOpenAgentBuilderSession(builder.status!.sessionId)}><MessageSquare className="h-4 w-4" />Open full conversation</button> : null}
-              {!creating && selectedAgent?.cloudAgentId && onArchiveCloudAgent ? (
-                <details className="relative">
-                  <summary className="app-agent-studio-icon-button" aria-label="More agent actions"><MoreHorizontal className="h-4 w-4" /></summary>
-                  <div className="app-agent-studio-actions-menu"><button type="button" onClick={() => setArchiveConfirmAgent(selectedAgent)}>Delete agent</button></div>
-                </details>
-              ) : null}
-              {publishChangeCount > 0 ? <button type="button" className="app-agent-studio-button is-primary" onClick={() => void publish()} disabled={publishDisabled}>{publishing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{publishing ? (creatingSkill ? 'Installing' : 'Publishing') : creatingSkill ? 'Install skill' : creating ? 'Create agent' : 'Publish'}</button> : null}
-            </div>
-          </header>
+          ) : null}
           <div className="app-agent-studio-compact-switcher" role="group" aria-label="Factory pane">
             <button type="button" className={cn(compactPane === 'conversation' && 'is-active')} onClick={() => setCompactPane('conversation')}><Sparkles className="h-3.5 w-3.5" />Conversation</button>
             <button type="button" className={cn(compactPane === 'workspace' && 'is-active')} onClick={() => setCompactPane('workspace')}><PanelRight className="h-3.5 w-3.5" />Workspace</button>
@@ -723,7 +765,8 @@ export function AgentsPage({
               config={activeAgentConfig}
               persisted={activePersistedConfig}
               changes={studioChanges}
-              availableSkills={availableSkills}
+              availableSkills={capabilitySkillCatalog.names}
+              skillDescriptions={capabilitySkillCatalog.descriptions}
               availableTools={availableTools}
               availablePlugins={availablePlugins}
               editableCapabilityKinds={editableCapabilityKinds}

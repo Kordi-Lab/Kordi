@@ -539,11 +539,25 @@ export class CloudAuthClient {
   }
 
   async capabilities(): Promise<CloudAuthCapabilities> {
-    return this.send<CloudAuthCapabilities>(
-      '/v1/cloud/auth/capabilities',
-      { method: 'GET' },
-      'Could not load available sign-in methods.',
-    );
+    try {
+      return await this.send<CloudAuthCapabilities>(
+        '/v1/cloud/auth/capabilities',
+        { method: 'GET' },
+        'Could not load available sign-in methods.',
+      );
+    } catch (caught) {
+      // The hosted product API supported both OAuth start routes before it
+      // exposed the capabilities endpoint. Keep those deployed versions
+      // usable while the start route remains the authoritative config check.
+      if (
+        caught instanceof CloudAuthError
+        && caught.status === 404
+        && isProductionCloudOrigin(this.baseUrl)
+      ) {
+        return { password: true, oauthProviders: ['google', 'github'] };
+      }
+      throw caught;
+    }
   }
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {

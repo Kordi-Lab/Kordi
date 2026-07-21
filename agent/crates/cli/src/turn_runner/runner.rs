@@ -28,7 +28,8 @@ use super::TurnEvent;
 use super::hooks::send_extension_event_safe;
 use super::panic::catch_contained_panics;
 use super::persistence::{
-    append_assistant_error_message, append_assistant_message, append_custom_message,
+    append_assistant_cancelled_message, append_assistant_error_message, append_assistant_message,
+    append_custom_message,
 };
 use super::tools::{ToolExecutionEnv, append_cancelled_tool_results, execute_tool_calls};
 
@@ -347,6 +348,8 @@ pub(crate) async fn run_turn_inner(
         .await;
 
         if config.cancel.is_cancelled() {
+            append_assistant_cancelled_message(&config.conn, &config.session_id, &config.model)
+                .await?;
             let _ = event_tx.send(TurnEvent::Done {
                 text: String::new(),
             });
@@ -365,16 +368,26 @@ pub(crate) async fn run_turn_inner(
         let stream = match collect_stream_events_with_retry(config, event_tx, request).await {
             Ok(stream) => stream,
             Err(error) => {
-                if !config.cancel.is_cancelled() {
-                    let message = error.to_string();
-                    let _ = append_assistant_error_message(
+                if config.cancel.is_cancelled() {
+                    append_assistant_cancelled_message(
                         &config.conn,
                         &config.session_id,
                         &config.model,
-                        &message,
                     )
-                    .await;
+                    .await?;
+                    let _ = event_tx.send(TurnEvent::Done {
+                        text: String::new(),
+                    });
+                    break;
                 }
+                let message = error.to_string();
+                let _ = append_assistant_error_message(
+                    &config.conn,
+                    &config.session_id,
+                    &config.model,
+                    &message,
+                )
+                .await;
                 return Err(error);
             }
         };
@@ -436,6 +449,9 @@ pub(crate) async fn run_turn_inner(
                 &resolved_usage,
                 stop_reason,
             )?;
+        } else if stream.cancelled || config.cancel.is_cancelled() {
+            append_assistant_cancelled_message(&config.conn, &config.session_id, &config.model)
+                .await?;
         }
         overflow_recovery_attempted = false;
 

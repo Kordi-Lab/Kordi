@@ -110,6 +110,39 @@ test('private cloud agent transcript labels assistant turns with the selected cl
   assert.equal(mapped.senderAvatarSeed, 'cloud_agent_abc');
 });
 
+test('desktop transcript uses an explicit local agent display name as the visible sender', () => {
+  const [mapped] = mapDesktopMessagesForTranscript('session-factory', [{
+    role: 'assistant',
+    sender: 'Kordi',
+    text: 'Draft updated.',
+    timeLabel: '22:08',
+    timestampMs: 3,
+  }], {
+    agent: 'agent-builder',
+    agentDisplayName: 'Kordi Factory',
+  });
+
+  assert.equal(mapped.sender, 'Kordi Factory');
+  assert.equal(mapped.sourceSenderLabel, 'Kordi Factory');
+  assert.equal(mapped.senderAvatarSeed, 'agent-builder');
+});
+
+test('desktop transcript keeps an empty cancelled assistant turn as visible history', () => {
+  const [mapped] = mapDesktopMessagesForTranscript('session-cancelled', [{
+    role: 'assistant',
+    sender: 'Kordi',
+    text: '',
+    timeLabel: '22:08',
+    timestampMs: 3,
+    cancelled: true,
+  }]);
+
+  assert.equal(mapped.turn?.status, 'cancelled');
+  assert.equal(mapped.turn?.message, 'Response stopped');
+  assert.equal(mapped.turn?.completed, true);
+  assert.equal(mapped.turn?.succeeded, false);
+});
+
 test('self-agent chat can render completed assistant replies without reply quote, request reply line, background, or folding', () => {
   const longReply = [
     'There is still no substantive progress.',

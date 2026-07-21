@@ -811,6 +811,9 @@ function LiveChatTurnCardView({
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
   const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
   const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : visibleTurn.error;
+  const cancellationNotice = visibleTurn.status === 'cancelled'
+    ? (visibleTurn.message.trim() || 'Response stopped')
+    : null;
   const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean(
     shouldShowSourceQuote
@@ -818,6 +821,7 @@ function LiveChatTurnCardView({
       || isCompressionStatus
       || hasTimelineActivity
       || hasAssistant
+      || cancellationNotice
       || changedFileRows.length > 0,
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
@@ -891,6 +895,12 @@ function LiveChatTurnCardView({
               foldable={!plainAgentResponse}
               tone={visibleTurn.status === 'cancelled' ? 'cancelled' : 'default'}
             />
+          ) : null}
+
+          {cancellationNotice ? (
+            <div className="app-live-turn-cancelled px-0.5 text-[12px] font-medium leading-5 text-[color:var(--utility-muted-text)]">
+              {cancellationNotice}
+            </div>
           ) : null}
 
           {displayedError ? (

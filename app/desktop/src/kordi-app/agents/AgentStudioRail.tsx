@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Bot, Plus, Puzzle, Search } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -10,6 +10,13 @@ import type {
   FactoryArtifactKind,
   FactorySection,
 } from './model';
+
+const SKILL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+function getSkillInitial(name: string) {
+  const initial = name.trim().charAt(0).toUpperCase();
+  return initial >= 'A' && initial <= 'Z' ? initial : null;
+}
 
 function closeCreateMenu(event: MouseEvent<HTMLButtonElement>) {
   event.currentTarget.closest('details')?.removeAttribute('open');
@@ -43,6 +50,7 @@ export function AgentStudioRail({
   onCreateArtifact: (kind: FactoryArtifactKind) => void;
 }) {
   const [query, setQuery] = useState('');
+  const skillListRef = useRef<HTMLDivElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredAgents = useMemo(() => {
     if (!normalizedQuery) return agents;
@@ -54,6 +62,19 @@ export function AgentStudioRail({
     return skills.filter((skill) => [skill.name, skill.description, skill.origin, skill.provider ?? '']
       .some((value) => value.toLocaleLowerCase().includes(normalizedQuery)));
   }, [normalizedQuery, skills]);
+  const firstSkillIdByInitial = useMemo(() => {
+    const firstSkillIds = new Map<string, string>();
+    filteredSkills.forEach((skill) => {
+      const initial = getSkillInitial(skill.name);
+      if (initial && !firstSkillIds.has(initial)) firstSkillIds.set(initial, skill.id);
+    });
+    return firstSkillIds;
+  }, [filteredSkills]);
+
+  const jumpToSkillInitial = (initial: string) => {
+    const target = skillListRef.current?.querySelector<HTMLElement>(`[data-skill-initial="${initial}"]`);
+    target?.scrollIntoView({ block: 'start', inline: 'nearest' });
+  };
 
   return (
     <aside className="app-agent-studio-rail">
@@ -90,7 +111,7 @@ export function AgentStudioRail({
           </details>
         </div>
         <div className="app-factory-rail-switch" role="tablist" aria-label="Factory navigation">
-          <button type="button" role="tab" aria-selected={section === 'builds'} className={cn(section === 'builds' && 'is-active')} onClick={() => onSectionChange('builds')}>Builds</button>
+          <button type="button" role="tab" aria-selected={section === 'builds'} className={cn(section === 'builds' && 'is-active')} onClick={() => onSectionChange('builds')}>Agents</button>
           <button type="button" role="tab" aria-selected={section === 'skills'} className={cn(section === 'skills' && 'is-active')} onClick={() => onSectionChange('skills')}>Skills <span>{skills.length}</span></button>
         </div>
         <label className="app-agent-studio-rail-search">
@@ -98,15 +119,20 @@ export function AgentStudioRail({
           <input
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
-            placeholder={section === 'skills' ? 'Search skills' : 'Search factory projects'}
+            placeholder={section === 'skills' ? 'Search skills' : 'Search agents'}
           />
         </label>
       </header>
-      <div className="app-agent-studio-agent-list">
-        {section === 'builds' ? (
+      {section === 'builds' ? (
+        <div className="app-agent-studio-agent-list app-scroll-area">
           <>
             {creatingKind ? (
-              <button type="button" className="app-agent-studio-agent-row is-active" onClick={() => onCreateArtifact(creatingKind)}>
+              <button
+                type="button"
+                aria-current="true"
+                className="app-agent-studio-agent-row app-session-row-active"
+                onClick={() => onCreateArtifact(creatingKind)}
+              >
                 <span className="app-agent-studio-draft-avatar">{creatingKind === 'skill' ? <Puzzle className="h-4 w-4" /> : <Bot className="h-4 w-4" />}</span>
                 <span className="min-w-0"><strong>{creatingKind === 'skill' ? 'New skill' : 'New agent'}</strong><small>Private Factory draft</small></span>
                 <span className="app-agent-studio-agent-state is-draft">Draft</span>
@@ -119,29 +145,61 @@ export function AgentStudioRail({
                 + (config?.loadedTools.length ?? agent.loadedTools.length)
                 + (config?.loadedPlugins.length ?? agent.loadedPlugins.length);
               return (
-                <button key={agent.id} type="button" className={cn('app-agent-studio-agent-row', isActive && 'is-active')} onClick={() => onOpenAgent(agent.id)}>
+                <button
+                  key={agent.id}
+                  type="button"
+                  aria-current={isActive ? 'true' : undefined}
+                  className={cn('app-agent-studio-agent-row', isActive && 'app-session-row-active')}
+                  onClick={() => onOpenAgent(agent.id)}
+                >
                   <IdentityAvatar kind="agent" seed={agent.avatarSeed ?? agent.id} name={agent.name} imageUrl={agent.profileImageUrl} className="h-9 w-9 rounded-[12px]" />
                   <span className="min-w-0"><strong>{agent.name}</strong><small>{agent.role} · {capabilityCount} capabilities</small></span>
                   <span className="app-agent-studio-agent-state">{agent.status}</span>
                 </button>
               );
             })}
-            {filteredAgents.length === 0 && !creatingKind ? <div className="app-agent-studio-rail-empty">No Factory builds match this search.</div> : null}
+            {filteredAgents.length === 0 && !creatingKind ? <div className="app-agent-studio-rail-empty">No agents match this search.</div> : null}
           </>
-        ) : (
-          <>
-            {filteredSkills.map((skill) => (
-              <button key={skill.id} type="button" className={cn('app-agent-studio-agent-row', skill.id === selectedSkillId && 'is-active')} onClick={() => onOpenSkill(skill.id)}>
-                <span className="app-agent-studio-skill-avatar"><Puzzle className="h-4 w-4" /></span>
-                <span className="min-w-0"><strong>{skill.name}</strong><small>{skill.origin === 'community' ? skill.provider ?? 'Community' : skill.sourceLabel}</small></span>
-                <span className={cn('app-agent-studio-agent-state', skill.enabled && 'is-enabled')}>{skill.enabled ? 'On' : 'Off'}</span>
-              </button>
-            ))}
+        </div>
+      ) : (
+        <div className="app-agent-studio-skill-list-shell">
+          <nav className="app-agent-studio-skill-index" aria-label="Skills alphabetical index">
+            {SKILL_ALPHABET.map((initial) => {
+              const available = firstSkillIdByInitial.has(initial);
+              return (
+                <button
+                  key={initial}
+                  type="button"
+                  aria-label={`Jump to ${initial} skills`}
+                  disabled={!available}
+                  onClick={() => jumpToSkillInitial(initial)}
+                >
+                  {initial}
+                </button>
+              );
+            })}
+          </nav>
+          <div ref={skillListRef} className="app-agent-studio-agent-list app-scroll-area is-skill-list">
+            {filteredSkills.map((skill) => {
+              const initial = getSkillInitial(skill.name);
+              const isFirstForInitial = initial !== null && firstSkillIdByInitial.get(initial) === skill.id;
+              return (
+                <button
+                  key={skill.id}
+                  type="button"
+                  aria-current={skill.id === selectedSkillId ? 'true' : undefined}
+                  className={cn('app-agent-studio-agent-row app-list-item is-skill', skill.id === selectedSkillId && 'app-session-row-active')}
+                  data-skill-initial={isFirstForInitial ? initial : undefined}
+                  onClick={() => onOpenSkill(skill.id)}
+                >
+                  <span className="min-w-0"><strong>{skill.name}</strong></span>
+                </button>
+              );
+            })}
             {filteredSkills.length === 0 ? <div className="app-agent-studio-rail-empty">{skills.length === 0 ? 'No installed skills yet. Build one or browse Community.' : 'No skills match this search.'}</div> : null}
-          </>
-        )}
-      </div>
-      <footer className="app-agent-studio-rail-footer"><span /><span>Factory runtime connected</span></footer>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

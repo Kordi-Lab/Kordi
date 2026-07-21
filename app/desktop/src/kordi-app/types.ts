@@ -769,6 +769,7 @@ export type DesktopChatMessage = {
   timeLabel: string;
   timestampMs: number;
   failed?: boolean;
+  cancelled?: boolean;
   attachments?: DesktopChatAttachment[];
   mentions?: MessageMention[];
   replyToMessageId?: string | null;

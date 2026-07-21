@@ -19,6 +19,7 @@ struct HistoricalTurnBuilder {
     detail: Option<String>,
     error_message: Option<String>,
     failed: bool,
+    cancelled: bool,
     timestamp_ms: i64,
     /// Last entry id observed while building this turn. Used as the
     /// fork target when the user clicks the aggregated assistant
@@ -32,6 +33,7 @@ impl HistoricalTurnBuilder {
             && self.thinking_parts.is_empty()
             && self.tools.is_empty()
             && self.error_message.is_none()
+            && !self.cancelled
     }
 
     fn touch_timestamp(&mut self, timestamp_ms: i64) {
@@ -65,6 +67,7 @@ fn flush_historical_turn(
         time_label: format_message_timestamp(turn.timestamp_ms),
         timestamp_ms: turn.timestamp_ms,
         failed: turn.failed,
+        cancelled: turn.cancelled,
         attachments: Vec::new(),
         thinking_text: (!thinking_text.trim().is_empty()).then_some(thinking_text),
         tools: turn.tools,
@@ -142,6 +145,7 @@ pub(super) fn load_session_messages(
                         time_label: format_message_timestamp(user.timestamp),
                         timestamp_ms: user.timestamp,
                         failed: false,
+                        cancelled: false,
                         attachments: image_attachments_from_blocks(&user.content),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -169,6 +173,8 @@ pub(super) fn load_session_messages(
                         if let Some(error_message) = message.error_message.as_deref() {
                             turn.error_message = Some(error_message.to_string());
                         }
+                    } else if message.stop_reason == kordi_core::types::StopReason::Aborted {
+                        turn.cancelled = true;
                     }
 
                     for item in message.content {
@@ -211,6 +217,15 @@ pub(super) fn load_session_messages(
                     let turn = current_turn.get_or_insert_with(HistoricalTurnBuilder::default);
                     turn.touch_timestamp(message.timestamp);
                     turn.last_entry_id = Some(row.entry_id.clone());
+                    if message
+                        .details
+                        .as_ref()
+                        .and_then(|details| details.get("cancelled"))
+                        .and_then(|value| value.as_bool())
+                        .unwrap_or(false)
+                    {
+                        turn.cancelled = true;
+                    }
                     let tool_index = if let Some(index) =
                         turn.tool_index_by_id.get(&message.tool_call_id).copied()
                     {
@@ -295,6 +310,7 @@ pub(super) fn load_session_messages(
                         detail: Some("bash".to_string()),
                         error_message: None,
                         failed: false,
+                        cancelled: message.cancelled,
                         timestamp_ms: message.timestamp,
                         last_entry_id: Some(row.entry_id.clone()),
                     });
@@ -311,6 +327,7 @@ pub(super) fn load_session_messages(
                             time_label: format_message_timestamp(message.timestamp),
                             timestamp_ms: message.timestamp,
                             failed: false,
+                            cancelled: false,
                             attachments: Vec::new(),
                             thinking_text: None,
                             tools: Vec::new(),
@@ -328,6 +345,7 @@ pub(super) fn load_session_messages(
                         time_label: format_message_timestamp(message.timestamp),
                         timestamp_ms: message.timestamp,
                         failed: false,
+                        cancelled: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -347,6 +365,7 @@ pub(super) fn load_session_messages(
                         time_label: format_message_timestamp(message.timestamp),
                         timestamp_ms: message.timestamp,
                         failed: false,
+                        cancelled: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -368,6 +387,7 @@ pub(super) fn load_session_messages(
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
                     failed: false,
+                    cancelled: false,
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
@@ -390,6 +410,7 @@ pub(super) fn load_session_messages(
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
                     failed: false,
+                    cancelled: false,
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
@@ -424,6 +445,7 @@ pub(super) fn load_session_messages(
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
                         failed: false,
+                        cancelled: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -449,6 +471,7 @@ pub(super) fn load_session_messages(
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
                     failed: false,
+                    cancelled: false,
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
@@ -465,6 +488,7 @@ pub(super) fn load_session_messages(
                     time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                     timestamp_ms: base.timestamp.timestamp_millis(),
                     failed: false,
+                    cancelled: false,
                     attachments: Vec::new(),
                     thinking_text: None,
                     tools: Vec::new(),
@@ -482,6 +506,7 @@ pub(super) fn load_session_messages(
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
                         failed: false,
+                        cancelled: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -500,6 +525,7 @@ pub(super) fn load_session_messages(
                         time_label: format_utc_timestamp(base.timestamp.timestamp_millis()),
                         timestamp_ms: base.timestamp.timestamp_millis(),
                         failed: false,
+                        cancelled: false,
                         attachments: Vec::new(),
                         thinking_text: None,
                         tools: Vec::new(),
@@ -602,6 +628,55 @@ mod tests {
                 .unwrap_or_default()
                 .contains("error")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn load_session_messages_preserves_empty_cancelled_assistant_turn() -> Result<()> {
+        let conn = kordi_session::store::open_memory()?;
+        let session_id = "desktop-cancelled-session";
+        kordi_session::store::create_session_with_id(&conn, session_id, "/tmp/kordi")?;
+
+        let user_entry = SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: None,
+                timestamp: Utc::now(),
+            },
+            message: AgentMessage::User(UserMessage {
+                content: vec![ContentBlock::Text {
+                    text: "stop this".to_string(),
+                }],
+                timestamp: 1_000,
+            }),
+        };
+        kordi_session::store::append_entry(&conn, session_id, &user_entry)?;
+
+        let cancelled_entry = SessionEntry::Message {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id: crate::turn_runner::get_leaf_raw(&conn, session_id),
+                timestamp: Utc::now(),
+            },
+            message: AgentMessage::Assistant(AssistantMessage {
+                content: Vec::new(),
+                provider: "openai".to_string(),
+                model: "gpt-test".to_string(),
+                usage: Usage::default(),
+                stop_reason: StopReason::Aborted,
+                error_message: None,
+                timestamp: 2_000,
+            }),
+        };
+        kordi_session::store::append_entry(&conn, session_id, &cancelled_entry)?;
+
+        let messages = load_session_messages(&conn, session_id)?;
+        assert_eq!(messages.len(), 2);
+        let assistant = messages.last().expect("cancelled assistant message");
+        assert_eq!(assistant.role, "assistant");
+        assert_eq!(assistant.text, "");
+        assert!(assistant.cancelled);
+        assert!(!assistant.failed);
         Ok(())
     }
 

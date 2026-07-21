@@ -113,7 +113,9 @@ test('AgentsSidebar exposes New agent action when cloud creation is available', 
   }));
 
   assert.match(markup, /\+ New agent/);
+  assert.match(markup, /1 agent/);
   assert.doesNotMatch(markup, /disabled=""[^>]*>\+ New agent/);
+  assert.doesNotMatch(markup, /visible identities|choose one to inspect|middle|right panel/i);
 });
 
 function renderAgentDetail(agent: Agent, extraProps: Partial<Parameters<typeof AgentDetailPane>[0]> = {}) {
@@ -142,6 +144,7 @@ test('AgentDetailPane shows private access menu for cloud-created agents', () =>
 
   assert.match(markup, /Only me/);
   assert.match(markup, /Only you can use this agent/);
+  assert.doesNotMatch(markup, /middle panel|right panel|persisted in|runtime-managed/i);
 });
 
 test('AgentDetailPane enables Message for private cloud-created agents', () => {

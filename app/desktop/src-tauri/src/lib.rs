@@ -28,7 +28,10 @@ fn is_cloud_edition_context(
     match explicit.as_str() {
         "cloud" => true,
         "local" => false,
-        _ => bundle_identifier == "io.kordi.cloud",
+        _ => {
+            bundle_identifier == "io.kordi.cloud"
+                || bundle_identifier.starts_with("io.kordi.cloud.")
+        }
     }
 }
 
@@ -345,6 +348,11 @@ mod window_lifecycle_tests {
     #[test]
     fn cloud_bundle_identifier_enables_cloud_edition_without_runtime_env() {
         assert!(is_cloud_edition_context(None, None, "io.kordi.cloud"));
+        assert!(is_cloud_edition_context(
+            None,
+            None,
+            "io.kordi.cloud.factory-preview"
+        ));
     }
 
     #[test]

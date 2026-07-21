@@ -134,6 +134,7 @@ test('agent prompt preview placeholders scoped lesson artifact paths instead of 
   assert.match(markup, /Project scope `\{project_scope_id\}`: &lt;project lesson artifact path&gt;/);
   assert.doesNotMatch(markup, /pr289-main-merge-validation\/app\/desktop/);
   assert.doesNotMatch(markup, /690702c4-a4ac-4ba5-b443-0e85e886434a/);
+  assert.doesNotMatch(markup, /Exact current runtime prompt|Full prompt detail|Runtime-managed|Loaded from/i);
 });
 
 test('localOwnedBridgeAgentsForModelRouting returns only agents owned by local bridge hosts', () => {

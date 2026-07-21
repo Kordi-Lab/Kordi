@@ -139,3 +139,17 @@ test('completed desktop assistant messages fall back to error text and failed st
   assert.equal(completed.thinkingText, 'thoughts');
   assert.equal(completed.tools?.length, 1);
 });
+
+test('completed cancelled turns retain explicit cancellation metadata without fake reply text', () => {
+  const completed = buildCompletedDesktopAssistantMessage(turn({
+    status: 'cancelled',
+    assistantText: '',
+    message: 'Response stopped',
+    completed: true,
+    succeeded: false,
+  }), '12:05');
+
+  assert.equal(completed.text, '');
+  assert.equal(completed.failed, false);
+  assert.equal(completed.cancelled, true);
+});

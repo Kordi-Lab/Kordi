@@ -79,11 +79,13 @@ export function mapDesktopMessagesForTranscript(
   return messages.flatMap((message, index) => {
     const isAssistant = message.role === 'assistant';
     const failedAssistant = isAssistant && message.failed === true;
+    const cancelledAssistant = isAssistant && message.cancelled === true;
     const assistantText = message.text.trim();
     const hasHistoricalTurn =
       isAssistant
       && (
         failedAssistant
+        || cancelledAssistant
         || assistantText.length > 0
         || ((message.thinkingText ?? '').trim().length > 0)
         || ((message.tools?.length ?? 0) > 0)
@@ -93,7 +95,9 @@ export function mapDesktopMessagesForTranscript(
       return [];
     }
 
-    const assistantSenderLabel = assistantSenderLabelForTranscript(message.sender, cloudAgentIdentity);
+    const assistantSenderLabel = cloudAgentIdentity?.name
+      || avatarSeeds?.agentDisplayName?.trim()
+      || assistantSenderLabelForTranscript(message.sender, cloudAgentIdentity);
     const assistantAvatarSeed = cloudAgentIdentity?.id || avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed(message.sender ?? 'Kordi');
 
     return [{
@@ -114,7 +118,7 @@ export function mapDesktopMessagesForTranscript(
             ? selfDisplayName(message.sender ?? 'Me', true)
             : message.sender ?? undefined,
       sourceSenderLabel: message.role === 'assistant'
-        ? (avatarSeeds?.agentDisplayName?.trim() || assistantSenderLabel)
+        ? assistantSenderLabel
         : message.role === 'user'
           ? (avatarSeeds?.humanDisplayName?.trim() || selfDisplayName(message.sender ?? 'Me', true))
           : message.sender ?? null,
@@ -153,13 +157,17 @@ export function mapDesktopMessagesForTranscript(
               id: `${sessionId}-historical-${message.timestampMs}-${index}`,
               sessionId,
               prompt: '',
-              status: failedAssistant ? 'failed' : 'succeeded',
-              message: failedAssistant ? (message.detail ?? 'Request failed') : 'Response complete',
+              status: failedAssistant ? 'failed' : cancelledAssistant ? 'cancelled' : 'succeeded',
+              message: failedAssistant
+                ? (message.detail ?? 'Request failed')
+                : cancelledAssistant
+                  ? 'Response stopped'
+                  : 'Response complete',
               assistantText: failedAssistant ? '' : message.text,
               thinkingText: message.thinkingText ?? '',
               tools: message.tools ?? [],
               completed: true,
-              succeeded: !failedAssistant,
+              succeeded: !failedAssistant && !cancelledAssistant,
               startedAtMs: message.turnStartedAtMs ?? null,
               completedAtMs: message.turnCompletedAtMs ?? message.timestampMs,
               error: failedAssistant ? message.text : undefined,

@@ -26,7 +26,7 @@ export function AgentsSidebar({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="app-agent-panel-title text-[14px] font-medium">Agents</div>
-            <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">{agents.length} visible identities • choose one to inspect in the middle and edit files on the right</div>
+            <div className="app-agent-panel-subtitle mt-1 text-[12px] leading-5">{agents.length} agent{agents.length === 1 ? '' : 's'}</div>
           </div>
           <button
             type="button"
@@ -41,7 +41,7 @@ export function AgentsSidebar({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1 p-2">
-          {agents.length === 0 ? <div className="app-agent-empty-copy px-3 py-4 text-[13px]">No visible agents in this runtime yet.</div> : null}
+          {agents.length === 0 ? <div className="app-agent-empty-copy px-3 py-4 text-[13px]">No agents yet.</div> : null}
           {agents.map((agent) => {
             const config = agentConfigs[agent.id];
             const isSelected = activeAgentId === agent.id;

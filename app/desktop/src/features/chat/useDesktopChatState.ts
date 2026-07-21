@@ -318,7 +318,11 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
     const finishedAt = formatDesktopClockTime(new Date());
     const visibleLocalSessionId = visibleLocalSessionIdRef.current;
     const shouldAppendAssistantMessage =
-      turn.assistantText.trim().length > 0 || turn.thinkingText.trim().length > 0 || turn.tools.length > 0 || Boolean(turn.error);
+      turn.assistantText.trim().length > 0
+      || turn.thinkingText.trim().length > 0
+      || turn.tools.length > 0
+      || Boolean(turn.error)
+      || turn.status === 'cancelled';
     const completedMessage = shouldAppendAssistantMessage
       ? buildCompletedDesktopAssistantMessage(turn, finishedAt)
       : null;

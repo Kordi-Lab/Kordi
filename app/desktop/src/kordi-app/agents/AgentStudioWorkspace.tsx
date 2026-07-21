@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   Activity,
   Bot,
@@ -24,13 +24,10 @@ import { cn } from '@/lib/utils';
 import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
-import { IdentityAvatar } from '../components/IdentityAvatar';
 import type { Agent } from '../types';
-import { cloudAgentAccessDescription, cloudAgentAccessLabel, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
+import { cloudAgentAccessDescription, cloudAgentAccessLabel, visibleAgentStudioTabIds, type AgentEditHistoryEntry, type AgentSaveFeedback, type AgentStudioCapabilityKind, type AgentStudioConfigDraft, type AgentStudioTab, type FactoryArtifactKind, type PersistedAgentConfig } from './model';
 import type { ShapeAgentDraft } from './shapeAgentDraft';
 import { AgentStudioRoutingEditor } from './AgentStudioRoutingEditor';
-
-export type AgentStudioTab = 'blueprint' | 'capabilities' | 'files' | 'runs' | 'history';
 
 type FilePreviewState = { status: 'idle' | 'loading' | 'ready' | 'error'; text: string; error?: string };
 type DetailTarget = { kind: 'prompt' } | { kind: 'file'; path: string } | null;
@@ -45,7 +42,7 @@ const TABS: Array<{ id: AgentStudioTab; label: string; icon: typeof SlidersHoriz
 
 function shortPrompt(value: string) {
   const normalized = value.replace(/\s+/g, ' ').trim();
-  if (!normalized) return 'No prompt is exposed for this agent.';
+  if (!normalized) return 'No prompt configured.';
   return normalized.length > 92 ? `${normalized.slice(0, 91).trimEnd()}…` : normalized;
 }
 
@@ -104,7 +101,7 @@ function BlueprintRow({ icon: Icon, label, value, detail, onEdit }: {
         <div className="app-agent-studio-blueprint-value">{value}</div>
         {detail ? <div className="app-agent-studio-blueprint-detail">{detail}</div> : null}
       </div>
-      {onEdit ? <button type="button" className="app-agent-studio-icon-button" aria-label={`Edit ${label.toLowerCase()}`} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></button> : <span />}
+      {onEdit ? <button type="button" className="app-agent-studio-icon-button is-inline-edit" aria-label={`Edit ${label.toLowerCase()}`} onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></button> : <span />}
     </div>
   );
 }
@@ -141,9 +138,6 @@ function BlueprintView({
   onCreationDraftChange,
   onOpenCapabilities,
   onOpenRouting,
-  onPublish,
-  publishing,
-  publishDisabled,
   builderStatus,
 }: {
   agent?: Agent;
@@ -158,96 +152,142 @@ function BlueprintView({
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
   onOpenCapabilities: () => void;
   onOpenRouting?: () => void;
-  onPublish: () => void;
-  publishing: boolean;
-  publishDisabled: boolean;
   builderStatus?: DesktopAgentBuilderStatus | null;
 }) {
   const [promptEditorOpen, setPromptEditorOpen] = useState(false);
-  const name = creating ? creationDraft?.name ?? 'New build' : agent?.name ?? 'Build unavailable';
-  const role = creating ? creationDraft?.role ?? 'Describe what Kordi Factory should build' : agent?.role ?? '';
+  const [accessMenuOpen, setAccessMenuOpen] = useState(false);
+  const accessControlRef = useRef<HTMLDivElement | null>(null);
+  const accessTriggerRef = useRef<HTMLButtonElement | null>(null);
   const prompt = creating ? creationDraft?.systemPrompt ?? '' : config?.systemPrompt ?? '';
   const skills = creating ? creationDraft?.skills.map((skill) => skill.name) ?? [] : config?.loadedSkills ?? [];
   const tools = creating ? builderStatus?.draft?.tools ?? [] : config?.loadedTools ?? [];
   const totalChanges = creating ? (creationDraft ? 1 : 0) : changes.length;
-  const runtimeStatus = creating ? 'Draft' : agent?.status ?? 'Unavailable';
+
+  useEffect(() => {
+    if (!accessMenuOpen) return;
+
+    accessControlRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')
+      ?.focus();
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (accessControlRef.current?.contains(event.target as Node)) return;
+      setAccessMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setAccessMenuOpen(false);
+      accessTriggerRef.current?.focus();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [accessMenuOpen]);
+
+  const handleAccessMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
+    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
+    const direction = event.key === 'ArrowDown' ? 1 : -1;
+    const nextIndex = currentIndex < 0
+      ? 0
+      : (currentIndex + direction + options.length) % options.length;
+    options[nextIndex]?.focus();
+  };
 
   return (
-    <div className="app-agent-studio-view-scroll">
-      <WorkspaceHeading title="Build blueprint" detail="Review the current build. Factory chat and manual controls update the same private draft." />
-      <div className="app-agent-studio-blueprint-layout">
-        <section className="app-agent-studio-blueprint">
-          <div className="app-agent-studio-blueprint-core">
-            <div className="flex min-w-0 items-center gap-3">
-              <IdentityAvatar
-                kind="agent"
-                seed={agent?.avatarSeed ?? agent?.id ?? name}
-                name={name}
-                imageUrl={agent?.profileImageUrl}
-                className="h-10 w-10 rounded-[13px]"
-              />
-              <div className="min-w-0">
-                <div className="app-agent-studio-core-name">{name}</div>
-                <div className="app-agent-studio-core-role">{role}</div>
-              </div>
+    <div className="app-agent-studio-view-scroll is-blueprint-view">
+      <section className="app-agent-studio-blueprint" aria-label="Agent configuration">
+        <BlueprintRow
+          icon={FileCode2}
+          label="Prompt"
+          value={prompt ? 'Configured' : 'Not configured'}
+          detail={shortPrompt(prompt)}
+          onEdit={canEditPrompt && (creationDraft || !creating) ? () => setPromptEditorOpen(true) : undefined}
+        />
+        <BlueprintRow
+          icon={Settings2}
+          label="Model"
+          value={creating ? builderStatus?.draft?.model || 'Uses authenticated runtime default' : agent?.defaultModel || 'No default model'}
+          detail={creating ? builderStatus?.draft?.provider || 'Kordi Factory uses your active authenticated route' : [agent?.defaultAuthProvider, agent?.fallbackModel ? `fallback ${agent.fallbackModel}` : null].filter(Boolean).join(' · ') || 'Runtime default'}
+          onEdit={!creating && agent?.isOwned && onOpenRouting ? onOpenRouting : undefined}
+        />
+        <BlueprintRow icon={Puzzle} label="Skills" value={`${skills.length} loaded`} detail={skills.join(', ') || 'No skills selected'} onEdit={onOpenCapabilities} />
+        <BlueprintRow icon={Wrench} label="Tools" value={`${tools.length} selected`} detail={tools.join(', ') || 'No tools selected'} onEdit={onOpenCapabilities} />
+        <div className="app-agent-studio-blueprint-row">
+          <div className="app-agent-studio-blueprint-label"><LockKeyhole className="h-4 w-4" />Access</div>
+          <div className="min-w-0">
+            <div className="app-agent-studio-blueprint-value">
+              {creating || agent?.cloudAgentId ? cloudAgentAccessLabel(accessScope) : 'Local runtime'}
             </div>
-            <span className={cn('app-agent-studio-runtime-state', creating && 'is-draft')}>{runtimeStatus}</span>
-          </div>
-          <BlueprintRow
-            icon={FileCode2}
-            label="Prompt"
-            value={prompt ? 'Configured' : 'Not configured'}
-            detail={shortPrompt(prompt)}
-            onEdit={canEditPrompt && (creationDraft || !creating) ? () => setPromptEditorOpen(true) : undefined}
-          />
-          <BlueprintRow
-            icon={Settings2}
-            label="Model"
-            value={creating ? builderStatus?.draft?.model || 'Uses authenticated runtime default' : agent?.defaultModel || 'No default model'}
-            detail={creating ? builderStatus?.draft?.provider || 'Kordi Factory uses your active authenticated route' : [agent?.defaultAuthProvider, agent?.fallbackModel ? `fallback ${agent.fallbackModel}` : null].filter(Boolean).join(' · ') || 'Runtime default'}
-            onEdit={!creating && agent?.isOwned && onOpenRouting ? onOpenRouting : undefined}
-          />
-          <BlueprintRow icon={Puzzle} label="Skills" value={`${skills.length} loaded`} detail={skills.join(', ') || 'No skills selected'} onEdit={onOpenCapabilities} />
-          <BlueprintRow icon={Wrench} label="Tools" value={`${tools.length} selected`} detail={tools.join(', ') || 'No tools selected'} onEdit={onOpenCapabilities} />
-          <div className="app-agent-studio-blueprint-row">
-            <div className="app-agent-studio-blueprint-label"><LockKeyhole className="h-4 w-4" />Access</div>
-            <div className="min-w-0">
-              {creating || agent?.cloudAgentId ? (
-                <select
-                  className="app-agent-studio-inline-select"
-                  value={accessScope}
-                  onChange={(event) => onAccessScopeChange(event.currentTarget.value === 'participant_conversations' ? 'participant_conversations' : 'private')}
-                >
-                  <option value="private">{cloudAgentAccessLabel('private')}</option>
-                  <option value="participant_conversations">{cloudAgentAccessLabel('participant_conversations')}</option>
-                </select>
-              ) : <div className="app-agent-studio-blueprint-value">Local runtime</div>}
-              <div className="app-agent-studio-blueprint-detail">
-                {creating || agent?.cloudAgentId ? cloudAgentAccessDescription(accessScope) : 'Access follows the connected Bridge runtime.'}
-              </div>
+            <div className="app-agent-studio-blueprint-detail">
+              {creating || agent?.cloudAgentId ? cloudAgentAccessDescription(accessScope) : 'Access follows the connected Bridge runtime.'}
             </div>
-            <span />
           </div>
-          {totalChanges > 0 ? (
-            <div className="app-agent-studio-draft-summary">
-              <div>
-                <strong>{creating ? 'Build ready to review' : `${totalChanges} change${totalChanges === 1 ? '' : 's'} ready to review`}</strong>
-                <span>{builderStatus?.publishReady ? 'Validation and runtime test passed. Nothing is live until you publish.' : builderStatus?.validation.valid ? 'Run the current draft in the Runs tab before publishing.' : builderStatus?.validation.errors[0] ?? 'Nothing is live until you publish.'}</span>
-              </div>
-              <button type="button" className="app-agent-studio-button is-primary is-small" onClick={onPublish} disabled={publishDisabled || publishing}>
-                {publishing ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Publishing</> : creating ? 'Create agent' : 'Publish changes'}
+          {creating || agent?.cloudAgentId ? (
+            <div className="app-agent-studio-access-control" ref={accessControlRef}>
+              <button
+                ref={accessTriggerRef}
+                type="button"
+                className="app-agent-studio-icon-button is-inline-edit app-agent-studio-access-edit"
+                aria-label="Edit access"
+                aria-haspopup="menu"
+                aria-expanded={accessMenuOpen}
+                onClick={() => setAccessMenuOpen((open) => !open)}
+              >
+                <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
+              {accessMenuOpen ? (
+                <div className="app-agent-studio-access-menu" role="menu" aria-label="Agent access" onKeyDown={handleAccessMenuKeyDown}>
+                  {(['private', 'participant_conversations'] as const).map((scope) => {
+                    const selected = accessScope === scope;
+                    return (
+                      <button
+                        key={scope}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={selected}
+                        className={cn(selected && 'is-selected')}
+                        onClick={() => {
+                          onAccessScopeChange(scope);
+                          setAccessMenuOpen(false);
+                          accessTriggerRef.current?.focus();
+                        }}
+                      >
+                        <span className="app-agent-studio-access-menu-check" aria-hidden="true">
+                          {selected ? <Check className="h-3.5 w-3.5" /> : null}
+                        </span>
+                        <span>{cloudAgentAccessLabel(scope)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          {!creating && changes.length > 0 ? (
-            <div className="app-agent-studio-change-list">
-              {changes.map((change) => (
-                <div key={`${change.key}:${change.label}`} className="app-agent-studio-change-row"><Check className="h-3.5 w-3.5" /><span>{change.label}</span><code>{change.detail}</code></div>
-              ))}
+          ) : <span />}
+        </div>
+        {totalChanges > 0 ? (
+          <div className="app-agent-studio-draft-summary">
+            <div>
+              <strong>{creating ? 'Build ready to review' : `${totalChanges} change${totalChanges === 1 ? '' : 's'} ready to review`}</strong>
+              <span>{builderStatus?.publishReady ? 'Validation and runtime test passed. Nothing is live until you publish.' : builderStatus?.validation.valid ? 'Run the current draft in the Runs tab before publishing.' : builderStatus?.validation.errors[0] ?? 'Nothing is live until you publish.'}</span>
             </div>
-          ) : null}
-        </section>
-      </div>
+          </div>
+        ) : null}
+        {!creating && changes.length > 0 ? (
+          <div className="app-agent-studio-change-list">
+            {changes.map((change) => (
+              <div key={`${change.key}:${change.label}`} className="app-agent-studio-change-row"><Check className="h-3.5 w-3.5" /><span>{change.label}</span><code>{change.detail}</code></div>
+            ))}
+          </div>
+        ) : null}
+      </section>
       {promptEditorOpen ? (
         <PromptEditor
           value={prompt}
@@ -265,9 +305,70 @@ function BlueprintView({
 type CapabilityItem = {
   kind: AgentStudioCapabilityKind;
   name: string;
+  description: string;
   loaded: boolean;
-  published: boolean;
 };
+
+type CapabilityCatalogItem = Pick<CapabilityItem, 'kind' | 'name'>;
+
+const CAPABILITY_KINDS: AgentStudioCapabilityKind[] = ['skill', 'tool', 'plugin'];
+
+const TOOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  bash: 'Run shell commands in the workspace.',
+  browser_fetch: 'Read dynamic content through the browser.',
+  edit: 'Make precise changes to workspace files.',
+  find: 'Find files and folders by name.',
+  grep: 'Search text across workspace files.',
+  ls: 'List files and folders in the workspace.',
+  reach_out: 'Ask another person or agent for help.',
+  read: 'Read files from the workspace.',
+  read_session: 'Read a previous Kordi conversation.',
+  reflection: 'Review progress before choosing the next step.',
+  schedule_task: 'Schedule work to run later.',
+  search_sessions: 'Search previous Kordi conversations.',
+  task_operator: 'Coordinate work with another agent.',
+  update_plan: 'Track the current plan and progress.',
+  web_fetch: 'Read content from a web page.',
+  web_search: 'Search the web for current information.',
+  write: 'Create or replace workspace files.',
+};
+
+function readableCapabilityName(value: string) {
+  return value.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function createCapabilityCatalog(sources: Record<AgentStudioCapabilityKind, string[]>) {
+  return CAPABILITY_KINDS
+    .flatMap((kind) => Array.from(new Set(sources[kind])).map((name) => ({ kind, name })))
+    .sort((left, right) => left.name.localeCompare(right.name) || left.kind.localeCompare(right.kind));
+}
+
+function mergeCapabilityCatalog(current: CapabilityCatalogItem[], incoming: CapabilityCatalogItem[]) {
+  const known = new Set(current.map((item) => `${item.kind}:${item.name}`));
+  const additions = incoming.filter((item) => !known.has(`${item.kind}:${item.name}`));
+  return additions.length > 0 ? [...current, ...additions] : current;
+}
+
+function capabilityDescription({
+  kind,
+  name,
+  skillDescriptions,
+}: {
+  kind: AgentStudioCapabilityKind;
+  name: string;
+  skillDescriptions: Readonly<Record<string, string>>;
+}) {
+  if (kind === 'skill') {
+    return skillDescriptions[name]
+      || skillDescriptions[name.toLocaleLowerCase()]
+      || `Reusable guidance for ${readableCapabilityName(name)}.`;
+  }
+  if (kind === 'tool') {
+    return TOOL_DESCRIPTIONS[name]
+      || `Use ${readableCapabilityName(name)} in this agent.`;
+  }
+  return `Extend this agent with ${readableCapabilityName(name)}.`;
+}
 
 function CapabilityEditor({
   mode,
@@ -293,7 +394,7 @@ function CapabilityEditor({
   return (
     <section className="app-agent-studio-popover" role="dialog" aria-label={mode === 'add' ? 'Add capability' : `Edit ${capability?.name ?? 'capability'}`}>
       <div className="app-agent-studio-popover-head">
-        <div><strong>{mode === 'add' ? 'Add capability' : 'Edit capability'}</strong><p>{mode === 'add' ? 'Add a real capability reference to the reviewable draft.' : 'Rename this capability reference in the draft.'}</p></div>
+        <div><strong>{mode === 'add' ? 'Add capability' : 'Edit capability'}</strong><p>{mode === 'add' ? 'Choose what to add to this draft.' : 'Rename this capability in the draft.'}</p></div>
         <button type="button" className="app-agent-studio-icon-button" onClick={onClose} aria-label="Close capability editor"><X className="h-4 w-4" /></button>
       </div>
       {mode === 'add' ? (
@@ -310,7 +411,7 @@ function CapabilityEditor({
             <span>Capability type</span>
             <select value={kind} onChange={(event) => setKind(event.currentTarget.value as AgentStudioCapabilityKind)}>
               {(['skill', 'tool', 'plugin'] as AgentStudioCapabilityKind[]).map((option) => (
-                <option key={option} value={option} disabled={!editableKinds.has(option)}>{option[0]?.toUpperCase()}{option.slice(1)}{editableKinds.has(option) ? '' : ' · runtime managed'}</option>
+                <option key={option} value={option} disabled={!editableKinds.has(option)}>{option[0]?.toUpperCase()}{option.slice(1)}{editableKinds.has(option) ? '' : ' · read only'}</option>
               ))}
             </select>
           </label>
@@ -320,7 +421,6 @@ function CapabilityEditor({
         <span>{source === 'catalog' ? 'Capability name' : source === 'path' ? 'Local path' : 'Repository URL or package'}</span>
         <input value={value} onChange={(event) => setValue(event.currentTarget.value)} placeholder={source === 'catalog' ? 'navigate-knowledge' : source === 'path' ? './skills/review' : 'github:team/review-skill'} />
       </label>
-      <div className="app-agent-studio-field-help">Kordi stores the normalized capability reference in this agent draft. Runtime-managed types cannot be changed here.</div>
       <div className="app-agent-studio-popover-actions">
         <button type="button" className="app-agent-studio-button is-ghost is-small" onClick={onClose}>Cancel</button>
         <button
@@ -340,13 +440,12 @@ function CapabilityEditor({
   );
 }
 
-function CapabilitiesView({
-  agent,
+export function CapabilitiesView({
   creating,
   config,
   creationDraft,
-  persisted,
   availableSkills,
+  skillDescriptions,
   availableTools,
   availablePlugins,
   editableKinds,
@@ -356,12 +455,11 @@ function CapabilitiesView({
   onRename,
   builderStatus,
 }: {
-  agent?: Agent;
   creating: boolean;
   config: AgentStudioConfigDraft | null;
   creationDraft: ShapeAgentDraft | null;
-  persisted: PersistedAgentConfig | null;
   availableSkills: string[];
+  skillDescriptions: Readonly<Record<string, string>>;
   availableTools: string[];
   availablePlugins: string[];
   editableKinds: ReadonlySet<AgentStudioCapabilityKind>;
@@ -382,30 +480,39 @@ function CapabilitiesView({
     loadedTools: builderStatus?.draft?.tools ?? [],
     loadedPlugins: builderStatus?.draft?.plugins ?? [],
   };
-  const publishedConfig = persisted ?? { ...draftConfig, loadedSkills: [], loadedTools: [], loadedPlugins: [], editHistory: [] };
-  const sources: Record<AgentStudioCapabilityKind, string[]> = {
+  const incomingCatalog = useMemo(() => createCapabilityCatalog({
     skill: Array.from(new Set([...availableSkills, ...draftConfig.loadedSkills])),
     tool: Array.from(new Set([...availableTools, ...draftConfig.loadedTools])),
     plugin: Array.from(new Set([...availablePlugins, ...draftConfig.loadedPlugins])),
-  };
+  }), [availablePlugins, availableSkills, availableTools, draftConfig.loadedPlugins, draftConfig.loadedSkills, draftConfig.loadedTools]);
+  const [catalog, setCatalog] = useState<CapabilityCatalogItem[]>(incomingCatalog);
+  useEffect(() => {
+    setCatalog((current) => mergeCapabilityCatalog(current, incomingCatalog));
+  }, [incomingCatalog]);
+  const draftSkillDescriptions = Object.fromEntries([
+    ...(creationDraft?.skills ?? []),
+    ...(builderStatus?.draft?.skills ?? []),
+  ]
+    .filter((skill) => skill.description.trim() && skill.description.trim() !== 'Focused instructions for this agent.')
+    .map((skill) => [skill.name.toLocaleLowerCase(), skill.description.trim()]));
+  const resolvedSkillDescriptions = { ...skillDescriptions, ...draftSkillDescriptions };
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const items = (Object.keys(sources) as AgentStudioCapabilityKind[])
-    .flatMap((kind) => sources[kind].map((name): CapabilityItem => ({
+  const items = catalog
+    .map(({ kind, name }): CapabilityItem => ({
       kind,
       name,
+      description: capabilityDescription({ kind, name, skillDescriptions: resolvedSkillDescriptions }),
       loaded: draftConfig[capabilityField(kind)].includes(name),
-      published: publishedConfig[capabilityField(kind)].includes(name),
-    })))
+    }))
     .filter((item) => filter === 'all' || item.kind === filter)
     .filter((item) => !loadedOnly || item.loaded)
-    .filter((item) => !normalizedQuery || item.name.toLocaleLowerCase().includes(normalizedQuery))
-    .sort((left, right) => Number(right.loaded) - Number(left.loaded) || left.name.localeCompare(right.name));
+    .filter((item) => !normalizedQuery || `${item.name} ${item.description}`.toLocaleLowerCase().includes(normalizedQuery));
 
   return (
     <div className="app-agent-studio-view-scroll">
       <WorkspaceHeading
         title="Capabilities"
-        detail="Review real skill contents and selected tool or plugin references. Changes stay in the draft; runtime-managed capabilities remain read only."
+        detail="Review the skills, tools, and plugins available to this agent."
         action={allowCapabilityCreation ? <button type="button" className="app-agent-studio-button is-primary is-small" disabled={editableKinds.size === 0 || (creating && !creationDraft)} onClick={() => setEditor({ mode: 'add' })}><Plus className="h-3.5 w-3.5" />Add capability</button> : undefined}
       />
       <div className="app-agent-studio-capability-toolbar">
@@ -419,20 +526,12 @@ function CapabilitiesView({
         {items.map((item) => {
           const Icon = capabilityIcon(item.kind);
           const editable = editableKinds.has(item.kind);
-          const sourceLabel = creating
-            ? 'New Factory build'
-            : agent?.cloudAgentId
-              ? 'Cloud Agent metadata'
-              : item.kind === 'skill' ? 'Runtime skill discovery' : item.kind === 'tool' ? 'Runtime tool registry' : 'Runtime extension bootstrap';
           return (
             <div key={`${item.kind}:${item.name}`} className="app-agent-studio-capability-row">
               <span className={cn('app-agent-studio-capability-icon', `is-${item.kind}`)}><Icon className="h-4 w-4" /></span>
-              <div className="min-w-0">
-                <div className="app-agent-studio-capability-name"><strong>{item.name}</strong><code>{item.kind}</code></div>
-                <div className="app-agent-studio-capability-description">
-                  {item.loaded ? 'Included in the current reviewable draft.' : 'Visible in another runtime or the published configuration.'}
-                </div>
-                <div className="app-agent-studio-capability-meta"><span>{sourceLabel}</span><span>{item.published ? 'Published' : item.loaded ? 'Draft only' : 'Available'}</span>{!editable ? <span>Runtime managed</span> : null}</div>
+              <div className="app-agent-studio-capability-copy">
+                <div className="app-agent-studio-capability-name"><strong>{item.name}</strong></div>
+                <p title={item.description}>{item.description}</p>
               </div>
               <div className="app-agent-studio-capability-actions">
                 {editable && allowCapabilityCreation && item.loaded ? <button type="button" className="app-agent-studio-icon-button" aria-label={`Edit ${item.name}`} onClick={() => setEditor({ mode: 'edit', capability: item })}><Pencil className="h-3.5 w-3.5" /></button> : null}
@@ -440,10 +539,10 @@ function CapabilitiesView({
                   type="button"
                   role="switch"
                   aria-checked={item.loaded}
-                  aria-label={`${item.loaded ? 'Unload' : 'Load'} ${item.name}`}
+                  aria-label={`${item.loaded ? 'Remove' : 'Add'} ${item.name} ${item.loaded ? 'from' : 'to'} this agent`}
                   className={cn('app-agent-studio-switch', item.loaded && 'is-on')}
                   disabled={!editable}
-                  title={editable ? `${item.loaded ? 'Remove from' : 'Add to'} draft` : 'This capability is managed by the active runtime'}
+                  title={editable ? `${item.loaded ? 'Remove from' : 'Add to'} draft` : 'This capability is read only'}
                   onClick={() => onToggle(item.kind, item.name, item.loaded)}
                 />
               </div>
@@ -458,8 +557,16 @@ function CapabilitiesView({
           capability={editor.capability}
           editableKinds={editableKinds}
           onClose={() => setEditor(null)}
-          onAdd={onAdd}
-          onRename={onRename}
+          onAdd={(kind, name) => {
+            setCatalog((current) => mergeCapabilityCatalog(current, [{ kind, name }]));
+            onAdd(kind, name);
+          }}
+          onRename={(kind, previousName, nextName) => {
+            setCatalog((current) => current.map((item) => (
+              item.kind === kind && item.name === previousName ? { kind, name: nextName } : item
+            )));
+            onRename(kind, previousName, nextName);
+          }}
         />
       ) : null}
     </div>
@@ -534,7 +641,7 @@ function FilesView({
         <div className="app-agent-studio-files-layout">
           <div className="app-agent-studio-file-list">
             <button type="button" className={cn(isPrompt && 'is-active')} onClick={onSelectPrompt}>
-              <FileCode2 className="h-4 w-4" /><span><strong>System prompt</strong><small>{canEditPrompt ? 'Editable draft' : 'Runtime managed'}</small></span>
+              <FileCode2 className="h-4 w-4" /><span><strong>System prompt</strong><small>{canEditPrompt ? 'Editable draft' : 'Read only'}</small></span>
             </button>
             {(agent?.identityFiles ?? []).map((file) => (
               <button key={file} type="button" className={cn(selectedPath === file && 'is-active')} onClick={() => onSelectFile(file)}>
@@ -555,9 +662,9 @@ function FilesView({
               canEditPrompt ? <textarea value={prompt} onChange={(event) => {
                 if (creating && creationDraft) onCreationDraftChange({ ...creationDraft, systemPrompt: event.currentTarget.value });
                 else onPromptChange(event.currentTarget.value);
-              }} spellCheck={false} /> : <pre>{prompt || 'No real prompt payload is exposed for this identity.'}</pre>
+              }} spellCheck={false} /> : <pre>{prompt || 'No prompt available.'}</pre>
             ) : activeFileIsEditing ? <textarea value={activeFileDraft} onChange={(event) => onFileDraftChange(event.currentTarget.value)} spellCheck={false} />
-              : <pre>{activeFilePreview.status === 'loading' ? 'Loading real file…' : activeFileDraft || 'No file preview is available.'}</pre>}
+              : <pre>{activeFilePreview.status === 'loading' ? 'Loading…' : activeFileDraft || 'No preview available.'}</pre>}
           </section>
         </div>
       )}
@@ -622,7 +729,7 @@ function BuilderDraftFilesView({
 
   return (
     <div className="app-agent-studio-view-scroll is-files-view">
-      <WorkspaceHeading title="Draft files" detail="These are the real files used by Kordi Factory, validation, testing, and publishing." />
+      <WorkspaceHeading title="Draft files" detail="Review the files used to validate, test, and publish this build." />
       <div className="app-agent-studio-files-layout">
         <div className="app-agent-studio-file-list">
           {files.map((file) => (
@@ -701,7 +808,7 @@ function RunsView({
             </button>
           ))}
           {activities.map((activity, index) => (
-            <div key={`${activity}-${index}`}><Check className="h-4 w-4" /><span><strong>{activity}</strong><small>Reported by the current runtime</small></span><time>Recent</time></div>
+            <div key={`${activity}-${index}`}><Check className="h-4 w-4" /><span><strong>{activity}</strong></span><time>Recent</time></div>
           ))}
         </div>
       )}
@@ -712,7 +819,7 @@ function RunsView({
 function HistoryView({ entries }: { entries: AgentEditHistoryEntry[] }) {
   return (
     <div className="app-agent-studio-view-scroll">
-      <WorkspaceHeading title="Change history" detail="Review saved file changes and conversational proposals using their real local history." />
+      <WorkspaceHeading title="Change history" detail="Review saved and published changes." />
       {entries.length === 0 ? <EmptyWorkspaceState icon={History} title="No published changes yet" detail="Saved and published configuration edits will appear here." /> : (
         <div className="app-agent-studio-simple-list">
           {entries.map((entry, index) => (
@@ -736,6 +843,7 @@ export function AgentStudioWorkspace({
   persisted,
   changes,
   availableSkills,
+  skillDescriptions,
   availableTools,
   availablePlugins,
   editableCapabilityKinds,
@@ -785,6 +893,7 @@ export function AgentStudioWorkspace({
   persisted: PersistedAgentConfig | null;
   changes: Array<{ key: 'prompt' | 'skills' | 'tools' | 'plugins' | 'definition' | 'access' | 'routing'; label: string; detail: string }>;
   availableSkills: string[];
+  skillDescriptions: Readonly<Record<string, string>>;
   availableTools: string[];
   availablePlugins: string[];
   editableCapabilityKinds: ReadonlySet<AgentStudioCapabilityKind>;
@@ -837,9 +946,9 @@ export function AgentStudioWorkspace({
   const skillBuild = creating && artifactKind === 'skill';
   const [tab, setTab] = useState<AgentStudioTab>(skillBuild ? 'files' : 'blueprint');
   const [routingOpen, setRoutingOpen] = useState(false);
-  const visibleTabs = skillBuild
-    ? TABS.filter(({ id }) => id === 'files' || id === 'runs' || id === 'history')
-    : TABS;
+  const visibleTabIds = visibleAgentStudioTabIds(creating, artifactKind);
+  const visibleTabs = TABS.filter(({ id }) => visibleTabIds.includes(id));
+  const activeTab = visibleTabIds.includes(tab) ? tab : visibleTabIds[0] ?? 'blueprint';
   const accessScope = creating ? creationAccessScope : agentAccessScope;
   const setAccessScope = (scope: CloudAgentAccessScope) => {
     if (creating) onCreationAccessScopeChange(scope);
@@ -850,11 +959,11 @@ export function AgentStudioWorkspace({
     <section className="app-agent-studio-workspace" aria-label="Factory workspace">
       <nav className="app-agent-studio-tabs" aria-label="Factory workspace sections">
         {visibleTabs.map(({ id, label, icon: Icon }) => (
-          <button key={id} type="button" className={cn(tab === id && 'is-active')} onClick={() => setTab(id)} aria-current={tab === id ? 'page' : undefined}><Icon className="h-3.5 w-3.5" />{label}</button>
+          <button key={id} type="button" className={cn(activeTab === id && 'is-active')} onClick={() => setTab(id)} aria-current={activeTab === id ? 'page' : undefined}><Icon className="h-3.5 w-3.5" />{label}</button>
         ))}
       </nav>
       <div className="app-agent-studio-workspace-body">
-        {tab === 'blueprint' ? (
+        {activeTab === 'blueprint' ? (
           <BlueprintView
             agent={agent}
             creating={creating}
@@ -868,20 +977,16 @@ export function AgentStudioWorkspace({
             onCreationDraftChange={onCreationDraftChange}
             onOpenCapabilities={() => setTab('capabilities')}
             onOpenRouting={onUpdateModelRouting && chatModelOptions.length > 0 ? () => setRoutingOpen(true) : undefined}
-            onPublish={onPublish}
-            publishing={publishing}
-            publishDisabled={publishDisabled}
             builderStatus={builderStatus}
           />
         ) : null}
-        {tab === 'capabilities' ? (
+        {activeTab === 'capabilities' ? (
           <CapabilitiesView
-            agent={agent}
             creating={creating}
             config={config}
             creationDraft={creationDraft}
-            persisted={persisted}
             availableSkills={availableSkills}
+            skillDescriptions={skillDescriptions}
             availableTools={availableTools}
             availablePlugins={availablePlugins}
             editableKinds={editableCapabilityKinds}
@@ -892,7 +997,7 @@ export function AgentStudioWorkspace({
             builderStatus={builderStatus}
           />
         ) : null}
-        {tab === 'files' ? (
+        {activeTab === 'files' ? (
           <FilesView
             agent={agent}
             creating={creating}
@@ -918,8 +1023,8 @@ export function AgentStudioWorkspace({
             onWriteBuilderFile={onWriteBuilderFile}
           />
         ) : null}
-        {tab === 'runs' ? <RunsView agent={agent} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
-        {tab === 'history' ? <HistoryView entries={persisted?.editHistory ?? []} /> : null}
+        {activeTab === 'runs' ? <RunsView agent={agent} onOpenReachout={onOpenReachout} builderStatus={builderStatus} builderTesting={builderTesting} onTestBuilderDraft={onTestBuilderDraft} /> : null}
+        {activeTab === 'history' ? <HistoryView entries={persisted?.editHistory ?? []} /> : null}
         {publishFeedback?.text ? <div className={cn('app-agent-studio-toast', publishFeedback.tone === 'error' && 'is-error', publishFeedback.tone === 'success' && 'is-success')}>{publishFeedback.text}</div> : null}
         {routingOpen && agent && onUpdateModelRouting ? (
           <AgentStudioRoutingEditor

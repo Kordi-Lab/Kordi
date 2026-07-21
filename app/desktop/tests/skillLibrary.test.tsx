@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import React from 'react';
+import { JSDOM } from 'jsdom';
+import React, { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AgentStudioRail } from '../src/kordi-app/agents/AgentStudioRail';
-import { SkillLibraryView } from '../src/kordi-app/agents/SkillLibraryView';
+import { AddToAgentControl, SkillLibraryView } from '../src/kordi-app/agents/SkillLibraryView';
+import { skillLibraryFileDisplay } from '../src/kordi-app/agents/model';
+import type { Agent } from '../src/kordi-app/types';
 import type { DesktopSkillLibraryEntry } from '../src/lib/desktop';
 
 const builtSkill: DesktopSkillLibraryEntry = {
@@ -26,6 +31,81 @@ const builtSkill: DesktopSkillLibraryEntry = {
   fileCount: 1,
 };
 
+const externalUiSkill: DesktopSkillLibraryEntry = {
+  ...builtSkill,
+  id: 'skill:adapt',
+  name: 'adapt',
+  description: 'Adapt interface designs across screen sizes and responsive layouts.',
+  sourceLabel: 'Settings:External',
+  sourcePath: '/tmp/.agents/skills/adapt/SKILL.md',
+  scope: 'shared',
+  origin: 'external',
+};
+
+function agent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    id: 'agent:kordi',
+    name: 'Kordi',
+    role: 'Personal agent',
+    messaging: 'Local runtime',
+    status: 'Active',
+    tasks: 0,
+    defaultProvider: 'OpenAI',
+    defaultModel: 'gpt-test',
+    bridgesConfig: 'Local runtime',
+    contactId: 'agent:kordi',
+    systemPrompt: '',
+    xMd: '',
+    identityFiles: [],
+    loadedTools: [],
+    loadedSkills: [],
+    loadedPlugins: [],
+    lastActivities: [],
+    isOwned: true,
+    ...overrides,
+  };
+}
+
+function installDom() {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    pretendToBeVisual: true,
+    url: 'http://localhost/',
+  });
+  const target = globalThis as typeof globalThis & Record<string, unknown>;
+  const replacements: Record<string, unknown> = {
+    window: dom.window,
+    document: dom.window.document,
+    navigator: dom.window.navigator,
+    HTMLElement: dom.window.HTMLElement,
+    Element: dom.window.Element,
+    Node: dom.window.Node,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  };
+  const previous = new Map(
+    Object.keys(replacements).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  );
+  Object.entries(replacements).forEach(([key, value]) => {
+    Object.defineProperty(target, key, { configurable: true, writable: true, value });
+  });
+  return {
+    dom,
+    restore() {
+      previous.forEach((descriptor, key) => {
+        if (descriptor) Object.defineProperty(target, key, descriptor);
+        else delete target[key];
+      });
+      dom.window.close();
+    },
+  };
+}
+
+test('skill file rows do not repeat a root filename as their subtitle', () => {
+  const source = readFileSync(new URL('../src/kordi-app/agents/SkillLibraryView.tsx', import.meta.url), 'utf8');
+  assert.deepEqual(skillLibraryFileDisplay('SKILL.md'), { name: 'SKILL.md', parent: null });
+  assert.deepEqual(skillLibraryFileDisplay('references/api.md'), { name: 'api.md', parent: 'references' });
+  assert.doesNotMatch(source, /Editable Factory skill|Read only/);
+});
+
 test('Factory plus menu offers separate real agent and skill builds', () => {
   const html = renderToStaticMarkup(
     <AgentStudioRail
@@ -46,33 +126,119 @@ test('Factory plus menu offers separate real agent and skill builds', () => {
 
   assert.match(html, /Build agent/);
   assert.match(html, /Build skill/);
+  assert.match(html, />Agents<\/button>/);
   assert.match(html, /Skills <span>1<\/span>/);
-  assert.match(html, /Search factory projects/);
+  assert.match(html, /Search agents/);
+  assert.doesNotMatch(html, />Builds<\/button>/);
+  assert.doesNotMatch(html, /Factory runtime connected/);
 });
 
-test('Skill Library keeps install state and explicit add-to-build action visible', () => {
+test('Skill Library rail is compact, indexed, and leaves enable state to the detail controls', () => {
+  const html = renderToStaticMarkup(
+    <AgentStudioRail
+      agents={[]}
+      activeAgentId=""
+      creatingKind={null}
+      agentConfigs={{}}
+      skills={[{ ...builtSkill, enabled: true }]}
+      selectedSkillId={builtSkill.id}
+      section="skills"
+      canCreateAgent
+      onSectionChange={() => undefined}
+      onOpenAgent={() => undefined}
+      onOpenSkill={() => undefined}
+      onCreateArtifact={() => undefined}
+    />,
+  );
+
+  assert.match(html, /repository-review/);
+  assert.match(html, /app-agent-studio-agent-row app-list-item is-skill/);
+  assert.match(html, /app-session-row-active/);
+  assert.match(html, /aria-current="true"/);
+  assert.doesNotMatch(html, /app-list-item-active/);
+  assert.match(html, /aria-label="Skills alphabetical index"/);
+  assert.equal((html.match(/aria-label="Jump to [A-Z] skills"/g) ?? []).length, 26);
+  assert.match(html, /aria-label="Jump to A skills" disabled=""/);
+  assert.match(html, /aria-label="Jump to R skills"/);
+  assert.doesNotMatch(html, /aria-label="Jump to R skills" disabled=""/);
+  assert.match(html, /data-skill-initial="R"/);
+  assert.doesNotMatch(html, /app-agent-studio-skill-avatar/);
+  assert.doesNotMatch(html, />On<|>Off</);
+  assert.doesNotMatch(html, /global skill|settings:external|Community/);
+});
+
+test('Skill Library keeps install state and explicit add-to-agent action visible', () => {
+  const agentTargets = [
+    agent(),
+    agent({ id: 'agent:reviewer', name: 'Review Agent', role: 'Repository reviewer', loadedSkills: ['adapt'] }),
+  ];
   const html = renderToStaticMarkup(
     <SkillLibraryView
-      skills={[builtSkill]}
-      selectedSkillId={builtSkill.id}
+      skills={[externalUiSkill]}
+      selectedSkillId={externalUiSkill.id}
       loading={false}
       error={null}
       mutatingSkillId={null}
-      canAddToBuild
+      agentTargets={agentTargets}
       onSelectSkill={() => undefined}
-      onRefresh={async () => [builtSkill]}
-      onSetEnabled={async () => builtSkill}
+      onRefresh={async () => [externalUiSkill]}
+      onSetEnabled={async () => externalUiSkill}
       onRemove={async () => true}
       onInstalled={() => undefined}
-      onAddToBuild={() => undefined}
+      onAddToAgent={() => undefined}
     />,
   );
 
   assert.match(html, /Skill Library/);
   assert.match(html, /My skills/);
   assert.match(html, /Community/);
-  assert.match(html, /repository-review/);
+  assert.match(html, /adapt/);
+  assert.match(html, /Category/);
+  assert.match(html, />UI</);
+  assert.match(html, /Installed from/);
+  assert.match(html, /Local library/);
+  assert.match(html, /Version/);
+  assert.match(html, />—</);
+  assert.doesNotMatch(html, /<dt>Source<\/dt>|<dt>Scope<\/dt>|<dt>Files<\/dt>|Settings:External/);
   assert.match(html, /Disabled/);
-  assert.match(html, /Add to current build/);
+  assert.match(html, /Add to agent/);
+  assert.match(html, /Choose an agent/);
+  assert.match(html, /Kordi/);
+  assert.match(html, /Review Agent/);
+  assert.match(html, /Repository reviewer/);
+  assert.match(html, /Added/);
+  assert.doesNotMatch(html, /Add to current build/);
   assert.match(html, /Remove/);
+});
+
+test('Add to agent exposes each target and forwards the selected agent id', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  let root: Root | null = createRoot(host);
+  let selectedAgentId: string | null = null;
+
+  try {
+    await act(async () => root?.render(
+      <AddToAgentControl
+        skill={externalUiSkill}
+        content="# Adapt"
+        agentTargets={[agent(), agent({ id: 'agent:writer', name: 'Writing Agent', role: 'Writing assistant' })]}
+        onAddToAgent={async (agentId) => { selectedAgentId = agentId; }}
+      />,
+    ));
+
+    const writingAgent = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      .find((button) => button.textContent?.includes('Writing Agent'));
+    assert.ok(writingAgent);
+    await act(async () => writingAgent.click());
+    assert.equal(selectedAgentId, 'agent:writer');
+    assert.equal(host.querySelector('summary')?.textContent?.trim(), 'Add to agent');
+    assert.equal(host.querySelector('details')?.hasAttribute('open'), false);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    installed.restore();
+  }
 });

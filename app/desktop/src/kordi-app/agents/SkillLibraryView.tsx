@@ -31,8 +31,13 @@ import {
   type DesktopSkillLibraryEntry,
 } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { IdentityAvatar } from '../components/IdentityAvatar';
+import type { Agent } from '../types';
+import { skillLibraryFileDisplay } from './model';
 
 type CommunityProvider = 'clawhub' | 'skills-sh';
+
+export type SkillAgentTarget = Pick<Agent, 'id' | 'name' | 'role' | 'avatarSeed' | 'profileImageUrl' | 'loadedSkills'>;
 
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -53,32 +58,154 @@ function installedCommunityMatch(skills: DesktopSkillLibraryEntry[], result?: De
   )) ?? null;
 }
 
+const SKILL_CATEGORIES: Array<{ label: string; pattern: RegExp }> = [
+  { label: 'Agent building', pattern: /\b(agent creator|agent builder|create agents?|build agents?|skill creator|skill installer)\b/i },
+  { label: 'UI', pattern: /\b(ui|ux|design|interface|layout|responsive|typography|typeset|color|visual|animation|frontend|accessibility|theme)\b/i },
+  { label: 'Research', pattern: /\b(research|search|browse|discover|citation|sources?|information retrieval)\b/i },
+  { label: 'Engineering', pattern: /\b(code|coding|repository|developer|debug|test|testing|react|next\.js|performance|technical|api)\b/i },
+  { label: 'Writing', pattern: /\b(write|writing|copy|document|editorial|summarize|translation)\b/i },
+  { label: 'Automation', pattern: /\b(automate|automation|workflow|schedule|orchestrat|task runner)\b/i },
+  { label: 'Productivity', pattern: /\b(productivity|organize|planning|focus|calendar|email)\b/i },
+];
+
+function skillCategory(skill: DesktopSkillLibraryEntry) {
+  const searchableText = `${skill.name.replace(/-/g, ' ')} ${skill.description}`;
+  return SKILL_CATEGORIES.find(({ pattern }) => pattern.test(searchableText))?.label ?? 'General';
+}
+
+function communityProviderLabel(provider: string) {
+  if (provider === 'clawhub') return 'ClawHub';
+  if (provider === 'skills-sh') return 'skills.sh';
+  return provider;
+}
+
+function skillInstallSource(skill: DesktopSkillLibraryEntry) {
+  if (skill.provider?.trim()) return communityProviderLabel(skill.provider.trim());
+  if (skill.origin === 'built') return 'Kordi Factory';
+  if (skill.origin === 'project' || skill.scope === 'project') return 'This project';
+  if (skill.origin === 'community') return 'Community';
+  if (skill.scope === 'package') return 'Installed package';
+  if (['installed', 'external'].includes(skill.origin) || ['global', 'shared', 'external'].includes(skill.scope)) return 'Local library';
+  return '—';
+}
+
+function normalizedSkillName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-');
+}
+
+export function AddToAgentControl({
+  skill,
+  content,
+  agentTargets,
+  onAddToAgent,
+}: {
+  skill: DesktopSkillLibraryEntry;
+  content: string;
+  agentTargets: SkillAgentTarget[];
+  onAddToAgent: (agentId: string, skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
+}) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [addingAgentId, setAddingAgentId] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  const skillName = normalizedSkillName(skill.name);
+
+  useEffect(() => {
+    setAddingAgentId(null);
+    setAddError(null);
+  }, [skill.id]);
+
+  if (agentTargets.length === 0) return null;
+
+  const addToAgent = async (agent: SkillAgentTarget) => {
+    if (addingAgentId) return;
+    setAddingAgentId(agent.id);
+    setAddError(null);
+    try {
+      await onAddToAgent(agent.id, skill, content);
+      detailsRef.current?.removeAttribute('open');
+    } catch (error) {
+      setAddError(errorMessage(error, `Kordi could not add ${skill.name} to ${agent.name}.`));
+    } finally {
+      setAddingAgentId(null);
+    }
+  };
+
+  return (
+    <details ref={detailsRef} className="app-skill-agent-picker">
+      <summary className="app-agent-studio-button is-primary" aria-label={`Add ${skill.name} to an agent`}>
+        <Plus className="h-4 w-4" />
+        Add to agent
+      </summary>
+      <div className="app-skill-agent-picker-panel" role="menu" aria-label="Choose an agent">
+        <div className="app-skill-agent-picker-heading">
+          <strong>Choose an agent</strong>
+          <span>The skill will be staged in its private draft.</span>
+        </div>
+        <div className="app-skill-agent-picker-list app-scroll-area">
+          {agentTargets.map((agent) => {
+            const alreadyAdded = agent.loadedSkills.some((name) => normalizedSkillName(name) === skillName);
+            const adding = addingAgentId === agent.id;
+            return (
+              <button
+                key={agent.id}
+                type="button"
+                role="menuitem"
+                disabled={Boolean(addingAgentId) || alreadyAdded}
+                onClick={() => void addToAgent(agent)}
+              >
+                <IdentityAvatar
+                  kind="agent"
+                  seed={agent.avatarSeed ?? agent.id}
+                  name={agent.name}
+                  imageUrl={agent.profileImageUrl}
+                  className="h-8 w-8 rounded-[10px]"
+                />
+                <span className="min-w-0">
+                  <strong>{agent.name}</strong>
+                  <small>{agent.role || 'Agent'}</small>
+                </span>
+                <span className="app-skill-agent-picker-state">
+                  {adding ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Adding</> : alreadyAdded ? <><Check className="h-3.5 w-3.5" />Added</> : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {addError ? <div className="app-skill-agent-picker-error" role="alert">{addError}</div> : null}
+      </div>
+    </details>
+  );
+}
+
 export function SkillLibraryView({
   skills,
   selectedSkillId,
   loading,
   error,
   mutatingSkillId,
-  canAddToBuild,
+  agentTargets,
   onSelectSkill,
   onRefresh,
   onSetEnabled,
   onRemove,
   onInstalled,
-  onAddToBuild,
+  onAddToAgent,
 }: {
   skills: DesktopSkillLibraryEntry[];
   selectedSkillId: string | null;
   loading: boolean;
   error: string | null;
   mutatingSkillId: string | null;
-  canAddToBuild: boolean;
+  agentTargets: SkillAgentTarget[];
   onSelectSkill: (skillId: string) => void;
   onRefresh: () => Promise<DesktopSkillLibraryEntry[]>;
   onSetEnabled: (skill: DesktopSkillLibraryEntry, enabled: boolean) => Promise<DesktopSkillLibraryEntry | null>;
   onRemove: (skill: DesktopSkillLibraryEntry) => Promise<boolean>;
   onInstalled: (skill: DesktopSkillLibraryEntry) => Promise<void> | void;
-  onAddToBuild: (skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
+  onAddToAgent: (agentId: string, skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
 }) {
   const [mode, setMode] = useState<'installed' | 'community'>('installed');
 
@@ -102,19 +229,19 @@ export function SkillLibraryView({
           loading={loading}
           error={error}
           mutatingSkillId={mutatingSkillId}
-          canAddToBuild={canAddToBuild}
+          agentTargets={agentTargets}
           onSelectSkill={onSelectSkill}
           onRefresh={onRefresh}
           onSetEnabled={onSetEnabled}
           onRemove={onRemove}
-          onAddToBuild={onAddToBuild}
+          onAddToAgent={onAddToAgent}
         />
       ) : (
         <CommunitySkillView
           skills={skills}
-          canAddToBuild={canAddToBuild}
+          agentTargets={agentTargets}
           onInstalled={onInstalled}
-          onAddToBuild={onAddToBuild}
+          onAddToAgent={onAddToAgent}
         />
       )}
     </main>
@@ -127,24 +254,24 @@ function InstalledSkillView({
   loading,
   error,
   mutatingSkillId,
-  canAddToBuild,
+  agentTargets,
   onSelectSkill,
   onRefresh,
   onSetEnabled,
   onRemove,
-  onAddToBuild,
+  onAddToAgent,
 }: {
   skills: DesktopSkillLibraryEntry[];
   selectedSkillId: string | null;
   loading: boolean;
   error: string | null;
   mutatingSkillId: string | null;
-  canAddToBuild: boolean;
+  agentTargets: SkillAgentTarget[];
   onSelectSkill: (skillId: string) => void;
   onRefresh: () => Promise<DesktopSkillLibraryEntry[]>;
   onSetEnabled: (skill: DesktopSkillLibraryEntry, enabled: boolean) => Promise<DesktopSkillLibraryEntry | null>;
   onRemove: (skill: DesktopSkillLibraryEntry) => Promise<boolean>;
-  onAddToBuild: (skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
+  onAddToAgent: (agentId: string, skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
 }) {
   const selectedSkill = skills.find((skill) => skill.id === selectedSkillId) ?? skills[0] ?? null;
   const [detail, setDetail] = useState<DesktopSkillLibraryDetail | null>(null);
@@ -233,6 +360,9 @@ function InstalledSkillView({
 
   const activeFile = detail?.files.find((file) => file.path === selectedPath);
   const canEditFile = Boolean(detail?.skill.editable && activeFile?.text);
+  const category = skillCategory(selectedSkill);
+  const installedFrom = skillInstallSource(selectedSkill);
+  const version = selectedSkill.version?.trim() || '—';
 
   return (
     <div className="app-skill-library-detail">
@@ -243,14 +373,13 @@ function InstalledSkillView({
           <span className={cn('app-agent-studio-state-pill', selectedSkill.enabled && 'is-enabled')}>{selectedSkill.enabled ? 'Enabled' : 'Disabled'}</span>
         </div>
         <dl className="app-skill-library-facts">
-          <div><dt>Source</dt><dd>{selectedSkill.origin === 'community' ? selectedSkill.provider ?? 'Community' : selectedSkill.sourceLabel}</dd></div>
-          <div><dt>Scope</dt><dd>{selectedSkill.scope}</dd></div>
-          <div><dt>Version</dt><dd>{selectedSkill.version ?? 'Local'}</dd></div>
-          <div><dt>Files</dt><dd>{selectedSkill.fileCount}</dd></div>
+          <div><dt>Category</dt><dd>{category}</dd></div>
+          <div><dt>Installed from</dt><dd>{installedFrom}</dd></div>
+          <div><dt>Version</dt><dd>{version}</dd></div>
         </dl>
         <div className="app-skill-library-actions">
           <button type="button" className="app-agent-studio-button" disabled={mutatingSkillId === selectedSkill.id} onClick={() => void onSetEnabled(selectedSkill, !selectedSkill.enabled)}>{mutatingSkillId === selectedSkill.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{selectedSkill.enabled ? 'Disable' : 'Enable'}</button>
-          {canAddToBuild ? <button type="button" className="app-agent-studio-button is-primary" onClick={() => void onAddToBuild(selectedSkill, detail?.skillMd ?? '')}><Plus className="h-4 w-4" />Add to current build</button> : null}
+          <AddToAgentControl skill={selectedSkill} content={detail?.skillMd ?? ''} agentTargets={agentTargets} onAddToAgent={onAddToAgent} />
           {selectedSkill.removable ? <button type="button" className="app-agent-studio-button is-danger" onClick={() => setConfirmRemove(true)}><Trash2 className="h-4 w-4" />Remove</button> : null}
         </div>
         {confirmRemove ? (
@@ -267,15 +396,19 @@ function InstalledSkillView({
         <div className="app-skill-library-files">
           <nav aria-label={`${selectedSkill.name} files`}>
             <div className="app-skill-library-files-label">Files</div>
-            {detail.files.map((file) => (
-              <button key={file.path} type="button" className={cn(selectedPath === file.path && 'is-active')} onClick={() => void selectFile(file.path)}>
-                <FileText className="h-4 w-4" /><span><strong>{file.path.split('/').pop()}</strong><small>{file.path}</small></span>
-              </button>
-            ))}
+            {detail.files.map((file) => {
+              const display = skillLibraryFileDisplay(file.path);
+              return (
+                <button key={file.path} type="button" className={cn(selectedPath === file.path && 'is-active')} onClick={() => void selectFile(file.path)}>
+                  <FileText className="h-4 w-4" />
+                  <span><strong>{display.name}</strong>{display.parent ? <small>{display.parent}</small> : null}</span>
+                </button>
+              );
+            })}
           </nav>
           <section className="app-skill-library-editor">
             <header>
-              <div className="min-w-0"><strong>{selectedPath}</strong><span>{canEditFile ? 'Editable Factory skill' : 'Read only'}</span></div>
+              <strong className="min-w-0">{selectedPath}</strong>
               {canEditFile ? <button type="button" className="app-agent-studio-button is-primary is-small" disabled={saving || fileLoading || content === savedContent} onClick={() => void save()}>{saving ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Save file</button> : null}
             </header>
             {fileLoading ? <div className="app-skill-library-loading"><LoaderCircle className="h-4 w-4 animate-spin" />Loading file…</div> : canEditFile ? <textarea value={content} onChange={(event) => setContent(event.currentTarget.value)} spellCheck={false} /> : <pre>{content}</pre>}
@@ -288,14 +421,14 @@ function InstalledSkillView({
 
 function CommunitySkillView({
   skills,
-  canAddToBuild,
+  agentTargets,
   onInstalled,
-  onAddToBuild,
+  onAddToAgent,
 }: {
   skills: DesktopSkillLibraryEntry[];
-  canAddToBuild: boolean;
+  agentTargets: SkillAgentTarget[];
   onInstalled: (skill: DesktopSkillLibraryEntry) => Promise<void> | void;
-  onAddToBuild: (skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
+  onAddToAgent: (agentId: string, skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
 }) {
   const [provider, setProvider] = useState<CommunityProvider>('clawhub');
   const [query, setQuery] = useState('');
@@ -430,7 +563,7 @@ function CommunitySkillView({
             <div className="app-skill-community-install">
               <span className="app-skill-community-install-note">Installs to My Kordi and stays disabled until you enable it.</span>
               {installedSkill ? (
-                canAddToBuild ? <button type="button" className="app-agent-studio-button is-primary" onClick={() => void onAddToBuild(installedSkill, detail.skillMd)}><Plus className="h-4 w-4" />Add to current build</button>
+                agentTargets.length > 0 ? <AddToAgentControl skill={installedSkill} content={detail.skillMd} agentTargets={agentTargets} onAddToAgent={onAddToAgent} />
                   : <span className="app-agent-studio-state-pill is-enabled"><Check className="h-3.5 w-3.5" />Installed</span>
               ) : <button type="button" className="app-agent-studio-button is-primary" onClick={() => void install()} disabled={installing}>{installing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{installing ? 'Installing' : 'Install reviewed skill'}</button>}
             </div>

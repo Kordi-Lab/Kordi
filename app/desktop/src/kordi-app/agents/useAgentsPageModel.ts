@@ -90,26 +90,12 @@ export function useAgentsPageModel(agents: Agent[], activeAgent?: Agent) {
   const activeDetail = activeAgent ? selectedDetailByAgentId[activeAgent.id] ?? { kind: 'prompt' as const } : null;
   const activeIdentityFile = activeDetail?.kind === 'file' ? activeDetail.path : null;
   const activeConfigPath = activeAgent ? getAgentConfigPath(activeAgent) : null;
-  const activeSaveFeedback = activeAgent
-    ? saveFeedbackByAgentId[activeAgent.id] ?? {
-        tone: 'idle' as const,
-        text: activeConfigPath
-          ? `Loaded from ${activeConfigPath}`
-          : activeAgent.systemPrompt.trim().length > 0
-            ? 'Loaded from exact current runtime'
-            : 'No real prompt/config exposed by this bridge agent',
-      }
-    : null;
+  const activeSaveFeedback = activeAgent ? saveFeedbackByAgentId[activeAgent.id] ?? null : null;
   const activeEditingSection = activeAgent ? editingSectionByAgentId[activeAgent.id] ?? null : null;
   const activeFileCanEdit = Boolean(activeIdentityFile && canUseNativeFileAccess && isEditableWorkspaceTextFile(activeIdentityFile));
   const activeFileIsEditing = Boolean(activeIdentityFile && editingFilePath === activeIdentityFile && activeFileCanEdit);
   const activeFileDraft = activeIdentityFile ? fileDraftsByPath[activeIdentityFile] ?? activeFilePreview.text : '';
-  const activeFileSaveFeedback = activeIdentityFile
-    ? fileSaveFeedbackByPath[activeIdentityFile] ?? {
-        tone: 'idle' as const,
-        text: activeFileCanEdit ? 'Repo-relative file ready to preview or edit' : 'Read-only preview',
-      }
-    : null;
+  const activeFileSaveFeedback = activeIdentityFile ? fileSaveFeedbackByPath[activeIdentityFile] ?? null : null;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
