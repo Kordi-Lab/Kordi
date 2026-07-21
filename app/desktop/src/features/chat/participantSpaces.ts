@@ -37,7 +37,7 @@ function latestMessageText(conversation: Conversation) {
 
 function isBlankSessionLabel(value: string | undefined | null) {
   const text = value?.trim() ?? '';
-  return !text || /^(#\s*)?(new session|untitled session)$/i.test(text);
+  return !text || /^(#\s*)?(new chat|new session|untitled session)$/i.test(text);
 }
 
 function conversationHasUserContent(conversation: Conversation) {

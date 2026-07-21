@@ -731,6 +731,17 @@ html.kordi-native-shell .bridge-app .app-main-panel {
   opacity: 1;
 }
 
+.app-participant-space-context-create:disabled,
+.app-participant-space-context-create:disabled:hover,
+.app-participant-space-context-create:disabled:focus-visible {
+  cursor: not-allowed;
+  border-color: transparent;
+  background: transparent;
+  color: var(--utility-muted-text);
+  opacity: 0.38;
+  transform: none;
+}
+
 .app-participant-space-session-row {
   min-width: 0;
   border-color: transparent;

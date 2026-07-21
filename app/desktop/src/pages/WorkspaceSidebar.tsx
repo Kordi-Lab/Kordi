@@ -27,7 +27,7 @@ import { IdentityAvatar, useLocalProfileAvatarSeed } from '@/kordi-app/component
 import { CloudAccountSettingsDialog, type CloudAccountSettingsConfig, type CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import { navItems } from '@/kordi-app/data';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
-import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
+import { isBlankParticipantSpaceSession, primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import type {
   Agent,
   ChatChannel,
@@ -1052,6 +1052,7 @@ export function WorkspaceSidebar({
   const renderParticipantSpaceItem = (space: ParticipantSpaceItem) => {
     const latestSession = space.sessions[0];
     const isDirectHuman = space.kind === 'direct-human';
+    const hasBlankSession = space.sessions.some(isBlankParticipantSpaceSession);
     const isActiveSpace = activeParticipantSpaceId === space.id;
     const isPrimarySessionActive = Boolean(latestSession && (
       activeConvId === latestSession.id || activeConvId === latestSession.canonicalSessionId
@@ -1133,9 +1134,15 @@ export function WorkspaceSidebar({
                 <button
                   type="button"
                   data-participant-space-context-create="true"
+                  data-disabled-reason={hasBlankSession ? 'blank-session' : undefined}
+                  disabled={hasBlankSession}
                   className="app-participant-space-action app-participant-space-context-create grid h-6 w-6 place-items-center rounded-[8px] transition"
-                  aria-label={`Create session in ${space.title}`}
-                  title={`Create session in ${space.title}`}
+                  aria-label={hasBlankSession
+                    ? `New session unavailable in ${space.title}: a blank chat already exists`
+                    : `Create session in ${space.title}`}
+                  title={hasBlankSession
+                    ? 'Send a message in the blank chat before creating another session'
+                    : `Create session in ${space.title}`}
                   onClick={(event) => {
                     event.stopPropagation();
                     setSelectedParticipantSpaceId(space.id);
