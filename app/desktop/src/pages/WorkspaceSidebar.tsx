@@ -1787,7 +1787,7 @@ export function WorkspaceSidebar({
             <div className="h-full overflow-hidden">
               {activeNav === 'chats' && (
                 <div className="flex h-full flex-col p-2.5">
-                  <div className="mb-2 flex items-start justify-between gap-2.5">
+                  <div className="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2.5">
                     <div>
                       <div className="text-[15px] font-semibold text-white">Chats</div>
                       <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-slate-400">
@@ -1805,7 +1805,7 @@ export function WorkspaceSidebar({
                         </span>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="app-chat-sidebar-actions flex shrink-0 items-center gap-2">
                       {isNativeShell && onCheckForUpdates ? (
                         <button
                           ref={updateButtonRef}
@@ -1814,11 +1814,7 @@ export function WorkspaceSidebar({
                           disabled={updateButtonPresentation.disabled}
                           data-update-status={updateState.status}
                           className={cn(
-                            'app-update-logo-button app-utility-button grid h-8 w-8 place-items-center rounded-full p-0 transition',
-                            'border border-slate-300/70 bg-white text-slate-950 shadow-[0_8px_18px_rgba(15,23,42,0.12)] hover:bg-slate-50',
-                            updateState.status === 'up-to-date' && 'border-emerald-300/70 bg-emerald-50 text-emerald-700',
-                            updateState.status === 'available' && 'border-blue-300/70 bg-blue-50 text-blue-700',
-                            updateState.status === 'failed' && 'border-rose-300/70 bg-rose-50 text-rose-700',
+                            'app-update-logo-button app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] p-0 transition',
                             (updateState.status === 'checking' || isUpdateCheckPending) && 'cursor-wait opacity-80',
                           )}
                           title={isUpdateConfirmOpen ? undefined : updateButtonPresentation.title}
@@ -1827,7 +1823,7 @@ export function WorkspaceSidebar({
                         >
                           <RefreshCw
                             className={cn(
-                              'h-[17px] w-[17px] stroke-[2.7]',
+                              'h-4 w-4 stroke-[2.2]',
                               updateButtonPresentation.isSpinning && 'animate-spin',
                             )}
                             aria-hidden="true"
@@ -1840,11 +1836,11 @@ export function WorkspaceSidebar({
                       <button
                         type="button"
                         onClick={openChatCreateDialog}
-                        className="app-icon-button app-utility-button flex h-8 w-8 items-center justify-center rounded-[12px] text-slate-200"
+                        className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] p-0 transition"
                         title="Start a chat"
                         aria-label="Start a chat"
                       >
-                        <Plus className="h-3.5 w-3.5" />
+                        <Plus className="h-4 w-4 stroke-[2.2]" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
