@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
+import { resolveReplicatedGroupTitle } from '@/features/chat/groupTitle';
 import {
   deriveSessionTitle,
   incomingSessionTitleWins,
@@ -132,7 +133,6 @@ import {
   cloudSessionTitleUpdateTitle,
   cloudGroupUniqueParticipants,
   cloudGroupRelatedControlsForSend,
-  cloudGroupNonGenericTitle,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
   firstRequiredCloudGroupSendFailure,
@@ -3550,9 +3550,8 @@ export function useCloudBridgeState({
       .filter(([, identityId]) => identityId !== createdByIdentityId)
       .map(([, identityId]) => identityId);
     const sessionTitleUpdateTitle = cloudSessionTitleUpdateTitle(envelope);
-    const explicitGroupTitle = shouldApplyCloudGroupTitleUpdate(envelope) ? cloudGroupNonGenericTitle(envelope.groupTitle) : null;
+    const incomingGroupTitle = shouldApplyCloudGroupTitleUpdate(envelope) ? envelope.groupTitle : null;
     const isSelfAuthoredControl = envelope.actor.accountId === account.accountId;
-    const groupTitle = explicitGroupTitle || 'Group';
     const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
     const forkMetadata = envelope.fork ? {
       forkedFromSessionId: envelope.fork.parentSessionId,
@@ -3564,6 +3563,21 @@ export function useCloudBridgeState({
     } : null;
     const parsedControlCreatedAtMs = Date.parse(cloudMessage.createdAt);
     const controlCreatedAtMs = Number.isFinite(parsedControlCreatedAtMs) ? parsedControlCreatedAtMs : Date.now();
+    const storedGroupTitleCandidates = [
+      { sessionId: groupSpaceId, metadata: groupRootMetadata },
+      { sessionId: envelope.groupId, metadata: envelopeSessionMetadata },
+    ];
+    const groupTitleResolution = resolveReplicatedGroupTitle({
+      candidates: storedGroupTitleCandidates.map(({ sessionId, metadata }) => ({
+        sessionId,
+        groupSpaceId,
+        customName: typeof metadata.customName === 'string' ? metadata.customName : null,
+        groupNameUpdatedAtMs: typeof metadata.groupNameUpdatedAtMs === 'number' ? metadata.groupNameUpdatedAtMs : null,
+      })),
+      groupSpaceId,
+      incomingTitle: incomingGroupTitle,
+      incomingUpdatedAtMs: controlCreatedAtMs,
+    });
     const envelopeAdminUpdatedAtMs = typeof envelopeSessionMetadata.groupAdminUpdatedAtMs === 'number'
       && Number.isFinite(envelopeSessionMetadata.groupAdminUpdatedAtMs)
       ? envelopeSessionMetadata.groupAdminUpdatedAtMs
@@ -3604,7 +3618,8 @@ export function useCloudBridgeState({
       ...envelopeSessionMetadata,
       schemaVersion: 1,
       kind: 'chat-group',
-      ...(explicitGroupTitle ? { customName: explicitGroupTitle } : {}),
+      customName: groupTitleResolution.title || null,
+      ...(groupTitleResolution.updatedAtMs > 0 ? { groupNameUpdatedAtMs: groupTitleResolution.updatedAtMs } : {}),
       groupId: groupSpaceId,
       groupSpaceId,
       groupCreatorIdentityId: createdByIdentityId,
@@ -3649,7 +3664,7 @@ export function useCloudBridgeState({
       }
     }
 
-    if (shouldApplyCloudGroupTitleUpdate(envelope)) {
+    if (groupTitleResolution.appliesIncoming) {
       // openOrCreateCanonicalSession above already applied the replicated Cloud
       // group metadata. Do not route incoming Cloud sync through the local UI
       // admin guard; otherwise valid remote updates warn/fail on peers whose

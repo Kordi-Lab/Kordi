@@ -2,6 +2,7 @@ import {
   adminIdentityIdsFromMetadata,
   buildChatGroupBridgeUpdateParticipants,
 } from '@/features/chat/chatCreateFlows';
+import { sharedGroupCustomTitle } from '@/features/chat/groupTitle';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import type {
   CanonicalSessionMessage,
@@ -378,27 +379,35 @@ function nonGenericGroupInviteTitle(value?: string | null) {
   return title;
 }
 
-function groupInviteTitleFromSession(state: CanonicalSessionState | null, sessionId: string) {
-  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
-  if (!session) return null;
-  const metadata = canonicalMetadataRecord(session.metadata);
-  return nonGenericGroupInviteTitle(metadataString(metadata, 'customName'))
-    || nonGenericGroupInviteTitle(session.title);
-}
-
 export function canonicalGroupInviteTitleForSession(state: CanonicalSessionState | null, sessionId: string) {
   const session = state?.sessions.find((candidate) => candidate.id === sessionId);
   if (!session) return null;
   const metadata = canonicalMetadataRecord(session.metadata);
-  const directTitle = groupInviteTitleFromSession(state, sessionId);
-  if (directTitle) return directTitle;
+  const groupSpaceId = metadataGroupSpaceId(metadata) || sessionId;
+  const relatedSessions = state?.sessions.filter((candidate) => {
+    const candidateMetadata = canonicalMetadataRecord(candidate.metadata);
+    return candidate.id === groupSpaceId || metadataGroupSpaceId(candidateMetadata) === groupSpaceId;
+  }) ?? [];
+  const sharedTitle = sharedGroupCustomTitle(relatedSessions.map((candidate) => {
+    const candidateMetadata = canonicalMetadataRecord(candidate.metadata);
+    const updatedAtMs = candidateMetadata.groupNameUpdatedAtMs;
+    return {
+      sessionId: candidate.id,
+      groupSpaceId: metadataGroupSpaceId(candidateMetadata),
+      customName: metadataString(candidateMetadata, 'customName'),
+      groupNameUpdatedAtMs: typeof updatedAtMs === 'number' ? updatedAtMs : null,
+    };
+  }), groupSpaceId);
+  if (sharedTitle) return sharedTitle;
 
-  const groupSpaceId = metadataGroupSpaceId(metadata);
-  if (groupSpaceId && groupSpaceId !== sessionId) {
-    const groupSpaceTitle = groupInviteTitleFromSession(state, groupSpaceId);
-    if (groupSpaceTitle) return groupSpaceTitle;
+  // Very old group roots stored their shared label in the session title before
+  // groupSpaceId/customName existed. Never use a modern child-session title as
+  // a group label: that is how "# main" leaked into other members' sidebars.
+  const rootSession = relatedSessions.find((candidate) => candidate.id === groupSpaceId);
+  const rootMetadata = canonicalMetadataRecord(rootSession?.metadata);
+  if (rootSession && !metadataGroupSpaceId(rootMetadata)) {
+    return nonGenericGroupInviteTitle(rootSession.title);
   }
-
   return null;
 }
 

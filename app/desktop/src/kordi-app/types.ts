@@ -74,6 +74,8 @@ export type OutreachThreadSummary = {
 export type ConversationParticipant = {
   id: string;
   name: string;
+  /** Canonical profile name used where viewer-local labels such as "Me" would diverge. */
+  publicName?: string | null;
   kind: 'human' | 'agent' | string;
   role: string;
   source?: string | null;

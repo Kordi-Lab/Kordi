@@ -864,6 +864,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
       return [{
         id: identity.id,
         name,
+        publicName: identity.displayName,
         kind: identity.kind,
         role,
         source: identity.source,

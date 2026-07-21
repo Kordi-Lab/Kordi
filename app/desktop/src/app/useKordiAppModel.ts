@@ -96,6 +96,7 @@ import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { removeQueuedDesktopMessageById } from '@/features/chat/queuedDesktopMessages';
+import { participantSpaceCustomGroupTitle } from '@/features/chat/participantSpaces';
 import {
   forwardMessageSourceFromMessage,
   messageActionSourceFromMessage,
@@ -137,6 +138,7 @@ import {
   activeGroupAdminIds,
   canonicalAvatarSeed,
   canonicalGroupInviteContextForSession,
+  canonicalGroupInviteTitleForSession,
   canonicalGroupParticipantsForSession,
   canonicalGroupCreatorIdentityId,
   canonicalGroupSessionSyncContextForSession,
@@ -2352,7 +2354,7 @@ export function useKordiAppModel({
         throw new Error('A group session needs at least 2 other people.');
       }
 
-      const customName = metadataString(sourceMetadata, 'customName') || space.title;
+      const customName = participantSpaceCustomGroupTitle(space) || null;
       const groupCreatorIdentityId = sourceSessionId
         ? space.groupCreatorIdentityId?.trim()
           || canonicalGroupCreatorIdentityId(currentCanonicalState, sourceSessionId)
@@ -2754,7 +2756,7 @@ export function useKordiAppModel({
           kind: 'group-update',
           groupId: sessionId,
           groupSpaceId,
-          groupTitle: metadataString(metadata, 'customName') || null,
+          groupTitle: canonicalGroupInviteTitleForSession(nextState, sessionId),
           createdByAccountId: createdByAccountId || null,
           actor,
           participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudAccount, updateParticipants),
@@ -2853,7 +2855,7 @@ export function useKordiAppModel({
         kind: 'group-update',
         groupId: rootSessionId,
         groupSpaceId: fallbackGroupSpaceId,
-        groupTitle: metadataString(sessionMetadataRecord(nextState, rootSessionId), 'customName') || null,
+        groupTitle: canonicalGroupInviteTitleForSession(nextState, rootSessionId),
         createdByAccountId: createdByAccountId || null,
         participants: cloudGroupParticipantsForBridgeSessionParticipants(cloudSession.account, updateParticipants),
       });

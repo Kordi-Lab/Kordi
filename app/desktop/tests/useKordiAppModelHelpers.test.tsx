@@ -253,7 +253,7 @@ test('session rename notice text names the actor, scope, and new title', () => {
   );
 });
 
-test('group invite title falls back to the group space custom name for child sessions', () => {
+test('group invite title uses the shared root name instead of a stale child name', () => {
   const state = {
     sessions: [
       {
@@ -263,13 +263,32 @@ test('group invite title falls back to the group space custom name for child ses
       },
       {
         id: 'session:group:child',
-        title: 'Group',
-        metadata: { groupSpaceId: 'session:group:root' },
+        title: 'main',
+        metadata: { customName: 'viewer-local stale name', groupSpaceId: 'session:group:root' },
       },
     ],
   } as CanonicalSessionState;
 
   assert.equal(canonicalGroupInviteTitleForSession(state, 'session:group:child'), 'thefirsttestgroup');
+});
+
+test('group invite title never promotes a child session title to the shared group name', () => {
+  const state = {
+    sessions: [
+      {
+        id: 'session:group:root',
+        title: 'main',
+        metadata: { groupSpaceId: 'session:group:root' },
+      },
+      {
+        id: 'session:group:child',
+        title: 'planning',
+        metadata: { groupSpaceId: 'session:group:root' },
+      },
+    ],
+  } as CanonicalSessionState;
+
+  assert.equal(canonicalGroupInviteTitleForSession(state, 'session:group:child'), null);
 });
 
 test('group session sync context carries the exact child session and group space without message history', () => {

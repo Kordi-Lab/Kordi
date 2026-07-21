@@ -7,6 +7,11 @@ import type {
   ParticipantSpaceSessionViewModel,
   ParticipantSpaceViewModel,
 } from '@/kordi-app/types';
+import {
+  deterministicGroupParticipantTitle,
+  groupParticipantStableKey,
+  sharedGroupCustomTitle,
+} from './groupTitle';
 
 type ConversationWithTimestamp = Conversation & { _updatedAtMs?: number };
 
@@ -356,6 +361,7 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
       ...existing,
       role: existing.role === 'self' || participant.role !== 'admin' ? existing.role : 'admin',
       avatarKey: existing.avatarKey || participant.avatarKey,
+      publicName: existing.publicName || participant.publicName,
       profileImageUrl: existing.profileImageUrl ?? participant.profileImageUrl ?? null,
       humanId: existing.humanId || participant.humanId,
       bridgeNodeId: existing.bridgeNodeId || participant.bridgeNodeId,
@@ -365,37 +371,43 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
   }
 }
 
-function participantNameList(participants: ConversationParticipant[]) {
-  const names = participants.map((participant) => participant.name.trim()).filter(Boolean);
-  if (names.length <= 2) return names.join(', ');
-  return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
-}
-
 function metadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
 }
 
-function customGroupTitle(sessions: ParticipantSpaceSessionViewModel[]) {
-  for (const session of sessions) {
+function customGroupTitle(sessions: ParticipantSpaceSessionViewModel[], groupSpaceId?: string | null) {
+  return sharedGroupCustomTitle(sessions.map((session) => {
     const metadata = metadataRecord(session.conversation.metadata);
-    const customName = metadata.customName;
-    const title = typeof customName === 'string' ? nonGenericGroupTitle(customName) : '';
-    if (title) return title;
-  }
-  return '';
+    return {
+      sessionId: cleanOptionalText(session.canonicalSessionId) || cleanOptionalText(session.id),
+      groupSpaceId: metadataStringValue(metadata, 'groupSpaceId') || metadataStringValue(metadata, 'groupId'),
+      customName: metadataStringValue(metadata, 'customName'),
+      groupNameUpdatedAtMs: metadataNumberValue(metadata, 'groupNameUpdatedAtMs'),
+    };
+  }), groupSpaceId);
+}
+
+export function participantSpaceCustomGroupTitle(space: ParticipantSpaceViewModel) {
+  if (space.kind !== 'group') return '';
+  return customGroupTitle(space.sessions, normalizeGroupSpaceId(space.id));
 }
 
 export const SELF_PARTICIPANT_SPACE_TITLE = 'My chats';
 
-function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], sessions: ParticipantSpaceSessionViewModel[]) {
+function spaceTitle(
+  kind: ParticipantSpaceKind,
+  participants: ConversationParticipant[],
+  sessions: ParticipantSpaceSessionViewModel[],
+  groupSpaceId?: string | null,
+  groupCreatorIdentityId?: string | null,
+) {
   const latestSession = sessions[0];
   if (kind === 'self') return SELF_PARTICIPANT_SPACE_TITLE;
   if (kind === 'group') {
-    return customGroupTitle(sessions)
-      || participantNameList(nonSelfHumans(participants))
-      || participantNameList(participants.filter((participant) => !isSelfParticipant(participant)))
+    return customGroupTitle(sessions, groupSpaceId)
+      || deterministicGroupParticipantTitle(participants, groupCreatorIdentityId)
       || safePreviewText(latestSession?.conversation.name)
       || 'Group';
   }
@@ -403,10 +415,7 @@ function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationPartic
 }
 
 function avatarParticipantStableKey(participant: ConversationParticipant) {
-  return cleanOptionalText(participant.humanId)
-    || cleanOptionalText(participant.bridgeNodeId)
-    || cleanOptionalText(participant.id)
-    || cleanOptionalText(participant.name);
+  return groupParticipantStableKey(participant);
 }
 
 function avatarParticipants(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
@@ -569,7 +578,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
       return {
         id,
         kind: group.kind,
-        title: spaceTitle(group.kind, group.participants, sessions),
+        title: spaceTitle(group.kind, group.participants, sessions, groupSpaceId, groupCreatorIdentityId),
         participants: group.participants,
         participantCount: group.participants.length,
         sessionCount: sessions.length,
