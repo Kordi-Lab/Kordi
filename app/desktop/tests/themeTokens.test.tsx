@@ -57,6 +57,7 @@ test('glassmorphism tokens are declared in both themes and frame bgs are translu
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-side-bg:\s*oklch\(99\.2% 0\.001 80 \/ 0\.58\);/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-session-bg:\s*oklch\(99\.4% 0\.001 80 \/ 0\.68\);/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*var\(--app-session-bg\);/);
+  assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-native-session-fallback:\s*oklch\(98\.6% 0\.002 80\);/);
   assert.match(themeTokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-modal-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.80\);/);
 });
 

@@ -46,9 +46,10 @@ test('native shell exposes vibrancy through the complete left navigation stack',
   assert.match(shellCss, /html\.kordi-native-shell \.bridge-app \.app-session-panel\s*\{[^}]*background:\s*var\(--app-native-session-bg\)/s);
   assert.match(shellCss, /html\.kordi-native-shell \.bridge-app \.app-main-panel\s*\{[^}]*background:\s*var\(--app-native-main-bg\)/s);
   assert.match(shellCss, /html\.kordi-native-shell \.bridge-app \.app-shell,[\s\S]*html\.kordi-native-shell \.bridge-app \.app-main-panel\s*\{[^}]*backdrop-filter:\s*none/s);
-  assert.match(shellCss, /@media \(prefers-reduced-transparency: reduce\)[\s\S]*background:\s*var\(--app-nav-rail-glass-fallback\)/);
+  assert.match(shellCss, /@media \(prefers-reduced-transparency: reduce\)[\s\S]*\.app-left-glass\s*\{[^}]*background:\s*var\(--app-nav-rail-glass-fallback\)[\s\S]*\.app-session-panel\s*\{[^}]*background:\s*var\(--app-native-session-fallback\)/s);
   assert.equal((tokensCss.match(/--app-nav-rail-glass-bg:/g) ?? []).length, 2);
   assert.equal((tokensCss.match(/--app-native-session-bg:/g) ?? []).length, 2);
+  assert.equal((tokensCss.match(/--app-native-session-fallback:/g) ?? []).length, 2);
   assert.equal((tokensCss.match(/--app-native-main-bg:/g) ?? []).length, 2);
   assert.match(tokensCss, /\.bridge-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*var\(--app-session-bg\);/);
   assert.match(sidebar, /className="app-nav-rail-profile rounded-full"/);
@@ -80,6 +81,7 @@ test('navigation rail uses black glass in dark mode and translucent white glass 
   );
   assert.match(lightTokens, /--app-side-bg:\s*oklch\(99\.2% 0\.001 80 \/ 0\.58\);/);
   assert.match(lightTokens, /--app-session-bg:\s*oklch\(99\.4% 0\.001 80 \/ 0\.68\);/);
+  assert.match(lightTokens, /--app-native-session-fallback:\s*oklch\(98\.6% 0\.002 80\);/);
 });
 
 test('resolved Kordi theme is applied to the native macOS material', async () => {

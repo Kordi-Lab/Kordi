@@ -139,6 +139,10 @@ html.kordi-native-shell .bridge-app .app-main-panel {
   html.kordi-native-shell .bridge-app .app-left-glass {
     background: var(--app-nav-rail-glass-fallback);
   }
+
+  html.kordi-native-shell .bridge-app .app-session-panel {
+    background: var(--app-native-session-fallback);
+  }
 }
 
 .app-surface-card {

@@ -55,6 +55,7 @@
   --app-main-raised-bg: rgba(255, 255, 255, 0.05);
   --app-main-muted-bg: rgba(255, 255, 255, 0.025);
   --app-native-session-bg: rgb(15 17 21);
+  --app-native-session-fallback: rgb(15 17 21);
   --app-native-main-bg: rgb(15 17 21);
   --app-card-bg: rgba(255, 255, 255, 0.04);
   --app-overlay-bg: rgba(5, 7, 10, 0.74);
@@ -179,6 +180,7 @@
   --app-main-raised-bg: oklch(99.6% 0.001 80);
   --app-main-muted-bg: oklch(97.3% 0.002 80);
   --app-native-session-bg: var(--app-session-bg);
+  --app-native-session-fallback: oklch(98.6% 0.002 80);
   --app-native-main-bg: var(--app-main-bg);
   --app-card-bg: rgba(15, 23, 42, 0.045);
   --app-overlay-bg: rgba(225, 226, 230, 0.72);
