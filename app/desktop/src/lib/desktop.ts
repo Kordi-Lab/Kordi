@@ -1,8 +1,10 @@
 import type {
+  AddCanonicalGroupMembersRequest,
   AddCanonicalSessionParticipantsRequest,
   AdoptCloudProfileIdentityRequest,
   AppendCanonicalMessageRequest,
   CanonicalIdentity,
+  CanonicalGroupMembershipDelta,
   CanonicalMessageDeliveryDelta,
   CanonicalMessagePage,
   CanonicalProfileIdentityDelta,
@@ -731,6 +733,10 @@ export async function updateCanonicalSessionMetadata(request: UpdateCanonicalSes
 
 export async function addCanonicalSessionParticipants(request: AddCanonicalSessionParticipantsRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_add_session_participants', { request });
+}
+
+export async function addCanonicalGroupMembersFast(request: AddCanonicalGroupMembersRequest) {
+  return invokeDesktop<CanonicalGroupMembershipDelta>('desktop_canonical_add_group_members_fast', { request });
 }
 
 export async function removeCanonicalSessionParticipant(request: RemoveCanonicalSessionParticipantRequest) {

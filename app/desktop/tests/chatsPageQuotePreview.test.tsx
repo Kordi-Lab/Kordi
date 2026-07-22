@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { canonicalHistorySessionIdForConversation, ChatsPage, selfAgentSessionIdForTitleRename } from '../src/pages/ChatsPage';
-import type { Conversation } from '../src/kordi-app/types';
+import { canonicalHistorySessionIdForConversation, ChatsPage, selfAgentSessionIdForTitleRename, transcriptHumanParticipant } from '../src/pages/ChatsPage';
+import type { Conversation, Message } from '../src/kordi-app/types';
 
 const activeConv: Conversation = {
   id: 'session:one',
@@ -87,6 +87,53 @@ function renderChatsPage(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as any));
 }
+
+test('transcript sender profile resolves by canonical identity before display name', () => {
+  const conversation: Conversation = {
+    ...activeConv,
+    canonicalParticipants: [
+      { id: 'human:acct_self', humanId: 'acct_self', name: 'Shu Yang', kind: 'human', role: 'self', source: 'local' },
+      { id: 'human:acct_jiaxin', humanId: 'acct_jiaxin', name: 'Jiaxin Pei', kind: 'human', role: 'member' },
+      { id: 'human:acct_other', humanId: 'acct_other', name: 'Jiaxin Pei', kind: 'human', role: 'member' },
+    ],
+  };
+  const message: Message = {
+    role: 'person',
+    sender: 'Jiaxin Pei',
+    senderIdentityId: 'human:acct_jiaxin',
+    senderType: 'human',
+    text: 'Hello',
+    time: '10:42',
+  };
+
+  assert.equal(transcriptHumanParticipant(conversation, message)?.id, 'human:acct_jiaxin');
+});
+
+test('transcript sender profile uses only an unambiguous human display-name fallback', () => {
+  const uniqueConversation: Conversation = {
+    ...activeConv,
+    canonicalParticipants: [
+      { id: 'human:acct_self', humanId: 'acct_self', name: 'Shu Yang', kind: 'human', role: 'self', source: 'local' },
+      { id: 'human:acct_jiaxin', humanId: 'acct_jiaxin', name: 'Jiaxin Pei', kind: 'human', role: 'member' },
+    ],
+  };
+  const message: Message = {
+    role: 'person',
+    sender: 'Jiaxin Pei',
+    senderType: 'human',
+    text: 'Hello',
+    time: '10:42',
+  };
+
+  assert.equal(transcriptHumanParticipant(uniqueConversation, message)?.id, 'human:acct_jiaxin');
+  assert.equal(transcriptHumanParticipant({
+    ...uniqueConversation,
+    canonicalParticipants: [
+      ...(uniqueConversation.canonicalParticipants ?? []),
+      { id: 'human:acct_other', humanId: 'acct_other', name: 'Jiaxin Pei', kind: 'human', role: 'member' },
+    ],
+  }, message), null);
+});
 
 test('desktop runtime chats skip canonical history pagination while canonical-only chats retain it', () => {
   assert.equal(canonicalHistorySessionIdForConversation({

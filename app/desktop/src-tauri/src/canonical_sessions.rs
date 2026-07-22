@@ -57,9 +57,12 @@ use self::desktop_sync::{
 };
 #[cfg(test)]
 pub(crate) use self::group_participants::group_admin_identity_ids;
+#[cfg(test)]
+pub(crate) use self::group_participants::rename_session_in_db;
 pub(crate) use self::group_participants::{
     add_session_participants_in_db, remove_session_participant_in_db,
-    rename_any_session_title_in_db, rename_session_in_db, require_group_admin,
+    rename_any_session_title_in_db, rename_session_in_db_with_actor_account, require_group_admin,
+    require_group_creator, require_group_member, require_group_member_removal_permission,
     session_has_participant, set_session_metadata_in_db, set_session_participant_role_in_db,
 };
 pub(crate) use self::identity_context::{
@@ -608,6 +611,8 @@ pub(super) fn open_or_create_session_in_db(
         .unwrap_or(request.created_by_identity_id.as_str());
     let created_by_role = if request.created_by_identity_id == self_identity_id {
         "self"
+    } else if kind == "group" {
+        "admin"
     } else {
         participant_role
     };
@@ -925,12 +930,17 @@ pub(super) fn append_message_in_db(
     );
     let status = validate_status(request.status, "sent");
 
-    conn.execute(
+    let source_transport = clean_optional(request.source_transport);
+    let source_event_id = clean_optional(request.source_event_id);
+    let inserted = conn.execute(
         "INSERT INTO session_messages(
              id, session_id, sender_identity_id, sender_role, message_kind, content_text, content_json,
              parent_message_id, delegated_exchange_id, status, sequence_num, created_at_ms, updated_at_ms,
              content_hash, source_transport, source_event_id
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+         ON CONFLICT(source_transport, source_event_id)
+         WHERE source_transport IS NOT NULL AND source_event_id IS NOT NULL
+         DO NOTHING",
         params![
             id,
             request.session_id,
@@ -946,11 +956,25 @@ pub(super) fn append_message_in_db(
             created_at_ms,
             now,
             content_hash,
-            clean_optional(request.source_transport),
-            clean_optional(request.source_event_id),
+            source_transport,
+            source_event_id,
         ],
     )
     .map_err(|err| err.to_string())?;
+    if inserted == 0 {
+        if let (Some(source_transport), Some(source_event_id)) =
+            (source_transport.as_deref(), source_event_id.as_deref())
+        {
+            if let Some(existing) =
+                select_message_by_source(conn, source_transport, source_event_id)?
+            {
+                return Ok(existing);
+            }
+        }
+        return Err(
+            "Unable to save canonical message after resolving a duplicate source event".to_string(),
+        );
+    }
     conn.execute(
         "UPDATE sessions
          SET updated_at_ms = ?1,
@@ -1005,6 +1029,31 @@ fn upsert_message_in_db(
     conn: &Connection,
     request: AppendCanonicalMessageRequest,
 ) -> Result<CanonicalSessionMessage, String> {
+    // Cloud replay and the local agent runner can reconcile the same stable
+    // processing slot at the same time. Acquire the write lock before the
+    // source/id lookups so two connections cannot both observe a missing row
+    // and then race to insert the same primary key.
+    let tx = rusqlite::Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+        .map_err(|err| err.to_string())?;
+    let message = upsert_message_in_transaction(&tx, request)?;
+    tx.commit().map_err(|err| err.to_string())?;
+    Ok(message)
+}
+
+fn upsert_message_in_transaction(
+    conn: &Connection,
+    mut request: AppendCanonicalMessageRequest,
+) -> Result<CanonicalSessionMessage, String> {
+    if let (Some(source_transport), Some(source_event_id)) = (
+        request.source_transport.as_deref(),
+        request.source_event_id.as_deref(),
+    ) {
+        if let Some(existing) = select_message_by_source(conn, source_transport, source_event_id)? {
+            if request.id.as_deref().map(str::trim) != Some(existing.id.as_str()) {
+                request.id = Some(existing.id);
+            }
+        }
+    }
     let Some(id) = request
         .id
         .as_deref()
@@ -2055,6 +2104,14 @@ pub async fn desktop_canonical_add_session_participants(
     request: AddCanonicalSessionParticipantsRequest,
 ) -> Result<CanonicalSessionState, String> {
     run_canonical_blocking(move || commands::desktop_canonical_add_session_participants(request))
+        .await
+}
+
+#[tauri::command]
+pub async fn desktop_canonical_add_group_members_fast(
+    request: AddCanonicalGroupMembersRequest,
+) -> Result<CanonicalGroupMembershipDelta, String> {
+    run_canonical_blocking(move || commands::desktop_canonical_add_group_members_fast(request))
         .await
 }
 

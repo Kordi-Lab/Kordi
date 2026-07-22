@@ -180,6 +180,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
       ?? args.activeBridgeHost,
     desktopChatState: args.desktopChatState,
     cloudSelfAgentSyncStatus: args.cloudSelfAgentSyncStatusBySessionId?.[activeCloudSelfAgentSessionId] ?? null,
+    cloudAccount: args.cloudSession?.account ?? null,
     cloudSessionPin: args.cloudSessionPinsById?.[activeCloudSelfAgentSessionId] ?? null,
     onUpdateCloudSessionPin: args.onUpdateCloudSessionPin,
     onUpdateBridgeAgentModelRouting: args.handleUpdateBridgeAgentModelRouting,
@@ -260,6 +261,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onRequestBridgeContact: activeBridgeContactTarget
       ? () => args.handleAddBridgeContact(activeBridgeContactTarget.hostId, activeBridgeContactTarget.nodeId)
       : undefined,
+    onMessageContact: args.handleStartChatWithPerson,
     onSendChatMessage: args.handleSendChatMessage,
     onRetryChatMessage: args.handleRetryChatMessage,
     onCreateAgentSession: args.handleCreateSideAgentSession,

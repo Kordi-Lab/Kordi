@@ -16,6 +16,7 @@ export type SessionContextMenuTarget = {
   x: number;
   y: number;
   canMoveToProject?: boolean;
+  canRename?: boolean;
 };
 
 export type SessionActionTarget = {
@@ -55,20 +56,22 @@ export function SessionContextMenu({
         }}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button
-          type="button"
-          className="app-transient-flat-action w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition"
-          onClick={() => {
-            onClose();
-            onRename({
-              sessionId: target.sessionId,
-              sessionName: target.sessionName,
-              anchorRect: { left: target.x, top: target.y, width: 1, height: 1 },
-            });
-          }}
-        >
-          Rename…
-        </button>
+        {target.canRename !== false ? (
+          <button
+            type="button"
+            className="app-transient-flat-action w-full rounded-[12px] px-3 py-2 text-left text-[13px] transition"
+            onClick={() => {
+              onClose();
+              onRename({
+                sessionId: target.sessionId,
+                sessionName: target.sessionName,
+                anchorRect: { left: target.x, top: target.y, width: 1, height: 1 },
+              });
+            }}
+          >
+            Rename…
+          </button>
+        ) : null}
         {target.canMoveToProject ? (
           <button
             type="button"

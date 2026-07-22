@@ -14,6 +14,7 @@ import {
   cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
+  operatorCloudOAuthProviderFallback,
   parseCloudOAuthHashResult,
   type CloudAccount,
   type CloudAuthResult,
@@ -179,7 +180,7 @@ export function useCloudSession({
         ));
       })
       .catch(() => {
-        if (!cancelled) setOAuthProviders([]);
+        if (!cancelled) setOAuthProviders(operatorCloudOAuthProviderFallback());
       });
 
     return () => {

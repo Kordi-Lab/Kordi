@@ -89,6 +89,14 @@ pub struct OpenCanonicalSessionFastResult {
     pub participants: Vec<CanonicalSessionParticipant>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalGroupMembershipDelta {
+    pub sessions: Vec<CanonicalSession>,
+    pub participants: Vec<CanonicalSessionParticipant>,
+    pub messages: Vec<CanonicalSessionMessage>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CanonicalLocalProfile {
@@ -350,6 +358,32 @@ pub struct AddCanonicalSessionParticipantsRequest {
     pub session_id: String,
     pub identity_ids: Vec<String>,
     pub added_by_identity_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddCanonicalGroupMembersRequest {
+    pub sessions: Vec<CanonicalGroupMembershipUpdate>,
+    pub identity_ids: Vec<String>,
+    pub added_by_identity_id: String,
+    pub join_events: Vec<CanonicalGroupMemberJoinEvent>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalGroupMemberJoinEvent {
+    pub event_id: String,
+    pub member_identity_id: String,
+    pub created_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalGroupMembershipUpdate {
+    pub session_id: String,
+    pub group_space_id: String,
+    pub added_contact_ids: Vec<String>,
+    pub added_participant_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

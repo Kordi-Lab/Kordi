@@ -111,6 +111,7 @@ test('detail section headers use sentence-case styling', () => {
   assert.doesNotMatch(groupDialogSource, /app-group-management-section-label[^\n]*uppercase tracking-\[0\.14em\]/);
   assert.doesNotMatch(contactsPanelSource, /Your cloud contacts/);
   assert.doesNotMatch(contactsPanelSource, /font-semibold uppercase tracking-\[0\.10em\]/);
-  assert.match(groupDialogSource, />Participants<\/div>/);
+  assert.doesNotMatch(groupDialogSource, />\s*People\s*<\/h3>/);
+  assert.match(groupDialogSource, /<section aria-label="Group members">/);
   assert.match(contactsPanelSource, /Your contacts/);
 });

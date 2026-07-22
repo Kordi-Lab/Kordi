@@ -1068,7 +1068,7 @@ test('restored Cloud self-agent messages are sent as native context for continue
   ]);
 });
 
-test('canonical read model keeps receiver group display name and normalizes stale remote self roles', () => {
+test('canonical read model keeps a creator-anchored group name and normalizes stale remote self roles', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
     profile: {
@@ -1114,7 +1114,7 @@ test('canonical read model keeps receiver group display name and normalizes stal
   const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
   const space = buildParticipantSpaces(conversations).find((candidate) => candidate.id === 'group:session:group:shared');
 
-  assert.equal(space?.title, 'Testuser2, Testuser3');
+  assert.equal(space?.title, 'Testuser1, Testuser3');
   assert.deepEqual(space?.participants.filter((participant) => participant.role === 'self').map((participant) => participant.id), ['human:user1']);
 });
 

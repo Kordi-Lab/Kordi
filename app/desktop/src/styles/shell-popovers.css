@@ -269,7 +269,19 @@
 }
 
 .app-group-management-popover {
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
   color: var(--utility-foreground);
+}
+
+.app-group-management-layout {
+  flex: 1 1 auto;
+  max-height: inherit;
+}
+
+.app-group-management-header {
+  border-bottom: 1px solid var(--app-transient-divider);
 }
 
 .app-group-management-popover-enter {
@@ -293,51 +305,129 @@
   color: var(--app-transient-text);
 }
 
-.app-group-management-section-label {
+.app-group-management-member-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.app-group-management-member-tile {
+  min-height: 68px;
+  background: transparent;
+  color: var(--app-transient-text);
+  content-visibility: auto;
+  contain-intrinsic-size: 68px 64px;
+}
+
+.app-group-management-show-all {
   color: var(--app-transient-muted-text);
 }
 
-.app-group-management-member-row,
-.app-group-management-add-row,
-.app-group-management-empty {
-  border-color: transparent;
-  background: var(--app-transient-raised-bg);
+.app-group-management-show-all:hover,
+.app-group-management-show-all:focus-visible {
   color: var(--app-transient-text);
 }
 
-.app-group-management-add-row:hover,
-.app-group-management-member-row:hover {
-  border-color: var(--app-transient-border);
+.app-group-management-member-tile:hover,
+.app-group-management-member-tile:focus-visible,
+.app-group-management-member-tile-selected {
   background: var(--app-transient-hover-bg);
 }
 
-.app-group-management-add-row-selected {
+.app-group-management-member-tile-selected {
+  background: var(--app-sidebar-selected-bg);
+  box-shadow: none;
+}
+
+.app-group-management-admin-mark {
+  border: 1px solid var(--app-transient-surface-fallback);
+  background: var(--app-transient-surface-fallback);
+  color: var(--app-transient-text);
+}
+
+.app-group-management-add-avatar {
+  border-color: var(--app-transient-border);
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-muted-text);
+}
+
+.app-group-management-add-tile:hover .app-group-management-add-avatar,
+.app-group-management-add-tile:focus-visible .app-group-management-add-avatar,
+.app-group-management-member-tile-selected .app-group-management-add-avatar {
   border-color: var(--app-transient-selected-border);
+  background: var(--app-transient-hover-bg);
+  color: var(--app-transient-text);
+}
+
+.app-group-management-empty {
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-muted-text);
+}
+
+.app-group-management-member-actions,
+.app-group-management-add-panel,
+.app-group-management-settings {
+  border-color: var(--app-transient-divider);
+}
+
+.app-group-management-contact-row {
+  background: transparent;
+  color: var(--app-transient-text);
+  content-visibility: auto;
+  contain-intrinsic-size: 40px 300px;
+}
+
+.app-group-management-contact-row:hover,
+.app-group-management-contact-row:focus-visible {
+  background: var(--app-transient-hover-bg);
+}
+
+.app-group-management-contact-row-selected {
   background: var(--app-transient-selected-bg);
 }
 
-.app-group-management-admin-button {
-  background: var(--app-transient-raised-bg);
-  color: var(--app-transient-muted-text);
+.app-group-management-contact-check {
+  border-color: var(--app-transient-border);
+  color: transparent;
 }
 
-.app-group-management-admin-button:hover {
-  background: var(--app-transient-hover-bg);
-  color: var(--app-transient-text);
+.app-group-management-contact-check-selected {
+  border-color: color-mix(in oklab, oklch(68% 0.13 156) 74%, var(--app-divider));
+  background: color-mix(in oklab, oklch(74% 0.14 156) 74%, var(--utility-foreground));
+  color: rgb(15 23 42);
 }
 
-.app-group-management-admin-button-active {
-  background: color-mix(in oklab, oklch(68% 0.13 156) 16%, var(--app-control-bg));
-  color: color-mix(in oklab, oklch(78% 0.12 156) 72%, var(--utility-foreground));
-}
-
-.app-group-management-remove-button {
-  color: var(--app-transient-muted-text);
-}
-
-.app-group-management-remove-button:hover {
-  background: var(--app-transient-danger-hover-bg);
+.app-group-management-confirm,
+.app-group-management-error {
+  border: 1px solid var(--app-transient-danger-border);
+  background: var(--app-transient-danger-bg);
   color: var(--app-transient-danger-text);
+}
+
+.app-group-management-setting-row {
+  min-height: 48px;
+}
+
+@media (pointer: coarse) {
+  .app-member-contact-icon-action {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-group-management-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-group-management-member-tile {
+    min-height: 88px;
+  }
+
+  .app-group-management-action-row,
+  .app-group-management-contact-row,
+  .app-group-management-setting-row {
+    min-height: 44px;
+  }
 }
 
 @keyframes app-chat-create-popover-enter {

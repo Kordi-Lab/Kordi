@@ -7,6 +7,11 @@ import type {
   ParticipantSpaceSessionViewModel,
   ParticipantSpaceViewModel,
 } from '@/kordi-app/types';
+import {
+  deterministicGroupParticipantTitle,
+  groupParticipantStableKey,
+  sharedGroupCustomTitle,
+} from './groupTitle';
 
 type ConversationWithTimestamp = Conversation & { _updatedAtMs?: number };
 
@@ -50,6 +55,19 @@ export function isBlankParticipantSpaceSession(session: ParticipantSpaceSessionV
   return !conversationHasUserContent(session.conversation)
     && isBlankSessionLabel(session.title)
     && isBlankSessionLabel(session.conversation.name);
+}
+
+export function isPersistedBlankGroupContinuation(session: ParticipantSpaceSessionViewModel) {
+  if (session.conversation.transientDraft || !isBlankParticipantSpaceSession(session)) return false;
+  const metadata = metadataRecord(session.conversation.metadata);
+  const sessionId = cleanOptionalText(session.canonicalSessionId) || cleanOptionalText(session.id);
+  const groupSpaceId = normalizeGroupSpaceId(
+    metadataStringValue(metadata, 'groupSpaceId')
+      || metadataStringValue(metadata, 'groupId'),
+  );
+  const continuedFromSessionId = metadataStringValue(metadata, 'continuedFromSessionId');
+  const continuedFromSpaceId = metadataStringValue(metadata, 'continuedFromSpaceId');
+  return Boolean(continuedFromSessionId || continuedFromSpaceId || (groupSpaceId && groupSpaceId !== sessionId));
 }
 
 function blankAgentSessionCollapseKey(session: ParticipantSpaceSessionViewModel) {
@@ -217,6 +235,18 @@ function metadataStringValue(metadata: Record<string, unknown>, key: string) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function metadataStringArrayValue(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+    : [];
+}
+
+function metadataNumberValue(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
 function groupSpaceIdForConversation(conversation: Conversation) {
   const metadata = metadataRecord(conversation.metadata);
   const continuationSpaceId = metadataStringValue(metadata, 'continuedFromSpaceId');
@@ -272,13 +302,18 @@ function cloudGroupParticipantKey(conversation: Conversation) {
     .join('+');
 }
 
-function spaceIdForConversation(kind: ParticipantSpaceKind, primary: ConversationParticipant | undefined, conversation: Conversation) {
+function spaceIdForConversation(
+  kind: ParticipantSpaceKind,
+  primary: ConversationParticipant | undefined,
+  conversation: Conversation,
+  legacyCloudGroupAliasByExplicitId: ReadonlyMap<string, string> = new Map(),
+) {
   if (kind === 'self') return 'self:local';
   if (kind === 'group') {
+    const explicit = groupSpaceIdForConversation(conversation);
+    if (explicit) return legacyCloudGroupAliasByExplicitId.get(explicit) ?? `group:${explicit}`;
     const cloudParticipantKey = cloudGroupParticipantKey(conversation);
     if (cloudParticipantKey) return `group:cloud:${cloudParticipantKey}`;
-    const explicit = groupSpaceIdForConversation(conversation);
-    if (explicit) return `group:${explicit}`;
     const participantKey = nonSelfParticipants(conversation)
       .map((participant) => participant.id)
       .sort()
@@ -324,7 +359,9 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
     const existing = target[existingIndex];
     target[existingIndex] = {
       ...existing,
+      role: existing.role === 'self' || participant.role !== 'admin' ? existing.role : 'admin',
       avatarKey: existing.avatarKey || participant.avatarKey,
+      publicName: existing.publicName || participant.publicName,
       profileImageUrl: existing.profileImageUrl ?? participant.profileImageUrl ?? null,
       humanId: existing.humanId || participant.humanId,
       bridgeNodeId: existing.bridgeNodeId || participant.bridgeNodeId,
@@ -334,37 +371,43 @@ function addUniqueParticipants(target: ConversationParticipant[], participants: 
   }
 }
 
-function participantNameList(participants: ConversationParticipant[]) {
-  const names = participants.map((participant) => participant.name.trim()).filter(Boolean);
-  if (names.length <= 2) return names.join(', ');
-  return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
-}
-
 function metadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
 }
 
-function customGroupTitle(sessions: ParticipantSpaceSessionViewModel[]) {
-  for (const session of sessions) {
+function customGroupTitle(sessions: ParticipantSpaceSessionViewModel[], groupSpaceId?: string | null) {
+  return sharedGroupCustomTitle(sessions.map((session) => {
     const metadata = metadataRecord(session.conversation.metadata);
-    const customName = metadata.customName;
-    const title = typeof customName === 'string' ? nonGenericGroupTitle(customName) : '';
-    if (title) return title;
-  }
-  return '';
+    return {
+      sessionId: cleanOptionalText(session.canonicalSessionId) || cleanOptionalText(session.id),
+      groupSpaceId: metadataStringValue(metadata, 'groupSpaceId') || metadataStringValue(metadata, 'groupId'),
+      customName: metadataStringValue(metadata, 'customName'),
+      groupNameUpdatedAtMs: metadataNumberValue(metadata, 'groupNameUpdatedAtMs'),
+    };
+  }), groupSpaceId);
+}
+
+export function participantSpaceCustomGroupTitle(space: ParticipantSpaceViewModel) {
+  if (space.kind !== 'group') return '';
+  return customGroupTitle(space.sessions, normalizeGroupSpaceId(space.id));
 }
 
 export const SELF_PARTICIPANT_SPACE_TITLE = 'My chats';
 
-function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationParticipant[], sessions: ParticipantSpaceSessionViewModel[]) {
+function spaceTitle(
+  kind: ParticipantSpaceKind,
+  participants: ConversationParticipant[],
+  sessions: ParticipantSpaceSessionViewModel[],
+  groupSpaceId?: string | null,
+  groupCreatorIdentityId?: string | null,
+) {
   const latestSession = sessions[0];
   if (kind === 'self') return SELF_PARTICIPANT_SPACE_TITLE;
   if (kind === 'group') {
-    return customGroupTitle(sessions)
-      || participantNameList(nonSelfHumans(participants))
-      || participantNameList(participants.filter((participant) => !isSelfParticipant(participant)))
+    return customGroupTitle(sessions, groupSpaceId)
+      || deterministicGroupParticipantTitle(participants, groupCreatorIdentityId)
       || safePreviewText(latestSession?.conversation.name)
       || 'Group';
   }
@@ -372,10 +415,7 @@ function spaceTitle(kind: ParticipantSpaceKind, participants: ConversationPartic
 }
 
 function avatarParticipantStableKey(participant: ConversationParticipant) {
-  return cleanOptionalText(participant.humanId)
-    || cleanOptionalText(participant.bridgeNodeId)
-    || cleanOptionalText(participant.id)
-    || cleanOptionalText(participant.name);
+  return groupParticipantStableKey(participant);
 }
 
 function avatarParticipants(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
@@ -394,6 +434,26 @@ function avatarParticipants(kind: ParticipantSpaceKind, participants: Conversati
 }
 
 export function buildParticipantSpaces(conversations: Conversation[]): ParticipantSpaceViewModel[] {
+  const cloudRootIdsByParticipantKey = new Map<string, Set<string>>();
+  for (const conversation of conversations) {
+    const nonSelf = nonSelfParticipants(conversation)
+      .sort((left, right) => participantSortKey(left).localeCompare(participantSortKey(right)));
+    if (spaceKindForConversation(conversation, nonSelf) !== 'group') continue;
+    const participantKey = cloudGroupParticipantKey(conversation);
+    const explicitGroupId = groupSpaceIdForConversation(conversation);
+    const ownSessionId = cleanOptionalText(conversation.canonicalSessionId) || cleanOptionalText(conversation.id);
+    if (!participantKey || !explicitGroupId || explicitGroupId !== ownSessionId) continue;
+    const rootIds = cloudRootIdsByParticipantKey.get(participantKey) ?? new Set<string>();
+    rootIds.add(explicitGroupId);
+    cloudRootIdsByParticipantKey.set(participantKey, rootIds);
+  }
+  const legacyCloudGroupAliasByExplicitId = new Map<string, string>();
+  for (const [participantKey, rootIds] of cloudRootIdsByParticipantKey) {
+    if (rootIds.size < 2) continue;
+    const aliasId = `group:cloud:${participantKey}`;
+    for (const rootId of rootIds) legacyCloudGroupAliasByExplicitId.set(rootId, aliasId);
+  }
+
   const namedGroupIdByParticipantKey = new Map<string, string | null>();
   for (const conversation of conversations) {
     const nonSelf = nonSelfParticipants(conversation)
@@ -402,7 +462,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     const kind = spaceKindForConversation(conversation, nonSelf);
     if (kind !== 'group' || !groupHasCustomName(conversation)) continue;
     const primary = primaryParticipantForKind(kind, displayParticipants);
-    const id = spaceIdForConversation(kind, primary, conversation);
+    const id = spaceIdForConversation(kind, primary, conversation, legacyCloudGroupAliasByExplicitId);
     const participantKey = groupParticipantKey(conversation);
     if (!participantKey) continue;
     const existing = namedGroupIdByParticipantKey.get(participantKey);
@@ -421,7 +481,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     const displayParticipants = allDisplayParticipants(conversation);
     const kind = spaceKindForConversation(conversation, nonSelf);
     const primary = primaryParticipantForKind(kind, displayParticipants);
-    const baseId = spaceIdForConversation(kind, primary, conversation);
+    const baseId = spaceIdForConversation(kind, primary, conversation, legacyCloudGroupAliasByExplicitId);
     const participantKey = kind === 'group' ? groupParticipantKey(conversation) : '';
     const aliasId = kind === 'group' && genericBridgeGroupContinuation(conversation) && participantKey
       ? namedGroupIdByParticipantKey.get(participantKey)
@@ -440,23 +500,98 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
 
   return [...groups.entries()]
     .map(([id, group]) => {
+      const sortedSessions = group.sessions.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+      const membershipSessionIds = group.kind === 'group'
+        ? [...new Set(sortedSessions
+          .filter((session) => !session.conversation.transientDraft)
+          .map((session) => cleanOptionalText(session.canonicalSessionId) || cleanOptionalText(session.id))
+          .filter(Boolean))]
+        : undefined;
+      const groupSpaceId = group.kind === 'group' ? normalizeGroupSpaceId(id) : '';
+      const groupRootSession = group.kind === 'group'
+        ? sortedSessions.find((session) => (
+          (cleanOptionalText(session.canonicalSessionId) || cleanOptionalText(session.id)) === groupSpaceId
+        )) ?? sortedSessions[sortedSessions.length - 1]
+        : undefined;
+      const groupCreatorIdentityId = group.kind === 'group'
+        ? (() => {
+          const rootMetadata = metadataRecord(groupRootSession?.conversation.metadata);
+          return metadataStringValue(rootMetadata, 'groupCreatorIdentityId')
+            || cleanOptionalText(groupRootSession?.conversation.canonicalCreatedByIdentityId)
+            || cleanOptionalText(sortedSessions[sortedSessions.length - 1]?.conversation.canonicalCreatedByIdentityId)
+            || null;
+        })()
+        : null;
+      const groupCreatedAtMs = group.kind === 'group'
+        ? (() => {
+          const rootCreatedAtMs = groupRootSession?.conversation.canonicalCreatedAtMs;
+          if (typeof rootCreatedAtMs === 'number' && Number.isFinite(rootCreatedAtMs) && rootCreatedAtMs > 0) {
+            return rootCreatedAtMs;
+          }
+          const knownCreationTimes = sortedSessions
+            .map((session) => session.conversation.canonicalCreatedAtMs)
+            .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+          return knownCreationTimes.length > 0 ? Math.min(...knownCreationTimes) : null;
+        })()
+        : null;
+      const groupAdminIdentityIds = group.kind === 'group'
+        ? (() => {
+          const rootRevision = metadataNumberValue(
+            metadataRecord(groupRootSession?.conversation.metadata),
+            'groupAdminUpdatedAtMs',
+          );
+          const newerReplicatedAdminSource = [...sortedSessions]
+            .filter((session) => (
+              session !== groupRootSession
+              && metadataNumberValue(
+                metadataRecord(session.conversation.metadata),
+                'groupAdminUpdatedAtMs',
+              ) > rootRevision
+            ))
+            .sort((left, right) => {
+            const leftRevision = metadataNumberValue(metadataRecord(left.conversation.metadata), 'groupAdminUpdatedAtMs');
+            const rightRevision = metadataNumberValue(metadataRecord(right.conversation.metadata), 'groupAdminUpdatedAtMs');
+            if (leftRevision !== rightRevision) return rightRevision - leftRevision;
+            return right.updatedAtMs - left.updatedAtMs;
+            })[0];
+          const adminSource = newerReplicatedAdminSource ?? groupRootSession;
+          const metadataAdmins = metadataStringArrayValue(
+            metadataRecord(adminSource?.conversation.metadata),
+            'adminIdentityIds',
+          );
+          const authorityParticipants = adminSource?.conversation.canonicalParticipants ?? group.participants;
+          const roleAdmins = authorityParticipants
+            .filter((participant) => participant.role === 'admin')
+            .map((participant) => participant.id);
+          return [...new Set([
+            groupCreatorIdentityId,
+            ...(metadataAdmins.length > 0 ? metadataAdmins : roleAdmins),
+          ].map((identityId) => cleanOptionalText(identityId)).filter(Boolean))];
+        })()
+        : undefined;
       const sessions = collapseDuplicateBlankSessions(
-        group.sessions.sort((left, right) => right.updatedAtMs - left.updatedAtMs),
+        group.kind === 'group'
+          ? sortedSessions.filter((session) => !isPersistedBlankGroupContinuation(session))
+          : sortedSessions,
       );
       const latest = sessions[0];
       return {
         id,
         kind: group.kind,
-        title: spaceTitle(group.kind, group.participants, sessions),
+        title: spaceTitle(group.kind, group.participants, sessions, groupSpaceId, groupCreatorIdentityId),
         participants: group.participants,
         participantCount: group.participants.length,
         sessionCount: sessions.length,
         unread: sessions.reduce((sum, session) => sum + session.unread, 0),
         updatedAtLabel: latest?.updatedAtLabel,
         updatedAtMs: latest?.updatedAtMs ?? 0,
+        createdAtMs: groupCreatedAtMs,
         preview: latest?.preview ?? '',
         avatarStack: avatarParticipants(group.kind, group.participants).map(avatarForParticipant),
         sessions,
+        groupCreatorIdentityId,
+        groupAdminIdentityIds,
+        membershipSessionIds,
       } satisfies ParticipantSpaceViewModel;
     })
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.title.localeCompare(right.title));
