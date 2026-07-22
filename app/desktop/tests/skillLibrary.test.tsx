@@ -133,6 +133,86 @@ test('Factory plus menu offers separate real agent and skill builds', () => {
   assert.doesNotMatch(html, /Factory runtime connected/);
 });
 
+test('Factory plus menu stays fully inside the narrow rail', () => {
+  const css = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+  const panelRule = css.match(/\.app-factory-create-menu-panel\s*\{([^}]*)\}/)?.[1];
+
+  assert.ok(panelRule);
+  assert.match(panelRule, /right:\s*-16px;/);
+  assert.match(panelRule, /width:\s*min\(224px,\s*calc\(100vw - 24px\)\);/);
+});
+
+test('Factory plus menu dismisses outside and restores trigger focus on Escape', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  const outside = document.createElement('button');
+  document.body.append(host, outside);
+  let root: Root | null = createRoot(host);
+
+  try {
+    await act(async () => root?.render(
+      <AgentStudioRail
+        agents={[]}
+        activeAgentId=""
+        creatingKind={null}
+        agentConfigs={{}}
+        skills={[builtSkill]}
+        selectedSkillId={null}
+        section="builds"
+        canCreateAgent
+        onSectionChange={() => undefined}
+        onOpenAgent={() => undefined}
+        onOpenSkill={() => undefined}
+        onCreateArtifact={() => undefined}
+      />,
+    ));
+
+    const details = host.querySelector<HTMLDetailsElement>('.app-factory-create-menu');
+    const summary = host.querySelector<HTMLElement>('.app-agent-studio-rail-add');
+    assert.ok(details);
+    assert.ok(summary);
+    await act(async () => {
+      details.open = true;
+      details.dispatchEvent(new installed.dom.window.Event('toggle'));
+    });
+    assert.equal(details.open, true);
+    assert.equal(summary.getAttribute('aria-expanded'), 'true');
+
+    await act(async () => {
+      outside.dispatchEvent(new installed.dom.window.Event('pointerdown', { bubbles: true }));
+    });
+    assert.equal(details.open, false);
+    assert.equal(summary.getAttribute('aria-expanded'), 'false');
+
+    const firstMenuItem = host.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    assert.ok(firstMenuItem);
+    await act(async () => {
+      details.open = true;
+      details.dispatchEvent(new installed.dom.window.Event('toggle'));
+    });
+    firstMenuItem.focus();
+    assert.equal(document.activeElement, firstMenuItem);
+
+    await act(async () => {
+      firstMenuItem.dispatchEvent(new installed.dom.window.KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      }));
+      await Promise.resolve();
+    });
+    assert.equal(details.open, false);
+    assert.equal(summary.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.activeElement, summary);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    outside.remove();
+    host.remove();
+    installed.restore();
+  }
+});
+
 test('Factory agent selection spans the full rail while content stays aligned', () => {
   const html = renderToStaticMarkup(
     <AgentStudioRail

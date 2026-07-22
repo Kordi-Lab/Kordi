@@ -845,8 +845,8 @@
   position: absolute;
   z-index: 40;
   top: 38px;
-  right: 0;
-  width: 224px;
+  right: -16px;
+  width: min(224px, calc(100vw - 24px));
   padding: 5px;
   border: 1px solid color-mix(in oklab, var(--app-divider) 82%, transparent);
   border-radius: 13px;
