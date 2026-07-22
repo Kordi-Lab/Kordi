@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Plus, Puzzle, Search } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -16,10 +16,6 @@ const SKILL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 function getSkillInitial(name: string) {
   const initial = name.trim().charAt(0).toUpperCase();
   return initial >= 'A' && initial <= 'Z' ? initial : null;
-}
-
-function closeCreateMenu(event: MouseEvent<HTMLButtonElement>) {
-  event.currentTarget.closest('details')?.removeAttribute('open');
 }
 
 export function AgentStudioRail({
@@ -50,6 +46,9 @@ export function AgentStudioRail({
   onCreateArtifact: (kind: FactoryArtifactKind) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const createMenuRef = useRef<HTMLDetailsElement>(null);
+  const createMenuSummaryRef = useRef<HTMLElement>(null);
   const skillListRef = useRef<HTMLDivElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredAgents = useMemo(() => {
@@ -71,6 +70,39 @@ export function AgentStudioRail({
     return firstSkillIds;
   }, [filteredSkills]);
 
+  useEffect(() => {
+    if (!createMenuOpen || typeof document === 'undefined') return undefined;
+
+    const closeCreateMenu = (restoreFocus = false) => {
+      createMenuRef.current?.removeAttribute('open');
+      setCreateMenuOpen(false);
+      if (restoreFocus) queueMicrotask(() => createMenuSummaryRef.current?.focus());
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && createMenuRef.current?.contains(target)) return;
+      closeCreateMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeCreateMenu(true);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [createMenuOpen]);
+
+  const closeCreateMenu = () => {
+    createMenuRef.current?.removeAttribute('open');
+    setCreateMenuOpen(false);
+  };
+
   const jumpToSkillInitial = (initial: string) => {
     const target = skillListRef.current?.querySelector<HTMLElement>(`[data-skill-initial="${initial}"]`);
     target?.scrollIntoView({ block: 'start', inline: 'nearest' });
@@ -81,15 +113,27 @@ export function AgentStudioRail({
       <header className="app-agent-studio-rail-head">
         <div className="flex items-start justify-between gap-3">
           <div><h1>Factory</h1><p>Build agents, skills, tools, and workflows</p></div>
-          <details className="app-factory-create-menu">
-            <summary className="app-agent-studio-rail-add" aria-label="Start a new Factory build"><Plus className="h-4 w-4" /></summary>
+          <details
+            ref={createMenuRef}
+            className="app-factory-create-menu"
+            onToggle={(event) => setCreateMenuOpen(event.currentTarget.open)}
+          >
+            <summary
+              ref={createMenuSummaryRef}
+              className="app-agent-studio-rail-add"
+              aria-label="Start a new Factory build"
+              aria-haspopup="menu"
+              aria-expanded={createMenuOpen}
+            >
+              <Plus className="h-4 w-4" />
+            </summary>
             <div className="app-factory-create-menu-panel" role="menu" aria-label="Create in Factory">
               <button
                 type="button"
                 role="menuitem"
                 disabled={!canCreateAgent}
-                onClick={(event) => {
-                  closeCreateMenu(event);
+                onClick={() => {
+                  closeCreateMenu();
                   onCreateArtifact('agent');
                 }}
               >
@@ -99,8 +143,8 @@ export function AgentStudioRail({
               <button
                 type="button"
                 role="menuitem"
-                onClick={(event) => {
-                  closeCreateMenu(event);
+                onClick={() => {
+                  closeCreateMenu();
                   onCreateArtifact('skill');
                 }}
               >
