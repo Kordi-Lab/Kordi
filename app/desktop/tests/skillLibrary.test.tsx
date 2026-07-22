@@ -133,6 +133,37 @@ test('Factory plus menu offers separate real agent and skill builds', () => {
   assert.doesNotMatch(html, /Factory runtime connected/);
 });
 
+test('Factory agent selection spans the full rail while content stays aligned', () => {
+  const html = renderToStaticMarkup(
+    <AgentStudioRail
+      agents={[agent()]}
+      activeAgentId="agent:kordi"
+      creatingKind={null}
+      agentConfigs={{}}
+      skills={[]}
+      selectedSkillId={null}
+      section="builds"
+      canCreateAgent
+      onSectionChange={() => undefined}
+      onOpenAgent={() => undefined}
+      onOpenSkill={() => undefined}
+      onCreateArtifact={() => undefined}
+    />,
+  );
+  const css = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+
+  assert.match(html, /app-agent-studio-agent-list app-scroll-area is-agent-list/);
+  assert.match(html, /app-agent-studio-agent-row app-session-row-active/);
+  assert.match(
+    css,
+    /\.app-agent-studio-agent-list\.is-agent-list\s*\{[^}]*padding-inline:\s*0;/s,
+  );
+  assert.match(
+    css,
+    /\.app-agent-studio-agent-list\.is-agent-list \.app-agent-studio-agent-row\s*\{[^}]*padding-inline:\s*16px;[^}]*border-radius:\s*0;/s,
+  );
+});
+
 test('Skill Library rail is compact, indexed, and leaves enable state to the detail controls', () => {
   const html = renderToStaticMarkup(
     <AgentStudioRail
