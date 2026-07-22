@@ -109,6 +109,8 @@ export function AddToAgentControl({
   onAddToAgent: (agentId: string, skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  const summaryRef = useRef<HTMLElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [addingAgentId, setAddingAgentId] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const skillName = normalizedSkillName(skill.name);
@@ -117,6 +119,34 @@ export function AddToAgentControl({
     setAddingAgentId(null);
     setAddError(null);
   }, [skill.id]);
+
+  useEffect(() => {
+    if (!pickerOpen || typeof document === 'undefined') return undefined;
+
+    const closePicker = (restoreFocus = false) => {
+      detailsRef.current?.removeAttribute('open');
+      setPickerOpen(false);
+      if (restoreFocus) queueMicrotask(() => summaryRef.current?.focus());
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && detailsRef.current?.contains(target)) return;
+      closePicker();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closePicker(true);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [pickerOpen]);
 
   if (agentTargets.length === 0) return null;
 
@@ -127,6 +157,7 @@ export function AddToAgentControl({
     try {
       await onAddToAgent(agent.id, skill, content);
       detailsRef.current?.removeAttribute('open');
+      setPickerOpen(false);
     } catch (error) {
       setAddError(errorMessage(error, `Kordi could not add ${skill.name} to ${agent.name}.`));
     } finally {
@@ -135,8 +166,12 @@ export function AddToAgentControl({
   };
 
   return (
-    <details ref={detailsRef} className="app-skill-agent-picker">
-      <summary className="app-agent-studio-button is-primary" aria-label={`Add ${skill.name} to an agent`}>
+    <details
+      ref={detailsRef}
+      className="app-skill-agent-picker"
+      onToggle={(event) => setPickerOpen(event.currentTarget.open)}
+    >
+      <summary ref={summaryRef} className="app-agent-studio-button is-primary" aria-label={`Add ${skill.name} to an agent`}>
         <Plus className="h-4 w-4" />
         Add to agent
       </summary>

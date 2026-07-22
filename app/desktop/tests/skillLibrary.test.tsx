@@ -242,3 +242,41 @@ test('Add to agent exposes each target and forwards the selected agent id', asyn
     installed.restore();
   }
 });
+
+test('Add to agent dismisses when the user clicks outside the picker', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  const outside = document.createElement('button');
+  document.body.append(host, outside);
+  let root: Root | null = createRoot(host);
+
+  try {
+    await act(async () => root?.render(
+      <AddToAgentControl
+        skill={externalUiSkill}
+        content="# Adapt"
+        agentTargets={[agent()]}
+        onAddToAgent={() => undefined}
+      />,
+    ));
+
+    const details = host.querySelector<HTMLDetailsElement>('details');
+    assert.ok(details);
+    await act(async () => {
+      details.open = true;
+      details.dispatchEvent(new installed.dom.window.Event('toggle'));
+    });
+    assert.equal(details.open, true);
+
+    await act(async () => {
+      outside.dispatchEvent(new installed.dom.window.Event('pointerdown', { bubbles: true }));
+    });
+    assert.equal(details.open, false);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    outside.remove();
+    host.remove();
+    installed.restore();
+  }
+});
