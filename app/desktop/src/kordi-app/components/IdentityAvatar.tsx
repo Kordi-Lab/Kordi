@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 
 import { Avatar } from '@/components/ui/avatar';
 import {
@@ -8,7 +8,7 @@ import {
 } from '@/features/cloud/signupAvatar';
 import { cn } from '@/lib/utils';
 import { useAvatarOverride } from './avatarOverrides';
-import { loadAvatarThroughNativeProxy, shouldLoadAvatarThroughNativeProxy } from './remoteAvatarImage';
+import { shouldLoadAvatarThroughNativeProxy, useRemoteAvatarImage } from './remoteAvatarImage';
 
 export type IdentityAvatarKind = 'human' | 'agent';
 
@@ -246,30 +246,21 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
   const localOverride = useAvatarOverride(resolvedAvatarKey);
   const originalImageUrl = localOverride ?? imageUrl;
   const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(originalImageUrl);
-  const [nativeImage, setNativeImage] = useState<{ source: string; dataUrl: string | null } | null>(null);
-  useEffect(() => {
-    const source = originalImageUrl?.trim();
-    if (!source || !needsNativeProxy) return;
-    let active = true;
-    void loadAvatarThroughNativeProxy(source)
-      .then((dataUrl) => {
-        if (active) setNativeImage({ source, dataUrl });
-      })
-      .catch(() => {
-        // Fail closed after native validation rejects or cannot load a remote
-        // URL. Falling back to the WebView here would bypass the native DNS,
-        // redirect, media-type, timeout, and response-size protections.
-        if (active) setNativeImage({ source, dataUrl: null });
-      });
-    return () => {
-      active = false;
-    };
-  }, [needsNativeProxy, originalImageUrl]);
+  const remoteAvatar = useRemoteAvatarImage(originalImageUrl, needsNativeProxy);
   const resolvedImageUrl = needsNativeProxy
-    ? (nativeImage && nativeImage.source === originalImageUrl?.trim() ? nativeImage.dataUrl : null)
+    ? (remoteAvatar.status === 'ready' ? remoteAvatar.dataUrl : null)
     : originalImageUrl;
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const displayImageUrl = resolvedImageUrl && failedImageUrl !== resolvedImageUrl ? resolvedImageUrl : null;
+  const isRemoteImagePending = needsNativeProxy
+    && (remoteAvatar.status === 'idle' || remoteAvatar.status === 'pending');
+  const avatarState = displayImageUrl
+    ? 'ready'
+    : isRemoteImagePending
+      ? 'pending'
+      : needsNativeProxy && remoteAvatar.status === 'failed'
+        ? 'failed'
+        : 'fallback';
   const fallbackLabel = name?.trim() || normalizedSeed;
   const label = name?.trim() ? `${name} avatar` : `${kind === 'agent' ? 'Agent' : 'Human'} avatar`;
 
@@ -283,9 +274,15 @@ export function IdentityAvatar({ kind, seed, name, imageUrl, avatarKey, classNam
         className="h-full w-full rounded-full bg-slate-900/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
         aria-label={label}
         data-avatar-kind={kind}
+        data-avatar-state={avatarState}
       >
         {displayImageUrl ? (
           <div className="absolute inset-0 bg-slate-800/60" aria-hidden="true" />
+        ) : isRemoteImagePending ? (
+          <span
+            className="block h-full w-full bg-slate-300/55 dark:bg-slate-700/55"
+            aria-hidden="true"
+          />
         ) : kind === 'agent' ? (
           <AgentIdenticonAvatar seed={normalizedSeed} className={cn('block h-full w-full', generatedClassName)} />
         ) : (
