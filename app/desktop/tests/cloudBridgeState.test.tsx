@@ -2850,11 +2850,16 @@ test('cloud direct local-agent execution does not wait for remote response guard
   assert.ok(effectStart >= 0 && effectEnd > effectStart, 'expected direct Cloud agent effect');
   const effect = source.slice(effectStart, effectEnd);
   const startTurnIndex = effect.indexOf('const startedTurn = await startDesktopChatMessage');
-  const awaitGuardIndex = effect.indexOf('await responseGuardPromise');
+  const awaitGuardIndex = effect.indexOf('const [initialResponseBlocked, finalResponseBlocked] = await Promise.all');
+  const finalGuardIndex = effect.indexOf('cloudAgentResponsePublicationIsBlocked({', awaitGuardIndex);
+  const activityPublishIndex = effect.indexOf('await publishDerivedCloudSessionActivity', startTurnIndex);
 
   assert.ok(startTurnIndex >= 0, 'expected local agent execution');
   assert.ok(awaitGuardIndex > startTurnIndex, 'remote guards must only block response publication');
-  assert.match(effect, /const responseGuardPromise = Promise\.all\(/);
+  assert.ok(finalGuardIndex > awaitGuardIndex, 'expected a fresh response guard after local execution');
+  assert.ok(activityPublishIndex > finalGuardIndex, 'ownership must be checked before publishing derived activity');
+  assert.match(effect, /const responseGuardPromise = cloudAgentResponsePublicationIsBlocked\(/);
+  assert.match(effect, /const \[initialResponseBlocked, finalResponseBlocked\] = await Promise\.all\(/);
   assert.doesNotMatch(effect.slice(0, startTurnIndex), /await client\.listMessages|await cloudFallbackRunAlreadyOwnsRequest/);
   assert.doesNotMatch(effect, /processedCloudAgentMentionIdsRef\.current\.delete\(message\.messageId\)/);
   assert.match(effect, /response publish failed/);

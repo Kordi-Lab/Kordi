@@ -1089,6 +1089,29 @@ async function cloudFallbackRunAlreadyOwnsRequest({
   return cloudAgentRunAlreadyOwnsRequest(run);
 }
 
+async function cloudAgentResponsePublicationIsBlocked({
+  client,
+  token,
+  peerId,
+  fallbackMessages,
+  account,
+  requestMessageId,
+}: {
+  client: CloudAuthClient;
+  token: string;
+  peerId: string;
+  fallbackMessages: readonly CloudMessage[];
+  account: CloudAccount;
+  requestMessageId: string;
+}): Promise<boolean> {
+  const [latestMessages, fallbackRunOwnsRequest] = await Promise.all([
+    client.listMessages(token, peerId, 100).catch(() => fallbackMessages),
+    cloudFallbackRunAlreadyOwnsRequest({ client, token, requestMessageId }),
+  ] as const);
+  return fallbackRunOwnsRequest
+    || cloudAgentResponseExistsForRequest({ account, requestMessageId, peerMessages: latestMessages });
+}
+
 export function shouldRunLocalCloudAgentForCloudMessage({
   account,
   isGroupControl,
@@ -4859,14 +4882,14 @@ export function useCloudBridgeState({
           // readiness and execution must not sit behind Cloud latency; the
           // guards only decide whether the completed response still needs to
           // be published.
-          const responseGuardPromise = Promise.all([
-            client.listMessages(session.token, peerId, 100).catch(() => messages),
-            cloudFallbackRunAlreadyOwnsRequest({
-              client,
-              token: session.token,
-              requestMessageId: message.messageId,
-            }),
-          ] as const);
+          const responseGuardPromise = cloudAgentResponsePublicationIsBlocked({
+            client,
+            token: session.token,
+            peerId,
+            fallbackMessages: messages,
+            account,
+            requestMessageId: message.messageId,
+          });
 
           let finalTurn: DesktopChatTurnSnapshot;
           try {
@@ -4917,6 +4940,21 @@ export function useCloudBridgeState({
           }
 
           try {
+            const [initialResponseBlocked, finalResponseBlocked] = await Promise.all([
+              responseGuardPromise,
+              cloudAgentResponsePublicationIsBlocked({
+                client,
+                token: session.token,
+                peerId,
+                fallbackMessages: messages,
+                account,
+                requestMessageId: message.messageId,
+              }),
+            ] as const);
+            if (initialResponseBlocked || finalResponseBlocked) {
+              void syncCloudBridgeDiff();
+              return;
+            }
             if (activitySessionId) {
               await publishDerivedCloudSessionActivity({
                 client,
@@ -4948,12 +4986,6 @@ export function useCloudBridgeState({
               : isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message)
                 ? cloudAgentNoProviderNoticeText()
                 : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
-            const [finalLatestMessages, fallbackRunOwnsRequest] = await responseGuardPromise;
-            if (fallbackRunOwnsRequest
-              || cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: finalLatestMessages })) {
-              void syncCloudBridgeDiff();
-              return;
-            }
             const response = await client.sendMessage(
               session.token,
               peerId,
