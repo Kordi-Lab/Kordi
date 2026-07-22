@@ -664,6 +664,10 @@
   padding: 8px;
 }
 
+.app-agent-studio-agent-list.is-agent-list {
+  padding-inline: 0;
+}
+
 .app-agent-studio-skill-list-shell {
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr);
@@ -745,6 +749,11 @@
   transition:
     border-color var(--app-motion-fast) var(--app-motion-ease),
     background var(--app-motion-fast) var(--app-motion-ease);
+}
+
+.app-agent-studio-agent-list.is-agent-list .app-agent-studio-agent-row {
+  padding-inline: 16px;
+  border-radius: 0;
 }
 
 .app-agent-studio-agent-row:not(.app-session-row-active):hover {
