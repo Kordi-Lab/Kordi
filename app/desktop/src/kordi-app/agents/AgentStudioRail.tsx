@@ -168,7 +168,7 @@ export function AgentStudioRail({
         </label>
       </header>
       {section === 'builds' ? (
-        <div className="app-agent-studio-agent-list app-scroll-area">
+        <div className="app-agent-studio-agent-list app-scroll-area is-agent-list">
           <>
             {creatingKind ? (
               <button

@@ -142,7 +142,7 @@ test('Factory plus menu stays fully inside the narrow rail', () => {
   assert.match(panelRule, /width:\s*min\(224px,\s*calc\(100vw - 24px\)\);/);
 });
 
-test('Factory plus menu dismisses when the user clicks outside', async () => {
+test('Factory plus menu dismisses outside and restores trigger focus on Escape', async () => {
   const installed = installDom();
   const host = document.createElement('div');
   const outside = document.createElement('button');
@@ -183,6 +183,27 @@ test('Factory plus menu dismisses when the user clicks outside', async () => {
     });
     assert.equal(details.open, false);
     assert.equal(summary.getAttribute('aria-expanded'), 'false');
+
+    const firstMenuItem = host.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    assert.ok(firstMenuItem);
+    await act(async () => {
+      details.open = true;
+      details.dispatchEvent(new installed.dom.window.Event('toggle'));
+    });
+    firstMenuItem.focus();
+    assert.equal(document.activeElement, firstMenuItem);
+
+    await act(async () => {
+      firstMenuItem.dispatchEvent(new installed.dom.window.KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      }));
+      await Promise.resolve();
+    });
+    assert.equal(details.open, false);
+    assert.equal(summary.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.activeElement, summary);
   } finally {
     await act(async () => root?.unmount());
     root = null;
@@ -190,6 +211,37 @@ test('Factory plus menu dismisses when the user clicks outside', async () => {
     host.remove();
     installed.restore();
   }
+});
+
+test('Factory agent selection spans the full rail while content stays aligned', () => {
+  const html = renderToStaticMarkup(
+    <AgentStudioRail
+      agents={[agent()]}
+      activeAgentId="agent:kordi"
+      creatingKind={null}
+      agentConfigs={{}}
+      skills={[]}
+      selectedSkillId={null}
+      section="builds"
+      canCreateAgent
+      onSectionChange={() => undefined}
+      onOpenAgent={() => undefined}
+      onOpenSkill={() => undefined}
+      onCreateArtifact={() => undefined}
+    />,
+  );
+  const css = readFileSync(new URL('../src/styles/shell-pages.css', import.meta.url), 'utf8');
+
+  assert.match(html, /app-agent-studio-agent-list app-scroll-area is-agent-list/);
+  assert.match(html, /app-agent-studio-agent-row app-session-row-active/);
+  assert.match(
+    css,
+    /\.app-agent-studio-agent-list\.is-agent-list\s*\{[^}]*padding-inline:\s*0;/s,
+  );
+  assert.match(
+    css,
+    /\.app-agent-studio-agent-list\.is-agent-list \.app-agent-studio-agent-row\s*\{[^}]*padding-inline:\s*16px;[^}]*border-radius:\s*0;/s,
+  );
 });
 
 test('Skill Library rail is compact, indexed, and leaves enable state to the detail controls', () => {
