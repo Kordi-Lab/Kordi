@@ -3688,16 +3688,19 @@ export function useCloudBridgeState({
       && openResult.session.title === authorizedSessionTitle.title
       && envelopeSession?.title !== openResult.session.title,
     );
-    if (appliedSessionTitle && !isSelfAuthoredControl) {
-        const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
-          envelope,
-          actorIdentityId,
-          createdAtMs: controlCreatedAtMs,
-          cloudMessageId: cloudMessage.messageId,
-        });
-        if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
-          nextState = await appendCanonicalMessage(noticeRequest);
-        }
+    const sessionTitleIsSelfAuthored = authorizedSessionTitle?.updatedByAccountId === account.accountId;
+    if (appliedSessionTitle && authorizedSessionTitle && !sessionTitleIsSelfAuthored) {
+      const titleAuthorAccountId = authorizedSessionTitle.updatedByAccountId;
+      const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
+        envelope,
+        actorIdentityId: identityIdByAccount.get(titleAuthorAccountId) ?? actorIdentityId,
+        actorDisplayName: participantByAccount.get(titleAuthorAccountId)?.displayName ?? 'Someone',
+        createdAtMs: controlCreatedAtMs,
+        cloudMessageId: cloudMessage.messageId,
+      });
+      if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
+        nextState = await appendCanonicalMessage(noticeRequest);
+      }
     }
 
     if (groupTitleResolution.appliesIncoming) {

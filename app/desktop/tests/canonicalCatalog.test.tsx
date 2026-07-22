@@ -149,10 +149,30 @@ test('local readable message deltas keep catalog counts and latest rows current'
   const currentState = canonicalStateFromStore(store);
   assert.ok(currentState);
   const pending = { ...message('m4', 'session:one', 4), status: 'sending' };
+  const falseRenameNotice: CanonicalSessionMessage = {
+    ...message('false-rename', 'session:one', 4),
+    senderIdentityId: 'human:relay',
+    senderRole: 'system',
+    messageKind: 'status',
+    contentText: 'Relay changed the session name to New chat',
+    content: { kind: 'session-title-update', scope: 'session', title: 'New chat' },
+    status: 'complete',
+    sourceTransport: 'cloud-group-session-title-update',
+  };
 
   store = mergeCanonicalStateIntoStore(store, {
     ...currentState,
-    messages: [...currentState.messages, pending],
+    messages: [...currentState.messages, falseRenameNotice],
+  });
+  assert.equal(store.catalog?.summaries[0]?.messageCount, 3);
+  assert.equal(store.catalog?.summaries[0]?.latestMessage?.id, 'm3');
+
+  const stateWithoutFalseNoticeActivity = canonicalStateFromStore(store);
+  assert.ok(stateWithoutFalseNoticeActivity);
+
+  store = mergeCanonicalStateIntoStore(store, {
+    ...stateWithoutFalseNoticeActivity,
+    messages: [...stateWithoutFalseNoticeActivity.messages, pending],
   });
   assert.equal(store.catalog?.summaries[0]?.messageCount, 3);
   assert.equal(store.catalog?.summaries[0]?.latestMessage?.id, 'm3');

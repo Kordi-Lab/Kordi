@@ -27,6 +27,7 @@ import {
   cloudGroupRelatedControlsForSend,
   cloudGroupTargetAccountIds,
   cloudGroupTitleForOutgoingControl,
+  cloudGroupNonGenericTitle,
   cloudGroupUniqueParticipants,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
@@ -658,6 +659,33 @@ test('only explicit group title update controls mutate the shared group name', (
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'group-title-update', groupTitle: 'Lalla' }), null);
 });
 
+test('placeholder session titles are not replicated as manual Cloud titles', () => {
+  for (const title of ['New chat', '# New chat', 'New session', 'New fork', 'Untitled session', 'Session']) {
+    assert.equal(cloudGroupNonGenericTitle(title), null);
+    assert.equal(cloudSessionTitleUpdateTitle({ kind: 'session-title-update', groupTitle: title }), null);
+    assert.equal(cloudGroupTitleForOutgoingControl({
+      kind: 'session-title-update',
+      groupTitle: title,
+      relatedGroupTitles: ['Previous title'],
+    }), null);
+  }
+
+  assert.equal(cloudGroupManualSessionTitleSnapshot({
+    session: {
+      title: 'New chat',
+      createdByIdentityId: 'human:acct_creator',
+      updatedAtMs: 800,
+      metadata: {
+        sessionTitleSource: 'manual',
+        sessionTitleRevision: 1,
+        sessionTitlePolicyVersion: 1,
+        sessionTitleUpdatedAtMs: 700,
+      },
+    },
+    identities: [{ id: 'human:acct_creator', humanId: 'acct_creator', bridgeNodeId: null }],
+  }), null);
+});
+
 test('group controls preserve the administrator-authored manual session title snapshot', () => {
   const sessionTitle = cloudGroupManualSessionTitleSnapshot({
     session: {
@@ -809,6 +837,40 @@ test('session title updates build a remote visible rename notice without changin
     title: 'Sprint follow-up',
     actorDisplayName: '杨谢',
   });
+});
+
+test('session title notices use the verified title author instead of the relay', () => {
+  const request = cloudSessionTitleUpdateNoticeRequest({
+    envelope: {
+      kind: 'session-title-update',
+      groupId: 'session:group:relayed-title',
+      groupSpaceId: 'space:cloud',
+      groupTitle: 'Sprint follow-up',
+      createdByAccountId: 'acct_admin',
+      actor: { accountId: 'acct_relay', displayName: 'Relay', avatarUrl: null, role: 'person' },
+      participants: [
+        { accountId: 'acct_admin', displayName: 'Admin', avatarUrl: null, role: 'admin' },
+        { accountId: 'acct_relay', displayName: 'Relay', avatarUrl: null, role: 'person' },
+      ],
+      sessionTitle: {
+        title: 'Sprint follow-up',
+        titleSource: 'manual',
+        titleRevision: 2,
+        titlePolicyVersion: 1,
+        updatedAtMs: 1_000,
+        updatedByAccountId: 'acct_admin',
+      },
+      message: null,
+    },
+    actorIdentityId: 'human:cloud:acct_admin',
+    actorDisplayName: 'Admin',
+    createdAtMs: 1_234,
+    cloudMessageId: 'cloud-msg-relayed-rename',
+  });
+
+  assert.equal(request?.senderIdentityId, 'human:cloud:acct_admin');
+  assert.equal(request?.contentText, 'Admin changed the session name to Sprint follow-up');
+  assert.equal((request?.content as { actorDisplayName?: string }).actorDisplayName, 'Admin');
 });
 
 test('group invites carry one durable join notice for each invited member', () => {

@@ -13,6 +13,7 @@ import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } 
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
+import { isPlaceholderSessionTitleNotice } from './messageVisibility';
 
 // Re-exported so external importers that previously pulled these from
 // messageMapping (none today, but the exports were public API) keep working.
@@ -434,6 +435,7 @@ export function mapCanonicalMessage(
   profileHumanIdentityId?: string | null,
   context: MapCanonicalMessageContext = {},
 ): Message | null {
+  if (isPlaceholderSessionTitleNotice(message)) return null;
   const content = contentRecord(message.content);
   if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);

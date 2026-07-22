@@ -4,6 +4,7 @@ import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
 } from '@/kordi-app/types';
+import { canonicalMessageCountsAsReadable } from './readModel/messageVisibility';
 
 export type SessionHydrationState = 'cold' | 'loading' | 'ready' | 'error';
 
@@ -27,11 +28,6 @@ function compareCanonicalMessages(left: CanonicalSessionMessage, right: Canonica
   return left.sequenceNum - right.sequenceNum
     || left.createdAtMs - right.createdAtMs
     || left.id.localeCompare(right.id);
-}
-
-function isReadableCanonicalMessage(message: CanonicalSessionMessage) {
-  return !['canonical-fork-snapshot', 'cloud-group-fork-snapshot'].includes(message.sourceTransport ?? '')
-    && !['sending', 'processing'].includes(message.status.trim().toLowerCase());
 }
 
 function mergeMessages(
@@ -153,7 +149,7 @@ export function applyCanonicalSessionStateAction(
 
 function latestReadableMessage(messages: readonly CanonicalSessionMessage[]) {
   return messages.reduce<CanonicalSessionMessage | null>((latest, message) => {
-    if (!isReadableCanonicalMessage(message)) return latest;
+    if (!canonicalMessageCountsAsReadable(message)) return latest;
     return !latest || compareCanonicalMessages(latest, message) < 0 ? message : latest;
   }, null);
 }
@@ -182,17 +178,17 @@ export function mergeCanonicalStateIntoStore(
     const previousById = new Map(previousMessages.map((message) => [message.id, message]));
     const nextById = new Map(messages.map((message) => [message.id, message]));
     const incomingReadableCount = messages.reduce(
-      (count, message) => count + Number(isReadableCanonicalMessage(message)),
+      (count, message) => count + Number(canonicalMessageCountsAsReadable(message)),
       0,
     );
     const containsCompleteReadableHistory = incomingReadableCount >= (previous?.messageCount ?? 0);
     const readableDelta = messages.reduce((delta, message) => {
-      if (!isReadableCanonicalMessage(message)) return delta;
-      return delta + Number(!previousById.has(message.id) || !isReadableCanonicalMessage(previousById.get(message.id)!));
+      if (!canonicalMessageCountsAsReadable(message)) return delta;
+      return delta + Number(!previousById.has(message.id) || !canonicalMessageCountsAsReadable(previousById.get(message.id)!));
     }, 0) - previousMessages.reduce((delta, message) => {
-      if (!isReadableCanonicalMessage(message)) return delta;
+      if (!canonicalMessageCountsAsReadable(message)) return delta;
       const next = nextById.get(message.id);
-      return delta + Number(!next || !isReadableCanonicalMessage(next));
+      return delta + Number(!next || !canonicalMessageCountsAsReadable(next));
     }, 0);
     const messageCount = containsCompleteReadableHistory
       ? incomingReadableCount
@@ -202,7 +198,7 @@ export function mergeCanonicalStateIntoStore(
       ? nextById.get(previous.latestMessage.id)
       : null;
     const previousLatestStillReadable = previousLatestInNext
-      ? isReadableCanonicalMessage(previousLatestInNext)
+      ? canonicalMessageCountsAsReadable(previousLatestInNext)
       : false;
     const latestMessage = containsCompleteReadableHistory || !previousLatestStillReadable
       ? incomingLatest
