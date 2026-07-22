@@ -207,6 +207,21 @@ fn load_catalog_from_db(conn: &Connection) -> Result<CanonicalSessionCatalog, St
                         'cloud-group-fork-snapshot'
                     )
                       AND LOWER(TRIM(COALESCE(sm.status, ''))) NOT IN ('sending', 'processing')
+                      AND NOT CASE
+                          WHEN LOWER(TRIM(COALESCE(sm.message_kind, ''))) = 'status'
+                               AND json_valid(sm.content_json)
+                          THEN
+                              LOWER(TRIM(COALESCE(json_extract(sm.content_json, '$.kind'), ''))) = 'session-title-update'
+                              AND LOWER(TRIM(COALESCE(json_extract(sm.content_json, '$.scope'), ''))) = 'session'
+                              AND LOWER(TRIM(
+                                  CASE
+                                      WHEN SUBSTR(TRIM(COALESCE(json_extract(sm.content_json, '$.title'), '')), 1, 1) = '#'
+                                          THEN SUBSTR(TRIM(COALESCE(json_extract(sm.content_json, '$.title'), '')), 2)
+                                      ELSE COALESCE(json_extract(sm.content_json, '$.title'), '')
+                                  END
+                              )) IN ('new session', 'new chat', 'new fork', 'untitled session', 'session')
+                          ELSE 0
+                      END
                 ),
                 context_counts AS (
                     SELECT session_id, COUNT(*) AS context_snapshot_count
@@ -1584,7 +1599,7 @@ mod catalog_tests {
     }
 
     #[test]
-    fn catalog_summaries_exclude_transient_and_inherited_rows_while_pages_keep_them() {
+    fn catalog_summaries_exclude_non_chat_rows_while_pages_keep_them() {
         let conn = test_conn();
         seed_identity(&conn);
         conn.execute(
@@ -1609,16 +1624,64 @@ mod catalog_tests {
             )
             .expect("seed message");
         }
+        conn.execute(
+            "INSERT INTO session_messages (
+                id, session_id, sender_identity_id, sender_role, message_kind,
+                content_text, content_json, status, sequence_num, created_at_ms, updated_at_ms,
+                source_transport
+             ) VALUES (
+                'm4', 'session:one', 'human:relay', 'system', 'status',
+                'Relay changed the session name to New chat',
+                '{\"kind\":\"session-title-update\",\"scope\":\"session\",\"title\":\"New chat\"}',
+                'complete', 4, 4, 4, 'cloud-group-session-title-update'
+             )",
+            [],
+        )
+        .expect("seed false placeholder rename notice");
+        conn.execute(
+            "INSERT INTO sessions (
+                id, kind, title, status, created_by_identity_id,
+                created_at_ms, updated_at_ms, last_message_at_ms
+             ) VALUES ('session:empty', 'group', 'New chat', 'active', 'human:me', 1, 4, 4)",
+            [],
+        )
+        .expect("seed status-only session");
+        conn.execute(
+            "INSERT INTO session_messages (
+                id, session_id, sender_identity_id, sender_role, message_kind,
+                content_text, content_json, status, sequence_num, created_at_ms, updated_at_ms,
+                source_transport
+             ) VALUES (
+                'empty-notice', 'session:empty', 'human:relay', 'system', 'status',
+                'Relay changed the session name to # New chat',
+                '{\"kind\":\"session-title-update\",\"scope\":\"session\",\"title\":\"# New chat\"}',
+                'complete', 1, 4, 4, 'cloud-group-session-title-update'
+             )",
+            [],
+        )
+        .expect("seed status-only false notice");
 
         let catalog = load_catalog_from_db(&conn).expect("load catalog");
-        assert_eq!(catalog.summaries[0].message_count, 1);
+        let populated_summary = catalog
+            .summaries
+            .iter()
+            .find(|summary| summary.session_id == "session:one")
+            .expect("populated summary");
+        assert_eq!(populated_summary.message_count, 1);
         assert_eq!(
-            catalog.summaries[0]
+            populated_summary
                 .latest_message
                 .as_ref()
                 .map(|message| message.id.as_str()),
             Some("m1")
         );
+        let empty_summary = catalog
+            .summaries
+            .iter()
+            .find(|summary| summary.session_id == "session:empty")
+            .expect("status-only summary");
+        assert_eq!(empty_summary.message_count, 0);
+        assert!(empty_summary.latest_message.is_none());
         let page =
             load_message_page_from_db(&conn, "session:one", None, Some(25)).expect("load page");
         assert_eq!(
@@ -1626,7 +1689,7 @@ mod catalog_tests {
                 .iter()
                 .map(|message| message.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["m1", "m2", "m3"]
+            vec!["m1", "m2", "m3", "m4"]
         );
     }
 

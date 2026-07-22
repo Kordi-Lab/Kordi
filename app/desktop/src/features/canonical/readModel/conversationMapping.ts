@@ -17,6 +17,7 @@ import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import { formatDesktopLastActiveLabel } from '@/lib/time';
 
 import { stringValue } from './messageMapping';
+import { canonicalMessageCountsAsReadable } from './messageVisibility';
 
 export type ConversationSubtitleBuilder = (messages: Message[], fallback?: string) => string;
 
@@ -280,10 +281,7 @@ export function sessionHasActiveProcessing(messages: Message[]) {
 }
 
 export function canonicalMessageCountsForLastActive(message: CanonicalSessionMessage) {
-  if (message.sourceTransport === 'canonical-fork-snapshot' || message.sourceTransport === 'cloud-group-fork-snapshot') return false;
-  const status = message.status.trim().toLowerCase();
-  if (['sending', 'processing'].includes(status)) return false;
-  return true;
+  return canonicalMessageCountsAsReadable(message);
 }
 
 export function sessionChatActivityAtMs(

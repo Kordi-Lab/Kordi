@@ -11,6 +11,7 @@ import type {
 } from '@/kordi-app/types';
 
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
+import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
@@ -432,7 +433,7 @@ export function cloudGroupRelatedControlsForSend(
 
 export function cloudGroupNonGenericTitle(value?: string | null) {
   const title = cleanText(value);
-  return title && !/^(#\s*)?(new session|untitled session)$/i.test(title) ? title : null;
+  return title && !isExplicitPlaceholderSessionTitle(title) ? title : null;
 }
 
 export function cloudGroupTitleForOutgoingControl(input: {
@@ -440,8 +441,11 @@ export function cloudGroupTitleForOutgoingControl(input: {
   groupTitle?: string | null;
   relatedGroupTitles?: Array<string | null | undefined>;
 }) {
-  const explicitTitle = cloudGroupNonGenericTitle(input.groupTitle) ?? cleanText(input.groupTitle) ?? null;
   if (input.kind === 'group-message') return null;
+  if (input.kind === 'group-title-update' || input.kind === 'session-title-update') {
+    return cloudGroupNonGenericTitle(input.groupTitle);
+  }
+  const explicitTitle = cloudGroupNonGenericTitle(input.groupTitle) ?? cleanText(input.groupTitle) ?? null;
   return explicitTitle
     ?? [...(input.relatedGroupTitles ?? [])].reverse().map((title) => cloudGroupNonGenericTitle(title)).find(Boolean)
     ?? null;
@@ -488,6 +492,7 @@ export function cloudGroupSessionTitleSnapshotForControl(
 function cloudTitleUpdateNoticeRequest(input: {
   envelope: CloudGroupControlEnvelope;
   actorIdentityId: string;
+  actorDisplayName?: string | null;
   createdAtMs: number;
   cloudMessageId: string;
   scope: 'group' | 'session';
@@ -496,7 +501,7 @@ function cloudTitleUpdateNoticeRequest(input: {
   const title = cloudGroupNonGenericTitle(input.title);
   const actorIdentityId = cleanText(input.actorIdentityId);
   if (!title || !actorIdentityId) return null;
-  const actorDisplayName = cleanText(input.envelope.actor.displayName) || 'Someone';
+  const actorDisplayName = cleanText(input.actorDisplayName ?? input.envelope.actor.displayName) || 'Someone';
   const cloudMessageId = cleanText(input.cloudMessageId) || `${input.envelope.groupId}:${input.createdAtMs}`;
   const noticeKind = input.scope === 'group' ? 'group-title-update' : 'session-title-update';
   const transport = input.scope === 'group' ? 'cloud-group-title-update' : 'cloud-group-session-title-update';
@@ -536,6 +541,7 @@ export function cloudGroupTitleUpdateNoticeRequest(input: {
 export function cloudSessionTitleUpdateNoticeRequest(input: {
   envelope: CloudGroupControlEnvelope;
   actorIdentityId: string;
+  actorDisplayName?: string | null;
   createdAtMs: number;
   cloudMessageId: string;
 }): AppendCanonicalMessageRequest | null {
