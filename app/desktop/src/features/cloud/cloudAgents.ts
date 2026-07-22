@@ -64,7 +64,7 @@ function normalizeSkills(value: unknown): CloudAgentSkill[] {
     const description = cleanText(record?.description);
     if (!name || !description || seen.has(name)) return [];
     seen.add(name);
-    return [{ name, description }];
+    return [{ name, description, content: cleanNullableText(record?.content) }];
   });
 }
 
@@ -116,6 +116,8 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
   const defaultAuthProvider = typeof definition.modelRouting.defaultAuthProvider === 'string' ? definition.modelRouting.defaultAuthProvider : null;
   const defaultAuthChoice = typeof definition.modelRouting.defaultAuthChoice === 'string' ? definition.modelRouting.defaultAuthChoice : null;
   const defaultThinking = typeof definition.modelRouting.thinking === 'string' ? definition.modelRouting.thinking : null;
+  const loadedTools = normalizeStringArray(definition.modelRouting.tools);
+  const loadedPlugins = normalizeStringArray(definition.modelRouting.plugins);
   return {
     name: definition.name,
     id: cloudAgentId(definition),
@@ -133,20 +135,21 @@ export function cloudAgentDefinitionToAgent(definition: CloudAgentDefinition): A
     systemPrompt: definition.systemPrompt,
     xMd: definition.sourceSummary ?? definition.description ?? '',
     identityFiles: [],
-    loadedTools: [],
+    loadedTools,
     loadedSkills: definition.skills.map((skill) => skill.name),
-    loadedPlugins: [],
+    loadedPlugins,
     lastActivities: [definition.updatedAt],
     exposesIdentityFiles: false,
     exposesLoadedSkills: true,
-    exposesLoadedTools: false,
-    exposesLoadedPlugins: false,
+    exposesLoadedTools: true,
+    exposesLoadedPlugins: true,
     isOwned: true,
     isBridgeRegistered: true,
     avatarSeed: definition.agentId,
     cloudAgentId: definition.agentId,
     cloudAgentAccessScope: definition.accessScope,
     cloudAgentOwnerAccountId: definition.ownerAccountId,
+    cloudAgentDescription: definition.description,
     cloudAgentSourceSummary: definition.sourceSummary,
     cloudAgentBoundaries: definition.boundaries,
     cloudAgentResources: definition.resources,

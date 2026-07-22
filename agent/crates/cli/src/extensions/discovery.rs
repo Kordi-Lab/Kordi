@@ -60,6 +60,18 @@ pub(super) fn discover_runtime_resources(
         );
     }
 
+    // Purpose-built session profiles provide explicit skill roots. Load those
+    // first so a same-named user or project skill cannot shadow the trusted
+    // profile resource later in session bootstrap.
+    for path in &bootstrap.skill_paths {
+        collect_skills_from_entry(
+            path,
+            &mut discovered.skills,
+            &mut discovered.skill_seen,
+            cwd,
+            None,
+        );
+    }
     for root in default_skill_roots(cwd) {
         collect_skills_from_entry(
             &root,
@@ -78,7 +90,6 @@ pub(super) fn discover_runtime_resources(
             None,
         );
     }
-
     for root in default_prompt_roots(cwd) {
         collect_prompts_from_entry(
             &root,
@@ -112,9 +123,23 @@ pub(super) fn discover_runtime_resources(
             .filter(|name| !name.is_empty())
             .collect();
         if !disabled.is_empty() {
-            discovered
-                .skills
-                .retain(|skill| !disabled.contains(&skill.info.name.trim().to_ascii_lowercase()));
+            let required_roots = bootstrap
+                .skill_paths
+                .iter()
+                .cloned()
+                .map(normalize_path)
+                .collect::<Vec<_>>();
+            discovered.skills.retain(|skill| {
+                let source_path = normalize_path(PathBuf::from(&skill.info.source_info.path));
+                let is_profile_skill = required_roots.iter().any(|root| {
+                    if root.is_file() {
+                        source_path == *root
+                    } else {
+                        source_path.starts_with(root)
+                    }
+                });
+                is_profile_skill || !disabled.contains(&skill.info.name.trim().to_ascii_lowercase())
+            });
         }
     }
 

@@ -32,6 +32,7 @@ export default defineConfig(({ command, mode }) => {
             minSize: 20_000,
             groups: [
               { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
+              { name: 'agent-factory', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/]/ },
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/ },
               { name: 'desktop-features', test: /[\\/]src[\\/]features[\\/]/ },
               { name: 'workspace-ui', test: /[\\/]src[\\/](?:app|components|kordi-app|pages)[\\/]/ },

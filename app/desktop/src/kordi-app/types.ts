@@ -329,6 +329,7 @@ export type Agent = {
   cloudAgentId?: string;
   cloudAgentAccessScope?: 'private' | 'participant_conversations';
   cloudAgentOwnerAccountId?: string;
+  cloudAgentDescription?: string | null;
   cloudAgentSourceSummary?: string | null;
   cloudAgentBoundaries?: string[];
   cloudAgentResources?: Array<{
@@ -340,6 +341,7 @@ export type Agent = {
   cloudAgentSkills?: Array<{
     name: string;
     description: string;
+    content?: string | null;
   }>;
   avatarSeed?: string | null;
   profileImageUrl?: string | null;
@@ -807,6 +809,7 @@ export type DesktopChatMessage = {
   timeLabel: string;
   timestampMs: number;
   failed?: boolean;
+  cancelled?: boolean;
   attachments?: DesktopChatAttachment[];
   mentions?: MessageMention[];
   replyToMessageId?: string | null;

@@ -7,6 +7,7 @@ use super::*;
 pub(crate) struct ExtensionBootstrap {
     pub paths: Vec<PathBuf>,
     pub package_sources: Vec<String>,
+    pub skill_paths: Vec<PathBuf>,
 }
 
 impl ExtensionBootstrap {
@@ -20,6 +21,7 @@ impl ExtensionBootstrap {
         let mut bootstrap = Self {
             paths: Vec::with_capacity(values.len()),
             package_sources: Vec::with_capacity(values.len()),
+            skill_paths: Vec::new(),
         };
         for value in values {
             if is_package_source(value) {

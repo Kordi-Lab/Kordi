@@ -197,6 +197,37 @@ test('capabilities reports only server-configured social sign-in providers', asy
   assert.equal(calls[0].init?.method, 'GET');
 });
 
+test('capabilities keeps hosted OAuth available for older product deployments', async () => {
+  const { fetchImpl } = recordingFetch(() => jsonResponse(404, {
+    message: 'Not Found',
+  }));
+  const client = new CloudAuthClient({
+    baseUrl: 'https://coordinar.io',
+    fetchImpl,
+  });
+
+  assert.deepEqual(await client.capabilities(), {
+    password: true,
+    oauthProviders: ['google', 'github'],
+  });
+});
+
+test('capabilities does not infer providers for non-product servers', async () => {
+  const { fetchImpl } = recordingFetch(() => jsonResponse(404, {
+    message: 'Not Found',
+  }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await assert.rejects(
+    () => client.capabilities(),
+    (caught: unknown) => {
+      assert.ok(caught instanceof CloudAuthError);
+      assert.equal((caught as CloudAuthError).status, 404);
+      return true;
+    },
+  );
+});
+
 test('cloud API defaults to the hosted product origin outside development', () => {
   assert.equal(cloudApiBaseUrl({}), 'https://coordinar.io');
 });

@@ -51,7 +51,7 @@ export function AgentContentPane({
     return (
       <section className="app-agent-content-pane flex min-h-0 min-w-0 flex-col">
         <div className="app-agent-empty-state flex h-full items-center justify-center px-6 text-center text-[13px] leading-5">
-          Select an item in the middle panel to preview or edit it here.
+          Select an item to preview or edit.
         </div>
       </section>
     );
@@ -60,7 +60,6 @@ export function AgentContentPane({
   if (activeDetail.kind === 'prompt') {
     const activeConfigPath = getAgentConfigPath(activeAgent);
     const isEditable = Boolean(activeConfigPath);
-    const hasRuntimePrompt = activeAgentConfig.systemPrompt.trim().length > 0;
     const displayedSystemPrompt = promptDisplayText(activeAgentConfig.systemPrompt);
 
     return (
@@ -70,7 +69,6 @@ export function AgentContentPane({
             <div className="min-w-0">
               <div className="app-agent-panel-subtitle text-[12px] font-medium">System prompt</div>
               <div className="app-agent-content-title mt-1 truncate text-[18px] font-semibold tracking-[-0.02em]">{activeAgent.name}</div>
-              <div className="app-agent-row-meta mt-1 break-words text-[12px]">{activeConfigPath ?? (hasRuntimePrompt ? 'Exact current runtime prompt' : 'Not exposed by bridge agent')}</div>
               {activeSaveFeedback ? (
                 <div
                   className={cn(
@@ -102,9 +100,7 @@ export function AgentContentPane({
                     Edit prompt
                   </Button>
                 )
-              ) : (
-                <div className="app-agent-row-meta text-[11px]">Runtime-managed</div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -112,7 +108,7 @@ export function AgentContentPane({
         <div className="min-h-0 flex-1 px-5 py-5">
           <div className="app-agent-code-panel flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border">
             <div className="app-agent-code-toolbar px-4 py-2 text-[11px]">
-              {isEditable && activeEditingSection === 'prompt' ? 'Editing saved prompt' : hasRuntimePrompt ? 'Full prompt detail' : 'No exposed prompt'}
+              {isEditable && activeEditingSection === 'prompt' ? 'Editing prompt' : 'Prompt'}
             </div>
             {isEditable && activeEditingSection === 'prompt' ? (
               <textarea
@@ -124,7 +120,7 @@ export function AgentContentPane({
               />
             ) : (
               <ScrollArea className="min-h-0 flex-1">
-                <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words">{displayedSystemPrompt || 'No real prompt payload is exposed for this identity.'}</pre>
+                <pre className="app-agent-code-text px-4 py-4 font-mono text-[12px] leading-6 whitespace-pre-wrap break-words">{displayedSystemPrompt || 'No prompt available.'}</pre>
               </ScrollArea>
             )}
           </div>
@@ -141,7 +137,7 @@ export function AgentContentPane({
       <div className="app-agent-panel-header px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="app-agent-panel-subtitle text-[12px] font-medium">Markdown / config detail</div>
+            <div className="app-agent-panel-subtitle text-[12px] font-medium">File</div>
             <div className="app-agent-content-title mt-1 truncate text-[18px] font-semibold tracking-[-0.02em]">{parts[parts.length - 1] ?? filePath}</div>
             <div className="app-agent-row-meta mt-1 break-words text-[12px]">{filePath}</div>
             {activeFileSaveFeedback ? (
@@ -182,32 +178,17 @@ export function AgentContentPane({
         </div>
       </div>
 
-      <div className="app-agent-panel-header px-5 py-4">
-        <div className="grid gap-2">
-          {[
-            ['Name', parts[parts.length - 1] ?? filePath],
-            ['Folder', parts.slice(0, -1).join('/') || 'Workspace root'],
-            ['Source', 'Repo-relative workspace file'],
-          ].map(([label, value]) => (
-            <div key={label} className="flex items-start justify-between gap-3 text-[12px]">
-              <div className="app-agent-row-meta">{label}</div>
-              <div className="app-agent-row-title max-w-[70%] min-w-0 break-words text-right">{value}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <div className="min-h-0 flex-1 px-5 py-5">
         <div className="app-agent-code-panel flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border">
           <div className="app-agent-code-toolbar px-4 py-2 text-[11px]">
             {activeFilePreview.status === 'loading'
-              ? 'Loading real file…'
+              ? 'Loading…'
               : activeFilePreview.status === 'error'
-                ? `Preview fallback • ${activeFilePreview.error ?? 'Unable to read file'}`
+                ? activeFilePreview.error ?? 'Unable to read file'
                 : activeFileCanEdit
                   ? activeFileIsEditing
-                    ? 'Editing repo-relative file'
-                    : 'Previewing repo-relative file'
+                    ? 'Editing'
+                    : 'Preview'
                   : 'Preview'}
           </div>
 

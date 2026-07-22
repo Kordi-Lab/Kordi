@@ -7,7 +7,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use kordi_core::agent_session_extensions::{
     ExtensionsResult, LoadedExtension, RegisteredCommand, RegisteredTool, SessionResourceBootstrap,
-    SourceInfo, ToolDefinition,
+    SkillDefinition, SourceInfo, ToolDefinition,
 };
 use kordi_core::error::{KordiError, KordiResult};
 use kordi_core::settings::Settings;
@@ -54,6 +54,15 @@ pub(crate) use runtime_support::{
     ExtensionBootstrap, RuntimeExtensionSupport, build_skill_system_prompt_section,
     load_runtime_extension_support, load_runtime_extension_support_with_ui,
 };
+
+#[allow(dead_code)]
+pub(crate) fn discover_skills_for_library(cwd: &Path) -> Result<Vec<SkillDefinition>> {
+    let mut settings = Settings::load_merged(cwd);
+    settings.disabled_skills.clear();
+    let bootstrap = ExtensionBootstrap::default();
+    let package_dirs = resolve_package_directories(cwd, &settings, &bootstrap)?;
+    Ok(discover_runtime_resources(cwd, &settings, &bootstrap, &package_dirs)?.skills)
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct InputHookOutcome {

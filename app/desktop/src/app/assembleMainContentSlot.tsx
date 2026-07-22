@@ -3,6 +3,7 @@ import { buildChatsPageProps } from '@/app/mainContentShellBuilders';
 import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
 import { bridgeAgentForChatStart } from '@/features/chat/chatCreateFlows';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
+import { runDesktopChatSkillCommand } from '@/lib/desktop';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
@@ -104,6 +105,10 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
         agents: args.displayedAgents,
         activeAgentId: args.activeAgentId,
         activeAgent: args.activeAgent,
+        cloudAccountId: args.cloudSession?.account?.accountId,
+        localProfileAvatarSeed: args.localProfileAvatarSeed,
+        localProfileDisplayName: args.localProfileDisplayName,
+        localProfileImageUrl: args.localProfileImageUrl,
         onOpenAgent: (agentId) => {
           args.setActiveAgentId(agentId);
           args.setIsAgentOverlayOpen(false);
@@ -152,9 +157,32 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           args.setActiveNav('chats');
           void args.handleSelectChatSession(sessionId);
         },
+        onOpenAgentBuilderSession: (sessionId) => {
+          args.setActiveNav('chats');
+          void args.handleSelectChatSession(sessionId);
+        },
+        onOpenAuthSettings: args.openCloudAccountAuthentication ?? args.openAuthSettings,
         onCreateCloudAgent: args.handleCreateCloudAgent,
         onUpdateCloudAgent: args.handleUpdateCloudAgent,
         onArchiveCloudAgent: args.handleArchiveCloudAgent,
+        onSetAgentSkillEnabled: async (agent, skill, enabled) => {
+          if (!agent.isOwned || (agent.id !== 'desktop:local-agent' && !agent.isBridgeActive)) {
+            throw new Error('Only the active local Kordi agent can change runtime skills here.');
+          }
+          const sessionId = args.desktopChatState?.activeSessionId?.trim();
+          if (!sessionId) {
+            throw new Error('Open a local Kordi chat once before changing runtime skills.');
+          }
+          const result = await runDesktopChatSkillCommand(
+            sessionId,
+            `/skill ${enabled ? 'enable' : 'disable'} ${skill}`,
+          );
+          const succeeded = enabled
+            ? result.startsWith('Enabled skill:') || result.includes('is not disabled.')
+            : result.startsWith('Disabled skill:') || result.includes('is already disabled.');
+          if (!succeeded) throw new Error(result || `Kordi could not ${enabled ? 'enable' : 'disable'} ${skill}.`);
+          await args.refreshDesktopChat(sessionId);
+        },
       }}
       chatsPageProps={buildChatsPageProps(args)}
     />

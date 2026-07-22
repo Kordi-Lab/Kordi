@@ -614,5 +614,4 @@ export function ContactsPage({
   );
 }
 
-export { AgentsPage } from './agents/AgentsPage';
 export { AuthPage } from './auth/AuthPage';

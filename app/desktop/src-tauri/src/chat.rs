@@ -12,6 +12,7 @@ use kordi_cli::desktop_runtime::{
     DesktopChatSlashCommand, DesktopRuntimeSession, DesktopVisibleTaskRecord,
 };
 
+pub(crate) mod agent_builder;
 pub(crate) mod artifacts;
 pub(crate) mod attachments;
 pub(crate) mod bridge_agent_runner;
@@ -106,6 +107,35 @@ struct DesktopChatTurnHandle {
 pub struct DesktopChatManager {
     sessions: Arc<tokio::sync::Mutex<HashMap<String, DesktopSessionHandle>>>,
     turns: Arc<tokio::sync::Mutex<HashMap<String, DesktopChatTurnHandle>>>,
+}
+
+impl DesktopChatManager {
+    pub(crate) async fn reload_skill_resources(&self) -> Result<(), String> {
+        let sessions = self
+            .sessions
+            .lock()
+            .await
+            .iter()
+            .filter(|(session_id, _)| !agent_builder::is_agent_builder_session_id(session_id))
+            .map(|(_, session)| session.clone())
+            .collect::<Vec<_>>();
+        let mut errors = Vec::new();
+        for session in sessions {
+            if let Err(error) = session.lock().await.reload_resources().await {
+                errors.push(error.to_string());
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "Skills were updated, but {} open session{} could not reload: {}",
+                errors.len(),
+                if errors.len() == 1 { "" } else { "s" },
+                errors.join("; ")
+            ))
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -216,6 +246,25 @@ fn chat_cwd() -> Result<PathBuf, String> {
 
 fn session_exists_globally(session_id: &str) -> Result<bool, String> {
     kordi_cli::desktop_runtime::session_exists(session_id).map_err(|err| err.to_string())
+}
+
+fn is_internal_runtime_session_id(session_id: &str) -> bool {
+    is_cloud_agent_runtime_session_id(session_id)
+        || agent_builder::is_agent_builder_session_id(session_id)
+}
+
+async fn resume_desktop_runtime(
+    cwd: &std::path::Path,
+    session_id: &str,
+) -> Result<DesktopRuntimeSession, String> {
+    if agent_builder::is_agent_builder_session_id(session_id) {
+        return agent_builder::resume_agent_builder_runtime(session_id).await;
+    }
+    let mut runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), session_id)
+        .await
+        .map_err(|err| err.to_string())?;
+    attach_cloud_scheduled_task_runtime(&mut runtime);
+    Ok(runtime)
 }
 
 fn is_placeholder_session_title(title: &str) -> bool {
@@ -342,10 +391,7 @@ async fn ensure_loaded_session(
         if persisted.iter().any(|session| session.id == session_id)
             || session_exists_globally(&session_id)?
         {
-            let mut runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
-                .await
-                .map_err(|err| err.to_string())?;
-            attach_cloud_scheduled_task_runtime(&mut runtime);
+            let runtime = resume_desktop_runtime(cwd, &session_id).await?;
             sessions.insert(
                 session_id.clone(),
                 Arc::new(tokio::sync::Mutex::new(runtime)),
@@ -356,10 +402,7 @@ async fn ensure_loaded_session(
 
     if let Some(session_id) = persisted.first().map(|session| session.id.clone()) {
         if !sessions.contains_key(&session_id) {
-            let mut runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
-                .await
-                .map_err(|err| err.to_string())?;
-            attach_cloud_scheduled_task_runtime(&mut runtime);
+            let runtime = resume_desktop_runtime(cwd, &session_id).await?;
             sessions.insert(
                 session_id.clone(),
                 Arc::new(tokio::sync::Mutex::new(runtime)),
@@ -392,15 +435,17 @@ async fn ensure_loaded_or_create_explicit_session(
     let mut runtime = if persisted.iter().any(|session| session.id == session_id)
         || session_exists_globally(&session_id)?
     {
-        DesktopRuntimeSession::resume(cwd.to_path_buf(), &session_id)
-            .await
-            .map_err(|err| err.to_string())?
+        resume_desktop_runtime(cwd, &session_id).await?
+    } else if agent_builder::is_agent_builder_session_id(&session_id) {
+        return Err("Agent Builder session is unavailable".to_string());
     } else {
         DesktopRuntimeSession::create_with_id(cwd.to_path_buf(), &session_id)
             .await
             .map_err(|err| err.to_string())?
     };
-    attach_cloud_scheduled_task_runtime(&mut runtime);
+    if !agent_builder::is_agent_builder_session_id(&session_id) {
+        attach_cloud_scheduled_task_runtime(&mut runtime);
+    }
 
     let mut sessions = manager.sessions.lock().await;
     sessions.insert(
@@ -419,7 +464,7 @@ async fn build_chat_state(
         .map_err(|err| err.to_string())?
         .into_iter()
         .filter(|session| !is_blank_draft_summary(session))
-        .filter(|session| !is_cloud_agent_runtime_session_id(&session.id))
+        .filter(|session| !is_internal_runtime_session_id(&session.id))
         .collect::<Vec<_>>();
     let model_options = authenticated_model_options_with_local_runtime(cwd).await;
     let projects = filter_blank_draft_projects(
@@ -439,10 +484,7 @@ async fn build_chat_state(
         let mut sessions = manager.sessions.lock().await;
 
         if !sessions.contains_key(&active_session_id) {
-            let mut runtime = DesktopRuntimeSession::resume(cwd.to_path_buf(), &active_session_id)
-                .await
-                .map_err(|err| err.to_string())?;
-            attach_cloud_scheduled_task_runtime(&mut runtime);
+            let runtime = resume_desktop_runtime(cwd, &active_session_id).await?;
             sessions.insert(
                 active_session_id.clone(),
                 Arc::new(tokio::sync::Mutex::new(runtime)),
@@ -470,7 +512,7 @@ async fn build_chat_state(
         .any(|session| session.id == active_session_id);
     if !active_exists
         && active_session.project.is_none()
-        && !is_cloud_agent_runtime_session_id(&active_session_id)
+        && !is_internal_runtime_session_id(&active_session_id)
     {
         let active_runtime = active_runtime.lock().await;
         let summary = active_runtime.summary().map_err(|err| err.to_string())?;
@@ -488,7 +530,7 @@ async fn build_chat_state(
     };
 
     for (session_id, runtime) in session_handles {
-        if is_cloud_agent_runtime_session_id(&session_id)
+        if is_internal_runtime_session_id(&session_id)
             || summaries.iter().any(|session| session.id == session_id)
         {
             continue;
@@ -521,7 +563,7 @@ async fn build_chat_state(
         &state,
         session_has_running_turn(manager, &state.active_session_id).await,
     );
-    if !is_cloud_agent_runtime_session_id(&state.active_session_id) && !active_is_canonical_group {
+    if !is_internal_runtime_session_id(&state.active_session_id) && !active_is_canonical_group {
         if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&sync_state) {
             eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
         }
@@ -645,6 +687,12 @@ pub async fn desktop_chat_update_session_config(
     let cwd = chat_cwd()?;
     let target_session_id =
         ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
+    if agent_builder::is_agent_builder_session_id(&target_session_id) {
+        return Err(
+            "Agent Builder uses the authenticated runtime default and a fixed safety profile."
+                .to_string(),
+        );
+    }
     if target_session_id != TRANSIENT_LOCAL_DRAFT_SESSION_ID
         && session_has_running_turn(&manager, &target_session_id).await
     {
@@ -711,6 +759,9 @@ pub async fn desktop_chat_archive_session(
     active_session_id: Option<String>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
+    if agent_builder::is_agent_builder_session_id(session_id.trim()) {
+        return Err("Discard Agent Builder drafts from Agent Studio.".to_string());
+    }
     let target = resolve_existing_session_action_target(&session_id)?;
     if session_has_running_turn(&manager, &target.id).await {
         return Err("Stop the running task before hiding this session.".to_string());
@@ -741,6 +792,9 @@ pub async fn desktop_chat_delete_session_forever(
     active_session_id: Option<String>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
+    if agent_builder::is_agent_builder_session_id(session_id.trim()) {
+        return Err("Discard Agent Builder drafts from Agent Studio.".to_string());
+    }
     let target = resolve_existing_session_action_target(&session_id)?;
     if session_has_running_turn(&manager, &target.id).await {
         return Err("Stop the running task before deleting this session.".to_string());
@@ -782,6 +836,9 @@ pub async fn desktop_chat_move_session_to_project(
     project_root: String,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
+    if agent_builder::is_agent_builder_session_id(session_id.trim()) {
+        return Err("Agent Builder conversations stay with their private draft.".to_string());
+    }
     let target = resolve_existing_session_action_target(&session_id)?;
     if session_has_running_turn(&manager, &target.id).await {
         return Err("Stop the running task before moving this session.".to_string());
@@ -826,6 +883,9 @@ pub async fn desktop_chat_fork_session_from_message(
     }
     if trimmed_session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID {
         return Err("Save the draft session before forking from it.".to_string());
+    }
+    if agent_builder::is_agent_builder_session_id(trimmed_session_id) {
+        return Err("Agent Builder conversations cannot be forked.".to_string());
     }
 
     let cwd = chat_cwd()?;
@@ -934,8 +994,10 @@ pub async fn desktop_chat_send_message(
     let session_handle = session;
     let (provider, model) = {
         let mut session = session_handle.lock().await;
-        attach_cloud_scheduled_task_runtime(&mut session);
-        prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
+        if !agent_builder::is_agent_builder_session_id(&target_session_id) {
+            attach_cloud_scheduled_task_runtime(&mut session);
+            prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
+        }
         let detail = session.detail().map_err(|err| err.to_string())?;
         (detail.provider, detail.model)
     };
@@ -1028,6 +1090,7 @@ pub async fn desktop_chat_start_message(
 
     let snapshot_for_task = snapshot.clone();
     let session_handle = session;
+    let is_agent_builder_session = agent_builder::is_agent_builder_session_id(&target_session_id);
     tokio::spawn(async move {
         let (provider, model) = {
             let mut session = session_handle.lock().await;
@@ -1042,38 +1105,41 @@ pub async fn desktop_chat_start_message(
                 });
                 return;
             }
-            attach_cloud_scheduled_task_runtime_for_session(
-                &mut session,
-                scheduled_task_session_id.as_deref(),
-            );
-            if let Err(error) =
-                session.sync_visible_task_records(&visible_task_records.unwrap_or_default())
-            {
-                let error = error.to_string();
-                update_turn(&snapshot_for_task, |state| {
-                    state.status = "failed".to_string();
-                    state.message = error.clone();
-                    state.completed = true;
-                    state.completed_at_ms = Some(now_millis());
-                    state.succeeded = false;
-                    state.error = Some(error);
-                });
-                return;
+            if !is_agent_builder_session {
+                attach_cloud_scheduled_task_runtime_for_session(
+                    &mut session,
+                    scheduled_task_session_id.as_deref(),
+                );
+                if let Err(error) =
+                    session.sync_visible_task_records(&visible_task_records.unwrap_or_default())
+                {
+                    let error = error.to_string();
+                    update_turn(&snapshot_for_task, |state| {
+                        state.status = "failed".to_string();
+                        state.message = error.clone();
+                        state.completed = true;
+                        state.completed_at_ms = Some(now_millis());
+                        state.succeeded = false;
+                        state.error = Some(error);
+                    });
+                    return;
+                }
+                if let Err(error) =
+                    session.sync_context_messages(&context_messages.unwrap_or_default())
+                {
+                    let error = error.to_string();
+                    update_turn(&snapshot_for_task, |state| {
+                        state.status = "failed".to_string();
+                        state.message = error.clone();
+                        state.completed = true;
+                        state.completed_at_ms = Some(now_millis());
+                        state.succeeded = false;
+                        state.error = Some(error);
+                    });
+                    return;
+                }
+                prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
             }
-            if let Err(error) = session.sync_context_messages(&context_messages.unwrap_or_default())
-            {
-                let error = error.to_string();
-                update_turn(&snapshot_for_task, |state| {
-                    state.status = "failed".to_string();
-                    state.message = error.clone();
-                    state.completed = true;
-                    state.completed_at_ms = Some(now_millis());
-                    state.succeeded = false;
-                    state.error = Some(error);
-                });
-                return;
-            }
-            prepare_desktop_session_for_send(&mut session, cwd.clone(), &text).await;
 
             let detail = session.detail().ok();
             let provider = detail
@@ -1132,12 +1198,14 @@ pub async fn desktop_chat_start_message(
 
         match result {
             Ok(_) if cancel.is_cancelled() => {
-                sync_completed_desktop_session_to_canonical(
-                    &cwd,
-                    &target_session_id,
-                    &session_handle,
-                )
-                .await;
+                if !is_agent_builder_session {
+                    sync_completed_desktop_session_to_canonical(
+                        &cwd,
+                        &target_session_id,
+                        &session_handle,
+                    )
+                    .await;
+                }
                 update_turn(&snapshot_for_task, |state| {
                     state.status = "cancelled".to_string();
                     state.message = "Response stopped".to_string();
@@ -1148,12 +1216,14 @@ pub async fn desktop_chat_start_message(
                 });
             }
             Ok(_) => {
-                sync_completed_desktop_session_to_canonical(
-                    &cwd,
-                    &target_session_id,
-                    &session_handle,
-                )
-                .await;
+                if !is_agent_builder_session {
+                    sync_completed_desktop_session_to_canonical(
+                        &cwd,
+                        &target_session_id,
+                        &session_handle,
+                    )
+                    .await;
+                }
                 let task_tools = {
                     let session = session_handle.lock().await;
                     session
@@ -1203,6 +1273,9 @@ pub async fn desktop_chat_run_skill_command(
 ) -> Result<String, String> {
     let cwd = chat_cwd()?;
     let target_session_id = ensure_loaded_session(&manager, &cwd, Some(session_id)).await?;
+    if agent_builder::is_agent_builder_session_id(&target_session_id) {
+        return Err("Agent Builder skills are managed by its fixed safety profile.".to_string());
+    }
     let session = {
         let sessions = manager.sessions.lock().await;
         sessions
@@ -1230,12 +1303,8 @@ pub async fn desktop_chat_cancel_turn(
     turn.cancel.cancel();
     update_turn(&turn.snapshot, |state| {
         if !state.completed {
-            state.status = "cancelled".to_string();
-            state.message = "Response stopped".to_string();
-            state.completed = true;
-            state.completed_at_ms = Some(now_millis());
-            state.succeeded = false;
-            state.error = None;
+            state.status = "cancelling".to_string();
+            state.message = "Stopping…".to_string();
         }
     });
     snapshot_turn(&turn.snapshot)

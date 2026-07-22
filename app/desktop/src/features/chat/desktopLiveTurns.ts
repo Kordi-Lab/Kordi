@@ -15,11 +15,12 @@ export function buildCompletedDesktopAssistantMessage(turn: DesktopChatTurnSnaps
   return {
     role: 'assistant',
     sender: 'My Kordi',
-    text: assistantText.length > 0 ? assistantText : fallbackText,
+    text: assistantText.length > 0 ? assistantText : turn.status === 'cancelled' ? '' : fallbackText,
     detail: undefined,
     timeLabel: finishedAt,
     timestampMs: Date.now(),
     failed: !turn.succeeded && turn.status !== 'cancelled',
+    cancelled: turn.status === 'cancelled',
     thinkingText: turn.thinkingText,
     tools: turn.tools,
     turnStartedAtMs: turn.startedAtMs ?? null,

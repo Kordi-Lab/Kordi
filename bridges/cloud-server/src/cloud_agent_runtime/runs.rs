@@ -596,17 +596,27 @@ async fn shared_cloud_agent_prompt_prefix(
                 .join("\n")
         ));
     }
-    let skill_lines = skills
+    let skill_sections = skills
         .into_iter()
         .filter_map(|skill| {
             let name = skill.get("name")?.as_str()?.trim();
             let description = skill.get("description")?.as_str()?.trim();
-            (!name.is_empty() && !description.is_empty())
-                .then(|| format!("- {name}: {description}"))
+            if name.is_empty() || description.is_empty() {
+                return None;
+            }
+            let content = skill
+                .get("content")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            Some(match content {
+                Some(content) => format!("Skill {name} ({description}):\n{content}"),
+                None => format!("Skill {name}: {description}"),
+            })
         })
         .collect::<Vec<_>>();
-    if !skill_lines.is_empty() {
-        sections.push(format!("Suggested skills:\n{}", skill_lines.join("\n")));
+    if !skill_sections.is_empty() {
+        sections.push(format!("Agent skills:\n{}", skill_sections.join("\n\n")));
     }
     Ok(Some(sections.join("\n\n")))
 }

@@ -1,16 +1,21 @@
-import type { ComponentProps } from 'react';
+import { lazy, Suspense, type ComponentProps } from 'react';
 
-import { AgentsPage, ContactsPage } from '@/kordi-app/pages';
+import { ContactsPage } from '@/kordi-app/pages';
+import type { AgentsPageProps } from '@/kordi-app/agents/model';
 import type { NavId } from '@/kordi-app/types';
 import { ChatsPage } from '@/pages/ChatsPage';
 import { CloudContactsAdapter } from '@/features/cloud/CloudContactsAdapter';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 
+const AgentsPage = lazy(() => import('@/kordi-app/agents/AgentsPage').then((module) => ({
+  default: module.AgentsPage,
+})));
+
 type MainContentSwitchProps = {
   activeNav: NavId;
   cloudSession: UseCloudSessionResult;
   contactsPageProps: ComponentProps<typeof ContactsPage>;
-  agentsPageProps: ComponentProps<typeof AgentsPage>;
+  agentsPageProps: AgentsPageProps;
   chatsPageProps: ComponentProps<typeof ChatsPage>;
 };
 
@@ -25,7 +30,11 @@ export function MainContentSwitch({
     case 'contacts':
       return <ContactsRoute cloudSession={cloudSession} contactsPageProps={contactsPageProps} />;
     case 'agents':
-      return <AgentsPage {...agentsPageProps} />;
+      return (
+        <Suspense fallback={<div className="h-full w-full" aria-busy="true" />}>
+          <AgentsPage {...agentsPageProps} />
+        </Suspense>
+      );
     case 'chats':
     default:
       return <ChatsPage {...chatsPageProps} />;

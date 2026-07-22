@@ -139,6 +139,28 @@ pub(super) async fn append_assistant_error_message(
     Ok(())
 }
 
+pub(super) async fn append_assistant_cancelled_message(
+    conn: &Arc<Mutex<rusqlite::Connection>>,
+    session_id: &str,
+    model: &Model,
+) -> Result<()> {
+    let conn = conn.lock().await;
+    let assistant_entry = SessionEntry::Message {
+        base: next_entry_base(&conn, session_id),
+        message: AgentMessage::Assistant(AssistantMessage {
+            content: Vec::new(),
+            provider: model.provider.clone(),
+            model: model.id.clone(),
+            usage: Usage::default(),
+            stop_reason: StopReason::Aborted,
+            error_message: None,
+            timestamp: Utc::now().timestamp_millis(),
+        }),
+    };
+    store::append_entry(&conn, session_id, &assistant_entry)?;
+    Ok(())
+}
+
 fn active_path_has_unanswered_user_request(
     conn: &rusqlite::Connection,
     session_id: &str,

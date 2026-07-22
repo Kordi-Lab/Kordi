@@ -435,6 +435,279 @@ export async function fetchDesktopChatSessionDetail(sessionId: string) {
   return invokeDesktop<DesktopChatSessionDetail>('desktop_chat_session_detail', { sessionId });
 }
 
+export type DesktopAgentBuilderSkillSeed = {
+  name: string;
+  description?: string;
+  content?: string | null;
+};
+
+export type DesktopAgentBuilderSeed = {
+  name?: string;
+  role?: string;
+  description?: string;
+  systemPrompt?: string;
+  sourceSummary?: string;
+  boundaries?: string[];
+  access?: string;
+  provider?: string | null;
+  model?: string | null;
+  thinking?: string | null;
+  tools?: string[];
+  plugins?: string[];
+  skills?: DesktopAgentBuilderSkillSeed[];
+};
+
+export type DesktopAgentBuilderSkillDraft = {
+  name: string;
+  description: string;
+  path: string;
+  content: string;
+};
+
+export type DesktopAgentBuilderDraft = {
+  name: string;
+  role: string;
+  description: string;
+  systemPrompt: string;
+  sourceSummary: string;
+  boundaries: string[];
+  access: string;
+  provider?: string | null;
+  model?: string | null;
+  thinking?: string | null;
+  tools: string[];
+  plugins: string[];
+  skills: DesktopAgentBuilderSkillDraft[];
+};
+
+export type DesktopAgentBuilderValidation = {
+  valid: boolean;
+  fingerprint: string;
+  errors: string[];
+  files: Array<{
+    path: string;
+    kind: string;
+    valid: boolean;
+  }>;
+};
+
+export type DesktopAgentBuilderTestReport = {
+  passed: boolean;
+  fingerprint: string;
+  summary: string;
+  testedAtMs: number;
+};
+
+export type DesktopAgentBuilderStatus = {
+  draftId: string;
+  targetKey: string;
+  sessionId: string;
+  workspacePath: string;
+  lifecycle: string;
+  draft?: DesktopAgentBuilderDraft | null;
+  validation: DesktopAgentBuilderValidation;
+  testReport?: DesktopAgentBuilderTestReport | null;
+  publishReady: boolean;
+};
+
+export type DesktopAgentBuilderOpenResult = {
+  status: DesktopAgentBuilderStatus;
+  session: DesktopChatSessionDetail;
+};
+
+export async function openDesktopAgentBuilder(targetKey: string, seed?: DesktopAgentBuilderSeed | null) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<DesktopAgentBuilderOpenResult>('desktop_agent_builder_open', {
+    targetKey,
+    seed: seed ?? null,
+  });
+}
+
+export async function fetchDesktopAgentBuilderStatus(draftId: string) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_status', { draftId });
+}
+
+export async function readDesktopAgentBuilderFile(draftId: string, path: string) {
+  return invokeDesktop<string>('desktop_agent_builder_read_file', { draftId, path });
+}
+
+export async function writeDesktopAgentBuilderFile(
+  draftId: string,
+  path: string,
+  content: string,
+  expectedFingerprint: string,
+) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_write_file', {
+    draftId,
+    path,
+    content,
+    expectedFingerprint,
+  });
+}
+
+export async function updateDesktopAgentBuilderDraft(
+  draftId: string,
+  draft: DesktopAgentBuilderDraft,
+  expectedFingerprint: string,
+) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_update_draft', {
+    draftId,
+    draft,
+    expectedFingerprint,
+  });
+}
+
+export async function testDesktopAgentBuilderDraft(draftId: string, expectedFingerprint: string) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_test', { draftId, expectedFingerprint });
+}
+
+export async function markDesktopAgentBuilderPublished(draftId: string, expectedFingerprint: string) {
+  return invokeDesktop<DesktopAgentBuilderStatus>('desktop_agent_builder_mark_published', {
+    draftId,
+    expectedFingerprint,
+  });
+}
+
+export type DesktopSkillLibraryEntry = {
+  id: string;
+  name: string;
+  description: string;
+  sourceLabel: string;
+  sourcePath: string;
+  scope: 'global' | 'project' | 'shared' | 'package' | 'external' | string;
+  origin: 'built' | 'community' | 'installed' | 'project' | string;
+  enabled: boolean;
+  editable: boolean;
+  removable: boolean;
+  version?: string | null;
+  provider?: string | null;
+  owner?: string | null;
+  sourceUrl?: string | null;
+  digest?: string | null;
+  fileCount: number;
+};
+
+export type DesktopSkillLibraryFile = {
+  path: string;
+  size: number;
+  text: boolean;
+};
+
+export type DesktopSkillLibraryDetail = {
+  skill: DesktopSkillLibraryEntry;
+  files: DesktopSkillLibraryFile[];
+  skillMd: string;
+};
+
+export type DesktopCommunitySkillSummary = {
+  id: string;
+  provider: 'clawhub' | 'skills-sh' | string;
+  owner?: string | null;
+  slug: string;
+  name: string;
+  description: string;
+  version?: string | null;
+  downloads: number;
+  stars: number;
+  updatedAtMs?: number | null;
+  sourceUrl: string;
+  installed: boolean;
+};
+
+export type DesktopCommunitySkillFile = {
+  path: string;
+  size: number;
+  sha256?: string | null;
+  contentType?: string | null;
+  text?: string | null;
+};
+
+export type DesktopCommunitySkillDetail = {
+  skill: DesktopCommunitySkillSummary;
+  files: DesktopCommunitySkillFile[];
+  skillMd: string;
+  securityStatus: string;
+  securitySummary: string;
+  digest?: string | null;
+  reviewDigest: string;
+};
+
+export async function installDesktopAgentBuilderSkill(
+  draftId: string,
+  skillName: string,
+  scope: 'global' | 'project',
+  expectedFingerprint: string,
+) {
+  return invokeDesktop<DesktopSkillLibraryEntry>('desktop_agent_builder_install_skill', {
+    draftId,
+    skillName,
+    scope,
+    expectedFingerprint,
+  });
+}
+
+export async function fetchDesktopSkillLibrary() {
+  if (!isNativeDesktopShell()) return [] as DesktopSkillLibraryEntry[];
+  return invokeDesktop<DesktopSkillLibraryEntry[]>('desktop_skill_library_list');
+}
+
+export async function fetchDesktopSkillLibraryDetail(skillId: string) {
+  return invokeDesktop<DesktopSkillLibraryDetail>('desktop_skill_library_detail', { skillId });
+}
+
+export async function readDesktopSkillLibraryFile(skillId: string, path: string) {
+  return invokeDesktop<string>('desktop_skill_library_read_file', { skillId, path });
+}
+
+export async function writeDesktopSkillLibraryFile(skillId: string, path: string, content: string) {
+  return invokeDesktop<DesktopSkillLibraryDetail>('desktop_skill_library_write_file', { skillId, path, content });
+}
+
+export async function setDesktopSkillLibraryEnabled(name: string, enabled: boolean) {
+  return invokeDesktop<DesktopSkillLibraryEntry[]>('desktop_skill_library_set_enabled', { name, enabled });
+}
+
+export async function removeDesktopSkillLibraryEntry(skillId: string) {
+  return invokeDesktop<DesktopSkillLibraryEntry[]>('desktop_skill_library_remove', { skillId });
+}
+
+export async function searchDesktopCommunitySkills(
+  provider: 'clawhub' | 'skills-sh',
+  query: string,
+) {
+  if (!isNativeDesktopShell()) return [] as DesktopCommunitySkillSummary[];
+  return invokeDesktop<DesktopCommunitySkillSummary[]>('desktop_skill_community_search', { provider, query });
+}
+
+export async function fetchDesktopCommunitySkillProviders() {
+  if (!isNativeDesktopShell()) return ['clawhub'] as Array<'clawhub' | 'skills-sh'>;
+  return invokeDesktop<Array<'clawhub' | 'skills-sh'>>('desktop_skill_community_providers');
+}
+
+export async function fetchDesktopCommunitySkillDetail(input: {
+  provider: 'clawhub' | 'skills-sh';
+  owner?: string | null;
+  slug: string;
+  version?: string | null;
+}) {
+  return invokeDesktop<DesktopCommunitySkillDetail>('desktop_skill_community_detail', input);
+}
+
+export async function installDesktopCommunitySkill(input: {
+  provider: 'clawhub' | 'skills-sh';
+  owner?: string | null;
+  slug: string;
+  version?: string | null;
+  scope: 'global' | 'project';
+  reviewedDigest: string;
+}) {
+  return invokeDesktop<DesktopSkillLibraryEntry>('desktop_skill_community_install', input);
+}
+
+export async function discardDesktopAgentBuilderDraft(draftId: string, expectedFingerprint: string) {
+  return invokeDesktop<void>('desktop_agent_builder_discard', { draftId, expectedFingerprint });
+}
+
 export async function fetchDesktopBridgeState() {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<DesktopBridgeState>('desktop_bridge_state');

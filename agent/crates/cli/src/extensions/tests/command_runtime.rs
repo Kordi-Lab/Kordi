@@ -139,6 +139,7 @@ async fn extension_command_timeout_returns_error_instead_of_hanging() {
         &ExtensionBootstrap {
             paths: vec![extension_path],
             package_sources: Vec::new(),
+            skill_paths: Vec::new(),
         },
         true,
     )
@@ -178,6 +179,7 @@ async fn reload_reloads_extension_command_output() {
     let bootstrap = ExtensionBootstrap {
         paths: vec![extension_path.clone()],
         package_sources: Vec::new(),
+        skill_paths: Vec::new(),
     };
     let settings = Settings::default();
     let support_v1 = load_runtime_extension_support(cwd.path(), &settings, &bootstrap)
@@ -241,6 +243,7 @@ async fn extension_ui_notify_and_confirm_plumbing() {
     let bootstrap = ExtensionBootstrap {
         paths: vec![ext_path],
         package_sources: Vec::new(),
+        skill_paths: Vec::new(),
     };
     let settings = Settings::default();
     // Load with has_ui=true to get an ExtensionUiHandler

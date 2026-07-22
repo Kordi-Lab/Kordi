@@ -8,6 +8,7 @@ mod cloud_oauth_loopback;
 mod cloud_session;
 mod project;
 mod remote_image;
+mod skill_library;
 mod system_proxy;
 #[cfg(test)]
 mod test_support;
@@ -348,6 +349,11 @@ mod window_lifecycle_tests {
     #[test]
     fn cloud_bundle_identifier_enables_cloud_edition_without_runtime_env() {
         assert!(is_cloud_edition_context(None, None, "io.kordi.cloud"));
+        assert!(is_cloud_edition_context(
+            None,
+            None,
+            "io.kordi.cloud.factory-preview"
+        ));
     }
 
     #[test]
@@ -558,6 +564,15 @@ pub fn run() {
             chat::desktop_chat_state,
             chat::desktop_chat_session_detail,
             chat::desktop_shape_agent_draft,
+            chat::agent_builder::desktop_agent_builder_open,
+            chat::agent_builder::desktop_agent_builder_status,
+            chat::agent_builder::desktop_agent_builder_read_file,
+            chat::agent_builder::desktop_agent_builder_write_file,
+            chat::agent_builder::desktop_agent_builder_update_draft,
+            chat::agent_builder::desktop_agent_builder_test,
+            chat::agent_builder::desktop_agent_builder_mark_published,
+            chat::agent_builder::desktop_agent_builder_install_skill,
+            chat::agent_builder::desktop_agent_builder_discard,
             chat::desktop_chat_new_session,
             chat::desktop_chat_new_project_session,
             chat::desktop_chat_prepare_draft_session,
@@ -572,6 +587,16 @@ pub fn run() {
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
             chat::desktop_chat_turn_state,
+            skill_library::desktop_skill_library_list,
+            skill_library::desktop_skill_library_detail,
+            skill_library::desktop_skill_library_read_file,
+            skill_library::desktop_skill_library_write_file,
+            skill_library::desktop_skill_library_set_enabled,
+            skill_library::desktop_skill_library_remove,
+            skill_library::desktop_skill_community_providers,
+            skill_library::desktop_skill_community_search,
+            skill_library::desktop_skill_community_detail,
+            skill_library::desktop_skill_community_install,
             cloud_account_paths::cloud_account_storage_activate,
             cloud_account_paths::cloud_account_storage_current,
             cloud_account_paths::cloud_account_storage_root,

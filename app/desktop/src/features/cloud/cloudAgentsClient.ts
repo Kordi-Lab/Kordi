@@ -24,6 +24,7 @@ export type CloudAgentResource = {
 export type CloudAgentSkill = {
   name: string;
   description: string;
+  content?: string | null;
 };
 
 export type CreateCloudAgentInput = {

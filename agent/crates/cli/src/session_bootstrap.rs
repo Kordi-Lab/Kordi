@@ -35,6 +35,15 @@ pub(crate) struct SessionBootstrapOptions {
     pub append_system_prompt: Option<String>,
     pub extensions: Vec<String>,
     pub tool_selection: ToolSelectionPreference,
+    /// Optional per-session skill allowlist. `None` keeps the normal discovered
+    /// inventory while `Some` limits the runtime to the named skills.
+    pub skill_names: Option<Vec<String>>,
+    /// Additional skill roots used by profiled desktop sessions.
+    pub skill_paths: Vec<std::path::PathBuf>,
+    /// Ignore ambient extensions, packages, prompts, and skills while retaining
+    /// provider/model/auth settings. Purpose-built sessions use this to keep
+    /// their runtime contract deterministic.
+    pub isolate_extensions: bool,
     pub session: Option<String>,
     pub continue_session: bool,
     pub resume: bool,
@@ -67,6 +76,9 @@ impl From<&crate::Cli> for SessionBootstrapOptions {
             } else {
                 ToolSelectionPreference::UseSettings
             },
+            skill_names: None,
+            skill_paths: Vec::new(),
+            isolate_extensions: false,
             session: cli.session.clone(),
             continue_session: cli.r#continue,
             resume: cli.resume,
@@ -516,8 +528,19 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         cwd.clone()
     };
 
-    let project_settings = Settings::load_project(&effective_cwd);
-    let settings = Settings::merge(&global_settings, &project_settings);
+    let project_settings = if entry.isolate_extensions {
+        Settings::default()
+    } else {
+        Settings::load_project(&effective_cwd)
+    };
+    let mut settings = Settings::merge(&global_settings, &project_settings);
+    if entry.isolate_extensions {
+        settings.extensions.clear();
+        settings.skills.clear();
+        settings.disabled_skills.clear();
+        settings.prompts.clear();
+        settings.packages.clear();
+    }
     let execution_policy = ExecutionPolicy::from(settings.resolved_execution_mode());
     let startup_fallback = crate::login::preferred_startup_provider_and_model(&settings);
     let resumed_session_context = load_resumed_session_context(&conn, &session_id, session_created);
@@ -548,7 +571,11 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         settings.default_thinking.as_deref(),
     );
 
-    let agents_md = load_agents_md(&effective_cwd);
+    let agents_md = if entry.isolate_extensions {
+        None
+    } else {
+        load_agents_md(&effective_cwd)
+    };
 
     let base_prompt = entry
         .system_prompt
@@ -584,10 +611,11 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
 
     auto_install_missing_packages(&effective_cwd, &settings);
 
-    let extension_bootstrap =
+    let mut extension_bootstrap =
         ExtensionBootstrap::from_cli_values(&effective_cwd, &entry.extensions);
+    extension_bootstrap.skill_paths = entry.skill_paths.clone();
     let RuntimeExtensionSupport {
-        session_resources,
+        mut session_resources,
         tools,
         mut commands,
     } = load_runtime_extension_support_with_ui(
@@ -597,6 +625,18 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         true,
     )
     .await?;
+    if let Some(skill_names) = entry.skill_names.as_ref() {
+        let allowed = skill_names
+            .iter()
+            .map(|name| name.trim().to_ascii_lowercase())
+            .filter(|name| !name.is_empty())
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut selected = std::collections::BTreeSet::new();
+        session_resources.skills.retain(|skill| {
+            let name = skill.info.name.trim().to_ascii_lowercase();
+            allowed.contains(&name) && selected.insert(name)
+        });
+    }
     let sibling_conn = crate::turn_runner::open_sibling_conn(&conn)?;
     commands.bind_session_context(sibling_conn.clone(), session_id.clone(), None);
     let _ = commands.send_event(&kordi_hooks::Event::SessionStart).await;

@@ -22,6 +22,7 @@ const RESOURCE_MAX_ITEMS: usize = 24;
 const RESOURCE_VALUE_MAX_LEN: usize = 4_000;
 const SKILL_MAX_ITEMS: usize = 12;
 const SKILL_FIELD_MAX_LEN: usize = 240;
+const SKILL_CONTENT_MAX_LEN: usize = 96_000;
 
 #[derive(Debug)]
 pub enum CloudAgentStoreError {
@@ -90,6 +91,9 @@ fn clean_skills(skills: Vec<CloudAgentSkill>) -> Vec<CloudAgentSkill> {
         cleaned.push(CloudAgentSkill {
             name: name.chars().take(SKILL_FIELD_MAX_LEN).collect(),
             description: description.chars().take(SKILL_FIELD_MAX_LEN).collect(),
+            content: clean_optional_text(skill.content.as_deref(), SKILL_CONTENT_MAX_LEN)
+                .ok()
+                .flatten(),
         });
         if cleaned.len() >= SKILL_MAX_ITEMS {
             break;

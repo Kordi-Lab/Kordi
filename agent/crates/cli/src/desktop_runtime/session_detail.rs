@@ -99,7 +99,13 @@ fn reflection_lesson_artifacts_for_session(
     artifacts
 }
 
-fn infer_agent_label(_cwd: &std::path::Path) -> String {
+fn infer_agent_label(cwd: &std::path::Path) -> String {
+    if cwd
+        .components()
+        .any(|component| component.as_os_str() == "agent-drafts")
+    {
+        return "Kordi Factory".to_string();
+    }
     // The desktop runtime's built-in local agent has a stable product identity.
     // Project names describe workspace grouping, not the agent itself; bridge
     // agents can still provide custom labels through bridge configuration.
@@ -509,6 +515,14 @@ mod tests {
         assert_eq!(
             infer_agent_label(std::path::Path::new("/tmp/any-project")),
             "Kordi"
+        );
+    }
+
+    #[test]
+    fn factory_workspace_uses_specialist_label() {
+        assert_eq!(
+            infer_agent_label(std::path::Path::new("/tmp/.kordi/agent-drafts/draft-id")),
+            "Kordi Factory"
         );
     }
 

@@ -75,6 +75,9 @@ fn content_with_desktop_runtime(
         object.remove("deliveryState");
         object.remove("error");
     }
+    if message.cancelled {
+        content["deliveryState"] = serde_json::Value::String("cancelled".to_string());
+    }
 
     if let Some(thinking_text) = message.thinking_text.as_deref() {
         if !thinking_text.trim().is_empty() {
@@ -191,7 +194,11 @@ pub(super) fn enrich_similar_bridge_agent_message_with_desktop_runtime(
         &message_id,
         content_text,
         content_json.as_deref(),
-        "complete",
+        if message.cancelled {
+            "cancelled"
+        } else {
+            "complete"
+        },
         message,
     )?;
     Ok(true)
@@ -232,7 +239,11 @@ pub(super) fn reconcile_processing_bridge_agent_placeholder_with_desktop_runtime
         &message_id,
         content_text,
         content_json.as_deref(),
-        "complete",
+        if message.cancelled {
+            "cancelled"
+        } else {
+            "complete"
+        },
         message,
     )?;
     Ok(true)
@@ -385,7 +396,18 @@ pub(crate) fn sync_desktop_chat_message(
         created_at_ms: Some(message.timestamp_ms),
         parent_message_id: canonical_reply_to_message_id,
         delegated_exchange_id: None,
-        status: Some(if is_agent { "complete" } else { "sent" }.to_string()),
+        status: Some(
+            if is_agent {
+                if message.cancelled {
+                    "cancelled"
+                } else {
+                    "complete"
+                }
+            } else {
+                "sent"
+            }
+            .to_string(),
+        ),
         source_transport: Some("desktop-chat".to_string()),
         source_event_id: Some(canonical_desktop_message_source_event_id(
             session_id, index, message,

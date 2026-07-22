@@ -22,8 +22,16 @@ const rawAgent = {
   sourceSummary: 'Description-only docs helper',
   boundaries: ['No account access'],
   resources: [{ kind: 'text', value: 'Docs helper', summary: 'Seed description' }],
-  skills: [{ name: 'navigate-knowledge', description: 'Find source-backed answers' }],
-  modelRouting: { defaultModel: 'openai/gpt-5.1' },
+  skills: [{
+    name: 'navigate-knowledge',
+    description: 'Find source-backed answers',
+    content: 'Cite the exact source used for each answer.',
+  }],
+  modelRouting: {
+    defaultModel: 'openai/gpt-5.1',
+    tools: ['read', 'grep'],
+    plugins: ['docs-index'],
+  },
   createdAt: '2026-06-18T00:00:00Z',
   updatedAt: '2026-06-18T00:01:00Z',
   archivedAt: null,
@@ -46,6 +54,7 @@ test('normalizeCloudAgentDefinition accepts complete private cloud agents', () =
   assert.equal(agent?.agentId, 'cloud_agent_abc');
   assert.equal(agent?.accessScope, 'private');
   assert.equal(agent?.skills[0]?.name, 'navigate-knowledge');
+  assert.equal(agent?.skills[0]?.content, 'Cite the exact source used for each answer.');
   assert.equal(agent?.resources[0]?.kind, 'text');
 });
 
@@ -118,10 +127,13 @@ test('cloudAgentDefinitionToAgent maps private cloud definition into Agent page 
   assert.equal(agent.messaging, 'Cloud synced');
   assert.equal(agent.systemPrompt, 'Use docs only.');
   assert.deepEqual(agent.loadedSkills, ['navigate-knowledge']);
+  assert.deepEqual(agent.loadedTools, ['read', 'grep']);
+  assert.deepEqual(agent.loadedPlugins, ['docs-index']);
   assert.equal(agent.isOwned, true);
   assert.equal(agent.exposesIdentityFiles, false);
   assert.equal(agent.cloudAgentId, 'cloud_agent_abc');
   assert.equal(agent.cloudAgentAccessScope, 'private');
+  assert.equal(agent.cloudAgentDescription, 'Answers docs questions');
   assert.equal(agent.cloudAgentSourceSummary, 'Description-only docs helper');
 });
 
@@ -135,6 +147,7 @@ test('cloudAgentDefinitionToAgent preserves runtime-shaping context for private 
   assert.equal(agent.cloudAgentSourceSummary, 'Description-only docs helper');
   assert.deepEqual(agent.cloudAgentBoundaries, ['No account access']);
   assert.equal(agent.cloudAgentSkills?.[0]?.description, 'Find source-backed answers');
+  assert.equal(agent.cloudAgentSkills?.[0]?.content, 'Cite the exact source used for each answer.');
 });
 
 test('applyCloudAgentSyncEvents upserts and archives cloud agent definitions', () => {

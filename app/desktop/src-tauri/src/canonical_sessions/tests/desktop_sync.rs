@@ -291,6 +291,7 @@ fn active_desktop_chat_without_explicit_project_membership_stays_self_agent() {
                 tools: Vec::new(),
                 attachments: Vec::new(),
                 failed: false,
+                cancelled: false,
                 entry_id: None,
             }],
         },
@@ -401,6 +402,7 @@ fn shared_bridge_local_agent_runtime_prompt_is_not_synced_as_extra_user_message(
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
 
@@ -437,6 +439,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
     let model_notice = kordi_cli::desktop_runtime::DesktopChatMessage {
@@ -450,6 +453,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
     let assistant = kordi_cli::desktop_runtime::DesktopChatMessage {
@@ -463,6 +467,7 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
 
@@ -514,6 +519,49 @@ fn desktop_sync_links_agent_turn_to_latest_user_request() {
 
     assert_eq!(parent_message_id.as_deref(), Some(user_id.as_str()));
     assert_eq!(reply_to_message_id.as_deref(), Some(user_id.as_str()));
+}
+
+#[test]
+fn desktop_sync_preserves_cancelled_agent_turn_status() {
+    let conn = test_conn();
+    let message = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "assistant".to_string(),
+        sender: Some("Kordi".to_string()),
+        text: String::new(),
+        detail: Some("openai/gpt-test • aborted".to_string()),
+        time_label: "17:10".to_string(),
+        timestamp_ms: 2_100,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+        cancelled: true,
+        entry_id: None,
+    };
+
+    let message_id = sync_desktop_chat_message(
+        &conn,
+        "session:local",
+        "human:local",
+        "agent:local",
+        0,
+        &message,
+        None,
+    )
+    .expect("sync cancellation")
+    .expect("cancelled message id");
+
+    let (status, delivery_state): (String, String) = conn
+        .query_row(
+            "SELECT status, json_extract(content_json, '$.deliveryState')
+             FROM session_messages
+             WHERE id = ?1",
+            [&message_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read cancellation");
+    assert_eq!(status, "cancelled");
+    assert_eq!(delivery_state, "cancelled");
 }
 
 #[test]
@@ -626,6 +674,7 @@ fn desktop_sync_reuses_fork_snapshot_messages_for_inherited_history() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
     let assistant = kordi_cli::desktop_runtime::DesktopChatMessage {
@@ -639,6 +688,7 @@ fn desktop_sync_reuses_fork_snapshot_messages_for_inherited_history() {
         tools: Vec::new(),
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
 
@@ -739,6 +789,7 @@ fn desktop_sync_enriches_similar_bridge_agent_message_with_local_runtime_details
         }],
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
 
@@ -817,6 +868,7 @@ fn desktop_sync_enriches_bridge_agent_message_when_relay_collapses_whitespace() 
         }],
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
 
@@ -897,6 +949,7 @@ fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_
         }],
         attachments: Vec::new(),
         failed: false,
+        cancelled: false,
         entry_id: None,
     };
 

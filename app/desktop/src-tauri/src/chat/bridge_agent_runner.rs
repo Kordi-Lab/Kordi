@@ -284,6 +284,7 @@ mod tests {
             time_label: "10:00".to_string(),
             timestamp_ms: 1,
             failed: false,
+            cancelled: false,
             attachments: Vec::new(),
             thinking_text: None,
             tools,
