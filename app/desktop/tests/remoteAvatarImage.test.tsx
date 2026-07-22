@@ -2,12 +2,56 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { JSDOM } from 'jsdom';
+import React, { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
+
+import { IdentityAvatar } from '../src/kordi-app/components/IdentityAvatar';
 import {
   clearRemoteAvatarImageCacheForTests,
   getRemoteAvatarImageCacheStatsForTests,
+  getRemoteAvatarImageSnapshot,
   loadAvatarThroughNativeProxy,
   shouldLoadAvatarThroughNativeProxy,
 } from '../src/kordi-app/components/remoteAvatarImage';
+
+function installNativeDom() {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    pretendToBeVisual: true,
+    url: 'https://desktop.kordi.test',
+  });
+  Object.defineProperty(dom.window, '__TAURI_INTERNALS__', {
+    configurable: true,
+    value: {},
+  });
+  const target = globalThis as typeof globalThis & Record<string, unknown>;
+  const replacements: Record<string, unknown> = {
+    window: dom.window,
+    document: dom.window.document,
+    navigator: dom.window.navigator,
+    HTMLElement: dom.window.HTMLElement,
+    Element: dom.window.Element,
+    Node: dom.window.Node,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  };
+  const previous = new Map(
+    Object.keys(replacements).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  );
+  Object.entries(replacements).forEach(([key, value]) => {
+    Object.defineProperty(target, key, { configurable: true, writable: true, value });
+  });
+  return {
+    dom,
+    restore() {
+      previous.forEach((descriptor, key) => {
+        if (descriptor) Object.defineProperty(target, key, descriptor);
+        else delete target[key];
+      });
+      dom.window.close();
+    },
+  };
+}
 
 test('native desktop routes remote HTTPS avatars through its proxy-aware image loader', () => {
   assert.equal(shouldLoadAvatarThroughNativeProxy('https://images.example/avatar.png', true), true);
@@ -34,28 +78,33 @@ test('remote avatar image requests share one native load per URL', async () => {
   }]);
 });
 
-test('failed remote avatar image requests can be retried', async () => {
+test('failed remote avatar image requests enter a retry cooldown', async () => {
   clearRemoteAvatarImageCacheForTests();
   let attempts = 0;
   const invoke = async <T,>(): Promise<T> => {
     attempts += 1;
-    if (attempts === 1) throw new Error('offline');
-    return 'data:image/png;base64,recovered' as T;
+    throw new Error('offline');
   };
 
   await assert.rejects(loadAvatarThroughNativeProxy('https://images.example/retry.png', invoke));
-  assert.equal(
-    await loadAvatarThroughNativeProxy('https://images.example/retry.png', invoke),
-    'data:image/png;base64,recovered',
+  await assert.rejects(
+    loadAvatarThroughNativeProxy('https://images.example/retry.png', invoke),
+    /offline/,
   );
-  assert.equal(attempts, 2);
+  assert.equal(attempts, 1);
+  assert.equal(
+    getRemoteAvatarImageSnapshot('https://images.example/retry.png').status,
+    'failed',
+  );
 });
 
 test('native avatar failures do not authorize a renderer-side URL fallback', () => {
-  const source = readFileSync(new URL('../src/kordi-app/components/IdentityAvatar.tsx', import.meta.url), 'utf8');
+  const avatarSource = readFileSync(new URL('../src/kordi-app/components/IdentityAvatar.tsx', import.meta.url), 'utf8');
+  const loaderSource = readFileSync(new URL('../src/kordi-app/components/remoteAvatarImage.ts', import.meta.url), 'utf8');
 
-  assert.match(source, /setNativeImage\(\{ source, dataUrl: null \}\)/);
-  assert.doesNotMatch(source, /setNativeImage\(\{ source, dataUrl: source \}\)/);
+  assert.match(avatarSource, /remoteAvatar\.status === 'ready' \? remoteAvatar\.dataUrl : null/);
+  assert.match(loaderSource, /desktop_fetch_remote_image_data_url/);
+  assert.doesNotMatch(avatarSource, /remoteAvatar\.status === 'failed'[^\n]+originalImageUrl/);
 });
 
 test('resolved remote avatars stay within a byte-budgeted LRU cache', async () => {
@@ -95,4 +144,133 @@ test('a single result larger than the cache budget is returned but not retained'
 
   assert.equal(calls, 2);
   assert.equal(getRemoteAvatarImageCacheStatsForTests().entries, 0);
+});
+
+test('known native avatars render a neutral first frame instead of generated identity art', () => {
+  const installed = installNativeDom();
+  clearRemoteAvatarImageCacheForTests();
+
+  try {
+    const markup = renderToStaticMarkup(
+      <IdentityAvatar
+        kind="human"
+        seed="acct_shu"
+        name="Shu Yang"
+        imageUrl="https://images.example/shu.png"
+      />,
+    );
+
+    assert.match(markup, /data-avatar-state="pending"/);
+    assert.doesNotMatch(markup, />SH</);
+    assert.doesNotMatch(markup, /src="https:\/\/images\.example\/shu\.png"/);
+  } finally {
+    installed.restore();
+  }
+});
+
+test('a memory-cached native avatar is present on the first render', async () => {
+  const installed = installNativeDom();
+  clearRemoteAvatarImageCacheForTests();
+  const dataUrl = 'data:image/png;base64,c2h1';
+
+  try {
+    await loadAvatarThroughNativeProxy(
+      'https://images.example/shu.png',
+      async <T,>() => dataUrl as T,
+    );
+    const markup = renderToStaticMarkup(
+      <IdentityAvatar
+        kind="human"
+        seed="acct_shu"
+        name="Shu Yang"
+        imageUrl="https://images.example/shu.png"
+      />,
+    );
+
+    assert.match(markup, /data-avatar-state="ready"/);
+    assert.match(markup, /src="data:image\/png;base64,c2h1"/);
+    assert.doesNotMatch(markup, />SH</);
+  } finally {
+    installed.restore();
+  }
+});
+
+test('a blocked native avatar settles on one deterministic fallback', async () => {
+  const installed = installNativeDom();
+  clearRemoteAvatarImageCacheForTests();
+  let calls = 0;
+
+  try {
+    await assert.rejects(loadAvatarThroughNativeProxy(
+      'https://images.example/blocked.png',
+      async <T,>() => {
+        calls += 1;
+        throw new Error('blocked');
+      },
+    ));
+    const markup = renderToStaticMarkup(
+      <IdentityAvatar
+        kind="human"
+        seed="acct_shu"
+        name="Shu Yang"
+        imageUrl="https://images.example/blocked.png"
+      />,
+    );
+
+    assert.match(markup, /data-avatar-state="failed"/);
+    assert.match(markup, />SH</);
+    assert.doesNotMatch(markup, /<img/);
+    await assert.rejects(loadAvatarThroughNativeProxy(
+      'https://images.example/blocked.png',
+      async <T,>() => {
+        calls += 1;
+        return 'data:image/png;base64,dW5yZWFjaGFibGU=' as T;
+      },
+    ));
+    assert.equal(calls, 1);
+  } finally {
+    installed.restore();
+  }
+});
+
+test('duplicate mounted avatars share one request and update together', async () => {
+  const installed = installNativeDom();
+  clearRemoteAvatarImageCacheForTests();
+  const host = document.createElement('div');
+  document.body.append(host);
+  let root: Root | null = createRoot(host);
+  let resolveImage: ((value: string) => void) | null = null;
+  let calls = 0;
+  const request = loadAvatarThroughNativeProxy(
+    'https://images.example/shared.png',
+    async <T,>() => new Promise<T>((resolve) => {
+      calls += 1;
+      resolveImage = (value) => resolve(value as T);
+    }),
+  );
+
+  try {
+    await act(async () => {
+      root?.render(
+        <>
+          <IdentityAvatar kind="human" seed="one" name="One" imageUrl="https://images.example/shared.png" />
+          <IdentityAvatar kind="human" seed="two" name="Two" imageUrl="https://images.example/shared.png" />
+        </>,
+      );
+    });
+    assert.equal(host.querySelectorAll('[data-avatar-state="pending"]').length, 2);
+    assert.equal(calls, 1);
+
+    await act(async () => {
+      resolveImage?.('data:image/png;base64,c2hhcmVk');
+      await request;
+    });
+    assert.equal(host.querySelectorAll('[data-avatar-state="ready"]').length, 2);
+    assert.equal(host.querySelectorAll('img[src="data:image/png;base64,c2hhcmVk"]').length, 2);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    installed.restore();
+  }
 });
