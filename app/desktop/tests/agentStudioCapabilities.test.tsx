@@ -24,6 +24,17 @@ test('agent builds use Blueprint instead of a duplicate Files tab', () => {
   assert.deepEqual(visibleAgentStudioTabIds(true, 'skill'), ['files', 'runs', 'history']);
 });
 
+test('Factory loads on demand in a dedicated production bundle', () => {
+  const switchSource = readFileSync(new URL('../src/app/MainContentSwitch.tsx', import.meta.url), 'utf8');
+  const pagesSource = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const viteSource = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+
+  assert.match(switchSource, /lazy\(\(\) => import\('@\/kordi-app\/agents\/AgentsPage'\)/);
+  assert.match(switchSource, /<Suspense fallback=/);
+  assert.doesNotMatch(pagesSource, /export \{ AgentsPage \}/);
+  assert.match(viteSource, /name: 'agent-factory'/);
+});
+
 function factoryWorkspace(onAccessScopeChange: (scope: CloudAgentAccessScope) => void = () => undefined) {
   return (
     <AgentStudioWorkspace
