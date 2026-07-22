@@ -51,6 +51,7 @@ import {
   suppressCloudBridgeUnreadCounts,
   transitionCloudUnreadReadiness,
   cloudSessionForksByIdEqual,
+  cloudAgentFailedTurnSnapshot,
   shouldRunLocalCloudAgentForCloudMessage,
   cloudAgentResponseExistsForRequest,
   cloudGroupAgentResponseExistsForRequest,
@@ -2806,6 +2807,57 @@ test('cloud direct local-agent completed turn replaces processing while Cloud re
   assert.equal(agentMessage?.turn?.completed, true);
   assert.equal(agentMessage?.turn?.assistantText, 'I checked it and found the issue.');
   assert.equal(view.messages.some((candidate) => candidate.turn?.status === 'processing'), false);
+});
+
+test('cloud direct local-agent provider failure replaces processing immediately with an actionable failure', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_direct_local_agent_no_provider',
+    fromAccountId: 'acct_peer',
+    toAccountId: 'acct_me',
+    body: '@MeCloudKordi can you answer?',
+    direction: 'incoming',
+    createdAt: '2026-07-22T11:06:04.000Z',
+  };
+  const failedTurn = cloudAgentFailedTurnSnapshot({
+    requestId: request.messageId,
+    sessionId: 'cloud-agent:acct_me:acct_peer',
+    prompt: 'can you answer?',
+    error: new Error('No OpenAI credentials are available. Add OPENAI_API_KEY or sign in with ChatGPT account access.'),
+    now: Date.parse('2026-07-22T11:06:04.050Z'),
+  });
+  const state = buildCloudDesktopBridgeState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+    localAgentTurnsByRequestId: { [request.messageId]: failedTurn },
+  });
+
+  assert.equal(state.conversations[0].awaitingReply, false);
+  const view = mapBridgeConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+  const agentMessage = view.messages.find((candidate) => candidate.role === 'owned-agent');
+  assert.equal(agentMessage?.turn?.status, 'failed');
+  assert.equal(agentMessage?.turn?.completed, true);
+  assert.equal(agentMessage?.turn?.error, 'No provider configured yet.');
+  assert.equal(view.messages.some((candidate) => candidate.turn?.status === 'processing'), false);
+});
+
+test('cloud direct local-agent execution does not wait for remote response guards or rerun after publish failure', () => {
+  const source = readFileSync(new URL('../src/features/cloud/useCloudBridgeState.ts', import.meta.url), 'utf8');
+  const effectStart = source.indexOf('for (const [peerId, messages] of cloudMessageIndex.byPeerId)');
+  const effectEnd = source.indexOf('\n  }, [account, client, cloudAgentRuntimeRoutesBySessionId', effectStart);
+  assert.ok(effectStart >= 0 && effectEnd > effectStart, 'expected direct Cloud agent effect');
+  const effect = source.slice(effectStart, effectEnd);
+  const startTurnIndex = effect.indexOf('const startedTurn = await startDesktopChatMessage');
+  const awaitGuardIndex = effect.indexOf('await responseGuardPromise');
+
+  assert.ok(startTurnIndex >= 0, 'expected local agent execution');
+  assert.ok(awaitGuardIndex > startTurnIndex, 'remote guards must only block response publication');
+  assert.match(effect, /const responseGuardPromise = Promise\.all\(/);
+  assert.doesNotMatch(effect.slice(0, startTurnIndex), /await client\.listMessages|await cloudFallbackRunAlreadyOwnsRequest/);
+  assert.doesNotMatch(effect, /processedCloudAgentMentionIdsRef\.current\.delete\(message\.messageId\)/);
+  assert.match(effect, /response publish failed/);
 });
 
 test('cloud direct local-agent completed fallback timestamp is stable across renders', () => {
