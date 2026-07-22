@@ -216,13 +216,17 @@ export function AddToAgentControl({
   );
 }
 
+export type SkillLibraryMode = 'installed' | 'community';
+
 export function SkillLibraryView({
+  mode,
   skills,
   selectedSkillId,
   loading,
   error,
   mutatingSkillId,
   agentTargets,
+  onModeChange,
   onSelectSkill,
   onRefresh,
   onSetEnabled,
@@ -230,12 +234,14 @@ export function SkillLibraryView({
   onInstalled,
   onAddToAgent,
 }: {
+  mode: SkillLibraryMode;
   skills: DesktopSkillLibraryEntry[];
   selectedSkillId: string | null;
   loading: boolean;
   error: string | null;
   mutatingSkillId: string | null;
   agentTargets: SkillAgentTarget[];
+  onModeChange: (mode: SkillLibraryMode) => void;
   onSelectSkill: (skillId: string) => void;
   onRefresh: () => Promise<DesktopSkillLibraryEntry[]>;
   onSetEnabled: (skill: DesktopSkillLibraryEntry, enabled: boolean) => Promise<DesktopSkillLibraryEntry | null>;
@@ -243,8 +249,6 @@ export function SkillLibraryView({
   onInstalled: (skill: DesktopSkillLibraryEntry) => Promise<void> | void;
   onAddToAgent: (agentId: string, skill: DesktopSkillLibraryEntry, content: string) => Promise<void> | void;
 }) {
-  const [mode, setMode] = useState<'installed' | 'community'>('installed');
-
   return (
     <main className="app-agent-studio-main app-skill-library-main">
       <header className="app-agent-studio-header">
@@ -255,8 +259,8 @@ export function SkillLibraryView({
         <button type="button" className="app-agent-studio-button is-ghost" onClick={() => void onRefresh()} disabled={loading}><RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />Refresh</button>
       </header>
       <div className="app-skill-library-mode" role="tablist" aria-label="Skill Library sections">
-        <button type="button" role="tab" aria-selected={mode === 'installed'} className={cn(mode === 'installed' && 'is-active')} onClick={() => setMode('installed')}>My skills <span>{skills.length}</span></button>
-        <button type="button" role="tab" aria-selected={mode === 'community'} className={cn(mode === 'community' && 'is-active')} onClick={() => setMode('community')}>Community</button>
+        <button type="button" role="tab" aria-selected={mode === 'installed'} className={cn(mode === 'installed' && 'is-active')} onClick={() => onModeChange('installed')}>My skills <span>{skills.length}</span></button>
+        <button type="button" role="tab" aria-selected={mode === 'community'} className={cn(mode === 'community' && 'is-active')} onClick={() => onModeChange('community')}>Community</button>
       </div>
       {mode === 'installed' ? (
         <InstalledSkillView
