@@ -357,6 +357,16 @@ mod window_lifecycle_tests {
     }
 
     #[test]
+    fn cloud_preview_bundle_identifier_uses_isolated_cloud_storage() {
+        assert!(is_cloud_edition_context(
+            None,
+            None,
+            "io.kordi.cloud.group-management-preview"
+        ));
+        assert!(!is_cloud_edition_context(None, None, "io.kordi.cloudish"));
+    }
+
+    #[test]
     fn desktop_bundle_identifier_defaults_to_local_edition() {
         assert!(!is_cloud_edition_context(None, None, "io.kordi.desktop"));
     }
@@ -502,6 +512,7 @@ pub fn run() {
             canonical_sessions::desktop_canonical_rename_session,
             canonical_sessions::desktop_canonical_update_session_metadata,
             canonical_sessions::desktop_canonical_add_session_participants,
+            canonical_sessions::desktop_canonical_add_group_members_fast,
             canonical_sessions::desktop_canonical_remove_session_participant,
             canonical_sessions::desktop_canonical_set_session_participant_role,
             canonical_sessions::desktop_canonical_mark_session_read,

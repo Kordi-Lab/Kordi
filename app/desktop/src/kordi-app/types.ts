@@ -74,6 +74,8 @@ export type OutreachThreadSummary = {
 export type ConversationParticipant = {
   id: string;
   name: string;
+  /** Canonical profile name used where viewer-local labels such as "Me" would diverge. */
+  publicName?: string | null;
   kind: 'human' | 'agent' | string;
   role: string;
   source?: string | null;
@@ -132,8 +134,14 @@ export type SessionTaskActivity = {
 
 export type Conversation = {
   id: string;
+  /** UI-only session draft. It must not be written to canonical storage before the first send. */
+  transientDraft?: boolean;
+  /** Internal activity timestamp used while composing workspace view models. */
+  _updatedAtMs?: number;
   canonicalSessionId?: string;
   canonicalCreatedByIdentityId?: string;
+  /** Canonical session creation time. Unlike `_updatedAtMs`, this never follows chat activity. */
+  canonicalCreatedAtMs?: number;
   canonicalStoragePath?: string;
   canonicalParticipantCount?: number;
   canonicalMessageCount?: number;
@@ -215,9 +223,19 @@ export type ParticipantSpaceViewModel = {
   unread: number;
   updatedAtLabel?: string;
   updatedAtMs: number;
+  /** Creation time of the logical group root, not its oldest or latest chat activity. */
+  createdAtMs?: number | null;
   preview: string;
   avatarStack: ParticipantSpaceAvatar[];
   sessions: ParticipantSpaceSessionViewModel[];
+  groupCreatorIdentityId?: string | null;
+  groupAdminIdentityIds?: string[];
+  /**
+   * Every persisted session that carries membership for this logical group.
+   * This includes hidden legacy empty shells so member/admin actions can keep
+   * their state consistent without showing those shells as chat sessions.
+   */
+  membershipSessionIds?: string[];
 };
 
 export type Contact = {
@@ -589,6 +607,12 @@ export type OpenCanonicalSessionFastResult = {
   participants: CanonicalSessionParticipant[];
 };
 
+export type CanonicalGroupMembershipDelta = {
+  sessions: CanonicalSession[];
+  participants: CanonicalSessionParticipant[];
+  messages: CanonicalSessionMessage[];
+};
+
 export type UpsertCanonicalIdentityRequest = {
   id?: string | null;
   kind: 'human' | 'agent';
@@ -692,6 +716,22 @@ export type AddCanonicalSessionParticipantsRequest = {
   sessionId: string;
   identityIds: string[];
   addedByIdentityId: string;
+};
+
+export type AddCanonicalGroupMembersRequest = {
+  sessions: Array<{
+    sessionId: string;
+    groupSpaceId: string;
+    addedContactIds: string[];
+    addedParticipantNames: string[];
+  }>;
+  identityIds: string[];
+  addedByIdentityId: string;
+  joinEvents: Array<{
+    eventId: string;
+    memberIdentityId: string;
+    createdAtMs: number;
+  }>;
 };
 
 export type RemoveCanonicalSessionParticipantRequest = {

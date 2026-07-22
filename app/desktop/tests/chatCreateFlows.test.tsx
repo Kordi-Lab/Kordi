@@ -661,7 +661,7 @@ test('existingBlankSessionIdForParticipantSpace ignores New session rows that al
   assert.equal(existingBlankSessionIdForParticipantSpace(space), null);
 });
 
-test('participantSpaceCanonicalSessionIds returns every canonical session in a group space', () => {
+test('participantSpaceCanonicalSessionIds excludes transient and persisted-empty group continuations', () => {
   const space = participantSpace({
     kind: 'group',
     id: 'group:session:group:root',
@@ -680,6 +680,40 @@ test('participantSpaceCanonicalSessionIds returns every canonical session in a g
         ...participantSpace().sessions[0],
         id: 'session:group:root',
         canonicalSessionId: 'session:group:root',
+      },
+      {
+        ...participantSpace().sessions[0],
+        id: 'session:group:legacy-empty',
+        canonicalSessionId: 'session:group:legacy-empty',
+        title: 'New chat',
+        preview: 'New chat',
+        conversation: {
+          ...participantSpace().sessions[0].conversation,
+          id: 'session:group:legacy-empty',
+          canonicalSessionId: 'session:group:legacy-empty',
+          name: 'New chat',
+          subtitle: 'New chat',
+          messages: [],
+          canonicalMessageCount: 0,
+          metadata: { createdFrom: 'cloud-group-sync', groupId: 'session:group:root', groupSpaceId: 'session:group:root' },
+        },
+      },
+      {
+        ...participantSpace().sessions[0],
+        id: 'session:group:local-draft',
+        canonicalSessionId: 'session:group:local-draft',
+        title: 'New session',
+        preview: '',
+        conversation: {
+          ...participantSpace().sessions[0].conversation,
+          id: 'session:group:local-draft',
+          transientDraft: true,
+          canonicalSessionId: 'session:group:local-draft',
+          name: 'New session',
+          subtitle: '',
+          messages: [],
+          canonicalMessageCount: 0,
+        },
       },
     ],
   });
@@ -704,5 +738,6 @@ test('buildChatCreateGroupMetadata records stable admin and member policy', () =
   assert.equal(metadata.customName, 'Design crew');
   assert.equal(metadata.groupId, 'session:group:root');
   assert.equal(metadata.groupSpaceId, 'session:group:root');
+  assert.equal(metadata.groupCreatorIdentityId, 'human:me');
   assert.equal(metadata.memberApprovalPolicy, 'under-50-open');
 });

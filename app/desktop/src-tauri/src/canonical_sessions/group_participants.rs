@@ -3,7 +3,11 @@ use serde_json::Value;
 
 use super::{now_ms, select_session, upsert_participant, CanonicalSession};
 
-fn manual_title_metadata(session: &CanonicalSession, updated_at_ms: i64) -> Result<String, String> {
+fn manual_title_metadata(
+    session: &CanonicalSession,
+    updated_at_ms: i64,
+    updated_by_account_id: Option<&str>,
+) -> Result<String, String> {
     let mut metadata = match session.metadata.clone() {
         Some(Value::Object(map)) => map,
         _ => serde_json::Map::new(),
@@ -30,9 +34,19 @@ fn manual_title_metadata(session: &CanonicalSession, updated_at_ms: i64) -> Resu
         "sessionTitleUpdatedAtMs".to_string(),
         Value::from(updated_at_ms),
     );
-    // Cloud assigns the authoritative actor after accepting this edit. A new
-    // local rename must not inherit the actor from an older synchronized edit.
-    metadata.remove("sessionTitleUpdatedByAccountId");
+    if let Some(account_id) = updated_by_account_id
+        .map(str::trim)
+        .filter(|value| value.starts_with("acct_"))
+    {
+        metadata.insert(
+            "sessionTitleUpdatedByAccountId".to_string(),
+            Value::String(account_id.to_string()),
+        );
+    } else {
+        // A rename without a known Cloud actor must not inherit the actor from
+        // an older synchronized edit.
+        metadata.remove("sessionTitleUpdatedByAccountId");
+    }
     serde_json::to_string(&Value::Object(metadata)).map_err(|err| err.to_string())
 }
 
@@ -48,10 +62,20 @@ pub(crate) fn ensure_group_session(
     Ok(session)
 }
 
+#[cfg(test)]
 pub(crate) fn rename_session_in_db(
     conn: &Connection,
     session_id: &str,
     title: &str,
+) -> Result<(), String> {
+    rename_session_in_db_with_actor_account(conn, session_id, title, None)
+}
+
+pub(crate) fn rename_session_in_db_with_actor_account(
+    conn: &Connection,
+    session_id: &str,
+    title: &str,
+    updated_by_account_id: Option<&str>,
 ) -> Result<(), String> {
     let title = title.trim();
     if title.is_empty() {
@@ -59,7 +83,7 @@ pub(crate) fn rename_session_in_db(
     }
     let session = ensure_group_session(conn, session_id)?;
     let updated_at_ms = now_ms();
-    let metadata = manual_title_metadata(&session, updated_at_ms)?;
+    let metadata = manual_title_metadata(&session, updated_at_ms, updated_by_account_id)?;
     conn.execute(
         "UPDATE sessions SET title = ?2, metadata_json = ?3, updated_at_ms = ?4 WHERE id = ?1",
         params![session_id, title, metadata, updated_at_ms],
@@ -80,7 +104,7 @@ pub(crate) fn rename_any_session_title_in_db(
     let session =
         select_session(conn, session_id)?.ok_or_else(|| "Session not found".to_string())?;
     let updated_at_ms = now_ms();
-    let metadata = manual_title_metadata(&session, updated_at_ms)?;
+    let metadata = manual_title_metadata(&session, updated_at_ms, None)?;
     conn.execute(
         "UPDATE sessions SET title = ?2, metadata_json = ?3, updated_at_ms = ?4 WHERE id = ?1",
         params![session_id, title, metadata, updated_at_ms],
@@ -138,6 +162,61 @@ pub(crate) fn metadata_admin_identity_ids(metadata: Option<&Value>) -> Vec<Strin
         .unwrap_or_default()
 }
 
+fn metadata_group_space_id(metadata: Option<&Value>) -> Option<String> {
+    metadata
+        .and_then(Value::as_object)
+        .and_then(|metadata| {
+            metadata
+                .get("groupSpaceId")
+                .and_then(Value::as_str)
+                .or_else(|| metadata.get("groupId").and_then(Value::as_str))
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn metadata_group_creator_identity_id(metadata: Option<&Value>) -> Option<String> {
+    metadata
+        .and_then(Value::as_object)
+        .and_then(|metadata| metadata.get("groupCreatorIdentityId"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+pub(crate) fn group_root_session(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<CanonicalSession, String> {
+    let session = ensure_group_session(conn, session_id)?;
+    let Some(root_session_id) = metadata_group_space_id(session.metadata.as_ref()) else {
+        return Ok(session);
+    };
+    if root_session_id == session.id {
+        return Ok(session);
+    }
+    let Some(root_session) = select_session(conn, &root_session_id)? else {
+        return Ok(session);
+    };
+    if root_session.kind != "group" {
+        return Ok(session);
+    }
+    Ok(root_session)
+}
+
+pub(crate) fn group_creator_identity_id(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<String, String> {
+    let root_session = group_root_session(conn, session_id)?;
+    Ok(
+        metadata_group_creator_identity_id(root_session.metadata.as_ref())
+            .unwrap_or(root_session.created_by_identity_id),
+    )
+}
+
 pub(crate) fn participant_is_active(
     conn: &Connection,
     session_id: &str,
@@ -156,19 +235,21 @@ pub(crate) fn group_admin_identity_ids(
     conn: &Connection,
     session_id: &str,
 ) -> Result<Vec<String>, String> {
-    let session = ensure_group_session(conn, session_id)?;
-    let mut admin_ids = Vec::new();
-    for identity_id in metadata_admin_identity_ids(session.metadata.as_ref()) {
-        if !admin_ids.contains(&identity_id)
-            && participant_is_active(conn, session_id, &identity_id)?
+    let root_session = group_root_session(conn, session_id)?;
+    let creator_identity_id = metadata_group_creator_identity_id(root_session.metadata.as_ref())
+        .unwrap_or_else(|| root_session.created_by_identity_id.clone());
+    let mut admin_ids = vec![creator_identity_id];
+    let metadata_admin_ids = metadata_admin_identity_ids(root_session.metadata.as_ref());
+    for identity_id in &metadata_admin_ids {
+        if !admin_ids.contains(identity_id)
+            && participant_is_active(conn, &root_session.id, identity_id)?
         {
-            admin_ids.push(identity_id);
+            admin_ids.push(identity_id.clone());
         }
     }
-    if !admin_ids.is_empty() {
+    if !metadata_admin_ids.is_empty() {
         return Ok(admin_ids);
     }
-
     let mut stmt = conn
         .prepare(
             "SELECT identity_id FROM session_participants
@@ -177,7 +258,7 @@ pub(crate) fn group_admin_identity_ids(
         )
         .map_err(|err| err.to_string())?;
     let role_admins = stmt
-        .query_map(params![session_id], |row| row.get::<_, String>(0))
+        .query_map(params![root_session.id], |row| row.get::<_, String>(0))
         .map_err(|err| err.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
@@ -185,13 +266,6 @@ pub(crate) fn group_admin_identity_ids(
         if !admin_ids.contains(&identity_id) {
             admin_ids.push(identity_id);
         }
-    }
-    if !admin_ids.is_empty() {
-        return Ok(admin_ids);
-    }
-
-    if participant_is_active(conn, session_id, &session.created_by_identity_id)? {
-        admin_ids.push(session.created_by_identity_id);
     }
     Ok(admin_ids)
 }
@@ -217,6 +291,80 @@ pub(crate) fn require_group_admin(
     Err(format!("Only group admins can {action}."))
 }
 
+pub(crate) fn require_group_member(
+    conn: &Connection,
+    session_id: &str,
+    actor_identity_id: Option<&str>,
+    action: &str,
+) -> Result<(), String> {
+    let Some(actor_identity_id) = actor_identity_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+    let root_session = group_root_session(conn, session_id)?;
+    if participant_is_active(conn, &root_session.id, actor_identity_id)? {
+        return Ok(());
+    }
+    Err(format!("Only group members can {action}."))
+}
+
+pub(crate) fn require_group_creator(
+    conn: &Connection,
+    session_id: &str,
+    actor_identity_id: Option<&str>,
+    action: &str,
+) -> Result<(), String> {
+    let Some(actor_identity_id) = actor_identity_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+    if group_creator_identity_id(conn, session_id)? == actor_identity_id {
+        return Ok(());
+    }
+    Err(format!("Only the group creator can {action}."))
+}
+
+pub(crate) fn require_group_member_removal_permission(
+    conn: &Connection,
+    session_id: &str,
+    actor_identity_id: Option<&str>,
+    target_identity_id: &str,
+) -> Result<(), String> {
+    let target_identity_id = target_identity_id.trim();
+    let creator_identity_id = group_creator_identity_id(conn, session_id)?;
+    if target_identity_id == creator_identity_id {
+        return Err("The group creator cannot be removed from the group.".to_string());
+    }
+    let Some(actor_identity_id) = actor_identity_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+    if actor_identity_id == target_identity_id {
+        return Ok(());
+    }
+    require_group_admin(
+        conn,
+        session_id,
+        Some(actor_identity_id),
+        "remove people from this group",
+    )?;
+    if group_admin_identity_ids(conn, session_id)?
+        .iter()
+        .any(|admin_id| admin_id == target_identity_id)
+    {
+        return Err(
+            "Only the group creator can change admins. Remove the admin role first.".to_string(),
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn set_session_participant_role_in_db(
     conn: &Connection,
     session_id: &str,
@@ -239,6 +387,10 @@ pub(crate) fn set_session_participant_role_in_db(
     if existing_role.is_none() {
         return Err("Participant not found in group".to_string());
     }
+    let creator_identity_id = group_creator_identity_id(conn, session_id)?;
+    if identity_id == creator_identity_id && !matches!(role.as_str(), "admin" | "self") {
+        return Err("Group creator must remain an admin".to_string());
+    }
     let admin_ids = group_admin_identity_ids(conn, session_id)?;
     if admin_ids.iter().any(|admin_id| admin_id == identity_id)
         && !matches!(role.as_str(), "admin")
@@ -247,7 +399,9 @@ pub(crate) fn set_session_participant_role_in_db(
         return Err("Group must keep at least one admin".to_string());
     }
     conn.execute(
-        "UPDATE session_participants SET role = ?3 WHERE session_id = ?1 AND identity_id = ?2 AND state = 'active'",
+        "UPDATE session_participants
+         SET role = CASE WHEN role = 'self' THEN 'self' ELSE ?3 END
+         WHERE session_id = ?1 AND identity_id = ?2 AND state = 'active'",
         params![session_id, identity_id, role],
     )
     .map_err(|err| err.to_string())?;
@@ -270,6 +424,9 @@ pub(crate) fn remove_session_participant_in_db(
         .map_err(|err| err.to_string())?;
     if existing_role.is_none() {
         return Err("Participant not found in group".to_string());
+    }
+    if identity_id == group_creator_identity_id(conn, session_id)? {
+        return Err("The group creator cannot be removed from the group.".to_string());
     }
     let admin_ids = group_admin_identity_ids(conn, session_id)?;
     if admin_ids.iter().any(|admin_id| admin_id == identity_id) && admin_ids.len() <= 1 {

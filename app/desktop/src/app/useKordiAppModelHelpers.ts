@@ -2,6 +2,7 @@ import {
   adminIdentityIdsFromMetadata,
   buildChatGroupBridgeUpdateParticipants,
 } from '@/features/chat/chatCreateFlows';
+import { sharedGroupCustomTitle } from '@/features/chat/groupTitle';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import type {
   CanonicalSessionMessage,
@@ -214,15 +215,70 @@ export function sessionMetadataRecord(state: CanonicalSessionState | null, sessi
 
 export function activeGroupAdminIds(state: CanonicalSessionState | null, sessionId: string) {
   if (!state) return [];
-  const metadataAdminIds = adminIdentityIdsFromMetadata(sessionMetadataRecord(state, sessionId));
-  if (metadataAdminIds.length > 0) return metadataAdminIds;
-  return state.participants
+  const creatorIdentityId = canonicalGroupCreatorIdentityId(state, sessionId);
+  const session = state.sessions.find((candidate) => candidate.id === sessionId);
+  if (!session) return creatorIdentityId ? [creatorIdentityId] : [];
+  const sessionMetadata = canonicalMetadataRecord(session.metadata);
+  const groupSpaceId = metadataGroupSpaceId(sessionMetadata) || sessionId;
+  const rootSession = state.sessions.find((candidate) => candidate.id === groupSpaceId) ?? session;
+  const rootMetadata = canonicalMetadataRecord(rootSession.metadata);
+  const rootRevision = typeof rootMetadata.groupAdminUpdatedAtMs === 'number'
+    && Number.isFinite(rootMetadata.groupAdminUpdatedAtMs)
+    ? rootMetadata.groupAdminUpdatedAtMs
+    : 0;
+  const newerReplicatedSession = state.sessions
+    .filter((candidate) => {
+      if (candidate.id === rootSession.id) return false;
+      const metadata = canonicalMetadataRecord(candidate.metadata);
+      if ((metadataGroupSpaceId(metadata) || candidate.id) !== groupSpaceId) return false;
+      const revision = typeof metadata.groupAdminUpdatedAtMs === 'number'
+        && Number.isFinite(metadata.groupAdminUpdatedAtMs)
+        ? metadata.groupAdminUpdatedAtMs
+        : 0;
+      return revision > rootRevision;
+    })
+    .sort((left, right) => {
+      const leftMetadata = canonicalMetadataRecord(left.metadata);
+      const rightMetadata = canonicalMetadataRecord(right.metadata);
+      const leftRevision = typeof leftMetadata.groupAdminUpdatedAtMs === 'number' ? leftMetadata.groupAdminUpdatedAtMs : 0;
+      const rightRevision = typeof rightMetadata.groupAdminUpdatedAtMs === 'number' ? rightMetadata.groupAdminUpdatedAtMs : 0;
+      return rightRevision - leftRevision || right.updatedAtMs - left.updatedAtMs;
+    })[0];
+  const authoritySession = newerReplicatedSession ?? rootSession;
+  const metadataAdminIds = adminIdentityIdsFromMetadata(canonicalMetadataRecord(authoritySession.metadata));
+  if (metadataAdminIds.length > 0) {
+    return [...new Set([creatorIdentityId, ...metadataAdminIds].filter(Boolean))];
+  }
+  const roleAdminIds = state.participants
     .filter((participant) => (
-      participant.sessionId === sessionId
+      participant.sessionId === authoritySession.id
       && participant.state === 'active'
       && participant.role === 'admin'
     ))
     .map((participant) => participant.identityId);
+  return [...new Set([
+    creatorIdentityId,
+    ...roleAdminIds,
+  ].map((identityId) => identityId?.trim() ?? '').filter(Boolean))];
+}
+
+export function canonicalGroupCreatorIdentityId(state: CanonicalSessionState | null, sessionId: string) {
+  if (!state) return '';
+  const session = state.sessions.find((candidate) => candidate.id === sessionId);
+  if (!session) return '';
+  const metadata = canonicalMetadataRecord(session.metadata);
+  const groupSpaceId = metadataGroupSpaceId(metadata);
+  const rootSession = groupSpaceId
+    ? state.sessions.find((candidate) => candidate.id === groupSpaceId)
+    : null;
+  const rootMetadataCreator = rootSession
+    ? metadataString(canonicalMetadataRecord(rootSession.metadata), 'groupCreatorIdentityId')
+    : '';
+  return rootMetadataCreator
+    || rootSession?.createdByIdentityId?.trim()
+    || metadataString(metadata, 'groupCreatorIdentityId')
+    || session.createdByIdentityId?.trim()
+    || '';
 }
 
 export function canonicalGroupParticipantsForSession(state: CanonicalSessionState | null, sessionId: string): ConversationParticipant[] {
@@ -323,27 +379,35 @@ function nonGenericGroupInviteTitle(value?: string | null) {
   return title;
 }
 
-function groupInviteTitleFromSession(state: CanonicalSessionState | null, sessionId: string) {
-  const session = state?.sessions.find((candidate) => candidate.id === sessionId);
-  if (!session) return null;
-  const metadata = canonicalMetadataRecord(session.metadata);
-  return nonGenericGroupInviteTitle(metadataString(metadata, 'customName'))
-    || nonGenericGroupInviteTitle(session.title);
-}
-
 export function canonicalGroupInviteTitleForSession(state: CanonicalSessionState | null, sessionId: string) {
   const session = state?.sessions.find((candidate) => candidate.id === sessionId);
   if (!session) return null;
   const metadata = canonicalMetadataRecord(session.metadata);
-  const directTitle = groupInviteTitleFromSession(state, sessionId);
-  if (directTitle) return directTitle;
+  const groupSpaceId = metadataGroupSpaceId(metadata) || sessionId;
+  const relatedSessions = state?.sessions.filter((candidate) => {
+    const candidateMetadata = canonicalMetadataRecord(candidate.metadata);
+    return candidate.id === groupSpaceId || metadataGroupSpaceId(candidateMetadata) === groupSpaceId;
+  }) ?? [];
+  const sharedTitle = sharedGroupCustomTitle(relatedSessions.map((candidate) => {
+    const candidateMetadata = canonicalMetadataRecord(candidate.metadata);
+    const updatedAtMs = candidateMetadata.groupNameUpdatedAtMs;
+    return {
+      sessionId: candidate.id,
+      groupSpaceId: metadataGroupSpaceId(candidateMetadata),
+      customName: metadataString(candidateMetadata, 'customName'),
+      groupNameUpdatedAtMs: typeof updatedAtMs === 'number' ? updatedAtMs : null,
+    };
+  }), groupSpaceId);
+  if (sharedTitle) return sharedTitle;
 
-  const groupSpaceId = metadataGroupSpaceId(metadata);
-  if (groupSpaceId && groupSpaceId !== sessionId) {
-    const groupSpaceTitle = groupInviteTitleFromSession(state, groupSpaceId);
-    if (groupSpaceTitle) return groupSpaceTitle;
+  // Very old group roots stored their shared label in the session title before
+  // groupSpaceId/customName existed. Never use a modern child-session title as
+  // a group label: that is how "# main" leaked into other members' sidebars.
+  const rootSession = relatedSessions.find((candidate) => candidate.id === groupSpaceId);
+  const rootMetadata = canonicalMetadataRecord(rootSession?.metadata);
+  if (rootSession && !metadataGroupSpaceId(rootMetadata)) {
+    return nonGenericGroupInviteTitle(rootSession.title);
   }
-
   return null;
 }
 

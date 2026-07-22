@@ -11,12 +11,13 @@ import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('transcript human avatars are large enough to read beside message bubbles', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
-  const avatarStart = source.indexOf('className={cn(\n              \'mb-0.5 border border-white/10\'');
-  const avatarEnd = source.indexOf(')}\n          />', avatarStart);
-  assert.ok(avatarStart >= 0 && avatarEnd > avatarStart, 'message avatar class block should be present');
+  const avatarStart = source.indexOf('{showAvatar ? (');
+  const avatarEnd = source.indexOf('{forwardedSource ?', avatarStart);
+  assert.ok(avatarStart >= 0 && avatarEnd > avatarStart, 'message avatar rendering block should be present');
   const avatarBlock = source.slice(avatarStart, avatarEnd);
+  const avatarSizeContract = /useHumanCompactDensity \? 'h-7 w-7' : 'h-8 w-8'/g;
 
-  assert.match(avatarBlock, /useHumanCompactDensity \? 'h-7 w-7' : 'h-8 w-8'/);
+  assert.ok((avatarBlock.match(avatarSizeContract) ?? []).length >= 2, 'both clickable and static message avatars should retain the readable size contract');
   assert.doesNotMatch(avatarBlock, /h-5\.5 w-5\.5/);
 });
 
@@ -1203,6 +1204,32 @@ test('compact group density hides sender labels inside message bubbles', () => {
   assert.doesNotMatch(markup, /app-message-inline-sender/);
   assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
   assert.equal((markup.match(/data-avatar-kind="human"/g) ?? []).length, 1);
+});
+
+test('compact group transcript exposes a human sender profile action on the avatar', () => {
+  const message: Message = {
+    id: 'msg:group-member-profile',
+    role: 'person',
+    sender: 'Jiaxin Pei',
+    senderIdentityId: 'human:acct_jiaxin',
+    senderType: 'human',
+    isOwnMessage: false,
+    showSenderMeta: true,
+    text: 'Can you review this?',
+    time: '10:00',
+    senderAvatarSeed: 'person:jiaxin',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    densityMode: 'group-compact',
+    onOpenSenderProfile: () => undefined,
+  }));
+
+  assert.match(markup, /data-message-sender-profile="true"/);
+  assert.match(markup, /data-message-sender-profile-trigger="true"/);
+  assert.match(markup, /aria-label="Open Jiaxin Pei profile"/);
+  assert.match(markup, /data-avatar-kind="human"/);
 });
 
 test('groups consecutive same-sender human messages with one inline name and one avatar', () => {

@@ -767,6 +767,7 @@ function MessageBubbleView({
   onOpenArtifact,
   onOpenAuthSettings,
   onRequestBridgeContact,
+  onOpenSenderProfile,
   onForkMessage,
   messageForks,
   onOpenForkSession,
@@ -797,6 +798,7 @@ function MessageBubbleView({
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
   onRequestBridgeContact?: () => Promise<void> | void;
+  onOpenSenderProfile?: (message: Message, anchorRect: DOMRect) => void;
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
   onOpenForkSession?: (sessionId: string) => void;
@@ -1232,6 +1234,7 @@ function MessageBubbleView({
   const footerDetail = showContactRequestAction ? undefined : msg.detail;
   const showAvatarSlot = !isAgentMessage;
   const showAvatar = showAvatarSlot && !isGroupedWithNext;
+  const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode);
   const isForwardedMessage = msg.messageAction?.kind === 'forward';
   const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
 
@@ -1273,32 +1276,65 @@ function MessageBubbleView({
       )}>
         {selectionControl}
         {showAvatar ? (
-          <IdentityAvatar
-            kind={avatarKind}
-            seed={avatarSeed}
-            name={avatarName}
-            imageUrl={msg.senderProfileImageUrl}
-            className={cn(
-              'mb-0.5 border border-white/10',
-              useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
-            )}
-          />
+          canOpenSenderProfile ? (
+            <button
+              type="button"
+              data-message-sender-profile="true"
+              className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+              aria-label={`Open ${avatarName} profile`}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onOpenSenderProfile?.(msg, event.currentTarget.getBoundingClientRect());
+              }}
+            >
+              <IdentityAvatar
+                kind={avatarKind}
+                seed={avatarSeed}
+                name={avatarName}
+                imageUrl={msg.senderProfileImageUrl}
+                className={cn(
+                  'mb-0.5 border border-white/10 transition hover:ring-2 hover:ring-[color:var(--app-sidebar-accent)]/35',
+                  useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
+                )}
+              />
+            </button>
+          ) : (
+            <IdentityAvatar
+              kind={avatarKind}
+              seed={avatarSeed}
+              name={avatarName}
+              imageUrl={msg.senderProfileImageUrl}
+              className={cn(
+                'mb-0.5 border border-white/10',
+                useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
+              )}
+            />
+          )
         ) : showAvatarSlot ? (
           <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
         <div
           data-message-context-menu-anchor="true"
+          data-message-sender-profile-trigger={canOpenSenderProfile ? 'true' : undefined}
           data-transcript-density={compactDensity}
           onClick={(event) => {
-            if (!selectableInSelectionMode) return;
             const target = event.target instanceof Element ? event.target : null;
             if (target?.closest('button,a,input,textarea,[role="button"]')) return;
+            if (selectableInSelectionMode) {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleSelectedMessage?.(msg);
+              return;
+            }
+            if (!canOpenSenderProfile) return;
             event.preventDefault();
             event.stopPropagation();
-            onToggleSelectedMessage?.(msg);
+            onOpenSenderProfile?.(msg, event.currentTarget.getBoundingClientRect());
           }}
           className={cn(
           'min-w-0',
+          canOpenSenderProfile ? 'cursor-pointer' : '',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : 'shadow-sm',
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
@@ -1320,12 +1356,28 @@ function MessageBubbleView({
         {isOwnHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="own" /> : null}
         {isPeerHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="peer" /> : null}
         {showInlineHumanSender ? (
-          <div
-            className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
-            style={senderAccentStyle(msg.sender)}
-          >
-            {msg.sender}
-          </div>
+          canOpenSenderProfile ? (
+            <button
+              type="button"
+              data-message-sender-profile="true"
+              className="app-message-inline-sender mb-1 block max-w-full truncate text-left text-[12px] font-semibold leading-4 hover:underline"
+              style={senderAccentStyle(msg.sender)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onOpenSenderProfile?.(msg, event.currentTarget.getBoundingClientRect());
+              }}
+            >
+              {msg.sender}
+            </button>
+          ) : (
+            <div
+              className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
+              style={senderAccentStyle(msg.sender)}
+            >
+              {msg.sender}
+            </div>
+          )
         ) : null}
         {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
         {msg.sourceMessage && !isForwardedMessage ? (
@@ -1412,6 +1464,7 @@ function messageSnapshotKey(msg: Message) {
     msg.entryId ?? '',
     msg.role,
     msg.sender ?? '',
+    msg.senderIdentityId ?? '',
     msg.senderType ?? '',
     msg.isOwnMessage ? 'own' : 'peer',
     msg.showSenderMeta ? 'meta' : '',
@@ -1440,6 +1493,7 @@ export const MessageBubble = memo(
     && previous.onOpenArtifact === next.onOpenArtifact
     && previous.onOpenAuthSettings === next.onOpenAuthSettings
     && previous.onRequestBridgeContact === next.onRequestBridgeContact
+    && previous.onOpenSenderProfile === next.onOpenSenderProfile
     && previous.onForkMessage === next.onForkMessage
     && previous.onOpenForkSession === next.onOpenForkSession
     && previous.onReplyMessage === next.onReplyMessage

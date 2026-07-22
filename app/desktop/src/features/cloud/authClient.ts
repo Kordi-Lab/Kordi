@@ -354,7 +354,7 @@ function isProductionCloudOrigin(value: string): boolean {
   }
 }
 
-type CloudApiEnvironment = {
+export type CloudApiEnvironment = {
   DEV?: boolean;
   VITE_KORDI_CLOUD_API_BASE?: string;
   VITE_KORDI_DEV_PROFILE?: string;
@@ -364,6 +364,23 @@ type CloudApiEnvironment = {
 function operatorProductionDebugIsEnabled(env: CloudApiEnvironment | undefined): boolean {
   return env?.VITE_KORDI_DEV_PROFILE?.trim().toLowerCase() === 'operator'
     && env?.VITE_KORDI_PRODUCTION_DEBUG_ACK?.trim() === '1';
+}
+
+export function operatorCloudOAuthProviderFallback(
+  env?: CloudApiEnvironment,
+): CloudOAuthProvider[] {
+  const meta = typeof import.meta !== 'undefined'
+    ? (import.meta as ImportMeta & { env?: CloudApiEnvironment }).env
+    : undefined;
+  const activeEnv = env ?? meta;
+  const configured = activeEnv?.VITE_KORDI_CLOUD_API_BASE?.trim();
+  if (!activeEnv?.DEV
+    || !configured
+    || !operatorProductionDebugIsEnabled(activeEnv)
+    || !isProductionCloudOrigin(cleanBaseUrl(configured))) {
+    return [];
+  }
+  return ['google', 'github'];
 }
 
 export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {

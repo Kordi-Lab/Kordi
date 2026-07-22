@@ -38,7 +38,8 @@ import {
 } from '@/features/bridge/agentModelRouting';
 import { isCloudBridgeConversationId, isCloudBridgeHostId } from '@/features/cloud/cloudBridgeState';
 import type { CloudSelfAgentSyncStatus } from '@/features/cloud/useCloudBridgeState';
-import type { CloudSessionPin } from '@/features/cloud/authClient';
+import type { CloudAccount, CloudSessionPin } from '@/features/cloud/authClient';
+import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatSessionIdSubtitle, localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
@@ -60,6 +61,7 @@ import {
 } from '@/kordi-app/components';
 import type {
   ComposerQuoteState,
+  Contact,
   Conversation,
   ConversationParticipant,
   DesktopBridgeHost,
@@ -104,6 +106,7 @@ import { useCompanionComposerRuntime } from '@/features/chat/useCompanionCompose
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { MemberContactProfilePopover } from '@/pages/MemberContactProfilePopover';
 
 export const BRIDGE_ROUTING_NOTICE_AUTO_DISMISS_MS = 2000;
 export const BRIDGE_ROUTING_NOTICE_EXIT_MS = 180;
@@ -562,6 +565,7 @@ type ChatSessionPaneProps = {
   onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
   onStopActiveTurn?: () => void;
   onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
+  onOpenSenderProfile?: ComponentProps<typeof MessageBubble>['onOpenSenderProfile'];
   onForkMessage?: (entryId: string) => void;
   messageForksByEntryId?: Map<string, Array<{ sessionId: string; title: string; updatedAtLabel?: string }>>;
   onOpenForkSession?: (sessionId: string) => void;
@@ -622,6 +626,7 @@ function ChatSessionPane({
   onStopBridgeAgentRequest,
   onStopActiveTurn,
   onRequestBridgeContact,
+  onOpenSenderProfile,
   onForkMessage,
   messageForksByEntryId,
   onOpenForkSession,
@@ -715,6 +720,7 @@ function ChatSessionPane({
               onNavigateToMessage={onNavigateToMessage}
               onStopBridgeAgentRequest={onStopBridgeAgentRequest}
               onRequestBridgeContact={onRequestBridgeContact}
+              onOpenSenderProfile={onOpenSenderProfile}
               onForkMessage={onForkMessage}
               messageForks={msg.entryId ? messageForksByEntryId?.get(msg.entryId) : undefined}
               onOpenForkSession={onOpenForkSession}
@@ -875,6 +881,30 @@ function chatTranscriptDensityMode(conversation: Conversation): TranscriptDensit
   if (conversationIsGroupChat(conversation)) return 'group-compact';
   if (conversationUsesCompactHumanTranscriptDensity(conversation)) return 'contact-compact';
   return 'default';
+}
+
+export function transcriptHumanParticipant(
+  conversation: Conversation,
+  message: Message,
+): ConversationParticipant | null {
+  if (message.isOwnMessage || message.senderType === 'agent') return null;
+  const humanParticipants = (conversation.canonicalParticipants ?? [])
+    .filter((participant) => participant.kind === 'human');
+  const senderIdentityId = message.senderIdentityId?.trim();
+  if (senderIdentityId) {
+    const exact = humanParticipants.find((participant) => (
+      participant.id === senderIdentityId
+      || participant.humanId?.trim() === senderIdentityId
+      || participant.bridgeNodeId?.trim() === senderIdentityId
+    ));
+    if (exact) return exact;
+  }
+  const senderName = message.sender?.trim().toLocaleLowerCase();
+  if (!senderName) return null;
+  const nameMatches = humanParticipants.filter((participant) => (
+    participant.name.trim().toLocaleLowerCase() === senderName
+  ));
+  return nameMatches.length === 1 ? nameMatches[0] : null;
 }
 
 function addScopedKey(keys: Set<string>, scope: string, value?: string | null) {
@@ -1130,6 +1160,7 @@ type ChatsPageProps = {
   activeBridgeModelHost: DesktopBridgeHost | null;
   desktopChatState: DesktopChatState | null;
   cloudSelfAgentSyncStatus?: CloudSelfAgentSyncStatus | null;
+  cloudAccount?: CloudAccount | null;
   cloudSessionPin?: CloudSessionPin | null;
   onUpdateCloudSessionPin?: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
   onUpdateBridgeAgentModelRouting: (
@@ -1210,6 +1241,7 @@ type ChatsPageProps = {
   onStopDesktopChatTurn: () => void;
   onStopBridgeAgentRequest: NonNullable<ComponentProps<typeof MessageBubble>['onStopBridgeAgentRequest']>;
   onRequestBridgeContact?: ComponentProps<typeof MessageBubble>['onRequestBridgeContact'];
+  onMessageContact?: (contact: Contact) => Promise<void> | void;
   onForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   onRetryChatMessage?: (message: Message) => void;
   onSelectSession?: (sessionId: string) => void;
@@ -1239,6 +1271,7 @@ export function ChatsPage({
   activeBridgeModelHost,
   desktopChatState,
   cloudSelfAgentSyncStatus,
+  cloudAccount = null,
   cloudSessionPin,
   onUpdateCloudSessionPin,
   onUpdateBridgeAgentModelRouting,
@@ -1308,6 +1341,7 @@ export function ChatsPage({
   onStopDesktopChatTurn,
   onStopBridgeAgentRequest,
   onRequestBridgeContact,
+  onMessageContact,
   onForkChatMessage,
   onRetryChatMessage,
   onSelectSession,
@@ -1317,6 +1351,11 @@ export function ChatsPage({
   onOpenAuthSettings,
   onOpenAccountAuthentication,
 }: ChatsPageProps) {
+  const cloudContacts = useCloudContacts(cloudAccount);
+  const [senderProfileTarget, setSenderProfileTarget] = useState<{
+    participant: ConversationParticipant;
+    anchorRect: DOMRect;
+  } | null>(null);
   const openAuthentication = onOpenAccountAuthentication ?? onOpenAuthSettings;
   const authNoticeDescription = onOpenAccountAuthentication
     ? 'Connect a provider, save an API key, or choose a local LM Studio/Ollama server before starting AI chats.'
@@ -1365,6 +1404,27 @@ export function ChatsPage({
   const [companionDrafts, setCompanionDrafts] = useState<Record<string, string>>({});
   const [companionDropPreviewSide, setCompanionDropPreviewSide] = useState<CompanionSide | null>(null);
   const [isDraggingCompanion, setIsDraggingCompanion] = useState(false);
+  const openTranscriptSenderProfile = useCallback((
+    conversation: Conversation,
+    message: Message,
+    anchorRect: DOMRect,
+  ) => {
+    const participant = transcriptHumanParticipant(conversation, message);
+    if (!participant || participant.role === 'self') return;
+    setSenderProfileTarget({ participant, anchorRect });
+  }, []);
+  const openActiveTranscriptSenderProfile = useCallback((message: Message, anchorRect: DOMRect) => {
+    openTranscriptSenderProfile(activeConv, message, anchorRect);
+  }, [activeConv, openTranscriptSenderProfile]);
+  const messageTranscriptContact = useCallback(async (contact: Contact) => {
+    if (!onMessageContact) return;
+    setSenderProfileTarget(null);
+    await onMessageContact(contact);
+  }, [onMessageContact]);
+
+  useEffect(() => {
+    setSenderProfileTarget(null);
+  }, [activeConv.id]);
   const [isCompanionFolded, setIsCompanionFolded] = useState(false);
   const [splitLeftFraction, setSplitLeftFraction] = useState(0.5);
   const [pinnedMessageIdsByConversationId, setPinnedMessageIdsByConversationId] = useState<Record<string, string | null>>({});
@@ -1471,6 +1531,10 @@ export function ChatsPage({
   const selectedCompanionConversation = companionCandidates.find((conversation) => conversation.id === selectedCompanionConversationId) ?? null;
   const suggestedSideAgentConversation = selectedCompanionConversation ?? suggestedCompanionConversation;
   const companionConversation = chatSideAgentConversationForOpenRequest(openSideAgentConversationId, companionCandidates);
+  const openCompanionTranscriptSenderProfile = useCallback((message: Message, anchorRect: DOMRect) => {
+    if (!companionConversation) return;
+    openTranscriptSenderProfile(companionConversation, message, anchorRect);
+  }, [companionConversation, openTranscriptSenderProfile]);
   const companionCanonicalHistorySessionId = companionConversation
     ? canonicalHistorySessionIdForConversation(companionConversation)
     : null;
@@ -2229,6 +2293,7 @@ export function ChatsPage({
         onStopBridgeAgentRequest={onStopBridgeAgentRequest}
         onStopActiveTurn={onStopDesktopChatTurn}
         onRequestBridgeContact={onRequestBridgeContact}
+        onOpenSenderProfile={openCompanionTranscriptSenderProfile}
         onForkMessage={onForkChatMessage ? (entryId) => {
           void onForkChatMessage(companionConversation.id, entryId);
         } : undefined}
@@ -2924,6 +2989,7 @@ export function ChatsPage({
         onStopBridgeAgentRequest={onStopBridgeAgentRequest}
         onStopActiveTurn={onStopDesktopChatTurn}
         onRequestBridgeContact={onRequestBridgeContact}
+        onOpenSenderProfile={openActiveTranscriptSenderProfile}
         onForkMessage={handleForkMessage}
         messageForksByEntryId={messageForksByEntryId}
         onOpenForkSession={onSelectSession}
@@ -3343,6 +3409,18 @@ export function ChatsPage({
         </div>
       )}
         </section>
+        {senderProfileTarget ? (
+          <MemberContactProfilePopover
+            participant={senderProfileTarget.participant}
+            contacts={cloudContacts.contacts}
+            roleLabel="Group member"
+            presenceStatus={senderProfileTarget.participant.presenceStatus}
+            anchorRect={senderProfileTarget.anchorRect}
+            onAddContact={cloudAccount ? cloudContacts.sendRequest : undefined}
+            onMessageContact={onMessageContact ? messageTranscriptContact : undefined}
+            onClose={() => setSenderProfileTarget(null)}
+          />
+        ) : null}
         {pinDialog ? (
           <PinMessageDialog
             mode={pinDialog.mode}
