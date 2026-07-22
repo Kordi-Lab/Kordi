@@ -1,3 +1,4 @@
+import { buildMessagePreview } from '@/app/viewModels/helpers';
 import type {
   ChatChannel,
   Conversation,
@@ -33,9 +34,12 @@ function safePreviewText(value: string | undefined | null) {
 }
 
 function latestMessageText(conversation: Conversation) {
-  const latest = conversation.messages[conversation.messages.length - 1];
-  return safePreviewText(latest?.text)
-    || safePreviewText(latest?.turn?.assistantText)
+  const latestPreviewableMessage = [...conversation.messages]
+    .reverse()
+    .map((message) => safePreviewText(buildMessagePreview(message)))
+    .find(Boolean);
+
+  return latestPreviewableMessage
     || safePreviewText(conversation.subtitle)
     || safePreviewText(conversation.name);
 }
