@@ -218,6 +218,45 @@ const CLOUD_MESSAGE_SNAPSHOT_LIMIT = 500;
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
 
+function cloudAgentLocalFailureMessage(error: unknown): string {
+  if (isCloudAgentNoProviderConfiguredError(error)) return cloudAgentNoProviderNoticeText();
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  return 'Kordi could not finish this reply. Try again.';
+}
+
+export function cloudAgentFailedTurnSnapshot({
+  requestId,
+  sessionId,
+  prompt,
+  error,
+  now = Date.now(),
+}: {
+  requestId: string;
+  sessionId: string;
+  prompt: string;
+  error: unknown;
+  now?: number;
+}): DesktopChatTurnSnapshot {
+  const message = cloudAgentLocalFailureMessage(error);
+  return {
+    id: `cloud-agent-local-failure:${requestId}`,
+    sessionId,
+    prompt,
+    status: 'failed',
+    message,
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: true,
+    succeeded: false,
+    startedAtMs: now,
+    completedAtMs: now,
+    error: message,
+    transcriptRefreshRequired: false,
+  };
+}
+
 export function cloudGroupOutboxAttachmentSources(
   attachments: readonly AttachmentItem[],
 ): CloudGroupOutboxAttachmentSource[] {
@@ -1048,6 +1087,29 @@ async function cloudFallbackRunAlreadyOwnsRequest({
 }): Promise<boolean> {
   const run = await client.lookupCloudAgentRunForRequest(token, requestMessageId).catch(() => null);
   return cloudAgentRunAlreadyOwnsRequest(run);
+}
+
+async function cloudAgentResponsePublicationIsBlocked({
+  client,
+  token,
+  peerId,
+  fallbackMessages,
+  account,
+  requestMessageId,
+}: {
+  client: CloudAuthClient;
+  token: string;
+  peerId: string;
+  fallbackMessages: readonly CloudMessage[];
+  account: CloudAccount;
+  requestMessageId: string;
+}): Promise<boolean> {
+  const [latestMessages, fallbackRunOwnsRequest] = await Promise.all([
+    client.listMessages(token, peerId, 100).catch(() => fallbackMessages),
+    cloudFallbackRunAlreadyOwnsRequest({ client, token, requestMessageId }),
+  ] as const);
+  return fallbackRunOwnsRequest
+    || cloudAgentResponseExistsForRequest({ account, requestMessageId, peerMessages: latestMessages });
 }
 
 export function shouldRunLocalCloudAgentForCloudMessage({
@@ -4764,156 +4826,185 @@ export function useCloudBridgeState({
         if (processedCloudAgentMentionIdsRef.current.has(message.messageId)) continue;
 
         processedCloudAgentMentionIdsRef.current.add(message.messageId);
+        const contact = cloudLookupContacts.find((candidate) => (
+          candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
+        ) === peerId);
+        const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
+        const activitySessionId = message.sessionId ?? cloudSessionIdForBridgeSend(account.accountId, peerId, `cloud:${peerId}`);
+        const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
+        const directDisplayMessage = { ...message, body: cloudDirectMessageDisplayText(message.body) };
+        const prompt = promptTextForCloudAgentMention(directDisplayMessage.body);
+        const contextMessages = [
+          ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[targetCloudAgentId ?? ''] ?? null),
+          ...cloudAgentNativeContextMessagesFromDirectCloudSession({
+            messages,
+            requestMessage: message,
+            localAccountId: account.accountId,
+            localHumanName: account.displayName || account.primaryEmail || 'Me',
+            peerHumanName,
+            localAgentName: 'My Kordi',
+            peerAgentName: `${peerHumanName}'s Kordi`,
+          }),
+        ];
+        const visibleTaskRecords = activitySessionId
+          ? cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, activitySessionId)
+          : [];
+        const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${peerId}`;
+        const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
+          setLocalAgentTurnsByRequestId((current) => ({ ...current, [message.messageId]: turn }));
+        };
         void (async () => {
-          const session = await loadSession();
-          if (!session?.token) throw new Error('Not signed in.');
-          const latestMessages = await client.listMessages(session.token, peerId, 100).catch(() => messages);
-          if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: message.messageId })
-            || cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: latestMessages })) {
-            void syncCloudBridgeDiff();
+          let session: Awaited<ReturnType<typeof loadSession>>;
+          try {
+            session = await loadSession();
+          } catch (error) {
+            rememberLocalTurn(cloudAgentFailedTurnSnapshot({
+              requestId: message.messageId,
+              sessionId: runtimeSessionId,
+              prompt,
+              error,
+            }));
+            // eslint-disable-next-line no-console
+            console.warn('[cloud-agent-mention] local session unavailable', error);
             return;
           }
-          const contact = cloudLookupContacts.find((candidate) => (
-            candidate.bridgePeerNodeId || candidate.id.replace(/^cloud:/, '')
-          ) === peerId);
-          const peerHumanName = contact?.name?.trim() || contact?.owner?.trim() || peerId;
-          const activitySessionId = message.sessionId ?? cloudSessionIdForBridgeSend(account.accountId, peerId, `cloud:${peerId}`);
-          const targetCloudAgentId = cloudDirectMessageTargetCloudAgentId(message.body);
-          const directDisplayMessage = { ...message, body: cloudDirectMessageDisplayText(message.body) };
-          const prompt = promptTextForCloudAgentMention(directDisplayMessage.body);
-          const contextMessages = [
-            ...cloudAgentContextMessagesFromDefinition(cloudAgentDefinitionsById[targetCloudAgentId ?? ''] ?? null),
-            ...cloudAgentNativeContextMessagesFromDirectCloudSession({
-              messages,
-              requestMessage: message,
-              localAccountId: account.accountId,
-              localHumanName: account.displayName || account.primaryEmail || 'Me',
-              peerHumanName,
-              localAgentName: 'My Kordi',
-              peerAgentName: `${peerHumanName}'s Kordi`,
-            }),
-          ];
-          const currentSession = message.attachments?.length ? await loadSession() : null;
-          const agentAttachments = currentSession?.token && message.attachments?.length
-            ? await resolveCloudMessageAttachments({ token: currentSession.token, client, attachments: message.attachments })
-            : message.attachments ?? [];
-          const visibleTaskRecords = activitySessionId
-            ? cloudVisibleTaskRecordsForSession(cloudSessionActivityRef.current, activitySessionId)
-            : [];
-          const agentAttachmentPaths = agentAttachments
-            .map((attachment) => attachment.localPath?.trim() || '')
-            .filter(Boolean);
-          const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
-            setLocalAgentTurnsByRequestId((current) => ({ ...current, [message.messageId]: turn }));
-          };
-          const runtimeSessionId = `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${account.accountId}:${peerId}`;
-          const startedTurn = await startDesktopChatMessage(
-            runtimeSessionId,
-            prompt,
-            agentAttachmentPaths,
-            cloudAgentRuntimeRouteForTargetCloudAgent({
-              targetCloudAgentId,
-              cloudAgentDefinitionsById,
-              routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
+          if (!session?.token) {
+            rememberLocalTurn(cloudAgentFailedTurnSnapshot({
+              requestId: message.messageId,
+              sessionId: runtimeSessionId,
+              prompt,
+              error: new Error('Not signed in.'),
+            }));
+            return;
+          }
+
+          // Start these remote guards without awaiting them. Local provider
+          // readiness and execution must not sit behind Cloud latency; the
+          // guards only decide whether the completed response still needs to
+          // be published.
+          const responseGuardPromise = cloudAgentResponsePublicationIsBlocked({
+            client,
+            token: session.token,
+            peerId,
+            fallbackMessages: messages,
+            account,
+            requestMessageId: message.messageId,
+          });
+
+          let finalTurn: DesktopChatTurnSnapshot;
+          try {
+            const agentAttachments = message.attachments?.length
+              ? await resolveCloudMessageAttachments({ token: session.token, client, attachments: message.attachments })
+              : message.attachments ?? [];
+            const agentAttachmentPaths = agentAttachments
+              .map((attachment) => attachment.localPath?.trim() || '')
+              .filter(Boolean);
+            const startedTurn = await startDesktopChatMessage(
               runtimeSessionId,
-              fallbackRoute: defaultCloudAgentRuntimeRoute,
-            }),
-            contextMessages,
-            visibleTaskRecords,
-            activitySessionId,
-          );
-          rememberLocalTurn(startedTurn);
-          cloudAgentTurnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
-          const finalTurn = startedTurn.completed
-            ? startedTurn
-            : await waitForCloudAgentTurn(startedTurn.id, rememberLocalTurn);
-          rememberLocalTurn(finalTurn);
-          cloudAgentTurnIdsByRequestIdRef.current.delete(message.messageId);
+              prompt,
+              agentAttachmentPaths,
+              cloudAgentRuntimeRouteForTargetCloudAgent({
+                targetCloudAgentId,
+                cloudAgentDefinitionsById,
+                routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
+                runtimeSessionId,
+                fallbackRoute: defaultCloudAgentRuntimeRoute,
+              }),
+              contextMessages,
+              visibleTaskRecords,
+              activitySessionId,
+            );
+            rememberLocalTurn(startedTurn);
+            cloudAgentTurnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
+            finalTurn = startedTurn.completed
+              ? startedTurn
+              : await waitForCloudAgentTurn(startedTurn.id, rememberLocalTurn);
+            rememberLocalTurn(finalTurn);
+          } catch (error) {
+            finalTurn = cloudAgentFailedTurnSnapshot({
+              requestId: message.messageId,
+              sessionId: runtimeSessionId,
+              prompt,
+              error,
+            });
+            rememberLocalTurn(finalTurn);
+            // eslint-disable-next-line no-console
+            console.warn('[cloud-agent-mention] local agent response failed', error);
+          } finally {
+            cloudAgentTurnIdsByRequestIdRef.current.delete(message.messageId);
+          }
+
           if (finalTurn.status === 'cancelled') {
             void syncCloudBridgeDiff();
             return;
           }
-          if (activitySessionId) {
-            await publishDerivedCloudSessionActivity({
-              client,
-              token: session.token,
-              accountId: account.accountId,
-              sessionId: activitySessionId,
-              participantAccountIds: [peerId],
-              participantProfiles: [
-                {
-                  accountId: account.accountId,
-                  displayName: account.displayName || account.primaryEmail || account.accountId,
-                  avatarUrl: account.avatarUrl,
-                  role: 'self',
-                },
-                {
-                  accountId: peerId,
-                  displayName: peerHumanName,
-                  avatarUrl: contact?.profileImageUrl ?? null,
-                  role: 'person',
-                },
-              ],
-              turn: finalTurn,
-              mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
-            });
-          }
-          const responseSucceeded = finalTurn.succeeded && finalTurn.assistantText.trim().length > 0;
-          const responseText = responseSucceeded
-            ? finalTurn.assistantText.trim()
-            : isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message)
-              ? cloudAgentNoProviderNoticeText()
-              : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
-          const finalLatestMessages = await client.listMessages(session.token, peerId, 100).catch(() => latestMessages);
-          if (await cloudFallbackRunAlreadyOwnsRequest({ client, token: session.token, requestMessageId: message.messageId })
-            || cloudAgentResponseExistsForRequest({ account, requestMessageId: message.messageId, peerMessages: finalLatestMessages })) {
-            void syncCloudBridgeDiff();
-            return;
-          }
-          const response = await client.sendMessage(
-            session.token,
-            peerId,
-            encodeCloudAgentResponse({
-              requestId: message.messageId,
-              text: responseText,
-              deliveryState: responseSucceeded ? 'complete' : 'failed',
-            }),
-            { sessionId: message.sessionId ?? null },
-          );
-          mergeMessage(response);
-          void syncCloudBridgeDiff();
-        })().catch((error) => {
-          cloudAgentTurnIdsByRequestIdRef.current.delete(message.messageId);
-          if (isCloudAgentNoProviderConfiguredError(error)) {
-            void loadSession()
-              .then((session) => {
-                if (!session?.token) return null;
-                return client.sendMessage(
-                  session.token,
-                  peerId,
-                  encodeCloudAgentResponse({
-                    requestId: message.messageId,
-                    text: cloudAgentNoProviderNoticeText(),
-                    deliveryState: 'failed',
-                  }),
-                  { sessionId: message.sessionId ?? null },
-                );
-              })
-              .then((response) => {
-                if (response) mergeMessage(response);
-                void syncCloudBridgeDiff();
-              })
-              .catch((sendError) => {
-                processedCloudAgentMentionIdsRef.current.delete(message.messageId);
-                // eslint-disable-next-line no-console
-                console.warn('[cloud-agent-mention] no-provider notice failed', sendError);
+
+          try {
+            const [initialResponseBlocked, finalResponseBlocked] = await Promise.all([
+              responseGuardPromise,
+              cloudAgentResponsePublicationIsBlocked({
+                client,
+                token: session.token,
+                peerId,
+                fallbackMessages: messages,
+                account,
+                requestMessageId: message.messageId,
+              }),
+            ] as const);
+            if (initialResponseBlocked || finalResponseBlocked) {
+              void syncCloudBridgeDiff();
+              return;
+            }
+            if (activitySessionId) {
+              await publishDerivedCloudSessionActivity({
+                client,
+                token: session.token,
+                accountId: account.accountId,
+                sessionId: activitySessionId,
+                participantAccountIds: [peerId],
+                participantProfiles: [
+                  {
+                    accountId: account.accountId,
+                    displayName: account.displayName || account.primaryEmail || account.accountId,
+                    avatarUrl: account.avatarUrl,
+                    role: 'self',
+                  },
+                  {
+                    accountId: peerId,
+                    displayName: peerHumanName,
+                    avatarUrl: contact?.profileImageUrl ?? null,
+                    role: 'person',
+                  },
+                ],
+                turn: finalTurn,
+                mergeActivity: (snapshot) => setCloudSessionActivity((current) => mergeCloudSessionActivity(current, snapshot)),
               });
-            return;
+            }
+            const responseSucceeded = finalTurn.succeeded && finalTurn.assistantText.trim().length > 0;
+            const responseText = responseSucceeded
+              ? finalTurn.assistantText.trim()
+              : isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message)
+                ? cloudAgentNoProviderNoticeText()
+                : `Failed: ${finalTurn.error || finalTurn.message || 'Cloud agent returned no text response'}`;
+            const response = await client.sendMessage(
+              session.token,
+              peerId,
+              encodeCloudAgentResponse({
+                requestId: message.messageId,
+                text: responseText,
+                deliveryState: responseSucceeded ? 'complete' : 'failed',
+              }),
+              { sessionId: message.sessionId ?? null },
+            );
+            mergeMessage(response);
+            void syncCloudBridgeDiff();
+          } catch (error) {
+            // The local turn is already terminal and visible. A Cloud publish
+            // failure must not rerun the model or return the UI to Processing.
+            // eslint-disable-next-line no-console
+            console.warn('[cloud-agent-mention] response publish failed', error);
           }
-          processedCloudAgentMentionIdsRef.current.delete(message.messageId);
-          // eslint-disable-next-line no-console
-          console.warn('[cloud-agent-mention] local agent response failed', error);
-        });
+        })();
       }
     }
   }, [account, client, cloudAgentRuntimeRoutesBySessionId, cloudLookupContacts, cloudMessageIndex, defaultCloudAgentRuntimeRoute, initialMessagesSettled, mergeMessage, setCanonicalSessionState, syncCloudBridgeDiff]);
