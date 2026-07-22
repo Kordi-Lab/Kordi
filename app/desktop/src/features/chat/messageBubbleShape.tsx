@@ -1,4 +1,10 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useRef } from 'react';
+
+import { createNativeLiveResizeRectGate } from '@/app/nativeLiveResizeRect';
+import {
+  getNativeLiveResizeSnapshot,
+  subscribeNativeLiveResize,
+} from '@/app/nativeLiveResize';
 
 export type HumanMessageBubbleSide = 'own' | 'peer';
 
@@ -83,42 +89,59 @@ type MessageBubbleShapeBackdropProps = {
 
 export function MessageBubbleShapeBackdrop({ side }: MessageBubbleShapeBackdropProps) {
   const shapeRef = useRef<SVGSVGElement | null>(null);
-  const [size, setSize] = useState(DEFAULT_MESSAGE_BUBBLE_SHAPE_SIZE);
+  const pathRef = useRef<SVGPathElement | null>(null);
 
   useLayoutEffect(() => {
-    const parent = shapeRef.current?.parentElement;
+    const shape = shapeRef.current;
+    const path = pathRef.current;
+    const parent = shape?.parentElement;
 
-    if (!parent) {
-      return;
-    }
+    if (!shape || !path || !parent) return undefined;
 
-    const updateSize = () => {
+    const readSize = () => {
       const rect = parent.getBoundingClientRect();
-      const nextSize = {
+      return {
         width: Math.max(MESSAGE_BUBBLE_MIN_WIDTH, Math.round(rect.width) + MESSAGE_BUBBLE_TAIL_WIDTH),
         height: Math.max(MESSAGE_BUBBLE_MIN_HEIGHT, Math.round(rect.height)),
       };
-
-      setSize((previousSize) => (
-        previousSize.width === nextSize.width && previousSize.height === nextSize.height
-          ? previousSize
-          : nextSize
-      ));
     };
+    const applySize = (size: MessageBubbleShapeSize) => {
+      shape.setAttribute('viewBox', `0 0 ${size.width} ${size.height}`);
+      path.setAttribute('d', messageBubbleShapePath(side, size));
+    };
+    const gate = createNativeLiveResizeRectGate(applySize, {
+      schedule: (run) => window.requestAnimationFrame(run),
+      cancel: (handle) => window.cancelAnimationFrame(handle),
+    });
 
-    updateSize();
+    gate.receive(readSize(), getNativeLiveResizeSnapshot());
 
     if (typeof ResizeObserver === 'undefined') {
-      return;
+      return () => gate.dispose();
     }
 
-    const resizeObserver = new ResizeObserver(updateSize);
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const box = entry?.borderBoxSize?.[0];
+      const size = box
+        ? {
+            width: Math.max(MESSAGE_BUBBLE_MIN_WIDTH, Math.round(box.inlineSize) + MESSAGE_BUBBLE_TAIL_WIDTH),
+            height: Math.max(MESSAGE_BUBBLE_MIN_HEIGHT, Math.round(box.blockSize)),
+          }
+        : readSize();
+      gate.receive(size, getNativeLiveResizeSnapshot());
+    });
     resizeObserver.observe(parent);
+    const unsubscribe = subscribeNativeLiveResize((state) => {
+      if (!state.active) gate.finish(readSize());
+    });
 
-    return () => resizeObserver.disconnect();
-  }, []);
-
-  const path = useMemo(() => messageBubbleShapePath(side, size), [side, size]);
+    return () => {
+      unsubscribe();
+      resizeObserver.disconnect();
+      gate.dispose();
+    };
+  }, [side]);
 
   return (
     <svg
@@ -127,9 +150,13 @@ export function MessageBubbleShapeBackdrop({ side }: MessageBubbleShapeBackdropP
       className="app-message-bubble-shape"
       focusable="false"
       preserveAspectRatio="none"
-      viewBox={`0 0 ${size.width} ${size.height}`}
+      viewBox={`0 0 ${DEFAULT_MESSAGE_BUBBLE_SHAPE_SIZE.width} ${DEFAULT_MESSAGE_BUBBLE_SHAPE_SIZE.height}`}
     >
-      <path className="app-message-bubble-shape-fill" d={path} />
+      <path
+        ref={pathRef}
+        className="app-message-bubble-shape-fill"
+        d={messageBubbleShapePath(side, DEFAULT_MESSAGE_BUBBLE_SHAPE_SIZE)}
+      />
     </svg>
   );
 }

@@ -1,4 +1,5 @@
 export const APP_WINDOW_DRAG_HEIGHT = 64;
+export const APP_WINDOW_RESIZE_GUARD = 12;
 
 export const WINDOW_DRAG_BLOCK_SELECTOR = [
   'a[href]',
@@ -31,7 +32,10 @@ type ClosestCapableTarget = EventTarget & {
 type NativeWindowDragGesture = {
   isNativeShell: boolean;
   button: number;
+  clientX: number;
   clientY: number;
+  shellLeft: number;
+  shellRight: number;
   shellTop: number;
   target: EventTarget | null;
 };
@@ -48,14 +52,24 @@ function closestCapableTarget(target: EventTarget | null): ClosestCapableTarget 
 export function shouldStartNativeWindowDrag({
   isNativeShell,
   button,
+  clientX,
   clientY,
+  shellLeft,
+  shellRight,
   shellTop,
   target,
 }: NativeWindowDragGesture) {
   if (!isNativeShell || button !== 0) return false;
 
+  const localX = clientX - shellLeft;
   const localY = clientY - shellTop;
-  if (localY < 0 || localY > APP_WINDOW_DRAG_HEIGHT) return false;
+  const shellWidth = shellRight - shellLeft;
+  if (
+    localX <= APP_WINDOW_RESIZE_GUARD
+    || localX >= shellWidth - APP_WINDOW_RESIZE_GUARD
+    || localY <= APP_WINDOW_RESIZE_GUARD
+    || localY > APP_WINDOW_DRAG_HEIGHT
+  ) return false;
 
   const closestTarget = closestCapableTarget(target);
   if (closestTarget?.closest?.(WINDOW_DRAG_BLOCK_SELECTOR)) return false;

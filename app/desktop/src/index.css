@@ -10,3 +10,20 @@
 @import './styles/shell-pages.css';
 @import './styles/theme-overrides.css';
 @import './styles/transient-surfaces.css';
+
+.app-native-viewport {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: clip;
+}
+
+.app-native-viewport > .app-shell {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+html.kordi-native-live-resize .app-shell-layout-grid {
+  transition-property: none !important;
+}

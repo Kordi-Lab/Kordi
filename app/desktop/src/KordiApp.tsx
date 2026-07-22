@@ -145,11 +145,15 @@ export function KordiAppRoot({
 function CloudGateShell({ children }: { children: React.ReactNode }) {
   const theme = useGateThemeClass();
   const handleGateWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
+    const shellBounds = event.currentTarget.getBoundingClientRect();
     if (!shouldStartNativeWindowDrag({
       isNativeShell: isTauriRuntime(),
       button: event.button,
+      clientX: event.clientX,
       clientY: event.clientY,
-      shellTop: event.currentTarget.getBoundingClientRect().top,
+      shellLeft: shellBounds.left,
+      shellRight: shellBounds.right,
+      shellTop: shellBounds.top,
       target: event.target,
     })) {
       return;

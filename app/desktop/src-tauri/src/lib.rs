@@ -6,6 +6,8 @@ mod chat;
 mod cloud_account_paths;
 mod cloud_oauth_loopback;
 mod cloud_session;
+#[cfg(target_os = "macos")]
+mod macos;
 mod project;
 mod remote_image;
 mod system_proxy;
@@ -80,6 +82,16 @@ use tauri::Manager;
 use workspace::DesktopWorkspaceStatus;
 
 const MAIN_WINDOW_LABEL: &str = "main";
+const DEFAULT_MAIN_WINDOW_TITLE: &str = "Kordi";
+
+fn main_window_title(preview_name: Option<&str>, debug_build: bool) -> &str {
+    if debug_build {
+        if let Some(name) = preview_name.map(str::trim).filter(|name| !name.is_empty()) {
+            return name;
+        }
+    }
+    DEFAULT_MAIN_WINDOW_TITLE
+}
 
 fn should_hide_window_instead_of_close(label: &str) -> bool {
     cfg!(target_os = "macos") && label == MAIN_WINDOW_LABEL
@@ -424,6 +436,8 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
 
 pub fn run() {
     system_proxy::install_native_proxy_environment();
+    #[cfg(target_os = "macos")]
+    macos::live_resize::configure_webkit_resize_geometry();
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
@@ -442,7 +456,16 @@ pub fn run() {
             let window = app
                 .get_webview_window("main")
                 .expect("main window should exist");
-            window.set_title("Kordi")?;
+            let preview_name = std::env::var("VITE_KORDI_PREVIEW_NAME").ok();
+            let window_title = main_window_title(preview_name.as_deref(), cfg!(debug_assertions));
+            window.set_title(window_title)?;
+            if window_title != DEFAULT_MAIN_WINDOW_TITLE {
+                window.center()?;
+                window.show()?;
+                window.set_focus()?;
+            }
+            #[cfg(target_os = "macos")]
+            macos::live_resize::install(&window)?;
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }
