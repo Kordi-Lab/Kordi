@@ -65,13 +65,25 @@ Signed Hosted Desktop beta releases use two different version strings:
 - App/package version: `0.0.1-beta.N`
 - Git tag and GitHub prerelease: `V0.0.1.betaN`
 
-The ad-hoc beta.6 preview is an explicit exception to the signed-release tag and GitHub-prerelease convention. Its acceptance-only procedure is documented below. The next signed production release is beta.7.
+Ad-hoc releases are explicit, per-release exceptions to the signed production
+procedure. The beta.6 acceptance-only procedure below is retained as a
+historical reference. A later ad-hoc release must be approved independently,
+must stay off the normal beta updater channel, and must not be presented as a
+notarized production build. Whether it is mirrored to GitHub is also an
+explicit release decision.
 
 Use a clean release branch/worktree from the latest `origin/main`. Do not release from a dirty local development worktree.
 
+For the repeatable macOS build environment, resource preflight, privacy gates,
+publication order, rollback rehearsal, and cleanup checklist, use the
+[macOS desktop release operator runbook](development/macos-desktop-release-runbook.md).
+
 ### Signed desktop release prerequisites
 
-Production beta.7 and later updater releases use a Tauri minisign key and a notarized Developer ID build. The private Tauri key, its password, and Apple signing/notary material must be stored in GCP Secret Manager. Only the Tauri public key is committed in `app/desktop/src-tauri/tauri.conf.json`.
+Every production updater release uses a Tauri minisign key and a notarized
+Developer ID build. The private Tauri key, its password, and Apple
+signing/notary material must be stored in GCP Secret Manager. Only the Tauri
+public key is committed in `app/desktop/src-tauri/tauri.conf.json`.
 
 The production secret names are:
 
