@@ -1,25 +1,101 @@
-# Kordi cloud-server reverse-proxy stanza.
+# Complete Kordi product edge configuration.
 #
-# Drop this into the existing Caddy config on the operator-provided host. Caddy
-# auto-provisions a TLS certificate via Let's Encrypt as long as the DNS A
-# record for the domain points at the host's public IP and ports 80/443 are
-# reachable.
+# The canonical origin serves the public website, beta intake, Cloud API,
+# WebSocket, health, and updater routes. The legacy origin keeps product routes
+# available for already-released desktop clients and redirects only ordinary
+# browser navigation to the canonical site.
 #
-# Replace `kordi-cloud.example.com` with your real domain before importing.
+# kordi-cloud-port-forward.service owns 127.0.0.1:17081 and follows the current
+# Kubernetes Service endpoint, so this file does not embed a cluster IP.
 
-kordi-cloud.example.com {
+kordi.ai, www.kordi.ai {
 	encode zstd gzip
+	root * /srv/kordi-homepage/current
 
-	# Lock down CORS to your desktop app's origin once it's stable. The cloud
-	# server already issues an `Access-Control-Allow-Origin: *` header from
-	# its tower-http CorsLayer; Caddy passes that through unchanged.
-	@cloud_api path /v1/cloud/* /health
-	reverse_proxy @cloud_api 127.0.0.1:17081 {
-		# Forward client IP to the cloud server's rate-limiter.
-		header_up X-Forwarded-For {remote_host}
-		header_up X-Real-IP {remote_host}
+	@cloud_product_routes path /v1/cloud/* /health /updates/*
+	handle @cloud_product_routes {
+		reverse_proxy 127.0.0.1:17081 {
+			header_up X-Real-IP {remote_host}
+		}
 	}
 
-	# Anything not under /v1/cloud or /health 404s — keeps the surface tight.
-	respond 404
+	handle /beta-api/* {
+		reverse_proxy 127.0.0.1:17181
+	}
+
+	handle /index.html {
+		redir * / 308
+	}
+	handle /research.html {
+		redir * /research 308
+	}
+	handle /about.html {
+		redir * /about 308
+	}
+	handle /privacy.html {
+		redir * /privacy 308
+	}
+	handle /terms.html {
+		redir * /terms 308
+	}
+
+	handle /research/ {
+		redir * /research 308
+	}
+	handle /about/ {
+		redir * /about 308
+	}
+	handle /privacy/ {
+		redir * /privacy 308
+	}
+	handle /terms/ {
+		redir * /terms 308
+	}
+
+	handle / {
+		rewrite * /index.html
+		file_server
+	}
+	handle /research {
+		rewrite * /research.html
+		file_server
+	}
+	handle /about {
+		rewrite * /about.html
+		file_server
+	}
+	handle /privacy {
+		rewrite * /privacy.html
+		file_server
+	}
+	handle /terms {
+		rewrite * /terms.html
+		file_server
+	}
+
+	@homepage_assets path /styles.css /app.js /assets/*
+	handle @homepage_assets {
+		file_server
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:17081 {
+			header_up X-Real-IP {remote_host}
+		}
+	}
+}
+
+coordinar.io, www.coordinar.io {
+	encode zstd gzip
+
+	@legacy_product_routes path /v1/cloud/* /health /updates/*
+	handle @legacy_product_routes {
+		reverse_proxy 127.0.0.1:17081 {
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle {
+		redir https://kordi.ai{uri} 308
+	}
 }

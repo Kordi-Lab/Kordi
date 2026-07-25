@@ -29,6 +29,7 @@ test('runner manifest keeps one sandbox-capable worker online', () => {
 test('runner image deploy script leaves one active runner online', () => {
   assert.ok(fs.existsSync(deployScriptPath));
   const script = read(deployScriptPath);
+  assert.match(script, /KORDI_CLOUD_GCP_PROJECT/);
   assert.match(script, /cargo build --release -p kordi-cloud-agent-runner/);
   assert.match(script, /buildah bud/);
   assert.match(script, /k3s ctr images import/);
@@ -36,11 +37,14 @@ test('runner image deploy script leaves one active runner online', () => {
   assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_IDLE=0/);
   assert.match(script, /KORDI_CLOUD_RUNNER_CANARY_RUN_ID-/);
   assert.match(script, /kubectl[^\n]+scale[^\n]+kordi-cloud-agent-runner[^\n]+--replicas=1/);
+  assert.match(script, /wait[\s\S]+condition=Ready[\s\S]+kordi-cloud-agent-runner/);
+  assert.match(script, /restartCount/);
 });
 
 test('runner runtime Dockerfile copies runner binary', () => {
   assert.ok(fs.existsSync(dockerfilePath));
   const dockerfile = read(dockerfilePath);
+  assert.match(dockerfile, /^FROM ubuntu:24\.04/m);
   assert.match(dockerfile, /target\/release\/kordi-cloud-agent-runner/);
   assert.match(dockerfile, /ENTRYPOINT \["\/usr\/local\/bin\/kordi-cloud-agent-runner"\]/);
 });

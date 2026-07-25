@@ -6,12 +6,14 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  PRODUCT_ORIGIN,
   TAURI_UPDATER_PUBLIC_KEY,
   assertAppBundleContract,
   clearDesktopReleaseChannel,
   createAdhocPreviewVerifier,
   createProductionVerifier,
   prepareDesktopRelease,
+  productOriginScanArguments,
   publishDesktopRelease,
   redactPublisherText,
   releaseTreeScanArguments,
@@ -40,9 +42,9 @@ const TEST_SIGNATURE = Buffer.from(TEST_SIGNATURE_TEXT).toString('base64');
 const TEST_PUBLIC_KEY = Buffer.from(TEST_PUBLIC_KEY_TEXT).toString('base64');
 const APP_CONTRACT_BUNDLE = '/tmp/Kordi.app';
 const ACCEPTANCE_ENDPOINT =
-  'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+  'https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
 const PRODUCTION_ENDPOINT =
-  'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
+  'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
 
 function contractRun(overrides = new Map(), calls = []) {
   const info = `${APP_CONTRACT_BUNDLE}/Contents/Info.plist`;
@@ -159,7 +161,11 @@ function artifactVerifierRun(releaseProfile, calls) {
     }
     if (command === 'rg' && args.includes('-n')) return { status: 1, stdout: '', stderr: '' };
     if (command === 'rg' && args.includes('-F')) {
-      return { status: args.includes(expectedEndpoint) ? 0 : 1, stdout: 'Kordi\n', stderr: '' };
+      return {
+        status: args.includes(expectedEndpoint) || args.includes(PRODUCT_ORIGIN) ? 0 : 1,
+        stdout: 'Kordi\n',
+        stderr: '',
+      };
     }
     if (command === 'rg' && args.includes('-e')) return { status: 0, stdout: 'Kordi\n', stderr: '' };
     return { status: 1, stdout: '', stderr: `unexpected command: ${key}` };
@@ -323,13 +329,13 @@ function makePublicHttp(prepared, {
         const updateBody = updateResponse(selected);
         return { status: 200, headers: { 'content-length': String(updateBody.length) }, body: updateBody };
       }
-      if (url === 'https://coordinar.io/updates/releases/version' && postPromotionFailed && !previousPrepared) {
+      if (url === 'https://kordi.ai/updates/releases/version' && postPromotionFailed && !previousPrepared) {
         return {
           status: 200,
           headers: {},
           body: Buffer.from(JSON.stringify({
             version: '0.0.1-beta.5',
-            changelogUrl: 'https://coordinar.io/updates/releases/version',
+            changelogUrl: 'https://kordi.ai/updates/releases/version',
           })),
         };
       }
@@ -374,9 +380,9 @@ test('generates deterministic beta.6 metadata, keys, checksums, and product URLs
   assert.equal(first.release.platforms['darwin-aarch64'].objectKey, `desktop/releases/${VERSION}/macos/aarch64/Kordi.app.tar.gz`);
   assert.equal(first.pointerKey, 'desktop/channels/beta/latest.json');
   assert.equal(first.pointer.releaseManifestKey, `desktop/releases/${VERSION}/release.json`);
-  assert.equal(first.urls.manual, `https://coordinar.io/updates/releases/${VERSION}/${fixture.dmgName}`);
-  assert.equal(first.urls.updaterArchive, `https://coordinar.io/updates/releases/${VERSION}/Kordi.app.tar.gz`);
-  assert.equal(first.urls.updaterEndpoint, 'https://coordinar.io/updates/desktop/darwin/aarch64/0.0.0');
+  assert.equal(first.urls.manual, `https://kordi.ai/updates/releases/${VERSION}/${fixture.dmgName}`);
+  assert.equal(first.urls.updaterArchive, `https://kordi.ai/updates/releases/${VERSION}/Kordi.app.tar.gz`);
+  assert.equal(first.urls.updaterEndpoint, 'https://kordi.ai/updates/desktop/darwin/aarch64/0.0.0');
   assert.match(first.checksumsBytes.toString(), new RegExp(`${first.artifacts.manual.sha256}  macos/aarch64/${fixture.dmgName}`));
   assert.match(first.checksumsBytes.toString(), new RegExp(`${first.artifacts.updater.sha256}  macos/aarch64/Kordi\\.app\\.tar\\.gz`));
   assert.deepEqual(await readFile(join(fixture.releaseDir, 'release.json')), first.releaseBytes);
@@ -976,13 +982,13 @@ test('a pointer read-back failure still rolls back the exact first promotion', a
       if (unpublished) {
         if (url === prepared.urls.updaterEndpoint) return { status: 204, headers: {}, body: Buffer.alloc(0) };
         if (url === prepared.urls.stableManual) return { status: 404, headers: {}, body: Buffer.alloc(0) };
-        if (url === 'https://coordinar.io/updates/releases/version') {
+        if (url === 'https://kordi.ai/updates/releases/version') {
           return {
             status: 200,
             headers: {},
             body: Buffer.from(JSON.stringify({
               version: '0.0.1-beta.5',
-              changelogUrl: 'https://coordinar.io/updates/releases/version',
+              changelogUrl: 'https://kordi.ai/updates/releases/version',
             })),
           };
         }
@@ -1357,13 +1363,13 @@ test('beta rollback tombstones only the expected current release and verifies sa
     async get(url) {
       if (url === prepared.urls.updaterEndpoint) return { status: 204, headers: {}, body: Buffer.alloc(0) };
       if (url === prepared.urls.stableManual) return { status: 404, headers: {}, body: Buffer.alloc(0) };
-      if (url === 'https://coordinar.io/updates/releases/version') {
+      if (url === 'https://kordi.ai/updates/releases/version') {
         return {
           status: 200,
           headers: {},
           body: Buffer.from(JSON.stringify({
             version: '0.0.1-beta.5',
-            changelogUrl: 'https://coordinar.io/updates/releases/version',
+            changelogUrl: 'https://kordi.ai/updates/releases/version',
           })),
         };
       }
@@ -1443,6 +1449,19 @@ test('privacy scanning includes ignored build outputs and every mounted release 
   assert.ok(args.includes('--hidden'));
   assert.ok(args.includes('--text'));
   assert.equal(args.at(-1), '/tmp/Kordi.app');
+});
+
+test('release bundle scanning requires the canonical kordi.ai product origin', () => {
+  assert.deepEqual(productOriginScanArguments('/tmp/Kordi.app'), [
+    '--text',
+    '--hidden',
+    '--no-ignore',
+    '--no-messages',
+    '-l',
+    '-F',
+    'https://kordi.ai',
+    '/tmp/Kordi.app',
+  ]);
 });
 
 test('publisher CLI requires the exact release inputs and accepts pnpm separators', () => {

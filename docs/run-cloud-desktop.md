@@ -5,7 +5,7 @@ This guide is for running the account-based Kordi desktop app from a local check
 Production API:
 
 ```text
-https://coordinar.io
+https://kordi.ai
 ```
 
 For development, use the isolated backend from the current checkout. For approved shared QA, use an operator-provided public test API base:

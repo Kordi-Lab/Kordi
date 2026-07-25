@@ -5,7 +5,7 @@ This directory contains the legacy/internal single-host systemd deploy path. Pro
 Production public base URL:
 
 ```text
-https://coordinar.io
+https://kordi.ai
 ```
 
 Development/QA should use an operator-provided public test Cloud API base or a self-hosted compatible Cloud server:
@@ -48,4 +48,4 @@ Point the desktop app at a public test or self-hosted Cloud API:
 VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE> pnpm dev
 ```
 
-Production builds default to `https://coordinar.io`.
+Production builds default to `https://kordi.ai`.

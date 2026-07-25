@@ -15,7 +15,7 @@ This directory owns:
 The product backend is the hosted API. Production builds use:
 
 ```text
-https://coordinar.io
+https://kordi.ai
 ```
 
 For development or QA, use an operator-provided public test API base or host your own compatible server:

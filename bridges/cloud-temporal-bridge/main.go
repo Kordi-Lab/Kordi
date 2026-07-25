@@ -121,8 +121,8 @@ func SignupVerificationWorkflow(ctx workflow.Context, ev SignupEvent) error {
 func SendVerificationEmailActivity(ctx context.Context, input SendVerificationEmailInput) error {
 	smtpHost := envOr("SMTP_HOST", "mailpit.kordi-cloud.svc.cluster.local")
 	smtpPort := envOr("SMTP_PORT", "1025")
-	from := envOr("SMTP_FROM", "no-reply@coordinar.io")
-	publicBaseURL := strings.TrimRight(envOr("KORDI_CLOUD_PUBLIC_BASE_URL", "https://coordinar.io"), "/")
+	from := envOr("SMTP_FROM", "no-reply@kordi.ai")
+	publicBaseURL := strings.TrimRight(envOr("KORDI_CLOUD_PUBLIC_BASE_URL", "https://kordi.ai"), "/")
 
 	addr := fmt.Sprintf("%s:%s", smtpHost, smtpPort)
 	subject := "Verify your Kordi account"

@@ -103,6 +103,7 @@ async function renderLegacyUpdaterVerificationCommand(source, directory) {
        SSH_TARGET=test-host
        SSH_ZONE=test-zone
        IMAGE_TAG=test-image
+       GCLOUD_SSH=(gcloud compute ssh "$SSH_TARGET" --zone "$SSH_ZONE")
        gcloud() {
          command=
          while [ "$#" -gt 0 ]; do
@@ -209,7 +210,8 @@ test('credential and deploy scripts provision scoped users without logging crede
   assert.match(deploy, /204/);
   assert.match(deploy, /updates\/releases\/version/);
   assert.match(deploy, /downloadUrl/);
-  assert.match(deploy, /https:\/\/coordinar\.io\/health/);
+  assert.match(deploy, /PUBLIC_ORIGIN=.*https:\/\/kordi\.ai/);
+  assert.match(deploy, /\$\{origin\}\/health/);
 });
 
 test('access-key normalization handles LF and CRLF fixtures and locks file permissions', async (t) => {

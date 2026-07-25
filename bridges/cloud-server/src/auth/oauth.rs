@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-const DEFAULT_PUBLIC_BASE_URL: &str = "https://coordinar.io";
+const DEFAULT_PUBLIC_BASE_URL: &str = "https://kordi.ai";
 const AVATAR_SEED_PREFIX: &str = "kordi-pixel-avatar://";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -367,20 +367,20 @@ mod tests {
     fn public_base_url_defaults_to_product_cloud_host() {
         std::env::remove_var("KORDI_CLOUD_PUBLIC_BASE_URL");
 
-        assert_eq!(public_base_url(), "https://coordinar.io");
+        assert_eq!(public_base_url(), "https://kordi.ai");
     }
 
     #[test]
     fn redirect_allowlist_rejects_prefix_host_spoofing() {
         assert!(!is_allowed_oauth_redirect_with_config(
-            "https://coordinar.io.evil.example/callback",
+            "https://kordi.ai.evil.example/callback",
             None,
-            "https://coordinar.io",
+            "https://kordi.ai",
         ));
         assert!(is_allowed_oauth_redirect_with_config(
-            "https://coordinar.io/callback",
+            "https://kordi.ai/callback",
             None,
-            "https://coordinar.io",
+            "https://kordi.ai",
         ));
     }
 
@@ -389,12 +389,12 @@ mod tests {
         assert!(is_allowed_oauth_redirect_with_config(
             "http://127.0.0.1:49152/oauth/request",
             None,
-            "https://coordinar.io",
+            "https://kordi.ai",
         ));
         assert!(!is_allowed_oauth_redirect_with_config(
             "tauri://localhost/oauth/request",
             None,
-            "https://coordinar.io",
+            "https://kordi.ai",
         ));
     }
 

@@ -2,7 +2,7 @@
 
 This guide explains how developers should test and deploy against a hosted environment.
 
-Production API is `https://coordinar.io`. Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized. For development and QA, use an operator-provided public test API base or host your own compatible server.
+Production API is `https://kordi.ai`. Do not use the production server for destructive, load, or throwaway multi-account testing unless explicitly authorized. For development and QA, use an operator-provided public test API base or host your own compatible server.
 
 Do not put tokens, provider credentials, database credentials, account secrets, or private operator host details in GitHub issues, PRs, screenshots, commits, or shared logs.
 

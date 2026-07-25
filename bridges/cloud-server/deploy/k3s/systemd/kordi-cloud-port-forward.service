@@ -1,0 +1,39 @@
+[Unit]
+Description=Kordi Cloud loopback proxy to the current Kubernetes Service
+After=network-online.target k3s.service
+Wants=network-online.target
+Requires=k3s.service
+
+[Service]
+Type=simple
+Environment=HOME=/run/kordi-cloud-port-forward
+Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+RuntimeDirectory=kordi-cloud-port-forward
+ExecStart=/usr/local/bin/kubectl -n kordi-cloud port-forward --address=127.0.0.1 service/kordi-cloud-server 17081:17081
+Restart=always
+RestartSec=2s
+TimeoutStartSec=30s
+TimeoutStopSec=15s
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=128M
+TasksMax=64
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

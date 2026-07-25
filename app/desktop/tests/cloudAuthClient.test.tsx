@@ -197,7 +197,22 @@ test('capabilities reports only server-configured social sign-in providers', asy
   assert.equal(calls[0].init?.method, 'GET');
 });
 
-test('capabilities keeps hosted OAuth available for older product deployments', async () => {
+test('capabilities keeps hosted OAuth available for product deployments', async () => {
+  const { fetchImpl } = recordingFetch(() => jsonResponse(404, {
+    message: 'Not Found',
+  }));
+  const client = new CloudAuthClient({
+    baseUrl: 'https://kordi.ai',
+    fetchImpl,
+  });
+
+  assert.deepEqual(await client.capabilities(), {
+    password: true,
+    oauthProviders: ['google', 'github'],
+  });
+});
+
+test('capabilities keeps hosted OAuth available on the legacy product origin', async () => {
   const { fetchImpl } = recordingFetch(() => jsonResponse(404, {
     message: 'Not Found',
   }));
@@ -229,7 +244,7 @@ test('capabilities does not infer providers for non-product servers', async () =
 });
 
 test('cloud API defaults to the hosted product origin outside development', () => {
-  assert.equal(cloudApiBaseUrl({}), 'https://coordinar.io');
+  assert.equal(cloudApiBaseUrl({}), 'https://kordi.ai');
 });
 
 test('development cloud API requires an explicit non-production origin', () => {
@@ -238,9 +253,9 @@ test('development cloud API requires an explicit non-production origin', () => {
     /VITE_KORDI_CLOUD_API_BASE is required for development/i,
   );
   for (const productionOrigin of [
-    'https://coordinar.io:443/',
+    'https://kordi.ai:443/',
     'http://coordinar.io',
-    'https://coordinar.io./',
+    'https://kordi.ai./',
   ]) {
     assert.throws(
       () => cloudApiBaseUrl({
@@ -269,7 +284,7 @@ test('development cloud API requires an explicit non-production origin', () => {
 test('operator development requires both the operator profile and production acknowledgement', () => {
   const baseEnv = {
     DEV: true,
-    VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io',
+    VITE_KORDI_CLOUD_API_BASE: 'https://kordi.ai',
   };
   assert.throws(
     () => cloudApiBaseUrl({ ...baseEnv, VITE_KORDI_DEV_PROFILE: 'operator' }),
@@ -285,14 +300,14 @@ test('operator development requires both the operator profile and production ack
       VITE_KORDI_DEV_PROFILE: 'operator',
       VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
     }),
-    'https://coordinar.io',
+    'https://kordi.ai',
   );
 });
 
 test('acknowledged production operator previews retain OAuth when capability discovery is unavailable', () => {
   const operatorEnv = {
     DEV: true,
-    VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io',
+    VITE_KORDI_CLOUD_API_BASE: 'https://kordi.ai',
     VITE_KORDI_DEV_PROFILE: 'operator',
     VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
   };
@@ -312,21 +327,21 @@ test('acknowledged production operator previews retain OAuth when capability dis
 });
 
 test('cloud auth client gives local SSH tunnels a longer default timeout', () => {
-  assert.equal(defaultCloudRequestTimeoutMs('https://coordinar.io'), 15_000);
+  assert.equal(defaultCloudRequestTimeoutMs('https://kordi.ai'), 15_000);
   assert.equal(defaultCloudRequestTimeoutMs('http://127.0.0.1:17081'), 45_000);
   assert.equal(defaultCloudRequestTimeoutMs('http://localhost:17081'), 45_000);
 });
 
 test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
-  assert.equal(cloudRealtimeWebSocketEnabled('https://coordinar.io'), true);
+  assert.equal(cloudRealtimeWebSocketEnabled('https://kordi.ai'), true);
   assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081'), false);
   assert.equal(cloudRealtimeWebSocketEnabled('http://localhost:17081'), false);
 });
 
 test('cloud WebSocket URL derives from the cloud API origin', () => {
   assert.equal(
-    cloudWebSocketUrl('kordi_cs_token', 'https://coordinar.io'),
-    'wss://coordinar.io/v1/cloud/ws?token=kordi_cs_token',
+    cloudWebSocketUrl('kordi_cs_token', 'https://kordi.ai'),
+    'wss://kordi.ai/v1/cloud/ws?token=kordi_cs_token',
   );
   assert.equal(
     cloudWebSocketUrl('token with space', 'http://127.0.0.1:17081'),

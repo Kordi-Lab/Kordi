@@ -27,7 +27,7 @@ import {
   verifyMacAppSignature,
 } from './macos-release-signing.mjs';
 
-export const PRODUCT_ORIGIN = 'https://coordinar.io';
+export const PRODUCT_ORIGIN = 'https://kordi.ai';
 export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
 
 const REPO_ROOT = dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
@@ -1016,7 +1016,7 @@ async function assertVersionParity(repoRoot, version) {
     [tauri.version === version, 'Tauri configuration'],
     [tauri.plugins?.updater?.pubkey === TAURI_UPDATER_PUBLIC_KEY, 'Tauri updater public key'],
     [JSON.stringify(tauri.plugins?.updater?.endpoints) === JSON.stringify([
-      'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
+      'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
     ]), 'Tauri updater endpoint'],
     [cloudTauri.version === undefined || cloudTauri.version === version, 'Cloud Tauri configuration'],
     [cargoPattern.test(cargoToml), 'desktop Cargo manifest'],
@@ -1034,7 +1034,7 @@ async function assertAcceptanceConfigParity(repoRoot) {
     readFile(join(tauriRoot, 'tauri.cloud.acceptance.conf.json'), 'utf8').then(JSON.parse),
     readFile(join(tauriRoot, 'tauri.cloud.acceptance-bootstrap.conf.json'), 'utf8').then(JSON.parse),
   ]);
-  const endpoint = 'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+  const endpoint = 'https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
   for (const config of [target, bootstrap]) {
     if (
       config.productName !== 'Kordi'
@@ -1070,9 +1070,9 @@ export function assertAppBundleContract(run, appBundle, {
   }
   const trust = verifyMacAppSignature({ run, appBundle, profile: releaseProfile });
   const acceptanceEndpoint =
-    'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+    'https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
   const productionEndpoint =
-    'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
+    'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
   const endpoint = releaseProfile === 'adhoc-preview' ? acceptanceEndpoint : productionEndpoint;
   const forbiddenEndpoint = releaseProfile === 'adhoc-preview' ? productionEndpoint : acceptanceEndpoint;
   requireRun(
@@ -1100,6 +1100,10 @@ export function releaseTreeScanArguments(root) {
   return args;
 }
 
+export function productOriginScanArguments(root) {
+  return ['--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F', PRODUCT_ORIGIN, root];
+}
+
 function scanReleaseTree(run, root) {
   const args = releaseTreeScanArguments(root);
   const privacy = run('rg', args);
@@ -1108,8 +1112,8 @@ function scanReleaseTree(run, root) {
   requireRun(
     run,
     'rg',
-    ['--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-e', 'https://coordinar\\.io|coordinar\\.io', root],
-    'Application bundle does not contain the coordinar.io product origin',
+    productOriginScanArguments(root),
+    'Application bundle does not contain the kordi.ai product origin',
   );
 }
 

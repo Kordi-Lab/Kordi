@@ -26,7 +26,7 @@ desktop app
 Production API:
 
 ```text
-https://coordinar.io
+https://kordi.ai
 ```
 
 Development/QA should use `<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted compatible server.

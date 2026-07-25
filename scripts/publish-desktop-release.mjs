@@ -134,7 +134,7 @@ export function createPublicHttpAdapter({ fetchImpl = globalThis.fetch } = {}) {
   if (typeof fetchImpl !== 'function') throw new Error('A Fetch implementation is required');
   async function request(url, method) {
     const parsed = new URL(url);
-    if (parsed.origin !== PRODUCT_ORIGIN) throw new Error('Public verification URL must use coordinar.io');
+    if (parsed.origin !== PRODUCT_ORIGIN) throw new Error('Public verification URL must use kordi.ai');
     const response = await fetchImpl(parsed, {
       method,
       redirect: 'error',

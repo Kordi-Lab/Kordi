@@ -42,7 +42,7 @@ spec:
             - name: SMTP_PORT
               value: "1025"
             - name: SMTP_FROM
-              value: "no-reply@coordinar.io"
+              value: "no-reply@kordi.ai"
           resources:
             requests:
               cpu: "50m"
