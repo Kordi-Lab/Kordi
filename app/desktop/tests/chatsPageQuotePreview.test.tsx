@@ -3,7 +3,14 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { canonicalHistorySessionIdForConversation, ChatsPage, selfAgentSessionIdForTitleRename, transcriptHumanParticipant } from '../src/pages/ChatsPage';
+import {
+  canonicalHistorySessionIdForConversation,
+  ChatsPage,
+  forkSnapshotBoundaryIndexForMessages,
+  forkSourceMessageIds,
+  selfAgentSessionIdForTitleRename,
+  transcriptHumanParticipant,
+} from '../src/pages/ChatsPage';
 import type { Conversation, Message } from '../src/kordi-app/types';
 
 const activeConv: Conversation = {
@@ -335,6 +342,109 @@ test('group-derived fork transcript hides fork source backlink and snapshot divi
 
   assert.doesNotMatch(markup, /Forked from Weather group/);
   assert.doesNotMatch(markup, /Forked from conversation/);
+});
+
+test('private self-agent fork renders its parent backlink and boundary from a runtime anchor alias', () => {
+  const selfAgentFork: Conversation = {
+    ...activeConv,
+    id: 'session:fork:self-agent',
+    canonicalSessionId: 'session:fork:self-agent',
+    name: 'New fork',
+    type: 'owned-agent',
+    forkedFromSessionId: 'session:self-agent:parent',
+    forkedFromMessageId: 'msg:canonical-parent-agent',
+    metadata: {
+      fork: {
+        boundary: 'inherited-history-reference-only',
+        forkedFromSessionId: 'session:self-agent:parent',
+        forkedFromMessageId: 'msg:canonical-parent-agent',
+        forkedFromMessageAliases: ['msg:canonical-parent-agent', 'entry:runtime-parent-agent'],
+      },
+    },
+    messages: [
+      {
+        id: 'runtime-user',
+        entryId: 'entry:runtime-parent-user',
+        role: 'user',
+        sender: 'Me',
+        senderType: 'human',
+        text: 'Which model are you?',
+        time: '09:00',
+        isOwnMessage: true,
+      },
+      {
+        id: 'runtime-agent',
+        entryId: 'entry:runtime-parent-agent',
+        role: 'owned-agent',
+        sender: 'My Kordi',
+        senderType: 'agent',
+        text: '',
+        time: '09:01',
+        turn: {
+          id: 'turn:runtime-parent-agent',
+          sessionId: 'session:fork:self-agent',
+          prompt: '',
+          status: 'complete',
+          message: 'Complete',
+          assistantText: 'I am Kordi.',
+          thinkingText: '',
+          tools: [],
+          completed: true,
+          succeeded: true,
+          error: null,
+        },
+      },
+    ],
+  };
+  const markup = renderChatsPage({
+    activeConv: selfAgentFork,
+    desktopChatState: {
+      sessions: [
+        { id: 'session:self-agent:parent', title: 'Model discussion' },
+        { id: 'session:fork:self-agent', title: 'New fork', forkedFromSessionId: 'session:self-agent:parent', forkedFromMessageId: 'msg:canonical-parent-agent' },
+      ],
+    },
+  });
+
+  assert.match(markup, /Forked from Model discussion/);
+  assert.equal(
+    forkSnapshotBoundaryIndexForMessages(
+      selfAgentFork.messages,
+      forkSourceMessageIds(selfAgentFork),
+    ),
+    1,
+  );
+});
+
+test('fork boundary does not treat a new reply to inherited history as another snapshot row', () => {
+  const messages: Message[] = [
+    {
+      id: 'snapshot-agent',
+      entryId: 'entry:snapshot-agent',
+      role: 'owned-agent',
+      text: '',
+      time: '09:01',
+      isForkSnapshot: true,
+    },
+    {
+      id: 'new-reply',
+      entryId: 'entry:new-reply',
+      role: 'user',
+      text: 'Continue from this answer',
+      time: '09:02',
+      isOwnMessage: true,
+      replyToMessageId: 'msg:canonical-parent-agent',
+      replyAliasIds: ['msg:canonical-parent-agent'],
+    },
+  ];
+
+  assert.equal(
+    forkSnapshotBoundaryIndexForMessages(
+      messages,
+      new Set(['msg:canonical-parent-agent', 'entry:snapshot-agent']),
+    ),
+    0,
+  );
 });
 
 test('chat composer renders active quote preview with remove control', () => {

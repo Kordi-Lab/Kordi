@@ -7,6 +7,7 @@ import { stripDerivedCloudUnreadCounts } from '../src/app/useKordiAppModelHelper
 import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActivity';
 import { activeConversationForSelection, applyCanonicalHydrationPlaceholder, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
+import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import { restoredCloudSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
 import { createCanonicalSessionReadModel, mergeCanonicalHistoryIntoRuntime } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
@@ -473,6 +474,115 @@ test('runtime transcript reconciliation renders one failure when canonical and d
 
   assert.deepEqual(merged.map((message) => message.id), ['runtime-provider-failure']);
   assert.equal(shouldUseCanonicalMessages([runtimeFailure], [canonicalFailure]), false);
+});
+
+test('desktop entry aliases reconcile tool-only canonical and runtime turns after returning to a parent fork', () => {
+  const identities = new Map([
+    ['human:me', {
+      id: 'human:me',
+      kind: 'human',
+      displayName: 'Me',
+      source: 'local',
+      avatarKey: 'human:me',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    }],
+    ['agent:me', {
+      id: 'agent:me',
+      kind: 'agent',
+      displayName: 'Kordi',
+      ownerIdentityId: 'human:me',
+      source: 'local',
+      avatarKey: 'agent:me',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    }],
+  ]);
+  const canonicalMessage = mapCanonicalMessage({
+    id: 'msg:canonical-tool-turn',
+    sessionId: 'session:parent',
+    senderIdentityId: 'agent:me',
+    senderRole: 'owned-agent',
+    messageKind: 'agent-turn',
+    contentText: '',
+    content: {
+      desktopEntryId: 'entry:runtime-tool-turn',
+      thinkingText: 'Inspecting the issue',
+      timeLabel: '16:05',
+      tools: [{
+        id: 'tool:edit',
+        name: 'edit',
+        status: 'error',
+        arguments: '{}',
+        liveOutput: '',
+        isError: true,
+      }],
+    },
+    status: 'complete',
+    sequenceNum: 6,
+    createdAtMs: 6,
+    updatedAtMs: 6,
+    sourceTransport: 'desktop-chat',
+  }, identities, 'human:me');
+  assert.ok(canonicalMessage);
+  assert.equal(canonicalMessage.entryId, 'entry:runtime-tool-turn');
+
+  const runtimeMessage: Message = {
+    id: 'desktop-message:session:parent:6:owned-agent',
+    entryId: 'entry:runtime-tool-turn',
+    role: 'owned-agent',
+    sender: 'My Kordi',
+    text: '',
+    time: '16:05',
+    turn: {
+      id: 'runtime-tool-turn',
+      sessionId: 'session:parent',
+      prompt: '',
+      status: 'succeeded',
+      message: 'Response complete',
+      assistantText: '',
+      thinkingText: 'Inspecting the issue',
+      tools: [{
+        id: 'tool:edit',
+        name: 'edit',
+        status: 'error',
+        arguments: '{}',
+        liveOutput: '',
+        isError: true,
+      }],
+      completed: true,
+      succeeded: false,
+      error: null,
+    },
+  };
+
+  const merged = mergeCanonicalHistoryIntoRuntime([canonicalMessage], [runtimeMessage]);
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]?.id, runtimeMessage.id);
+  assert.deepEqual(merged[0]?.replyAliasIds, [
+    'msg:canonical-tool-turn',
+    'entry:runtime-tool-turn',
+  ]);
+
+  const forkSnapshot = mapCanonicalMessage({
+    id: 'msg:fork-snapshot-tool-turn',
+    sessionId: 'session:fork',
+    senderIdentityId: 'agent:me',
+    senderRole: 'owned-agent',
+    messageKind: 'agent-turn',
+    contentText: '',
+    content: {
+      desktopEntryId: 'entry:runtime-tool-turn',
+      timeLabel: '16:05',
+    },
+    status: 'complete',
+    sequenceNum: 1,
+    createdAtMs: 6,
+    updatedAtMs: 6,
+    sourceTransport: 'canonical-fork-snapshot',
+  }, identities, 'human:me');
+  assert.equal(forkSnapshot?.entryId, 'msg:fork-snapshot-tool-turn');
 });
 
 test('workspace active conversation resolves canonical Cloud direct session ids to the Cloud bridge conversation', () => {
@@ -985,6 +1095,61 @@ test('canonical read model prefers equal-count canonical transcript when it adds
   ];
 
   assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), true);
+});
+
+test('canonical fork snapshot markers enrich matching runtime messages after hydration', () => {
+  const runtimeMessages = [
+    { id: 'runtime-user', entryId: 'entry:user', role: 'user' as const, text: 'old question', time: '11:41', isOwnMessage: true },
+    {
+      id: 'runtime-agent',
+      entryId: 'entry:agent',
+      role: 'owned-agent' as const,
+      text: '',
+      time: '11:42',
+      turn: {
+        id: 'turn:runtime-agent',
+        sessionId: 'session:fork',
+        prompt: '',
+        status: 'complete' as const,
+        message: 'Complete',
+        assistantText: 'old answer',
+        thinkingText: '',
+        tools: [],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    },
+  ];
+  const canonicalMessages = [
+    { id: 'msg:canonical-user', role: 'user' as const, text: 'old question', time: '11:41', isOwnMessage: true, isForkSnapshot: true },
+    {
+      id: 'msg:canonical-agent',
+      role: 'owned-agent' as const,
+      text: '',
+      time: '11:42',
+      isForkSnapshot: true,
+      turn: {
+        id: 'turn:canonical-agent',
+        sessionId: 'session:fork',
+        prompt: '',
+        status: 'complete' as const,
+        message: 'Complete',
+        assistantText: 'old answer',
+        thinkingText: '',
+        tools: [],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    },
+  ];
+
+  const merged = mergeCanonicalHistoryIntoRuntime(canonicalMessages, runtimeMessages);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0]?.isForkSnapshot, true);
+  assert.equal(merged[1]?.isForkSnapshot, true);
+  assert.deepEqual(merged[1]?.replyAliasIds, ['msg:canonical-agent']);
 });
 
 test('restored Cloud self-agent messages are sent as native context for continued local turns', () => {

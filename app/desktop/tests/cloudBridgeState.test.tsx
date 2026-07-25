@@ -1491,6 +1491,10 @@ test('cloud self-agent canonical sync restores fork lineage metadata', () => {
   assert.deepEqual(metadata.fork, {
     forkedFromSessionId: 'parent-session',
     forkedFromMessageId: 'msg:cloud:self:parent-agent',
+    forkedFromMessageAliases: ['msg:cloud:self:parent-agent'],
+    forkMode: 'private-local',
+    contextPolicy: 'prefix-through-message',
+    boundary: 'inherited-history-reference-only',
   });
 });
 
@@ -1642,7 +1646,7 @@ test('cloud self-agent canonical sync patches existing restored fork prefix mess
     sessionId: 'session:fork:child',
   };
   const state = {
-    sessions: [{ id: 'session:fork:child', kind: 'self-agent', title: 'original prompt', status: 'active', createdByIdentityId: 'human:acct_me', primaryIdentityId: 'agent:cloud-self:acct_me', projectId: null, projectName: null, relationshipIdentityId: null, metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 }],
+    sessions: [{ id: 'session:fork:child', kind: 'self-agent', title: 'original prompt', status: 'active', createdByIdentityId: 'human:acct_me', primaryIdentityId: 'agent:cloud-self:acct_me', projectId: null, projectName: null, relationshipIdentityId: null, metadata: { cloudSelfAgentSession: true, sessionTitleSource: 'auto', titleSource: 'auto', sessionTitleRevision: 1, sessionTitleGeneratedFromMessageId: 'msg_fork_copied_request' }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 }],
     identities: [],
     participants: [],
     profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
@@ -1676,6 +1680,10 @@ test('cloud self-agent canonical sync patches existing restored fork prefix mess
     })), [
     { id: 'msg:cloud:self:msg_fork_copied_request', sourceTransport: 'canonical-fork-snapshot' },
   ]);
+  const forkSessionRequest = plan.sessionRequests.find((request) => request.id === 'session:fork:child');
+  assert.equal(forkSessionRequest?.title, 'New fork');
+  assert.equal((forkSessionRequest?.metadata as Record<string, unknown>)?.sessionTitleSource, 'placeholder');
+  assert.equal('sessionTitleGeneratedFromMessageId' in ((forkSessionRequest?.metadata as Record<string, unknown>) ?? {}), false);
 });
 
 test('cloud self-agent canonical sync patches fork lineage onto existing restored sessions', () => {
@@ -1690,7 +1698,27 @@ test('cloud self-agent canonical sync patches fork lineage onto existing restore
     sessionId: 'session:fork:child',
   };
   const state = {
-    sessions: [{ id: 'session:fork:child', kind: 'self-agent', title: 'child prompt', status: 'active', createdByIdentityId: 'human:acct_me', primaryIdentityId: 'agent:cloud-self:acct_me', projectId: null, projectName: null, relationshipIdentityId: null, metadata: { cloudSelfAgentSession: true }, createdAtMs: 1, updatedAtMs: 1, lastMessageAtMs: 1 }],
+    sessions: [{
+      id: 'session:fork:child',
+      kind: 'self-agent',
+      title: 'child prompt',
+      status: 'active',
+      createdByIdentityId: 'human:acct_me',
+      primaryIdentityId: 'agent:cloud-self:acct_me',
+      projectId: null,
+      projectName: null,
+      relationshipIdentityId: null,
+      metadata: {
+        cloudSelfAgentSession: true,
+        fork: {
+          forkedFromSessionId: 'parent-session',
+          forkedFromMessageId: 'msg:cloud:self:parent-agent',
+        },
+      },
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      lastMessageAtMs: 1,
+    }],
     identities: [],
     participants: [],
     profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
@@ -1717,12 +1745,15 @@ test('cloud self-agent canonical sync patches fork lineage onto existing restore
   });
 
   assert.equal(plan.messageRequests.length, 0);
-  assert.deepEqual(plan.sessionRequests[0]?.metadata, {
-    cloudSelfAgentSession: true,
-    fork: {
-      forkedFromSessionId: 'parent-session',
-      forkedFromMessageId: 'msg:cloud:self:parent-agent',
-    },
+  const metadata = plan.sessionRequests[0]?.metadata as Record<string, unknown>;
+  assert.equal(metadata.cloudSelfAgentSession, true);
+  assert.deepEqual(metadata.fork, {
+    forkedFromSessionId: 'parent-session',
+    forkedFromMessageId: 'msg:cloud:self:parent-agent',
+    forkedFromMessageAliases: ['msg:cloud:self:parent-agent'],
+    forkMode: 'private-local',
+    contextPolicy: 'prefix-through-message',
+    boundary: 'inherited-history-reference-only',
   });
 });
 

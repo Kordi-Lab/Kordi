@@ -161,17 +161,28 @@ fn first_post_fork_user_title(
         return Ok(None);
     };
     let entries = kordi_session::store::get_entries(conn, &row.session_id)?;
-    let Some(anchor_seq) = entries
+    let anchor_seq = entries
         .iter()
         .find(|entry| entry.entry_id == anchor)
-        .map(|entry| entry.seq)
-    else {
-        return Ok(None);
-    };
-    for entry_row in entries
-        .iter()
-        .filter(|entry| entry.seq > anchor_seq && entry.entry_type == "message")
-    {
+        .map(|entry| entry.seq);
+    let fork_created_at_ms = parse_db_timestamp_millis(&row.created_at);
+    for entry_row in entries.iter().filter(|entry| {
+        if entry.entry_type != "message" {
+            return false;
+        }
+        if let Some(anchor_seq) = anchor_seq {
+            return entry.seq > anchor_seq;
+        }
+        // Canonical-rooted forks store the stable canonical anchor in the
+        // local session row, but intentionally do not duplicate the
+        // inherited canonical snapshot into the runtime database. In that
+        // case every local entry created at or after the fork shell is a
+        // post-fork entry and is eligible to name the child session.
+        fork_created_at_ms.map_or(true, |created_at_ms| {
+            parse_db_timestamp_millis(&entry.timestamp)
+                .map_or(true, |entry_at_ms| entry_at_ms >= created_at_ms)
+        })
+    }) {
         let entry = kordi_session::store::parse_entry(entry_row)?;
         let kordi_core::types::SessionEntry::Message {
             message: kordi_core::types::AgentMessage::User(user),
@@ -689,6 +700,31 @@ mod tests {
         assert_eq!(
             first_post_fork_user_title(&conn, &row).expect("derive fork title"),
             Some(("Diagnose memory leak in Node process".to_string(), topic_id))
+        );
+    }
+
+    #[test]
+    fn canonical_fork_title_uses_first_local_user_message_when_anchor_is_not_in_runtime_store() {
+        let conn = kordi_session::store::open_memory().expect("session database");
+        let fork_id = "session:fork:canonical";
+        kordi_session::store::create_session_with_id_parent_and_message(
+            &conn,
+            fork_id,
+            "/tmp/kordi",
+            Some("session:canonical-parent"),
+            Some("msg:canonical-parent-agent"),
+        )
+        .expect("canonical fork shell");
+        let topic = user_entry(None, "debug nested fork lineage");
+        let topic_id = topic.base().id.to_string();
+        kordi_session::store::append_entry(&conn, fork_id, &topic).expect("new fork message");
+        let row = kordi_session::store::get_session(&conn, fork_id)
+            .expect("fork row")
+            .expect("fork exists");
+
+        assert_eq!(
+            first_post_fork_user_title(&conn, &row).expect("derive canonical fork title"),
+            Some(("Debug nested fork lineage".to_string(), topic_id))
         );
     }
 }

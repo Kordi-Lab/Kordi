@@ -47,7 +47,9 @@ pub(crate) use self::core::canonical_bridge_session_id;
 use self::core::{
     canonical_sessions_db_path, canonical_storage_root, hash_hex, now_ms, stable_profile_id,
 };
-pub(crate) use self::desktop_sync::sync_desktop_chat_state;
+pub(crate) use self::desktop_sync::{
+    canonical_session_message_id_for_entry, sync_desktop_chat_state,
+};
 #[cfg(test)]
 use self::desktop_sync::{
     enrich_similar_bridge_agent_message_with_desktop_runtime, explicit_desktop_project_membership,
@@ -1926,22 +1928,6 @@ pub(super) fn local_agent_identity_id(
     reassign_stale_local_agent_identities(conn, human_identity_id, workspace_root, &identity.id)?;
     update_local_profile_identities(conn, None, Some(identity.id.as_str()), None)?;
     Ok(identity.id)
-}
-
-/// Open the canonical sessions DB and check whether the given
-/// (session_id, message_id) pair has a row in `session_messages`.
-///
-/// Used by the fork dispatcher to detect canonical-mirrored sessions
-/// that don't carry the `session:` prefix (notably self-agent chats
-/// that are mirrored into the canonical store for cloud sync). Returns
-/// `Ok(false)` when the canonical DB has no row matching the entry,
-/// so callers can fall back to the local kordi_session fork path.
-pub(crate) fn canonical_session_message_exists(
-    session_id: &str,
-    message_id: &str,
-) -> Result<bool, String> {
-    let conn = open_db()?;
-    canonical_message_exists(&conn, session_id, message_id)
 }
 
 pub(crate) fn canonical_session_is_group_chat(session_id: &str) -> Result<bool, String> {

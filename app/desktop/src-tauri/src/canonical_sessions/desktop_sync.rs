@@ -5,7 +5,7 @@ use super::message_reconcile;
 use super::models::{AppendCanonicalMessageRequest, OpenCanonicalSessionRequest};
 use super::sanitization::sanitize_shared_agent_response_text_with_conn;
 use super::{
-    local_agent_identity_id, local_profile_human_identity_id, open_db,
+    canonical_message_exists, local_agent_identity_id, local_profile_human_identity_id, open_db,
     open_or_create_session_in_db, select_session, similar_agent_message_exists,
     similar_agent_message_text,
 };
@@ -96,6 +96,14 @@ fn content_with_desktop_runtime(
     }
     content["timeLabel"] = serde_json::Value::String(message.time_label.clone());
     content["timestampMs"] = serde_json::Value::Number(message.timestamp_ms.into());
+    if let Some(entry_id) = message
+        .entry_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        content["desktopEntryId"] = serde_json::Value::String(entry_id.to_string());
+    }
     if let Some(reply_to_message_id) = reply_to_message_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -510,7 +518,34 @@ fn resolve_desktop_entry_to_canonical_message_id(
 ) -> Result<Option<String>, String> {
     let session_id = session_id.trim();
     let entry_id = entry_id.trim();
-    if session_id.is_empty() || entry_id.is_empty() || entry_id.starts_with("msg:") {
+    if session_id.is_empty() || entry_id.is_empty() {
+        return Ok(None);
+    }
+    if canonical_message_exists(conn, session_id, entry_id)? {
+        return Ok(Some(entry_id.to_string()));
+    }
+
+    let alias_message_id = conn
+        .query_row(
+            "SELECT id
+             FROM session_messages
+             WHERE session_id = ?1
+               AND CASE
+                     WHEN json_valid(content_json)
+                     THEN json_extract(content_json, '$.desktopEntryId')
+                     ELSE NULL
+                   END = ?2
+             ORDER BY sequence_num DESC
+             LIMIT 1",
+            params![session_id, entry_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    if alias_message_id.is_some() {
+        return Ok(alias_message_id);
+    }
+    if entry_id.starts_with("msg:") {
         return Ok(None);
     }
 
@@ -542,6 +577,14 @@ fn resolve_desktop_entry_to_canonical_message_id(
         .map_err(|err| err.to_string())?;
 
     Ok(canonical_ids.get(entry_index).cloned())
+}
+
+pub(crate) fn canonical_session_message_id_for_entry(
+    session_id: &str,
+    entry_id: &str,
+) -> Result<Option<String>, String> {
+    let conn = open_db()?;
+    resolve_desktop_entry_to_canonical_message_id(&conn, session_id, entry_id)
 }
 
 fn canonical_fork_message_id(
@@ -592,7 +635,22 @@ fn fork_metadata_value(
         if let Some(object) = value.as_object_mut() {
             object.insert(
                 "forkedFromMessageId".to_string(),
-                serde_json::Value::String(message_id.to_string()),
+                serde_json::Value::String(message_id.clone()),
+            );
+            let mut aliases = vec![message_id];
+            if let Some(runtime_entry_id) = forked_from_message_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                if !aliases.iter().any(|alias| alias == runtime_entry_id) {
+                    aliases.push(runtime_entry_id.to_string());
+                }
+            }
+            object.insert(
+                "forkedFromMessageAliases".to_string(),
+                serde_json::Value::Array(
+                    aliases.into_iter().map(serde_json::Value::String).collect(),
+                ),
             );
         }
     }
@@ -601,14 +659,65 @@ fn fork_metadata_value(
 
 fn metadata_with_fork(
     conn: &Connection,
+    session_id: Option<&str>,
     base: serde_json::Value,
     forked_from_session_id: Option<&str>,
     forked_from_message_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
-    let Some(fork) = fork_metadata_value(conn, forked_from_session_id, forked_from_message_id)?
+    let Some(mut fork) = fork_metadata_value(conn, forked_from_session_id, forked_from_message_id)?
     else {
         return Ok(base);
     };
+    let existing_fork = session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|session_id| select_session(conn, session_id))
+        .transpose()?
+        .flatten()
+        .and_then(|session| session.metadata)
+        .and_then(|metadata| metadata.get("fork").cloned())
+        .filter(|value| value.is_object());
+    if let (Some(next), Some(existing)) = (
+        fork.as_object_mut(),
+        existing_fork.as_ref().and_then(|value| value.as_object()),
+    ) {
+        for (key, value) in existing {
+            next.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+        let mut aliases = Vec::<String>::new();
+        for value in next
+            .get("forkedFromMessageAliases")
+            .and_then(|value| value.as_array())
+            .into_iter()
+            .flatten()
+            .chain(
+                existing
+                    .get("forkedFromMessageAliases")
+                    .and_then(|value| value.as_array())
+                    .into_iter()
+                    .flatten(),
+            )
+        {
+            let Some(alias) = value
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            if !aliases.iter().any(|candidate| candidate == alias) {
+                aliases.push(alias.to_string());
+            }
+        }
+        if !aliases.is_empty() {
+            next.insert(
+                "forkedFromMessageAliases".to_string(),
+                serde_json::Value::Array(
+                    aliases.into_iter().map(serde_json::Value::String).collect(),
+                ),
+            );
+        }
+    }
     let mut combined = base;
     if let Some(object) = combined.as_object_mut() {
         object.insert("fork".to_string(), fork);
@@ -692,6 +801,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         }
         let metadata = metadata_with_fork(
             &conn,
+            Some(&summary.id),
             metadata_with_runtime_title(
                 serde_json::json!({
                     "source": "desktop-chat-summary",
@@ -731,6 +841,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         {
             let metadata = metadata_with_fork(
                 &conn,
+                Some(&summary.id),
                 metadata_with_runtime_title(
                     serde_json::json!({
                         "source": "desktop-project-summary",
@@ -781,6 +892,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
         if should_update_desktop_session_shell(&conn, &active.id)? {
             let metadata = metadata_with_fork(
                 &conn,
+                Some(&active.id),
                 metadata_with_runtime_title(
                     serde_json::json!({
                         "source": "desktop-chat-detail",
@@ -848,7 +960,10 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
 
 #[cfg(test)]
 mod fork_metadata_tests {
-    use super::{fork_metadata_value, metadata_with_fork};
+    use super::{
+        content_with_desktop_runtime, fork_metadata_value, metadata_with_fork,
+        resolve_desktop_entry_to_canonical_message_id,
+    };
     use rusqlite::Connection;
 
     #[test]
@@ -862,6 +977,10 @@ mod fork_metadata_tests {
         assert_eq!(value["forkMode"], "private-local");
         assert_eq!(value["contextPolicy"], "prefix-through-message");
         assert_eq!(value["boundary"], "inherited-history-reference-only");
+        assert_eq!(
+            value["forkedFromMessageAliases"],
+            serde_json::json!(["msg:source"])
+        );
     }
 
     #[test]
@@ -891,8 +1010,14 @@ mod fork_metadata_tests {
             "subtitle": "talking about forks",
         });
         let conn = Connection::open_in_memory().expect("open db");
-        let combined = metadata_with_fork(&conn, base, Some("session:source"), Some("msg:source"))
-            .expect("metadata builds");
+        let combined = metadata_with_fork(
+            &conn,
+            None,
+            base,
+            Some("session:source"),
+            Some("msg:source"),
+        )
+        .expect("metadata builds");
         assert_eq!(combined["source"], "desktop-chat-detail");
         assert_eq!(combined["subtitle"], "talking about forks");
         assert_eq!(combined["fork"]["forkedFromSessionId"], "session:source");
@@ -904,7 +1029,109 @@ mod fork_metadata_tests {
         let base = serde_json::json!({"source": "desktop-chat-summary"});
         let conn = Connection::open_in_memory().expect("open db");
         let combined =
-            metadata_with_fork(&conn, base.clone(), None, None).expect("metadata builds");
+            metadata_with_fork(&conn, None, base.clone(), None, None).expect("metadata builds");
         assert_eq!(combined, base);
+    }
+
+    #[test]
+    fn desktop_runtime_content_persists_the_entry_id_alias() {
+        let message = kordi_cli::desktop_runtime::DesktopChatMessage {
+            role: "assistant".to_string(),
+            sender: Some("Kordi".to_string()),
+            text: "A response".to_string(),
+            detail: None,
+            time_label: "12:00".to_string(),
+            timestamp_ms: 1_000,
+            failed: false,
+            cancelled: false,
+            attachments: Vec::new(),
+            thinking_text: None,
+            tools: Vec::new(),
+            entry_id: Some("entry:runtime-agent".to_string()),
+        };
+
+        let content =
+            content_with_desktop_runtime(None, &message, None).expect("desktop content builds");
+        assert_eq!(content["desktopEntryId"], "entry:runtime-agent");
+    }
+
+    #[test]
+    fn desktop_sync_preserves_the_canonical_fork_contract_and_runtime_aliases() {
+        let conn = Connection::open_in_memory().expect("open db");
+        super::super::schema::initialize_schema(&conn).expect("canonical schema");
+        let existing_metadata = serde_json::json!({
+            "source": "canonical-fork-snapshot",
+            "fork": {
+                "forkedFromSessionId": "session:source",
+                "forkedFromMessageId": "msg:source",
+                "forkedFromMessageAliases": ["msg:source", "entry:runtime-source"],
+                "forkMode": "private-local",
+                "contextPolicy": "prefix-through-message",
+                "boundary": "inherited-history-reference-only",
+                "snapshotMessageCount": 6,
+            },
+        });
+        conn.execute(
+            "INSERT INTO sessions(
+                id, kind, title, status, created_by_identity_id, metadata_json,
+                created_at_ms, updated_at_ms
+             ) VALUES (?1, 'self-agent', 'New fork', 'active', 'human:me', ?2, 1, 1)",
+            rusqlite::params!["session:fork", existing_metadata.to_string()],
+        )
+        .expect("fork session");
+
+        let combined = metadata_with_fork(
+            &conn,
+            Some("session:fork"),
+            serde_json::json!({"source": "desktop-chat-detail"}),
+            Some("session:source"),
+            Some("msg:source"),
+        )
+        .expect("metadata builds");
+
+        assert_eq!(
+            combined["fork"]["forkedFromMessageAliases"],
+            serde_json::json!(["msg:source", "entry:runtime-source"])
+        );
+        assert_eq!(combined["fork"]["snapshotMessageCount"], 6);
+        assert_eq!(
+            combined["fork"]["boundary"],
+            "inherited-history-reference-only"
+        );
+    }
+
+    #[test]
+    fn runtime_entry_alias_resolves_to_stable_canonical_message_id() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            "CREATE TABLE session_messages(
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                content_json TEXT,
+                sequence_num INTEGER NOT NULL,
+                source_transport TEXT
+             );",
+        )
+        .expect("schema");
+        conn.execute(
+            "INSERT INTO session_messages(id, session_id, content_json, sequence_num, source_transport)
+             VALUES (?1, ?2, ?3, 1, 'desktop-chat')",
+            rusqlite::params![
+                "msg:canonical-agent",
+                "session:self-agent",
+                serde_json::json!({"desktopEntryId": "entry:runtime-agent"}).to_string(),
+            ],
+        )
+        .expect("canonical message");
+
+        assert_eq!(
+            resolve_desktop_entry_to_canonical_message_id(
+                &conn,
+                "session:self-agent",
+                "entry:runtime-agent",
+            )
+            .expect("resolve alias"),
+            Some("msg:canonical-agent".to_string())
+        );
     }
 }

@@ -62,7 +62,6 @@ fn list_canonical_messages(
 #[derive(Debug, Clone)]
 struct SourceSessionInfo {
     kind: String,
-    title: Option<String>,
     project_id: Option<String>,
     project_name: Option<String>,
     metadata: Option<serde_json::Value>,
@@ -73,15 +72,14 @@ fn select_source_session_info(
     session_id: &str,
 ) -> Result<Option<SourceSessionInfo>, String> {
     conn.query_row(
-        "SELECT kind, title, project_id, project_name, metadata_json FROM sessions WHERE id = ?1",
+        "SELECT kind, project_id, project_name, metadata_json FROM sessions WHERE id = ?1",
         params![session_id],
         |row| {
-            let metadata_raw: Option<String> = row.get(4)?;
+            let metadata_raw: Option<String> = row.get(3)?;
             Ok(SourceSessionInfo {
                 kind: row.get(0)?,
-                title: row.get(1)?,
-                project_id: row.get(2)?,
-                project_name: row.get(3)?,
+                project_id: row.get(1)?,
+                project_name: row.get(2)?,
                 metadata: metadata_raw.and_then(|raw| serde_json::from_str(&raw).ok()),
             })
         },
@@ -227,6 +225,17 @@ fn prepare_fork_snapshot_messages(
         .collect()
 }
 
+fn desktop_entry_alias(message: &CanonicalSessionMessage) -> Option<String> {
+    message
+        .content
+        .as_ref()
+        .and_then(|content| content.get("desktopEntryId"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 /// Fork a canonical (group/bridge) session into a new private canonical
 /// session that mirrors the source's transcript up through (and
 /// including) `canonical_message_id`. The clone preserves each
@@ -237,6 +246,7 @@ fn prepare_fork_snapshot_messages(
 pub fn fork_canonical_session_into_local_chat(
     canonical_session_id: &str,
     canonical_message_id: &str,
+    source_message_alias: Option<&str>,
     cwd: &str,
 ) -> Result<DesktopForkSessionOutcome, String> {
     let conn = open_db()?;
@@ -257,21 +267,14 @@ pub fn fork_canonical_session_into_local_chat(
     let source_info =
         select_source_session_info(&conn, canonical_session_id)?.unwrap_or(SourceSessionInfo {
             kind: "self-agent".to_string(),
-            title: None,
             project_id: None,
             project_name: None,
             metadata: None,
         });
-    let source_title = source_info.title.clone().filter(|value| {
-        !value.trim().is_empty()
-            && !kordi_session::naming::is_placeholder_or_weak_legacy_title(value, "")
-    });
-    let fork_title = source_title
-        .as_deref()
-        .map(|title| {
-            kordi_session::naming::truncate_session_title(&format!("Fork of {}", title.trim()))
-        })
-        .unwrap_or_else(|| "New fork".to_string());
+    // A fork's source is already visible through its lineage backlink. Keep
+    // the child neutral until its first meaningful post-fork user message so
+    // nested forks never repeat the inherited topic as their own title.
+    let fork_title = "New fork".to_string();
     let source_is_group = source_info.kind == "group";
 
     let local_human_id = local_profile_human_identity_id(&conn, "You")?;
@@ -319,6 +322,22 @@ pub fn fork_canonical_session_into_local_chat(
     } else {
         "private-local"
     };
+    let mut forked_from_message_aliases = vec![canonical_message_id.to_string()];
+    for runtime_entry_id in source_message_alias
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .into_iter()
+        .chain(desktop_entry_alias(&messages[anchor_index]))
+    {
+        if !forked_from_message_aliases
+            .iter()
+            .any(|alias| alias == &runtime_entry_id)
+        {
+            forked_from_message_aliases.push(runtime_entry_id);
+        }
+    }
+    let snapshot_message_count = path.len();
     let metadata = if source_is_group {
         serde_json::json!({
             "source": "canonical-fork-snapshot",
@@ -333,9 +352,11 @@ pub fn fork_canonical_session_into_local_chat(
             "fork": {
                 "forkedFromSessionId": canonical_session_id,
                 "forkedFromMessageId": canonical_message_id,
+                "forkedFromMessageAliases": forked_from_message_aliases,
                 "forkMode": fork_mode,
                 "contextPolicy": "prefix-through-message",
                 "boundary": "inherited-history-reference-only",
+                "snapshotMessageCount": snapshot_message_count,
             },
         })
     } else {
@@ -348,9 +369,11 @@ pub fn fork_canonical_session_into_local_chat(
             "fork": {
                 "forkedFromSessionId": canonical_session_id,
                 "forkedFromMessageId": canonical_message_id,
+                "forkedFromMessageAliases": forked_from_message_aliases,
                 "forkMode": fork_mode,
                 "contextPolicy": "prefix-through-message",
                 "boundary": "inherited-history-reference-only",
+                "snapshotMessageCount": snapshot_message_count,
             },
         })
     };
