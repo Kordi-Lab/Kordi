@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use kordi_provider::ProviderError;
 use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -84,7 +85,7 @@ async fn handle_connection(
 
     if parts.len() < 2 || parts[0] != "GET" {
         send_response(&mut stream, 400, "Bad Request", "Expected GET request").await;
-        anyhow::bail!("Not a GET request: {request_line}");
+        anyhow::bail!("OAuth callback did not use GET");
     }
 
     let full_path = parts[1];
@@ -95,10 +96,10 @@ async fn handle_connection(
             &mut stream,
             404,
             "Not Found",
-            &format!("Unexpected path: {path_part}"),
+            "This sign-in callback is not valid. Try again from the app.",
         )
         .await;
-        anyhow::bail!("Unexpected callback path: {path_part}");
+        anyhow::bail!("Unexpected OAuth callback path");
     }
 
     let params = parse_query(query_part);
@@ -118,13 +119,22 @@ async fn handle_connection(
         } else {
             format!("{error}: {desc}")
         };
+        let sensitive_values = vec![state];
+        let safe_message = ProviderError::stream_with_sensitive_values(
+            "oauth",
+            "callback",
+            Some(&msg),
+            (!error.is_empty()).then_some(error.as_str()),
+            &sensitive_values,
+        )
+        .to_string();
         let friendly_body = if error.is_empty() {
             "The provider did not return a valid code. Try again from the app."
         } else {
             "The provider stopped the sign-in flow. Try again from the app."
         };
         send_response(&mut stream, 400, "Couldn’t sign in", friendly_body).await;
-        anyhow::bail!("OAuth callback error: {msg}");
+        anyhow::bail!("OAuth callback error: {safe_message}");
     }
 
     send_response(
@@ -171,6 +181,34 @@ mod tests {
         assert!(!html.contains("Kordi Authentication"));
         assert!(!html.contains("Missing 'code' parameter"));
         assert!(!html.contains("OAuth callback"));
+    }
+
+    #[test]
+    fn callback_errors_sanitize_reflected_state_urls_and_markup() {
+        let sensitive_values = vec!["state-secret-123".to_string()];
+        let error = ProviderError::stream_with_sensitive_values(
+            "oauth",
+            "callback",
+            Some(
+                "access_denied: state-secret-123 at https://example.com/callback?code=query-secret",
+            ),
+            Some("access_denied"),
+            &sensitive_values,
+        );
+        let rendered = error.to_string();
+
+        assert!(rendered.contains("[redacted]"));
+        assert!(rendered.contains("https://example.com/callback"));
+        assert!(!rendered.contains("state-secret-123"));
+        assert!(!rendered.contains("query-secret"));
+
+        let markup = ProviderError::stream(
+            "oauth",
+            "callback",
+            Some("<script>window.location='https://evil.test/?token=secret'</script>"),
+            Some("access_denied"),
+        );
+        assert_eq!(markup.to_string(), "Unknown error");
     }
 }
 

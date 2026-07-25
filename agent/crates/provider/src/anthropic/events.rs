@@ -4,7 +4,7 @@ use kordi_core::types::CacheMetricsSource;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
-use crate::{StreamEvent, UsageInfo};
+use crate::{ProviderError, StreamEvent, UsageInfo};
 
 #[derive(Clone, Debug)]
 enum BlockKind {
@@ -263,9 +263,18 @@ impl AnthropicEventState {
                 let _ = tx.send(StreamEvent::Done);
             }
             Some("error") => {
+                let message = sse_error_message(event);
+                let code = event
+                    .get("error")
+                    .and_then(|error| error.get("type"))
+                    .and_then(|value| value.as_str());
                 let _ = tx.send(StreamEvent::Error {
-                    message: sse_error_message(event)
-                        .unwrap_or_else(|| "Anthropic stream error".to_string()),
+                    error: ProviderError::stream(
+                        "anthropic",
+                        "messages stream",
+                        message.as_deref(),
+                        code,
+                    ),
                 });
             }
             _ => {}
@@ -304,9 +313,9 @@ mod tests {
         drop(tx);
 
         match rx.blocking_recv().expect("error event") {
-            StreamEvent::Error { message } => {
+            StreamEvent::Error { error } => {
                 assert_eq!(
-                    message,
+                    error.to_string(),
                     "authentication_error: Invalid authentication credentials"
                 );
             }

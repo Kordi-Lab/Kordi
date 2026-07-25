@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use kordi_provider::{
+    ProviderError, ProviderErrorFormat, unexpected_response_with_sensitive_values,
+};
 use serde::Deserialize;
 
 use super::callback_server::{CallbackParams, CallbackServerParts, start_callback_server};
@@ -125,12 +128,27 @@ pub async fn refresh_openai_codex_token(refresh_token: &str) -> Result<OAuthCred
         ])
         .send()
         .await
-        .context("Failed to send refresh request to OpenAI")?;
+        .map_err(|error| {
+            anyhow::Error::new(ProviderError::from_reqwest(
+                "openai",
+                "token refresh",
+                TOKEN_URL,
+                &error,
+            ))
+        })?;
 
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI token refresh failed ({status}): {body}");
+    if !resp.status().is_success() {
+        let sensitive_values = vec![refresh_token.to_string()];
+        return Err(anyhow::Error::new(
+            unexpected_response_with_sensitive_values(
+                "openai",
+                "token refresh",
+                ProviderErrorFormat::OAuth,
+                resp,
+                &sensitive_values,
+            )
+            .await,
+        ));
     }
 
     let token: TokenResponse = resp
@@ -172,12 +190,27 @@ async fn exchange_code(code: &str, verifier: &str) -> Result<OAuthCredentials> {
         ])
         .send()
         .await
-        .context("Failed to send token exchange request to OpenAI")?;
+        .map_err(|error| {
+            anyhow::Error::new(ProviderError::from_reqwest(
+                "openai",
+                "token exchange",
+                TOKEN_URL,
+                &error,
+            ))
+        })?;
 
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI token exchange failed ({status}): {body}");
+    if !resp.status().is_success() {
+        let sensitive_values = vec![code.to_string(), verifier.to_string()];
+        return Err(anyhow::Error::new(
+            unexpected_response_with_sensitive_values(
+                "openai",
+                "token exchange",
+                ProviderErrorFormat::OAuth,
+                resp,
+                &sensitive_values,
+            )
+            .await,
+        ));
     }
 
     let token: TokenResponse = resp

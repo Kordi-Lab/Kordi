@@ -297,6 +297,18 @@ mod tests {
             "maximum context length exceeded",
             100,
         )));
+        assert!(!runtime.is_retryable_error(&assistant_error_message(
+            "unexpected status 403 Forbidden: value 0.500197 and 0.495044",
+            40,
+        )));
+        assert!(!runtime.is_retryable_error(&assistant_error_message(
+            "unexpected status 403 Forbidden: upstream server error",
+            40,
+        )));
+        assert!(!runtime.is_retryable_error(&assistant_error_message(
+            "<html><svg d=\"M0.500197 0.495044\"></svg></html>",
+            40,
+        )));
     }
 
     #[test]

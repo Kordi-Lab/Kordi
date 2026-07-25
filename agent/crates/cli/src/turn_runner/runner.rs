@@ -10,8 +10,8 @@ use kordi_monitor::{
     prepare_request_metrics, resolve_cache_usage,
 };
 use kordi_provider::{
-    CollectedResponse, CompletionRequest, ProviderAuthMode, ProviderRetryEvent, RequestOptions,
-    RetryCallback, StreamEvent, is_retryable_provider_error_message,
+    CollectedResponse, CompletionRequest, ProviderAuthMode, ProviderError, ProviderRetryEvent,
+    RequestOptions, RetryCallback, StreamEvent,
 };
 use kordi_session::context;
 use sha2::{Digest, Sha256};
@@ -407,7 +407,8 @@ pub(crate) async fn run_turn_inner(
             break;
         }
 
-        if let Some(message) = first_stream_error(&stream.events) {
+        if let Some(error) = first_stream_error(&stream.events) {
+            let message = error.to_string();
             let _ = append_assistant_error_message(
                 &config.conn,
                 &config.session_id,
@@ -638,24 +639,33 @@ async fn collect_stream_events_with_retry(
 
     loop {
         let stream = collect_stream_events(config, event_tx, request.clone()).await?;
-        let Some(message) = first_stream_error(&stream.events) else {
+        let Some(error) = first_stream_error(&stream.events) else {
             if retry_attempt > 0 {
                 let _ = event_tx.send(TurnEvent::AutoRetryEnd);
             }
             return Ok(stream);
         };
 
-        let retryable = is_retryable_provider_error_message(&message);
+        let message = error.to_string();
+        let retry_delay_ms = error.retry_after_ms();
+        let retry_delay_is_allowed = retry_delay_ms.is_none_or(|delay_ms| {
+            config.retry_max_delay_ms == 0 || delay_ms <= config.retry_max_delay_ms
+        });
+        let retryable = error.is_retryable()
+            && !stream_has_visible_output_before_error(&stream.events)
+            && retry_delay_is_allowed;
         if retryable && retry_attempt + 1 < max_attempts && !config.cancel.is_cancelled() {
             retry_attempt += 1;
             let uncapped_delay_ms = config
                 .retry_base_delay_ms
                 .saturating_mul(2_u64.saturating_pow(retry_attempt - 1));
-            let delay_ms = if config.retry_max_delay_ms > 0 {
-                uncapped_delay_ms.min(config.retry_max_delay_ms)
-            } else {
-                uncapped_delay_ms
-            };
+            let delay_ms = retry_delay_ms.unwrap_or_else(|| {
+                if config.retry_max_delay_ms > 0 {
+                    uncapped_delay_ms.min(config.retry_max_delay_ms)
+                } else {
+                    uncapped_delay_ms
+                }
+            });
             let _ = event_tx.send(TurnEvent::AutoRetryStart {
                 attempt: retry_attempt,
                 max_attempts,
@@ -860,11 +870,33 @@ fn missing_credentials_message(provider: &str) -> String {
     }
 }
 
-fn first_stream_error(events: &[StreamEvent]) -> Option<String> {
+fn first_stream_error(events: &[StreamEvent]) -> Option<ProviderError> {
     events.iter().find_map(|event| match event {
-        StreamEvent::Error { message } if !is_context_overflow(message) => Some(message.clone()),
+        StreamEvent::Error { error } if !is_context_overflow(&error.to_string()) => {
+            Some(error.clone())
+        }
         _ => None,
     })
+}
+
+fn stream_has_visible_output_before_error(events: &[StreamEvent]) -> bool {
+    events
+        .iter()
+        .take_while(|event| !matches!(event, StreamEvent::Error { .. }))
+        .any(|event| {
+            matches!(
+                event,
+                StreamEvent::TextDelta { .. }
+                    | StreamEvent::ThinkingDelta { .. }
+                    | StreamEvent::ToolCallStart { .. }
+                    | StreamEvent::ToolCallDelta { .. }
+                    | StreamEvent::ToolCallEnd { .. }
+                    | StreamEvent::ServerToolUseStart { .. }
+                    | StreamEvent::ServerToolUseDelta { .. }
+                    | StreamEvent::ServerToolUseEnd { .. }
+                    | StreamEvent::ServerToolResult { .. }
+            )
+        })
 }
 
 fn request_metrics_snapshot(request: &CompletionRequest) -> RequestMetricsSnapshot {
@@ -916,6 +948,7 @@ fn build_request_options(
         .and_then(|auth| auth.account_id.clone());
 
     RequestOptions {
+        provider: config.model.provider.clone(),
         api_key: config.api_key.clone(),
         auth_mode,
         auth_account_id,
@@ -977,9 +1010,10 @@ fn forward_stream_event(
                 args: arguments_delta.clone(),
             });
         }
-        StreamEvent::Error { message } => {
-            if is_context_overflow(message) {
-                *context_overflow_error = Some(message.clone());
+        StreamEvent::Error { error } => {
+            let message = error.to_string();
+            if is_context_overflow(&message) {
+                *context_overflow_error = Some(message);
             }
         }
         _ => {}

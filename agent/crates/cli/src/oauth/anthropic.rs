@@ -1,4 +1,7 @@
 use anyhow::{Context, Result};
+use kordi_provider::{
+    ProviderError, ProviderErrorFormat, unexpected_response_with_sensitive_values,
+};
 use serde::Deserialize;
 
 use super::callback_server::{CallbackParams, CallbackServerParts, start_callback_server};
@@ -134,12 +137,27 @@ pub async fn refresh_anthropic_token(refresh_token: &str) -> Result<OAuthCredent
         .json(&refresh_token_body(refresh_token))
         .send()
         .await
-        .context("Failed to send refresh request to Anthropic")?;
+        .map_err(|error| {
+            anyhow::Error::new(ProviderError::from_reqwest(
+                "anthropic",
+                "token refresh",
+                TOKEN_URL,
+                &error,
+            ))
+        })?;
 
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Anthropic token refresh failed ({status}): {body}");
+    if !resp.status().is_success() {
+        let sensitive_values = vec![refresh_token.to_string()];
+        return Err(anyhow::Error::new(
+            unexpected_response_with_sensitive_values(
+                "anthropic",
+                "token refresh",
+                ProviderErrorFormat::OAuth,
+                resp,
+                &sensitive_values,
+            )
+            .await,
+        ));
     }
 
     let token: TokenResponse = resp
@@ -235,12 +253,27 @@ async fn exchange_code(code: &str, state: &str, verifier: &str) -> Result<OAuthC
         .json(&authorization_code_body(code, state, verifier))
         .send()
         .await
-        .context("Failed to send token exchange request to Anthropic")?;
+        .map_err(|error| {
+            anyhow::Error::new(ProviderError::from_reqwest(
+                "anthropic",
+                "token exchange",
+                TOKEN_URL,
+                &error,
+            ))
+        })?;
 
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Anthropic token exchange failed ({status}): {body}");
+    if !resp.status().is_success() {
+        let sensitive_values = vec![code.to_string(), state.to_string(), verifier.to_string()];
+        return Err(anyhow::Error::new(
+            unexpected_response_with_sensitive_values(
+                "anthropic",
+                "token exchange",
+                ProviderErrorFormat::OAuth,
+                resp,
+                &sensitive_values,
+            )
+            .await,
+        ));
     }
 
     let token: TokenResponse = resp

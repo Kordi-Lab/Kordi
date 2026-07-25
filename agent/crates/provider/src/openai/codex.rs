@@ -8,6 +8,7 @@ use futures::StreamExt;
 use std::collections::HashSet;
 
 use crate::UsageInfo;
+use crate::error::{ProviderError, ProviderErrorFormat, unexpected_response_with_sensitive_values};
 use request::{
     codex_reasoning_effort, convert_messages_for_codex, convert_tools_for_codex, resolve_codex_url,
 };
@@ -64,6 +65,20 @@ fn codex_error_message(event: &Value, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
+fn codex_error_code(event: &Value) -> Option<&str> {
+    event
+        .get("error")
+        .and_then(|error| error.get("code").or_else(|| error.get("type")))
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            event
+                .get("response")
+                .and_then(|response| response.get("error"))
+                .and_then(|error| error.get("code").or_else(|| error.get("type")))
+                .and_then(|value| value.as_str())
+        })
+}
+
 fn build_codex_request_body(request: &CompletionRequest) -> Value {
     let mut body = json!({
         "model": request.model,
@@ -102,6 +117,8 @@ impl OpenAiProvider {
     ) -> KordiResult<()> {
         let url = resolve_codex_url(&options.base_url);
         let body = build_codex_request_body(&request);
+        let provider_name = options.provider.clone();
+        let sensitive_values = options.sensitive_values();
 
         let response = with_retry(
             options.max_retries,
@@ -124,20 +141,34 @@ impl OpenAiProvider {
                     r = r.header(k.as_str(), v.as_str());
                 }
                 let body_clone = body.clone();
+                let request_url = url.clone();
+                let provider_name = provider_name.clone();
+                let sensitive_values = sensitive_values.clone();
                 async move {
-                    let resp = r.json(&body_clone).send().await.map_err(|e| {
-                        KordiError::Provider(format!("Codex OAuth request failed: {e}"))
+                    let resp = r.json(&body_clone).send().await.map_err(|error| {
+                        ProviderError::from_reqwest(
+                            &provider_name,
+                            "Codex OAuth responses",
+                            &request_url,
+                            &error,
+                        )
                     })?;
                     if !resp.status().is_success() {
-                        let status = resp.status();
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(KordiError::Provider(format!("HTTP {status}: {body}")));
+                        return Err(unexpected_response_with_sensitive_values(
+                            &provider_name,
+                            "Codex OAuth responses",
+                            ProviderErrorFormat::OpenAi,
+                            resp,
+                            &sensitive_values,
+                        )
+                        .await);
                     }
                     Ok(resp)
                 }
             },
         )
-        .await?;
+        .await
+        .map_err(KordiError::from)?;
 
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
@@ -156,8 +187,21 @@ impl OpenAiProvider {
                 break;
             };
 
-            let chunk = chunk_result
-                .map_err(|e| KordiError::Provider(format!("Codex OAuth stream error: {e}")))?;
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    let _ = tx.send(StreamEvent::Error {
+                        error: ProviderError::from_reqwest(
+                            &options.provider,
+                            "Codex OAuth response stream",
+                            &url,
+                            &error,
+                        ),
+                    });
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+            };
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find('\n') {
@@ -262,17 +306,33 @@ impl OpenAiProvider {
                     }
                     "response.failed" => {
                         let message = codex_error_message(&event, "Codex response failed");
+                        let code = codex_error_code(&event);
                         let _ = tx.send(StreamEvent::Error {
-                            message: message.clone(),
+                            error: ProviderError::stream_with_sensitive_values(
+                                &options.provider,
+                                "Codex OAuth response stream",
+                                Some(&message),
+                                code,
+                                &sensitive_values,
+                            ),
                         });
-                        return Err(KordiError::Provider(message));
+                        let _ = tx.send(StreamEvent::Done);
+                        return Ok(());
                     }
                     "error" => {
                         let message = codex_error_message(&event, "Codex stream error");
+                        let code = codex_error_code(&event);
                         let _ = tx.send(StreamEvent::Error {
-                            message: message.clone(),
+                            error: ProviderError::stream_with_sensitive_values(
+                                &options.provider,
+                                "Codex OAuth response stream",
+                                Some(&message),
+                                code,
+                                &sensitive_values,
+                            ),
                         });
-                        return Err(KordiError::Provider(message));
+                        let _ = tx.send(StreamEvent::Done);
+                        return Ok(());
                     }
                     _ => {}
                 }

@@ -122,6 +122,7 @@ pub async fn compact(request: CompactionRequest<'_>) -> anyhow::Result<Compactio
     };
 
     let options = RequestOptions {
+        provider: provider.name().to_string(),
         api_key: api_key.to_string(),
         auth_mode,
         auth_account_id: auth_account_id.map(ToString::to_string),

@@ -209,6 +209,7 @@ pub async fn generate_branch_summary(
     };
 
     let options = RequestOptions {
+        provider: provider.name().to_string(),
         api_key: api_key.to_string(),
         auth_mode: kordi_provider::ProviderAuthMode::ApiKey,
         auth_account_id: None,

@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+use crate::error::{ProviderError, ProviderErrorFormat, unexpected_response_with_sensitive_values};
 use crate::retry::with_retry;
 use crate::transforms::{convert_messages_for_openai, strip_thinking_blocks};
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
@@ -69,42 +70,27 @@ pub(super) fn apply_bearer_auth(
     }
 }
 
-fn format_github_copilot_error(status: reqwest::StatusCode, body: &str, model: &str) -> String {
-    let lower = body.to_ascii_lowercase();
-    let mut lines = vec![format!("HTTP {status}: {body}")];
+fn add_github_copilot_hint(error: ProviderError, model: &str) -> ProviderError {
+    let ProviderError::Http(http) = error else {
+        return error;
+    };
+    let lower = http.message.to_ascii_lowercase();
+    let hint = if http.status == reqwest::StatusCode::UNAUTHORIZED {
+        Some("Sign in to GitHub Copilot again and retry.")
+    } else if http.status == reqwest::StatusCode::FORBIDDEN {
+        Some("Confirm that this GitHub Copilot account and plan can use the selected model.")
+    } else if lower.contains("model not supported") || lower.contains("unsupported model") {
+        return ProviderError::Http(http.with_hint(format!(
+            "Enable `{model}` in GitHub Copilot or select another model."
+        )));
+    } else {
+        None
+    };
 
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        lines.push(
-            "GitHub Copilot authentication appears invalid or expired. Run `/login` and select GitHub Copilot to refresh the GitHub/Copilot session."
-                .to_string(),
-        );
-    }
-
-    if status == reqwest::StatusCode::FORBIDDEN {
-        lines.push(
-            "GitHub Copilot rejected this request. Your account may not have access to this model or your Copilot plan/enterprise policy may block it."
-                .to_string(),
-        );
-    }
-
-    if lower.contains("model not supported") || lower.contains("unsupported model") {
-        lines.push(format!(
-            "Copilot reported that model `{model}` is not supported. In pi's provider docs, GitHub recommends enabling the model in VS Code: Copilot Chat → model selector → select model → Enable."
-        ));
-    }
-
-    if lower.contains("missing required authorization header") {
-        lines.push(
-            "The Copilot runtime token was not accepted. Re-run `/login` for GitHub Copilot and try again."
-                .to_string(),
-        );
-    }
-
-    lines.push(
-        "Use `/session` to inspect saved Copilot authority, login, cached models, and token expiry info."
-            .to_string(),
-    );
-    lines.join("\n")
+    ProviderError::Http(match hint {
+        Some(hint) => http.with_hint(hint),
+        None => http,
+    })
 }
 
 #[async_trait]
@@ -199,6 +185,8 @@ impl Provider for OpenAiProvider {
 
         let is_copilot = is_github_copilot_request(&options);
         let model_name = request.model.clone();
+        let provider_name = options.provider.clone();
+        let sensitive_values = options.sensitive_values();
 
         let response = with_retry(
             options.max_retries,
@@ -218,27 +206,39 @@ impl Provider for OpenAiProvider {
                 }
                 let body_clone = body.clone();
                 let model_name = model_name.clone();
+                let request_url = url.clone();
+                let provider_name = provider_name.clone();
+                let sensitive_values = sensitive_values.clone();
                 async move {
-                    let resp = r
-                        .json(&body_clone)
-                        .send()
-                        .await
-                        .map_err(|e| KordiError::Provider(format!("Request failed: {e}")))?;
+                    let resp = r.json(&body_clone).send().await.map_err(|error| {
+                        ProviderError::from_reqwest(
+                            &provider_name,
+                            "chat completions",
+                            &request_url,
+                            &error,
+                        )
+                    })?;
                     if !resp.status().is_success() {
-                        let status = resp.status();
-                        let body = resp.text().await.unwrap_or_default();
-                        let message = if is_copilot {
-                            format_github_copilot_error(status, &body, &model_name)
+                        let error = unexpected_response_with_sensitive_values(
+                            &provider_name,
+                            "chat completions",
+                            ProviderErrorFormat::OpenAi,
+                            resp,
+                            &sensitive_values,
+                        )
+                        .await;
+                        return Err(if is_copilot {
+                            add_github_copilot_hint(error, &model_name)
                         } else {
-                            format!("HTTP {status}: {body}")
-                        };
-                        return Err(KordiError::Provider(message));
+                            error
+                        });
                     }
                     Ok(resp)
                 }
             },
         )
-        .await?;
+        .await
+        .map_err(KordiError::from)?;
 
         use futures::StreamExt;
         let mut stream = response.bytes_stream();
@@ -258,8 +258,21 @@ impl Provider for OpenAiProvider {
                 break;
             };
 
-            let chunk =
-                chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    let _ = tx.send(StreamEvent::Error {
+                        error: ProviderError::from_reqwest(
+                            &options.provider,
+                            "chat completions stream",
+                            &url,
+                            &error,
+                        ),
+                    });
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+            };
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find('\n') {
@@ -298,9 +311,22 @@ impl Provider for OpenAiProvider {
                             if current_event_name.as_deref() == Some("error")
                                 || openai_sse_error_message(&event).is_some()
                             {
-                                let message = openai_sse_error_message(&event)
-                                    .unwrap_or_else(|| data.to_string());
-                                let _ = tx.send(StreamEvent::Error { message });
+                                let message = openai_sse_error_message(&event);
+                                let code = event
+                                    .get("error")
+                                    .and_then(|error| {
+                                        error.get("code").or_else(|| error.get("type"))
+                                    })
+                                    .and_then(|value| value.as_str());
+                                let _ = tx.send(StreamEvent::Error {
+                                    error: ProviderError::stream_with_sensitive_values(
+                                        &options.provider,
+                                        "chat completions stream",
+                                        message.as_deref(),
+                                        code,
+                                        &sensitive_values,
+                                    ),
+                                });
                                 let _ = tx.send(StreamEvent::Done);
                                 return Ok(());
                             }
@@ -308,7 +334,13 @@ impl Provider for OpenAiProvider {
                         }
                         Err(_) if current_event_name.as_deref() == Some("error") => {
                             let _ = tx.send(StreamEvent::Error {
-                                message: data.to_string(),
+                                error: ProviderError::stream_with_sensitive_values(
+                                    &options.provider,
+                                    "chat completions stream",
+                                    None,
+                                    None,
+                                    &sensitive_values,
+                                ),
                             });
                             let _ = tx.send(StreamEvent::Done);
                             return Ok(());

@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+use crate::error::{ProviderError, ProviderErrorFormat, unexpected_response_with_sensitive_values};
 use crate::retry::with_retry;
 use crate::transforms::convert_messages_for_anthropic;
 use crate::{CompletionRequest, Provider, ProviderAuthMode, RequestOptions, StreamEvent};
@@ -80,6 +81,8 @@ impl Provider for AnthropicProvider {
             build_anthropic_tools(&request.tools, &request.extra_tool_schemas);
 
         let body = build_anthropic_request_body(&request, options.auth_mode, messages, tools);
+        let provider_name = options.provider.clone();
+        let sensitive_values = options.sensitive_values();
 
         let response = with_retry(
             options.max_retries,
@@ -115,22 +118,34 @@ impl Provider for AnthropicProvider {
                     r = r.header(k.as_str(), v.as_str());
                 }
                 let body_clone = body.clone();
+                let request_url = url.clone();
+                let provider_name = provider_name.clone();
+                let sensitive_values = sensitive_values.clone();
                 async move {
-                    let resp = r
-                        .json(&body_clone)
-                        .send()
-                        .await
-                        .map_err(|e| KordiError::Provider(format!("Request failed: {e}")))?;
+                    let resp = r.json(&body_clone).send().await.map_err(|error| {
+                        ProviderError::from_reqwest(
+                            &provider_name,
+                            "messages",
+                            &request_url,
+                            &error,
+                        )
+                    })?;
                     if !resp.status().is_success() {
-                        let status = resp.status();
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(KordiError::Provider(format!("HTTP {status}: {body}")));
+                        return Err(unexpected_response_with_sensitive_values(
+                            &provider_name,
+                            "messages",
+                            ProviderErrorFormat::Anthropic,
+                            resp,
+                            &sensitive_values,
+                        )
+                        .await);
                     }
                     Ok(resp)
                 }
             },
         )
-        .await?;
+        .await
+        .map_err(KordiError::from)?;
 
         use futures::StreamExt;
         let mut stream = response.bytes_stream();
@@ -149,8 +164,21 @@ impl Provider for AnthropicProvider {
                 break;
             };
 
-            let chunk =
-                chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    let _ = tx.send(StreamEvent::Error {
+                        error: ProviderError::from_reqwest(
+                            &options.provider,
+                            "messages stream",
+                            &url,
+                            &error,
+                        ),
+                    });
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+            };
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some((pos, delimiter_len)) = next_sse_block_delimiter(&buffer) {
@@ -171,11 +199,25 @@ impl Provider for AnthropicProvider {
                                     || sse_error_message(&event).is_some()
                                 {
                                     let message = sse_error_message(&event)
-                                        .unwrap_or_else(|| data.to_string());
+                                        .unwrap_or_else(|| "Unknown error".to_string());
+                                    let code = event
+                                        .get("error")
+                                        .and_then(|error| error.get("type"))
+                                        .and_then(|value| value.as_str())
+                                        .or_else(|| {
+                                            event.get("error_type").and_then(|value| value.as_str())
+                                        });
                                     let _ = tx.send(StreamEvent::Error {
-                                        message: message.clone(),
+                                        error: ProviderError::stream_with_sensitive_values(
+                                            &options.provider,
+                                            "messages stream",
+                                            Some(&message),
+                                            code,
+                                            &sensitive_values,
+                                        ),
                                     });
-                                    return Err(KordiError::Provider(message));
+                                    let _ = tx.send(StreamEvent::Done);
+                                    return Ok(());
                                 }
                                 event_state.process_sse_event(
                                     &event,
@@ -184,11 +226,17 @@ impl Provider for AnthropicProvider {
                                 );
                             }
                             Err(_) if event_name == Some("error") => {
-                                let message = data.to_string();
                                 let _ = tx.send(StreamEvent::Error {
-                                    message: message.clone(),
+                                    error: ProviderError::stream_with_sensitive_values(
+                                        &options.provider,
+                                        "messages stream",
+                                        None,
+                                        None,
+                                        &sensitive_values,
+                                    ),
                                 });
-                                return Err(KordiError::Provider(message));
+                                let _ = tx.send(StreamEvent::Done);
+                                return Ok(());
                             }
                             Err(_) => {}
                         }

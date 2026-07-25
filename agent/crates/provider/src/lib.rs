@@ -12,8 +12,11 @@ mod traits;
 mod transforms;
 mod types;
 
-pub use error::{ProviderError, Result};
-pub use retry::is_retryable_error_message as is_retryable_provider_error_message;
+pub use error::{
+    ProviderError, ProviderErrorFormat, ProviderHttpError, ProviderTransportKind, Result,
+    is_retryable_error_message as is_retryable_provider_error_message, unexpected_response,
+    unexpected_response_with_sensitive_values,
+};
 pub use streaming::{CollectedResponse, CollectedToolCall};
 pub use traits::Provider;
 pub use types::{
