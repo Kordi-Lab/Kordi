@@ -96,10 +96,10 @@ async fn handle_connection(
             &mut stream,
             404,
             "Not Found",
-            &format!("Unexpected path: {path_part}"),
+            "This sign-in callback is not valid. Try again from the app.",
         )
         .await;
-        anyhow::bail!("Unexpected callback path: {path_part}");
+        anyhow::bail!("Unexpected OAuth callback path");
     }
 
     let params = parse_query(query_part);

@@ -55,7 +55,10 @@ pub struct ProviderHttpError {
 
 impl ProviderHttpError {
     pub fn is_retryable(&self) -> bool {
-        is_retryable_status(self.status)
+        self.code
+            .as_deref()
+            .and_then(retryability_for_error_code)
+            .unwrap_or_else(|| is_retryable_status(self.status))
     }
 
     pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
@@ -633,7 +636,9 @@ fn looks_like_html(body: &[u8], content_type: Option<&str>) -> bool {
             .map(str::trim_start)
             .is_some_and(|value| {
                 let prefix = truncate_utf8(value, 1_024).to_ascii_lowercase();
-                prefix.starts_with("<!doctype")
+                contains_markup_tag(&prefix)
+                    || looks_like_css(&prefix)
+                    || prefix.starts_with("<!doctype")
                     || prefix.starts_with("<html")
                     || prefix.starts_with("<head")
                     || prefix.starts_with("<body")
@@ -651,6 +656,38 @@ fn looks_like_html(body: &[u8], content_type: Option<&str>) -> bool {
                     || prefix.contains(":root{")
                     || prefix.contains(":root {")
             })
+}
+
+fn contains_markup_tag(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.iter().enumerate().any(|(index, byte)| {
+        if *byte != b'<' {
+            return false;
+        }
+        let mut cursor = index + 1;
+        if bytes.get(cursor) == Some(&b'/') {
+            cursor += 1;
+        }
+        let Some(first) = bytes.get(cursor) else {
+            return false;
+        };
+        (first.is_ascii_alphabetic() || matches!(first, b'!' | b'?'))
+            && bytes[cursor + 1..].contains(&b'>')
+    })
+}
+
+fn looks_like_css(value: &str) -> bool {
+    value.match_indices('{').any(|(start, _)| {
+        let declaration = value[start + 1..].trim_start();
+        let Some((property, remainder)) = declaration.split_once(':') else {
+            return false;
+        };
+        !property.is_empty()
+            && property
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '-')
+            && remainder.contains('}')
+    })
 }
 
 fn sanitize_url(url: &Url) -> String {
@@ -689,7 +726,9 @@ fn bounded_header(headers: &HeaderMap, name: &str) -> Option<String> {
     {
         return None;
     }
-    Some(truncate_utf8(value, MAX_DIAGNOSTIC_BYTES))
+    let bounded = truncate_utf8(value, MAX_DIAGNOSTIC_BYTES);
+    let sanitized = sanitize_user_text(&bounded, MAX_DIAGNOSTIC_BYTES);
+    (sanitized == bounded).then_some(bounded)
 }
 
 fn bounded_content_type(headers: &HeaderMap) -> Option<String> {
@@ -763,6 +802,9 @@ fn sanitize_user_text_with_sensitive_values(
     max_bytes: usize,
     sensitive_values: &[String],
 ) -> String {
+    if looks_like_html(value.as_bytes(), None) {
+        return String::new();
+    }
     let redacted = redact_sensitive_values(value, sensitive_values);
     let normalized = redacted
         .chars()
@@ -806,13 +848,21 @@ fn redact_sensitive_values(value: &str, sensitive_values: &[String]) -> String {
     let mut values = sensitive_values
         .iter()
         .map(|value| value.trim())
-        .filter(|value| value.len() >= 4)
+        .filter(|value| !value.is_empty())
         .collect::<Vec<_>>();
     values.sort_unstable_by_key(|value| std::cmp::Reverse(value.len()));
     values.dedup();
 
+    if values
+        .iter()
+        .any(|sensitive| sensitive.len() < 4 && value.contains(*sensitive))
+    {
+        return "[redacted]".to_string();
+    }
+
     values
         .into_iter()
+        .filter(|sensitive| sensitive.len() >= 4)
         .fold(value.to_string(), |redacted, sensitive| {
             redacted.replace(sensitive, "[redacted]")
         })
@@ -1031,6 +1081,13 @@ mod tests {
             Some("code [redacted] was rejected by [redacted]")
         );
         assert_eq!(code.as_deref(), Some("[redacted]"));
+
+        let (message, _) = parse_provider_envelope_with_sensitive_values(
+            ProviderErrorFormat::OAuth,
+            br#"{"error":"invalid_grant","error_description":"code x was rejected"}"#,
+            &["x".to_string()],
+        );
+        assert_eq!(message.as_deref(), Some("[redacted]"));
     }
 
     #[test]
@@ -1079,6 +1136,20 @@ mod tests {
             Some(MAX_DIAGNOSTIC_BYTES)
         );
         assert_eq!(error.cf_ray, None);
+
+        let mut unsafe_headers = HeaderMap::new();
+        unsafe_headers.insert("x-request-id", "token=reflected-secret".parse().unwrap());
+        unsafe_headers.insert("cf-ray", "203.0.113.1".parse().unwrap());
+        let error = http_error(
+            ProviderErrorFormat::OpenAi,
+            StatusCode::BAD_GATEWAY,
+            "https://example.com/v1/responses",
+            Some("application/json"),
+            unsafe_headers,
+            br#"{"error":{"message":"temporary"}}"#,
+        );
+        assert_eq!(error.request_id, None);
+        assert_eq!(error.cf_ray, None);
     }
 
     #[test]
@@ -1124,6 +1195,16 @@ mod tests {
             )
             .is_empty()
         );
+        assert!(
+            sanitize_user_text(
+                "The edge returned <iframe src=\"https://example.com\"></iframe>",
+                MAX_USER_MESSAGE_BYTES
+            )
+            .is_empty()
+        );
+        assert!(
+            sanitize_user_text(".blocked { display: none }", MAX_USER_MESSAGE_BYTES).is_empty()
+        );
     }
 
     #[test]
@@ -1164,6 +1245,26 @@ mod tests {
             );
             assert!(!error.is_retryable(), "status {status} should be terminal");
         }
+
+        let explicit_overload = http_error(
+            ProviderErrorFormat::Anthropic,
+            StatusCode::BAD_REQUEST,
+            "https://api.anthropic.com/v1/messages",
+            Some("application/json"),
+            HeaderMap::new(),
+            br#"{"error":{"type":"overloaded_error","message":"Try again later"}}"#,
+        );
+        assert!(explicit_overload.is_retryable());
+
+        let terminal_quota = http_error(
+            ProviderErrorFormat::OpenAi,
+            StatusCode::TOO_MANY_REQUESTS,
+            "https://api.openai.com/v1/responses",
+            Some("application/json"),
+            HeaderMap::new(),
+            br#"{"error":{"code":"insufficient_quota","message":"Quota exhausted"}}"#,
+        );
+        assert!(!terminal_quota.is_retryable());
 
         let timeout = ProviderError::Transport {
             provider: "openai".to_string(),
