@@ -10,6 +10,10 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+use crate::error::{
+    ProviderError, ProviderErrorFormat, google_retry_delay_ms,
+    unexpected_response_with_sensitive_values,
+};
 use crate::{CompletionRequest, Provider, RequestOptions, StreamEvent, retry::with_retry};
 
 pub use convert::{
@@ -93,6 +97,8 @@ impl Provider for GoogleProvider {
         if !tools.is_empty() {
             body["tools"] = json!(tools);
         }
+        let provider_name = options.provider.clone();
+        let sensitive_values = options.sensitive_values();
 
         let response = with_retry(
             options.max_retries,
@@ -110,23 +116,35 @@ impl Provider for GoogleProvider {
                     req = req.header(k.as_str(), v.as_str());
                 }
                 let body_clone = body.clone();
+                let request_url = url.clone();
+                let provider_name = provider_name.clone();
+                let sensitive_values = sensitive_values.clone();
                 async move {
-                    let response = req
-                        .json(&body_clone)
-                        .send()
-                        .await
-                        .map_err(|e| KordiError::Provider(format!("Request failed: {e}")))?;
+                    let response = req.json(&body_clone).send().await.map_err(|error| {
+                        ProviderError::from_reqwest(
+                            &provider_name,
+                            "streamGenerateContent",
+                            &request_url,
+                            &error,
+                        )
+                    })?;
 
                     if !response.status().is_success() {
-                        let status = response.status();
-                        let body = response.text().await.unwrap_or_default();
-                        return Err(KordiError::Provider(format!("HTTP {status}: {body}")));
+                        return Err(unexpected_response_with_sensitive_values(
+                            &provider_name,
+                            "streamGenerateContent",
+                            ProviderErrorFormat::Google,
+                            response,
+                            &sensitive_values,
+                        )
+                        .await);
                     }
                     Ok(response)
                 }
             },
         )
-        .await?;
+        .await
+        .map_err(KordiError::from)?;
 
         use futures::StreamExt;
         let mut stream = response.bytes_stream();
@@ -144,8 +162,21 @@ impl Provider for GoogleProvider {
                 break;
             };
 
-            let chunk =
-                chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    let _ = tx.send(StreamEvent::Error {
+                        error: ProviderError::from_reqwest(
+                            &options.provider,
+                            "streamGenerateContent stream",
+                            &url,
+                            &error,
+                        ),
+                    });
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+            };
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find("\n\n") {
@@ -159,6 +190,28 @@ impl Provider for GoogleProvider {
                             return Ok(());
                         }
                         if let Ok(event) = serde_json::from_str::<Value>(data) {
+                            if let Some(error) = event.get("error") {
+                                let message = error.get("message").and_then(|value| value.as_str());
+                                let code = error
+                                    .get("status")
+                                    .or_else(|| error.get("code"))
+                                    .and_then(|value| match value {
+                                        Value::String(value) => Some(value.clone()),
+                                        Value::Number(value) => Some(value.to_string()),
+                                        _ => None,
+                                    });
+                                let error = ProviderError::stream_with_sensitive_values(
+                                    &options.provider,
+                                    "streamGenerateContent stream",
+                                    message,
+                                    code.as_deref(),
+                                    &sensitive_values,
+                                )
+                                .with_retry_after_ms(google_retry_delay_ms(&event));
+                                let _ = tx.send(StreamEvent::Error { error });
+                                let _ = tx.send(StreamEvent::Done);
+                                return Ok(());
+                            }
                             process_google_event(&event, &tx);
                         }
                     }

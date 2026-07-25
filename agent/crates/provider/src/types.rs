@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
+use crate::error::ProviderError;
+
 /// A completion request to send to a provider.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionRequest {
@@ -44,6 +46,7 @@ pub enum ProviderAuthMode {
 
 /// Options for a provider request.
 pub struct RequestOptions {
+    pub provider: String,
     pub api_key: String,
     pub auth_mode: ProviderAuthMode,
     pub auth_account_id: Option<String>,
@@ -54,6 +57,42 @@ pub struct RequestOptions {
     pub max_retries: u32,
     pub retry_base_delay_ms: u64,
     pub max_retry_delay_ms: u64,
+}
+
+impl RequestOptions {
+    pub(crate) fn sensitive_values(&self) -> Vec<String> {
+        let mut values = Vec::with_capacity(self.headers.len() + 2);
+        if !self.api_key.trim().is_empty() {
+            values.push(self.api_key.clone());
+        }
+        if let Some(account_id) = self
+            .auth_account_id
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            values.push(account_id.clone());
+        }
+        if let Ok(url) = reqwest::Url::parse(&self.base_url) {
+            if !url.username().is_empty() {
+                values.push(url.username().to_string());
+            }
+            if let Some(password) = url.password().filter(|value| !value.is_empty()) {
+                values.push(password.to_string());
+            }
+            values.extend(
+                url.query_pairs()
+                    .map(|(_, value)| value.into_owned())
+                    .filter(|value| !value.trim().is_empty()),
+            );
+        }
+        values.extend(
+            self.headers
+                .values()
+                .filter(|value| !value.trim().is_empty())
+                .cloned(),
+        );
+        values
+    }
 }
 
 /// A streaming event from the provider.
@@ -96,7 +135,7 @@ pub enum StreamEvent {
     Usage(UsageInfo),
     Done,
     Error {
-        message: String,
+        error: ProviderError,
     },
 }
 

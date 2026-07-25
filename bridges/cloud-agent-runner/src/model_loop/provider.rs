@@ -16,6 +16,7 @@ pub enum OpenAiApiMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiProviderConfig {
+    pub provider: String,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
@@ -75,6 +76,7 @@ impl OpenAiProviderConfig {
             .filter(|value| !value.is_empty())
             .map(ToString::to_string);
         Ok(Self {
+            provider: material.provider.clone(),
             api_key,
             base_url,
             model,
@@ -85,6 +87,7 @@ impl OpenAiProviderConfig {
 
     fn request_options(&self) -> RequestOptions {
         RequestOptions {
+            provider: self.provider.clone(),
             api_key: self.api_key.clone(),
             auth_mode: match self.api_mode {
                 OpenAiApiMode::ChatCompletions => ProviderAuthMode::ApiKey,
@@ -266,7 +269,9 @@ fn model_response_from_stream_events(
             | StreamEvent::ServerToolUseDelta { .. }
             | StreamEvent::ServerToolUseEnd { .. }
             | StreamEvent::ServerToolResult { .. } => {}
-            StreamEvent::Error { message } => return Err(ModelLoopError::Provider(message)),
+            StreamEvent::Error { error } => {
+                return Err(ModelLoopError::Provider(error.to_string()));
+            }
         }
     }
 
@@ -387,6 +392,7 @@ mod tests {
     #[test]
     fn completion_request_uses_shared_provider_shape_without_rewriting_model() {
         let auth = OpenAiProviderConfig {
+            provider: "openai".to_string(),
             api_key: "token".to_string(),
             base_url: "https://chatgpt.com/backend-api".to_string(),
             model: "gpt-5.5".to_string(),

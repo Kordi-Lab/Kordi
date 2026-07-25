@@ -9,9 +9,13 @@ use kordi_core::types::{
     SessionEntry, StopReason, Usage, UserMessage,
 };
 use kordi_monitor::RequestMetricsTracker;
-use kordi_provider::{CompletionRequest, Provider, RequestOptions, StreamEvent, UsageInfo};
+use kordi_provider::{
+    CompletionRequest, Provider, ProviderError, ProviderHttpError, RequestOptions, StreamEvent,
+    UsageInfo,
+};
 use kordi_session::store;
 use kordi_tools::{Tool, ToolResult, ToolScheduling};
+use reqwest::StatusCode;
 use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -90,7 +94,12 @@ impl Provider for StreamErrorThenSuccessProvider {
         let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
         if call_index == 0 {
             let _ = tx.send(StreamEvent::Error {
-                message: "Provider error: An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 61a29dd6-0976-43b0-968b-4daa23917199 in your message.".to_string(),
+                error: ProviderError::stream(
+                    "openai",
+                    "test stream",
+                    Some("An error occurred while processing your request. You can retry your request."),
+                    Some("server_error"),
+                ),
             });
         } else {
             let _ = tx.send(StreamEvent::TextDelta {
@@ -100,6 +109,64 @@ impl Provider for StreamErrorThenSuccessProvider {
         let _ = tx.send(StreamEvent::Done);
         Ok(())
     }
+}
+
+struct AlwaysStreamErrorProvider {
+    call_count: AtomicUsize,
+    visible_output_before_error: bool,
+    error: ProviderError,
+}
+
+#[async_trait]
+impl Provider for AlwaysStreamErrorProvider {
+    fn name(&self) -> &str {
+        "always-stream-error"
+    }
+
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+    ) -> KordiResult<Vec<StreamEvent>> {
+        Ok(Vec::new())
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+        _options: RequestOptions,
+        tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> KordiResult<()> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
+        if self.visible_output_before_error {
+            let _ = tx.send(StreamEvent::TextDelta {
+                text: "partial".to_string(),
+            });
+        }
+        let _ = tx.send(StreamEvent::Error {
+            error: self.error.clone(),
+        });
+        let _ = tx.send(StreamEvent::Done);
+        Ok(())
+    }
+}
+
+fn terminal_http_error() -> ProviderError {
+    ProviderError::Http(ProviderHttpError {
+        provider: "openai".to_string(),
+        operation: "responses".to_string(),
+        status: StatusCode::FORBIDDEN,
+        url: "https://chatgpt.com/backend-api/codex/responses".to_string(),
+        content_type: Some("text/html".to_string()),
+        message: "Unknown error".to_string(),
+        code: None,
+        request_id: None,
+        cf_ray: Some("ray-test-HKG".to_string()),
+        retry_after_ms: None,
+        body_truncated: true,
+        cloudflare_block: true,
+        hint: None,
+    })
 }
 
 struct CancelAfterToolCallProvider;
@@ -261,7 +328,12 @@ impl Provider for OverflowProvider {
         tx: mpsc::UnboundedSender<StreamEvent>,
     ) -> KordiResult<()> {
         let _ = tx.send(StreamEvent::Error {
-            message: "HTTP 400: context_length_exceeded".to_string(),
+            error: ProviderError::stream(
+                "openai",
+                "test stream",
+                Some("context_length_exceeded"),
+                Some("context_length_exceeded"),
+            ),
         });
         Ok(())
     }
@@ -505,7 +577,7 @@ impl Provider for ErrorAwareToolProvider {
             Ok(())
         } else {
             let _ = tx.send(StreamEvent::Error {
-                message: "missing tool error flag".to_string(),
+                error: ProviderError::other("missing tool error flag", false),
             });
             Ok(())
         }

@@ -11,7 +11,7 @@ pub enum KordiError {
     #[error("Database error: {0}")]
     Database(String),
 
-    #[error("Provider error: {0}")]
+    #[error("{0}")]
     Provider(String),
 
     #[error("Tool error: {0}")]

@@ -1,4 +1,7 @@
 use anyhow::{Context, Result};
+use kordi_provider::{
+    ProviderError, ProviderErrorFormat, unexpected_response_with_sensitive_values,
+};
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use serde::Deserialize;
 use serde_json::json;
@@ -299,7 +302,7 @@ pub(crate) fn normalize_authority(input: &str) -> Result<String> {
 
     let host = host.trim().to_ascii_lowercase();
     if host.is_empty() || host.contains(' ') {
-        anyhow::bail!("Invalid GitHub authority: {input}");
+        anyhow::bail!("Invalid GitHub authority");
     }
     Ok(host)
 }
@@ -320,23 +323,60 @@ pub(crate) fn dotcom_api_url_for_authority(authority: &str) -> String {
     }
 }
 
+fn github_request_error(
+    operation: &'static str,
+    url: &str,
+    error: &reqwest::Error,
+) -> anyhow::Error {
+    anyhow::Error::new(ProviderError::from_reqwest(
+        "github-copilot",
+        operation,
+        url,
+        error,
+    ))
+}
+
+async fn require_github_success(
+    response: reqwest::Response,
+    operation: &'static str,
+    format: ProviderErrorFormat,
+    sensitive_values: &[String],
+) -> Result<reqwest::Response> {
+    if response.status().is_success() {
+        return Ok(response);
+    }
+    Err(anyhow::Error::new(
+        unexpected_response_with_sensitive_values(
+            "github-copilot",
+            operation,
+            format,
+            response,
+            sensitive_values,
+        )
+        .await,
+    ))
+}
+
 async fn request_device_code(server_url: &str) -> Result<DeviceCodeResponse> {
     let client = reqwest::Client::new();
-    client
-        .post(format!(
-            "{}/login/device/code",
-            server_url.trim_end_matches('/')
-        ))
+    let url = format!("{}/login/device/code", server_url.trim_end_matches('/'));
+    let response = client
+        .post(&url)
         .header(ACCEPT, "application/json")
         .form(&[("client_id", CLIENT_ID), ("scope", DEVICE_FLOW_SCOPES)])
         .send()
         .await
-        .context("Failed to start GitHub device flow")?
-        .error_for_status()
-        .context("GitHub device flow initiation failed")?
-        .json::<DeviceCodeResponse>()
-        .await
-        .context("Failed to parse GitHub device flow response")
+        .map_err(|error| github_request_error("device authorization", &url, &error))?;
+    require_github_success(
+        response,
+        "device authorization",
+        ProviderErrorFormat::OAuth,
+        &[],
+    )
+    .await?
+    .json::<DeviceCodeResponse>()
+    .await
+    .context("Failed to parse GitHub device flow response")
 }
 
 async fn poll_device_flow(
@@ -349,6 +389,11 @@ async fn poll_device_flow(
     let mut interval_secs = device.interval.unwrap_or(5).max(1);
     let client = reqwest::Client::new();
     let mut cancel_rx = cancel_rx;
+    let url = format!(
+        "{}/login/oauth/access_token",
+        server_url.trim_end_matches('/')
+    );
+    let sensitive_values = vec![device.device_code.clone()];
 
     loop {
         if started.elapsed() >= expires {
@@ -374,10 +419,7 @@ async fn poll_device_flow(
         }
 
         let response = client
-            .post(format!(
-                "{}/login/oauth/access_token",
-                server_url.trim_end_matches('/')
-            ))
+            .post(&url)
             .header(ACCEPT, "application/json")
             .form(&[
                 ("client_id", CLIENT_ID),
@@ -386,12 +428,17 @@ async fn poll_device_flow(
             ])
             .send()
             .await
-            .context("Failed while polling GitHub device flow")?
-            .error_for_status()
-            .context("GitHub device flow polling failed")?
-            .json::<AccessTokenResponse>()
-            .await
-            .context("Failed to parse GitHub device token response")?;
+            .map_err(|error| github_request_error("device token polling", &url, &error))?;
+        let response = require_github_success(
+            response,
+            "device token polling",
+            ProviderErrorFormat::OAuth,
+            &sensitive_values,
+        )
+        .await?
+        .json::<AccessTokenResponse>()
+        .await
+        .context("Failed to parse GitHub device token response")?;
 
         if let Some(token) = response.access_token.as_ref()
             && !token.trim().is_empty()
@@ -405,12 +452,18 @@ async fn poll_device_flow(
                 interval_secs += 5;
                 continue;
             }
-            Some(error) => anyhow::bail!(
-                "GitHub device flow failed: {}",
-                response
-                    .error_description
-                    .unwrap_or_else(|| error.to_string())
-            ),
+            Some(error) => {
+                let message = response.error_description.as_deref().unwrap_or(error);
+                return Err(anyhow::Error::new(
+                    ProviderError::stream_with_sensitive_values(
+                        "github-copilot",
+                        "device token polling",
+                        Some(message),
+                        Some(error),
+                        &sensitive_values,
+                    ),
+                ));
+            }
             None => anyhow::bail!("GitHub device flow returned no access token"),
         }
     }
@@ -436,11 +489,13 @@ async fn refresh_github_access_token(
     )?;
 
     let client = reqwest::Client::new();
+    let url = format!(
+        "{}/login/oauth/access_token",
+        server_url.trim_end_matches('/')
+    );
+    let sensitive_values = vec![refresh_token.to_string(), client_secret.clone()];
     let response = client
-        .post(format!(
-            "{}/login/oauth/access_token",
-            server_url.trim_end_matches('/')
-        ))
+        .post(&url)
         .header(ACCEPT, "application/json")
         .form(&[
             ("client_id", CLIENT_ID),
@@ -450,43 +505,61 @@ async fn refresh_github_access_token(
         ])
         .send()
         .await
-        .context("Failed to refresh GitHub access token")?
-        .error_for_status()
-        .context("GitHub refresh token exchange failed")?
-        .json::<AccessTokenResponse>()
-        .await
-        .context("Failed to parse GitHub refresh response")?;
+        .map_err(|error| github_request_error("token refresh", &url, &error))?;
+    let response = require_github_success(
+        response,
+        "token refresh",
+        ProviderErrorFormat::OAuth,
+        &sensitive_values,
+    )
+    .await?
+    .json::<AccessTokenResponse>()
+    .await
+    .context("Failed to parse GitHub refresh response")?;
 
     if let Some(token) = response.access_token.as_ref()
         && !token.trim().is_empty()
     {
         Ok(response)
     } else {
-        anyhow::bail!(
-            "GitHub refresh token exchange returned no access token: {}",
-            response
-                .error_description
-                .or(response.error)
-                .unwrap_or_else(|| "unknown error".to_string())
-        )
+        let message = response
+            .error_description
+            .as_deref()
+            .or(response.error.as_deref());
+        Err(anyhow::Error::new(
+            ProviderError::stream_with_sensitive_values(
+                "github-copilot",
+                "token refresh",
+                message,
+                response.error.as_deref(),
+                &sensitive_values,
+            ),
+        ))
     }
 }
 
 async fn fetch_user_login(api_url: &str, github_access_token: &str) -> Result<String> {
     let client = reqwest::Client::new();
+    let url = format!("{}/user", api_url.trim_end_matches('/'));
+    let sensitive_values = vec![github_access_token.to_string()];
     let response = client
-        .get(format!("{}/user", api_url.trim_end_matches('/')))
+        .get(&url)
         .header(ACCEPT, "application/json")
         .header("X-GitHub-Api-Version", API_VERSION)
         .header(AUTHORIZATION, format!("token {github_access_token}"))
         .send()
         .await
-        .context("Failed to fetch GitHub user info")?
-        .error_for_status()
-        .context("GitHub user info request failed")?
-        .json::<UserInfoResponse>()
-        .await
-        .context("Failed to parse GitHub user info response")?;
+        .map_err(|error| github_request_error("user info request", &url, &error))?;
+    let response = require_github_success(
+        response,
+        "user info request",
+        ProviderErrorFormat::OAuth,
+        &sensitive_values,
+    )
+    .await?
+    .json::<UserInfoResponse>()
+    .await
+    .context("Failed to parse GitHub user info response")?;
 
     response
         .login
@@ -499,45 +572,47 @@ async fn fetch_copilot_token_envelope(
     github_access_token: &str,
 ) -> Result<CopilotTokenEnvelope> {
     let client = reqwest::Client::new();
+    let url = format!(
+        "{}/copilot_internal/v2/token",
+        api_url.trim_end_matches('/')
+    );
+    let sensitive_values = vec![github_access_token.to_string()];
     let response = client
-        .get(format!(
-            "{}/copilot_internal/v2/token",
-            api_url.trim_end_matches('/')
-        ))
+        .get(&url)
         .header(ACCEPT, "application/json")
         .header("X-GitHub-Api-Version", API_VERSION)
         .header(AUTHORIZATION, format!("token {github_access_token}"))
         .send()
         .await
-        .context("Failed to exchange GitHub token for Copilot token")?;
+        .map_err(|error| github_request_error("Copilot token exchange", &url, &error))?;
 
     let status = response.status();
-    let body = response
-        .text()
-        .await
-        .context("Failed to read GitHub Copilot token exchange response")?;
-
     if !status.is_success() {
-        let lower = body.to_ascii_lowercase();
         let hint = if status == reqwest::StatusCode::UNAUTHORIZED {
             "GitHub accepted the device login, but the Copilot token exchange was unauthorized. Try logging in again."
         } else if status == reqwest::StatusCode::FORBIDDEN {
             "This GitHub account may not have Copilot enabled, or org/enterprise policy may block Copilot access."
-        } else if lower.contains("copilot") && lower.contains("business") {
-            "GitHub indicates a Copilot plan/policy issue for this account."
         } else {
             "GitHub rejected the Copilot token exchange."
         };
-
-        anyhow::bail!(
-            "GitHub Copilot token exchange failed (HTTP {}): {}\n{}",
-            status,
-            body,
-            hint
-        );
+        let error = unexpected_response_with_sensitive_values(
+            "github-copilot",
+            "Copilot token exchange",
+            ProviderErrorFormat::OAuth,
+            response,
+            &sensitive_values,
+        )
+        .await;
+        let error = match error {
+            ProviderError::Http(error) => ProviderError::Http(error.with_hint(hint)),
+            error => error,
+        };
+        return Err(anyhow::Error::new(error));
     }
 
-    serde_json::from_str::<CopilotTokenEnvelope>(&body)
+    response
+        .json::<CopilotTokenEnvelope>()
+        .await
         .context("Failed to parse GitHub Copilot token envelope")
 }
 
@@ -554,30 +629,37 @@ async fn fetch_copilot_models(api_base_url: &str, copilot_token: &str) -> Result
     }
 
     let client = reqwest::Client::new();
+    let url = format!("{}/models", api_base_url.trim_end_matches('/'));
+    let sensitive_values = vec![copilot_token.to_string()];
     let response = client
-        .get(format!("{}/models", api_base_url.trim_end_matches('/')))
+        .get(&url)
         .header(ACCEPT, "application/json")
         .header(AUTHORIZATION, format!("Bearer {copilot_token}"))
         .header("OpenAI-Organization", "github-copilot")
         .send()
         .await
-        .context("Failed to validate GitHub Copilot /models endpoint")?
-        .error_for_status()
-        .context("GitHub Copilot /models request failed")?;
+        .map_err(|error| github_request_error("models request", &url, &error))?;
+    let response = require_github_success(
+        response,
+        "models request",
+        ProviderErrorFormat::OpenAi,
+        &sensitive_values,
+    )
+    .await?;
 
-    let text = response
-        .text()
+    let value = response
+        .json::<serde_json::Value>()
         .await
-        .context("Failed to read GitHub Copilot /models response")?;
+        .context("Failed to parse GitHub Copilot /models response")?;
 
-    if let Ok(parsed) = serde_json::from_str::<ModelsResponse>(&text) {
+    if let Ok(parsed) = serde_json::from_value::<ModelsResponse>(value.clone()) {
         return Ok(parsed.data.into_iter().map(|model| model.id).collect());
     }
-    if let Ok(parsed) = serde_json::from_str::<Vec<ModelEntry>>(&text) {
+    if let Ok(parsed) = serde_json::from_value::<Vec<ModelEntry>>(value) {
         return Ok(parsed.into_iter().map(|model| model.id).collect());
     }
 
-    anyhow::bail!("Unsupported GitHub Copilot /models response: {text}")
+    anyhow::bail!("GitHub Copilot returned an unsupported models response")
 }
 
 pub(crate) fn github_copilot_runtime_headers() -> std::collections::HashMap<String, String> {

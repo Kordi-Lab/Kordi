@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use tokio::sync::mpsc;
 
+use crate::error::{ProviderError, ProviderErrorFormat, unexpected_response_with_sensitive_values};
 use crate::retry::with_retry;
 use crate::{CompletionRequest, RequestOptions, StreamEvent, UsageInfo};
 
@@ -26,6 +27,8 @@ impl OpenAiProvider {
     ) -> KordiResult<()> {
         let url = format!("{}/responses", options.base_url.trim_end_matches('/'));
         let body = build_responses_request_body(&request, messages);
+        let provider_name = options.provider.clone();
+        let sensitive_values = options.sensitive_values();
 
         let response = with_retry(
             options.max_retries,
@@ -45,22 +48,34 @@ impl OpenAiProvider {
                     builder = builder.header(k.as_str(), v.as_str());
                 }
                 let body_clone = body.clone();
+                let request_url = url.clone();
+                let provider_name = provider_name.clone();
+                let sensitive_values = sensitive_values.clone();
                 async move {
-                    let resp = builder
-                        .json(&body_clone)
-                        .send()
-                        .await
-                        .map_err(|e| KordiError::Provider(format!("Request failed: {e}")))?;
+                    let resp = builder.json(&body_clone).send().await.map_err(|error| {
+                        ProviderError::from_reqwest(
+                            &provider_name,
+                            "responses",
+                            &request_url,
+                            &error,
+                        )
+                    })?;
                     if !resp.status().is_success() {
-                        let status = resp.status();
-                        let body = resp.text().await.unwrap_or_default();
-                        return Err(KordiError::Provider(format!("HTTP {status}: {body}")));
+                        return Err(unexpected_response_with_sensitive_values(
+                            &provider_name,
+                            "responses",
+                            ProviderErrorFormat::OpenAi,
+                            resp,
+                            &sensitive_values,
+                        )
+                        .await);
                     }
                     Ok(resp)
                 }
             },
         )
-        .await?;
+        .await
+        .map_err(KordiError::from)?;
 
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
@@ -79,8 +94,21 @@ impl OpenAiProvider {
                 break;
             };
 
-            let chunk =
-                chunk_result.map_err(|e| KordiError::Provider(format!("Stream error: {e}")))?;
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    let _ = tx.send(StreamEvent::Error {
+                        error: ProviderError::from_reqwest(
+                            &options.provider,
+                            "responses stream",
+                            &url,
+                            &error,
+                        ),
+                    });
+                    let _ = tx.send(StreamEvent::Done);
+                    return Ok(());
+                }
+            };
             buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(pos) = buffer.find('\n') {
@@ -102,6 +130,8 @@ impl OpenAiProvider {
                 };
                 if process_responses_sse(
                     &event,
+                    &options.provider,
+                    &sensitive_values,
                     &tx,
                     &mut started_tool_calls,
                     &mut completed_tool_calls,
@@ -376,6 +406,8 @@ fn push_tool_result_message(out: &mut Vec<Value>, msg: &Value) {
 
 fn process_responses_sse(
     event: &Value,
+    provider: &str,
+    sensitive_values: &[String],
     tx: &mpsc::UnboundedSender<StreamEvent>,
     started_tool_calls: &mut HashSet<String>,
     completed_tool_calls: &mut HashSet<String>,
@@ -411,8 +443,16 @@ fn process_responses_sse(
             return true;
         }
         "response.failed" | "error" => {
+            let message = responses_error_message(event);
+            let code = responses_error_code(event);
             let _ = tx.send(StreamEvent::Error {
-                message: responses_error_message(event),
+                error: ProviderError::stream_with_sensitive_values(
+                    provider,
+                    "responses stream",
+                    Some(&message),
+                    code,
+                    sensitive_values,
+                ),
             });
             let _ = tx.send(StreamEvent::Done);
             return true;
@@ -523,6 +563,20 @@ fn responses_error_message(event: &Value) -> String {
         .unwrap_or_else(|| "OpenAI response failed".to_string())
 }
 
+fn responses_error_code(event: &Value) -> Option<&str> {
+    event
+        .get("error")
+        .and_then(|error| error.get("code").or_else(|| error.get("type")))
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            event
+                .get("response")
+                .and_then(|response| response.get("error"))
+                .and_then(|error| error.get("code").or_else(|| error.get("type")))
+                .and_then(|value| value.as_str())
+        })
+}
+
 fn send_responses_usage(event: &Value, tx: &mpsc::UnboundedSender<StreamEvent>) {
     let Some(usage) = event.get("response").and_then(|r| r.get("usage")) else {
         return;
@@ -561,6 +615,7 @@ mod tests {
 
     fn request_options(base_url: &str) -> RequestOptions {
         RequestOptions {
+            provider: "openai".to_string(),
             api_key: "test-key".to_string(),
             auth_mode: ProviderAuthMode::ApiKey,
             auth_account_id: None,

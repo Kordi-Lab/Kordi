@@ -21,17 +21,19 @@ impl AgentSessionRuntime {
             return false;
         }
 
+        if looks_like_raw_markup(error_message) {
+            return false;
+        }
+
+        if let Some(status) = explicit_http_status(error_message) {
+            return matches!(status, 408 | 409 | 425 | 429 | 500 | 502 | 503 | 504 | 529);
+        }
+
         let err = error_message.to_ascii_lowercase();
         [
             "overloaded",
-            "provider returned error",
             "rate limit",
             "too many requests",
-            "429",
-            "500",
-            "502",
-            "503",
-            "504",
             "service unavailable",
             "server error",
             "internal error",
@@ -199,4 +201,34 @@ impl AgentSessionRuntime {
             self.messages.push(RuntimeMessage::BashExecution(message));
         }
     }
+}
+
+fn looks_like_raw_markup(message: &str) -> bool {
+    let message = message.trim_start().to_ascii_lowercase();
+    message.starts_with("<!doctype")
+        || message.starts_with("<html")
+        || message.contains("<html")
+        || message.contains("<svg")
+}
+
+fn explicit_http_status(message: &str) -> Option<u16> {
+    let message = message.trim();
+    [
+        "unexpected status ",
+        "HTTP ",
+        "http error ",
+        "provider returned error ",
+    ]
+    .iter()
+    .find_map(|marker| {
+        let start = message.find(marker)? + marker.len();
+        let remainder = &message[start..];
+        let digits = remainder
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>();
+        (digits.len() == 3)
+            .then(|| digits.parse::<u16>().ok())
+            .flatten()
+    })
 }
