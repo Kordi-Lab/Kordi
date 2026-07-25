@@ -166,6 +166,28 @@ export function mergeCanonicalHistoryIntoRuntime(
     if (canonicalIndex > lastCanonicalIndex) lastCanonicalIndex = canonicalIndex;
     return canonicalIndex;
   });
+  const enrichedRuntimeMessages = runtimeMessages.map((message, runtimeIndex) => {
+    const canonicalIndex = runtimeAnchorIndexes[runtimeIndex];
+    if (canonicalIndex === null) return message;
+    const canonicalMessage = canonicalMessages[canonicalIndex];
+    const canonicalAliasIds = [
+      canonicalMessage.id,
+      canonicalMessage.entryId,
+      ...(canonicalMessage.replyAliasIds ?? []),
+    ].filter((value): value is string => Boolean(value?.trim()));
+    const replyAliasIds = [...new Set([
+      ...(message.replyAliasIds ?? []),
+      ...canonicalAliasIds,
+    ])];
+    if (!canonicalMessage.isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0)) {
+      return message;
+    }
+    return {
+      ...message,
+      ...(canonicalMessage.isForkSnapshot ? { isForkSnapshot: true } : {}),
+      ...(replyAliasIds.length > 0 ? { replyAliasIds } : {}),
+    };
+  });
 
   const overlayMessages = canonicalMessages
     .map((message, canonicalIndex) => ({ message, canonicalIndex }))
@@ -173,11 +195,11 @@ export function mergeCanonicalHistoryIntoRuntime(
       !usedCanonicalIndexes.has(canonicalIndex)
       && ![message.id, message.entryId].some((value) => Boolean(value && runtimeMessageIds.has(value)))
     ));
-  if (overlayMessages.length === 0) return runtimeMessages;
+  if (overlayMessages.length === 0) return enrichedRuntimeMessages;
   if (runtimeMessages.length === 0) return overlayMessages.map(({ message }) => message);
 
   const canonicalBeforeRuntimeIndex = Array.from(
-    { length: runtimeMessages.length + 1 },
+    { length: enrichedRuntimeMessages.length + 1 },
     () => [] as Message[],
   );
   const matchedAnchors = runtimeAnchorIndexes.flatMap((canonicalIndex, runtimeIndex) => (
@@ -207,14 +229,14 @@ export function mergeCanonicalHistoryIntoRuntime(
       ? prefixLatestRuntimeIndex[nextAnchorPosition - 1]
       : -1;
     const unmatchedPosition = firstIndexGreaterThan(unmatchedRuntimeIndexes, lastEarlierRuntimeIndex);
-    const targetIndex = unmatchedRuntimeIndexes[unmatchedPosition] ?? runtimeMessages.length;
+    const targetIndex = unmatchedRuntimeIndexes[unmatchedPosition] ?? enrichedRuntimeMessages.length;
     canonicalBeforeRuntimeIndex[targetIndex].push(message);
   }
 
-  return runtimeMessages.flatMap((message, runtimeIndex) => [
+  return enrichedRuntimeMessages.flatMap((message, runtimeIndex) => [
     ...canonicalBeforeRuntimeIndex[runtimeIndex],
     message,
-  ]).concat(canonicalBeforeRuntimeIndex[runtimeMessages.length]);
+  ]).concat(canonicalBeforeRuntimeIndex[enrichedRuntimeMessages.length]);
 }
 
 function comparableToolSignature(message: Message) {

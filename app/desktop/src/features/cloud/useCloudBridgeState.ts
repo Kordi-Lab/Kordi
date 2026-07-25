@@ -1991,7 +1991,13 @@ export function planCloudSelfAgentCanonicalSync({
   const existingSessionById = new Map(state.sessions.map((session) => [session.id, session]));
   const messageRequests: AppendCanonicalMessageRequest[] = [];
 
-  const ensureSessionRequest = (sessionId: string, seed: string, generatedFromMessageId?: string | null, updatedAtMs?: number) => {
+  const ensureSessionRequest = (
+    sessionId: string,
+    seed: string,
+    generatedFromMessageId?: string | null,
+    updatedAtMs?: number,
+    isForkSnapshot = false,
+  ) => {
     const cloudTitle = cloudTitlesBySessionId[sessionId];
     const fork = forksBySessionId[sessionId];
     const generatedTitle = deriveSessionTitle(seed);
@@ -2058,6 +2064,10 @@ export function planCloudSelfAgentCanonicalSync({
     const existingUpdatedByAccountId = typeof existingMetadata.sessionTitleUpdatedByAccountId === 'string'
       ? existingMetadata.sessionTitleUpdatedByAccountId
       : null;
+    const existingGeneratedFromMessageId = typeof existingMetadata.sessionTitleGeneratedFromMessageId === 'string'
+      ? existingMetadata.sessionTitleGeneratedFromMessageId.trim()
+      : '';
+    const currentGeneratedFromMessageId = generatedFromMessageId?.trim() ?? '';
     const cloudWinsExisting = Boolean(cloudTitle)
       && incomingSessionTitleWins(
         {
@@ -2066,35 +2076,78 @@ export function planCloudSelfAgentCanonicalSync({
           updatedAtMs: existingUpdatedAtMs,
           updatedByAccountId: existingUpdatedByAccountId,
         },
-        cloudTitle,
+          cloudTitle,
+        );
+    const generatedFromCurrentSnapshot = Boolean(currentGeneratedFromMessageId)
+      && (
+        existingGeneratedFromMessageId === currentGeneratedFromMessageId
+        || existingGeneratedFromMessageId === cloudSelfAgentCanonicalMessageId(currentGeneratedFromMessageId)
       );
+    const cloudTitleProtectsForkTitle = cloudWinsExisting
+      && cloudTitle?.titleSource !== 'auto'
+      && cloudTitle?.titleSource !== 'placeholder';
+    const shouldResetInheritedForkTitle = Boolean(fork)
+      && isForkSnapshot
+      && existingSource === 'auto'
+      && (!existingGeneratedFromMessageId || generatedFromCurrentSnapshot)
+      && !cloudTitleProtectsForkTitle;
     const shouldUpdateExistingTitle = cloudWinsExisting
+      || shouldResetInheritedForkTitle
       || (Boolean(generatedTitle) && existingSource === 'placeholder');
-    const metadata = {
+    const existingFork = existingMetadata.fork && typeof existingMetadata.fork === 'object' && !Array.isArray(existingMetadata.fork)
+      ? existingMetadata.fork as Record<string, unknown>
+      : null;
+    const existingForkAliases = Array.isArray(existingFork?.forkedFromMessageAliases)
+      ? existingFork.forkedFromMessageAliases
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : [];
+    const forkedFromMessageAliases = fork?.parentMessageId
+      ? [...new Set([...existingForkAliases, fork.parentMessageId])]
+      : existingForkAliases;
+    const metadata: Record<string, unknown> = {
+      ...existingMetadata,
       cloudSelfAgentSession: true,
       ...(shouldUpdateExistingTitle || !existingSession
-        ? cloudTitleMetadata ?? sessionTitleMetadata(generatedTitle ? 'auto' : 'placeholder', { generatedFromMessageId, updatedAtMs })
+        ? shouldResetInheritedForkTitle
+          ? sessionTitleMetadata('placeholder', { updatedAtMs })
+          : cloudTitleMetadata ?? sessionTitleMetadata(generatedTitle ? 'auto' : 'placeholder', { generatedFromMessageId, updatedAtMs })
         : {}),
       ...(fork
         ? {
             fork: {
+              ...existingFork,
               forkedFromSessionId: fork.parentSessionId,
               ...(fork.parentMessageId ? { forkedFromMessageId: fork.parentMessageId } : {}),
+              ...(forkedFromMessageAliases.length > 0 ? { forkedFromMessageAliases } : {}),
+              forkMode: 'private-local',
+              contextPolicy: 'prefix-through-message',
+              boundary: 'inherited-history-reference-only',
             },
           }
         : {}),
     };
-    const existingFork = existingMetadata.fork && typeof existingMetadata.fork === 'object' && !Array.isArray(existingMetadata.fork)
-      ? existingMetadata.fork as Record<string, unknown>
-      : null;
+    if (shouldResetInheritedForkTitle) {
+      delete metadata.sessionTitleGeneratedFromMessageId;
+    }
     const existingHasFork = Boolean(fork)
       && existingFork?.forkedFromSessionId === fork?.parentSessionId
       && (!fork?.parentMessageId || existingFork?.forkedFromMessageId === fork.parentMessageId);
-    if (existingSession && (!fork || existingHasFork) && !shouldUpdateExistingTitle) return;
+    const existingHasCompleteForkContract = existingHasFork
+      && (!fork?.parentMessageId || existingForkAliases.includes(fork.parentMessageId))
+      && existingFork?.forkMode === 'private-local'
+      && existingFork?.contextPolicy === 'prefix-through-message'
+      && existingFork?.boundary === 'inherited-history-reference-only';
+    if (existingSession && (!fork || existingHasCompleteForkContract) && !shouldUpdateExistingTitle) return;
     sessionRequestsById.set(sessionId, {
       id: sessionId,
       kind: 'self-agent',
-      title: shouldUpdateExistingTitle ? title : cleanText(existingSession?.title) || title,
+      title: shouldResetInheritedForkTitle
+        ? 'New fork'
+        : shouldUpdateExistingTitle
+          ? title
+          : cleanText(existingSession?.title) || title,
       status: 'active',
       createdByIdentityId: localHumanIdentityId,
       primaryIdentityId: agentIdentityId,
@@ -2124,6 +2177,7 @@ export function planCloudSelfAgentCanonicalSync({
           sourceTransport === 'canonical-fork-snapshot' ? '' : text,
           message.messageId,
           createdAtMs,
+          sourceTransport === 'canonical-fork-snapshot',
         );
       } else {
         ensureSessionRequest(
@@ -2133,6 +2187,7 @@ export function planCloudSelfAgentCanonicalSync({
             : cleanText(userTextByCloudMessageId.get(responseRequestId)) || '',
           responseRequestId,
           createdAtMs,
+          sourceTransport === 'canonical-fork-snapshot',
         );
       }
       if (sourceTransport === 'canonical-fork-snapshot' && existingMatch.sourceTransport !== sourceTransport) {
@@ -2183,6 +2238,7 @@ export function planCloudSelfAgentCanonicalSync({
       sourceTransport === 'canonical-fork-snapshot' ? '' : title,
       responseRequestId ?? message.messageId,
       createdAtMs,
+      sourceTransport === 'canonical-fork-snapshot',
     );
     plannedCanonicalMessageIdByDuplicateKey.set(duplicateKey, canonicalMessageId);
     messageRequests.push({

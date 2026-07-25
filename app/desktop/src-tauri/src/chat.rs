@@ -899,10 +899,11 @@ pub async fn desktop_chat_fork_session_from_message(
     // mirrored sessions through the local fork path, where the
     // canonical `msg:*` entry id is never present and the operation
     // failed with "Entry not found".
-    let canonical_entry_match = crate::canonical_sessions::canonical_session_message_exists(
+    let canonical_message_id = crate::canonical_sessions::canonical_session_message_id_for_entry(
         trimmed_session_id,
         trimmed_entry_id,
     )?;
+    let canonical_entry_match = canonical_message_id.is_some();
     let source_is_canonical_group = canonical_entry_match
         && crate::canonical_sessions::canonical_session_is_group_chat(trimmed_session_id)?;
     let local_session_exists =
@@ -919,7 +920,10 @@ pub async fn desktop_chat_fork_session_from_message(
     let outcome = if canonical_entry_match {
         crate::canonical_sessions::fork_canonical_session_into_local_chat(
             trimmed_session_id,
-            trimmed_entry_id,
+            canonical_message_id
+                .as_deref()
+                .expect("canonical entry match always has a canonical message id"),
+            Some(trimmed_entry_id),
             &cwd.display().to_string(),
         )?
     } else {
