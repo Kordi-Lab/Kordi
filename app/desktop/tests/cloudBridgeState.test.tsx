@@ -1686,6 +1686,91 @@ test('cloud self-agent canonical sync patches existing restored fork prefix mess
   assert.equal('sessionTitleGeneratedFromMessageId' in ((forkSessionRequest?.metadata as Record<string, unknown>) ?? {}), false);
 });
 
+test('fork snapshot repair preserves a newer manual Cloud title', () => {
+  const parentUser: CloudMessage = {
+    messageId: 'msg_parent_request',
+    fromAccountId: account.accountId,
+    toAccountId: account.accountId,
+    body: 'original prompt',
+    createdAt: '2026-05-16T08:40:00.000Z',
+    deliveredAt: null,
+    readAt: null,
+    sessionId: 'session:parent',
+  };
+  const forkCopiedUser: CloudMessage = {
+    ...parentUser,
+    messageId: 'msg_fork_copied_request',
+    sessionId: 'session:fork:child',
+  };
+  const state = {
+    sessions: [{
+      id: 'session:fork:child',
+      kind: 'self-agent',
+      title: 'original prompt',
+      status: 'active',
+      createdByIdentityId: 'human:acct_me',
+      primaryIdentityId: 'agent:cloud-self:acct_me',
+      projectId: null,
+      projectName: null,
+      relationshipIdentityId: null,
+      metadata: {
+        cloudSelfAgentSession: true,
+        sessionTitleSource: 'auto',
+        titleSource: 'auto',
+        sessionTitleRevision: 1,
+        sessionTitleGeneratedFromMessageId: 'msg_fork_copied_request',
+        sessionTitleUpdatedAtMs: 100,
+      },
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      lastMessageAtMs: 1,
+    }],
+    identities: [],
+    participants: [],
+    profile: { id: 'profile', storageRoot: '/tmp', humanIdentityId: 'human:acct_me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [{ id: 'msg:cloud:self:msg_fork_copied_request', sessionId: 'session:fork:child', sequenceNum: 1, senderIdentityId: 'human:acct_me', senderRole: 'user', messageKind: 'text', contentText: 'original prompt', content: null, parentMessageId: null, status: 'sent', createdAtMs: Date.parse(parentUser.createdAt), updatedAtMs: Date.parse(parentUser.createdAt), sourceTransport: 'cloud-self-agent', sourceEventId: 'msg_fork_copied_request' }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+    storagePath: '/tmp/canonical.sqlite3',
+  } as CanonicalSessionState;
+
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [parentUser, forkCopiedUser],
+    state,
+    forksBySessionId: {
+      'session:fork:child': {
+        forkSessionId: 'session:fork:child',
+        parentSessionId: 'session:parent',
+        parentMessageId: null,
+        createdByAccountId: account.accountId,
+        createdAt: '2026-05-16T08:40:06.000Z',
+      },
+    },
+    cloudTitlesBySessionId: {
+      'session:fork:child': {
+        sessionId: 'session:fork:child',
+        title: 'Manual fork investigation',
+        titleSource: 'manual',
+        titleRevision: 2,
+        titlePolicyVersion: 1,
+        titleGeneratedFromMessageId: null,
+        updatedAtMs: 200,
+        updatedByAccountId: account.accountId,
+        updatedAt: '2026-05-16T08:42:00.000Z',
+      },
+    },
+  });
+
+  const forkSessionRequest = plan.sessionRequests.find((request) => request.id === 'session:fork:child');
+  assert.equal(forkSessionRequest?.title, 'Manual fork investigation');
+  assert.equal(
+    (forkSessionRequest?.metadata as Record<string, unknown>)?.sessionTitleSource,
+    'manual',
+  );
+});
+
 test('cloud self-agent canonical sync patches fork lineage onto existing restored sessions', () => {
   const userMessage: CloudMessage = {
     messageId: 'msg_child_request',

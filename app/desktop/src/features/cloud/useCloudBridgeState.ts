@@ -2083,10 +2083,14 @@ export function planCloudSelfAgentCanonicalSync({
         existingGeneratedFromMessageId === currentGeneratedFromMessageId
         || existingGeneratedFromMessageId === cloudSelfAgentCanonicalMessageId(currentGeneratedFromMessageId)
       );
+    const cloudTitleProtectsForkTitle = cloudWinsExisting
+      && cloudTitle?.titleSource !== 'auto'
+      && cloudTitle?.titleSource !== 'placeholder';
     const shouldResetInheritedForkTitle = Boolean(fork)
       && isForkSnapshot
       && existingSource === 'auto'
-      && (!existingGeneratedFromMessageId || generatedFromCurrentSnapshot);
+      && (!existingGeneratedFromMessageId || generatedFromCurrentSnapshot)
+      && !cloudTitleProtectsForkTitle;
     const shouldUpdateExistingTitle = cloudWinsExisting
       || shouldResetInheritedForkTitle
       || (Boolean(generatedTitle) && existingSource === 'placeholder');

@@ -621,15 +621,24 @@ function messageContextText(message: Message): string {
   return (message.turn?.assistantText ?? message.text).trim();
 }
 
-function cloudSelfAgentMessageId(message: Message): string | null {
-  const id = message.id?.trim() || message.entryId?.trim() || '';
-  return id.startsWith('msg:cloud:self:') ? id : null;
+function restoredSelfAgentContextMessageId(message: Message): string | null {
+  const ids = [
+    message.id,
+    message.entryId,
+    ...(message.replyAliasIds ?? []),
+  ]
+    .map((value) => value?.trim() ?? '')
+    .filter(Boolean);
+  const cloudMessageId = ids.find((id) => id.startsWith('msg:cloud:self:'));
+  if (cloudMessageId) return cloudMessageId;
+  if (!message.isForkSnapshot) return null;
+  return ids.find((id) => id.startsWith('msg:')) ?? ids[0] ?? null;
 }
 
-export function restoredCloudSelfAgentContextMessages(messages: readonly Message[]): DesktopChatContextMessage[] {
+export function restoredSelfAgentContextMessages(messages: readonly Message[]): DesktopChatContextMessage[] {
   return messages.flatMap((message) => {
     if (message.messageAction?.kind === 'forward') return [];
-    const id = cloudSelfAgentMessageId(message);
+    const id = restoredSelfAgentContextMessageId(message);
     const text = messageContextText(message);
     if (!id || !text) return [];
     const authorKind = messageAuthorKind(message);
@@ -1952,7 +1961,7 @@ export function useChatMessageActions({
 
       const sentAt = formatDesktopEventTime();
       const previewText = attachmentSummaryText(text);
-      const restoredCloudContextMessages = restoredCloudSelfAgentContextMessages(activeConvMessages);
+      const restoredContextMessages = restoredSelfAgentContextMessages(activeConvMessages);
       setPendingUserChatMessage(null);
       const parentSessionIdForMessage = targetSessionId ?? activeConvCanonicalSessionId ?? resolvedSessionId;
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
@@ -2068,7 +2077,7 @@ export function useChatMessageActions({
         quote: activeChatQuote,
         contextMessages: [
           ...cloudAgentContextMessagesFromConversation(activeConvMentionScope ?? { metadata: null }),
-          ...restoredCloudContextMessages,
+          ...restoredContextMessages,
         ],
         clearDraftSessionIds: chatDraftSessionIdsToClearForSend(activeConvId, resolvedSessionId),
         materializedState,

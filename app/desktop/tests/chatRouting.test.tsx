@@ -8,7 +8,7 @@ import { visibleLocalSessionIdForActivity } from '../src/app/useKordiDesktopActi
 import { activeConversationForSelection, applyCanonicalHydrationPlaceholder, bridgeChatConversationIsVisible, pendingCloudBridgeConversationForActiveId, useWorkspaceViewModels } from '../src/app/useWorkspaceViewModels';
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
-import { restoredCloudSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
+import { restoredSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
 import { createCanonicalSessionReadModel, mergeCanonicalHistoryIntoRuntime } from '../src/features/canonical/sessionReadModel';
 import { isCanonicalCloudSessionId } from '../src/features/canonical/sessionResolver';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
@@ -1153,7 +1153,7 @@ test('canonical fork snapshot markers enrich matching runtime messages after hyd
 });
 
 test('restored Cloud self-agent messages are sent as native context for continued local turns', () => {
-  const contextMessages = restoredCloudSelfAgentContextMessages([
+  const contextMessages = restoredSelfAgentContextMessages([
     {
       id: 'msg:cloud:self:user-1',
       role: 'user',
@@ -1228,6 +1228,71 @@ test('restored Cloud self-agent messages are sent as native context for continue
       authorName: 'My Kordi',
       authorKind: 'agent',
       text: '图瓦今天多云。',
+      createdAtMs: null,
+    },
+  ]);
+});
+
+test('canonical self-agent fork snapshots are sent as native context for the first local turn', () => {
+  const contextMessages = restoredSelfAgentContextMessages([
+    {
+      id: 'msg:fork:user-1',
+      role: 'user',
+      sender: 'Me',
+      senderType: 'human',
+      text: 'Review the current implementation',
+      time: '16:04',
+      isOwnMessage: true,
+      isForkSnapshot: true,
+    },
+    {
+      id: 'desktop-message:fork:agent-1',
+      entryId: 'entry:runtime-agent-1',
+      replyAliasIds: ['msg:fork:agent-1'],
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      text: '',
+      time: '16:05',
+      isForkSnapshot: true,
+      turn: {
+        id: 'turn:fork:agent-1',
+        sessionId: 'session:fork',
+        prompt: 'Review the current implementation',
+        status: 'succeeded',
+        message: 'Response complete',
+        assistantText: 'I found one issue in the fork context handoff.',
+        thinkingText: '',
+        tools: [],
+        completed: true,
+        succeeded: true,
+        error: null,
+      },
+    },
+    {
+      id: 'msg:ordinary-local',
+      role: 'user',
+      sender: 'Me',
+      senderType: 'human',
+      text: 'Do not import ordinary visible local history.',
+      time: '16:06',
+      isOwnMessage: true,
+    },
+  ]);
+
+  assert.deepEqual(contextMessages, [
+    {
+      id: 'msg:fork:user-1',
+      authorName: 'Me',
+      authorKind: 'human',
+      text: 'Review the current implementation',
+      createdAtMs: null,
+    },
+    {
+      id: 'msg:fork:agent-1',
+      authorName: 'My Kordi',
+      authorKind: 'agent',
+      text: 'I found one issue in the fork context handoff.',
       createdAtMs: null,
     },
   ]);
