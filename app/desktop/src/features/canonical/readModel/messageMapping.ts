@@ -449,6 +449,9 @@ export function mapCanonicalMessage(
   const bridgeAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
   const bridgeConversationId = stringValue(content.bridgeConversationId)?.trim();
   const bridgeRequestId = stringValue(content.requestId)?.trim();
+  const desktopEntryId = message.sourceTransport?.startsWith('desktop-chat')
+    ? stringValue(content.desktopEntryId)?.trim()
+    : undefined;
   const parentMessageId = message.parentMessageId?.trim();
   const visibleParentMessageId = parentMessageId
     ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
@@ -563,10 +566,12 @@ export function mapCanonicalMessage(
 
   return {
     id: message.id,
-    // Surface the canonical message id so the fork affordance can
-    // target a specific message in canonical (group/bridge) sessions
-    // the same way it targets local session entries.
-    entryId: message.id,
+    // Desktop-backed canonical messages retain the exact runtime entry
+    // alias written by desktop sync. This lets the runtime/canonical
+    // transcript merge reconcile tool-only turns without relying on
+    // visible text, while canonical-only and fork-snapshot messages
+    // continue to target their stable canonical message id.
+    entryId: desktopEntryId || message.id,
     isForkSnapshot: (message.sourceTransport === 'canonical-fork-snapshot' || message.sourceTransport === 'cloud-group-fork-snapshot') || undefined,
     role,
     sender,

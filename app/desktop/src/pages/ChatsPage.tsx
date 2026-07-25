@@ -1040,6 +1040,50 @@ export function buildAskAgentSessionReferenceContextMessage(conversation: Conver
   };
 }
 
+export function forkSourceMessageIds(
+  conversation: Pick<Conversation, 'forkedFromMessageId' | 'metadata'>,
+): Set<string> {
+  const ids = new Set<string>();
+  const primaryId = conversation.forkedFromMessageId?.trim();
+  if (primaryId) ids.add(primaryId);
+  const metadata = conversation.metadata && typeof conversation.metadata === 'object' && !Array.isArray(conversation.metadata)
+    ? conversation.metadata as Record<string, unknown>
+    : null;
+  const fork = metadata?.fork && typeof metadata.fork === 'object' && !Array.isArray(metadata.fork)
+    ? metadata.fork as Record<string, unknown>
+    : null;
+  const metadataPrimaryId = typeof fork?.forkedFromMessageId === 'string'
+    ? fork.forkedFromMessageId.trim()
+    : '';
+  if (metadataPrimaryId) ids.add(metadataPrimaryId);
+  if (Array.isArray(fork?.forkedFromMessageAliases)) {
+    for (const value of fork.forkedFromMessageAliases) {
+      if (typeof value !== 'string') continue;
+      const alias = value.trim();
+      if (alias) ids.add(alias);
+    }
+  }
+  return ids;
+}
+
+export function forkSnapshotBoundaryIndexForMessages(
+  messages: readonly Message[],
+  sourceMessageIds: ReadonlySet<string>,
+): number {
+  let lastSnapshotIndex = -1;
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    const messageIds = [
+      message.id,
+      message.entryId,
+    ].filter((value): value is string => Boolean(value?.trim()));
+    if (message.isForkSnapshot || messageIds.some((id) => sourceMessageIds.has(id))) {
+      lastSnapshotIndex = index;
+    }
+  }
+  return lastSnapshotIndex;
+}
+
 function companionLabel(conversation: Conversation) {
   return conversationChatKindLabel(conversation);
 }
@@ -1652,7 +1696,10 @@ export function ChatsPage({
   // If the active session is itself a fork, show a backlink at the top
   // of the transcript so the user can navigate to the source session.
   const activeForkSourceSessionId = activeConversationIsGroupFork ? null : activeConv.forkedFromSessionId?.trim() || null;
-  const activeForkSourceMessageId = activeConversationIsGroupFork ? null : activeConv.forkedFromMessageId?.trim() || null;
+  const activeForkSourceMessageIds = useMemo(
+    () => activeConversationIsGroupFork ? new Set<string>() : forkSourceMessageIds(activeConv),
+    [activeConv.forkedFromMessageId, activeConv.metadata, activeConversationIsGroupFork],
+  );
   const activeForkSourceTitle = useMemo(() => {
     if (!activeForkSourceSessionId) return null;
     const summary = desktopChatState?.sessions.find((session) => session.id === activeForkSourceSessionId);
@@ -1804,17 +1851,11 @@ export function ChatsPage({
   // sends in the fork shows up below it.
   const forkSnapshotBoundaryIndex = useMemo(() => {
     if (!activeForkSourceSessionId) return -1;
-    let lastSnapshotIdx = -1;
-    for (let index = 0; index < attributedTranscriptMessages.length; index += 1) {
-      const message = attributedTranscriptMessages[index];
-      const isAnchor = activeForkSourceMessageId
-        && message.entryId === activeForkSourceMessageId;
-      if (message.isForkSnapshot || isAnchor) {
-        lastSnapshotIdx = index;
-      }
-    }
-    return lastSnapshotIdx;
-  }, [activeForkSourceSessionId, activeForkSourceMessageId, attributedTranscriptMessages]);
+    return forkSnapshotBoundaryIndexForMessages(
+      attributedTranscriptMessages,
+      activeForkSourceMessageIds,
+    );
+  }, [activeForkSourceSessionId, activeForkSourceMessageIds, attributedTranscriptMessages]);
   const attributedActiveTranscriptLiveTurn = activeTranscriptLiveTurn;
   const shouldRenderLiveTurn = Boolean(attributedActiveTranscriptLiveTurn && !attributedActiveTranscriptLiveTurn.completed);
   const companionTranscriptMessages = useMemo(() => {
