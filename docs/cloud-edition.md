@@ -5,7 +5,7 @@ Kordi is the account-based desktop product on `main`. It routes auth, contacts, 
 Production API:
 
 ```text
-https://coordinar.io
+https://kordi.ai
 ```
 
 Testing should use an operator-provided public test hosted API base or a self-hosted compatible hosted server:
@@ -16,7 +16,7 @@ Testing should use an operator-provided public test hosted API base or a self-ho
 
 ## Runtime model
 
-- **Hosted API:** product builds default to `https://coordinar.io`.
+- **Hosted API:** product builds default to `https://kordi.ai`.
 - **Hosted server:** owns accounts, contacts, direct/group messages, read state, sync events, provider-auth snapshots, update manifests, and runner coordination.
 - **Hosted runner:** owns hosted fallback execution and sandboxed tool/model loops.
 - **Desktop shell:** owns the native window, login/session restoration, local cached UI state, OAuth loopback handoff, and hosted API client integration.
@@ -50,12 +50,12 @@ Kordi supports email/password plus OAuth sign-in for configured providers. The d
 Required production server environment:
 
 ```bash
-KORDI_CLOUD_PUBLIC_BASE_URL=https://coordinar.io
+KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.ai
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
 KORDI_OAUTH_GITHUB_CLIENT_ID=...
 KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
-KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://coordinar.io
+KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io
 ```
 
 For a test or self-hosted server, register callback URLs for that server's public HTTPS origin:

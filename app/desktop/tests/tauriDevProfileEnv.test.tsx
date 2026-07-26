@@ -46,9 +46,9 @@ test('buildBeforeDevCommand fails closed without a debug server origin', () => {
 
 test('buildBeforeDevCommand rejects the production origin', () => {
   for (const productionOrigin of [
-    'https://coordinar.io',
+    'https://kordi.ai',
     'http://coordinar.io',
-    'https://coordinar.io./',
+    'https://kordi.ai./',
   ]) {
     assert.throws(
       () => buildBeforeDevCommand({
@@ -64,7 +64,7 @@ test('buildBeforeDevCommand rejects the production origin', () => {
 
 test('buildBeforeDevCommand permits production only for acknowledged operator runs', () => {
   const base = {
-    VITE_KORDI_CLOUD_API_BASE: 'https://coordinar.io',
+    VITE_KORDI_CLOUD_API_BASE: 'https://kordi.ai',
     VITE_KORDI_DEV_PROFILE: 'operator',
   };
   assert.throws(

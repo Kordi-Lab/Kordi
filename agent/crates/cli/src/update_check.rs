@@ -9,7 +9,7 @@ use kordi_tui::tui::{TuiCommand, TuiNoteLevel};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-const DEFAULT_RELEASE_VERSION_URL: &str = "https://coordinar.io/updates/releases/version";
+const DEFAULT_RELEASE_VERSION_URL: &str = "https://kordi.ai/updates/releases/version";
 const DEFAULT_NPM_PACKAGE: Option<&str> = None;
 const DEFAULT_CHANGELOG_URL: Option<&str> = Some(DEFAULT_RELEASE_VERSION_URL);
 const DEFAULT_INSTALL_COMMAND: Option<&str> = None;
@@ -120,7 +120,7 @@ fn explicit_install_command_override() -> Option<String> {
 
 fn detect_hosted_install_command() -> String {
     explicit_install_command_override().unwrap_or_else(|| {
-        "Install the latest Kordi release from https://coordinar.io/updates/releases/version"
+        "Install the latest Kordi release from https://kordi.ai/updates/releases/version"
             .to_string()
     })
 }
@@ -478,7 +478,7 @@ mod tests {
 
         assert_eq!(
             config.install_command,
-            "Install the latest Kordi release from https://coordinar.io/updates/releases/version"
+            "Install the latest Kordi release from https://kordi.ai/updates/releases/version"
         );
     }
 
@@ -488,13 +488,13 @@ mod tests {
         assert_eq!(object.latest_version, "0.0.1-beta.6");
 
         let camel = parse_release_version_response(
-            r#"{ "latestVersion": "0.0.1-beta.7", "changelogUrl": "https://coordinar.io/releases" }"#,
+            r#"{ "latestVersion": "0.0.1-beta.7", "changelogUrl": "https://kordi.ai/releases" }"#,
         )
         .unwrap();
         assert_eq!(camel.latest_version, "0.0.1-beta.7");
         assert_eq!(
             camel.changelog_url.as_deref(),
-            Some("https://coordinar.io/releases")
+            Some("https://kordi.ai/releases")
         );
 
         let plain = parse_release_version_response("0.0.1-beta.8").unwrap();

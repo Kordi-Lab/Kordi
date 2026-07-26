@@ -94,15 +94,16 @@ fn should_publish_presence_offline_on_exit() -> bool {
     true
 }
 
-const DEFAULT_CLOUD_API_BASE_URL: &str = "https://coordinar.io";
-const PRODUCTION_CLOUD_API_HOSTNAME: &str = "coordinar.io";
+const DEFAULT_CLOUD_API_BASE_URL: &str = "https://kordi.ai";
+const PRODUCTION_CLOUD_API_HOSTNAMES: [&str; 2] = ["kordi.ai", "coordinar.io"];
 
 fn is_production_cloud_api_url(url: &reqwest::Url) -> bool {
     url.host_str()
         .map(|hostname| {
-            hostname
-                .trim_end_matches('.')
-                .eq_ignore_ascii_case(PRODUCTION_CLOUD_API_HOSTNAME)
+            let normalized = hostname.trim_end_matches('.');
+            PRODUCTION_CLOUD_API_HOSTNAMES
+                .iter()
+                .any(|production| normalized.eq_ignore_ascii_case(production))
         })
         .unwrap_or(false)
 }
@@ -276,7 +277,7 @@ mod window_lifecycle_tests {
         );
         assert_eq!(
             cloud_presence_offline_url(DEFAULT_CLOUD_API_BASE_URL),
-            "https://coordinar.io/v1/cloud/presence/offline"
+            "https://kordi.ai/v1/cloud/presence/offline"
         );
     }
 
@@ -286,17 +287,22 @@ mod window_lifecycle_tests {
             .unwrap_err()
             .contains("required for development"));
         assert!(
+            resolve_cloud_api_base_url(Some("https://kordi.ai/"), None, true, None, None)
+                .unwrap_err()
+                .contains("blocked in development")
+        );
+        assert!(
+            resolve_cloud_api_base_url(Some("http://kordi.ai"), None, true, None, None)
+                .unwrap_err()
+                .contains("blocked in development")
+        );
+        assert!(
+            resolve_cloud_api_base_url(Some("https://kordi.ai./"), None, true, None, None)
+                .unwrap_err()
+                .contains("blocked in development")
+        );
+        assert!(
             resolve_cloud_api_base_url(Some("https://coordinar.io/"), None, true, None, None)
-                .unwrap_err()
-                .contains("blocked in development")
-        );
-        assert!(
-            resolve_cloud_api_base_url(Some("http://coordinar.io"), None, true, None, None)
-                .unwrap_err()
-                .contains("blocked in development")
-        );
-        assert!(
-            resolve_cloud_api_base_url(Some("https://coordinar.io./"), None, true, None, None)
                 .unwrap_err()
                 .contains("blocked in development")
         );

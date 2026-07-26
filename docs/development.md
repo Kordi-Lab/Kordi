@@ -30,7 +30,7 @@ VITE_KORDI_CLOUD_API_BASE=http://127.0.0.1:17081 pnpm dev
 Production API:
 
 ```text
-https://coordinar.io
+https://kordi.ai
 ```
 
 For development/QA, prefer the self-hosted server or an operator-provided public test API base. Always set the API base explicitly:
@@ -102,6 +102,6 @@ For overlong-file thresholds and refactor boundaries, see [`development/maintain
 ## Notes
 
 - Kordi Desktop is the primary product surface on `main`.
-- Production defaults point to `https://coordinar.io`.
+- Production defaults point to `https://kordi.ai`.
 - Development tests should set `VITE_KORDI_CLOUD_API_BASE=<PUBLIC_TEST_CLOUD_API_BASE>` or a self-hosted API explicitly.
 - Do not commit tokens, local account sessions, provider credentials, database credentials, or private operator infrastructure details.

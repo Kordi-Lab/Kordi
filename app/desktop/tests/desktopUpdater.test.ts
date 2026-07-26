@@ -10,7 +10,7 @@ import {
 } from '../src/features/updates/desktopUpdater';
 
 const BETA6_MANUAL_UPDATE_URL =
-  'https://coordinar.io/updates/releases/0.0.1-beta.6/Kordi_0.0.1-beta.6_aarch64.dmg';
+  'https://kordi.ai/updates/releases/0.0.1-beta.6/Kordi_0.0.1-beta.6_aarch64.dmg';
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -57,7 +57,7 @@ test('manual fallback is product-origin and version-immutable', () => {
   assert.equal(manualUpdateUrlForVersion('0.0.1-beta.6'), BETA6_MANUAL_UPDATE_URL);
   assert.equal(
     manualUpdateUrlForVersion('10.20.30-beta.4'),
-    'https://coordinar.io/updates/releases/10.20.30-beta.4/Kordi_10.20.30-beta.4_aarch64.dmg',
+    'https://kordi.ai/updates/releases/10.20.30-beta.4/Kordi_10.20.30-beta.4_aarch64.dmg',
   );
   for (const value of [
     undefined,

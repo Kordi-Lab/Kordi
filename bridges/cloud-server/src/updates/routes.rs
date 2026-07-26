@@ -15,7 +15,7 @@ use crate::server::ServerState;
 use super::model::{select_update, ReleaseAsset, UpdateDecision};
 use super::store::{ReleaseCatalogStore, ReleaseStoreError};
 
-const DEFAULT_PUBLIC_BASE_URL: &str = "https://coordinar.io";
+const DEFAULT_PUBLIC_BASE_URL: &str = "https://kordi.ai";
 const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -388,8 +388,7 @@ async fn legacy_release_version(State(state): State<Arc<ServerState>>) -> Respon
                 download_url: None,
                 signature: None,
                 install_command: Some(
-                    "Download Kordi from coordinar.io and drag it to Applications once."
-                        .to_string(),
+                    "Download Kordi from kordi.ai and drag it to Applications once.".to_string(),
                 ),
             },
             Ok(None) | Err(_) => legacy_environment_fallback(),
@@ -409,7 +408,7 @@ fn legacy_environment_fallback() -> LegacyReleaseVersionResponse {
         version: optional_env("KORDI_RELEASE_VERSION")
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
         changelog_url: optional_env("KORDI_RELEASE_CHANGELOG_URL")
-            .unwrap_or_else(|| "https://coordinar.io/updates/releases/version".to_string()),
+            .unwrap_or_else(|| "https://kordi.ai/updates/releases/version".to_string()),
         // The shipped beta.5 client treats any downloadUrl as authorization to
         // invoke its legacy unverified native installer. Keep these fields absent
         // so beta.5 can only open changelogUrl for the one-time manual bootstrap.

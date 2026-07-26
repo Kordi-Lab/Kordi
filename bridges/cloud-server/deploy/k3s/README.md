@@ -5,7 +5,7 @@ Deployment assets for the Cloud product backend topology: k3s + Postgres + Redis
 Production public base URL:
 
 ```text
-https://coordinar.io
+https://kordi.ai
 ```
 
 Development/QA should use an operator-provided public test Cloud API base or a self-hosted compatible Cloud server:
@@ -32,12 +32,23 @@ Set these locally before running deploy scripts:
 ```bash
 export KORDI_CLOUD_SSH_TARGET="<operator-gcloud-ssh-target>"
 export KORDI_CLOUD_SSH_ZONE="<operator-gcloud-zone>"
+export KORDI_CLOUD_GCP_PROJECT="<operator-gcp-project>"
 export KORDI_CLOUD_REMOTE_DIR="$HOME/kordi-cloud-server-deploy"
 ```
 
 ## Install k3s on an operator-provided host
 
 ```bash
+KORDI_CLOUD_SSH_TARGET="kordi-product-app-01" \
+KORDI_CLOUD_SSH_ZONE="us-central1-b" \
+KORDI_CLOUD_GCP_PROJECT="hai-gcp-representation" \
+  bash bridges/cloud-server/deploy/k3s/bootstrap-product-host.sh
+
+KORDI_CLOUD_SSH_TARGET="kordi-product-app-01" \
+KORDI_CLOUD_SSH_ZONE="us-central1-b" \
+KORDI_CLOUD_GCP_PROJECT="hai-gcp-representation" \
+  bash bridges/cloud-server/deploy/k3s/configure-product-firewall.sh
+
 bash bridges/cloud-server/deploy/sync-and-build.sh
 
 ssh <operator-host> \
@@ -47,6 +58,11 @@ ssh <operator-host> 'kubectl get nodes -o wide'
 ssh <operator-host> \
   'kubectl apply -f /path/to/kordi/bridges/cloud-server/deploy/k3s/manifests/namespace.yaml'
 ```
+
+The instance-specific firewall tag allows public TCP 22, 80, and 443, keeps
+private VPC traffic available, and denies every other public ingress port.
+This protects k3s, Postgres, Redis, and application ports even when the shared
+VPC still has older broad allow rules for unrelated hosts.
 
 ## Build and deploy Cloud server
 
@@ -60,8 +76,8 @@ KORDI_CLOUD_IMAGE_TAG="cloud-server-$(date +%Y%m%d-%H%M%S)" \
 Required production server environment:
 
 ```bash
-KORDI_CLOUD_PUBLIC_BASE_URL=https://coordinar.io
-KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://coordinar.io
+KORDI_CLOUD_PUBLIC_BASE_URL=https://kordi.ai
+KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST=http://127.0.0.1:,http://localhost:,https://kordi.ai,https://coordinar.io
 KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
 KORDI_OAUTH_GITHUB_CLIENT_ID=...
@@ -72,14 +88,122 @@ For test/self-hosted Cloud servers, use that server's public HTTPS origin for `K
 
 Production provider callback URLs:
 
-- `https://coordinar.io/v1/cloud/auth/oauth/google/callback`
-- `https://coordinar.io/v1/cloud/auth/oauth/github/callback`
+- `https://kordi.ai/v1/cloud/auth/oauth/google/callback`
+- `https://kordi.ai/v1/cloud/auth/oauth/github/callback`
 
 Health check:
 
 ```bash
-curl https://coordinar.io/health
+curl https://kordi.ai/health
 ```
+
+The production origin is a compatibility contract with released desktop
+clients. Both `kordi.ai` and the legacy `coordinar.io` origin must serve
+`/v1/cloud/*`, `/health`, and `/updates/*` directly. A marketing-site redirect
+may handle other legacy paths, but must never match those product routes:
+cross-host redirects break browser CORS preflights and can also disable
+WebSockets and desktop updates.
+
+Before DNS cutover, set
+`KORDI_VERIFY_RESOLVE_IP=<GREEN_STATIC_IP>` so the deploy checks exercise the
+green edge rather than the host currently returned by public DNS. Use
+`KORDI_VERIFY_PUBLIC_ORIGINS=false` only when the edge is intentionally absent.
+After cutover, leave public-origin checks enabled without the resolution
+override.
+
+## Product edge
+
+Caddy reaches the Kubernetes Service through a loopback-only port-forward.
+This avoids embedding a replaceable cluster IP in the public proxy config and
+does not expose the application port on the VM network interface.
+
+From the synced repository on the product host:
+
+```bash
+sudo install -m 0644 \
+  bridges/cloud-server/deploy/k3s/systemd/kordi-cloud-port-forward.service \
+  /etc/systemd/system/kordi-cloud-port-forward.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now kordi-cloud-port-forward.service
+
+sudo install -m 0644 \
+  bridges/cloud-server/deploy/Caddyfile.snippet \
+  /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile
+```
+
+The complete Caddy config preserves all three public responsibilities:
+
+- website and beta intake on `kordi.ai`;
+- Cloud API, WebSocket, health, and updater routes on `kordi.ai`;
+- direct product compatibility routes on `coordinar.io`, with browser-only
+  navigation redirected to `kordi.ai`.
+
+Keep Caddy stopped on a green host until its website assets, beta-intake
+database, TLS state, and product data have been migrated and verified. During
+the final cutover, start Caddy before changing DNS and verify it with
+`curl --resolve` against the green host.
+
+## Production host cutover
+
+Treat a host replacement as a short, reversible write freeze. Do not point DNS
+at a green host merely because `/health` passes.
+
+Before the freeze:
+
+1. Reserve the green host's external IP and confirm deletion protection,
+   Secure Boot, vTPM, integrity monitoring, unattended upgrades, snapshots,
+   and the instance-scoped firewall.
+2. Add the canonical Google OAuth callback and preserve its legacy callback
+   during the transition:
+   - `https://kordi.ai/v1/cloud/auth/oauth/google/callback`
+3. The production GitHub credential is an OAuth App, which supports only one
+   authorization callback URL. The lowest-risk migration is to create a second
+   OAuth App for the green host with:
+   - homepage: `https://kordi.ai`
+   - callback: `https://kordi.ai/v1/cloud/auth/oauth/github/callback`
+   Install that app's client ID and secret only on the green host. The old host
+   then keeps its current OAuth App throughout DNS propagation and rollback.
+   If the existing OAuth App must be reused instead, do not replace its
+   `coordinar.io` callback early. Replace it with the canonical callback only
+   during the coordinated cutover, after the active server generates and
+   accepts that callback.
+4. Restore a recent copy of Postgres, MinIO, NATS JetStream, the beta-intake
+   SQLite database, the website, and Caddy TLS state to the green host.
+5. Keep the green agent runner scaled to zero until the final database copy is
+   complete. This prevents copied queued work from being executed twice.
+6. Verify the green origin without changing DNS:
+
+   ```bash
+   curl --resolve kordi.ai:443:<GREEN_STATIC_IP> https://kordi.ai/health
+   curl --resolve coordinar.io:443:<GREEN_STATIC_IP> https://coordinar.io/health
+   ```
+
+For the final cutover:
+
+1. Stop writes on the old API and beta-intake service, and scale its agent
+   runner to zero.
+2. Take a fresh consistent Postgres dump and SQLite backup, mirror MinIO with
+   metadata preserved, and take a final JetStream snapshot.
+3. Restore those final copies on the green host and compare schema versions,
+   row counts, object counts and bytes, stream messages and bytes, and beta
+   table counts. Do not compare or print credentials.
+4. Start Caddy, keep the green runner at zero, and repeat the canonical,
+   legacy, CORS-preflight, updater, OAuth-start, homepage, and beta-intake
+   checks with `curl --resolve`.
+5. Change the `kordi.ai`, `www.kordi.ai`, `coordinar.io`, and
+   `www.coordinar.io` records as required so both product origins reach the
+   green static IP.
+6. After public DNS and TLS checks pass, scale the green runner to one and
+   require a stable Ready pod with zero restarts.
+7. Exercise email/password login, Google and GitHub OAuth, WebSocket sync,
+   direct and group messages, agent execution, beta intake, and desktop update
+   metadata before ending the freeze.
+
+Keep the old VM stopped but intact for the rollback window. A rollback points
+both product origins back to the old static IP and resumes only the old
+workloads. Remove every temporary migration key from both hosts after
+acceptance.
 
 For test servers:
 
@@ -94,8 +218,8 @@ Desktop release objects live in the private MinIO bucket `kordi-releases`. The C
 After MinIO is running, provision or reconcile the scoped identities from a trusted operator machine:
 
 ```bash
-export KORDI_CLOUD_SSH_TARGET="kordi-product"
-export KORDI_CLOUD_SSH_ZONE="us-central1-a"
+export KORDI_CLOUD_SSH_TARGET="kordi-product-app-01"
+export KORDI_CLOUD_SSH_ZONE="us-central1-b"
 export KORDI_CLOUD_GCP_PROJECT="hai-gcp-representation"
 bash bridges/cloud-server/deploy/k3s/create-release-credentials.sh
 ```

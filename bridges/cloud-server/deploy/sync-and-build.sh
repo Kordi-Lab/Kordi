@@ -13,6 +13,7 @@
 # Optional env:
 #   KORDI_CLOUD_SSH_TARGET   required operator-provided gcloud SSH target
 #   KORDI_CLOUD_SSH_ZONE     required operator-provided gcloud zone
+#   KORDI_CLOUD_GCP_PROJECT  optional explicit GCP project
 #   KORDI_CLOUD_REMOTE_DIR   default: ~/kordi-cloud-server-deploy
 
 set -euo pipefail
@@ -20,7 +21,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 SSH_TARGET="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET to the operator-provided gcloud SSH target}"
 SSH_ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE to the operator-provided gcloud zone}"
+SSH_PROJECT="${KORDI_CLOUD_GCP_PROJECT:-}"
 REMOTE_DIR="${KORDI_CLOUD_REMOTE_DIR:-\$HOME/kordi-cloud-server-deploy}"
+GCLOUD_SSH=(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}")
+if [ -n "${SSH_PROJECT}" ]; then
+	GCLOUD_SSH+=(--project "${SSH_PROJECT}")
+fi
 
 echo "[deploy] repo root:    ${REPO_ROOT}"
 echo "[deploy] ssh target:   ${SSH_TARGET} (zone ${SSH_ZONE})"
@@ -32,14 +38,14 @@ echo "[deploy] remote dir:   ${REMOTE_DIR}"
 export CLOUDSDK_COMPUTE_ZONE="${SSH_ZONE}"
 
 echo "[deploy] ensuring remote dir exists and rsync is available"
-gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" \
+"${GCLOUD_SSH[@]}" \
 	--command "set -e; mkdir -p ${REMOTE_DIR}; if ! command -v rsync >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y rsync; fi"
 
 echo "[deploy] deriving rsync SSH transport from gcloud"
 # `gcloud compute ssh --dry-run` prints the exact ssh command for the VM,
 # including the active key, host alias, known-hosts file, and external IP.
 # Drop `-t`: rsync is non-interactive and a forced TTY can corrupt protocol IO.
-GCLOUD_SSH_DRY_RUN="$(gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" --dry-run | sed 's/ -t / /')"
+GCLOUD_SSH_DRY_RUN="$("${GCLOUD_SSH[@]}" --dry-run | sed 's/ -t / /')"
 RSYNC_REMOTE="$(awk '{ print $NF }' <<<"${GCLOUD_SSH_DRY_RUN}")"
 RSYNC_RSH="$(awk '{$NF=""; sub(/[[:space:]]+$/, ""); print}' <<<"${GCLOUD_SSH_DRY_RUN}")"
 
@@ -49,7 +55,7 @@ RSYNC_RSH="$(awk '{$NF=""; sub(/[[:space:]]+$/, ""); print}' <<<"${GCLOUD_SSH_DR
 # removed source files disappear from the VM, but exclude target/ so Cargo's
 # remote build cache survives iterative deploys.
 echo "[deploy] rsync source tree in-place (preserving remote target/)"
-rsync -az --delete --human-readable --itemize-changes \
+rsync -az --delete --human-readable --stats \
 	--rsh="${RSYNC_RSH}" \
 	--exclude='target/' \
 	--exclude='.git/' \
@@ -69,11 +75,11 @@ rsync -az --delete --human-readable --itemize-changes \
 	"${RSYNC_REMOTE}:${REMOTE_DIR}/"
 
 echo "[deploy] running 'cargo build --release -p kordi-cloud-server' on the VM"
-gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" \
+"${GCLOUD_SSH[@]}" \
 	--command "set -e; cd ${REMOTE_DIR}; \$HOME/.cargo/bin/cargo build --release -p kordi-cloud-server"
 
 echo "[deploy] verifying binary"
-gcloud compute ssh "${SSH_TARGET}" --zone "${SSH_ZONE}" \
+"${GCLOUD_SSH[@]}" \
 	--command "ls -la ${REMOTE_DIR}/target/release/kordi-cloud-server && file ${REMOTE_DIR}/target/release/kordi-cloud-server"
 
 echo "[deploy] done. Next step: bridges/cloud-server/deploy/install.sh"

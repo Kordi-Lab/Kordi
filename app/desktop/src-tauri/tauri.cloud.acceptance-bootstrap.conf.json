@@ -7,7 +7,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}"
+        "https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}"
       ]
     }
   }

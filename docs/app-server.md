@@ -5,7 +5,7 @@
 The product backend is `bridges/cloud-server`, and production desktop builds use:
 
 ```text
-https://coordinar.io
+https://kordi.ai
 ```
 
 For development/QA, use:

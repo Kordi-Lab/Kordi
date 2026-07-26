@@ -13,7 +13,7 @@ function readText(relativePath) {
 }
 
 const acceptanceEndpoint =
-  'https://coordinar.io/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
+  'https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
 
 test('desktop Tauri config creates signed updater artifacts from the product endpoint', () => {
   const base = readJson('src-tauri/tauri.conf.json');
@@ -23,7 +23,7 @@ test('desktop Tauri config creates signed updater artifacts from the product end
 
   assert.equal(base.bundle?.createUpdaterArtifacts, true);
   assert.deepEqual(endpoints, [
-    'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
+    'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
   ]);
   assert.equal(typeof pubkey, 'string');
   assert.match(pubkey, /^[A-Za-z0-9+/=]{100,}$/);
@@ -44,7 +44,7 @@ test('acceptance flavors are ad-hoc, updater-signed, and isolated from beta', ()
   assert.equal(base.version, '0.0.1-beta.9');
   assert.equal(base.bundle?.macOS?.signingIdentity, undefined);
   assert.deepEqual(base.plugins?.updater?.endpoints, [
-    'https://coordinar.io/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
+    'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}',
   ]);
   assert.equal(cloud.identifier, 'io.kordi.cloud');
 

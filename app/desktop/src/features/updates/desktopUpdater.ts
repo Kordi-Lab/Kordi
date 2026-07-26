@@ -1,4 +1,4 @@
-const KORDI_RELEASE_ORIGIN = 'https://coordinar.io';
+const KORDI_RELEASE_ORIGIN = 'https://kordi.ai';
 const BETA_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$/;
 
 export function manualUpdateUrlForVersion(version: string | undefined) {

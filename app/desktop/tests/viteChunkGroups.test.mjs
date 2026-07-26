@@ -35,7 +35,7 @@ test('Vite development serves only with an explicit non-production API origin', 
       /VITE_KORDI_CLOUD_API_BASE is required for development/i,
     );
 
-    process.env.VITE_KORDI_CLOUD_API_BASE = 'https://coordinar.io:443/';
+    process.env.VITE_KORDI_CLOUD_API_BASE = 'https://kordi.ai:443/';
     assert.throws(
       () => config({ command: 'serve', mode: 'endpoint-guard-test' }),
       /production Cloud API is blocked in development/i,
@@ -45,7 +45,7 @@ test('Vite development serves only with an explicit non-production API origin', 
     const resolved = await config({ command: 'serve', mode: 'endpoint-guard-test' });
     assert.ok(resolved.plugins?.length > 0);
 
-    process.env.VITE_KORDI_CLOUD_API_BASE = 'https://coordinar.io';
+    process.env.VITE_KORDI_CLOUD_API_BASE = 'https://kordi.ai';
     process.env.VITE_KORDI_DEV_PROFILE = 'operator';
     process.env.VITE_KORDI_PRODUCTION_DEBUG_ACK = '1';
     const operatorResolved = await config({ command: 'serve', mode: 'endpoint-guard-test' });

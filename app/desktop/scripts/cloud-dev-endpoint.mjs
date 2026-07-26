@@ -1,14 +1,18 @@
-export const PRODUCTION_CLOUD_API_ORIGIN = 'https://coordinar.io';
+export const PRODUCTION_CLOUD_API_ORIGIN = 'https://kordi.ai';
+export const LEGACY_PRODUCTION_CLOUD_API_ORIGIN = 'https://coordinar.io';
 export const COMMUNITY_CLOUD_DEV_PROFILE = 'community';
 export const OPERATOR_CLOUD_DEV_PROFILE = 'operator';
-const PRODUCTION_CLOUD_API_HOSTNAME = new URL(PRODUCTION_CLOUD_API_ORIGIN).hostname;
+const PRODUCTION_CLOUD_API_HOSTNAMES = new Set([
+  PRODUCTION_CLOUD_API_ORIGIN,
+  LEGACY_PRODUCTION_CLOUD_API_ORIGIN,
+].map((origin) => new URL(origin).hostname));
 
 function normalizeHostname(value) {
   return value.toLowerCase().replace(/\.+$/, '');
 }
 
 function isProductionCloudApiUrl(url) {
-  return normalizeHostname(url.hostname) === PRODUCTION_CLOUD_API_HOSTNAME;
+  return PRODUCTION_CLOUD_API_HOSTNAMES.has(normalizeHostname(url.hostname));
 }
 
 export function resolveCloudDevProfile(env = process.env) {

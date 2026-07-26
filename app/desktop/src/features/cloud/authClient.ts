@@ -4,7 +4,8 @@
 // Production Cloud Edition must not silently fall back to a localhost Bridge.
 // Local tunnels/dev servers remain available by explicitly setting
 // VITE_KORDI_CLOUD_API_BASE.
-export const DEFAULT_CLOUD_API_BASE_URL = 'https://coordinar.io';
+export const DEFAULT_CLOUD_API_BASE_URL = 'https://kordi.ai';
+const PRODUCTION_CLOUD_API_HOSTNAMES = new Set(['kordi.ai', 'coordinar.io']);
 
 export type CloudAccount = {
   accountId: string;
@@ -348,7 +349,7 @@ function cleanBaseUrl(value: string): string {
 function isProductionCloudOrigin(value: string): boolean {
   try {
     const hostname = new URL(value).hostname.toLowerCase().replace(/\.+$/, '');
-    return hostname === new URL(DEFAULT_CLOUD_API_BASE_URL).hostname;
+    return PRODUCTION_CLOUD_API_HOSTNAMES.has(hostname);
   } catch {
     return value === DEFAULT_CLOUD_API_BASE_URL;
   }

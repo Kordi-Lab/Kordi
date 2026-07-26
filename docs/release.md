@@ -118,7 +118,7 @@ Before publishing built artifacts, omit `--source-only` and pass the exact `Kord
 
 ### Private updater storage and publisher
 
-Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly: manifests and downloads are served only through `https://coordinar.io`. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects but cannot delete objects or administer buckets and policies. Cleanup and rollback conditionally PUT a strict unpublished tombstone instead of deleting a pointer; out-of-band pointer deletion is forbidden.
+Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly: manifests and downloads are served only through `https://kordi.ai`. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects but cannot delete objects or administer buckets and policies. Cleanup and rollback conditionally PUT a strict unpublished tombstone instead of deleting a pointer; out-of-band pointer deletion is forbidden.
 
 Provision or reconcile these identities from a trusted operator machine:
 
@@ -137,7 +137,7 @@ Kordi.app.tar.gz
 Kordi.app.tar.gz.sig
 ```
 
-Pass the corresponding `Kordi.app` bundle separately. By default, the publisher uses the production profile and checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `coordinar.io` product origin. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
+Pass the corresponding `Kordi.app` bundle separately. By default, the publisher uses the production profile and checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `kordi.ai` product origin. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
 
 ```bash
 RELEASE_COMMIT="$(git rev-parse HEAD)"
@@ -324,13 +324,13 @@ assert_preview_metadata_unchanged() {
 }
 verify_acceptance_manifest() {
   curl -fsS \
-    https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1 \
+    https://kordi.ai/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1 \
     | jq -e --slurpfile release "$ARTIFACT_ROOT/release-beta6/release.json" '
         $release[0] as $local
         | .version == $local.version
           and .pub_date == $local.pubDate
           and .notes == $local.notes
-          and .url == ("https://coordinar.io/updates/releases/" +
+          and .url == ("https://kordi.ai/updates/releases/" +
             $local.version + "/" + $local.platforms["darwin-aarch64"].fileName)
           and .signature == $local.platforms["darwin-aarch64"].signature
       '
@@ -344,7 +344,7 @@ Keep acceptance live while external testers are enrolled. Before sending invitat
 ```bash
 pnpm release:clear-desktop-acceptance
 test "$(curl -sS -o /dev/null -w '%{http_code}' \
-  https://coordinar.io/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1)" = 204
+  https://kordi.ai/updates/desktop/acceptance/darwin/aarch64/0.0.1-beta.5.1)" = 204
 PUB_DATE="$(jq -r .pubDate "$ARTIFACT_ROOT/release-beta6/release.json")"
 test -n "$PUB_DATE"
 test "$PUB_DATE" != null
@@ -428,9 +428,9 @@ Preserve production data and deploy in place from a clean worktree at `RELEASE_C
    ```
 
 5. Deploy runner with `bridges/cloud-server/deploy/k3s/deploy-cloud-agent-runner.sh`.
-6. Verify rollout images, latest `cloud_schema_versions`, private MinIO readiness, and secret-free logs. The server deploy script also requires in-cluster health, public `https://coordinar.io/health`, safe legacy metadata without `downloadUrl`, and HTTP 204 for the unpublished beta updater route.
+6. Verify rollout images, latest `cloud_schema_versions`, private MinIO readiness, and secret-free logs. The server deploy script also requires in-cluster health, public `https://kordi.ai/health`, safe legacy metadata without `downloadUrl`, and HTTP 204 for the unpublished beta updater route.
 
-Production Desktop beta builds should connect to the hosted product API (`https://coordinar.io`). Do not build a public DMG with a raw GCP/sslip URL or local tunnel in `VITE_KORDI_CLOUD_API_BASE`.
+Production Desktop beta builds should connect to the hosted product API (`https://kordi.ai`). Do not build a public DMG with a raw GCP/sslip URL or local tunnel in `VITE_KORDI_CLOUD_API_BASE`.
 
 ### Build signed macOS release artifacts
 
@@ -490,7 +490,7 @@ strings "$DMG" | rg 'https://coordinar\.io|coordinar\.io'
 3. Copy the updater archive, change one byte, and verify the Tauri signature check rejects the copy while the installed app remains runnable. Never upload the tampered copy.
 4. On a separate installation of the prior production beta, use the update confirmation to open the product-domain manual DMG. Verify the old app never starts its native installer, then drag the new version to Applications once and confirm login, Keychain, canonical sessions, caches, and preferences remain intact.
 5. After all acceptance clients have migrated, mark the acceptance channel unpublished with its strict compare-and-swap tombstone and verify HTTP 204 for a client on the prior acceptance version while retaining immutable objects. Do not clear acceptance while beta.6 preview testers still need beta.7.
-6. Publish the same immutable signed release to `--channel beta`. Verify legacy metadata contains the new version plus the manual `coordinar.io` URL and no `downloadUrl`; supported older clients receive the signed manifest; current, newer, and unsupported clients receive 204; anonymous DMG GET/HEAD and updater archive GET/HEAD match recorded sizes and SHA-256 values.
+6. Publish the same immutable signed release to `--channel beta`. Verify legacy metadata contains the new version plus the manual `kordi.ai` URL and no `downloadUrl`; supported older clients receive the signed manifest; current, newer, and unsupported clients receive 204; anonymous DMG GET/HEAD and updater archive GET/HEAD match recorded sizes and SHA-256 values.
 7. Exercise rollback with an explicit expected-current-version guard. The command replaces the beta pointer with an unpublished tombstone only if its ETag and version still match, verifies updater 204, stable-DMG 404, and safe legacy metadata, and restores/re-verifies the release if those checks fail. Then promote the release again and repeat the endpoint matrix:
 
    ```bash

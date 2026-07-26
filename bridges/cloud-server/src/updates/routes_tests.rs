@@ -205,7 +205,7 @@ async fn valid_beta_channel_returns_exact_tauri_manifest() {
             "version": "0.0.1-beta.6",
             "notes": "Kordi 0.0.1-beta.6",
             "pub_date": "2026-07-13T00:00:00Z",
-            "url": "https://coordinar.io/updates/releases/0.0.1-beta.6/Kordi.app.tar.gz",
+            "url": "https://kordi.ai/updates/releases/0.0.1-beta.6/Kordi.app.tar.gz",
             "signature": release.platforms["darwin-aarch64"].signature,
         })
     );
@@ -460,14 +460,14 @@ async fn beta5_legacy_metadata_uses_only_the_manual_product_download_path() {
     assert_eq!(json["version"], release.version);
     assert_eq!(
         json["changelogUrl"],
-        "https://coordinar.io/updates/releases/latest/Kordi.dmg"
+        "https://kordi.ai/updates/releases/latest/Kordi.dmg"
     );
     assert!(json.get("downloadUrl").is_none());
     assert!(json.get("signature").is_none());
     assert_eq!(
         shipped_beta5_confirmation_action(&json),
         Beta5ConfirmationAction::OpenProductUrl(
-            "https://coordinar.io/updates/releases/latest/Kordi.dmg".to_string()
+            "https://kordi.ai/updates/releases/latest/Kordi.dmg".to_string()
         )
     );
 }
@@ -484,11 +484,11 @@ async fn legacy_metadata_never_authorizes_beta5_native_installation() {
         std::env::set_var("KORDI_RELEASE_VERSION", "0.0.1-beta.5");
         std::env::set_var(
             "KORDI_RELEASE_CHANGELOG_URL",
-            "https://coordinar.io/updates/releases/version",
+            "https://kordi.ai/updates/releases/version",
         );
         std::env::set_var(
             "KORDI_RELEASE_DOWNLOAD_URL",
-            "https://coordinar.io/legacy/Kordi.dmg",
+            "https://kordi.ai/legacy/Kordi.dmg",
         );
         std::env::set_var("KORDI_RELEASE_SIGNATURE", "legacy-signature");
     }
@@ -511,9 +511,7 @@ async fn legacy_metadata_never_authorizes_beta5_native_installation() {
     assert!(fallback.get("signature").is_none());
     assert_ne!(
         shipped_beta5_confirmation_action(&fallback),
-        Beta5ConfirmationAction::NativeInstaller(
-            "https://coordinar.io/legacy/Kordi.dmg".to_string()
-        )
+        Beta5ConfirmationAction::NativeInstaller("https://kordi.ai/legacy/Kordi.dmg".to_string())
     );
 
     backend.put("desktop/channels/beta/latest.json", b"corrupt".as_slice());

@@ -170,7 +170,7 @@ After publishing `acceptance`, verify:
 - manifest values exactly equal the local `release.json`;
 - product-domain DMG and archive GET/HEAD sizes match local artifacts;
 - downloaded product artifacts reproduce the local SHA-256 values;
-- `https://coordinar.io/health` is healthy.
+- `https://kordi.ai/health` is healthy.
 
 Then clear `acceptance`, verify HTTP `204` for the previous client, and restore
 the exact same metadata. In zsh, `status` is read-only; use a variable such as
@@ -234,7 +234,7 @@ The following values provide a known-good comparison point:
 - acceptance pointer SHA-256:
   `f108464c3460bebd3757d077a12b8b5efb718f1b39eeb97e110cf19f5566eee8`
 - [GitHub release](https://github.com/Kordi-AI/Kordi/releases/tag/V0.0.1.beta9)
-- [product DMG](https://coordinar.io/updates/releases/0.0.1-beta.9/Kordi_0.0.1-beta.9_aarch64.dmg)
+- [product DMG](https://kordi.ai/updates/releases/0.0.1-beta.9/Kordi_0.0.1-beta.9_aarch64.dmg)
 
 Beta.9 was explicitly approved as ad-hoc signed and non-notarized. It was
 published to the acceptance updater channel and mirrored as a GitHub
