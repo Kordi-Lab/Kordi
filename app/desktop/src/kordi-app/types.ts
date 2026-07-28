@@ -828,6 +828,7 @@ export type DesktopChatSessionSummary = {
   title: string;
   subtitle: string;
   updatedAtLabel: string;
+  updatedAtMs: number;
   messageCount: number;
   draft: boolean;
   forkedFromSessionId?: string | null;
@@ -1152,6 +1153,7 @@ export type DesktopChatSessionDetail = {
   thinkingLabel: string;
   thinkingLevels: string[];
   updatedAtLabel: string;
+  updatedAtMs: number;
   messageCount: number;
   draft: boolean;
   cacheMonitorText?: string | null;

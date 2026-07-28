@@ -190,6 +190,7 @@ pub struct DesktopChatSessionSummary {
     pub title: String,
     pub subtitle: String,
     pub updated_at_label: String,
+    pub updated_at_ms: i64,
     pub message_count: usize,
     pub draft: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -268,6 +269,7 @@ pub struct DesktopChatSessionDetail {
     pub thinking_label: String,
     pub thinking_levels: Vec<String>,
     pub updated_at_label: String,
+    pub updated_at_ms: i64,
     pub message_count: usize,
     pub draft: bool,
     pub cache_monitor_text: Option<String>,

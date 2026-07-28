@@ -13,6 +13,7 @@ use crate::session_bootstrap::SessionRuntimeSetup;
 use crate::session_info::collect_session_info_summary;
 
 use super::model_options::desktop_thinking_levels_for_model_with_auth;
+use super::session_catalog::session_activity_timestamp_ms;
 use super::{
     DesktopChatAgentProfile, DesktopChatContextWindowStatus, DesktopChatMessage,
     DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopSessionArtifact,
@@ -223,6 +224,7 @@ pub(super) fn build_summary_from_setup(
         title: detail.title,
         subtitle: detail.subtitle,
         updated_at_label: detail.updated_at_label,
+        updated_at_ms: detail.updated_at_ms,
         message_count: detail.message_count,
         draft: detail.draft,
         forked_from_session_id: detail.forked_from_session_id.clone(),
@@ -256,6 +258,10 @@ pub(super) fn build_detail_from_setup(
         .as_ref()
         .map(|row| session_activity_label(&setup.conn, row))
         .unwrap_or_else(|| "Draft".to_string());
+    let updated_at_ms = session_row
+        .as_ref()
+        .map(|row| session_activity_timestamp_ms(&setup.conn, row))
+        .unwrap_or_default();
 
     let context_window_status = current_context_window_status(setup);
     let project_root = session_row
@@ -291,6 +297,7 @@ pub(super) fn build_detail_from_setup(
             setup.auth.as_ref().map(|auth| auth.method),
         ),
         updated_at_label,
+        updated_at_ms,
         message_count: messages.len(),
         draft: !setup.session_created,
         cache_monitor_text: current_cache_monitor_text(setup),

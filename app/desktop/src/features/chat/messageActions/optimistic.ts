@@ -68,6 +68,7 @@ export function appendOptimisticOutboundMessage(
   quote: ComposerQuoteState | null = null,
 ) {
   const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
+  const updatedAtMs = Date.now();
   const optimisticMessage = {
     role: 'user' as const,
     sender: 'Me',
@@ -77,7 +78,7 @@ export function appendOptimisticOutboundMessage(
     replyToMessageId: quoteAction?.source.sourceMessageId ?? null,
     messageAction: quoteAction,
     timeLabel: sentAt,
-    timestampMs: Date.now(),
+    timestampMs: updatedAtMs,
   };
 
   const activeSessionMatches = current.activeSession.id === targetSessionId;
@@ -100,6 +101,7 @@ export function appendOptimisticOutboundMessage(
     title: nextTitle,
     subtitle: previewText,
     updatedAtLabel: sentAt,
+    updatedAtMs,
     messageCount: nextMessageCount,
     draft: false,
   };
@@ -144,6 +146,7 @@ export function appendOptimisticOutboundMessage(
             ...current.activeSession,
             subtitle: previewText,
             updatedAtLabel: sentAt,
+            updatedAtMs,
             messageCount: nextMessageCount,
             draft: false,
             messages: [...current.activeSession.messages, optimisticMessage],

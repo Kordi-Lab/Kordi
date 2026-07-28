@@ -322,6 +322,7 @@ export function syntheticConversation(
 
   return {
     id: session.id,
+    _updatedAtMs: sessionChatActivityAtMs(session, rawMessages),
     canonicalSessionId: session.id,
     canonicalCreatedByIdentityId: session.createdByIdentityId,
     canonicalCreatedAtMs: session.createdAtMs,

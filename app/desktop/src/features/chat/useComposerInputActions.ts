@@ -128,6 +128,7 @@ function appendOptimisticSessionConfigMessage({
         ? {
             ...session,
             updatedAtLabel: timeLabel,
+            updatedAtMs: timestampMs,
             messageCount: session.messageCount + messageCountDelta,
           }
         : session
@@ -153,6 +154,7 @@ function appendOptimisticSessionConfigMessage({
         ? formatThinkingSelectionLabel(nextThinkingValue ?? current.activeSession.thinking)
         : current.activeSession.thinkingLabel,
       updatedAtLabel: timeLabel,
+      updatedAtMs: timestampMs,
       messageCount: current.activeSession.messageCount + messageCountDelta,
       messages: nextMessages.messages,
     },

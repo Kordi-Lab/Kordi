@@ -317,6 +317,7 @@ test('optimistic outbound chat messages include quoted reply metadata immediatel
       title: 'Alice',
       subtitle: 'Can we ship?',
       updatedAtLabel: '10:42',
+      updatedAtMs: 1,
       messageCount: 1,
       draft: false,
     }],
@@ -333,6 +334,7 @@ test('optimistic outbound chat messages include quoted reply metadata immediatel
       thinkingLabel: 'xhigh',
       thinkingLevels: [],
       updatedAtLabel: '10:42',
+      updatedAtMs: 1,
       messageCount: 1,
       draft: false,
       contextWindowText: '',
@@ -385,6 +387,8 @@ test('optimistic outbound chat messages include quoted reply metadata immediatel
   assert.equal(optimistic.replyToMessageId, 'msg:source');
   assert.equal(optimistic.messageAction?.kind, 'quote');
   assert.equal(optimistic.messageAction?.source?.senderLabel, 'Alice');
+  assert.ok(next.sessions[0].updatedAtMs > state.sessions[0].updatedAtMs);
+  assert.equal(next.activeSession.updatedAtMs, next.sessions[0].updatedAtMs);
 });
 
 test('prepared canonical user messages persist quoted reply metadata', () => {

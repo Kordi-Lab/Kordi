@@ -454,6 +454,7 @@ export function useWorkspaceViewModels({
           title: desktopChatState.activeSession.title || 'New session',
           subtitle: desktopChatState.activeSession.subtitle,
           updatedAtLabel: desktopChatState.activeSession.updatedAtLabel,
+          updatedAtMs: desktopChatState.activeSession.updatedAtMs,
           messageCount: desktopChatState.activeSession.messageCount,
           draft: desktopChatState.activeSession.draft,
           forkedFromSessionId: desktopChatState.activeSession.forkedFromSessionId ?? null,
@@ -524,7 +525,7 @@ export function useWorkspaceViewModels({
         outreachThreads,
         forkedFromSessionId: session.forkedFromSessionId ?? null,
         forkedFromMessageId: session.forkedFromMessageId ?? null,
-        _updatedAtMs: undefined as number | undefined,
+        _updatedAtMs: session.updatedAtMs,
       };
     });
   }, [activeConvId, activeNav, cachedChatSessionMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
@@ -567,10 +568,12 @@ export function useWorkspaceViewModels({
     const collaborationSourceConversations = canonicalReadModel ? collaborationChatConversations : visibleCollaborationChatConversations;
     const merged = [...collaborationSourceConversations, ...localChatConversations, ...transientChatConversations];
     merged.sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0));
-    const sourceConversations = merged.map(({ _updatedAtMs, ...conversation }) => conversation);
-    return canonicalReadModel
-      ? canonicalReadModel.buildChatConversations(sourceConversations, buildConversationPreview)
-      : sourceConversations;
+    const hydrated = canonicalReadModel
+      ? canonicalReadModel.buildChatConversations(merged, buildConversationPreview)
+      : merged;
+    return [...hydrated]
+      .sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0))
+      .map(({ _updatedAtMs, ...conversation }) => conversation);
   }, [collaborationChatConversations, canonicalReadModel, conversations, isNativeShell, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
 
   const chatConversations = useMemo(() => {
