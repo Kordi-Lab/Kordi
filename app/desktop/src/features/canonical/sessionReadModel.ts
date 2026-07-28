@@ -31,6 +31,7 @@ import type { ConversationSubtitleBuilder } from './readModel/conversationMappin
 
 type CanonicalConversationLike = {
   id: string;
+  _updatedAtMs?: number;
   canonicalSessionId?: string;
   canonicalStoragePath?: string;
   canonicalParticipantCount?: number;
@@ -617,6 +618,7 @@ export function createCanonicalSessionReadModel(
 
       return {
         ...conversation,
+        _updatedAtMs: Math.max(conversation._updatedAtMs ?? 0, sessionActivityAtMs(session)),
         canonicalSessionId: sessionId,
         canonicalCreatedByIdentityId: session.createdByIdentityId,
         canonicalCreatedAtMs: session.createdAtMs,

@@ -315,7 +315,9 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
   }, [activeIncompleteLiveTurn, activeSessionHasVisibleLiveTurn, desktopChatState?.activeSession, desktopChatState?.activeSessionId, isNativeShell, mapDesktopMessages]);
 
   const mergeCompletedDesktopTurn = useCallback((turn: DesktopChatTurnSnapshot) => {
-    const finishedAt = formatDesktopClockTime(new Date());
+    const finishedAtDate = new Date();
+    const finishedAt = formatDesktopClockTime(finishedAtDate);
+    const finishedAtMs = finishedAtDate.getTime();
     const visibleLocalSessionId = visibleLocalSessionIdRef.current;
     const shouldAppendAssistantMessage =
       turn.assistantText.trim().length > 0
@@ -344,6 +346,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         return {
           ...session,
           updatedAtLabel: finishedAt,
+          updatedAtMs: finishedAtMs,
           messageCount: shouldAppendCompletedMessage ? session.messageCount + 1 : session.messageCount,
         };
       });
@@ -366,6 +369,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
           activeSession: {
             ...current.activeSession,
             updatedAtLabel: finishedAt,
+            updatedAtMs: finishedAtMs,
           },
         };
       }
@@ -376,6 +380,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages }: UseDe
         activeSession: {
           ...current.activeSession,
           updatedAtLabel: finishedAt,
+          updatedAtMs: finishedAtMs,
           messageCount: current.activeSession.messageCount + 1,
           messages: [...current.activeSession.messages, completedMessage],
         },

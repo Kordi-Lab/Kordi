@@ -31,6 +31,7 @@ function draftDesktopChatState(current: DesktopChatState | null): DesktopChatSta
       title: 'New chat',
       subtitle: '',
       updatedAtLabel: 'Draft',
+      updatedAtMs: 0,
       messageCount: 0,
       draft: true,
       cacheMonitorText: null,

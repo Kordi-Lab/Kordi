@@ -54,6 +54,7 @@ export function mergeLatestDesktopChatState(
 
   const nextMessageCount = Math.max(current.activeSession.messageCount, nextState.activeSession.messageCount);
   const nextUpdatedAtLabel = current.activeSession.updatedAtLabel;
+  const nextUpdatedAtMs = Math.max(current.activeSession.updatedAtMs, nextState.activeSession.updatedAtMs);
   const nextSubtitle = current.activeSession.subtitle;
 
   return {
@@ -64,6 +65,7 @@ export function mergeLatestDesktopChatState(
             ...session,
             subtitle: nextSubtitle,
             updatedAtLabel: nextUpdatedAtLabel,
+            updatedAtMs: Math.max(session.updatedAtMs, nextUpdatedAtMs),
             messageCount: Math.max(session.messageCount, nextMessageCount),
           }
         : session
@@ -76,6 +78,7 @@ export function mergeLatestDesktopChatState(
               ...session,
               subtitle: nextSubtitle,
               updatedAtLabel: nextUpdatedAtLabel,
+              updatedAtMs: Math.max(session.updatedAtMs, nextUpdatedAtMs),
               messageCount: Math.max(session.messageCount, nextMessageCount),
             }
           : session
@@ -85,6 +88,7 @@ export function mergeLatestDesktopChatState(
       ...nextStateWithStableLists.activeSession,
       subtitle: nextSubtitle,
       updatedAtLabel: nextUpdatedAtLabel,
+      updatedAtMs: nextUpdatedAtMs,
       messageCount: nextMessageCount,
       messages: current.activeSession.messages,
     },

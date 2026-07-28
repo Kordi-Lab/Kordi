@@ -6,6 +6,7 @@ fn test_summary(title: &str, message_count: usize, draft: bool) -> DesktopChatSe
         title: title.to_string(),
         subtitle: String::new(),
         updated_at_label: "Draft".to_string(),
+        updated_at_ms: 0,
         message_count,
         draft,
         forked_from_session_id: None,

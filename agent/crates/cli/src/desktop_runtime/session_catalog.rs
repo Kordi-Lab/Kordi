@@ -39,7 +39,7 @@ fn session_last_activity_timestamp(
         .unwrap_or_else(|| row.created_at.clone())
 }
 
-fn session_sort_timestamp_ms(
+pub(super) fn session_activity_timestamp_ms(
     conn: &rusqlite::Connection,
     row: &kordi_session::store::SessionRow,
 ) -> i64 {
@@ -211,6 +211,7 @@ fn session_summary_from_row(
     conn: &rusqlite::Connection,
     row: kordi_session::store::SessionRow,
 ) -> Result<DesktopChatSessionSummary> {
+    let updated_at_ms = session_activity_timestamp_ms(conn, &row);
     let updated_at_label = session_activity_label(conn, &row);
     let title = repair_session_title_from_history(conn, &row)?
         .unwrap_or_else(|| fallback_session_display_title(&row));
@@ -227,6 +228,7 @@ fn session_summary_from_row(
         title,
         subtitle,
         updated_at_label,
+        updated_at_ms,
         message_count: row.entry_count.max(0) as usize,
         draft: false,
         forked_from_session_id: row.parent_session_id,
@@ -274,8 +276,8 @@ pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSe
     let cwd_str = cwd.display().to_string();
     let mut rows = kordi_session::store::list_sessions(&conn, &cwd_str)?;
     rows.sort_by(|left, right| {
-        session_sort_timestamp_ms(&conn, right)
-            .cmp(&session_sort_timestamp_ms(&conn, left))
+        session_activity_timestamp_ms(&conn, right)
+            .cmp(&session_activity_timestamp_ms(&conn, left))
             .then_with(|| right.created_at.cmp(&left.created_at))
     });
 
@@ -399,7 +401,7 @@ pub fn list_project_groups(_cwd: &std::path::Path) -> Result<Vec<DesktopChatProj
             continue;
         };
 
-        let sort_ts = session_sort_timestamp_ms(&conn, &row);
+        let sort_ts = session_activity_timestamp_ms(&conn, &row);
         let session_id = row.session_id.clone();
         let project_root = std::path::PathBuf::from(project_root_value);
         let group_id = project_group_id(&project_root);
@@ -629,6 +631,24 @@ mod tests {
         let title = fallback_session_display_title(&row);
         assert!(title.starts_with("Chat with My Kordi · "));
         assert!(!title.contains(&row.session_id));
+    }
+
+    #[test]
+    fn session_summary_exposes_numeric_last_activity_timestamp() {
+        let conn = kordi_session::store::open_memory().expect("session database");
+        let session_id =
+            kordi_session::store::create_session(&conn, "/tmp/kordi").expect("session");
+        let entry = user_entry(None, "inspect the active session ordering");
+        kordi_session::store::append_entry(&conn, &session_id, &entry).expect("append entry");
+        let row = kordi_session::store::get_session(&conn, &session_id)
+            .expect("row")
+            .expect("session exists");
+        let expected_activity_at_ms = session_activity_timestamp_ms(&conn, &row);
+
+        let summary = session_summary_from_row(&conn, row).expect("session summary");
+
+        assert!(expected_activity_at_ms > 0);
+        assert_eq!(summary.updated_at_ms, expected_activity_at_ms);
     }
 
     #[test]
