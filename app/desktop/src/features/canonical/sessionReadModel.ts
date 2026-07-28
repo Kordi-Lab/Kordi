@@ -7,7 +7,10 @@ import type {
   Message,
   SessionTaskActivity,
 } from '@/kordi-app/types';
-import { isLegacyCanonicalCollaborationSessionId } from '@/features/canonical/sessionResolver';
+import {
+  isCanonicalCloudSessionId,
+  isLegacyCanonicalCollaborationSessionId,
+} from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { isCollaborationLiveTurnId } from '@/features/collaboration/legacyBridgeCompatibility';
@@ -382,7 +385,7 @@ function mergeLocalOwnedAgentRuntimeStatus(
   return merged;
 }
 
-function shouldKeepLegacyChatConversationExtra(
+function shouldKeepRuntimeChatConversationExtra(
   conversation: Conversation,
   indexes: CanonicalIndexes,
 ) {
@@ -403,8 +406,12 @@ function shouldKeepLegacyChatConversationExtra(
     return false;
   }
 
+  // Hosted collaboration state can arrive before its canonical session is
+  // materialized locally. Keep that runtime row until normal hydration takes
+  // ownership of the same session id.
   return conversation.id.startsWith('bridge:')
     || isLegacyCanonicalCollaborationSessionId(sessionId)
+    || isCanonicalCloudSessionId(sessionId)
     || conversation.collaborationSources.some((source) => source.trim().toLowerCase() === 'local')
     || !conversation.canonicalSessionId;
 }
@@ -739,7 +746,7 @@ export function createCanonicalSessionReadModel(
         const sessionId = conversation.canonicalSessionId ?? conversation.id;
         return !hydratedIds.has(conversation.id)
           && !groupedSessionIds.has(sessionId)
-          && shouldKeepLegacyChatConversationExtra(conversation, indexes);
+          && shouldKeepRuntimeChatConversationExtra(conversation, indexes);
       });
       return [...hydrated, ...extras];
     },
